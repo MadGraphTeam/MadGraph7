@@ -96,7 +96,7 @@ def exercise_runtime(artifact: Path) -> None:
     assert_type(runtime.artifact_id, str)
     assert_type(
         runtime.execution_mode,
-        Literal["compiled", "eager", "recurrence"],
+        Literal["compiled", "eager", "recurrence", "on-the-fly"],
     )
     physics = runtime.physics
     assert_type(physics, ProcessPhysics)
@@ -115,6 +115,7 @@ def exercise_runtime(artifact: Path) -> None:
     runtime.set_model_parameter("normalization.alpha_s_me_check", 0.119)
     runtime.mute_warnings()
     runtime.unmute_warnings()
+    runtime.clear()
     assert_type(BenchmarkRunner(BenchmarkConfig()).run(runtime), BenchmarkResult)
     assert_type(benchmark(runtime, points=MOMENTA), BenchmarkResult)
 

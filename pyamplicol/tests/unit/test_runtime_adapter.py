@@ -15,6 +15,8 @@ from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_DAG_F64_RUNTIME_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+    ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+    ON_THE_FLY_RUNTIME_CAPABILITY,
     SYMJIT_F64_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api import (
@@ -130,6 +132,8 @@ class _NativeRuntime:
     def __init__(self) -> None:
         self.parameter_updates: list[dict[str, complex | float | int]] = []
         self.muted = False
+        self.clear_count = 0
+        self.physics_access_count = 0
 
     @classmethod
     def load(cls, artifact: Path, **kwargs: object) -> _NativeRuntime:
@@ -138,6 +142,7 @@ class _NativeRuntime:
 
     @property
     def physics(self) -> SimpleNamespace:
+        self.physics_access_count += 1
         return self.physics_value
 
     def metadata_json(self) -> str:
@@ -147,6 +152,37 @@ class _NativeRuntime:
                 "process_key": "uux_g",
                 "representative_process_key": "uux_g",
                 "external_permutation": [0, 1, 2],
+            }
+        )
+
+    def _on_the_fly_benchmark_context_json(
+        self,
+        color_flow_ids: tuple[str, ...] | None = None,
+    ) -> str:
+        return json.dumps(
+            {
+                "process_id": "uux_g",
+                "process_expression": "u u~ > g",
+                "color_accuracy": "lc",
+                "helicity_count": 1,
+                "color_count": 1,
+                "selected_color_ids": list(color_flow_ids or ()),
+            }
+        )
+
+    def _on_the_fly_selector_ordinals_json(
+        self,
+        helicity_ids: tuple[str, ...] | None = None,
+        color_flow_ids: tuple[str, ...] | None = None,
+    ) -> str:
+        return json.dumps(
+            {
+                "helicity_ordinals": (
+                    None if helicity_ids is None else [0] * len(helicity_ids)
+                ),
+                "color_ordinals": (
+                    None if color_flow_ids is None else [0] * len(color_flow_ids)
+                ),
             }
         )
 
@@ -189,6 +225,9 @@ class _NativeRuntime:
 
     def set_model_parameters(self, mapping: dict[str, complex | float | int]) -> None:
         self.parameter_updates.append(mapping)
+
+    def clear(self) -> None:
+        self.clear_count += 1
 
     def mute_warnings(self) -> None:
         self.muted = True
@@ -352,8 +391,10 @@ def test_adapter_maps_typed_metadata_totals_and_runtime_state(
     assert resolved.total() == (Decimal("1.25"),)
 
     backend.set_model_parameters({"aS": 0.13})
+    backend.clear()
     backend.mute_warnings()
     assert backend._runtime.parameter_updates == [{"aS": 0.13}]
+    assert backend._runtime.clear_count == 1
     assert backend._runtime.muted is True
     backend.unmute_warnings()
     assert backend._runtime.muted is False
@@ -368,6 +409,8 @@ def test_adapter_maps_typed_metadata_totals_and_runtime_state(
     }
 
     public = Runtime.load(tmp_path, process="uux_g")
+    public.clear()
+    assert public._backend._runtime.clear_count == 1
     assert public.artifact_id == "a" * 64
     assert public.execution_mode == "compiled"
     assert public.representative_process_key == "uux_g"
@@ -397,6 +440,27 @@ def test_adapter_routes_eager_high_precision_to_eager_exact_executor(
         assert backend.evaluate([], precision=32) == (Decimal("1.25"),)
     finally:
         _NativeRuntime.execution_mode = "compiled"
+
+
+def test_default_runtime_paths_do_not_force_process_physics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_native(monkeypatch)
+    from pyamplicol.runtime import load_runtime_backend
+
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+
+    backend.evaluate([], precision=16)
+    backend.evaluate_resolved([], precision=16)
+    backend._benchmark_f64_wall_time([], 2)
+    backend._profile_arena_repeated([], 2)
+    backend.profile([])
+    backend.profile_repeated([], 2)
+    backend.clear()
+    assert backend._runtime.physics_access_count == 0
+
+    backend.evaluate([()], helicity_by_point=("h0",))
+    assert backend._runtime.physics_access_count == 1
 
 
 def test_adapter_accepts_one_based_color_flow_ordinals(
@@ -531,6 +595,62 @@ def test_adapter_accepts_compact_eager_runtime_selector_capability(
         assert _NativeRuntime.last_evaluate_options is not None
         assert _NativeRuntime.last_evaluate_options["helicity_by_point"] == (0, 0)
         assert _NativeRuntime.last_evaluate_options["color_flow_by_point"] == (0, 0)
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+def test_adapter_accepts_on_the_fly_without_reading_dense_selector_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(
+        tmp_path,
+        capabilities=(
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        ),
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "_has_reusable_runtime_selector_contract",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("on-the-fly adapter read dense selector metadata")
+        ),
+    )
+    _NativeRuntime.execution_mode = "on-the-fly"
+    try:
+        backend = backend_module.load_runtime_backend(tmp_path, process="uux_g")
+        assert backend.execution_mode == "on-the-fly"
+        assert backend.supports_per_point_selectors is True
+        assert backend.evaluate([()], helicities=("h0",)) == (2.0 + 0.0j,)
+        backend.evaluate(
+            [(), ()],
+            helicity_by_point=("h0", "h0"),
+            color_flow_by_point=("c0", "c0"),
+        )
+        assert _NativeRuntime.last_evaluate_options is not None
+        assert _NativeRuntime.last_evaluate_options["helicity_by_point"] == (0, 0)
+        assert _NativeRuntime.last_evaluate_options["color_flow_by_point"] == (0, 0)
+        backend._benchmark_f64_wall_time(
+            [(), ()],
+            2,
+            helicity_by_point=("h0", "h0"),
+            color_flow_by_point=("c0", "c0"),
+        )
+        backend.profile(
+            [(), ()],
+            helicity_by_point=("h0", "h0"),
+            color_flow_by_point=("c0", "c0"),
+        )
+        assert backend._runtime.physics_access_count == 0
     finally:
         _NativeRuntime.execution_mode = "compiled"
 

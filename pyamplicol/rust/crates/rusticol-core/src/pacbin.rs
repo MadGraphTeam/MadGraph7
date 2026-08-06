@@ -54,6 +54,7 @@ pub enum PacbinMemberKind {
     EagerRuntimeTable = 5,
     RecurrenceDirectPlan = 7,
     RecurrenceColorProjectionCertificate = 8,
+    OnTheFlyProcessSeed = 9,
 }
 
 impl PacbinMemberKind {
@@ -66,6 +67,7 @@ impl PacbinMemberKind {
             5 => Ok(Self::EagerRuntimeTable),
             7 => Ok(Self::RecurrenceDirectPlan),
             8 => Ok(Self::RecurrenceColorProjectionCertificate),
+            9 => Ok(Self::OnTheFlyProcessSeed),
             _ => Err(compatibility(format!(
                 "unknown pacbin member kind: {value}"
             ))),

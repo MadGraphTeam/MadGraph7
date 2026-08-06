@@ -18,7 +18,7 @@ use crate::recurrence::{
 use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct RecurrenceParameterProjectionEntry {
+pub(super) struct PreparedParameterProjectionEntry {
     pub(super) runtime_slot: usize,
     pub(super) prepared_slot: usize,
     pub(super) component: u8,
@@ -35,7 +35,7 @@ pub(super) struct RecurrenceNativeRuntime {
     backend_name: String,
     selectors: RecurrenceNativeSelectors,
     parameter_defaults: Vec<crate::EagerComplex64>,
-    parameter_projection: Vec<RecurrenceParameterProjectionEntry>,
+    parameter_projection: Vec<PreparedParameterProjectionEntry>,
     external_source_count: usize,
     external_momenta: Vec<f64>,
     contracted_replay_re: Vec<f64>,
@@ -236,6 +236,127 @@ pub(super) fn accumulate_lc_diagonal_amplitude(
     }
 }
 
+/// Initialize prepared complex parameters from authenticated defaults and the
+/// mutable runtime projection shared by recurrence and on-the-fly execution.
+/// Every fallible shape/index check completes before either destination plane
+/// is modified.
+pub(super) fn initialize_prepared_parameter_planes(
+    defaults: &[crate::EagerComplex64],
+    projection: &[PreparedParameterProjectionEntry],
+    runtime_values: &[f64],
+    destination_re: &mut [f64],
+    destination_im: &mut [f64],
+) -> RusticolResult<()> {
+    if destination_re.len() != defaults.len() || destination_im.len() != defaults.len() {
+        return Err(RusticolError::integrity(
+            "prepared parameter workspace has the wrong size",
+        ));
+    }
+    for entry in projection {
+        if entry.prepared_slot >= defaults.len()
+            || entry.runtime_slot >= runtime_values.len()
+            || entry.component > 1
+        {
+            return Err(RusticolError::integrity(
+                "runtime parameter projection is outside its prepared layout",
+            ));
+        }
+    }
+    for ((real, imaginary), default) in destination_re
+        .iter_mut()
+        .zip(destination_im.iter_mut())
+        .zip(defaults)
+    {
+        *real = default.re;
+        *imaginary = default.im;
+    }
+    for entry in projection {
+        let value = runtime_values[entry.runtime_slot];
+        if entry.component == 0 {
+            destination_re[entry.prepared_slot] = value;
+        } else {
+            destination_im[entry.prepared_slot] = value;
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn projected_prepared_parameter_values(
+    defaults: &[crate::EagerComplex64],
+    projection: &[PreparedParameterProjectionEntry],
+    runtime_values: &[f64],
+) -> RusticolResult<Vec<(f64, f64)>> {
+    let mut real = vec![0.0; defaults.len()];
+    let mut imaginary = vec![0.0; defaults.len()];
+    initialize_prepared_parameter_planes(
+        defaults,
+        projection,
+        runtime_values,
+        &mut real,
+        &mut imaginary,
+    )?;
+    Ok(real.into_iter().zip(imaginary).collect())
+}
+
+/// Existing point-major resolved-output placement shared by recurrence and
+/// on-the-fly LC execution. The selected axis order remains
+/// `[point][helicity][color]` without requiring a persisted dense flow table.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct LcResolvedOutputLayout {
+    point_count: usize,
+    helicity_count: usize,
+    color_count: usize,
+}
+
+impl LcResolvedOutputLayout {
+    pub(super) fn new(
+        point_count: usize,
+        helicity_count: usize,
+        color_count: usize,
+    ) -> RusticolResult<Self> {
+        if point_count == 0 || helicity_count == 0 || color_count == 0 {
+            return Err(RusticolError::invalid_argument(
+                "resolved LC output shape is empty",
+            ));
+        }
+        let layout = Self {
+            point_count,
+            helicity_count,
+            color_count,
+        };
+        layout.output_len()?;
+        Ok(layout)
+    }
+
+    pub(super) fn output_len(self) -> RusticolResult<usize> {
+        self.point_count
+            .checked_mul(self.helicity_count)
+            .and_then(|count| count.checked_mul(self.color_count))
+            .ok_or_else(|| RusticolError::invalid_argument("resolved LC output shape overflows"))
+    }
+
+    #[inline(always)]
+    pub(super) fn index(
+        self,
+        point: usize,
+        helicity: usize,
+        color: usize,
+    ) -> RusticolResult<usize> {
+        if point >= self.point_count || helicity >= self.helicity_count || color >= self.color_count
+        {
+            return Err(RusticolError::integrity(
+                "resolved LC output coordinate is outside its selected axes",
+            ));
+        }
+        point
+            .checked_mul(self.helicity_count)
+            .and_then(|base| base.checked_add(helicity))
+            .and_then(|base| base.checked_mul(self.color_count))
+            .and_then(|base| base.checked_add(color))
+            .ok_or_else(|| RusticolError::invalid_argument("resolved LC output index overflows"))
+    }
+}
+
 impl RecurrenceNativeRuntime {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
@@ -243,7 +364,7 @@ impl RecurrenceNativeRuntime {
         executors: DirectExecutorCatalog,
         backend_owner: NativeRecurrenceDirectExecutorOwners,
         parameter_defaults: Vec<crate::EagerComplex64>,
-        parameter_projection: Vec<RecurrenceParameterProjectionEntry>,
+        parameter_projection: Vec<PreparedParameterProjectionEntry>,
         public_flow_ids: Vec<u32>,
         direct_helicity_to_physics: Vec<usize>,
         color_contraction: Option<RecurrenceColorContraction>,
@@ -937,18 +1058,9 @@ impl RecurrenceNativeRuntime {
         let helicity_indices = reduction_view.selected_helicity_indices(selected_helicities)?;
         let color_indices = reduction_view.selected_color_indices(selected_colors)?;
         self.validate_public_axes(&physics, &helicity_indices, &color_indices)?;
-        let component_count = helicity_indices
-            .len()
-            .checked_mul(color_indices.len())
-            .ok_or_else(|| {
-                RusticolError::invalid_argument("recurrence resolved shape overflows")
-            })?;
-        let mut values = vec![
-            0.0;
-            batch.len().checked_mul(component_count).ok_or_else(|| {
-                RusticolError::invalid_argument("recurrence resolved output overflows")
-            })?
-        ];
+        let output_layout =
+            LcResolvedOutputLayout::new(batch.len(), helicity_indices.len(), color_indices.len())?;
+        let mut values = vec![0.0; output_layout.output_len()?];
         let mut helicity_position = vec![None; reduction_view.helicities.len()];
         for (position, index) in helicity_indices.iter().copied().enumerate() {
             helicity_position[index] = Some(position);
@@ -1040,9 +1152,9 @@ impl RecurrenceNativeRuntime {
                             weight,
                             |point| (values_re[point], values_im[point]),
                             |point, value| {
-                                let target = (tile_start + point) * component_count
-                                    + helicity_position * color_indices.len()
-                                    + color_position;
+                                let target = output_layout
+                                    .index(tile_start + point, helicity_position, color_position)
+                                    .expect("validated resolved LC coordinate");
                                 values[target] += value;
                             },
                         );
@@ -1490,38 +1602,13 @@ impl RecurrenceNativeRuntime {
 
     fn prepare_parameters(&mut self, common: &ExecutionRuntime) -> RusticolResult<()> {
         let (parameters_re, parameters_im) = self.scheduler.parameters_mut();
-        if parameters_re.len() != self.parameter_defaults.len()
-            || parameters_im.len() != self.parameter_defaults.len()
-        {
-            return Err(RusticolError::integrity(
-                "recurrence prepared parameter workspace has the wrong size",
-            ));
-        }
-        for ((real, imaginary), default) in parameters_re
-            .iter_mut()
-            .zip(parameters_im.iter_mut())
-            .zip(&self.parameter_defaults)
-        {
-            *real = default.re;
-            *imaginary = default.im;
-        }
-        for entry in &self.parameter_projection {
-            let value = common
-                .model_parameter_values_f64
-                .get(entry.runtime_slot)
-                .copied()
-                .ok_or_else(|| {
-                    RusticolError::integrity(
-                        "recurrence runtime parameter projection is out of range",
-                    )
-                })?;
-            if entry.component == 0 {
-                parameters_re[entry.prepared_slot] = value;
-            } else {
-                parameters_im[entry.prepared_slot] = value;
-            }
-        }
-        Ok(())
+        initialize_prepared_parameter_planes(
+            &self.parameter_defaults,
+            &self.parameter_projection,
+            &common.model_parameter_values_f64,
+            parameters_re,
+            parameters_im,
+        )
     }
 
     fn flatten_external_tile(&mut self, batch: &[Vec<[f64; 4]>]) -> RusticolResult<usize> {
@@ -2511,6 +2598,68 @@ mod replay_destination_helicity_tests {
     use super::*;
 
     #[test]
+    fn prepared_parameter_projection_validates_before_modifying_planes() {
+        let defaults = [
+            crate::EagerComplex64::new(1.0, -1.0),
+            crate::EagerComplex64::new(2.0, -2.0),
+        ];
+        let runtime_values = [11.0, 22.0];
+        let mut real = [91.0, 92.0];
+        let mut imaginary = [-91.0, -92.0];
+        let invalid = [PreparedParameterProjectionEntry {
+            runtime_slot: 2,
+            prepared_slot: 0,
+            component: 0,
+        }];
+
+        initialize_prepared_parameter_planes(
+            &defaults,
+            &invalid,
+            &runtime_values,
+            &mut real,
+            &mut imaginary,
+        )
+        .expect_err("invalid projection must fail closed");
+        assert_eq!(real, [91.0, 92.0]);
+        assert_eq!(imaginary, [-91.0, -92.0]);
+
+        let projection = [
+            PreparedParameterProjectionEntry {
+                runtime_slot: 1,
+                prepared_slot: 0,
+                component: 0,
+            },
+            PreparedParameterProjectionEntry {
+                runtime_slot: 0,
+                prepared_slot: 1,
+                component: 1,
+            },
+        ];
+        initialize_prepared_parameter_planes(
+            &defaults,
+            &projection,
+            &runtime_values,
+            &mut real,
+            &mut imaginary,
+        )
+        .unwrap();
+        assert_eq!(real, [22.0, 2.0]);
+        assert_eq!(imaginary, [-1.0, 11.0]);
+    }
+
+    #[test]
+    fn resolved_lc_output_layout_is_point_helicity_color_major() {
+        let layout = LcResolvedOutputLayout::new(2, 3, 4).unwrap();
+        assert_eq!(layout.output_len().unwrap(), 24);
+        assert_eq!(layout.index(0, 0, 0).unwrap(), 0);
+        assert_eq!(layout.index(0, 1, 0).unwrap(), 4);
+        assert_eq!(layout.index(1, 0, 0).unwrap(), 12);
+        assert_eq!(layout.index(1, 2, 3).unwrap(), 23);
+        assert!(layout.index(2, 0, 0).is_err());
+        assert!(LcResolvedOutputLayout::new(1, 0, 1).is_err());
+    }
+
+    #[test]
     fn compact_lc_selector_reduction_view_matches_topology_replay_semantics() {
         let helicities = vec![
             crate::Helicity {
@@ -2663,6 +2812,23 @@ impl DirectProfileSnapshot {
             internal_broadcast_bytes,
         }
     }
+}
+
+#[derive(Clone, Copy, Default)]
+pub(super) struct DirectProfileDelta {
+    pub(super) momentum_fill: Duration,
+    pub(super) union_source_fill: Duration,
+    pub(super) direct_execution: Duration,
+    pub(super) replay_output_mapping: Duration,
+    pub(super) source_kernel: Duration,
+    pub(super) contribution_kernel: Duration,
+    pub(super) finalization: Duration,
+    pub(super) closure: Duration,
+    pub(super) execution: DirectExecutionCounters,
+    pub(super) traffic: DirectArenaTrafficCounters,
+    pub(super) activity: DirectRuntimeActivityCounters,
+    pub(super) internal_scratch_bytes: u64,
+    pub(super) internal_broadcast_bytes: u64,
 }
 
 fn direct_profile(
@@ -2818,44 +2984,74 @@ fn direct_profile(
             .union_schedule_executions
             .saturating_sub(before.activity.union_schedule_executions),
     };
+    direct_profile_from_delta(
+        total,
+        parameter_setup,
+        external_momentum_flatten,
+        reduction,
+        DirectProfileDelta {
+            momentum_fill,
+            union_source_fill,
+            direct_execution,
+            replay_output_mapping,
+            source_kernel,
+            contribution_kernel,
+            finalization,
+            closure,
+            execution,
+            traffic,
+            activity,
+            internal_scratch_bytes,
+            internal_broadcast_bytes,
+        },
+    )
+}
+
+pub(super) fn direct_profile_from_delta(
+    total: Duration,
+    parameter_setup: Duration,
+    external_momentum_flatten: Duration,
+    reduction: Duration,
+    delta: DirectProfileDelta,
+) -> RuntimeProfile {
     RuntimeProfile {
-        momentum_setup_s: profile_duration_seconds(external_momentum_flatten + momentum_fill),
+        momentum_setup_s: profile_duration_seconds(external_momentum_flatten + delta.momentum_fill),
         momentum_input_setup_s: profile_duration_seconds(external_momentum_flatten),
         model_parameter_setup_s: profile_duration_seconds(parameter_setup),
-        stage_evaluator_call_s: profile_duration_seconds(direct_execution),
-        stage_evaluator_s: profile_duration_seconds(direct_execution),
-        recurrence_momentum_fill_s: profile_duration_seconds(momentum_fill),
-        recurrence_union_source_fill_s: profile_duration_seconds(union_source_fill),
-        recurrence_schedule_s: profile_duration_seconds(direct_execution),
-        recurrence_source_kernel_s: profile_duration_seconds(source_kernel),
-        recurrence_contribution_kernel_s: profile_duration_seconds(contribution_kernel),
-        recurrence_finalization_s: profile_duration_seconds(finalization),
-        recurrence_closure_s: profile_duration_seconds(closure),
-        recurrence_replay_output_mapping_s: profile_duration_seconds(replay_output_mapping),
-        recurrence_momentum_scalar_value_count: activity.momentum_scalar_values_filled,
-        recurrence_schedule_execution_count: activity.schedule_executions,
-        recurrence_replay_schedule_execution_count: activity.replay_schedule_executions,
-        recurrence_union_schedule_execution_count: activity.union_schedule_executions,
-        recurrence_union_source_row_count: activity.union_source_rows,
-        recurrence_replay_output_value_count: activity.replay_output_values_scaled,
-        recurrence_source_call_count: execution.source_calls,
-        recurrence_source_row_count: execution.source_rows,
-        recurrence_contribution_call_count: execution.contribution_calls,
-        recurrence_contribution_row_count: execution.contribution_rows,
-        recurrence_finalization_call_count: execution.finalization_calls,
-        recurrence_finalization_row_count: execution.finalization_rows,
-        recurrence_closure_call_count: execution.closure_calls,
-        recurrence_closure_row_count: execution.closure_rows,
-        recurrence_direct_packed_input_bytes: execution.packed_input_bytes,
-        recurrence_direct_packed_output_bytes: execution.packed_output_bytes,
-        recurrence_direct_scatter_bytes: execution.scatter_bytes,
-        recurrence_direct_packet_input_bytes: traffic.packet_input_bytes,
-        recurrence_direct_packet_output_bytes: traffic.packet_output_bytes,
-        recurrence_direct_gather_bytes: traffic.gather_bytes,
-        recurrence_direct_traffic_scatter_bytes: traffic.scatter_bytes,
-        recurrence_direct_remap_bytes: traffic.remap_bytes,
-        recurrence_internal_scratch_bytes: internal_scratch_bytes,
-        recurrence_internal_broadcast_bytes: internal_broadcast_bytes,
+        stage_evaluator_call_s: profile_duration_seconds(delta.direct_execution),
+        stage_evaluator_s: profile_duration_seconds(delta.direct_execution),
+        recurrence_momentum_fill_s: profile_duration_seconds(delta.momentum_fill),
+        recurrence_union_source_fill_s: profile_duration_seconds(delta.union_source_fill),
+        recurrence_schedule_s: profile_duration_seconds(delta.direct_execution),
+        recurrence_source_kernel_s: profile_duration_seconds(delta.source_kernel),
+        recurrence_contribution_kernel_s: profile_duration_seconds(delta.contribution_kernel),
+        recurrence_finalization_s: profile_duration_seconds(delta.finalization),
+        recurrence_closure_s: profile_duration_seconds(delta.closure),
+        recurrence_replay_output_mapping_s: profile_duration_seconds(delta.replay_output_mapping),
+        recurrence_momentum_scalar_value_count: delta.activity.momentum_scalar_values_filled,
+        recurrence_schedule_execution_count: delta.activity.schedule_executions,
+        recurrence_replay_schedule_execution_count: delta.activity.replay_schedule_executions,
+        recurrence_union_schedule_execution_count: delta.activity.union_schedule_executions,
+        recurrence_union_source_row_count: delta.activity.union_source_rows,
+        recurrence_replay_output_value_count: delta.activity.replay_output_values_scaled,
+        recurrence_source_call_count: delta.execution.source_calls,
+        recurrence_source_row_count: delta.execution.source_rows,
+        recurrence_contribution_call_count: delta.execution.contribution_calls,
+        recurrence_contribution_row_count: delta.execution.contribution_rows,
+        recurrence_finalization_call_count: delta.execution.finalization_calls,
+        recurrence_finalization_row_count: delta.execution.finalization_rows,
+        recurrence_closure_call_count: delta.execution.closure_calls,
+        recurrence_closure_row_count: delta.execution.closure_rows,
+        recurrence_direct_packed_input_bytes: delta.execution.packed_input_bytes,
+        recurrence_direct_packed_output_bytes: delta.execution.packed_output_bytes,
+        recurrence_direct_scatter_bytes: delta.execution.scatter_bytes,
+        recurrence_direct_packet_input_bytes: delta.traffic.packet_input_bytes,
+        recurrence_direct_packet_output_bytes: delta.traffic.packet_output_bytes,
+        recurrence_direct_gather_bytes: delta.traffic.gather_bytes,
+        recurrence_direct_traffic_scatter_bytes: delta.traffic.scatter_bytes,
+        recurrence_direct_remap_bytes: delta.traffic.remap_bytes,
+        recurrence_internal_scratch_bytes: delta.internal_scratch_bytes,
+        recurrence_internal_broadcast_bytes: delta.internal_broadcast_bytes,
         reduction_s: profile_duration_seconds(reduction),
         total_s: profile_duration_seconds(total),
         ..RuntimeProfile::default()

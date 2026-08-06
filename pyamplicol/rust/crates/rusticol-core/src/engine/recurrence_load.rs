@@ -1104,7 +1104,7 @@ fn sparse_bijection_value(mapping: &RecurrenceSparseBijection, value: u32) -> Ru
 type RecurrenceCommonRuntimeParts = (
     ExecutionRuntime,
     Vec<crate::EagerComplex64>,
-    Vec<RecurrenceParameterProjectionEntry>,
+    Vec<PreparedParameterProjectionEntry>,
     Vec<DirectSourceDispatchDomainSpec>,
 );
 
@@ -1228,41 +1228,69 @@ fn on_the_fly_prepared_parameters(
         &mut runtime_values,
     )?;
 
-    let mut prepared = metadata.prepared_parameter_defaults.clone();
-    for projection in &metadata.parameter_projection {
-        let Some(prepared_id) = projection.prepared_parameter_id else {
-            continue;
-        };
-        let runtime_value = *runtime_values
-            .get(usize::try_from(projection.runtime_slot).map_err(|_| {
-                RusticolError::integrity("on-the-fly runtime parameter slot exceeds usize")
-            })?)
-            .ok_or_else(|| {
-                RusticolError::integrity("on-the-fly runtime parameter projection is absent")
-            })?;
-        let prepared_value = prepared.get_mut(prepared_id as usize).ok_or_else(|| {
-            RusticolError::integrity("on-the-fly parameter projection is outside prepared defaults")
-        })?;
-        match projection.component {
-            0 => prepared_value[0] = runtime_value,
-            1 => prepared_value[1] = runtime_value,
-            _ => {
-                return Err(RusticolError::integrity(
-                    "on-the-fly parameter projection has an invalid complex component",
-                ));
-            }
-        }
-    }
-    Ok(prepared)
+    let defaults = metadata
+        .prepared_parameter_defaults
+        .iter()
+        .map(|[real, imaginary]| crate::EagerComplex64::new(*real, *imaginary))
+        .collect::<Vec<_>>();
+    let projection = metadata
+        .parameter_projection
+        .iter()
+        .filter_map(|row| {
+            row.prepared_parameter_id
+                .map(|prepared_slot| (row, prepared_slot))
+        })
+        .map(|(row, prepared_slot)| {
+            Ok(PreparedParameterProjectionEntry {
+                runtime_slot: usize::try_from(row.runtime_slot).map_err(|_| {
+                    RusticolError::integrity("on-the-fly runtime parameter slot exceeds usize")
+                })?,
+                prepared_slot: usize::try_from(prepared_slot).map_err(|_| {
+                    RusticolError::integrity("on-the-fly prepared parameter slot exceeds usize")
+                })?,
+                component: u8::try_from(row.component).map_err(|_| {
+                    RusticolError::integrity("on-the-fly parameter component exceeds u8")
+                })?,
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    projected_prepared_parameter_values(&defaults, &projection, &runtime_values).map(|values| {
+        values
+            .into_iter()
+            .map(|(real, imaginary)| [real, imaginary])
+            .collect()
+    })
 }
 
-#[cfg(feature = "on-the-fly-test-support")]
-fn on_the_fly_source_major_momenta(
+pub(super) fn on_the_fly_source_major_momenta(
     seed: &OnTheFlyProcessSeedV1,
     point_major: &[f64],
     point_count: u32,
     lorentz_component_count: u16,
 ) -> RusticolResult<Vec<f64>> {
+    let mut source_major = Vec::new();
+    let output_len = on_the_fly_source_major_momenta_into(
+        seed,
+        point_major,
+        point_count,
+        lorentz_component_count,
+        &mut source_major,
+    )?;
+    source_major.truncate(output_len);
+    Ok(source_major)
+}
+
+/// Transpose public point-major momenta into the source-major plane layout
+/// without reallocating once `source_major` has reached the warmed capacity.
+/// The returned length identifies the initialized prefix; callers may retain
+/// a larger backing allocation for later batches.
+pub(super) fn on_the_fly_source_major_momenta_into(
+    seed: &OnTheFlyProcessSeedV1,
+    point_major: &[f64],
+    point_count: u32,
+    lorentz_component_count: u16,
+    source_major: &mut Vec<f64>,
+) -> RusticolResult<usize> {
     let permutation = seed.external_permutation();
     let point_count_usize = point_count as usize;
     let lorentz_count = usize::from(lorentz_component_count);
@@ -1278,7 +1306,16 @@ fn on_the_fly_source_major_momenta(
             point_major.len()
         )));
     }
-    let mut source_major = vec![0.0; expected];
+    if source_major.len() < expected {
+        source_major
+            .try_reserve_exact(expected - source_major.len())
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "on-the-fly momentum workspace allocation failed: {error}"
+                ))
+            })?;
+        source_major.resize(expected, 0.0);
+    }
     for (source_slot, public_slot) in permutation.iter().copied().enumerate() {
         let public_slot = usize::try_from(public_slot).map_err(|_| {
             RusticolError::integrity("on-the-fly public momentum slot exceeds usize")
@@ -1309,7 +1346,7 @@ fn on_the_fly_source_major_momenta(
             }
         }
     }
-    Ok(source_major)
+    Ok(expected)
 }
 
 #[cfg(feature = "on-the-fly-test-support")]
@@ -1519,13 +1556,7 @@ fn execute_on_the_fly_query_family_v1(
         &manifest.prepared_kernel_pack_digest,
         &manifest.direct_template_catalog_digest,
     )?;
-    let runtime_parameter_slots = runtime_parameter_slots(&runtime_parameters)?;
-    let source_domains = build_on_the_fly_source_domains(
-        &seed,
-        authenticated.template(),
-        &manifest.runtime_metadata,
-        &runtime_parameter_slots,
-    )?;
+    let source_domains = build_on_the_fly_source_domains(&seed, authenticated.template())?;
     let sources = pool.bind_source_domains(source_domains)?;
     let mut resolver = pool.into_on_the_fly_resolver(sources);
     resolver.bind_on_the_fly_family(authenticated.template(), direct, &seed, &mut selected)?;
@@ -1848,14 +1879,9 @@ impl NativeRuntime {
                 &manifest.prepared_kernel_pack_digest,
                 &manifest.direct_template_catalog_digest,
             )?;
-            let runtime_parameter_slots = runtime_parameter_slots(&runtime_parameters)?;
             let selected = trace_cache.prepared(query_digest)?;
-            let source_domains = build_on_the_fly_source_domains(
-                &selected.seed,
-                authenticated.template(),
-                &manifest.runtime_metadata,
-                &runtime_parameter_slots,
-            )?;
+            let source_domains =
+                build_on_the_fly_source_domains(&selected.seed, authenticated.template())?;
             let sources = pool.bind_source_domains(source_domains)?;
             let mut resolver = pool.into_on_the_fly_resolver(sources);
             {
@@ -2097,7 +2123,7 @@ fn build_common_runtime(
                 .map(|prepared_slot| (row, prepared_slot))
         })
         .map(|(row, prepared_slot)| {
-            Ok(RecurrenceParameterProjectionEntry {
+            Ok(PreparedParameterProjectionEntry {
                 runtime_slot: usize::try_from(row.runtime_slot).map_err(|_| {
                     RusticolError::artifact("recurrence runtime parameter slot exceeds usize")
                 })?,
@@ -2384,8 +2410,6 @@ fn finish_direct_source_domains(
 pub(super) fn build_on_the_fly_source_domains(
     seed: &OnTheFlyProcessSeedV1,
     templates: &crate::recurrence::template::ValidatedRecurrenceTemplateInput,
-    metadata: &RecurrenceRuntimeMetadata,
-    runtime_parameter_slots: &BTreeMap<String, RuntimeParameterSlots>,
 ) -> RusticolResult<Vec<DirectSourceDispatchDomainSpec>> {
     let summary = templates.summary();
     if seed.template_catalog_digest() != summary.catalog_digest
@@ -2398,13 +2422,35 @@ pub(super) fn build_on_the_fly_source_domains(
     }
     let domain_count = usize::try_from(summary.source_count)
         .map_err(|_| RusticolError::artifact("recurrence source-domain count exceeds usize"))?;
-    build_on_the_fly_source_domains_from_specs(
-        seed.source_execution_specs(),
-        domain_count,
-        summary.parameter_count,
-        metadata,
-        runtime_parameter_slots,
-    )
+    let mut variants =
+        vec![BTreeMap::<DirectSourceDispatchKey, DirectSourceTemplateSpec>::new(); domain_count];
+    for compact in seed.source_execution_specs() {
+        if compact.source_template_id as usize >= domain_count
+            || compact
+                .prepared_mass_parameter_slot
+                .is_some_and(|slot| slot >= summary.parameter_count)
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly source or mass-parameter slot is outside its authenticated template domain",
+            ));
+        }
+        let source_template_id = compact.source_template_id;
+        let spec = DirectSourceTemplateSpec {
+            spin_state_class: compact.spin_state_class,
+            family: direct_on_the_fly_source_family(compact.family),
+            orientation: direct_on_the_fly_source_orientation(compact.orientation),
+            helicity: compact.helicity,
+            chirality: compact.chirality,
+            mass_parameter_index: compact.prepared_mass_parameter_slot,
+        };
+        insert_source_domain_variant(
+            &mut variants,
+            source_template_id,
+            DirectSourceDispatchKey::SpinStateClass(spec.spin_state_class),
+            spec,
+        )?;
+    }
+    finish_direct_source_domains(variants)
 }
 
 fn build_on_the_fly_source_domains_from_specs(
@@ -2693,7 +2739,7 @@ fn prepared_parameter_index(
     Ok(prepared)
 }
 
-fn runtime_parameter_slots(
+pub(super) fn runtime_parameter_slots(
     parameters: &[GenericRuntimeModelParameterManifest],
 ) -> RusticolResult<BTreeMap<String, RuntimeParameterSlots>> {
     let mut result = BTreeMap::new();
@@ -2746,7 +2792,7 @@ fn runtime_parameter_slots(
     Ok(result)
 }
 
-fn decode_sha256(value: &str) -> RusticolResult<[u8; 32]> {
+pub(super) fn decode_sha256(value: &str) -> RusticolResult<[u8; 32]> {
     if value.len() != 64 {
         return Err(RusticolError::integrity(
             "recurrence SHA-256 has an invalid encoded length",

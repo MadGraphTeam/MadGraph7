@@ -86,7 +86,6 @@ fn final_digest(hash: Sha256) -> RusticolResult<SemanticDigest> {
     SemanticDigest::new(hash.finalize().into())
 }
 
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
 mod family;
 mod interpreter;
 #[cfg(feature = "on-the-fly-test-support")]
@@ -101,9 +100,9 @@ mod templates;
 mod test_support;
 mod trace;
 
+pub use family::OnTheFlyQueryFamilyCensusV1;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
-pub use family::{OnTheFlyQueryFamilyCensusV1, on_the_fly_query_family_census_v1};
-#[cfg(feature = "on-the-fly-test-support")]
+pub use family::on_the_fly_query_family_census_v1;
 pub(crate) use family::{
     OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1, QueryFamilyTraceInput,
 };
@@ -117,6 +116,7 @@ pub(crate) use probe_guard::{
 };
 pub(crate) use public_query::OnTheFlyLcSelectorV1;
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
+pub(crate) use seed_codec::decode_on_the_fly_process_seed_v1;
 #[cfg(test)]
 pub(crate) use source_seed::scalar_adapter_test_seed;
 pub(crate) use source_seed::{
@@ -160,12 +160,17 @@ pub(crate) struct OnTheFlySelectedQueryTraceV1 {
     pub(crate) projection: OnTheFlyProjectionProbeV1,
 }
 
+pub(crate) enum OnTheFlySelectedQueryOutcomeV1 {
+    Trace(OnTheFlySelectedQueryTraceV1),
+    StructuralZero { query: DecodedLcQueryV1 },
+}
+
 pub(crate) fn build_selected_lc_query_trace_v1(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
     seed: &OnTheFlyProcessSeedV1,
     query: DecodedLcQueryV1,
-) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
+) -> RusticolResult<OnTheFlySelectedQueryOutcomeV1> {
     build_selected_lc_query_trace_impl(templates, direct, seed, query, true)
 }
 
@@ -177,7 +182,12 @@ pub(crate) fn build_selected_lc_query_trace_for_probe_v1(
     query: DecodedLcQueryV1,
     enable_projection: bool,
 ) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
-    build_selected_lc_query_trace_impl(templates, direct, seed, query, enable_projection)
+    match build_selected_lc_query_trace_impl(templates, direct, seed, query, enable_projection)? {
+        OnTheFlySelectedQueryOutcomeV1::Trace(selected) => Ok(selected),
+        OnTheFlySelectedQueryOutcomeV1::StructuralZero { .. } => Err(evaluation(
+            "selected probe query is an exact structural zero",
+        )),
+    }
 }
 
 fn build_selected_lc_query_trace_impl(
@@ -186,20 +196,25 @@ fn build_selected_lc_query_trace_impl(
     seed: &OnTheFlyProcessSeedV1,
     query: DecodedLcQueryV1,
     enable_projection: bool,
-) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
+) -> RusticolResult<OnTheFlySelectedQueryOutcomeV1> {
     if seed.direct_catalog_digest() != direct.direct_template_catalog_digest() {
         return Err(integrity(
             "compact query direct-template catalog differs from its prepared catalog",
         ));
     }
-    let (trace, projection) =
-        build_selected_lc_trace_impl(templates, &seed, &query, enable_projection, true)?;
-    Ok(OnTheFlySelectedQueryTraceV1 {
-        query,
-        trace,
-        projection: projection
-            .ok_or_else(|| integrity("compact query projection proof was not collected"))?,
-    })
+    let Some((trace, projection)) =
+        build_selected_lc_trace_impl(templates, &seed, &query, enable_projection, true)?
+    else {
+        return Ok(OnTheFlySelectedQueryOutcomeV1::StructuralZero { query });
+    };
+    Ok(OnTheFlySelectedQueryOutcomeV1::Trace(
+        OnTheFlySelectedQueryTraceV1 {
+            query,
+            trace,
+            projection: projection
+                .ok_or_else(|| integrity("compact query projection proof was not collected"))?,
+        },
+    ))
 }
 
 fn selected_graph_counts(
@@ -233,7 +248,9 @@ pub(crate) fn build_selected_lc_trace(
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
-    build_selected_lc_trace_impl(templates, seed, query, true, false).map(|(trace, _)| trace)
+    build_selected_lc_trace_impl(templates, seed, query, true, false)?
+        .map(|(trace, _)| trace)
+        .ok_or_else(|| evaluation("selected query is an exact structural zero"))
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -244,7 +261,8 @@ pub(crate) fn build_selected_lc_trace_for_probe(
     enable_projection: bool,
 ) -> RusticolResult<(OnTheFlyStructuralTraceV1, OnTheFlyProjectionProbeV1)> {
     let (trace, probe) =
-        build_selected_lc_trace_impl(templates, seed, query, enable_projection, true)?;
+        build_selected_lc_trace_impl(templates, seed, query, enable_projection, true)?
+            .ok_or_else(|| evaluation("selected probe query is an exact structural zero"))?;
     Ok((
         trace,
         probe.ok_or_else(|| integrity("projection probe was not collected"))?,
@@ -257,7 +275,7 @@ fn build_selected_lc_trace_impl(
     query: &DecodedLcQueryV1,
     enable_projection: bool,
     collect_projection_probe: bool,
-) -> RusticolResult<(OnTheFlyStructuralTraceV1, Option<OnTheFlyProjectionProbeV1>)> {
+) -> RusticolResult<Option<(OnTheFlyStructuralTraceV1, Option<OnTheFlyProjectionProbeV1>)>> {
     if query.seed_digest != seed.semantic_digest() {
         return Err(integrity(
             "decoded query belongs to a different compact seed",
@@ -296,8 +314,12 @@ fn build_selected_lc_trace_impl(
                 .checked_add(count)
                 .ok_or_else(|| invalid("constructed contribution count exceeds usize"))
         })?;
-    let selected_closures =
-        build_selected_closures(templates, &closures, seed, query, &colors, &currents)?;
+    let Some(selected_closures) = build_selected_closures(
+        templates, &catalog, &closures, seed, query, &colors, &currents,
+    )?
+    else {
+        return Ok(None);
+    };
     let live = live_current_ids(&currents, &selected_closures)?;
     let pre_counts = collect_projection_probe
         .then(|| selected_graph_counts(&currents, &selected_closures, &live))
@@ -334,7 +356,7 @@ fn build_selected_lc_trace_impl(
         &live,
         constructed_contribution_count,
     )?;
-    Ok((
+    Ok(Some((
         trace,
         pre_counts
             .zip(post_counts)
@@ -344,5 +366,71 @@ fn build_selected_lc_trace_impl(
                 pre,
                 post,
             }),
-    ))
+    )))
+}
+
+#[cfg(test)]
+mod structural_zero_tests {
+    use super::*;
+    use crate::recurrence::validated_template_fixture;
+
+    #[test]
+    fn selected_closure_domain_fails_closed_when_missing_or_inconsistent() {
+        let templates = validated_template_fixture();
+        let summary = templates.summary();
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            SemanticDigest::new([0x7d; 32]).unwrap(),
+        )
+        .unwrap();
+        let query =
+            DecodedLcQueryV1::new(&seed, vec![0, 1], &[0, 0], OnTheFlyLcSelectorV1::Singlet)
+                .unwrap();
+        let catalog = TemplateCatalog::new(templates.input()).unwrap();
+        let mut colors = DynamicLCColorStateInterner::default();
+        let mut currents = Vec::new();
+        let mut current_ids = BTreeMap::new();
+        insert_selected_sources(
+            &templates,
+            &catalog,
+            &seed,
+            &query,
+            &mut colors,
+            &mut currents,
+            &mut current_ids,
+        )
+        .unwrap();
+
+        let absent = BTreeMap::new();
+        let error = build_selected_closures(
+            &templates, &catalog, &absent, &seed, &query, &colors, &currents,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("prepared closure domain"));
+
+        let mut inconsistent = prepared_closures(&templates, &catalog).unwrap();
+        let rows = inconsistent.values_mut().next().unwrap();
+        rows[0].input_states = [4, 9];
+        let error = build_selected_closures(
+            &templates,
+            &catalog,
+            &inconsistent,
+            &seed,
+            &query,
+            &colors,
+            &currents,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("parent-state pair"));
+
+        currents.clear();
+        let complete = prepared_closures(&templates, &catalog).unwrap();
+        let error = build_selected_closures(
+            &templates, &catalog, &complete, &seed, &query, &colors, &currents,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("closure anchor"));
+    }
 }

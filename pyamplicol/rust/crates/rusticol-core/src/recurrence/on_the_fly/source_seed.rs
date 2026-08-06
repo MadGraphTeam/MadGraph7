@@ -227,6 +227,26 @@ impl OnTheFlySourceAnchorV1 {
                 ))
             })
     }
+
+    pub(crate) const fn source_slot(&self) -> u32 {
+        self.source_slot
+    }
+
+    pub(crate) const fn external_label(&self) -> u32 {
+        self.external_label
+    }
+
+    pub(crate) const fn is_initial(&self) -> bool {
+        self.is_initial
+    }
+
+    pub(crate) const fn color_role(&self) -> OnTheFlyExternalColorRoleV1 {
+        self.color_role
+    }
+
+    pub(crate) fn states(&self) -> &[OnTheFlySourceStateV1] {
+        &self.states
+    }
 }
 
 /// One explicit endpoint in a compact species pairing class.
@@ -282,6 +302,14 @@ impl OnTheFlyPairingClassV1 {
         };
         result.semantic_digest = result.compute_digest()?;
         Ok(result)
+    }
+
+    pub(crate) fn fundamental_endpoints(&self) -> &[OnTheFlyPairingEndpointV1] {
+        &self.fundamental_endpoints
+    }
+
+    pub(crate) fn antifundamental_endpoints(&self) -> &[OnTheFlyPairingEndpointV1] {
+        &self.antifundamental_endpoints
     }
 
     fn compute_digest(&self) -> RusticolResult<SemanticDigest> {
@@ -521,9 +549,16 @@ impl OnTheFlyProcessSeedV1 {
         self.semantic_digest
     }
 
-    #[cfg(feature = "on-the-fly-test-support")]
     pub(crate) fn external_permutation(&self) -> &[u32] {
         &self.external_permutation
+    }
+
+    pub(crate) fn source_anchors(&self) -> &[OnTheFlySourceAnchorV1] {
+        &self.source_anchors
+    }
+
+    pub(crate) fn pairing_classes(&self) -> &[OnTheFlyPairingClassV1] {
+        &self.pairing_classes
     }
 
     pub(crate) const fn model_digest(&self) -> SemanticDigest {

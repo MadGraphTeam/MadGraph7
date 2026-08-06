@@ -48,6 +48,7 @@ class _RuntimeBackend:
 
     def __init__(self) -> None:
         self.selectors: dict[str, object] = {}
+        self.clear_count = 0
 
     @property
     def physics(self) -> ProcessPhysics:
@@ -84,6 +85,9 @@ class _RuntimeBackend:
 
     def set_model_parameters(self, mapping: object) -> None:
         self.parameters = mapping
+
+    def clear(self) -> None:
+        self.clear_count += 1
 
     def mute_warnings(self) -> None:
         self.muted = True
@@ -192,6 +196,8 @@ def test_runtime_and_benchmark_facades_use_typed_backends(
     assert runtime.evaluate_resolved([]).total() == (3.0 + 0j,)
     runtime.mute_warnings()
     assert backend.muted
+    runtime.clear()
+    assert backend.clear_count == 1
     result = service_module.BenchmarkRunner(BenchmarkConfig()).run(runtime)
     assert result.sample_count == 5
 

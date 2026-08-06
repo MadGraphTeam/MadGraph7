@@ -925,7 +925,7 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         input_crossing_map: Some(crossing_map),
         permutation_alias_of: Some("representative".to_string()),
         final_state_permutation_alias_of: Some("representative".to_string()),
-        physics_v1: alias_manifest,
+        physics_v1: native_runtime::LazyProcessPhysicsV1::loaded(alias_manifest),
         warnings_muted: false,
         warned_kinds: BTreeSet::new(),
         pending_warnings: Vec::new(),
@@ -3559,7 +3559,7 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
             input_crossing_map: None,
             permutation_alias_of: None,
             final_state_permutation_alias_of: None,
-            physics_v1,
+            physics_v1: native_runtime::LazyProcessPhysicsV1::loaded(physics_v1),
             warnings_muted: false,
             warned_kinds: BTreeSet::new(),
             pending_warnings: Vec::new(),
@@ -3867,13 +3867,158 @@ fn zero_native_runtime() -> NativeRuntime {
         input_crossing_map: None,
         permutation_alias_of: None,
         final_state_permutation_alias_of: None,
-        physics_v1,
+        physics_v1: native_runtime::LazyProcessPhysicsV1::loaded(physics_v1),
         warnings_muted: false,
         warned_kinds: BTreeSet::new(),
         pending_warnings: Vec::new(),
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
     }
+}
+
+#[test]
+fn native_runtime_clear_is_a_noop_outside_the_on_the_fly_lane() {
+    let mut runtime = zero_native_runtime();
+    let artifact_id = runtime.artifact_id().to_string();
+    let parameters = runtime.runtime.model_parameter_values_f64.clone();
+    let metadata = runtime.metadata_json().unwrap();
+
+    runtime.clear().unwrap();
+
+    assert_eq!(runtime.artifact_id(), artifact_id);
+    assert_eq!(runtime.runtime.model_parameter_values_f64, parameters);
+    assert_eq!(runtime.metadata_json().unwrap(), metadata);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
+    use super::on_the_fly_lane::OnTheFlyNativeRuntime;
+    use super::on_the_fly_selectors::{
+        OnTheFlyCompactSelectorAdapterV1, OnTheFlyLcColorCoverageV1, OnTheFlyLcSelectorPolicyV1,
+    };
+    use super::recurrence_backend::on_the_fly_adapter_tests::{
+        digest, direct_catalog, prepared_pool, source_domains,
+    };
+    use crate::recurrence::CheckedTableRange;
+    use crate::recurrence::on_the_fly::scalar_adapter_test_seed;
+    use crate::recurrence::template::{CouplingOrderTermRow, IndexedRangeRow};
+    use crate::recurrence::validated_template_fixture;
+
+    let mut template_input = validated_template_fixture().into_input();
+    template_input.coupling_order_ranges.push(IndexedRangeRow {
+        id: 1,
+        range: CheckedTableRange::new(0, 1),
+    });
+    template_input
+        .coupling_order_terms
+        .push(CouplingOrderTermRow {
+            set_id: 1,
+            name_string_id: 0,
+            power: 1,
+        });
+    let templates = template_input.validate().unwrap();
+    let summary = templates.summary();
+    let direct_digest = digest(40);
+    let direct = direct_catalog(direct_digest);
+    let seed = scalar_adapter_test_seed(
+        summary.compiled_model_digest,
+        summary.catalog_digest,
+        summary.prepared_kernel_pack_digest,
+        direct_digest,
+    )
+    .unwrap();
+    let pool = prepared_pool(&templates, direct_digest);
+    let sources = pool.bind_source_domains(source_domains()).unwrap();
+    let resolver = pool.into_on_the_fly_resolver(sources);
+    let defaults = vec![
+        crate::EagerComplex64::new(0.0, 0.0);
+        usize::try_from(summary.parameter_count).unwrap()
+    ];
+    let selectors = OnTheFlyCompactSelectorAdapterV1::from_seed(
+        &seed,
+        OnTheFlyLcSelectorPolicyV1 {
+            color_coverage: OnTheFlyLcColorCoverageV1::Complete,
+            reference_color_word: None,
+            trace_reflections_folded: false,
+        },
+    )
+    .unwrap();
+    let lane =
+        OnTheFlyNativeRuntime::new(templates, direct, seed, resolver, defaults, Vec::new(), &[])
+            .unwrap();
+    let mut execution = empty_generic_runtime();
+    execution.external_count = 2;
+    execution.external_pdg_order = vec![900_000, 900_000];
+    execution.external_is_initial = vec![true, false];
+    execution.physics = None;
+    execution.normalization_factor = 1.0;
+    NativeRuntime {
+        root: PathBuf::new(),
+        artifact_id: "0".repeat(64),
+        runtime: execution,
+        execution_lane: NativeExecutionLane::OnTheFly(Box::new(
+            native_runtime::OnTheFlyExecutionRuntime::new(lane, selectors),
+        )),
+        process: "s > s".to_string(),
+        process_key: "s_to_s".to_string(),
+        representative_process_id: "s_to_s".to_string(),
+        external_permutation: vec![0, 1],
+        input_crossing_map: None,
+        permutation_alias_of: None,
+        final_state_permutation_alias_of: None,
+        physics_v1: native_runtime::LazyProcessPhysicsV1::unavailable(),
+        warnings_muted: false,
+        warned_kinds: BTreeSet::new(),
+        pending_warnings: Vec::new(),
+        point_selector_scratch: PointSelectorExecutionScratch::default(),
+        selector_simd_lane_width: 1,
+    }
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_public_runtime_paths_reuse_one_family_without_dense_physics() {
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let momenta = vec![0.0; 2 * 2 * 4];
+    let global = runtime
+        .evaluate_f64_with_selectors(&momenta, 2, None, None, None, None)
+        .unwrap();
+    assert!(global.iter().all(|value| value.is_finite()));
+
+    let helicity = vec!["h:+0,+0".to_string()];
+    let color = vec!["flow:singlet".to_string()];
+    let selected = runtime
+        .evaluate_f64_with_selectors(&momenta, 2, Some(&helicity), Some(&color), None, None)
+        .unwrap();
+    assert_eq!(selected, global);
+
+    let per_point = runtime
+        .evaluate_f64_with_selectors(&momenta, 2, None, None, Some(&[0, 0]), Some(&[0, 0]))
+        .unwrap();
+    assert_eq!(per_point, global);
+    let profiled = runtime
+        .evaluate_f64_profile_with_selectors(&momenta, 2, None, None, Some(&[0, 0]), Some(&[0, 0]))
+        .unwrap();
+    assert_eq!(profiled.values, global);
+    assert!(
+        runtime
+            .benchmark_f64_wall_time_with_selectors(
+                &momenta,
+                2,
+                2,
+                None,
+                None,
+                Some(&[0, 0]),
+                Some(&[0, 0]),
+            )
+            .unwrap()
+            >= 0.0
+    );
+
+    let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(lane.retained_family_count(), 1);
 }
 
 #[test]

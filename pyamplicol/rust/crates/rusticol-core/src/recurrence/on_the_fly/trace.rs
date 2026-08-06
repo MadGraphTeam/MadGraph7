@@ -171,7 +171,6 @@ pub(super) enum OnTheFlyTraceOperationV1 {
 /// this row beside the trace lets the prototype remap parent current IDs
 /// without materializing an established recurrence program or DirectPlan.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(super) struct OnTheFlyTraceContributionProofRowV1 {
     pub(super) result_current_id: u32,
     pub(super) parent_current_ids: [u32; 2],
@@ -302,11 +301,8 @@ pub(crate) struct OnTheFlyStructuralTraceV1 {
     pub(super) proof: OnTheFlyStructuralProofV1,
     pub(super) semantic_digest: SemanticDigest,
     prepared_executor_rows_bound: bool,
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) current_component_ranges: Box<[[u32; 2]]>,
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) current_semantic_digests: Box<[SemanticDigest]>,
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) contribution_proof_rows: Box<[OnTheFlyTraceContributionProofRowV1]>,
 }
 
@@ -1782,7 +1778,6 @@ pub(super) fn lower_trace(
         .max()
         .unwrap_or(0);
     let mut contribution_proof_rows = Vec::new();
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     let mut family_contribution_rows = Vec::new();
     let current_digest_by_old = live
         .iter()
@@ -1856,7 +1851,6 @@ pub(super) fn lower_trace(
                     &pending.key,
                     *factor,
                 )?);
-                #[cfg(any(test, feature = "on-the-fly-test-support"))]
                 {
                     let local_parent_ids = [old_to_new[&parent_ids[0]], old_to_new[&parent_ids[1]]];
                     family_contribution_rows.push(OnTheFlyTraceContributionProofRowV1 {
@@ -2039,7 +2033,6 @@ pub(super) fn lower_trace(
         trace_hash.update(value.to_le_bytes());
     }
     let semantic_digest = final_digest(trace_hash)?;
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     let current_component_ranges = live
         .iter()
         .copied()
@@ -2051,7 +2044,6 @@ pub(super) fn lower_trace(
         })
         .collect::<Vec<_>>()
         .into_boxed_slice();
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     let current_semantic_digests = live
         .iter()
         .copied()
@@ -2071,11 +2063,8 @@ pub(super) fn lower_trace(
         proof,
         semantic_digest,
         prepared_executor_rows_bound: false,
-        #[cfg(any(test, feature = "on-the-fly-test-support"))]
         current_component_ranges,
-        #[cfg(any(test, feature = "on-the-fly-test-support"))]
         current_semantic_digests,
-        #[cfg(any(test, feature = "on-the-fly-test-support"))]
         contribution_proof_rows: family_contribution_rows.into_boxed_slice(),
     })
 }

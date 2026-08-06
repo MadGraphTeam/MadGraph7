@@ -22,6 +22,7 @@ pub mod process;
 mod program;
 mod relation;
 pub mod template;
+pub(crate) mod template_json;
 
 pub use arena::{
     DirectArenaAssignment, DirectArenaInterval, DirectArenaLayout, assign_direct_arena,

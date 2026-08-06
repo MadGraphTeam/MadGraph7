@@ -1137,12 +1137,13 @@ fn closure_quantum_matches(
 
 pub(super) fn build_selected_closures(
     templates: &ValidatedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
     closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
-) -> RusticolResult<Vec<PendingClosure>> {
+) -> RusticolResult<Option<Vec<PendingClosure>>> {
     let anchor_support = [query.closure_anchor_slot];
     let complement_support = (0..query.selected_sources.len() as u32)
         .filter(|slot| *slot != query.closure_anchor_slot)
@@ -1288,11 +1289,73 @@ pub(super) fn build_selected_closures(
     }
     retained.retain(|_, closure| !closure.factor.is_zero());
     if retained.is_empty() {
-        return Err(invalid(
-            "query-local construction found no exact closure for the decoded LC selector",
+        // A missing query-local closure is a physical zero only after the
+        // prepared closure domain has been proved complete against its
+        // validated template input. Keep this proof off the ordinary nonzero
+        // hot path.
+        validate_prepared_closure_domain(templates, catalog, closures)?;
+        return Ok(None);
+    }
+    Ok(Some(retained.into_values().collect()))
+}
+
+fn validate_prepared_closure_domain(
+    templates: &ValidatedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
+    closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
+) -> RusticolResult<()> {
+    let expected = &templates.input().closures;
+    let observed_count = closures.values().try_fold(0usize, |count, rows| {
+        count
+            .checked_add(rows.len())
+            .ok_or_else(|| invalid("prepared closure-domain row count exceeds usize"))
+    })?;
+    if observed_count != expected.len() {
+        return Err(integrity(format!(
+            "prepared closure domain has {observed_count} rows, expected {}",
+            expected.len()
+        )));
+    }
+
+    let mut observed = vec![false; expected.len()];
+    for (state_pair, rows) in closures {
+        for closure in rows {
+            let expected_row = expected
+                .get(closure.row.id as usize)
+                .filter(|row| row.id == closure.row.id)
+                .ok_or_else(|| integrity("prepared closure domain contains an unknown row"))?;
+            if closure.row != *expected_row {
+                return Err(integrity(
+                    "prepared closure row differs from its authenticated template",
+                ));
+            }
+            let expected_states: [u32; 2] = catalog
+                .u32_sequence(expected_row.input_state_sequence_id, "closure input states")?
+                .try_into()
+                .map_err(|_| integrity("authenticated closure input-state pair is not binary"))?;
+            if closure.input_states != expected_states
+                || *state_pair != canonical_state_pair(expected_states[0], expected_states[1])
+            {
+                return Err(integrity(
+                    "prepared closure parent-state pair differs from its authenticated template",
+                ));
+            }
+            let seen = observed
+                .get_mut(closure.row.id as usize)
+                .ok_or_else(|| integrity("prepared closure row ID exceeds its domain"))?;
+            if std::mem::replace(seen, true) {
+                return Err(integrity(
+                    "prepared closure domain repeats an authenticated row",
+                ));
+            }
+        }
+    }
+    if observed.iter().any(|seen| !seen) {
+        return Err(integrity(
+            "prepared closure domain omits an authenticated row",
         ));
     }
-    Ok(retained.into_values().collect())
+    Ok(())
 }
 
 pub(super) fn live_current_ids(

@@ -176,6 +176,8 @@ pub const RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_LC_COLOR_CAPABILITY;
 pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
+pub const ON_THE_FLY_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.complex-f64.v1";
+pub const ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.lc-color.v1";
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
 pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "pyamplicol-compiled-plane-kernel-v2";
@@ -248,6 +250,8 @@ pub enum RuntimeCapability {
     RecurrenceRuntimeComplexF64V1,
     RecurrenceLcColorV1,
     RecurrenceContractedColorV1,
+    OnTheFlyRuntimeComplexF64V1,
+    OnTheFlyLcColorV1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -276,6 +280,8 @@ impl RuntimeCapability {
             Self::RecurrenceRuntimeComplexF64V1 => RECURRENCE_RUNTIME_CAPABILITY,
             Self::RecurrenceLcColorV1 => RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
             Self::RecurrenceContractedColorV1 => RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            Self::OnTheFlyRuntimeComplexF64V1 => ON_THE_FLY_RUNTIME_CAPABILITY,
+            Self::OnTheFlyLcColorV1 => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
@@ -314,6 +320,10 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        ON_THE_FLY_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
         SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
         #[cfg(feature = "symbolica-runtime")]
@@ -4149,7 +4159,7 @@ pub struct NativeRuntime {
     input_crossing_map: Option<Vec<InputCrossingMapEntry>>,
     permutation_alias_of: Option<String>,
     final_state_permutation_alias_of: Option<String>,
-    physics_v1: ProcessPhysicsV1,
+    physics_v1: native_runtime::LazyProcessPhysicsV1,
     warnings_muted: bool,
     warned_kinds: BTreeSet<String>,
     pending_warnings: Vec<String>,
@@ -4163,6 +4173,8 @@ enum NativeExecutionLane {
     Eager(Box<EagerNativeRuntime>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     Recurrence(Box<RecurrenceNativeRuntime>),
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    OnTheFly(Box<native_runtime::OnTheFlyExecutionRuntime>),
 }
 
 impl NativeExecutionLane {
@@ -4517,6 +4529,15 @@ use recurrence_load::*;
 mod recurrence_manifest;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use recurrence_manifest::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod on_the_fly_lane;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod on_the_fly_load;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod on_the_fly_manifest;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod on_the_fly_selectors;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[allow(dead_code)]

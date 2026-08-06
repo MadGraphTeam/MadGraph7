@@ -54,6 +54,7 @@ _LC_ALL_FLOW_PROFILE_RECOMMENDATION = (
     "all-flows/single-helicity workload"
 )
 _EVALUATOR_TOTAL_SAMPLE_CONTRACT = "accumulated-repeated-warmed-evaluator-total-v1"
+_RECURRENCE_LIKE_EXECUTION_MODES = {"recurrence", "on-the-fly"}
 _COMPILED_DIRECT_ARENA_COUNTER_KEYS = (
     "compiled_direct_arena_engine_count",
     "compiled_direct_arena_call_count",
@@ -72,6 +73,16 @@ class _Calibration:
     block_count: int
     evaluation_count: int
     elapsed_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _CompactBenchmarkContext:
+    process_id: str
+    process_expression: str
+    color_accuracy: str
+    helicity_count: int
+    color_count: int
+    selected_color_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,7 +232,11 @@ class BenchmarkBackend:
             else Path(os.fspath(target)).expanduser().resolve(strict=False)
         )
         runtime = self._runtime(target)
-        physics = runtime.physics
+        compact_context = _on_the_fly_benchmark_context(
+            runtime,
+            self._config.color_flow_ids,
+        )
+        physics = None if compact_context is not None else runtime.physics
         if points is None:
             loader = getattr(runtime, "validation_momenta", None)
             points = loader() if callable(loader) else None
@@ -233,11 +248,35 @@ class BenchmarkBackend:
         batch = _benchmark_batch(points, self._config.batch_size)
         helicities = self._config.helicity_ids or None
         color_flows = (
-            _resolve_color_flow_ordinals(physics, self._config.color_flow_ids) or None
+            compact_context.selected_color_ids
+            if compact_context is not None
+            else _resolve_color_flow_ordinals(
+                cast(ProcessPhysics, physics),
+                self._config.color_flow_ids,
+            )
+        ) or None
+        color_accuracy = (
+            compact_context.color_accuracy
+            if compact_context is not None
+            else cast(ProcessPhysics, physics).color_accuracy
         )
-        lc_flow_layout = _artifact_lc_flow_layout(target_path)
+        process_id = (
+            compact_context.process_id
+            if compact_context is not None
+            else cast(ProcessPhysics, physics).process_id
+        )
+        process_expression = (
+            compact_context.process_expression
+            if compact_context is not None
+            else cast(ProcessPhysics, physics).process
+        )
+        lc_flow_layout = (
+            None
+            if compact_context is not None
+            else _artifact_lc_flow_layout(target_path)
+        )
         lc_flow_layout_recommendation = _lc_flow_layout_recommendation(
-            color_accuracy=physics.color_accuracy,
+            color_accuracy=color_accuracy,
             lc_flow_layout=lc_flow_layout,
             selected_helicity_ids=tuple(helicities or ()),
             selected_color_ids=tuple(color_flows or ()),
@@ -471,7 +510,10 @@ class BenchmarkBackend:
                         assert evaluator_samples is not None
                         assert native_profile_samples is not None
                         native_profile_samples.append(native_sample)
-                        if native_sample.execution_mode == "recurrence":
+                        if (
+                            native_sample.execution_mode
+                            in _RECURRENCE_LIKE_EXECUTION_MODES
+                        ):
                             if native_sample.recurrence_schedule_time is None:
                                 raise EvaluationError(
                                     "native recurrence schedule timing is unavailable"
@@ -633,7 +675,7 @@ class BenchmarkBackend:
                 evaluator_relative,
             )
             timing_breakdown = _timing_breakdown(native_profile_samples)
-            if timing_breakdown.execution_mode == "recurrence":
+            if timing_breakdown.execution_mode in _RECURRENCE_LIKE_EXECUTION_MODES:
                 evaluator_time_source = "runtime_profile_core_recurrence_schedule_time"
             elif compiled_direct_arena_active:
                 evaluator_time_source = (
@@ -759,14 +801,25 @@ class BenchmarkBackend:
                 "batch_size": len(batch),
                 "precision": self._config.precision,
                 "execution_mode": execution_mode,
-                "color_accuracy": physics.color_accuracy,
-                "color_workload": _color_workload_text(
-                    physics,
-                    selected_color_ids,
+                "color_accuracy": color_accuracy,
+                "color_workload": (
+                    _compact_color_workload_text(compact_context, selected_color_ids)
+                    if compact_context is not None
+                    else _color_workload_text(
+                        cast(ProcessPhysics, physics),
+                        selected_color_ids,
+                    )
                 ),
-                "helicity_workload": _helicity_workload_text(
-                    physics,
-                    selected_helicity_ids,
+                "helicity_workload": (
+                    _compact_helicity_workload_text(
+                        compact_context,
+                        selected_helicity_ids,
+                    )
+                    if compact_context is not None
+                    else _helicity_workload_text(
+                        cast(ProcessPhysics, physics),
+                        selected_helicity_ids,
+                    )
                 ),
                 "selected_color_ids": selected_color_ids,
                 "selected_helicity_ids": selected_helicity_ids,
@@ -808,8 +861,8 @@ class BenchmarkBackend:
             repetitions_per_sample=calibration.repetitions_per_sample,
             evaluator_uncertainty=evaluator_uncertainty,
             evaluator_total_time_per_point=evaluator_total_time_per_point,
-            process_id=physics.process_id,
-            process_expression=physics.process,
+            process_id=process_id,
+            process_expression=process_expression,
             timing_breakdown=timing_breakdown,
         )
 
@@ -900,6 +953,59 @@ def _benchmark_batch(points: Momenta, batch_size: int) -> Momenta:
     return tuple(source[index % len(source)] for index in range(batch_size))
 
 
+def _on_the_fly_benchmark_context(
+    runtime: RuntimeBackend,
+    requested_color_ids: Sequence[str],
+) -> _CompactBenchmarkContext | None:
+    if str(getattr(runtime, "execution_mode", "compiled")) != "on-the-fly":
+        return None
+    loader = getattr(runtime, "_on_the_fly_benchmark_context", None)
+    if not callable(loader):
+        raise EvaluationError(
+            "on-the-fly benchmark requires the installed compact runtime context"
+        )
+    raw = loader(tuple(requested_color_ids))
+    if not isinstance(raw, Mapping):
+        raise EvaluationError("on-the-fly benchmark context is unavailable")
+
+    def required_text(key: str) -> str:
+        value = raw.get(key)
+        if not isinstance(value, str) or not value:
+            raise EvaluationError(
+                f"on-the-fly benchmark context field {key!r} is invalid"
+            )
+        return value
+
+    def required_count(key: str) -> int:
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise EvaluationError(
+                f"on-the-fly benchmark context field {key!r} is invalid"
+            )
+        return value
+
+    selected = raw.get("selected_color_ids")
+    if not isinstance(selected, Sequence) or isinstance(selected, (str, bytes)):
+        raise EvaluationError(
+            "on-the-fly benchmark selected color IDs are invalid"
+        )
+    selected_color_ids = tuple(str(value) for value in selected)
+    if len(selected_color_ids) != len(requested_color_ids) or any(
+        not value for value in selected_color_ids
+    ):
+        raise EvaluationError(
+            "on-the-fly benchmark selected color IDs do not match the request"
+        )
+    return _CompactBenchmarkContext(
+        process_id=required_text("process_id"),
+        process_expression=required_text("process_expression"),
+        color_accuracy=required_text("color_accuracy"),
+        helicity_count=required_count("helicity_count"),
+        color_count=required_count("color_count"),
+        selected_color_ids=selected_color_ids,
+    )
+
+
 def _resolve_color_flow_ordinals(
     physics: ProcessPhysics,
     requested: Sequence[str],
@@ -937,6 +1043,20 @@ def _color_workload_text(
     return f"selected {len(selected)}/{count} physical LC flows: {', '.join(selected)}"
 
 
+def _compact_color_workload_text(
+    context: _CompactBenchmarkContext,
+    selected: Sequence[str],
+) -> str:
+    if context.color_accuracy != "lc":
+        return f"contracted {context.color_accuracy.upper()} color total"
+    if not selected:
+        return f"all {context.color_count} generated physical LC flows"
+    return (
+        f"selected {len(selected)}/{context.color_count} physical LC flows: "
+        f"{', '.join(selected)}"
+    )
+
+
 def _helicity_workload_text(
     physics: ProcessPhysics,
     selected: Sequence[str],
@@ -947,6 +1067,18 @@ def _helicity_workload_text(
         suffix = f"; {structural} structural zeros" if structural else ""
         return f"all {count} generated helicity configurations{suffix}"
     return f"selected {len(selected)}/{count} helicities: {', '.join(selected)}"
+
+
+def _compact_helicity_workload_text(
+    context: _CompactBenchmarkContext,
+    selected: Sequence[str],
+) -> str:
+    if not selected:
+        return f"all {context.helicity_count} generated helicity configurations"
+    return (
+        f"selected {len(selected)}/{context.helicity_count} helicities: "
+        f"{', '.join(selected)}"
+    )
 
 
 def _sample_progress_payload(
@@ -1362,10 +1494,10 @@ def _profile_execution_mode(
 ) -> str | None:
     value = profile.get("execution_mode")
     if value is not None:
-        if value not in {"compiled", "eager", "recurrence"}:
+        if value not in {"compiled", "eager", "recurrence", "on-the-fly"}:
             raise EvaluationError(
                 "native runtime profile execution_mode must be compiled, eager, "
-                "or recurrence"
+                "recurrence, or on-the-fly"
             )
         return str(value)
     stage_aggregate = profile.get("stage_evaluator_call_time_s")
@@ -1467,7 +1599,10 @@ def _native_profile_sample(
         if stage_evaluator_call is not None
         else _profile_float_or_none(profile, "stage_evaluator_call_time_s")
     )
-    if stage_evaluator_call_total is None and execution_mode != "recurrence":
+    if (
+        stage_evaluator_call_total is None
+        and execution_mode not in _RECURRENCE_LIKE_EXECUTION_MODES
+    ):
         raise EvaluationError("native runtime stage evaluator timing is unavailable")
     if stage_evaluator_call_total is None:
         stage_evaluator_call_total = 0.0
@@ -1492,7 +1627,7 @@ def _native_profile_sample(
         else _profile_float_or_none(profile, "stage_evaluator_output_gather_time_s")
     )
     amplitude_evaluator_call: float | None = None
-    if execution_mode not in {"eager", "recurrence"}:
+    if execution_mode not in {"eager", *_RECURRENCE_LIKE_EXECUTION_MODES}:
         amplitude_evaluator_call = _profile_float_or_none(
             profile, "amplitude_evaluator_call_time_s"
         )
@@ -1536,7 +1671,10 @@ def _native_profile_sample(
                 momentum_input_setup_time - model_parameter_setup_time,
                 0.0,
             )
-    compiled_profile = execution_mode not in {"eager", "recurrence"}
+    compiled_profile = execution_mode not in {
+        "eager",
+        *_RECURRENCE_LIKE_EXECUTION_MODES,
+    }
     stage_input_pack_time = (
         None
         if not compiled_profile or stage_input_pack_total is None
@@ -1620,8 +1758,11 @@ def _native_profile_sample(
     recurrence_replay_output_mapping_time = normalized(
         "recurrence_replay_output_mapping_time_s"
     )
-    if execution_mode == "recurrence" and recurrence_schedule_time is None:
-        raise EvaluationError("native recurrence schedule timing is unavailable")
+    if (
+        execution_mode in _RECURRENCE_LIKE_EXECUTION_MODES
+        and recurrence_schedule_time is None
+    ):
+        raise EvaluationError("native recurrence-like schedule timing is unavailable")
 
     common_accounted = (
         native_input_pack_time,
@@ -1635,7 +1776,7 @@ def _native_profile_sample(
     )
     if execution_mode == "eager":
         mode_accounted = (eager_execution_time,)
-    elif execution_mode == "recurrence":
+    elif execution_mode in _RECURRENCE_LIKE_EXECUTION_MODES:
         mode_accounted = (
             recurrence_momentum_fill_time,
             recurrence_union_source_fill_time,
@@ -1694,7 +1835,10 @@ def _native_profile_sample(
                 f"{exclusive_eager_total:.9e}s/point, exceeding the inclusive "
                 f"eager execution time {eager_execution_time:.9e}s/point"
             )
-    if execution_mode == "recurrence" and recurrence_schedule_time is not None:
+    if (
+        execution_mode in _RECURRENCE_LIKE_EXECUTION_MODES
+        and recurrence_schedule_time is not None
+    ):
         recurrence_attribution = (
             recurrence_source_kernel_time,
             recurrence_contribution_kernel_time,
@@ -2019,7 +2163,7 @@ def _timing_breakdown(
     if len(execution_modes) > 1:
         raise EvaluationError("native runtime profile changed execution mode")
     execution_mode = cast(
-        Literal["compiled", "eager", "recurrence"],
+        Literal["compiled", "eager", "recurrence", "on-the-fly"],
         next(iter(execution_modes), "compiled"),
     )
     evaluator_call_time = _component_timing(
@@ -2063,7 +2207,9 @@ def _timing_breakdown(
             [sample.stage_leaf_input_pack_time for sample in samples]
         ),
         stage_evaluator_call_time=(
-            None if execution_mode in {"eager", "recurrence"} else evaluator_call_time
+            None
+            if execution_mode in {"eager", *_RECURRENCE_LIKE_EXECUTION_MODES}
+            else evaluator_call_time
         ),
         stage_backend_call_time=_component_timing(
             [sample.stage_backend_call_time for sample in samples]

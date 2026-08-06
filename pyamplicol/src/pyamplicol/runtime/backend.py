@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+    ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+    ON_THE_FLY_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     verify_native_module,
 )
@@ -48,7 +50,7 @@ if TYPE_CHECKING:
 
 _Accuracy = Literal["lc", "nlc", "full"]
 _ParticleState = Literal["incoming", "outgoing"]
-_ExecutionMode = Literal["compiled", "eager", "recurrence"]
+_ExecutionMode = Literal["compiled", "eager", "recurrence", "on-the-fly"]
 
 
 def _manifest_integer(value: object, description: str) -> int:
@@ -289,7 +291,7 @@ def _native_execution_mode(
 ) -> _ExecutionMode:
     payload = metadata
     mode = payload.get("execution_mode", "compiled")
-    if mode not in {"compiled", "eager", "recurrence"}:
+    if mode not in {"compiled", "eager", "recurrence", "on-the-fly"}:
         raise CompatibilityError(f"unsupported runtime execution mode {mode!r}")
     return cast(_ExecutionMode, mode)
 
@@ -331,6 +333,29 @@ class RusticolRuntimeBackend:
         """Return the native execution lane selected by the artifact."""
 
         return self._execution_mode
+
+    def _on_the_fly_benchmark_context(
+        self,
+        color_flow_ids: Sequence[str],
+    ) -> Mapping[str, object] | None:
+        """Resolve the existing benchmark selectors through compact OTF state."""
+
+        if self._execution_mode != "on-the-fly":
+            return None
+        loader = getattr(self._runtime, "_on_the_fly_benchmark_context_json", None)
+        if not callable(loader):
+            raise CompatibilityError(
+                "installed native runtime has no compact on-the-fly benchmark context"
+            )
+        try:
+            payload = json.loads(str(loader(tuple(color_flow_ids) or None)))
+        except (TypeError, ValueError) as exc:
+            raise ArtifactError(
+                f"native on-the-fly benchmark context is invalid: {exc}"
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise ArtifactError("native on-the-fly benchmark context must be an object")
+        return dict(payload)
 
     @property
     def representative_process_key(self) -> str:
@@ -411,11 +436,11 @@ class RusticolRuntimeBackend:
             )
         )
         self._required_runtime_capabilities = capabilities
-        reusable_selectors = _has_reusable_runtime_selector_contract(
-            manifest,
-            process,
-        )
         if self._execution_mode == "compiled":
+            reusable_selectors = _has_reusable_runtime_selector_contract(
+                manifest,
+                process,
+            )
             declares_selector_capability = (
                 COMPILED_RUNTIME_SELECTORS_CAPABILITY in capabilities
             )
@@ -430,6 +455,16 @@ class RusticolRuntimeBackend:
             self._supports_per_point_selectors = (
                 EAGER_RUNTIME_LAYOUT_F64_CAPABILITY in capabilities
             )
+        elif self._execution_mode == "on-the-fly":
+            expected = {
+                ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+                ON_THE_FLY_RUNTIME_CAPABILITY,
+            }
+            if len(capabilities) != len(expected) or set(capabilities) != expected:
+                raise CompatibilityError(
+                    "on-the-fly artifact has an invalid runtime capability contract"
+                )
+            self._supports_per_point_selectors = True
         else:
             self._supports_per_point_selectors = (
                 RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in capabilities
@@ -443,6 +478,8 @@ class RusticolRuntimeBackend:
                 required = COMPILED_RUNTIME_SELECTORS_CAPABILITY
             elif self._execution_mode == "eager":
                 required = EAGER_RUNTIME_LAYOUT_F64_CAPABILITY
+            elif self._execution_mode == "on-the-fly":
+                required = ON_THE_FLY_RUNTIME_CAPABILITY
             else:
                 required = RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY
             raise CompatibilityError(
@@ -482,15 +519,21 @@ class RusticolRuntimeBackend:
                 "helicity or color-flow selectors; regenerate a reusable-selector "
                 "artifact with the current pyAmpliCol"
             )
-        helicity_indices = self._point_selector_indices(
-            helicity_by_point,
-            self.physics.helicity_ids,
-            "helicity_by_point",
+        helicity_indices = (
+            None
+            if helicity_by_point is None
+            else self._point_selector_indices(
+                helicity_by_point,
+                "helicity_by_point",
+            )
         )
-        color_indices = self._point_selector_indices(
-            color_flow_by_point,
-            self.physics.color_ids,
-            "color_flow_by_point",
+        color_indices = (
+            None
+            if color_flow_by_point is None
+            else self._point_selector_indices(
+                color_flow_by_point,
+                "color_flow_by_point",
+            )
         )
         if precision != 16:
             if helicity_by_point is not None or color_flow_by_point is not None:
@@ -528,14 +571,55 @@ class RusticolRuntimeBackend:
         )
         return tuple(_scalar_from_native(value) for value in values)
 
-    @staticmethod
     def _point_selector_indices(
+        self,
         values: Sequence[str] | None,
-        available: Sequence[str],
         name: str,
     ) -> tuple[int, ...] | None:
         if values is None:
             return None
+        if self._execution_mode == "on-the-fly":
+            resolver = getattr(
+                self._runtime,
+                "_on_the_fly_selector_ordinals_json",
+                None,
+            )
+            if not callable(resolver):
+                raise CompatibilityError(
+                    "installed native runtime has no compact on-the-fly "
+                    "selector resolver"
+                )
+            helicities = values if name == "helicity_by_point" else None
+            colors = values if name == "color_flow_by_point" else None
+            try:
+                payload = json.loads(str(resolver(helicities, colors)))
+            except (TypeError, ValueError) as exc:
+                raise ArtifactError(
+                    f"native on-the-fly point-selector response is invalid: {exc}"
+                ) from exc
+            if not isinstance(payload, Mapping):
+                raise ArtifactError(
+                    "native on-the-fly point-selector response must be an object"
+                )
+            key = (
+                "helicity_ordinals"
+                if name == "helicity_by_point"
+                else "color_ordinals"
+            )
+            raw = payload.get(key)
+            if not isinstance(raw, list) or len(raw) != len(values) or any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+                for value in raw
+            ):
+                raise ArtifactError(
+                    f"native on-the-fly {name} ordinals are invalid"
+                )
+            return tuple(raw)
+        available = (
+            self.physics.helicity_ids
+            if name == "helicity_by_point"
+            else self.physics.color_ids
+        )
         index_by_id = {identifier: index for index, identifier in enumerate(available)}
         indices: list[int] = []
         for point_index, identifier in enumerate(values):
@@ -626,15 +710,21 @@ class RusticolRuntimeBackend:
                 "the selected artifact/runtime does not support per-point "
                 "helicity or color-flow selectors"
             )
-        helicity_indices = self._point_selector_indices(
-            helicity_by_point,
-            self.physics.helicity_ids,
-            "helicity_by_point",
+        helicity_indices = (
+            None
+            if helicity_by_point is None
+            else self._point_selector_indices(
+                helicity_by_point,
+                "helicity_by_point",
+            )
         )
-        color_indices = self._point_selector_indices(
-            color_flow_by_point,
-            self.physics.color_ids,
-            "color_flow_by_point",
+        color_indices = (
+            None
+            if color_flow_by_point is None
+            else self._point_selector_indices(
+                color_flow_by_point,
+                "color_flow_by_point",
+            )
         )
         timer = getattr(self._runtime, "_benchmark_f64_wall_time", None)
         if not callable(timer):
@@ -778,12 +868,10 @@ class RusticolRuntimeBackend:
                 )
             helicity_indices = self._point_selector_indices(
                 helicity_by_point,
-                self.physics.helicity_ids,
                 "helicity_by_point",
             )
             color_indices = self._point_selector_indices(
                 color_flow_by_point,
-                self.physics.color_ids,
                 "color_flow_by_point",
             )
             if helicity_indices is not None:
@@ -850,12 +938,10 @@ class RusticolRuntimeBackend:
                 )
             helicity_indices = self._point_selector_indices(
                 helicity_by_point,
-                self.physics.helicity_ids,
                 "helicity_by_point",
             )
             color_indices = self._point_selector_indices(
                 color_flow_by_point,
-                self.physics.color_ids,
                 "color_flow_by_point",
             )
             if helicity_indices is not None:
@@ -904,6 +990,27 @@ class RusticolRuntimeBackend:
     ) -> tuple[str, ...] | None:
         if color_flows is None or not color_flows:
             return None
+        if self._execution_mode == "on-the-fly":
+            def is_ordinal(value: str) -> bool:
+                try:
+                    ordinal = int(value, 10)
+                except ValueError:
+                    return False
+                return str(ordinal) == value.strip()
+
+            if not any(is_ordinal(value) for value in color_flows):
+                return tuple(color_flows)
+            context = self._on_the_fly_benchmark_context(color_flows)
+            assert context is not None
+            selected = context.get("selected_color_ids")
+            if not isinstance(selected, Sequence) or isinstance(
+                selected,
+                (str, bytes),
+            ):
+                raise ArtifactError(
+                    "native on-the-fly selected color IDs are invalid"
+                )
+            return tuple(str(value) for value in selected)
         available = self.physics.color_ids
         resolved: list[str] = []
         for requested in color_flows:
@@ -972,6 +1079,9 @@ class RusticolRuntimeBackend:
             dict(mapping),
         )
 
+    def clear(self) -> None:
+        _invoke(self._native_module, self._runtime.clear)
+
     def mute_warnings(self) -> None:
         _invoke(self._native_module, self._runtime.mute_warnings)
 
@@ -986,7 +1096,6 @@ class RusticolRuntimeBackend:
         """Return the selected process's verified deterministic artifact point."""
 
         manifest = load_manifest(self._artifact_path)
-        selected_id = self.physics.process_id
         selection = native_process_selection(self._runtime, manifest.processes)
         representative = selection.process
         permutation = selection.external_permutation
@@ -1057,7 +1166,7 @@ class RusticolRuntimeBackend:
             reordered[public_index] = vectors[representative_index]
         if any(vector is None for vector in reordered):
             raise ArtifactError(
-                f"selected process {selected_id!r} has an incomplete permutation"
+                f"selected process {process_id!r} has an incomplete permutation"
             )
         vectors = cast(list[tuple[float, float, float, float]], reordered)
         return (tuple(vectors),)

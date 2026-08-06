@@ -381,15 +381,19 @@ class Runtime:
         return value
 
     @property
-    def execution_mode(self) -> Literal["compiled", "eager", "recurrence"]:
+    def execution_mode(
+        self,
+    ) -> Literal["compiled", "eager", "recurrence", "on-the-fly"]:
         """Native execution lane authenticated while loading the artifact."""
 
         value = getattr(self._backend, "execution_mode", None)
-        if value not in {"compiled", "eager", "recurrence"}:
+        if value not in {"compiled", "eager", "recurrence", "on-the-fly"}:
             raise EvaluationError(
                 "runtime backend does not expose a valid execution mode"
             )
-        return cast(Literal["compiled", "eager", "recurrence"], value)
+        return cast(
+            Literal["compiled", "eager", "recurrence", "on-the-fly"], value
+        )
 
     def evaluate(
         self,
@@ -561,6 +565,11 @@ class Runtime:
         """Validate and atomically apply a batch of runtime model parameters."""
 
         self._backend.set_model_parameters(dict(mapping))
+
+    def clear(self) -> None:
+        """Drop warmed execution state while keeping this artifact loaded."""
+
+        self._backend.clear()
 
     @property
     def representative_process_key(self) -> str:

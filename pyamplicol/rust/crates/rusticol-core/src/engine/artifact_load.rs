@@ -2,6 +2,10 @@
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use super::eager_v3_manifest::{EagerV3ExecutionManifest, parse_eager_v3_execution_manifest};
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use super::on_the_fly_manifest::{
+    ON_THE_FLY_EXECUTION_KIND, OnTheFlyExecutionManifest, parse_on_the_fly_execution_manifest,
+};
 use super::*;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use crate::recurrence::RECURRENCE_RUNTIME_KIND;
@@ -12,6 +16,8 @@ pub(super) enum LoadedExecutionManifest {
     EagerV3(Box<EagerV3ExecutionManifest>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     Recurrence(Box<RecurrenceExecutionManifest>),
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    OnTheFly(Box<OnTheFlyExecutionManifest>),
 }
 
 impl LoadedExecutionManifest {
@@ -22,6 +28,8 @@ impl LoadedExecutionManifest {
             Self::EagerV3(value) => &value.key,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::Recurrence(value) => &value.key,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::OnTheFly(value) => &value.key,
         }
     }
 
@@ -32,6 +40,8 @@ impl LoadedExecutionManifest {
             Self::EagerV3(value) => &value.process,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::Recurrence(value) => &value.process,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::OnTheFly(value) => &value.process,
         }
     }
 
@@ -42,6 +52,8 @@ impl LoadedExecutionManifest {
             Self::EagerV3(value) => &value.color_accuracy,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::Recurrence(value) => &value.color_accuracy,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::OnTheFly(value) => &value.color_accuracy,
         }
     }
 
@@ -52,6 +64,8 @@ impl LoadedExecutionManifest {
             Self::EagerV3(value) => &value.external_pdg_order,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::Recurrence(value) => &value.external_pdg_order,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::OnTheFly(value) => &value.external_pdg_order,
         }
     }
 
@@ -62,6 +76,8 @@ impl LoadedExecutionManifest {
             Self::EagerV3(value) => &value.required_runtime_capabilities,
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             Self::Recurrence(value) => &value.required_runtime_capabilities,
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::OnTheFly(value) => &value.required_runtime_capabilities,
         }
     }
 
@@ -73,7 +89,7 @@ impl LoadedExecutionManifest {
             // the kernel pack. Their compact execution headers intentionally do
             // not duplicate that backend identity.
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            Self::EagerV3(_) | Self::Recurrence(_) => Ok(()),
+            Self::EagerV3(_) | Self::Recurrence(_) | Self::OnTheFly(_) => Ok(()),
         }
     }
 }
@@ -109,6 +125,7 @@ pub(super) fn load_verified_evaluator(
     if header.kind == "pyamplicol-runtime-execution"
         || header.kind == "pyamplicol-runtime-eager-execution"
         || header.kind == RECURRENCE_RUNTIME_KIND
+        || header.kind == ON_THE_FLY_EXECUTION_KIND
     {
         if artifact.manifest().processes.len() != 1 {
             return Err(RusticolError::integrity(
@@ -446,6 +463,10 @@ fn parse_execution_payload_variant(
         RECURRENCE_RUNTIME_KIND => parse_recurrence_execution_manifest(bytes, path, outer)
             .map(Box::new)
             .map(LoadedExecutionManifest::Recurrence),
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        ON_THE_FLY_EXECUTION_KIND => parse_on_the_fly_execution_manifest(bytes, outer)
+            .map(Box::new)
+            .map(LoadedExecutionManifest::OnTheFly),
         _ => Err(RusticolError::compatibility(format!(
             "unsupported internal evaluator manifest kind {:?}",
             header.kind
@@ -499,6 +520,25 @@ fn validate_loaded_execution_references(
             {
                 return Err(RusticolError::security(
                     "recurrence process binding is not owned by its process",
+                ));
+            }
+            Ok(())
+        }
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        LoadedExecutionManifest::OnTheFly(manifest) => {
+            let relative_root = evaluator_root.strip_prefix(artifact.root()).map_err(|_| {
+                RusticolError::security("on-the-fly process root escapes the verified artifact")
+            })?;
+            let relative = relative_root.join(&manifest.runtime_container.path);
+            let relative = relative.to_str().ok_or_else(|| {
+                RusticolError::security("on-the-fly container path is not valid UTF-8")
+            })?;
+            let payload = artifact.payload(relative)?;
+            if payload.role != PayloadRole::EvaluatorState
+                || payload.process_id.as_deref() != Some(manifest.key.as_str())
+            {
+                return Err(RusticolError::security(
+                    "on-the-fly runtime container is not owned evaluator state",
                 ));
             }
             Ok(())

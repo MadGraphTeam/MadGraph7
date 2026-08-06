@@ -67,6 +67,9 @@ class _Runtime:
     def set_model_parameters(self, mapping: object) -> None:
         del mapping
 
+    def clear(self) -> None:
+        pass
+
     def mute_warnings(self) -> None:
         pass
 
@@ -386,6 +389,75 @@ class _TimedRuntimeWithRecurrenceRepeatedProfile(_TimedRuntimeWithRepeatedProfil
             "recurrence_closure_call_count": repetitions * 2,
             "recurrence_closure_row_count": repetitions * 12,
         }
+
+
+class _TimedRuntimeWithOnTheFlyRepeatedProfile(
+    _TimedRuntimeWithRecurrenceRepeatedProfile
+):
+    @property
+    def execution_mode(self) -> str:
+        return "on-the-fly"
+
+    @property
+    def physics(self) -> ProcessPhysics:
+        raise AssertionError("on-the-fly benchmark opened dense physics metadata")
+
+    def _on_the_fly_benchmark_context(
+        self,
+        color_flow_ids: tuple[str, ...],
+    ) -> dict[str, object]:
+        assert color_flow_ids == ()
+        return {
+            "process_id": "otf-test",
+            "process_expression": "d d~ > t t~ g g",
+            "color_accuracy": "lc",
+            "helicity_count": 64,
+            "color_count": 24,
+            "selected_color_ids": (),
+        }
+
+    def profile_repeated(
+        self,
+        momenta: object,
+        repetitions: int,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        profile = super().profile_repeated(momenta, repetitions, **kwargs)
+        profile["execution_mode"] = "on-the-fly"
+        return profile
+
+
+def test_on_the_fly_benchmark_uses_compact_context_without_opening_physics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithOnTheFlyRepeatedProfile(clock)
+    runtime.repeated_profile_calls = 0
+    runtime.native_wall_calls = 0
+    config = BenchmarkConfig(
+        target_runtime=0.1,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=4,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.process_id == "otf-test"
+    assert result.process_expression == "d d~ > t t~ g g"
+    assert result.environment["execution_mode"] == "on-the-fly"
+    assert result.environment["color_workload"] == "all 24 generated physical LC flows"
+    assert result.environment["helicity_workload"] == (
+        "all 64 generated helicity configurations"
+    )
+    assert result.evaluator_time_per_point == pytest.approx(10.0e-6)
+    assert result.timing_breakdown is not None
+    assert result.timing_breakdown.execution_mode == "on-the-fly"
+    assert result.timing_breakdown.recurrence_schedule_time is not None
 
 
 def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:

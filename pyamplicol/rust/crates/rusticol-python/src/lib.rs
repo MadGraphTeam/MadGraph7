@@ -467,12 +467,35 @@ impl Runtime {
     }
 
     #[getter]
-    fn physics(&self) -> ProcessPhysics {
-        ProcessPhysics::from_core(self.runtime.process_physics())
+    fn physics(&self) -> PyResult<ProcessPhysics> {
+        Ok(ProcessPhysics::from_core(
+            self.runtime.process_physics().map_err(python_error)?,
+        ))
     }
 
     fn metadata_json(&self) -> PyResult<String> {
         self.runtime.metadata_json().map_err(python_error)
+    }
+
+    #[pyo3(signature=(color_flow_ids=None))]
+    fn _on_the_fly_benchmark_context_json(
+        &self,
+        color_flow_ids: Option<Vec<String>>,
+    ) -> PyResult<Option<String>> {
+        self.runtime
+            .on_the_fly_benchmark_context_json(color_flow_ids.as_deref())
+            .map_err(python_error)
+    }
+
+    #[pyo3(signature=(helicity_ids=None, color_flow_ids=None))]
+    fn _on_the_fly_selector_ordinals_json(
+        &self,
+        helicity_ids: Option<Vec<String>>,
+        color_flow_ids: Option<Vec<String>>,
+    ) -> PyResult<Option<String>> {
+        self.runtime
+            .on_the_fly_selector_ordinals_json(helicity_ids.as_deref(), color_flow_ids.as_deref())
+            .map_err(python_error)
     }
 
     fn physics_json(&self) -> PyResult<String> {
@@ -745,6 +768,10 @@ impl Runtime {
         self.runtime
             .set_model_parameters(&values)
             .map_err(python_error)
+    }
+
+    fn clear(&mut self) -> PyResult<()> {
+        self.runtime.clear().map_err(python_error)
     }
 
     fn set_model_parameter(&mut self, name: &str, value: &Bound<'_, PyAny>) -> PyResult<()> {

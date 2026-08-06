@@ -28,7 +28,8 @@ use crate::recurrence::on_the_fly::{
 };
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
 use crate::recurrence::{
-    DirectExecutorRole, DirectRecurrencePlan, PreparedDirectExecutorCatalog, SemanticDigest,
+    DirectExecutorRole, DirectRecurrencePlan, PreparedDirectExecutorBinding,
+    PreparedDirectExecutorCatalog, SemanticDigest,
 };
 use crate::{RusticolError, RusticolResult, VerifiedArtifact};
 #[cfg(feature = "f64-symjit")]
@@ -397,6 +398,30 @@ impl NativeRecurrencePreparedExecutorPool {
             None
         };
         Ok(OnTheFlySourceDomainBinding { source })
+    }
+
+    /// Re-express the already authenticated prepared-pack mappings through
+    /// the shared semantic resolver used by selector-local lowering.  This is
+    /// a compact model-level catalog, not a process recurrence plan.
+    pub(super) fn prepared_direct_catalog(&self) -> RusticolResult<PreparedDirectExecutorCatalog> {
+        let mut bindings = self
+            .bindings
+            .iter()
+            .map(|(&(role, evaluator_binding_id), binding)| {
+                PreparedDirectExecutorBinding::evaluator_with_parent_permutation(
+                    role,
+                    evaluator_binding_id,
+                    binding.executor_id,
+                    binding.parent_permutation,
+                )
+            })
+            .collect::<Vec<_>>();
+        if let Some(executor_id) = self.identity_finalizer_id {
+            bindings.push(PreparedDirectExecutorBinding::identity_finalizer(
+                executor_id,
+            ));
+        }
+        PreparedDirectExecutorCatalog::new(self.direct_template_catalog_digest, bindings)
     }
 
     pub(super) fn into_on_the_fly_resolver(
@@ -1105,7 +1130,7 @@ fn hex_nibble(value: u8) -> Option<u8> {
 }
 
 #[cfg(test)]
-mod on_the_fly_adapter_tests {
+pub(in crate::engine) mod on_the_fly_adapter_tests {
     use super::*;
     use crate::engine::evaluator::recurrence_source_direct::{
         DirectSourceDispatchKey, DirectSourceDispatchVariantSpec, DirectSourceOrientation,
@@ -1120,11 +1145,13 @@ mod on_the_fly_adapter_tests {
     };
     use std::ptr;
 
-    fn digest(seed: u8) -> SemanticDigest {
+    pub(in crate::engine) fn digest(seed: u8) -> SemanticDigest {
         SemanticDigest::new([seed; 32]).unwrap()
     }
 
-    fn direct_catalog(direct_digest: SemanticDigest) -> PreparedDirectExecutorCatalog {
+    pub(in crate::engine) fn direct_catalog(
+        direct_digest: SemanticDigest,
+    ) -> PreparedDirectExecutorCatalog {
         PreparedDirectExecutorCatalog::new(
             direct_digest,
             vec![
@@ -1136,7 +1163,7 @@ mod on_the_fly_adapter_tests {
         .unwrap()
     }
 
-    fn prepared_pool(
+    pub(in crate::engine) fn prepared_pool(
         templates: &ValidatedRecurrenceTemplateInput,
         direct_digest: SemanticDigest,
     ) -> NativeRecurrencePreparedExecutorPool {
@@ -1197,7 +1224,7 @@ mod on_the_fly_adapter_tests {
         }
     }
 
-    fn source_domains() -> Vec<DirectSourceDispatchDomainSpec> {
+    pub(in crate::engine) fn source_domains() -> Vec<DirectSourceDispatchDomainSpec> {
         vec![DirectSourceDispatchDomainSpec {
             variants: vec![DirectSourceDispatchVariantSpec {
                 key: DirectSourceDispatchKey::SpinStateClass(50_000),
