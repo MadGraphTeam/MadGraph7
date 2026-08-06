@@ -240,6 +240,11 @@ class ProcessExporterFortran(VirtualExporter):
     # finish with the plain scan once the orbit rounds have nothing left to
     # take as a whole (only used by the table emission, see below)
     jamp_greedy_tail = True
+    # Read the amplitudes of the current helicity into a buffer before running
+    # the definitions over it, instead of holding the definitions at the end of
+    # AMP. Needed where AMP is indexed by helicity, which is what madevent does
+    # once it rewrites the matrix element for helicity recycling.
+    jamp_gather = False
     # up to this many entries in the matrix, both optimisations are run and the
     # shorter result kept (see optimise_jamp_best)
     jamp_compare_max_size = 20000
@@ -2189,14 +2194,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         return ret_list
 
     @staticmethod
-    def get_int_data_lines(name, values, n=128):
+    def get_int_data_lines(name, values, n=128, var='i'):
         """DATA statements filling the one dimensional integer array name."""
 
         lines = []
         for start in range(0, len(values), n):
             chunk = values[start:start + n]
-            lines.append("      DATA (%s(i),i=%d,%d) /%s/" % \
-                         (name, start + 1, start + len(chunk),
+            lines.append("      DATA (%s(%s),%s=%d,%d) /%s/" % \
+                         (name, var, var, start + 1, start + len(chunk),
                           ','.join(str(int(v)) for v in chunk)))
         return lines
 
@@ -2727,7 +2732,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         self.jamp_recipes = recipes
 
         if recipes:
-            tmp_name = lambda k: "AMP(NGRAPHS+%d)" % k
+            buffer = self.jamp_buffer()
+            tmp_name = lambda k: "%s(NGRAPHS+%d)" % (buffer, k)
             defs = recipes['defs']
             res_list.append("C     The definitions below come in orbits of the")
             res_list.append("C     permutations leaving the color basis")
@@ -2742,6 +2748,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                 " + TMP_JAMP_F(ITMP)*AMP(TMP_JAMP_B(ITMP))")
                 res_list.append(" ENDDO")
             else:
+                if self.jamp_gather:
+                    res_list.append("C     the amplitudes of this helicity are")
+                    res_list.append("C     read into one array first, so that")
+                    res_list.append("C     the definitions below take both")
+                    res_list.append("C     their operands from the same place")
+                    res_list.append(" DO ITMP = 1, NGRAPHS")
+                    res_list.append("   %s(ITMP) = AMP(ITMP)" % buffer)
+                    res_list.append(" ENDDO")
                 res_list.append("C     the definitions of one level use none")
                 res_list.append("C     of each other, so they are sorted by")
                 res_list.append("C     the factor in front of the second")
@@ -2750,20 +2764,23 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 res_list.append(" DO ILEV = 1, NB_LEVEL")
                 res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-4),"
                                 " TMP_JAMP_L(5*ILEV-3)")
-                res_list.append("     AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
-                                " + AMP(TMP_JAMP_B(ITMP))")
+                res_list.append("     %s(NGRAPHS+ITMP) = %s(TMP_JAMP_A(ITMP))"
+                                " + %s(TMP_JAMP_B(ITMP))"
+                                % (buffer, buffer, buffer))
                 res_list.append("   ENDDO")
                 res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-3)+1,"
                                 " TMP_JAMP_L(5*ILEV-2)")
-                res_list.append("     AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
-                                " - AMP(TMP_JAMP_B(ITMP))")
+                res_list.append("     %s(NGRAPHS+ITMP) = %s(TMP_JAMP_A(ITMP))"
+                                " - %s(TMP_JAMP_B(ITMP))"
+                                % (buffer, buffer, buffer))
                 res_list.append("   ENDDO")
                 res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-2)+1,"
                                 " TMP_JAMP_L(5*ILEV-1)")
-                res_list.append("     AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
+                res_list.append("     %s(NGRAPHS+ITMP) = %s(TMP_JAMP_A(ITMP))"
                                 " + TMP_JAMP_F(TMP_JAMP_L(5*ILEV)+ITMP"
                                 "-TMP_JAMP_L(5*ILEV-2))"
-                                "*AMP(TMP_JAMP_B(ITMP))")
+                                "*%s(TMP_JAMP_B(ITMP))"
+                                % (buffer, buffer, buffer))
                 res_list.append("   ENDDO")
                 res_list.append(" ENDDO")
         else:
@@ -2789,7 +2806,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         max_jamp=0
         for (jamp, var), factor in new_mat.items():
             if var > 0:
-                name = AMP_format % var
+                name = ("%s(%%s)" % self.jamp_buffer()) % var \
+                       if (recipes and self.jamp_gather) else AMP_format % var
             else:
                 if recipes and recipes.get('factor_of'):
                     # the definitions were renumbered, and one of them can be
@@ -3457,14 +3475,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         return [levels[key] for key in sorted(levels)]
 
     @staticmethod
-    def jamp_number_data_lines(name, values, per_line):
+    def jamp_number_data_lines(name, values, per_line, var='IJMP'):
         """DATA statements filling one array with the given constants."""
 
         lines = []
         for start in range(0, len(values), per_line):
             chunk = values[start:start + per_line]
-            lines.append("      DATA (%s(i),i=%d,%d) /%s/" %
-                         (name, start + 1, start + len(chunk),
+            lines.append("      DATA (%s(%s),%s=%d,%d) /%s/" %
+                         (name, var, var, start + 1, start + len(chunk),
                           ','.join(chunk)))
         return lines
 
@@ -3492,8 +3510,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         bounds = recipes['bounds']
         lines = [
             "      INTEGER ITMP, ILEV",
-            "C     I is the loop variable of the DATA statements below",
-            "      INTEGER I",
+            "C     IJMP is the loop variable of the DATA statements below",
+            "      INTEGER IJMP",
             "      INTEGER NB_TMP_JAMP, NB_LEVEL, NB_GENERAL",
             "      PARAMETER (NB_TMP_JAMP=%d)" % nb_def,
             "      PARAMETER (NB_LEVEL=%d)" % len(bounds),
@@ -3502,10 +3520,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "      INTEGER TMP_JAMP_L(5*NB_LEVEL)",
             "      %s TMP_JAMP_F(NB_GENERAL)" % self.jamp_factor_type(recipes),
         ]
-        lines += self.get_int_data_lines("TMP_JAMP_A", left)
-        lines += self.get_int_data_lines("TMP_JAMP_B", right)
+        if self.jamp_gather:
+            lines.append("      COMPLEX*16 AMPBUF(%d+NB_TMP_JAMP)" % nb_amp)
+        lines += self.get_int_data_lines("TMP_JAMP_A", left,
+                                         var="IJMP")
+        lines += self.get_int_data_lines("TMP_JAMP_B", right,
+                                         var="IJMP")
         lines += self.get_int_data_lines("TMP_JAMP_L",
-                                         sum((list(b) for b in bounds), []))
+                                         sum((list(b) for b in bounds), []),
+                                         var="IJMP")
         assert len(bounds[0]) == 5
         if general:
             lines += self.jamp_number_data_lines("TMP_JAMP_F", factor,
@@ -3523,6 +3546,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         if value == int(value) and abs(value) < 1e15:
             return "%dD0" % int(value)
         return ("%.15e" % value).replace('e', 'd')
+
+    def jamp_buffer(self):
+        """Array the definitions and their operands are read from."""
+
+        return 'AMPBUF' if self.jamp_gather else 'AMP'
 
     @staticmethod
     def jamp_power_data(recipes):
@@ -3729,16 +3757,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
     def jamp_tables_allowed(self):
         """Whether the definitions may be read from a table rather than written
-        out. That needs the template to declare the arrays and to hold the
-        definitions at the end of AMP, which only the standalone one does.
+        out. Both the standalone and the madevent templates declare what that
+        needs; madevent reads the amplitudes of the current helicity into a
+        buffer first, see jamp_gather."""
 
-        Madevent cannot: with helicity recycling on, which is its default, the
-        matrix element is rewritten from a template of its own where AMP is
-        indexed by helicity as AMP(NCOMB,NGRAPHS) and only the JAMP lines are
-        carried over. The definitions are written out there, and only the
-        optimisation itself is shared."""
-
-        return not isinstance(self, ProcessExporterFortranME)
+        return True
 
     def jamp_orbit_allowed(self, matrix_element):
         """Whether the orbit equivariant optimisation is used here."""
@@ -6780,6 +6803,9 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
     matrix_file = "matrix_madevent_v4.inc"
     jamp_orbit = True
+    # AMP is indexed by helicity once the matrix element is rewritten for
+    # helicity recycling, so the definitions cannot sit at the end of it
+    jamp_gather = True
     done_warning_tchannel = False
     
     default_opt = {'clean': False, 'complex_mass':False,
@@ -7566,6 +7592,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         orbit=self.jamp_orbit_allowed(matrix_element))
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
         replace_dict['nb_temp_jamp'] = nb_temp
+        recipes = getattr(self, 'jamp_recipes', None)
+        replace_dict['jamp_decl'] = '\n'.join(
+                                self.get_jamp_decl_lines(recipes, ''))
+        replace_dict['jamp_tmp_decl'] = '' if recipes else \
+                            "    COMPLEX*16 TMP_JAMP(%i)" % nb_temp
 
         if self.beam_polarization == [True, True]:
             replace_dict['beam_polarization'] = """

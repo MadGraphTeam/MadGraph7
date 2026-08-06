@@ -234,7 +234,9 @@ C
 C LOCAL VARIABLES 
 C  
     INTEGER I,J,M,N,K
-    COMPLEX*16 ZTEMP,TMP_JAMP(%(nb_temp_jamp)i)
+    COMPLEX*16 ZTEMP
+%(jamp_tmp_decl)s
+%(jamp_decl)s
     COMPLEX*16 TMP(%(wavefunctionsize)d)
     INTEGER CF(NCOLOR*(NCOLOR+1))
     INTEGER DENOM, CF_INDEX
