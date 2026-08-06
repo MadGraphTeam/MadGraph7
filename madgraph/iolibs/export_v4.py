@@ -2780,6 +2780,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         for key in all_element:
             all_element[key] = complex(all_element[key])
         self.jamp_orbits = None
+
+        # Half the color flows are the reverse of the other half; where both of
+        # a pair weigh the same, only one is worked out and the other copied.
+        halving = self.get_jamp_halving(
+                        col_amps if symmetry_source is None else symmetry_source)
+        if halving:
+            kept = set(line + 1 for line in halving['representatives'])
+            all_element = dict((key, value)
+                               for key, value in all_element.items()
+                               if key[0] in kept)
+
         # the color basis is read from the matrix element, which is not always
         # what is passed here: the split order version hands over one list of
         # color amplitudes per order and says where they came from
@@ -2913,9 +2924,16 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             max_jamp = max(max_jamp, jamp)
         
         
+        if halving:
+            max_jamp = max(max_jamp, len(halving['reverse']))
         for i in range(1,max_jamp+1):
             name = JAMP_format % i
-            if not jamp_res[i]:
+            if halving and halving['reverse'][i - 1] < i - 1:
+                # the reverse of a flow already worked out. Only the color sum
+                # skips these; everything else reads the whole array.
+                res_list.append(" %s = %s" %
+                        (name, JAMP_format % (halving['reverse'][i - 1] + 1)))
+            elif not jamp_res[i]:
                 res_list.append(" %s = 0d0" %(name))
             else:
                 res_list.append(" %s = %s" %(name, '+'.join(jamp_res[i])))
@@ -3227,6 +3245,20 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         return {'reverse': reverse, 'sign': sign,
                 'representatives': representatives, 'slot': slot}
 
+    def get_jamp_halving(self, matrix_element):
+        """The folding, but only where it may also be used for the JAMP
+        definitions themselves. That needs sign +1: then both lines of a pair
+        weigh the same, a permutation of the lines is a permutation of the
+        pairs with nothing else attached, and what is left of the matrix is
+        still symmetric enough for the optimisation to work on. With sign -1 a
+        permutation may send a kept line onto its partner, which flips the
+        weight for that pair only."""
+
+        folding = self.get_jamp_folding(matrix_element)
+        if not folding or folding['sign'] < 0:
+            return None
+        return folding
+
     def jamp_folded_color_matrix(self, matrix_element, reverse, sign):
         """The color matrix over one line per reversal pair. Summing |M|^2 over
         the pairs instead of over every line gives the same number, since the
@@ -3340,12 +3372,21 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             return None
 
         nb_line = len(symmetry.keys1)
+        # with one line per reversal pair kept, a permutation of the lines is
+        # read as the permutation of the pairs it induces
+        halving = self.get_jamp_halving(matrix_element)
         rowperms, actions = [], []
         for induced in symmetry.generators1:
-            action = self.jamp_amp_permutation(columns, induced)
+            rowmap = induced
+            if halving:
+                kept_lines = halving['representatives']
+                rowmap = list(range(nb_line))
+                for line in kept_lines:
+                    rowmap[line] = kept_lines[halving['slot'][induced[line]]]
+            action = self.jamp_amp_permutation(columns, rowmap)
             if action is None:
                 continue
-            rowperms.append([0] + [induced[i] + 1 for i in range(nb_line)])
+            rowperms.append([0] + [rowmap[i] + 1 for i in range(nb_line)])
             actions.append(action)
         if not actions:
             return None
@@ -3368,6 +3409,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 if ri != rj:
                     parent[ri] = rj
         line_reps = [i for i in range(1, nb_line + 1) if find(i) == i]
+        if halving:
+            kept = set(line + 1 for line in halving['representatives'])
+            line_reps = [i for i in line_reps if i in kept] or sorted(kept)[:1]
 
         return {'rowperms': rowperms, 'actions': actions,
                 'nb_line': nb_line, 'line_reps': line_reps}
