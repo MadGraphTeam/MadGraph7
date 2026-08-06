@@ -1337,14 +1337,15 @@ class TestMECmdShell(unittest.TestCase):
     def test_flavor_grouping_consistency_mg7(self):
         """mg7 equivalent of test_flavor_grouping_consistency for p p > l+ l-.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 currently returns
-        cross-sections that depend on the apply_flavor_grouping setting (e.g.
-        ~1332 pb grouped vs ~511 pb ungrouped) because the broken-symmetry
-        (flavour-consolidation) factor implemented for standalone /
-        standalone_cpp is not yet applied on the mg7 (madmatrix) side. The four
-        settings must agree; the test asserts that and is left undecorated so the
-        mg7 flavour-grouping discrepancy stays visible until broken_sym is ported
-        to mg7. It self-skips where the mg7 runtime stack is unavailable.
+        The four settings must all give the same cross-section. They used not
+        to (~1336 pb grouped vs ~538 pb ungrouped): a matrix element carries
+        flavor multiplicity either in its merged legs (apply_flavor_grouping=
+        True) or in the several processes mapped onto it (grouping off), and the
+        mg7 exporter only enumerated the first, so with grouping off it kept 4
+        of the 16 channels of p p > l+ l- -- dropping c/s in the initial state
+        and mu+ mu- entirely. Both sources are now walked through the shared
+        HelasMatrixElement.get_flavor_pdg_combinations. It self-skips where the
+        mg7 runtime stack is unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
         settings = [
