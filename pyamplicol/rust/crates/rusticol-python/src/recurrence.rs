@@ -1103,7 +1103,7 @@ pub(crate) fn _on_the_fly_query_family_census_v1(
             )?;
             on_the_fly_query_family_census_v1(
                 &authenticated,
-                direct_catalog.catalog_digest,
+                &direct_catalog.catalog,
                 &queries,
                 enable_color_projection,
             )

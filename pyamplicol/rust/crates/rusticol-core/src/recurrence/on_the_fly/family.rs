@@ -9,6 +9,7 @@
 
 use super::trace::{OnTheFlyTraceContributionProofRowV1, OnTheFlyTraceOperationV1};
 use super::*;
+use crate::recurrence::PreparedDirectExecutorCatalog;
 use crate::recurrence::construct::current_key_with_dynamic_color;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -176,6 +177,21 @@ fn current_id_by_component_base(
         .ok_or_else(|| integrity(format!("{label} current component base is absent")))
 }
 
+fn prepared_executor_id(
+    catalog: &PreparedDirectExecutorCatalog,
+    key: OnTheFlyExecutorKeyV1,
+) -> RusticolResult<u32> {
+    if key.direct_catalog_digest() != catalog.direct_template_catalog_digest() {
+        return Err(integrity(
+            "query-family executor key belongs to a different prepared catalog",
+        ));
+    }
+    match key.evaluator_binding_id() {
+        Some(binding_id) => catalog.resolve_evaluator(key.role(), binding_id),
+        None => catalog.resolve_identity_finalizer(),
+    }
+}
+
 /// Analyze the exact traces requested by one existing selector-family call.
 ///
 /// Equal normalized [`CurrentCoreKey`] values are merged only when their
@@ -183,6 +199,7 @@ fn current_id_by_component_base(
 /// duplicates fail closed.  Closures remain distinct per requested query so a
 /// future executable union cannot lose an amplitude destination.
 fn query_family_census_from_traces(
+    direct_catalog: &PreparedDirectExecutorCatalog,
     selected: &[QueryFamilyTraceInput<'_>],
 ) -> RusticolResult<OnTheFlyQueryFamilyCensusV1> {
     let first = selected
@@ -486,7 +503,11 @@ fn query_family_census_from_traces(
                             "query-local closure does not target its sole amplitude",
                         ));
                     }
-                    closure_groups.insert((trace.seed_digest, source_count, *key));
+                    closure_groups.insert((
+                        trace.seed_digest,
+                        source_count,
+                        prepared_executor_id(direct_catalog, *key)?,
+                    ));
                     add(&mut census.dynamic_closure_rows, 1, "dynamic closure rows")?;
                 }
             }
@@ -554,7 +575,12 @@ fn query_family_census_from_traces(
         .map_err(|_| invalid("query-family current stage exceeds u32"))?;
         if let Some(source) = &definition.source {
             add(&mut census.union_source_rows, 1, "union source rows")?;
-            source_groups.insert((*seed_digest, stage, source.executor));
+            source_groups.insert((
+                *seed_digest,
+                stage,
+                prepared_executor_id(direct_catalog, source.executor)?,
+                source.selector_domain_id,
+            ));
         }
         for contribution in &definition.contributions {
             add(
@@ -562,7 +588,12 @@ fn query_family_census_from_traces(
                 1,
                 "union contribution rows",
             )?;
-            contribution_groups.insert((*seed_digest, stage, contribution.executor));
+            contribution_groups.insert((
+                *seed_digest,
+                stage,
+                prepared_executor_id(direct_catalog, contribution.executor)?,
+                contribution.selector_domain_id,
+            ));
         }
         if let Some(finalization) = &definition.finalization {
             add(
@@ -570,7 +601,12 @@ fn query_family_census_from_traces(
                 1,
                 "union finalization rows",
             )?;
-            finalization_groups.insert((*seed_digest, stage, finalization.executor));
+            finalization_groups.insert((
+                *seed_digest,
+                stage,
+                prepared_executor_id(direct_catalog, finalization.executor)?,
+                finalization.selector_domain_id,
+            ));
         }
     }
     census.union_unique_current_count = checked_u32(definitions.len(), "union current count")?;
@@ -614,7 +650,7 @@ fn query_family_census_from_traces(
 #[doc(hidden)]
 pub fn on_the_fly_query_family_census_v1(
     authenticated: &crate::recurrence::AuthenticatedRecurrenceBuilderInput,
-    direct_catalog_digest: SemanticDigest,
+    direct_catalog: &PreparedDirectExecutorCatalog,
     queries: &[(u32, Vec<i32>)],
     enable_projection: bool,
 ) -> RusticolResult<OnTheFlyQueryFamilyCensusV1> {
@@ -623,7 +659,7 @@ pub fn on_the_fly_query_family_census_v1(
         .map(|(flow, helicities)| {
             super::test_support::build_on_the_fly_selected_trace_v1(
                 authenticated,
-                direct_catalog_digest,
+                direct_catalog.direct_template_catalog_digest(),
                 *flow,
                 helicities,
                 enable_projection,
@@ -646,19 +682,36 @@ pub fn on_the_fly_query_family_census_v1(
             projection: selected_query.projection,
         })
         .collect::<Vec<_>>();
-    query_family_census_from_traces(&traces)
+    query_family_census_from_traces(direct_catalog, &traces)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recurrence::ExactRational;
+    use crate::recurrence::{
+        ExactRational, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,
+    };
 
     fn factor(numerator: i128) -> ExactComplexRational {
         ExactComplexRational::new(
             ExactRational::new(numerator, 1).unwrap(),
             ExactRational::ZERO,
         )
+    }
+
+    fn direct_catalog() -> PreparedDirectExecutorCatalog {
+        let digest = SemanticDigest::new([0x71; 32]).unwrap();
+        PreparedDirectExecutorCatalog::new(
+            digest,
+            vec![
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Source, 0, 0),
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Source, 1, 0),
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Contribution, 2, 1),
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Finalization, 3, 2),
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Closure, 4, 3),
+            ],
+        )
+        .unwrap()
     }
 
     #[test]
@@ -668,16 +721,19 @@ mod tests {
         let (mut second, second_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
         second.test_remap_dynamic_color_id(7);
-        let census = query_family_census_from_traces(&[
-            QueryFamilyTraceInput {
-                trace: &first,
-                projection: first_projection,
-            },
-            QueryFamilyTraceInput {
-                trace: &second,
-                projection: second_projection,
-            },
-        ])
+        let census = query_family_census_from_traces(
+            &direct_catalog(),
+            &[
+                QueryFamilyTraceInput {
+                    trace: &first,
+                    projection: first_projection,
+                },
+                QueryFamilyTraceInput {
+                    trace: &second,
+                    projection: second_projection,
+                },
+            ],
+        )
         .unwrap();
 
         assert_eq!(census.query_count, 2);
@@ -706,10 +762,30 @@ mod tests {
         assert_eq!(census.union_finalization_rows, 1);
         assert_eq!(census.union_closure_rows, 2);
         assert_eq!(census.union_amplitude_destination_count, 2);
-        assert_eq!(census.union_source_executor_call_groups, 2);
+        assert_eq!(census.union_source_executor_call_groups, 1);
         assert_eq!(census.union_contribution_executor_call_groups, 1);
         assert_eq!(census.union_finalization_executor_call_groups, 1);
         assert_eq!(census.union_closure_executor_call_groups, 1);
+    }
+
+    #[test]
+    fn query_family_groups_distinct_semantic_operations_by_prepared_executor() {
+        let (trace, projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let census = query_family_census_from_traces(
+            &direct_catalog(),
+            &[QueryFamilyTraceInput {
+                trace: &trace,
+                projection,
+            }],
+        )
+        .unwrap();
+
+        // The two source operations have different authenticated operation and
+        // evaluator-binding identities, but the prepared catalog deliberately
+        // maps both onto one Direct-Arena source executor.
+        assert_eq!(census.union_source_rows, 2);
+        assert_eq!(census.union_source_executor_call_groups, 1);
     }
 
     #[test]
@@ -718,16 +794,19 @@ mod tests {
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
         let (second, second_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(2));
-        let error = query_family_census_from_traces(&[
-            QueryFamilyTraceInput {
-                trace: &first,
-                projection: first_projection,
-            },
-            QueryFamilyTraceInput {
-                trace: &second,
-                projection: second_projection,
-            },
-        ])
+        let error = query_family_census_from_traces(
+            &direct_catalog(),
+            &[
+                QueryFamilyTraceInput {
+                    trace: &first,
+                    projection: first_projection,
+                },
+                QueryFamilyTraceInput {
+                    trace: &second,
+                    projection: second_projection,
+                },
+            ],
+        )
         .unwrap_err();
         assert!(error.to_string().contains("conflicting definitions"));
     }
@@ -740,16 +819,19 @@ mod tests {
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
         second.seed_digest = SemanticDigest::new([0x83; 32]).unwrap();
 
-        let census = query_family_census_from_traces(&[
-            QueryFamilyTraceInput {
-                trace: &first,
-                projection: first_projection,
-            },
-            QueryFamilyTraceInput {
-                trace: &second,
-                projection: second_projection,
-            },
-        ])
+        let census = query_family_census_from_traces(
+            &direct_catalog(),
+            &[
+                QueryFamilyTraceInput {
+                    trace: &first,
+                    projection: first_projection,
+                },
+                QueryFamilyTraceInput {
+                    trace: &second,
+                    projection: second_projection,
+                },
+            ],
+        )
         .unwrap();
         assert_eq!(census.source_frame_partition_count, 2);
         assert_eq!(census.union_unique_current_count, 6);
@@ -757,7 +839,7 @@ mod tests {
         assert_eq!(census.union_contribution_rows, 2);
         assert_eq!(census.union_finalization_rows, 2);
         assert_eq!(census.union_closure_rows, 2);
-        assert_eq!(census.union_source_executor_call_groups, 4);
+        assert_eq!(census.union_source_executor_call_groups, 2);
         assert_eq!(census.union_contribution_executor_call_groups, 2);
         assert_eq!(census.union_finalization_executor_call_groups, 2);
         assert_eq!(census.union_closure_executor_call_groups, 2);
@@ -767,16 +849,19 @@ mod tests {
     fn query_family_union_rejects_repeated_queries_and_stale_projection_proofs() {
         let (trace, projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
-        let repeated = query_family_census_from_traces(&[
-            QueryFamilyTraceInput {
-                trace: &trace,
-                projection,
-            },
-            QueryFamilyTraceInput {
-                trace: &trace,
-                projection,
-            },
-        ])
+        let repeated = query_family_census_from_traces(
+            &direct_catalog(),
+            &[
+                QueryFamilyTraceInput {
+                    trace: &trace,
+                    projection,
+                },
+                QueryFamilyTraceInput {
+                    trace: &trace,
+                    projection,
+                },
+            ],
+        )
         .unwrap_err();
         assert!(repeated.to_string().contains("repeats a selected query"));
 
@@ -784,10 +869,13 @@ mod tests {
             post: [2, 1, 1],
             ..projection
         };
-        let error = query_family_census_from_traces(&[QueryFamilyTraceInput {
-            trace: &trace,
-            projection: stale,
-        }])
+        let error = query_family_census_from_traces(
+            &direct_catalog(),
+            &[QueryFamilyTraceInput {
+                trace: &trace,
+                projection: stale,
+            }],
+        )
         .unwrap_err();
         assert!(
             error
