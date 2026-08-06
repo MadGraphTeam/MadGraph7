@@ -112,6 +112,20 @@ namespace mg5amcCpu
     static Parameters* instance;
   };
 
+  // Generic readers for initProc: dereference an array of pointer-to-Parameters-member
+  // (a per-process compile-time table) into a matching array of tIPD/tIPC values.
+  template<int N>
+  inline void gatherFptype( const Parameters* pars, double Parameters::* const ( &members )[N], fptype ( &out )[N] )
+  {
+    for( int i = 0; i < N; ++i ) out[i] = (fptype)( pars->*members[i] );
+  }
+
+  template<int N>
+  inline void gatherCxtype( const Parameters* pars, cxtype Parameters::* const ( &members )[N], cxtype ( &out )[N] )
+  {
+    for( int i = 0; i < N; ++i ) out[i] = cxmake( pars->*members[i] );
+  }
+
 } // end namespace mg5amcGpu/mg5amcCpu
 
 #else%(eftwarn1)s

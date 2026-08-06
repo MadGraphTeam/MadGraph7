@@ -32,6 +32,14 @@ namespace ProcessData
   constexpr int nIPC = %(nipc)d;
   constexpr int nIPF = %(nipf)d;
   constexpr int nDPF = %(ndpf)d;
+
+  // Helicities for the process [NB do keep 'static' for this constexpr array, see issue #283]
+  // *** NB There is no automatic check yet that these are in the same order as Fortran! #569 ***
+%(thel_lines)s
+
+  // Host-side flavor table: single source of truth for PDG ids (used by both
+  // CPPProcess's constructor copy into cFlavors and CPPProcess::flavorPDG).
+%(tflavors_lines)s
 }
 
 // Process identification for test/debug tooling. Must stay #define (not

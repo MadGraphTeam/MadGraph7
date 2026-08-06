@@ -7,6 +7,9 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
+#include <sstream>
+#include <string>
+
 // Is this a GPU (CUDA, HIP) or CPU implementation?
 #ifdef __CUDACC__ // this must be __CUDACC__
 #define MGONGPUCPP_GPUIMPL cuda
@@ -188,6 +191,70 @@ namespace mgOnGpu
   // (using reinterpret_cast with non aligned memory may lead to segmentation faults!)
   // Only needed for C++ code but can be enforced also in NVCC builds of C++ code using CUDA>=11.2 and C++17 (#318, #319, #333)
 
+  // Retrieve the compiler that was used to build this module
+  inline std::string
+  getCompiler()
+  {
+    std::stringstream out;
+    // HIP version (HIPCC)
+    // [Use __HIPCC__ instead of MGONGPUCPP_GPUIMPL here!]
+    // [This tests if 'hipcc' was used even to build a .cc file, even if not necessarily 'nvcc -x cu' for a .cu file]
+    // [Check 'hipcc -dM -E -x hip -I ../../src CPPProcess.cc | grep HIP']
+#ifdef __HIPCC__
+#if defined HIP_VERSION_MAJOR && defined HIP_VERSION_MINOR && defined HIP_VERSION_PATCH
+    out << "hipcc " << HIP_VERSION_MAJOR << "." << HIP_VERSION_MINOR << "." << HIP_VERSION_PATCH;
+#else
+    out << "hipcc UNKNOWN";
+#endif
+    out << " (";
+#endif
+    // CUDA version (NVCC)
+    // [Use __NVCC__ instead of MGONGPUCPP_GPUIMPL here!]
+    // [This tests if 'nvcc' was used even to build a .cc file, even if not necessarily 'nvcc -x cu' for a .cu file]
+    // [Check 'nvcc --compiler-options -dM -E dummy.c | grep CUDA': see https://stackoverflow.com/a/53713712]
+#ifdef __NVCC__
+#if defined __CUDACC_VER_MAJOR__ && defined __CUDACC_VER_MINOR__ && defined __CUDACC_VER_BUILD__
+    out << "nvcc " << __CUDACC_VER_MAJOR__ << "." << __CUDACC_VER_MINOR__ << "." << __CUDACC_VER_BUILD__;
+#else
+    out << "nvcc UNKNOWN";
+#endif
+    out << " (";
+#endif
+    // ICX version (either as CXX or as host compiler inside NVCC)
+#if defined __INTEL_COMPILER
+#error "icc is no longer supported: please use icx"
+#elif defined __INTEL_LLVM_COMPILER // alternative: __INTEL_CLANG_COMPILER
+    out << "icx " << __INTEL_LLVM_COMPILER;
+#ifdef __NVCC__
+    out << ", ";
+#else
+    out << " (";
+#endif
+#endif
+    // CLANG version (either as CXX or as host compiler inside NVCC or inside ICX)
+#if defined __clang__
+#if defined __clang_major__ && defined __clang_minor__ && defined __clang_patchlevel__
+#ifdef __APPLE__
+    out << "Apple clang " << __clang_major__ << "." << __clang_minor__ << "." << __clang_patchlevel__;
+#else
+    out << "clang " << __clang_major__ << "." << __clang_minor__ << "." << __clang_patchlevel__;
+#endif
+#else
+    out << "clang UNKNOWKN";
+#endif
+#else
+    // GCC version (either as CXX or as host compiler inside NVCC)
+#if defined __GNUC__ && defined __GNUC_MINOR__ && defined __GNUC_PATCHLEVEL__
+    out << "gcc " << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__;
+#else
+    out << "gcc UNKNOWKN";
+#endif
+#endif
+#if defined __HIPCC__ or defined __NVCC__ or defined __INTEL_LLVM_COMPILER
+    out << ")";
+#endif
+    return out.str();
+  }
 }
 
 // Expose typedefs and operators outside the namespace

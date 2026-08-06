@@ -1539,7 +1539,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_process_function_definitions(self, write=True):
         """The complete class definition for the process"""
         replace_dict = super().get_process_function_definitions(write=False) # defines replace_dict['initProc_lines']
-        replace_dict['hardcoded_initProc_lines'] = replace_dict['initProc_lines'].replace( 'm_pars->', 'Parameters::')
+        replace_dict['hardcoded_initProc_lines'] = self.get_hardcoded_initProc_lines(self.matrix_elements[0])
         replace_dict['nparams'] = len(self.params2order)
         replace_dict['coupling_list'] = ' '
         replace_dict['hel_amps_cc'] = '#include \"HelAmps_%s.cc\"' % self.model_name # AV
@@ -1572,8 +1572,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self._ndpf = len(flv_couplings_dep)
 
         if len(coupling_indep) > 0:
-            replace_dict['cipcassign'] = 'const cxtype tIPC[nIPC] = { cxmake( m_pars->%s ) };\n    setIndependentCouplings( tIPC );'\
-                                         % ( ' ), cxmake( m_pars->'.join(coupling_indep) ) # AV only indep!
+            replace_dict['cipcassign'] = ('static constexpr cxtype Parameters::* const cIPC_members[nIPC] = {\n'
+                                           '      &Parameters::' + ',\n      &Parameters::'.join(coupling_indep) + '\n'
+                                           '    };\n'
+                                           '    cxtype tIPC[nIPC];\n'
+                                           '    gatherCxtype( m_pars, cIPC_members, tIPC );\n'
+                                           '    setIndependentCouplings( tIPC );')
             coup_str_hrd = 'const cxtype tIPC[nIPC] = { cxmake( Parameters::%s ) };\n    setIndependentCouplings( tIPC );'\
                                          % ( ' ), cxmake( Parameters::'.join(coupling_indep) )
             replace_dict['cipchrdassign'] = coup_str_hrd
@@ -1582,8 +1586,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             replace_dict['cipchrdassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
 
         if len(params) > 0:
-            replace_dict['cipdassign'] = 'const fptype tIPD[nIPD] = { (fptype)m_pars->%s };\n    setIndependentParams( tIPD );'\
-                                         %( ', (fptype)m_pars->'.join(params) )
+            replace_dict['cipdassign'] = ('static constexpr double Parameters::* const cIPD_members[nIPD] = {\n'
+                                           '      &Parameters::' + ',\n      &Parameters::'.join(params) + '\n'
+                                           '    };\n'
+                                           '    fptype tIPD[nIPD];\n'
+                                           '    gatherFptype( m_pars, cIPD_members, tIPD );\n'
+                                           '    setIndependentParams( tIPD );')
             replace_dict['cipdhrdassign'] = 'const fptype tIPD[nIPD] = { (fptype)Parameters::%s };\n    setIndependentParams( tIPD );'\
                                          %( ', (fptype)Parameters::'.join(params) )
         else:
@@ -1631,11 +1639,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['bsmhrdassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( Parameters::mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
-
-        replace_dict['all_helicities'] = self.get_helicity_matrix(self.matrix_elements[0])
-        replace_dict['all_helicities'] = replace_dict['all_helicities'] .replace('helicities', 'tHel')
-        replace_dict['all_flavors'] = self.get_flavor_matrix(self.matrix_elements[0])
-        replace_dict['all_flavors'] = replace_dict['all_flavors'].replace('flavors', 'tFlavors')
 
         file = self.read_template_file(self.process_definition_template) % replace_dict # HACK! ignore write=False case
         if len(params) == 0: # remove cIPD from OpenMP pragma (issue #349)
@@ -1765,6 +1768,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['ndpf'] = self._ndpf
         replace_dict['processid'] = self.name
         replace_dict['processid_uppercase'] = self.name.upper()
+        replace_dict['thel_lines'] = self.get_helicity_matrix(me).replace('helicities', 'tHel')
+        replace_dict['tflavors_lines'] = self.get_flavor_matrix(me).replace('flavors', 'tFlavors')
         ff = open(pjoin(self.path, 'ProcessData.h'), 'w')
         ff.write(template % replace_dict)
         ff.close()
@@ -1976,24 +1981,31 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (improve formatting)
     def get_initProc_lines(self, matrix_element, color_amplitudes):
-        """Get initProc_lines for function definition for CPPProcess::initProc"""
-        initProc_lines = []
-        initProc_lines.append('// Set external particle masses for this matrix element')
+        """initProc_lines for CPPProcess::initProc (non-hardcoded branch): a generated pointer-to-member table read by gatherFptype() (see Parameters.h)."""
+        masses = [part.get('mass') for part in matrix_element.get_external_wavefunctions()]
+        return ('// Set external particle masses for this matrix element\n'
+                '    static constexpr double Parameters::* const massMembers[npar] = {\n'
+                '      &Parameters::' + ',\n      &Parameters::'.join(masses) + '\n'
+                '    };\n'
+                '    fptype tMasses[npar];\n'
+                '    gatherFptype( m_pars, massMembers, tMasses );\n'
+                '    m_masses.assign( tMasses, tMasses + npar );')
+
+    def get_hardcoded_initProc_lines(self, matrix_element):
+        """initProc_lines for CPPProcess::initProc, MGONGPU_HARDCODE_PARAM branch: Parameters has no instance here, so this stays imperative."""
+        initProc_lines = ['// Set external particle masses for this matrix element']
         for part in matrix_element.get_external_wavefunctions():
-            ###initProc_lines.append('mME.push_back(pars->%s);' % part.get('mass'))
-            initProc_lines.append('    m_masses.push_back( m_pars->%s );' % part.get('mass')) # AV
-        ###for i, colamp in enumerate(color_amplitudes):
-        ###    initProc_lines.append('jamp2_sv[%d] = new double[%d];' % (i, len(colamp))) # AV - this was commented out already
+            initProc_lines.append('    m_masses.push_back( Parameters::%s );' % part.get('mass'))
         return '\n'.join(initProc_lines)
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix helicity order and improve formatting)
     def get_helicity_matrix(self, matrix_element):
         """Return the Helicity matrix definition lines for this matrix element"""
-        helicity_line = '    static constexpr short helicities[ncomb][npar] = {\n      '; # AV (this is tHel)
+        helicity_line = '  static constexpr short helicities[ncomb][npar] = {\n    '; # AV (this is tHel)
         helicity_line_list = []
         for helicities in matrix_element.get_helicity_matrix(allow_reverse=True): # AV was False: different order in Fortran and cudacpp! #569
             helicity_line_list.append( '{ ' + ', '.join(['%d'] * len(helicities)) % tuple(helicities) + ' }' ) # AV
-        return helicity_line + ',\n      '.join(helicity_line_list) + ' };' # AV
+        return helicity_line + ',\n    '.join(helicity_line_list) + ' };' # AV
 
     def get_flavor_matrix(self, matrix_element):
         """Return the flavor matrix definition lines for this matrix element"""

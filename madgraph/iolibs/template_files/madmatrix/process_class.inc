@@ -25,9 +25,6 @@
     // Initialize process (read model parameters from file)
     virtual void initProc( const std::string& param_card_name );
 
-    // Retrieve the compiler that was used to build this module
-    static const std::string getCompiler();
-
     // PDG id for a given flavor combination index and particle index (0-based).
     // Useful for tools that need to enumerate flavor combinations without going through UMAMI.
     static int flavorPDG( int iflavor, int ipar );
