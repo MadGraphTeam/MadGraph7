@@ -3167,6 +3167,19 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             orbits.append((orbit, parent))
         return orbits
 
+    @staticmethod
+    def jamp_i_power(factor):
+        """The exponent of i this factor is, or None when it is not one of the
+        four powers of i. The factors the optimisation produces are products of
+        signs and of the i the color coefficients carry, so this is what they
+        all are in practice."""
+
+        value = complex(factor)
+        for exponent, power in enumerate((1, 1j, -1, -1j)):
+            if value == power:
+                return exponent
+        return None
+
     def jamp_orbit_recipes(self, defs, nb_amp):
         """Describe the definitions by one recipe per orbit: the amplitude
         permutations, the first definition of every orbit, and the definitions
@@ -3184,15 +3197,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         actions = orbits['actions']
         nb_orbit = orbits['nb_orbit']
 
-        # only a plain sign in front of a definition can be carried by the
-        # index of that definition alone, which is what keeps the generated
-        # routine to integer arithmetic
+        # Every factor has to be a power of i. They then form a group of four
+        # elements, so the walk can carry them as an exponent modulo four and
+        # stays integer arithmetic whatever the process.
         for one_def in defs:
-            if one_def[3] not in (1, -1):
+            if self.jamp_i_power(one_def[3]) is None:
                 return None
         for action in actions:
             for column, (_image, factor) in action.items():
-                if column < 0 and factor not in (1, -1):
+                if column < 0 and self.jamp_i_power(factor) is None:
                     return None
 
         # first definition of every orbit
@@ -3236,8 +3249,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 return None
             permutations.append(row)
 
+        # an odd power of i anywhere means the factor in front of the second
+        # operand is not real, and the array holding it has to be complex
+        complex_factor = any(recipe[2] % 2 for recipe in recipes) or \
+                         any(self.jamp_i_power(one[3]) % 2 for one in new_defs)
         return {'permutations': permutations, 'recipes': recipes,
-                'defs': new_defs, 'nb_amp': nb_amp, 'factor_of': factor_of}
+                'defs': new_defs, 'nb_amp': nb_amp, 'factor_of': factor_of,
+                'complex_factor': complex_factor}
 
     @staticmethod
     def jamp_hash_size(nb_def):
@@ -3254,6 +3272,24 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             else:
                 return candidate
 
+    @staticmethod
+    def jamp_power_data(recipes):
+        """DATA statement for the four powers of i, real when none of them is
+        actually needed."""
+
+        if recipes['complex_factor']:
+            return "      DATA IPOW/(1D0,0D0),(0D0,1D0),(-1D0,0D0)," \
+                   "(0D0,-1D0)/"
+        return "      DATA IPOW/1D0,0D0,-1D0,0D0/"
+
+    @staticmethod
+    def jamp_factor_type(recipes):
+        """The factor in front of the second operand is a power of i, so it is
+        only complex when one of those powers is odd."""
+
+        return "COMPLEX*16" if recipes['complex_factor'] \
+                            else "DOUBLE PRECISION"
+
     def get_jamp_decl_lines(self, recipes, proc_prefix):
         """The declarations GET_JAMP needs to run the definitions."""
 
@@ -3264,7 +3300,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "      INTEGER NB_TMP_JAMP",
             "      PARAMETER (NB_TMP_JAMP=%d)" % len(recipes['defs']),
             "      INTEGER TMP_JAMP_A(NB_TMP_JAMP), TMP_JAMP_B(NB_TMP_JAMP)",
-            "      DOUBLE PRECISION TMP_JAMP_F(NB_TMP_JAMP)",
+            "      %s TMP_JAMP_F(NB_TMP_JAMP)" % self.jamp_factor_type(recipes),
             "      COMMON /%sjamp_recipe/ TMP_JAMP_A,TMP_JAMP_B,TMP_JAMP_F" % \
                                                                   proc_prefix,
         ]
@@ -3288,21 +3324,24 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "      PARAMETER (NB_TMP_JAMP=%d)" % nb_def,
             "      PARAMETER (NB_HASH=%d)" % nb_hash,
             "      INTEGER TMP_JAMP_A(NB_TMP_JAMP), TMP_JAMP_B(NB_TMP_JAMP)",
-            "      DOUBLE PRECISION TMP_JAMP_F(NB_TMP_JAMP)",
+            "      %s TMP_JAMP_F(NB_TMP_JAMP)" % self.jamp_factor_type(recipes),
             "      COMMON /%sjamp_recipe/ TMP_JAMP_A,TMP_JAMP_B,TMP_JAMP_F" % \
                                                                   proc_prefix,
             "      INTEGER NUSED",
+            "      INTEGER TMP_JAMP_E(NB_TMP_JAMP)",
             "      INTEGER HVAL(NB_HASH)",
             "      INTEGER*8 HKEY(NB_HASH)",
-            "      COMMON /%sjamp_build/ NUSED,HVAL,HKEY" % proc_prefix,
+            "      COMMON /%sjamp_build/ NUSED,TMP_JAMP_E,HVAL,HKEY" % \
+                                                                  proc_prefix,
         ]
 
         add = [
             "      SUBROUTINE %sJAMP_ADD(A,B,F,M,SWAP)" % proc_prefix,
-            "C     The definition A + F*B, added if it is not there yet.",
-            "C     Its two operands the other way round give the very same",
-            "C     column times F, so that one is looked for as well and SWAP",
-            "C     says which of the two was found.",
+            "C     The definition A + i**F*B, added if it is not there yet.",
+            "C     Its two operands the other way round, with the inverse",
+            "C     factor, give the very same column times i**F, so that one",
+            "C     is looked for too; SWAP is the exponent relating what was",
+            "C     asked for to what was found.",
             "      IMPLICIT NONE",
             "      INTEGER A,B,F,M,SWAP",
         ] + common + [
@@ -3310,9 +3349,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "      INTEGER*8 KEY, OTHER, BASE",
             "      SHIFT = NB_TMP_JAMP + 1",
             "      BASE = NGRAPHS + NB_TMP_JAMP + 2",
-            "      KEY = ((A+SHIFT)*BASE+(B+SHIFT))*2+(1-F)/2+1",
-            "      OTHER = ((B+SHIFT)*BASE+(A+SHIFT))*2+(1-F)/2+1",
-            "      SWAP = 1",
+            "      KEY = ((A+SHIFT)*BASE+(B+SHIFT))*4+F+1",
+            "      OTHER = ((B+SHIFT)*BASE+(A+SHIFT))*4+MOD(4-F,4)+1",
+            "      SWAP = 0",
             "      H = INT(MOD(KEY,INT(NB_HASH,8)))+1",
             "      DO WHILE (HKEY(H) .NE. 0)",
             "        IF (HKEY(H) .EQ. KEY) THEN",
@@ -3337,7 +3376,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "      M = NUSED",
             "      TMP_JAMP_A(M) = A",
             "      TMP_JAMP_B(M) = B",
-            "      TMP_JAMP_F(M) = F",
+            "      TMP_JAMP_E(M) = F",
             "      HKEY(FREE) = KEY",
             "      HVAL(FREE) = M",
             "      END",
@@ -3358,10 +3397,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "      INTEGER JPERM(NGRAPHS*NB_PERM)",
             "      INTEGER JREC(3*NB_ORBIT)",
             "      INTEGER JIMG(NB_TMP_JAMP*NB_PERM)",
-            "      INTEGER I,J,P,A,B,T,SA,SB,M,SWAP,BEGIN",
+            "      INTEGER JIMGE(NB_TMP_JAMP*NB_PERM)",
+            "      INTEGER I,J,P,A,B,T,EA,EB,M,SWAP,BEGIN",
+            "      %s IPOW(0:3)" % self.jamp_factor_type(recipes),
+            self.jamp_power_data(recipes),
             "      LOGICAL JAMP_DONE",
             "      DATA JAMP_DONE/.FALSE./",
-            "      SAVE JAMP_DONE, JIMG",
+            "      SAVE JAMP_DONE, JIMG, JIMGE",
         ]
         body += self.get_int_data_lines("JPERM",
                                         sum(recipes['permutations'], []))
@@ -3384,27 +3426,32 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "        DO WHILE (J .LT. NUSED)",
             "          J = J+1",
             "          DO P = 1, NB_PERM",
+            "C           an amplitude is permuted with a sign, which is the",
+            "C           exponent 0 or 2; a definition brings its own exponent",
             "            A = TMP_JAMP_A(J)",
             "            IF (A .GT. 0) THEN",
             "              T = JPERM((P-1)*NGRAPHS+A)",
             "              A = ABS(T)",
+            "              EA = (1-ISIGN(1,T))",
             "            ELSE",
-            "              T = JIMG((-A-1)*NB_PERM+P)",
-            "              A = -ABS(T)",
+            "              A = -JIMG((-A-1)*NB_PERM+P)",
+            "              EA = JIMGE((-TMP_JAMP_A(J)-1)*NB_PERM+P)",
             "            ENDIF",
-            "            SA = ISIGN(1,T)",
             "            B = TMP_JAMP_B(J)",
             "            IF (B .GT. 0) THEN",
             "              T = JPERM((P-1)*NGRAPHS+B)",
             "              B = ABS(T)",
+            "              EB = (1-ISIGN(1,T))",
             "            ELSE",
-            "              T = JIMG((-B-1)*NB_PERM+P)",
-            "              B = -ABS(T)",
+            "              B = -JIMG((-B-1)*NB_PERM+P)",
+            "              EB = JIMGE((-TMP_JAMP_B(J)-1)*NB_PERM+P)",
             "            ENDIF",
-            "            SB = ISIGN(1,T)",
-            "            T = SA*SB*NINT(TMP_JAMP_F(J))",
+            "C           the image is A' + i**(e+eb-ea)*B', and the column it",
+            "C           defines is i**ea times the image of this one",
+            "            T = MOD(TMP_JAMP_E(J)+EB-EA+8,4)",
             "            CALL %sJAMP_ADD(A,B,T,M,SWAP)" % proc_prefix,
-            "            JIMG((J-1)*NB_PERM+P) = SA*SWAP*M",
+            "            JIMG((J-1)*NB_PERM+P) = M",
+            "            JIMGE((J-1)*NB_PERM+P) = MOD(EA+SWAP,4)",
             "          ENDDO",
             "        ENDDO",
             "      ENDDO",
@@ -3420,6 +3467,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                                      "-TMP_JAMP_A(I)",
             "        IF (TMP_JAMP_B(I) .LT. 0) TMP_JAMP_B(I) = NGRAPHS"
                                                      "-TMP_JAMP_B(I)",
+            "        TMP_JAMP_F(I) = IPOW(TMP_JAMP_E(I))",
             "      ENDDO",
             "      END",
         ]
@@ -3453,7 +3501,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         by_index = dict((one_def[0], one_def) for one_def in defs)
         # old definition -> (new definition, factor between the two columns)
         factor_of = {}
-        left_of, right_of, ratio_of, image_of = [], [], [], []
+        left_of, right_of, ratio_of = [], [], []
+        image_of, power_of = [], []
         known = {}
         recipes = []
 
@@ -3465,23 +3514,27 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             found = known.get((left, right, ratio))
             if found is not None:
                 return found, 1
-            found = known.get((right, left, ratio))
+            # the two operands the other way round with the inverse ratio give
+            # the same column times the ratio
+            found = known.get((right, left, 1 / ratio))
             if found is not None:
                 return found, ratio
             left_of.append(left)
             right_of.append(right)
             ratio_of.append(ratio)
             image_of.extend([0] * nb_perm)
+            power_of.extend([0] * nb_perm)
             known[(left, right, ratio)] = len(left_of)
             return len(left_of), 1
 
         def act(place, column):
-            """image of a column and the sign that goes with it"""
+            """image of a column and the factor that goes with it"""
 
             if column > 0:
                 return amp_action[place][column]
-            signed = image_of[(-column - 1) * nb_perm + place]
-            return -abs(signed), 1 if signed > 0 else -1
+            where = (-column - 1) * nb_perm + place
+            return (-image_of[where],
+                    (1, 1j, -1, -1j)[power_of[where]])
 
         # the same walk is followed on the definitions of the optimisation, so
         # that each of them is matched with the one the generated code builds
@@ -3502,7 +3555,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 new, factor = factor_of[-right]
                 right, ratio = -new, ratio * factor
             ratio = ratio / scale
-            if ratio not in (1, -1):
+            if self.jamp_i_power(ratio) is None:
                 return None
             begin = len(left_of)
             new, factor = store(left, right, ratio)
@@ -3511,7 +3564,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 return None
             origin_of.append(start)
             factor_of[start] = (new, scale * factor)
-            recipes.append((left, right, int(complex(ratio).real)))
+            recipes.append((left, right, self.jamp_i_power(ratio)))
 
             current = begin
             while current < len(left_of):
@@ -3520,13 +3573,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 for place in range(nb_perm):
                     image_left, sign_left = act(place, left_of[current - 1])
                     image_right, sign_right = act(place, right_of[current - 1])
-                    image_ratio = ratio_of[current - 1] * sign_left * sign_right
-                    if image_ratio not in (1, -1):
+                    image_ratio = ratio_of[current - 1] * sign_right / sign_left
+                    if self.jamp_i_power(image_ratio) is None:
                         return None
                     where, swap = store(image_left, image_right, image_ratio)
                     sign = sign_left * swap
-                    image_of[(current - 1) * nb_perm + place] = \
-                        where if complex(sign).real > 0 else -where
+                    image_of[(current - 1) * nb_perm + place] = where
+                    power_of[(current - 1) * nb_perm + place] = \
+                        self.jamp_i_power(sign)
                     if where > len(origin_of):
                         origin_of.append(None)
                     # follow the same step on the definitions of the
