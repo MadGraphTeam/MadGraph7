@@ -240,6 +240,9 @@ class ProcessExporterFortran(VirtualExporter):
     # finish with the plain scan once the orbit rounds have nothing left to
     # take as a whole (only used by the table emission, see below)
     jamp_greedy_tail = True
+    # up to this many entries in the matrix, both optimisations are run and the
+    # shorter result kept (see optimise_jamp_best)
+    jamp_compare_max_size = 20000
     # Below this many definitions writing them out is both smaller and faster:
     # the lines still fit in the instruction cache, while the loop reading the
     # operands from a table pays for the two indirections whatever the size.
@@ -2848,7 +2851,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             The orbits are then left in self.jamp_orbits.
         """
         if symmetry:
-            return self.optimise_jamp_equivariant(all_element, symmetry)
+            return self.optimise_jamp_best(all_element, symmetry)
 
         self.myjamp_count +=1
 
@@ -2950,6 +2953,41 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             new_def.insert(0, one_def)
         return new_element, new_def
 
+
+    @staticmethod
+    def jamp_operation_count(new_mat, defs):
+        """Additions the result asks for: one per definition, plus what is left
+        in each line of the matrix."""
+
+        terms = collections.Counter()
+        for jamp, _var in new_mat:
+            terms[jamp] += 1
+        return len(defs) + sum(max(0, count - 1) for count in terms.values())
+
+    def optimise_jamp_best(self, all_element, symmetry):
+        """Taking whole orbits only pays once there is enough of them to share:
+        on a small matrix it can end up asking for more additions than the plain
+        scan, which is free to take whatever it likes. g g > t t~ g is such a
+        case, 46 additions against 39.
+
+        Small matrices are cheap to optimise, so rather than guess where the
+        turn is, do both and keep the shorter. Above that size only the orbit
+        version is run: it wins by a wide margin on everything that big, and
+        the plain scan is the slow one there."""
+
+        orbit_element, orbit_defs = self.optimise_jamp_equivariant(
+                                            dict(all_element), symmetry)
+        if len(all_element) > self.jamp_compare_max_size:
+            return orbit_element, orbit_defs
+
+        orbits = self.jamp_orbits
+        plain_element, plain_defs = self.optimise_jamp(dict(all_element))
+        if self.jamp_operation_count(plain_element, plain_defs) < \
+                    self.jamp_operation_count(orbit_element, orbit_defs):
+            self.jamp_orbits = None
+            return plain_element, plain_defs
+        self.jamp_orbits = orbits
+        return orbit_element, orbit_defs
 
     #===========================================================================
     # Orbit equivariant version of the JAMP optimisation
