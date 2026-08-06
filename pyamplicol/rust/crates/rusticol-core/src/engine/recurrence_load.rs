@@ -1515,8 +1515,6 @@ impl NativeRuntime {
                     .trace
                     .tamper_first_prepared_executor_key_for_probe()?;
             }
-            let selected = trace_cache.prepared(query_digest)?;
-
             let (pack_json, pack, payload_root) = load_prepared_pack(&artifact, &manifest)?;
             let payloads = artifact.evaluator_payload_store(&payload_root)?;
             let runtime_parameters = recurrence_runtime_parameters(&manifest.runtime_metadata);
@@ -1533,6 +1531,7 @@ impl NativeRuntime {
                 &manifest.direct_template_catalog_digest,
             )?;
             let runtime_parameter_slots = runtime_parameter_slots(&runtime_parameters)?;
+            let selected = trace_cache.prepared(query_digest)?;
             let source_domains = build_on_the_fly_source_domains(
                 &selected.seed,
                 authenticated.template(),
@@ -1542,13 +1541,17 @@ impl NativeRuntime {
             // Keep this lexical ownership order: model pool, process sources,
             // then resolver borrowing both.
             let sources = pool.bind_source_domains(source_domains)?;
-            let resolver = pool.bind_on_the_fly_trace(
-                authenticated.template(),
-                direct,
-                &selected.seed,
-                &selected.trace,
-                &sources,
-            )?;
+            let resolver = {
+                let selected = trace_cache.prepared_mut(query_digest)?;
+                pool.bind_on_the_fly_trace(
+                    authenticated.template(),
+                    direct,
+                    &selected.seed,
+                    &mut selected.trace,
+                    &sources,
+                )?
+            };
+            let selected = trace_cache.prepared(query_digest)?;
             let work_census = selected.trace.execution_work_census()?;
             let semantic_executor_binding_count = resolver.semantic_executor_binding_count()?;
             let distinct_prepared_executor_count = resolver.distinct_prepared_executor_count()?;

@@ -399,7 +399,7 @@ impl NativeRecurrencePreparedExecutorPool {
         templates: &ValidatedRecurrenceTemplateInput,
         direct: &PreparedDirectExecutorCatalog,
         seed: &OnTheFlyProcessSeedV1,
-        trace: &OnTheFlyStructuralTraceV1,
+        trace: &mut OnTheFlyStructuralTraceV1,
         sources: &'a OnTheFlySourceDomainBinding,
     ) -> RusticolResult<NativeOnTheFlyPreparedExecutorResolver<'a>> {
         let summary = templates.summary();
@@ -463,6 +463,11 @@ impl NativeRecurrencePreparedExecutorPool {
                 ));
             }
         }
+        let parent_permutations = resolved
+            .iter()
+            .map(|(key, executor)| (*key, executor.parent_permutation))
+            .collect();
+        trace.bind_prepared_executor_rows(&parent_permutations)?;
         Ok(NativeOnTheFlyPreparedExecutorResolver {
             _pool: self,
             _sources: sources,
@@ -1160,7 +1165,7 @@ mod on_the_fly_adapter_tests {
         let pool = prepared_pool(&templates, direct_digest);
         let sources = pool.bind_source_domains(source_domains()).unwrap();
         let resolver = pool
-            .bind_on_the_fly_trace(&templates, &direct, &seed, &trace, &sources)
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut trace, &sources)
             .unwrap();
         let work = trace.execution_work_census().unwrap();
         assert_eq!(work.logical_current_count, 2);
@@ -1200,14 +1205,20 @@ mod on_the_fly_adapter_tests {
         let mut operation_tamper = scalar_adapter_test_trace(&templates, &seed).unwrap();
         operation_tamper.test_tamper_first_operation_semantic_digest(digest(99));
         assert!(
-            pool.bind_on_the_fly_trace(&templates, &direct, &seed, &operation_tamper, &sources,)
+            pool.bind_on_the_fly_trace(
+                &templates,
+                &direct,
+                &seed,
+                &mut operation_tamper,
+                &sources,
+            )
                 .is_err()
         );
 
         let mut identity_tamper = scalar_adapter_test_trace(&templates, &seed).unwrap();
         identity_tamper.test_insert_identity_finalizer(digest(99));
         assert!(
-            pool.bind_on_the_fly_trace(&templates, &direct, &seed, &identity_tamper, &sources,)
+            pool.bind_on_the_fly_trace(&templates, &direct, &seed, &mut identity_tamper, &sources,)
                 .is_err()
         );
     }
@@ -1227,7 +1238,7 @@ mod on_the_fly_adapter_tests {
             direct_digest,
         )
         .unwrap();
-        let trace = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        let mut trace = scalar_adapter_test_trace(&templates, &seed).unwrap();
         let missing = PreparedDirectExecutorCatalog::new(
             direct_digest,
             vec![
@@ -1237,7 +1248,7 @@ mod on_the_fly_adapter_tests {
         )
         .unwrap();
         assert!(
-            pool.bind_on_the_fly_trace(&templates, &missing, &seed, &trace, &sources)
+            pool.bind_on_the_fly_trace(&templates, &missing, &seed, &mut trace, &sources)
                 .is_err()
         );
 
@@ -1268,13 +1279,13 @@ mod on_the_fly_adapter_tests {
             ),
         ] {
             let mismatched = scalar_adapter_test_seed(model, template, pack, direct_id).unwrap();
-            let mismatched_trace = scalar_adapter_test_trace(&templates, &mismatched).unwrap();
+            let mut mismatched_trace = scalar_adapter_test_trace(&templates, &mismatched).unwrap();
             assert!(
                 pool.bind_on_the_fly_trace(
                     &templates,
                     &direct,
                     &mismatched,
-                    &mismatched_trace,
+                    &mut mismatched_trace,
                     &sources,
                 )
                 .is_err()

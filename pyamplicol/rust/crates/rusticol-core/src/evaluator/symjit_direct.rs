@@ -1536,7 +1536,13 @@ fn arena_plane_pointer(
 pub(crate) mod tests {
     use super::super::symjit_plane::compile_symbolica_program_to_plane_application_bytes;
     use super::*;
+    use crate::recurrence::DirectSourceRow;
+    use crate::recurrence::on_the_fly::{
+        OnTheFlyExecutorKeyV1, OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter,
+        OnTheFlyStructuralTraceV1, OnTheFlyWorkspaceV1, ResolvedOnTheFlyExecutor,
+    };
     use std::alloc::{GlobalAlloc, Layout, System};
+    use std::collections::BTreeMap;
 
     thread_local! {
         static TRACK_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
@@ -2364,6 +2370,119 @@ pub(crate) mod tests {
             assert_eq!(current_re[3 * len + point], 10.0 + point as f64);
             assert_eq!(current_im[3 * len + point], -0.5);
         }
+    }
+
+    unsafe extern "C" fn initialize_stable_row_probe_sources(
+        _context: *const c_void,
+        arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        rows: *const DirectSourceRow,
+        row_count: u32,
+        point_count: u32,
+    ) -> c_int {
+        if rows.is_null() || row_count == 0 {
+            return STATUS_INVALID_ARGUMENT;
+        }
+        let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
+        for row in rows {
+            for point in 0..point_count {
+                let destination = row.destination_component_base as usize
+                    * arena.point_stride as usize
+                    + point as usize;
+                unsafe {
+                    *arena.current_re.add(destination) =
+                        f64::from(row.destination_component_base + 1);
+                    *arena.current_im.add(destination) = 0.0;
+                }
+            }
+        }
+        DIRECT_STATUS_OK
+    }
+
+    struct StableRowProbeResolver {
+        source_key: OnTheFlyExecutorKeyV1,
+        contribution_key: OnTheFlyExecutorKeyV1,
+        contribution_handle: DirectExecutorHandle,
+    }
+
+    impl OnTheFlyPreparedExecutorResolver for StableRowProbeResolver {
+        fn resolve(&self, key: OnTheFlyExecutorKeyV1) -> RusticolResult<ResolvedOnTheFlyExecutor> {
+            if key == self.source_key {
+                return Ok(ResolvedOnTheFlyExecutor {
+                    direct_executor_id: 0,
+                    handle: DirectExecutorHandle::Source {
+                        call: initialize_stable_row_probe_sources,
+                        context: ptr::null(),
+                    },
+                    parent_permutation: [0, 1],
+                });
+            }
+            if key == self.contribution_key {
+                return Ok(ResolvedOnTheFlyExecutor {
+                    direct_executor_id: 1,
+                    handle: self.contribution_handle,
+                    parent_permutation: [1, 0],
+                });
+            }
+            Err(RusticolError::integrity(
+                "stable-row probe received an unknown executor key",
+            ))
+        }
+    }
+
+    #[test]
+    fn on_the_fly_uses_stable_permuted_rows_across_symjit_warm_reuse() {
+        let loaded = identity_executor(DirectExecutorRole::Contribution);
+        let (mut trace, source_key, contribution_key) =
+            OnTheFlyStructuralTraceV1::test_two_contribution_rows();
+        let semantic_digest = trace.semantic_digest();
+        let parent_permutations =
+            BTreeMap::from([(source_key, [0, 1]), (contribution_key, [1, 0])]);
+        trace
+            .bind_prepared_executor_rows(&parent_permutations)
+            .unwrap();
+        assert_eq!(trace.semantic_digest(), semantic_digest);
+        assert!(
+            trace
+                .bind_prepared_executor_rows(&parent_permutations)
+                .is_err()
+        );
+        let rows = trace.test_bound_contribution_rows();
+        assert_eq!(
+            rows.iter()
+                .map(|row| {
+                    (
+                        row.parent0_component_base,
+                        row.parent1_component_base_or_sentinel,
+                        row.parent0_momentum_form_id,
+                        row.parent1_momentum_form_id_or_sentinel,
+                        row.destination_component_base,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![(1, 0, 1, 0, 2), (3, 0, 3, 0, 4)]
+        );
+
+        let resolver = StableRowProbeResolver {
+            source_key,
+            contribution_key,
+            contribution_handle: loaded.handle(),
+        };
+        let mut workspace = OnTheFlyWorkspaceV1::new(&trace, 1).unwrap();
+        for _ in 0..2 {
+            OnTheFlyStructuralInterpreter::execute(&trace, &resolver, &mut workspace, 1).unwrap();
+            assert_eq!(
+                workspace.observed_current_components(&trace, 2, 0).unwrap(),
+                vec![(2.0, 0.0)]
+            );
+            assert_eq!(
+                workspace.observed_current_components(&trace, 4, 0).unwrap(),
+                vec![(4.0, 0.0)]
+            );
+        }
+        assert_eq!(loaded.context.workspace.borrow().row_groups.len(), 2);
     }
 
     #[test]

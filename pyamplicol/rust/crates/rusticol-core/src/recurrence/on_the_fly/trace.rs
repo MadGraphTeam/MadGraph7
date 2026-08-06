@@ -285,6 +285,7 @@ pub(crate) struct OnTheFlyStructuralTraceV1 {
     pub(super) layout: OnTheFlyWorkspaceLayoutV1,
     pub(super) proof: OnTheFlyStructuralProofV1,
     pub(super) semantic_digest: SemanticDigest,
+    prepared_executor_rows_bound: bool,
     #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) current_component_ranges: Box<[[u32; 2]]>,
     #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -294,6 +295,77 @@ pub(crate) struct OnTheFlyStructuralTraceV1 {
 impl OnTheFlyStructuralTraceV1 {
     pub(crate) fn executor_keys(&self) -> impl Iterator<Item = OnTheFlyExecutorKeyV1> + '_ {
         self.operations.iter().map(OnTheFlyTraceOperationV1::key)
+    }
+
+    /// Bind authenticated prepared-executor parent order into the trace rows
+    /// once, before any executor can cache descriptors for their addresses.
+    /// The semantic trace identity is unchanged: this is a private physical
+    /// executor binding, not a different selected recurrence graph.
+    pub(crate) fn bind_prepared_executor_rows(
+        &mut self,
+        parent_permutations: &BTreeMap<OnTheFlyExecutorKeyV1, [u8; 2]>,
+    ) -> RusticolResult<()> {
+        if self.prepared_executor_rows_bound {
+            return Err(integrity(
+                "prepared executor parent order is already bound into the trace",
+            ));
+        }
+
+        let mut contribution_permutations = Vec::new();
+        for (operation_index, operation) in self.operations.iter().enumerate() {
+            let key = operation.key();
+            let permutation = parent_permutations.get(&key).copied().ok_or_else(|| {
+                integrity("trace operation has no authenticated prepared parent order")
+            })?;
+            match operation {
+                OnTheFlyTraceOperationV1::Contribution { .. } => match permutation {
+                    [0, 1] | [1, 0] => {
+                        contribution_permutations.push((operation_index, permutation));
+                    }
+                    _ => {
+                        return Err(integrity(
+                            "prepared contribution executor has a non-binary parent order",
+                        ));
+                    }
+                },
+                OnTheFlyTraceOperationV1::Source { .. }
+                | OnTheFlyTraceOperationV1::Finalization { .. }
+                | OnTheFlyTraceOperationV1::Closure { .. } => {
+                    if permutation != [0, 1] {
+                        return Err(integrity(
+                            "non-contribution executor unexpectedly permutes parent rows",
+                        ));
+                    }
+                }
+            }
+        }
+
+        // The first pass made every remaining operation infallible. Mutate the
+        // existing boxed rows in place so their stable storage is preserved.
+        for (operation_index, permutation) in contribution_permutations {
+            if permutation == [0, 1] {
+                continue;
+            }
+            let Some(OnTheFlyTraceOperationV1::Contribution { row, .. }) =
+                self.operations.get_mut(operation_index)
+            else {
+                unreachable!("validated contribution operation changed during parent binding");
+            };
+            std::mem::swap(
+                &mut row.parent0_component_base,
+                &mut row.parent1_component_base_or_sentinel,
+            );
+            std::mem::swap(
+                &mut row.parent0_momentum_form_id,
+                &mut row.parent1_momentum_form_id_or_sentinel,
+            );
+        }
+        self.prepared_executor_rows_bound = true;
+        Ok(())
+    }
+
+    pub(crate) const fn prepared_executor_rows_bound(&self) -> bool {
+        self.prepared_executor_rows_bound
     }
 
     pub(crate) const fn proof(&self) -> OnTheFlyStructuralProofV1 {
@@ -735,6 +807,7 @@ pub(crate) fn scalar_adapter_test_trace(
             semantic_digest: test_digest,
         },
         semantic_digest: test_digest,
+        prepared_executor_rows_bound: false,
         current_component_ranges: vec![[0, 1], [1, 1]].into_boxed_slice(),
         current_semantic_digests: vec![test_digest; 2].into_boxed_slice(),
     })
@@ -742,6 +815,149 @@ pub(crate) fn scalar_adapter_test_trace(
 
 #[cfg(test)]
 impl OnTheFlyStructuralTraceV1 {
+    pub(crate) fn test_two_contribution_rows()
+    -> (Self, OnTheFlyExecutorKeyV1, OnTheFlyExecutorKeyV1) {
+        let test_digest = SemanticDigest::new([0x5a; 32]).unwrap();
+        let direct_digest = SemanticDigest::new([0x61; 32]).unwrap();
+        let source_key = OnTheFlyExecutorKeyV1::new(
+            direct_digest,
+            DirectExecutorRole::Source,
+            OnTheFlyOperationKindV1::Source,
+            0,
+            SemanticDigest::new([0x62; 32]).unwrap(),
+            0,
+            SemanticDigest::new([0x63; 32]).unwrap(),
+        )
+        .unwrap();
+        let contribution_key = OnTheFlyExecutorKeyV1::new(
+            direct_digest,
+            DirectExecutorRole::Contribution,
+            OnTheFlyOperationKindV1::Transition,
+            1,
+            SemanticDigest::new([0x64; 32]).unwrap(),
+            1,
+            SemanticDigest::new([0x65; 32]).unwrap(),
+        )
+        .unwrap();
+        let momentum_forms = (0..4)
+            .map(|source_slot| {
+                CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                    source_slot,
+                    coefficient: 1,
+                }])
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let trace = Self {
+            seed_digest: SemanticDigest::new([0x51; 32]).unwrap(),
+            query_digest: SemanticDigest::new([0x52; 32]).unwrap(),
+            current_keys: Box::new([]),
+            current_colors: Box::new([]),
+            operations: vec![
+                OnTheFlyTraceOperationV1::Source {
+                    key: source_key,
+                    row: DirectSourceRow {
+                        source_slot: 0,
+                        destination_component_base: 1,
+                        momentum_form_id: 1,
+                        source_template_or_dispatch_domain: 0,
+                        spin_state_class: 50_000,
+                        exact_factor_id: 0,
+                        selector_domain_id: 0,
+                    },
+                },
+                OnTheFlyTraceOperationV1::Source {
+                    key: source_key,
+                    row: DirectSourceRow {
+                        source_slot: 1,
+                        destination_component_base: 3,
+                        momentum_form_id: 3,
+                        source_template_or_dispatch_domain: 0,
+                        spin_state_class: 50_000,
+                        exact_factor_id: 0,
+                        selector_domain_id: 0,
+                    },
+                },
+                OnTheFlyTraceOperationV1::Contribution {
+                    key: contribution_key,
+                    row: DirectContributionRow {
+                        parent0_component_base: 0,
+                        parent1_component_base_or_sentinel: 1,
+                        parent0_momentum_form_id: 0,
+                        parent1_momentum_form_id_or_sentinel: 1,
+                        destination_component_base: 2,
+                        exact_factor_id: 0,
+                        selector_domain_id: 0,
+                        flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+                    },
+                },
+                OnTheFlyTraceOperationV1::Contribution {
+                    key: contribution_key,
+                    row: DirectContributionRow {
+                        parent0_component_base: 0,
+                        parent1_component_base_or_sentinel: 3,
+                        parent0_momentum_form_id: 0,
+                        parent1_momentum_form_id_or_sentinel: 3,
+                        destination_component_base: 4,
+                        exact_factor_id: 0,
+                        selector_domain_id: 0,
+                        flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+                    },
+                },
+            ]
+            .into_boxed_slice(),
+            momentum_forms,
+            exact_factors: vec![ExactComplexRational::ONE].into_boxed_slice(),
+            pairing_owner: ResolvedPairingOwnerV1 {
+                endpoint_pairs: Vec::new(),
+                proof_digest: None,
+                source_slot_permutation: vec![0, 1, 2, 3],
+                source_lineage: vec![0, 1, 2, 3],
+                fermion_parity: 1,
+            },
+            layout: OnTheFlyWorkspaceLayoutV1 {
+                source_count: 4,
+                lorentz_component_count: 4,
+                parameter_count: 0,
+                current_component_count: 5,
+                amplitude_component_count: 1,
+                momentum_form_count: 4,
+                exact_factor_count: 1,
+            },
+            proof: OnTheFlyStructuralProofV1 {
+                current_count: 5,
+                contribution_count: 2,
+                closure_count: 0,
+                constructed_current_count: 5,
+                constructed_contribution_count: 2,
+                current_multiset_digest: test_digest,
+                contribution_multiset_digest: test_digest,
+                closure_multiset_digest: test_digest,
+                owner_digest: test_digest,
+                semantic_digest: test_digest,
+            },
+            semantic_digest: test_digest,
+            prepared_executor_rows_bound: false,
+            current_component_ranges: (0..5)
+                .map(|base| [base, 1])
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            current_semantic_digests: vec![test_digest; 5].into_boxed_slice(),
+        };
+        (trace, source_key, contribution_key)
+    }
+
+    pub(crate) fn test_bound_contribution_rows(&self) -> Vec<DirectContributionRow> {
+        self.operations
+            .iter()
+            .filter_map(|operation| match operation {
+                OnTheFlyTraceOperationV1::Contribution { row, .. } => Some(*row),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub(crate) fn test_insert_identity_finalizer(&mut self, direct_catalog_digest: SemanticDigest) {
         let operation = OnTheFlyTraceOperationV1::Finalization {
             key: OnTheFlyExecutorKeyV1::identity_finalizer(direct_catalog_digest),
@@ -1450,6 +1666,7 @@ pub(super) fn lower_trace(
         layout,
         proof,
         semantic_digest,
+        prepared_executor_rows_bound: false,
         #[cfg(any(test, feature = "on-the-fly-test-support"))]
         current_component_ranges,
         #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -1511,6 +1728,7 @@ mod tests {
                 semantic_digest: digest(7),
             },
             semantic_digest: digest(8),
+            prepared_executor_rows_bound: false,
             current_component_ranges: Box::new([]),
             current_semantic_digests: Box::new([]),
         };

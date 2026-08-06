@@ -303,52 +303,6 @@ impl OnTheFlyWorkspaceV1 {
     }
 }
 
-fn permute_contribution_row(
-    mut row: DirectContributionRow,
-    permutation: [u8; 2],
-) -> RusticolResult<DirectContributionRow> {
-    match permutation {
-        [0, 1] => Ok(row),
-        [1, 0] => {
-            std::mem::swap(
-                &mut row.parent0_component_base,
-                &mut row.parent1_component_base_or_sentinel,
-            );
-            std::mem::swap(
-                &mut row.parent0_momentum_form_id,
-                &mut row.parent1_momentum_form_id_or_sentinel,
-            );
-            Ok(row)
-        }
-        _ => Err(integrity(
-            "prepared executor returned a non-binary parent permutation",
-        )),
-    }
-}
-
-fn permute_closure_row(
-    mut row: DirectClosureRow,
-    permutation: [u8; 2],
-) -> RusticolResult<DirectClosureRow> {
-    match permutation {
-        [0, 1] => Ok(row),
-        [1, 0] => {
-            std::mem::swap(
-                &mut row.parent0_component_base,
-                &mut row.parent1_component_base_or_sentinel,
-            );
-            std::mem::swap(
-                &mut row.parent0_momentum_form_id,
-                &mut row.parent1_momentum_form_id_or_sentinel,
-            );
-            Ok(row)
-        }
-        _ => Err(integrity(
-            "prepared executor returned a non-binary parent permutation",
-        )),
-    }
-}
-
 fn validate_resolved_executor(
     key: OnTheFlyExecutorKeyV1,
     resolved: ResolvedOnTheFlyExecutor,
@@ -359,17 +313,17 @@ fn validate_resolved_executor(
         ));
     }
     match key.role() {
-        DirectExecutorRole::Contribution | DirectExecutorRole::Closure => {
-            match resolved.parent_permutation {
-                [0, 1] | [1, 0] => {}
-                _ => {
-                    return Err(integrity(
-                        "resolved binary executor has an invalid permutation",
-                    ));
-                }
+        DirectExecutorRole::Contribution => match resolved.parent_permutation {
+            [0, 1] | [1, 0] => {}
+            _ => {
+                return Err(integrity(
+                    "resolved binary executor has an invalid permutation",
+                ));
             }
-        }
-        DirectExecutorRole::Source | DirectExecutorRole::Finalization => {
+        },
+        DirectExecutorRole::Source
+        | DirectExecutorRole::Finalization
+        | DirectExecutorRole::Closure => {
             if resolved.parent_permutation != [0, 1] {
                 return Err(integrity(
                     "unary executor unexpectedly permutes parent rows",
@@ -391,6 +345,11 @@ impl OnTheFlyStructuralInterpreter {
         workspace: &mut OnTheFlyWorkspaceV1,
         point_count: u32,
     ) -> RusticolResult<()> {
+        if !trace.prepared_executor_rows_bound() {
+            return Err(integrity(
+                "prepared executor parent order is not bound into stable trace rows",
+            ));
+        }
         if workspace.trace_digest != trace.semantic_digest() {
             return Err(integrity(
                 "workspace belongs to a different structural trace",
@@ -422,19 +381,16 @@ impl OnTheFlyStructuralInterpreter {
                     (
                         OnTheFlyTraceOperationV1::Contribution { row, .. },
                         DirectExecutorHandle::Contribution { call, context },
-                    ) => {
-                        let row = permute_contribution_row(*row, resolved.parent_permutation)?;
-                        call(
-                            context,
-                            arena,
-                            momenta,
-                            parameters,
-                            factors,
-                            &row,
-                            1,
-                            point_count,
-                        )
-                    }
+                    ) => call(
+                        context,
+                        arena,
+                        momenta,
+                        parameters,
+                        factors,
+                        row,
+                        1,
+                        point_count,
+                    ),
                     (
                         OnTheFlyTraceOperationV1::Finalization { row, .. },
                         DirectExecutorHandle::Finalization { call, context },
@@ -451,19 +407,16 @@ impl OnTheFlyStructuralInterpreter {
                     (
                         OnTheFlyTraceOperationV1::Closure { row, .. },
                         DirectExecutorHandle::Closure { call, context },
-                    ) => {
-                        let row = permute_closure_row(*row, resolved.parent_permutation)?;
-                        call(
-                            context,
-                            arena,
-                            momenta,
-                            parameters,
-                            factors,
-                            &row,
-                            1,
-                            point_count,
-                        )
-                    }
+                    ) => call(
+                        context,
+                        arena,
+                        momenta,
+                        parameters,
+                        factors,
+                        row,
+                        1,
+                        point_count,
+                    ),
                     _ => {
                         return Err(integrity(
                             "resolved executor handle variant differs from trace operation",
