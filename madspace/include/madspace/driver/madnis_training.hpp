@@ -175,7 +175,7 @@ public:
         std::shared_ptr<StatusFile> status_file = nullptr
     );
     void train();
-    nested_vector2<std::size_t> active_channels() const;
+    nested_vector2<std::size_t> active_channels() const { return _active_channels; }
 
 private:
     void print_progress_init();
@@ -185,16 +185,25 @@ private:
         double loss,
         std::size_t chan_count
     );
-    void write_status(std::size_t subproc_index, std::size_t batch_index, bool done);
+    void write_status(
+        MadnisTraining& subproc,
+        std::size_t subproc_index,
+        std::size_t batch_index,
+        bool done
+    );
 
+    ContextPtr _generator_context;
+    ContextPtr _optimizer_context;
+    std::vector<TrainingArgs> _training_args;
     Verbosity _verbosity;
-    std::vector<MadnisTraining> _subprocesses;
+    nested_vector2<std::size_t> _active_channels;
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;
     std::chrono::time_point<std::chrono::steady_clock> _last_print_time;
     PrettyBox _pretty_box_upper;
     PrettyBox _pretty_box_lower;
     std::shared_ptr<StatusFile> _status_file;
+    nlohmann::json _trainings_status;
 };
 
 } // namespace madspace
