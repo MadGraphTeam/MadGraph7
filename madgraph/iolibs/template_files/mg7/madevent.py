@@ -1300,7 +1300,7 @@ class MadgraphSubprocess:
                     if flav not in seen_active_flavors:
                         has_unseen_flavors = True
                         seen_active_flavors.add(flav)
-            if not has_unseen_flavors and cum_cs / tot_cs < threshold:
+            if has_unseen_flavors or cum_cs / tot_cs < threshold:
                 kept_channels.append(index)
         if len(kept_channels) == len(cross_sections):
             return multi_phasespace
