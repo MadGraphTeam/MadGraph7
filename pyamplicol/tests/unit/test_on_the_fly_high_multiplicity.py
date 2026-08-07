@@ -1218,7 +1218,7 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
 def test_n8_selected_is_compact_ordinal_one_and_forbids_comparators(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    args = _args(tmp_path, 8, "selected")
+    args = _args(tmp_path, 8, "selected", process_id=8)
     args.prepared_model = tmp_path / "model"
     args.prepared_model.touch()
     case = study._case(8, 8)
