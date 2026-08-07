@@ -1590,6 +1590,20 @@ mod tests {
     }
 
     #[test]
+    fn six_fermion_compact_census_has_sixty_four_helicities_and_six_flows() {
+        let selector = adapter(&[
+            (1, OnTheFlyExternalColorRoleV1::Fundamental, &[-1, 1]),
+            (2, OnTheFlyExternalColorRoleV1::Antifundamental, &[-1, 1]),
+            (3, OnTheFlyExternalColorRoleV1::Fundamental, &[-1, 1]),
+            (4, OnTheFlyExternalColorRoleV1::Antifundamental, &[-1, 1]),
+            (5, OnTheFlyExternalColorRoleV1::Fundamental, &[-1, 1]),
+            (6, OnTheFlyExternalColorRoleV1::Antifundamental, &[-1, 1]),
+        ]);
+        assert_eq!(selector.helicity_count(), 64);
+        assert_eq!(selector.color_count(), 6);
+    }
+
+    #[test]
     fn alias_permutation_round_trips_helicity_and_color_ids_without_changing_ordinals() {
         let representative = adapter(&[
             (1, OnTheFlyExternalColorRoleV1::Fundamental, &[-1, 1]),

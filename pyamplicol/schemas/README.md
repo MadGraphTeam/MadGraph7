@@ -5,8 +5,9 @@ generator, Rusticol, the native SDK, and installed-package self-tests.
 
 - `artifact-manifest-v3.schema.json` describes the only top-level process
   artifact accepted by pyAmpliCol 0.1.
-- `runtime-physics-v1.schema.json` describes public particles, helicities,
-  color components, reductions, parameters, and selectors.
+- `runtime-physics-v1.schema.json` describes either resolved public helicity
+  and color axes or compact on-the-fly public particle/parameter metadata;
+  resolved artifacts also carry reductions and selectors.
 - `reference-physics-v2.schema.json` is the repository/sdist-only contract for
   exact decimal physics baselines, complete resolved axes, structural zeros,
   model-derived external spin/color/mass metadata, topology, canonical

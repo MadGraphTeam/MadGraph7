@@ -281,6 +281,10 @@ mod tests {
                 "color_coverage": "complete",
                 "reference_color_word": null,
                 "trace_reflections_folded": false,
+                "selector_census": {
+                    "physical_helicity_count": 1,
+                    "physical_color_flow_count": 1,
+                },
             },
             "runtime_metadata": {
                 "runtime_parameters": [],

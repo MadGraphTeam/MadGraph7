@@ -52,7 +52,11 @@ def _write_on_the_fly_contract_artifact(
         "selector_policy": {
             "color_coverage": "complete",
             "reference_color_word": None,
-            "trace_reflections_folded": True,
+            "trace_reflections_folded": False,
+            "selector_census": {
+                "physical_helicity_count": 64,
+                "physical_color_flow_count": 12,
+            },
         },
         "runtime_metadata": {
             "runtime_parameters": [],
@@ -873,6 +877,10 @@ def test_real_candidate_contract_and_profile_never_open_dense_physics(
     assert contract["execution_mode"] == "on-the-fly"
     assert contract["dense_physics_accessed"] is False
     assert contract["required_runtime_capabilities"] == gate.ON_THE_FLY_CAPABILITIES
+    assert contract["selector_census"] == {
+        "physical_helicity_count": 64,
+        "physical_color_flow_count": 12,
+    }
     assert contract["process_evaluator_state_payload_count"] == 1
     assert contract["runtime_container_authenticated"] is True
     assert contract["runtime_container_member_count"] == 1

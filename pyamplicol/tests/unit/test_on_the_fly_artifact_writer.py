@@ -13,10 +13,11 @@ import pytest
 
 import pyamplicol.generation.artifact_writer as artifact_writer
 import pyamplicol.generation.service as service_module
-from pyamplicol.api.errors import GenerationError
+from pyamplicol.api.errors import ArtifactError, GenerationError
 from pyamplicol.api.requests import ModelSource, ProcessRequest, ProcessSet
 from pyamplicol.api.services import Generator
-from pyamplicol.artifacts import load_manifest
+from pyamplicol.artifacts import inspect_artifact, load_manifest
+from pyamplicol.artifacts import inspection as artifact_inspection
 from pyamplicol.config import (
     Action,
     EvaluatorConfig,
@@ -219,7 +220,11 @@ def _process_artifact(
         selector_policy={
             "color_coverage": "complete",
             "reference_color_word": None,
-            "trace_reflections_folded": True,
+            "trace_reflections_folded": False,
+            "selector_census": {
+                "physical_helicity_count": 1,
+                "physical_color_flow_count": 1,
+            },
         },
         point_tile_size=128,
         validation_point=ValidationPointRecord(
@@ -323,7 +328,7 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
         assert len(physics["external_particles"]) == 3
         assert not {
             "color_components",
-            "helicity_components",
+            "helicities",
             "lc_topology_replay",
             "recurrence",
             "stages",
@@ -334,6 +339,10 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
             )
         )
         assert execution["kind"] == artifact_writer.ON_THE_FLY_RUNTIME_KIND
+        assert execution["selector_policy"]["selector_census"] == {
+            "physical_helicity_count": 1,
+            "physical_color_flow_count": 1,
+        }
         assert execution["runtime_container"] == {
             "kind": artifact_writer.ON_THE_FLY_RUNTIME_CONTAINER_KIND,
             "path": "on-the-fly-runtime.pacbin",
@@ -341,11 +350,100 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
             "seed_member_path": _SEED_MEMBER,
             "storage_abi": "pacbin-v1",
         }
+        inspected = inspect_artifact(output).processes[0]
+        assert inspected.execution_mode == "on-the-fly"
+        assert inspected.physical_helicities == inspected.computed_helicities == 1
+        assert inspected.physical_color_components == 1
+        assert inspected.computed_color_components == 1
+        assert inspected.helicity_coverage == inspected.color_coverage == "complete"
+        assert inspected.generation_specialized_axes == ()
+
+    assert isinstance(execution, dict)
+    process_record = manifest.processes[0]
+    capabilities = process_record["required_runtime_capabilities"]
+    assert isinstance(capabilities, tuple)
+    for index, mutation in enumerate(({"key": "wrong-process"}, {"invented": True})):
+        mutated_execution = {**execution, **mutation}
+        mutated_path = tmp_path / f"mutated-execution-{index}.json"
+        mutated_path.write_text(json.dumps(mutated_execution), encoding="utf-8")
+        with pytest.raises(ArtifactError, match=r"outer process|root fields"):
+            artifact_inspection._execution_inspection(
+                manifest,
+                mutated_path,
+                capabilities,
+                process=process_record,
+            )
 
     assert (first / runtime_relative).read_bytes() == (
         second / runtime_relative
     ).read_bytes()
     assert _payload_inventory(first) == _payload_inventory(second)
+
+
+@pytest.mark.parametrize(
+    ("roles", "expected_color_flows"),
+    (
+        (("singlet",) * 6, 1),
+        (("adjoint",) * 4, 6),
+        (
+            (
+                "fundamental",
+                "antifundamental",
+                "fundamental",
+                "antifundamental",
+                "adjoint",
+                "adjoint",
+            ),
+            12,
+        ),
+        (
+            (
+                "fundamental",
+                "antifundamental",
+                "fundamental",
+                "antifundamental",
+                "fundamental",
+                "antifundamental",
+            ),
+            6,
+        ),
+    ),
+)
+def test_on_the_fly_selector_census_matches_compact_adapter_formulas(
+    roles: tuple[str, ...],
+    expected_color_flows: int,
+) -> None:
+    projection = SimpleNamespace(
+        external_sources=tuple(
+            SimpleNamespace(source_states=(object(), object())) for _ in roles
+        )
+    )
+    labels = tuple(range(1, len(roles) + 1))
+    process = SimpleNamespace(
+        legs=tuple(SimpleNamespace(color_role=role) for role in roles),
+        fundamental_labels=tuple(
+            label
+            for label, role in zip(labels, roles, strict=True)
+            if role == "fundamental"
+        ),
+        antifundamental_labels=tuple(
+            label
+            for label, role in zip(labels, roles, strict=True)
+            if role == "antifundamental"
+        ),
+        adjoint_labels=tuple(
+            label
+            for label, role in zip(labels, roles, strict=True)
+            if role == "adjoint"
+        ),
+    )
+
+    census = service_module._on_the_fly_selector_census_v1(
+        projection,  # type: ignore[arg-type]
+        process,  # type: ignore[arg-type]
+    )
+    assert census["physical_helicity_count"] == 2 ** len(roles)
+    assert census["physical_color_flow_count"] == expected_color_flows
 
 
 def test_on_the_fly_writer_rejects_changed_or_noncanonical_runtime(
@@ -420,6 +518,35 @@ def test_on_the_fly_writer_rejects_changed_or_noncanonical_runtime(
             timings={},
             api_bundle_hook=None,
         )
+
+    valid = _process_artifact(tmp_path, runtime_name="valid-census.pacbin")
+    for index, selector_policy in enumerate(
+        (
+            {
+                "color_coverage": "complete",
+                "reference_color_word": None,
+                "trace_reflections_folded": False,
+            },
+            {
+                **valid.selector_policy,
+                "selector_census": {
+                    "physical_helicity_count": 0,
+                    "physical_color_flow_count": 1,
+                },
+            },
+        )
+    ):
+        with pytest.raises(ValueError, match=r"selector census|selector policy"):
+            write_schema_v3_artifact(
+                tmp_path / f"invalid-census-{index}",
+                mode="error",
+                source=ModelSource.from_path(source_path),
+                compiled_model=compiled,
+                configuration=_configuration(),
+                processes=(replace(valid, selector_policy=selector_policy),),
+                timings={},
+                api_bundle_hook=None,
+            )
 
 
 @pytest.mark.parametrize(

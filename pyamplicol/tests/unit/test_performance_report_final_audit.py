@@ -1196,7 +1196,15 @@ def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
             "payload_root": "model/eager-kernels",
         },
         "runtime_options": {"point_tile_size": 128},
-        "selector_policy": {"color_coverage": "complete"},
+        "selector_policy": {
+            "color_coverage": "complete",
+            "reference_color_word": None,
+            "trace_reflections_folded": False,
+            "selector_census": {
+                "physical_helicity_count": 1,
+                "physical_color_flow_count": 1,
+            },
+        },
         "runtime_metadata": {
             "runtime_parameters": [],
             "parameter_projection": [
@@ -1263,6 +1271,28 @@ def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
         )
         == 1
     )
+
+    for mutation in ("missing", "zero", "extra", "seed-mismatch"):
+        changed_execution = deepcopy(execution)
+        census = changed_execution["selector_policy"]["selector_census"]
+        assert isinstance(census, dict)
+        if mutation == "missing":
+            del census["physical_color_flow_count"]
+        elif mutation == "zero":
+            census["physical_helicity_count"] = 0
+        elif mutation == "extra":
+            census["invented"] = 1
+        else:
+            census["physical_helicity_count"] = 2
+        with pytest.raises(FinalAuditError, match=r"selector (?:helicity )?census"):
+            _audit_on_the_fly_execution(
+                tmp_path,
+                manifest,
+                changed_execution,
+                cell,
+                process_id=process_id,
+                execution_manifest_path=f"processes/{process_id}/execution.json",
+            )
 
     for mutation in ("digest", "missing-abi", "wrong-abi", "extra-field"):
         changed = dict(prepared_identity)

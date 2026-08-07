@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import struct
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from typing import cast
 
 from pyamplicol._internal.versions import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+    ON_THE_FLY_RUNTIME_CAPABILITY,
     RECURRENCE_BUILDER_INPUT_ABI,
     RECURRENCE_COLOR_RUNTIME_CAPABILITY,
     RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
@@ -28,6 +31,8 @@ from .security import confined_path, normalize_relative_path
 
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
 _RECURRENCE_RUNTIME_KIND = "pyamplicol-runtime-recurrence-execution"
+_ON_THE_FLY_RUNTIME_KIND = "pyamplicol-runtime-on-the-fly-execution"
+_ON_THE_FLY_PUBLIC_METADATA_KIND = "pyamplicol-on-the-fly-public-metadata"
 _RETIRED_RECURRENCE_RUNTIME_CAPABILITY = "rusticol.recurrence-runtime.complex-f64.v1"
 _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = (
     "schedule/recurrence-direct-schedule-v2.bin"
@@ -75,6 +80,9 @@ _RECURRENCE_PROFILE_PHASES = (
     "recurrence-direct-closure",
     "reduction",
 )
+# The compact lane feeds the same direct-profile counters from its dynamically
+# prepared query family; only the plan materialization boundary differs.
+_ON_THE_FLY_PROFILE_PHASES = _RECURRENCE_PROFILE_PHASES
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +313,8 @@ def _execution_paths(manifest: ArtifactManifest) -> Mapping[str, Path]:
 @dataclass(frozen=True, slots=True)
 class _ExecutionInspection:
     execution_mode: str
+    physical_helicity_count: int | None = None
+    physical_color_flow_count: int | None = None
     prepared_backend: str | None = None
     prepared_kernel_count: int | None = None
     referenced_kernel_count: int | None = None
@@ -1368,6 +1378,8 @@ def _execution_inspection(
     manifest: ArtifactManifest,
     execution_path: Path,
     required_runtime_capabilities: Sequence[object] | None = None,
+    *,
+    process: Mapping[str, object] | None = None,
 ) -> _ExecutionInspection:
     capabilities = (
         required_runtime_capabilities
@@ -1378,6 +1390,189 @@ def _execution_inspection(
         )
     )
     capability_values = frozenset(str(value) for value in capabilities)
+    on_the_fly_capabilities = {
+        ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+        ON_THE_FLY_RUNTIME_CAPABILITY,
+    }
+    if not on_the_fly_capabilities.isdisjoint(capability_values):
+        if (
+            capability_values != on_the_fly_capabilities
+            or len(capabilities) != len(on_the_fly_capabilities)
+        ):
+            raise ArtifactError(
+                "on-the-fly execution must declare exactly its two compact LC "
+                "runtime capabilities"
+            )
+        execution = _json_mapping(execution_path, "process execution manifest")
+        expected_root_fields = {
+            "schema_version",
+            "kind",
+            "required_runtime_capabilities",
+            "process",
+            "key",
+            "color_accuracy",
+            "external_pdg_order",
+            "kernel_pack",
+            "runtime_options",
+            "selector_policy",
+            "runtime_metadata",
+            "runtime_container",
+        }
+        if process is None or set(execution) != expected_root_fields:
+            raise ArtifactError(
+                "on-the-fly process execution manifest has unsupported root fields"
+            )
+        kind = _string(execution.get("kind"), "process execution manifest.kind")
+        declared_capabilities = _sequence(
+            execution.get("required_runtime_capabilities"),
+            "on-the-fly process execution manifest.required_runtime_capabilities",
+        )
+        declared_capability_values = frozenset(
+            str(value) for value in declared_capabilities
+        )
+        external_pdgs = tuple(
+            _sequence(
+                execution.get("external_pdg_order"),
+                "on-the-fly process execution manifest.external_pdg_order",
+            )
+        )
+        expected_pdgs = tuple(
+            _sequence(
+                process.get("external_pdgs"),
+                f"process {process.get('id')} external_pdgs",
+            )
+        )
+        if (
+            any(
+                isinstance(value, bool) or not isinstance(value, int)
+                for value in (*external_pdgs, *expected_pdgs)
+            )
+            or execution.get("schema_version") != 3
+            or kind != _ON_THE_FLY_RUNTIME_KIND
+            or len(declared_capabilities) != len(on_the_fly_capabilities)
+            or declared_capability_values != on_the_fly_capabilities
+            or execution.get("process") != process.get("expression")
+            or execution.get("key") != process.get("id")
+            or execution.get("color_accuracy") != "lc"
+            or process.get("color_accuracy") != "lc"
+            or external_pdgs != expected_pdgs
+        ):
+            raise ArtifactError(
+                "on-the-fly process execution manifest disagrees with its outer process"
+            )
+        kernel_pack = _mapping(
+            execution.get("kernel_pack"),
+            "on-the-fly execution.kernel_pack",
+        )
+        if kernel_pack != {
+            "manifest_path": "model/eager-kernel-pack.json",
+            "payload_root": "model/eager-kernels",
+        }:
+            raise ArtifactError("on-the-fly prepared-kernel paths are not canonical")
+        runtime_container = _mapping(
+            execution.get("runtime_container"),
+            "on-the-fly execution.runtime_container",
+        )
+        if runtime_container != {
+            "kind": "pyamplicol-on-the-fly-runtime-container",
+            "schema_version": 1,
+            "storage_abi": "pacbin-v1",
+            "path": "on-the-fly-runtime.pacbin",
+            "seed_member_path": "on-the-fly/process-seed-v1.bin",
+        }:
+            raise ArtifactError("on-the-fly runtime-container contract is noncanonical")
+        _mapping(
+            execution.get("runtime_metadata"),
+            "on-the-fly execution.runtime_metadata",
+        )
+        selector_policy = _mapping(
+            execution.get("selector_policy"),
+            "on-the-fly execution.selector_policy",
+        )
+        if set(selector_policy) != {
+            "color_coverage",
+            "reference_color_word",
+            "trace_reflections_folded",
+            "selector_census",
+        }:
+            raise ArtifactError(
+                "on-the-fly execution.selector_policy has unsupported fields"
+            )
+        if selector_policy.get("color_coverage") != "complete":
+            raise ArtifactError(
+                "on-the-fly execution.selector_policy.color_coverage must be 'complete'"
+            )
+        trace_reflections_folded = selector_policy.get("trace_reflections_folded")
+        if not isinstance(trace_reflections_folded, bool):
+            raise ArtifactError(
+                "on-the-fly execution.selector_policy.trace_reflections_folded "
+                "must be a boolean"
+            )
+        reference = selector_policy.get("reference_color_word")
+        if reference is not None:
+            word = tuple(
+                _integer(
+                    value,
+                    "on-the-fly execution.selector_policy.reference_color_word"
+                    f"[{index}]",
+                    minimum=1,
+                )
+                for index, value in enumerate(
+                    _sequence(
+                        reference,
+                        "on-the-fly execution.selector_policy.reference_color_word",
+                    )
+                )
+            )
+            if not word or len(set(word)) != len(word):
+                raise ArtifactError(
+                    "on-the-fly execution selector reference must contain unique "
+                    "positive labels"
+                )
+        census = _mapping(
+            selector_policy.get("selector_census"),
+            "on-the-fly execution.selector_policy.selector_census",
+        )
+        if set(census) != {
+            "physical_helicity_count",
+            "physical_color_flow_count",
+        }:
+            raise ArtifactError(
+                "on-the-fly execution selector census has unsupported fields"
+            )
+        helicity_count = _integer(
+            census.get("physical_helicity_count"),
+            "on-the-fly execution selector census physical_helicity_count",
+            minimum=1,
+        )
+        color_flow_count = _integer(
+            census.get("physical_color_flow_count"),
+            "on-the-fly execution selector census physical_color_flow_count",
+            minimum=1,
+        )
+        if helicity_count > (1 << 64) - 1 or color_flow_count > (1 << 64) - 1:
+            raise ArtifactError(
+                "on-the-fly execution selector census exceeds the u64 domain"
+            )
+        runtime_options = _mapping(
+            execution.get("runtime_options"),
+            "on-the-fly execution.runtime_options",
+        )
+        if set(runtime_options) != {"point_tile_size"}:
+            raise ArtifactError("on-the-fly execution.runtime_options is invalid")
+        point_tile_size = _integer(
+            runtime_options.get("point_tile_size"),
+            "on-the-fly execution.runtime_options.point_tile_size",
+            minimum=1,
+        )
+        return _ExecutionInspection(
+            execution_mode="on-the-fly",
+            physical_helicity_count=helicity_count,
+            physical_color_flow_count=color_flow_count,
+            requested_point_tile_size=point_tile_size,
+            effective_point_tile_size=point_tile_size,
+            native_profile_phases=_ON_THE_FLY_PROFILE_PHASES,
+        )
     if RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in capability_values:
         color_capabilities = capability_values.intersection(
             {
@@ -1494,6 +1689,7 @@ def _color_sector_selection(
 def _physics_inspection(
     manifest: ArtifactManifest,
     process: Mapping[str, object],
+    execution: _ExecutionInspection,
 ) -> _PhysicsInspection:
     relative = str(process["physics_path"])
     path = manifest.root / relative
@@ -1509,6 +1705,145 @@ def _physics_inspection(
         ) from exc
 
     physics = _mapping(payload, f"runtime physics metadata {relative}")
+    if execution.execution_mode == "on-the-fly":
+        if set(physics) != {
+            "schema_version",
+            "kind",
+            "process_id",
+            "process",
+            "color_accuracy",
+            "external_particles",
+            "model_parameters",
+        }:
+            raise ArtifactError(
+                f"{relative} compact on-the-fly metadata has unsupported fields"
+            )
+        if (
+            physics.get("schema_version") != 1
+            or physics.get("kind") != _ON_THE_FLY_PUBLIC_METADATA_KIND
+            or physics.get("process_id") != process.get("id")
+            or physics.get("process") != process.get("expression")
+            or physics.get("color_accuracy") != "lc"
+            or process.get("color_accuracy") != "lc"
+        ):
+            raise ArtifactError(
+                f"{relative} compact on-the-fly metadata disagrees with its process"
+            )
+        external_pdgs = _sequence(
+            process.get("external_pdgs"),
+            f"process {process.get('id')} external_pdgs",
+        )
+        externals = _sequence(
+            physics.get("external_particles"),
+            f"{relative}.external_particles",
+        )
+        if len(externals) != len(external_pdgs):
+            raise ArtifactError(
+                f"{relative}.external_particles disagrees with the process arity"
+            )
+        for index, (raw_external, pdg) in enumerate(
+            zip(externals, external_pdgs, strict=True)
+        ):
+            external = _mapping(
+                raw_external,
+                f"{relative}.external_particles[{index}]",
+            )
+            if (
+                set(external)
+                != {
+                    "index",
+                    "label",
+                    "particle",
+                    "pdg",
+                    "role",
+                    "momentum_slot",
+                    "momentum_components",
+                }
+                or external.get("index") != index
+                or external.get("label") != index + 1
+                or isinstance(external.get("pdg"), bool)
+                or not isinstance(external.get("pdg"), int)
+                or external.get("pdg") != pdg
+                or external.get("momentum_slot") != index
+                or external.get("role")
+                != ("initial" if index < 2 else "final")
+                or external.get("momentum_components") != ["E", "px", "py", "pz"]
+            ):
+                raise ArtifactError(
+                    f"{relative}.external_particles[{index}] is noncanonical"
+                )
+            _string(
+                external.get("particle"),
+                f"{relative}.external_particles[{index}].particle",
+            )
+        parameter_names: set[str] = set()
+        for index, raw_parameter in enumerate(
+            _sequence(physics.get("model_parameters"), f"{relative}.model_parameters")
+        ):
+            parameter = _mapping(
+                raw_parameter,
+                f"{relative}.model_parameters[{index}]",
+            )
+            if set(parameter) != {
+                "name",
+                "kind",
+                "default_real",
+                "default_imaginary",
+                "mutable",
+            }:
+                raise ArtifactError(
+                    f"{relative}.model_parameters[{index}] has unsupported fields"
+                )
+            name = _string(
+                parameter.get("name"),
+                f"{relative}.model_parameters[{index}].name",
+            )
+            kind = parameter.get("kind")
+            mutable = parameter.get("mutable")
+            defaults = (
+                parameter.get("default_real"),
+                parameter.get("default_imaginary"),
+            )
+            if (
+                name in parameter_names
+                or kind
+                not in {
+                    "normalization",
+                    "mass",
+                    "width",
+                    "coupling",
+                    "external",
+                    "derived",
+                }
+                or not isinstance(mutable, bool)
+                or (kind == "derived" and mutable)
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, int | float)
+                    or not math.isfinite(value)
+                    for value in defaults
+                )
+            ):
+                raise ArtifactError(
+                    f"{relative}.model_parameters[{index}] is noncanonical"
+                )
+            parameter_names.add(name)
+        helicity_count = execution.physical_helicity_count
+        color_flow_count = execution.physical_color_flow_count
+        if helicity_count is None or color_flow_count is None:  # pragma: no cover
+            raise ArtifactError("on-the-fly execution has no selector census")
+        return _PhysicsInspection(
+            physical_helicities=helicity_count,
+            computed_helicities=helicity_count,
+            physical_color_components=color_flow_count,
+            computed_color_components=color_flow_count,
+            helicity_coverage="complete",
+            color_coverage="complete",
+            selector_provenance="on-the-fly-compact-seed",
+            helicity_runtime_contract="complete-reusable",
+            color_flow_runtime_contract="complete-reusable",
+            lc_physical_sector_count=color_flow_count,
+        )
     helicities = _sequence(physics.get("helicities"), f"{relative}.helicities")
     colors = _sequence(physics.get("color_components"), f"{relative}.color_components")
     coverage = _mapping(physics.get("coverage"), f"{relative}.coverage")
@@ -1802,7 +2137,7 @@ def _process_inspection(
                 ),
             )
         )
-    physics = _physics_inspection(manifest, process)
+    physics = _physics_inspection(manifest, process, execution)
     union_sector_count = (
         physics.physical_color_components
         if lc_flow_layout == "all-flow-union"
@@ -1964,6 +2299,7 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
                     process.get("required_runtime_capabilities"),
                     f"process {process['id']} required runtime capabilities",
                 ),
+                process=process,
             ),
         )
         for process in manifest.processes

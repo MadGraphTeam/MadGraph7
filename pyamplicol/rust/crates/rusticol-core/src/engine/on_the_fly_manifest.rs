@@ -91,6 +91,14 @@ pub(super) struct OnTheFlySelectorPolicy {
     #[serde(default)]
     pub(super) reference_color_word: Option<Vec<u32>>,
     pub(super) trace_reflections_folded: bool,
+    pub(super) selector_census: OnTheFlySelectorCensus,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct OnTheFlySelectorCensus {
+    pub(super) physical_helicity_count: u64,
+    pub(super) physical_color_flow_count: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -168,6 +176,39 @@ impl OnTheFlySelectorPolicy {
                     "on-the-fly reference color word must contain unique positive external labels",
                 ));
             }
+        }
+        self.selector_census.validate()?;
+        Ok(())
+    }
+}
+
+impl OnTheFlySelectorCensus {
+    fn validate(&self) -> RusticolResult<()> {
+        if self.physical_helicity_count == 0 || self.physical_color_flow_count == 0 {
+            return Err(RusticolError::artifact(
+                "on-the-fly selector census counts must be positive",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn validate_against(
+        &self,
+        physical_helicity_count: usize,
+        physical_color_flow_count: usize,
+    ) -> RusticolResult<()> {
+        let helicities = u64::try_from(physical_helicity_count).map_err(|_| {
+            RusticolError::artifact("on-the-fly physical helicity count exceeds u64")
+        })?;
+        let color_flows = u64::try_from(physical_color_flow_count).map_err(|_| {
+            RusticolError::artifact("on-the-fly physical color-flow count exceeds u64")
+        })?;
+        if self.physical_helicity_count != helicities
+            || self.physical_color_flow_count != color_flows
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly selector census disagrees with the authenticated compact seed",
+            ));
         }
         Ok(())
     }
@@ -532,7 +573,11 @@ mod tests {
             "selector_policy": {
                 "color_coverage": "complete",
                 "reference_color_word": null,
-                "trace_reflections_folded": false
+                "trace_reflections_folded": false,
+                "selector_census": {
+                    "physical_helicity_count": 64,
+                    "physical_color_flow_count": 6
+                }
             },
             "runtime_metadata": {
                 "runtime_parameters": [],
@@ -596,6 +641,13 @@ mod tests {
         let parsed = parse(&manifest()).unwrap();
         assert_eq!(parsed.runtime_options.point_tile_size, 64);
         assert_eq!(
+            parsed.selector_policy.selector_census,
+            OnTheFlySelectorCensus {
+                physical_helicity_count: 64,
+                physical_color_flow_count: 6,
+            }
+        );
+        assert_eq!(
             parsed.runtime_container.seed_member_path,
             ON_THE_FLY_PROCESS_SEED_MEMBER
         );
@@ -610,6 +662,25 @@ mod tests {
             .unwrap()
             .push(json!("unrelated.capability.v1"));
         assert!(parse(&extra_capability).is_err());
+
+        let mut zero_census = manifest();
+        zero_census["selector_policy"]["selector_census"]["physical_helicity_count"] = json!(0);
+        assert!(parse(&zero_census).is_err());
+
+        let mut incomplete_census = manifest();
+        incomplete_census["selector_policy"]["selector_census"]
+            .as_object_mut()
+            .unwrap()
+            .remove("physical_color_flow_count");
+        assert!(parse(&incomplete_census).is_err());
+    }
+
+    #[test]
+    fn selector_census_fails_closed_against_authenticated_adapter_counts() {
+        let census = parse(&manifest()).unwrap().selector_policy.selector_census;
+        census.validate_against(64, 6).unwrap();
+        assert!(census.validate_against(63, 6).is_err());
+        assert!(census.validate_against(64, 5).is_err());
     }
 
     #[test]

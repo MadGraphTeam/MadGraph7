@@ -4916,7 +4916,57 @@ def _audit_on_the_fly_execution(
         or point_tile_size < 1
     ):
         raise FinalAuditError("on-the-fly execution point tile is invalid")
-    _mapping(execution.get("selector_policy"), "on-the-fly selector_policy")
+    selector_policy = _mapping(
+        execution.get("selector_policy"),
+        "on-the-fly selector_policy",
+    )
+    if (
+        set(selector_policy)
+        != {
+            "color_coverage",
+            "reference_color_word",
+            "trace_reflections_folded",
+            "selector_census",
+        }
+        or selector_policy.get("color_coverage") != "complete"
+        or not isinstance(selector_policy.get("trace_reflections_folded"), bool)
+    ):
+        raise FinalAuditError("on-the-fly selector policy differs")
+    reference_color_word = selector_policy.get("reference_color_word")
+    if reference_color_word is not None:
+        reference = _sequence(
+            reference_color_word,
+            "on-the-fly selector policy reference_color_word",
+        )
+        if (
+            not reference
+            or any(
+                isinstance(label, bool) or not isinstance(label, int) or label < 1
+                for label in reference
+            )
+            or len(set(reference)) != len(reference)
+        ):
+            raise FinalAuditError("on-the-fly selector reference word is invalid")
+    selector_census = _mapping(
+        selector_policy.get("selector_census"),
+        "on-the-fly selector census",
+    )
+    if set(selector_census) != {
+        "physical_helicity_count",
+        "physical_color_flow_count",
+    }:
+        raise FinalAuditError("on-the-fly selector census fields differ")
+    for field in ("physical_helicity_count", "physical_color_flow_count"):
+        count = selector_census.get(field)
+        if (
+            isinstance(count, bool)
+            or not isinstance(count, int)
+            or count < 1
+            or count > (1 << 64) - 1
+        ):
+            raise FinalAuditError(
+                f"on-the-fly selector census {field} is outside positive u64"
+            )
     runtime_metadata = _mapping(
         execution.get("runtime_metadata"),
         "on-the-fly runtime_metadata",
@@ -5057,6 +5107,22 @@ def _audit_on_the_fly_execution(
         runtime_metadata,
         pack,
     )
+    seed_helicity_count = math.prod(
+        len(
+            _sequence(
+                _mapping(source, "on-the-fly native source identity").get("states"),
+                "on-the-fly native source identity states",
+            )
+        )
+        for source in _sequence(
+            native_identity.get("external_sources"),
+            "on-the-fly native source identities",
+        )
+    )
+    if seed_helicity_count != selector_census["physical_helicity_count"]:
+        raise FinalAuditError(
+            "on-the-fly selector helicity census disagrees with the decoded seed"
+        )
     return source_leaf_count
 
 

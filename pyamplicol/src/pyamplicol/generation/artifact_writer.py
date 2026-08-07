@@ -1650,6 +1650,32 @@ def _validate_staged_on_the_fly_runtime(
 
 def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
     capabilities = list(_on_the_fly_process_runtime_capabilities(process))
+    selector_policy = _mapping(process.selector_policy)
+    if set(selector_policy) != {
+        "color_coverage",
+        "reference_color_word",
+        "trace_reflections_folded",
+        "selector_census",
+    }:
+        raise ValueError("on-the-fly selector policy fields are invalid")
+    if selector_policy.get("color_coverage") != "complete" or not isinstance(
+        selector_policy.get("trace_reflections_folded"), bool
+    ):
+        raise ValueError("on-the-fly selector policy is invalid")
+    census = _mapping(selector_policy.get("selector_census"))
+    if set(census) != {
+        "physical_helicity_count",
+        "physical_color_flow_count",
+    }:
+        raise ValueError("on-the-fly selector census fields are invalid")
+    for field in ("physical_helicity_count", "physical_color_flow_count"):
+        count = _nonnegative_integer(
+            census.get(field),
+            f"on-the-fly selector census {field}",
+            minimum=1,
+        )
+        if count > (1 << 64) - 1:
+            raise ValueError(f"on-the-fly selector census {field} exceeds u64")
     payload = {
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
         "kind": ON_THE_FLY_RUNTIME_KIND,
@@ -1669,7 +1695,7 @@ def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
                 minimum=1,
             ),
         },
-        "selector_policy": _deep_plain(process.selector_policy),
+        "selector_policy": _deep_plain(selector_policy),
         "runtime_metadata": _deep_plain(process.runtime_metadata),
         "runtime_container": {
             "kind": ON_THE_FLY_RUNTIME_CONTAINER_KIND,

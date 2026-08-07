@@ -95,6 +95,10 @@ pub(super) fn load_on_the_fly_native_runtime(
 
     let metadata_selectors =
         OnTheFlyCompactSelectorAdapterV1::from_seed(&seed, selector_policy(manifest))?;
+    manifest.selector_policy.selector_census.validate_against(
+        metadata_selectors.helicity_count(),
+        metadata_selectors.color_count(),
+    )?;
     let selectors = metadata_selectors
         .clone()
         .with_public_permutation(&selection.external_permutation)?;

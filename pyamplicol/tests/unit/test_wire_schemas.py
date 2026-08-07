@@ -28,13 +28,64 @@ def test_wire_schemas_are_strict_and_versioned() -> None:
         artifact["$defs"]["version_set"]["properties"]["runtime_physics"]["const"] == 1
     )
 
-    assert physics["additionalProperties"] is False
-    assert physics["properties"]["schema_version"]["const"] == 1
-    assert physics["properties"]["kind"]["const"] == ("pyamplicol-resolved-physics")
+    assert physics["oneOf"] == [
+        {"$ref": "#/$defs/resolved_physics"},
+        {"$ref": "#/$defs/on_the_fly_public_metadata"},
+    ]
+    resolved = physics["$defs"]["resolved_physics"]
+    compact = physics["$defs"]["on_the_fly_public_metadata"]
+    assert resolved["additionalProperties"] is False
+    assert resolved["properties"]["schema_version"]["const"] == 1
+    assert resolved["properties"]["kind"]["const"] == (
+        "pyamplicol-resolved-physics"
+    )
+    assert compact["additionalProperties"] is False
+    assert compact["properties"]["kind"]["const"] == (
+        "pyamplicol-on-the-fly-public-metadata"
+    )
     assert (
         physics["$defs"]["selectors"]["properties"]["contracted_color"]["const"]
         is False
     )
+
+
+def test_runtime_physics_schema_accepts_only_strict_compact_otf_metadata() -> None:
+    physics = _schema("runtime-physics-v1.schema.json")
+    compact = {
+        "schema_version": 1,
+        "kind": "pyamplicol-on-the-fly-public-metadata",
+        "process_id": "six_fermions",
+        "process": "d d~ > u u~ u u~",
+        "color_accuracy": "lc",
+        "external_particles": [
+            {
+                "index": index,
+                "label": index + 1,
+                "particle": particle,
+                "pdg": pdg,
+                "role": "initial" if index < 2 else "final",
+                "momentum_slot": index,
+                "momentum_components": ["E", "px", "py", "pz"],
+            }
+            for index, (particle, pdg) in enumerate(
+                (
+                    ("d", 1),
+                    ("d~", -1),
+                    ("u", 2),
+                    ("u~", -2),
+                    ("u", 2),
+                    ("u~", -2),
+                )
+            )
+        ],
+        "model_parameters": [],
+    }
+    validator = jsonschema.Draft202012Validator(physics)
+    validator.validate(compact)
+
+    invented = copy.deepcopy(compact)
+    invented["helicities"] = []
+    assert list(validator.iter_errors(invented))
 
 
 def test_artifact_manifest_declares_security_critical_payload_fields() -> None:

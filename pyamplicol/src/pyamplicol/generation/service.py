@@ -1066,6 +1066,7 @@ def _invoke_rust_on_the_fly_seed_builder_v1(
 
 
 _ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI = "pyamplicol-on-the-fly-process-seed-identity-v1"
+_U64_MAX = (1 << 64) - 1
 _ON_THE_FLY_PROCESS_SEED_IDENTITY_FIELDS = frozenset(
     {
         "abi",
@@ -1079,6 +1080,53 @@ _ON_THE_FLY_PROCESS_SEED_IDENTITY_FIELDS = frozenset(
         "external_sources",
     }
 )
+
+
+def _on_the_fly_selector_census_v1(
+    projection: OnTheFlyProcessSeedProjectionV1,
+    process: CanonicalProcessIR,
+) -> dict[str, int]:
+    """Count complete compact selector axes without materializing either axis."""
+
+    helicity_count = math.prod(
+        len(source.source_states) for source in projection.external_sources
+    )
+    if len(projection.external_sources) != len(process.legs) or any(
+        leg.color_role == "inclusive" for leg in process.legs
+    ):
+        raise GenerationError(
+            "on-the-fly selector census requires one concrete source per process leg"
+        )
+    fundamental_count = len(process.fundamental_labels)
+    antifundamental_count = len(process.antifundamental_labels)
+    adjoint_count = len(process.adjoint_labels)
+    if fundamental_count != antifundamental_count:
+        raise GenerationError(
+            "on-the-fly selector census found unbalanced LC open-line endpoints"
+        )
+    if fundamental_count:
+        color_flow_count = (
+            math.factorial(fundamental_count)
+            * math.factorial(adjoint_count)
+            * math.comb(
+                adjoint_count + fundamental_count - 1,
+                fundamental_count - 1,
+            )
+        )
+    elif adjoint_count:
+        color_flow_count = math.factorial(max(adjoint_count - 1, 0))
+    else:
+        color_flow_count = 1
+    census = {
+        "physical_helicity_count": helicity_count,
+        "physical_color_flow_count": color_flow_count,
+    }
+    for name, count in census.items():
+        if count < 1 or count > _U64_MAX:
+            raise GenerationError(
+                f"on-the-fly selector census {name} is outside the positive u64 domain"
+            )
+    return census
 
 
 def _validate_on_the_fly_process_seed_identity_v1(
@@ -3144,6 +3192,10 @@ class GenerationBackend:
             process_seed_identity,
             projection.seed,
         )
+        selector_census = _on_the_fly_selector_census_v1(
+            projection.seed,
+            expanded.process_ir,
+        )
         runtime_path = (
             temporary_root
             / "on-the-fly-runtimes"
@@ -3228,6 +3280,7 @@ class GenerationBackend:
                 "trace_reflections_folded": bool(
                     model.lc_trace_reflection_equivalence_is_proven(expanded.process_ir)
                 ),
+                "selector_census": selector_census,
             },
             point_tile_size=run.evaluator.recurrence.point_tile_size,
             validation_point=points[0],

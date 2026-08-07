@@ -1671,6 +1671,20 @@ def _on_the_fly_artifact_contract(artifact: Path, runtime: object) -> dict[str, 
         "payload_root": "model/eager-kernels",
     }:
         raise GateError("generated on-the-fly kernel-pack paths are not canonical")
+    selector_policy = _mapping(
+        record.get("selector_policy"),
+        "on-the-fly selector policy",
+    )
+    if selector_policy != {
+        "color_coverage": "complete",
+        "reference_color_word": None,
+        "trace_reflections_folded": False,
+        "selector_census": {
+            "physical_helicity_count": 64,
+            "physical_color_flow_count": 12,
+        },
+    }:
+        raise GateError("generated on-the-fly selector census is invalid")
 
     physics_relative = str(process["physics_path"])
     public = _authenticated_json_payload(
@@ -1793,6 +1807,7 @@ def _on_the_fly_artifact_contract(artifact: Path, runtime: object) -> dict[str, 
         "representative_process_key": runtime.representative_process_key,
         "execution_kind": record["kind"],
         "required_runtime_capabilities": ON_THE_FLY_CAPABILITIES,
+        "selector_census": selector_policy["selector_census"],
         "process_file_inventory": tuple(sorted(expected_inventory)),
         "process_evaluator_state_payload_count": len(process_evaluator_state),
         "runtime_container_kind": container["kind"],
