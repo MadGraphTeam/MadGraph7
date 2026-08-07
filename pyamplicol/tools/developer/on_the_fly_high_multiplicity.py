@@ -1743,8 +1743,8 @@ def _selected_report_lineage(
             correctness.get("status") == "passed" and authority_checks_valid
         )
         compact_valid = (
-            compact.get("ordinal_one_required") is True
-            and compact.get("ordinal_one_matches_authority") is True
+            compact.get("ordinal_one_required") is False
+            and compact.get("ordinal_one_matches_authority") is None
         )
     if not correctness_valid or not compact_valid:
         raise StudyError("selected report omitted its correctness/selector proof")
@@ -1785,9 +1785,8 @@ def _selected_report_lineage(
         )
     else:
         compact_contract_valid = (
-            compact.get("requested_color_ids") == [selected_flow_id, "1"]
-            and compact.get("selected_color_ids")
-            == [selected_flow_id, selected_flow_id]
+            compact.get("requested_color_ids") == [selected_flow_id]
+            and compact.get("selected_color_ids") == [selected_flow_id]
             and compact.get("semantic_authority_flow_id") == selected_flow_id
         )
     if not compact_contract_valid:
@@ -1968,7 +1967,7 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         selector_contract = reference.contract
         contract = reference.selector_contract
         compact_selector_context = _cross_check_compact_selector(
-            candidate, case, selector, require_ordinal_one=True
+            candidate, case, selector, require_ordinal_one=False
         )
     elif authority_kind == AUTHORITY_RECURRENCE:
         assert model is not None
@@ -1982,7 +1981,7 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
             case, recurrence, points
         )
         compact_selector_context = _cross_check_compact_selector(
-            candidate, case, selector, require_ordinal_one=True
+            candidate, case, selector, require_ordinal_one=False
         )
     else:
         selector, selector_contract, compact_selector_context = (

@@ -539,7 +539,7 @@ def test_amplicol_replays_all_eight_points_from_exact_recorded_row(
         study._replay_amplicol(reference, case, points)
 
 
-def test_process7_compact_context_receives_exact_amplicol_semantic_flow() -> None:
+def test_process7_compact_context_does_not_equate_backend_local_ordinals() -> None:
     case = study._case(7, 5)
     word = (2, 5, 6, 7, 4, 3, 1)
     flow_id = "flow:" + ",".join(map(str, word))
@@ -556,25 +556,26 @@ def test_process7_compact_context_receives_exact_amplicol_semantic_flow() -> Non
             raise AssertionError("dense physics opened")
 
         def _on_the_fly_benchmark_context(self, requested: object) -> dict[str, object]:
-            assert requested == (flow_id, "1")
+            assert requested == (flow_id,)
             return {
                 "process_id": case.process_id,
                 "process_expression": case.process,
                 "color_accuracy": "lc",
                 "helicity_count": 2 ** len(case.pdgs),
                 "color_count": 10,
-                "selected_color_ids": [flow_id, flow_id],
+                "selected_color_ids": [flow_id],
             }
 
     context = study._cross_check_compact_selector(
         SimpleNamespace(_backend=Backend()),
         case,
         selector,
-        require_ordinal_one=True,
+        require_ordinal_one=False,
     )
-    assert context["requested_color_ids"] == [flow_id, "1"]
-    assert context["selected_color_ids"] == [flow_id, flow_id]
-    assert context["ordinal_one_matches_authority"] is True
+    assert context["requested_color_ids"] == [flow_id]
+    assert context["selected_color_ids"] == [flow_id]
+    assert context["ordinal_one_required"] is False
+    assert context["ordinal_one_matches_authority"] is None
 
 
 def test_reference_source_must_match_generated_candidate() -> None:
@@ -1054,6 +1055,7 @@ def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
     compact = mock.Mock(
         return_value={
             "selected_color_ids": [selector.flow_id, selector.flow_id],
+            "ordinal_one_required": True,
             "ordinal_one_matches_authority": True,
         }
     )
@@ -1162,9 +1164,9 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
     monkeypatch.setattr(study, "validate_selector_contract", validate)
     compact = mock.Mock(
         return_value={
-            "selected_color_ids": [selector.flow_id, selector.flow_id],
-            "ordinal_one_required": True,
-            "ordinal_one_matches_authority": True,
+            "selected_color_ids": [selector.flow_id],
+            "ordinal_one_required": False,
+            "ordinal_one_matches_authority": None,
         }
     )
     monkeypatch.setattr(study, "_cross_check_compact_selector", compact)
@@ -1206,7 +1208,9 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
     }
     derive.assert_called_once_with(recurrence, points)
     validate.assert_called_once_with(recurrence, contract, points)
-    compact.assert_called_once_with(candidate, case, selector, require_ordinal_one=True)
+    compact.assert_called_once_with(
+        candidate, case, selector, require_ordinal_one=False
+    )
     assert cold_warmup.call_args.kwargs["ratio_eligible"] is True
     evaluate.assert_called_once_with(
         recurrence, points, "selected", selector, resolved=True
@@ -1573,16 +1577,10 @@ def test_selected_report_binds_exact_candidate(
                 "otf_after_vs_amplicol_replay": {"checks": 8},
             },
             "compact_selector_context": {
-                "ordinal_one_required": True,
-                "ordinal_one_matches_authority": True,
-                "requested_color_ids": [
-                    "flow:2,5,6,7,4,3,1",
-                    "1",
-                ],
-                "selected_color_ids": [
-                    "flow:2,5,6,7,4,3,1",
-                    "flow:2,5,6,7,4,3,1",
-                ],
+                "ordinal_one_required": False,
+                "ordinal_one_matches_authority": None,
+                "requested_color_ids": ["flow:2,5,6,7,4,3,1"],
+                "selected_color_ids": ["flow:2,5,6,7,4,3,1"],
                 "semantic_authority_flow_id": "flow:2,5,6,7,4,3,1",
             },
             "producer_identity": producer,
@@ -1616,9 +1614,7 @@ def test_selected_report_binds_exact_candidate(
     elif mutation == "source-lineage":
         payload["study"]["producer_identity"]["source_revision"] = "e" * 40
     elif mutation == "selector-proof":
-        payload["study"]["compact_selector_context"][
-            "ordinal_one_matches_authority"
-        ] = False
+        payload["study"]["compact_selector_context"]["requested_color_ids"] = ["1"]
     elif mutation == "contract-flow":
         payload["study"]["compact_selector_context"]["semantic_authority_flow_id"] = (
             "flow:1,2,3,4,5,6,7"
