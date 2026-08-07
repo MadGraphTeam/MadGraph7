@@ -4,10 +4,10 @@
 
 Run ``selected`` first: it creates the multiplicity's sole fresh OTF artifact.
 Run ``all-flow`` separately with ``--candidate-artifact`` pointing at that
-artifact.  n=5/6/7 attempt fresh recurrence and compiled authorities for only
-the requested workload; n=8/9 are intentionally OTF-only feasibility probes.
-Every run consumes the matching authenticated original-AmpliCol campaign
-current as its selector and performance authority.
+artifact.  Selected n=5/6/7 cells use exactly one independent authority:
+authenticated original AmpliCol where supported, otherwise recurrence for the
+four-open-quark-line family.  Selected n=8/9 and every all-flow invocation are
+intentionally OTF-only feasibility probes.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -51,17 +52,27 @@ from pyamplicol.config import (  # noqa: E402
 )
 from pyamplicol.models.builtin.validation import generic_validation_point  # noqa: E402
 from tools.ci.memory_watchdog import GIB, run_guarded  # noqa: E402
+from tools.developer import legacy_amplicol  # noqa: E402
 from tools.developer import on_the_fly_lc_gate as n4  # noqa: E402
+from tools.developer.legacy_oracle.model import (  # noqa: E402
+    PINNED_REFERENCE_REVISION,
+)
 from tools.performance_report.artifacts import (  # noqa: E402
     ArtifactStore,
     ArtifactStoreError,
 )
 from tools.performance_report.cache import validate_measurement  # noqa: E402
 from tools.performance_report.catalog import REPORT_CATALOG  # noqa: E402
+from tools.performance_report.legacy import (  # noqa: E402
+    LegacyAdapterError,
+    _canonical_mapped_color_word,
+    _initial_state_count,
+)
 from tools.performance_report.models import Accuracy, Workload  # noqa: E402
 from tools.performance_report.runner import (  # noqa: E402
     RunnerError,
     SelectorContract,
+    derive_selector_contract,
     point_digest,
     validate_selector_contract,
 )
@@ -83,10 +94,21 @@ from tools.performance_report.source_identity import (  # noqa: E402
 )
 
 KIND = "pyamplicol-on-the-fly-high-multiplicity-study"
-SCHEMA_VERSION = 3
-SUPPORTED_PROCESS_IDS = (7, 8)
+SCHEMA_VERSION = 4
+SUPPORTED_PROCESS_IDS = (7, 8, 11, 13, 14, 15)
 SUPPORTED_MULTIPLICITIES = (5, 6, 7, 8, 9)
-DUAL_AUTHORITY = frozenset({5, 6, 7})
+SUPPORTED_PROCESS_MULTIPLICITIES = {
+    7: (5, 6, 7, 8, 9),
+    8: (5, 6, 7, 8, 9),
+    11: (5, 6, 7),
+    13: (5, 6, 7),
+    14: (6, 7),
+    15: (5, 6, 7),
+}
+AMPLI_COL_AUTHORITY_IDS = frozenset({7, 8, 11, 13, 15})
+AUTHORITY_AMPLICOL = "amplicol"
+AUTHORITY_RECURRENCE = "recurrence"
+AUTHORITY_OTF_ONLY = "otf-only"
 SEEDS = n4.SEEDS
 BATCH_SIZE = 128
 WARMUP_RUNS = 2
@@ -177,8 +199,11 @@ class AmplicolReference:
     selector: Selector
     contract: SelectorContract
     selector_contract: dict[str, object]
+    matrix_element: float
     timing: dict[str, object]
     lineage: dict[str, object]
+    library_path: Path | None = None
+    process_row: tuple[int, int] | None = None
 
 
 def _positive_float(text: str) -> float:
@@ -203,14 +228,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--prepared-model", type=Path)
     parser.add_argument(
         "--reference-repo-root",
-        required=True,
         type=Path,
-        help="repository root owning the authenticated AmpliCol profile",
+        help="repository root owning the authenticated AmpliCol profile; "
+        "required only for AmpliCol-authority selected cells",
     )
     parser.add_argument(
         "--reference-profile",
-        required=True,
-        help="ReportPaths profile containing authenticated AmpliCol currents",
+        help="ReportPaths profile containing authenticated AmpliCol currents; "
+        "required only for AmpliCol-authority selected cells",
     )
     parser.add_argument(
         "--candidate-artifact",
@@ -222,7 +247,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="passed selected-workload report that created the OTF candidate",
     )
-    parser.add_argument("--target-runtime", type=_positive_float, default=1.0)
+    parser.add_argument("--target-runtime", type=_positive_float, default=5.0)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return parser
 
@@ -232,6 +257,11 @@ def _case(process_table_id: int, multiplicity: int) -> Case:
         raise StudyError(f"unsupported process-table ID {process_table_id}")
     if multiplicity not in SUPPORTED_MULTIPLICITIES:
         raise StudyError(f"unsupported multiplicity n={multiplicity}")
+    if multiplicity not in SUPPORTED_PROCESS_MULTIPLICITIES[process_table_id]:
+        raise StudyError(
+            f"process-table ID {process_table_id} does not define a planned "
+            f"high-multiplicity cell at n={multiplicity}"
+        )
     family = next(
         (
             candidate
@@ -240,15 +270,31 @@ def _case(process_table_id: int, multiplicity: int) -> Case:
         ),
         None,
     )
-    if family is None or family.key not in {"dd_tt_jets", "gg_gluons"}:
+    expected_keys = {
+        7: "dd_tt_jets",
+        8: "gg_gluons",
+        11: "dd_ttzh_jets",
+        13: "dd_3q_lines",
+        14: "dd_4q_lines",
+        15: "dd_3q_identical_lines",
+    }
+    if family is None or family.key != expected_keys[process_table_id]:
         raise StudyError("process-table catalog identity changed")
     process = family.process(multiplicity)
     if process is None:
         raise StudyError("process-table family does not define this multiplicity")
+    bases = {
+        7: (1, -1, 6, -6),
+        8: (21, 21, 21, 21),
+        11: (1, -1, 6, -6, 23, 25),
+        13: (1, -1, 2, -2, 3, -3),
+        14: (1, -1, 2, -2, 3, -3, 4, -4),
+        15: (1, -1, 2, -2, 2, -2),
+    }
+    base_final_count = len(bases[process_table_id]) - 2
     pdgs = (
-        (1, -1, 6, -6, *(21 for _ in range(multiplicity - 2)))
-        if process_table_id == 7
-        else tuple(21 for _ in range(multiplicity + 2))
+        *bases[process_table_id],
+        *(21 for _ in range(multiplicity - base_final_count)),
     )
     return Case(
         process_table_id,
@@ -260,12 +306,39 @@ def _case(process_table_id: int, multiplicity: int) -> Case:
     )
 
 
+def _authority_kind(case: Case, workload: str) -> str:
+    if workload == "all-flow":
+        return AUTHORITY_OTF_ONLY
+    if workload != "selected":
+        raise StudyError(f"unsupported workload {workload!r}")
+    if case.process_table_id == 14:
+        return AUTHORITY_RECURRENCE
+    if case.multiplicity >= 8:
+        return AUTHORITY_OTF_ONLY
+    if case.process_table_id in AMPLI_COL_AUTHORITY_IDS:
+        return AUTHORITY_AMPLICOL
+    raise StudyError("selected cell has no declared authority policy")
+
+
 def _validate_arguments(args: argparse.Namespace) -> None:
-    _case(args.process_id, args.multiplicity)
-    if not isinstance(args.reference_profile, str) or not args.reference_profile:
-        raise StudyError("--reference-profile must be non-empty")
-    if args.reference_repo_root is None:
-        raise StudyError("--reference-repo-root is required")
+    case = _case(args.process_id, args.multiplicity)
+    authority = _authority_kind(case, args.workload)
+    has_reference_root = args.reference_repo_root is not None
+    has_reference_profile = args.reference_profile is not None
+    if has_reference_root != has_reference_profile:
+        raise StudyError(
+            "--reference-repo-root and --reference-profile must be supplied together"
+        )
+    if authority == AUTHORITY_AMPLICOL:
+        if not has_reference_root:
+            raise StudyError("AmpliCol-authority selected cells require reference args")
+        if (
+            not isinstance(args.reference_profile, str)
+            or not args.reference_profile.strip()
+        ):
+            raise StudyError("--reference-profile must be non-empty")
+    elif has_reference_root:
+        raise StudyError("reference args are only valid for AmpliCol-authority cells")
     if args.workload == "selected":
         if args.prepared_model is None:
             raise StudyError("selected requires --prepared-model")
@@ -277,10 +350,10 @@ def _validate_arguments(args: argparse.Namespace) -> None:
         raise StudyError("all-flow requires --candidate-artifact")
     elif args.selected_report is None:
         raise StudyError("all-flow requires --selected-report")
-    elif args.multiplicity in DUAL_AUTHORITY and args.prepared_model is None:
-        raise StudyError("n=5/6/7 all-flow requires --prepared-model for authorities")
-    elif args.multiplicity not in DUAL_AUTHORITY and args.prepared_model is not None:
-        raise StudyError("n=8/9 all-flow reuses the candidate without --prepared-model")
+    elif args.prepared_model is not None:
+        raise StudyError(
+            "all-flow reuses the selected artifact without --prepared-model"
+        )
 
 
 def _existing(path: Path, *, directory: bool, label: str) -> Path:
@@ -306,6 +379,19 @@ def _timing_points(points: Points) -> Points:
     return (points[0],) * BATCH_SIZE
 
 
+def _colored_source_labels(case: Case) -> tuple[int, ...]:
+    """Return the exact public source labels carried by an LC flow word."""
+
+    labels = tuple(
+        label
+        for label, pdg in enumerate(case.pdgs, start=1)
+        if abs(pdg) in {1, 2, 3, 4, 5, 6, 21}
+    )
+    if not labels:
+        raise StudyError("LC selector process has no colored external sources")
+    return labels
+
+
 def _selector_from_contract(case: Case, contract: SelectorContract) -> Selector:
     expected_helicities = fixed_selector_helicity(case.pdgs)
     expected_helicity_id = selector_helicity_id(expected_helicities)
@@ -319,7 +405,11 @@ def _selector_from_contract(case: Case, contract: SelectorContract) -> Selector:
         raise StudyError("AmpliCol selector contract has the wrong process axis")
     word = contract.selected_color_words[0]
     flow_id = contract.selected_color_flow_ids[0]
-    if len(word) != len(case.pdgs) or selector_color_flow_id(word) != flow_id:
+    if (
+        len(word) != len(_colored_source_labels(case))
+        or set(word) != set(_colored_source_labels(case))
+        or selector_color_flow_id(word) != flow_id
+    ):
         raise StudyError("AmpliCol selector flow does not round-trip")
     return Selector(word, flow_id, expected_helicities, expected_helicity_id)
 
@@ -380,6 +470,44 @@ def _flow_word(flow_id: str) -> tuple[int, ...]:
     return word
 
 
+def _selector_from_compact_ordinal_one(
+    runtime: object,
+    case: Case,
+    points: Points,
+) -> tuple[Selector, SelectorContract, dict[str, object]]:
+    """Derive the first labelled flow through the compact seed axis only."""
+
+    context = _compact_selector_context(runtime, case, ("1",))
+    selected = context["selected_color_ids"]
+    if not isinstance(selected, list) or len(selected) != 1:
+        raise StudyError("compact ordinal 1 did not resolve exactly one flow")
+    flow_id = selected[0]
+    if not isinstance(flow_id, str):
+        raise StudyError("compact ordinal 1 did not resolve a semantic flow ID")
+    flow_word = _flow_word(flow_id)
+    if len(flow_word) != len(_colored_source_labels(case)) or set(flow_word) != set(
+        _colored_source_labels(case)
+    ):
+        raise StudyError("compact ordinal-1 flow has the wrong external axis")
+    helicities = fixed_selector_helicity(case.pdgs)
+    selector = Selector(
+        flow_word=flow_word,
+        flow_id=flow_id,
+        helicities=helicities,
+        helicity_id=selector_helicity_id(helicities),
+    )
+    contract = SelectorContract(
+        selected_color_flow_ids=(selector.flow_id,),
+        selected_color_words=(selector.flow_word,),
+        all_flow_helicity_ids=(selector.helicity_id,),
+        all_flow_source_helicities=tuple(enumerate(selector.helicities, start=1)),
+        point_digest=point_digest(points),
+    )
+    context["selector_source"] = "compact-seed-one-based-color-ordinal-1"
+    context["resolved_semantic_flow_id"] = flow_id
+    return selector, contract, context
+
+
 def _reference_cell(case: Case, workload: str) -> object:
     expected_workload = (
         Workload.SELECTED_FLOW if workload == "selected" else Workload.ALL_FLOW
@@ -412,11 +540,37 @@ def _required_reference_number(
     return result
 
 
+def _required_reference_sample_count(measurement: Mapping[str, object]) -> int:
+    value = measurement.get("sample_count")
+    if isinstance(value, bool) or not isinstance(value, int) or value < MINIMUM_SAMPLES:
+        raise StudyError("AmpliCol reference has insufficient actual samples")
+    return value
+
+
 def _active_report_source() -> ReportSourceIdentity:
     try:
         return require_eligible_report_source(ROOT)
     except ReportSourceIdentityError as error:
         raise StudyError(f"active report source is ineligible: {error}") from error
+
+
+def _authenticate_reference_source(
+    provenance: Mapping[str, object], active_source: ReportSourceIdentity
+) -> None:
+    """Keep the current exact source-lineage policy isolated for later audit."""
+
+    source_fields = {
+        "revision": PINNED_REFERENCE_REVISION,
+        "report_source_revision": active_source.revision,
+        "report_measured_source_revision": active_source.revision,
+        "report_source_tree": active_source.tree,
+        "report_measured_source_tree": active_source.tree,
+        "report_source_clean": True,
+    }
+    if any(
+        provenance.get(field) != expected for field, expected in source_fields.items()
+    ):
+        raise StudyError("AmpliCol reference source differs from the active source")
 
 
 def _reference_timing_contract(
@@ -576,22 +730,66 @@ def _load_amplicol_reference(
         "relative_standard_error": _required_reference_number(
             measurement, "relative_standard_error", allow_zero=True
         ),
-        "sample_count": measurement.get("sample_count"),
+        "sample_count": _required_reference_sample_count(measurement),
     }
+    matrix_element = _required_reference_number(
+        measurement, "matrix_element", allow_zero=True
+    )
+    raw_artifact = measurement.get("artifact")
+    artifact_path = (
+        raw_artifact.get("path") if isinstance(raw_artifact, Mapping) else None
+    )
+    process_row = (
+        raw_artifact.get("process_row") if isinstance(raw_artifact, Mapping) else None
+    )
+    row_match = (
+        re.fullmatch(r"group:([1-9][0-9]*):integral:([1-9][0-9]*)", process_row)
+        if isinstance(process_row, str)
+        else None
+    )
+    if not isinstance(artifact_path, str) or row_match is None:
+        raise StudyError("AmpliCol reference omitted its generated-library row")
+    recorded_artifact_path = _existing(
+        Path(artifact_path),
+        directory=True,
+        label="AmpliCol current-owned artifact",
+    )
+    expected_artifact_path = _existing(
+        current.result_path.parent / "artifact",
+        directory=True,
+        label="AmpliCol authenticated attempt artifact",
+    )
+    if recorded_artifact_path != expected_artifact_path:
+        raise StudyError("AmpliCol reference artifact is outside its current attempt")
+    library_path = _existing(
+        recorded_artifact_path / "selected-flow-generated-library",
+        directory=True,
+        label="AmpliCol selected-flow generated-library snapshot",
+    )
+    executable = _existing(
+        library_path / "amplicol_library_benchmark",
+        directory=False,
+        label="AmpliCol selected-flow replay executable",
+    )
+    if not os.access(executable, os.X_OK):
+        raise StudyError("AmpliCol selected-flow replay executable is not executable")
+    _existing(
+        library_path / "processes.txt",
+        directory=False,
+        label="AmpliCol selected-flow process table",
+    )
+    _existing(
+        library_path / "Library",
+        directory=True,
+        label="AmpliCol selected-flow serialized library",
+    )
+    if not tuple(library_path.glob("libamp*.so")):
+        raise StudyError("AmpliCol selected-flow snapshot has no shared libraries")
+    parsed_process_row = (int(row_match.group(1)), int(row_match.group(2)))
     provenance = measurement.get("provenance")
     if not isinstance(provenance, Mapping):
         raise StudyError("AmpliCol reference omitted source provenance")
-    source_fields = {
-        "report_source_revision": active_source.revision,
-        "report_measured_source_revision": active_source.revision,
-        "report_source_tree": active_source.tree,
-        "report_measured_source_tree": active_source.tree,
-        "report_source_clean": True,
-    }
-    if any(
-        provenance.get(field) != expected for field, expected in source_fields.items()
-    ):
-        raise StudyError("AmpliCol reference source differs from the active source")
+    _authenticate_reference_source(provenance, active_source)
     timing_contract = _reference_timing_contract(
         provenance, case, workload, target_runtime
     )
@@ -599,6 +797,7 @@ def _load_amplicol_reference(
         selector=selector,
         contract=rebound_contract,
         selector_contract=rebound_contract.as_dict(),
+        matrix_element=matrix_element,
         timing=timing,
         lineage={
             "profile": profile,
@@ -615,11 +814,20 @@ def _load_amplicol_reference(
             "workload": workload,
             "source_revision": active_source.revision,
             "source_tree": active_source.tree,
+            "original_amplicol_revision": PINNED_REFERENCE_REVISION,
             "timing_contract": timing_contract,
             "stored_selector_point_digest": stored_contract.point_digest,
             "correctness_selector_point_digest": rebound_contract.point_digest,
             "selector_rebinding": "point-digest-only",
+            "stored_matrix_element": matrix_element,
+            "selected_flow_generated_library": str(library_path),
+            "process_row": {
+                "group": parsed_process_row[0],
+                "integral": parsed_process_row[1],
+            },
         },
+        library_path=library_path,
+        process_row=parsed_process_row,
     )
 
 
@@ -748,6 +956,8 @@ def _candidate_source_binding(
 
 
 def _config(mode: str, layout: str) -> RunConfig:
+    if mode not in {"on-the-fly", "recurrence"}:
+        raise StudyError(f"high-multiplicity harness forbids execution mode {mode!r}")
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy="lc", lc_flow_layout=layout),
@@ -814,16 +1024,14 @@ def _generate_otf(case: Case, path: Path, model: object) -> dict[str, object]:
     }
 
 
-def _generate_authority(
-    case: Case, path: Path, model: object, mode: str, layout: str
-) -> dict[str, object]:
+def _generate_recurrence(case: Case, path: Path, model: object) -> dict[str, object]:
     started = time.perf_counter()
-    Generator(_config(mode, layout)).generate(
+    Generator(_config("recurrence", "topology-replay")).generate(
         ProcessRequest.parse(case.process, name=case.process_id), path, model=model
     )
     return {
-        "execution_mode": mode,
-        "layout": layout,
+        "execution_mode": "recurrence",
+        "layout": "topology-replay",
         "seconds": time.perf_counter() - started,
     }
 
@@ -1012,6 +1220,8 @@ def _requested_workload_cold_warmup(
     selector: Selector,
     points: Points,
     workload: str,
+    *,
+    ratio_eligible: bool,
 ) -> dict[str, object]:
     """Time one requested-workload call on a cold 128xseed-101 batch."""
 
@@ -1063,7 +1273,7 @@ def _requested_workload_cold_warmup(
             "correctness lifecycle",
             "warmed BenchmarkRunner",
         ],
-        "ratio_eligible": workload == "selected",
+        "ratio_eligible": ratio_eligible,
         "generation_pair_eligible": True,
         "acceptance_eligible": False,
     }
@@ -1083,6 +1293,140 @@ def _compare(left: Evaluation, right: Evaluation, label: str) -> dict[str, objec
         }
     except n4.GateError as error:
         raise StudyError(str(error)) from error
+
+
+def _amplicol_singleton_check(
+    evaluation: Evaluation,
+    reference: AmplicolReference,
+    points: Points,
+) -> dict[str, object]:
+    if not evaluation.total or not points:
+        raise StudyError("AmpliCol singleton comparison has no seed-101 result")
+    try:
+        comparison = n4._series(
+            (evaluation.total[0],),
+            (reference.matrix_element,),
+            "OTF seed-101/AmpliCol stored matrix_element",
+            n4.AMPICOL_REL_TOL,
+        )
+    except n4.GateError as error:
+        raise StudyError(str(error)) from error
+    return {
+        "status": "passed",
+        "seed": SEEDS[0],
+        "point_count": 1,
+        "point_digest": point_digest((points[0],)),
+        "stored_amplicol_matrix_element": reference.matrix_element,
+        "otf_matrix_element": float(complex(evaluation.total[0]).real),
+        "comparison": comparison,
+    }
+
+
+def _amplicol_series(
+    candidate: Sequence[object],
+    reference: Sequence[object],
+    label: str,
+) -> dict[str, object]:
+    try:
+        return n4._series(candidate, reference, label, n4.AMPICOL_REL_TOL)
+    except n4.GateError as error:
+        raise StudyError(str(error)) from error
+
+
+def _replay_amplicol(
+    reference: AmplicolReference,
+    case: Case,
+    points: Points,
+) -> tuple[tuple[float, ...], dict[str, object]]:
+    """Replay the immutable selected-flow library at every correctness point."""
+
+    library = reference.library_path
+    process_row = reference.process_row
+    if library is None or process_row is None:
+        raise StudyError("AmpliCol reference omitted replayable library evidence")
+    try:
+        entries = legacy_amplicol.parse_process_file(library / "processes.txt")
+        matches = tuple(
+            entry
+            for entry in entries
+            if (int(entry.group), int(entry.integral)) == process_row
+        )
+        if len(matches) != 1:
+            raise StudyError("AmpliCol generated-library process row is not unique")
+        entry = matches[0]
+        mapped = legacy_amplicol.source_mapped_color_order(
+            entry,
+            source_pdgs=case.pdgs,
+        )
+        replay_word = _canonical_mapped_color_word(
+            case.pdgs,
+            mapped,
+            initial_state_count=_initial_state_count(case.process),
+        )
+        if replay_word != reference.selector.flow_word:
+            raise StudyError("AmpliCol replay row differs from its selector contract")
+        root = str(library.resolve(strict=True))
+        environment: dict[str, str] = {}
+        for name in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+            existing = os.environ.get(name)
+            environment[name] = (
+                root if not existing else f"{root}{os.pathsep}{existing}"
+            )
+        values: list[float] = []
+        with mock.patch.dict(os.environ, environment):
+            for point in points:
+                probe = legacy_amplicol.run_selected_flow_library_probe(
+                    library,
+                    entry=entry,
+                    source_pdgs=case.pdgs,
+                    momenta=point,
+                    helicities=None,
+                    points=1,
+                )
+                emitted_entry = replace(
+                    entry,
+                    process_pdgs=tuple(probe.process_pdgs),
+                    color_order=tuple(probe.color_order),
+                )
+                emitted_mapped = legacy_amplicol.source_mapped_color_order(
+                    emitted_entry,
+                    source_pdgs=case.pdgs,
+                )
+                emitted_word = _canonical_mapped_color_word(
+                    case.pdgs,
+                    emitted_mapped,
+                    initial_state_count=_initial_state_count(case.process),
+                )
+                if emitted_word != reference.selector.flow_word:
+                    raise StudyError(
+                        "AmpliCol replay emitted a different semantic selector flow"
+                    )
+                values.append(float(probe.value))
+    except (LegacyAdapterError, legacy_amplicol.LegacyOracleError, OSError) as error:
+        raise StudyError(
+            f"AmpliCol generated-library replay failed: {error}"
+        ) from error
+    replayed = tuple(values)
+    if len(replayed) != len(points):
+        raise StudyError("AmpliCol generated-library replay has the wrong point axis")
+    stored_check = _amplicol_series(
+        replayed[:1],
+        (reference.matrix_element,),
+        "AmpliCol replay seed-101/stored matrix_element",
+    )
+    return replayed, {
+        "status": "passed",
+        "source": "authenticated-selected-flow-generated-library-snapshot",
+        "library_path": str(library),
+        "process_row": {"group": process_row[0], "integral": process_row[1]},
+        "selector_flow_id": reference.selector.flow_id,
+        "point_count": len(points),
+        "point_digest": point_digest(points),
+        "seeds": list(SEEDS),
+        "helicity_policy": "sum-all-helicities",
+        "subprocess_launches": len(points),
+        "seed101_replay_vs_stored_matrix_element": stored_check,
+    }
 
 
 def _lifecycle(
@@ -1238,38 +1582,40 @@ def _lifecycle(
     )
 
 
-def _authority_contract(
+def _recurrence_authority_contract(
     case: Case,
     recurrence: object,
-    compiled: object,
     points: Points,
-    contract: SelectorContract,
-) -> tuple[Selector, dict[str, object]]:
+) -> tuple[Selector, SelectorContract, dict[str, object]]:
+    if getattr(recurrence, "execution_mode", None) != "recurrence":
+        raise StudyError("recurrence authority has the wrong execution mode")
     try:
+        contract = derive_selector_contract(recurrence, points)
         validate_selector_contract(recurrence, contract, points)
-        validate_selector_contract(compiled, contract, points)
     except RunnerError as error:
         raise StudyError(str(error)) from error
-    if (
-        recurrence.execution_mode != "recurrence"
-        or compiled.execution_mode != "compiled"
-    ):
-        raise StudyError("authority execution modes differ")
-    return _selector_from_contract(case, contract), contract.as_dict()
+    return _selector_from_contract(case, contract), contract, contract.as_dict()
 
 
 def _cross_check_compact_selector(
     runtime: object,
     case: Case,
     selector: Selector,
+    *,
+    require_ordinal_one: bool,
 ) -> dict[str, object]:
-    context = _compact_selector_context(runtime, case, (selector.flow_id,))
+    requested = (selector.flow_id, "1") if require_ordinal_one else (selector.flow_id,)
+    context = _compact_selector_context(runtime, case, requested)
     selected = context["selected_color_ids"]
     if (
-        selected != [selector.flow_id]
+        selected != [selector.flow_id] * len(requested)
         or _flow_word(selector.flow_id) != selector.flow_word
     ):
-        raise StudyError("candidate compact selector differs from AmpliCol policy")
+        source = " and compact ordinal 1" if require_ordinal_one else ""
+        raise StudyError(f"candidate compact selector differs from authority{source}")
+    context["semantic_authority_flow_id"] = selector.flow_id
+    context["ordinal_one_required"] = require_ordinal_one
+    context["ordinal_one_matches_authority"] = True if require_ordinal_one else None
     return context
 
 
@@ -1293,10 +1639,14 @@ def _benchmark(
     if result.interrupted:
         raise StudyError("benchmark was interrupted")
     if (
-        effective.batch_size != BATCH_SIZE
+        effective.target_runtime != target
+        or effective.precision != 16
+        or effective.batch_size != BATCH_SIZE
         or effective.warmup_runs != WARMUP_RUNS
         or effective.minimum_samples < MINIMUM_SAMPLES
         or result.sample_count < MINIMUM_SAMPLES
+        or tuple(effective.helicity_ids) != tuple(config.helicity_ids)
+        or tuple(effective.color_flow_ids) != tuple(config.color_flow_ids)
     ):
         raise StudyError("benchmark did not satisfy the effective timing contract")
     try:
@@ -1314,6 +1664,7 @@ def _selected_report_lineage(
     path: Path,
     case: Case,
     candidate: Mapping[str, object],
+    active_source: ReportSourceIdentity,
 ) -> dict[str, object]:
     outer = _read(path)
     selected = outer.get("study")
@@ -1329,6 +1680,81 @@ def _selected_report_lineage(
         or selected.get("process") != dataclass_payload(case)
     ):
         raise StudyError("selected report has the wrong study identity")
+    expected_authority = _authority_kind(case, "selected")
+    authority = selected.get("authority")
+    correctness = selected.get("correctness")
+    compact = selected.get("compact_selector_context")
+    candidate_source_binding = selected.get("candidate_source_binding")
+    expected_producer = candidate.get("producer_identity")
+    expected_model = candidate.get("model_identity")
+    if (
+        not isinstance(authority, Mapping)
+        or authority.get("kind") != expected_authority
+        or not isinstance(correctness, Mapping)
+        or not isinstance(compact, Mapping)
+        or not isinstance(candidate_source_binding, Mapping)
+        or not isinstance(expected_producer, Mapping)
+        or not isinstance(expected_model, Mapping)
+        or selected.get("producer_identity") != dict(expected_producer)
+        or selected.get("model_identity") != dict(expected_model)
+        or selected.get("active_source") != active_source.provenance()
+        or candidate_source_binding
+        != _candidate_source_binding(active_source, expected_producer)
+    ):
+        raise StudyError("selected report omitted its authority/source lineage")
+    if expected_authority == AUTHORITY_OTF_ONLY:
+        self_consistency = correctness.get("pre_post_clear_self_consistency")
+        correctness_valid = (
+            correctness.get("status") == "not-claimed"
+            and isinstance(self_consistency, Mapping)
+            and isinstance(self_consistency.get("total"), Mapping)
+            and self_consistency["total"].get("checks") == len(SEEDS)
+        )
+        compact_valid = compact.get(
+            "selector_source"
+        ) == "compact-seed-one-based-color-ordinal-1" and compact.get(
+            "requested_color_ids"
+        ) == ["1"]
+    else:
+        before_key, after_key = (
+            ("otf_before_vs_amplicol_replay", "otf_after_vs_amplicol_replay")
+            if expected_authority == AUTHORITY_AMPLICOL
+            else ("otf_before_vs_recurrence", "otf_after_vs_recurrence")
+        )
+        before_comparison = correctness.get(before_key)
+        after_comparison = correctness.get(after_key)
+        if expected_authority == AUTHORITY_AMPLICOL:
+            authority_checks_valid = (
+                isinstance(before_comparison, Mapping)
+                and before_comparison.get("checks") == len(SEEDS)
+                and isinstance(after_comparison, Mapping)
+                and after_comparison.get("checks") == len(SEEDS)
+            )
+        else:
+            authority_checks_valid = (
+                isinstance(before_comparison, Mapping)
+                and isinstance(before_comparison.get("total"), Mapping)
+                and before_comparison["total"].get("checks") == len(SEEDS)
+                and isinstance(after_comparison, Mapping)
+                and isinstance(after_comparison.get("total"), Mapping)
+                and after_comparison["total"].get("checks") == len(SEEDS)
+            )
+        correctness_valid = (
+            correctness.get("status") == "passed" and authority_checks_valid
+        )
+        compact_valid = (
+            compact.get("ordinal_one_required") is True
+            and compact.get("ordinal_one_matches_authority") is True
+        )
+    if not correctness_valid or not compact_valid:
+        raise StudyError("selected report omitted its correctness/selector proof")
+    watchdog = outer.get("watchdog")
+    if (
+        not isinstance(watchdog, Mapping)
+        or watchdog.get("passes") is not True
+        or watchdog.get("limit_bytes") != WATCHDOG_BYTES
+    ):
+        raise StudyError("selected report omitted its 30 GiB watchdog proof")
     generation = selected.get("generation")
     on_the_fly = (
         generation.get("on_the_fly") if isinstance(generation, Mapping) else None
@@ -1347,6 +1773,25 @@ def _selected_report_lineage(
         selected_contract = SelectorContract.from_mapping(raw_contract).as_dict()
     except (TypeError, ValueError) as error:
         raise StudyError("selected report selector contract is invalid") from error
+    selected_flow_ids = selected_contract["selected_color_flow_ids"]
+    if not isinstance(selected_flow_ids, list) or len(selected_flow_ids) != 1:
+        raise StudyError("selected report selector contract has the wrong flow axis")
+    selected_flow_id = selected_flow_ids[0]
+    if expected_authority == AUTHORITY_OTF_ONLY:
+        compact_contract_valid = (
+            compact.get("requested_color_ids") == ["1"]
+            and compact.get("selected_color_ids") == [selected_flow_id]
+            and compact.get("resolved_semantic_flow_id") == selected_flow_id
+        )
+    else:
+        compact_contract_valid = (
+            compact.get("requested_color_ids") == [selected_flow_id, "1"]
+            and compact.get("selected_color_ids")
+            == [selected_flow_id, selected_flow_id]
+            and compact.get("semantic_authority_flow_id") == selected_flow_id
+        )
+    if not compact_contract_valid:
+        raise StudyError("selected report selector contract and compact proof disagree")
     artifacts = selected.get("artifacts")
     recorded = artifacts.get("candidate") if isinstance(artifacts, Mapping) else None
     recorded_path = recorded.get("path") if isinstance(recorded, Mapping) else None
@@ -1377,6 +1822,13 @@ def _selected_report_lineage(
         "status": "passed",
         "candidate_path": canonical,
         "candidate_artifact_id": candidate["artifact_id"],
+        "selected_authority_kind": expected_authority,
+        "producer_identity": dict(expected_producer),
+        "model_identity": dict(expected_model),
+        "active_source": active_source.provenance(),
+        "correctness_status": correctness["status"],
+        "compact_selector_proof": dict(compact),
+        "watchdog": dict(watchdog),
         "seed_binding_calls": 1,
         "seed_count": 1,
         "on_the_fly_generation_seconds": float(generation_seconds),
@@ -1389,7 +1841,7 @@ def _generation_reporting(
     *,
     generation_seconds: float,
     warmup_seconds: float,
-    amplicol_generation_seconds: float,
+    amplicol_generation_seconds: float | None,
     source: str,
 ) -> tuple[dict[str, object], dict[str, float]]:
     if workload not in {"selected", "all-flow"}:
@@ -1401,12 +1853,11 @@ def _generation_reporting(
         or warmup_seconds < 0.0
     ):
         raise StudyError("OTF generation/warm-up comparison timing is invalid")
+    has_amplicol = amplicol_generation_seconds is not None
     comparison: dict[str, object] = {
-        "notation": "([xG] x(G+W))" if workload == "selected" else "[G] G+W",
+        "notation": "([xG] x(G+W))" if has_amplicol else "[G] G+W",
         "reporting": (
-            "ratios-to-amplicol"
-            if workload == "selected"
-            else "absolute-on-the-fly-seconds"
+            "ratios-to-amplicol" if has_amplicol else "absolute-on-the-fly-seconds"
         ),
         "source": source,
         "warmup_source": f"this-{workload}-cold-batch128-run",
@@ -1416,8 +1867,9 @@ def _generation_reporting(
             generation_seconds + warmup_seconds
         ),
     }
-    if workload == "all-flow":
+    if not has_amplicol:
         return comparison, {}
+    assert amplicol_generation_seconds is not None
     if (
         not math.isfinite(amplicol_generation_seconds)
         or amplicol_generation_seconds <= 0.0
@@ -1443,19 +1895,22 @@ def _generation_reporting(
 def _run_worker(args: argparse.Namespace) -> dict[str, object]:
     _validate_arguments(args)
     case = _case(args.process_id, args.multiplicity)
+    authority_kind = _authority_kind(case, args.workload)
     points = _points(case)
     active_source = _active_report_source()
-    reference = _load_amplicol_reference(
-        args.reference_repo_root,
-        args.reference_profile,
-        case,
-        args.workload,
-        points,
-        args.target_runtime,
-        active_source,
-    )
-    selector = reference.selector
-    contract = reference.selector_contract
+    reference: AmplicolReference | None = None
+    if authority_kind == AUTHORITY_AMPLICOL:
+        assert args.reference_repo_root is not None
+        assert isinstance(args.reference_profile, str)
+        reference = _load_amplicol_reference(
+            args.reference_repo_root,
+            args.reference_profile,
+            case,
+            "selected",
+            points,
+            args.target_runtime,
+            active_source,
+        )
     output = Path(os.path.abspath(args.output.expanduser()))
     generation: dict[str, object] = {}
     model = None
@@ -1481,56 +1936,70 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         active_source, candidate_producer_identity
     )
     selected_report_lineage = None
+    selector: Selector
+    selector_contract: SelectorContract
+    contract: dict[str, object]
+    compact_selector_context: dict[str, object]
+    recurrence = None
     if args.workload == "all-flow":
         selected_report_path = _existing(
             args.selected_report, directory=False, label="selected report"
         )
         selected_report_lineage = _selected_report_lineage(
-            selected_report_path, case, artifacts["candidate"]
+            selected_report_path, case, artifacts["candidate"], active_source
         )
-        if selected_report_lineage.get("selector_contract") != contract:
-            raise StudyError(
-                "selected and all-flow AmpliCol selector contracts disagree"
-            )
-
-    recurrence = compiled = None
-    compact_selector_context: dict[str, object]
-    if case.multiplicity in DUAL_AUTHORITY:
-        if model is None:
-            prepared = _existing(
-                args.prepared_model, directory=False, label="prepared model"
-            )
-            model = ModelSource.from_path(prepared).compile()
-        layout = "topology-replay" if args.workload == "selected" else "all-flow-union"
-        for mode in ("recurrence", "compiled"):
-            generation[mode] = _generate_authority(
-                case, output / f"{mode}-authority", model, mode, layout
-            )
-        recurrence = Runtime.load(
-            output / "recurrence-authority", process=case.process_id
+        raw_contract = selected_report_lineage.get("selector_contract")
+        if not isinstance(raw_contract, Mapping):
+            raise StudyError("selected-report lineage omitted its selector contract")
+        try:
+            selector_contract = SelectorContract.from_mapping(raw_contract)
+        except (TypeError, ValueError) as error:
+            raise StudyError("selected-report selector contract is invalid") from error
+        if selector_contract.point_digest != point_digest(points):
+            raise StudyError("selected-report selector points differ from all-flow")
+        selector = _selector_from_contract(case, selector_contract)
+        contract = selector_contract.as_dict()
+        compact_selector_context = _cross_check_compact_selector(
+            candidate, case, selector, require_ordinal_one=False
         )
-        compiled = Runtime.load(output / "compiled-authority", process=case.process_id)
+    elif authority_kind == AUTHORITY_AMPLICOL:
+        assert reference is not None
+        selector = reference.selector
+        selector_contract = reference.contract
+        contract = reference.selector_contract
+        compact_selector_context = _cross_check_compact_selector(
+            candidate, case, selector, require_ordinal_one=True
+        )
+    elif authority_kind == AUTHORITY_RECURRENCE:
+        assert model is not None
+        recurrence_path = output / "recurrence-authority"
+        generation["recurrence"] = _generate_recurrence(case, recurrence_path, model)
+        recurrence = Runtime.load(recurrence_path, process=case.process_id)
         artifacts["recurrence_authority"] = _artifact_identity(
-            output / "recurrence-authority", recurrence, case, "recurrence"
+            recurrence_path, recurrence, case, "recurrence"
         )
-        artifacts["compiled_authority"] = _artifact_identity(
-            output / "compiled-authority", compiled, case, "compiled"
+        selector, selector_contract, contract = _recurrence_authority_contract(
+            case, recurrence, points
         )
-        authority_selector, authority_contract = _authority_contract(
-            case,
-            recurrence,
-            compiled,
-            points,
-            reference.contract,
+        compact_selector_context = _cross_check_compact_selector(
+            candidate, case, selector, require_ordinal_one=True
         )
-        if authority_selector != selector or authority_contract != contract:
-            raise StudyError("dense authorities changed the AmpliCol selector")
-    compact_selector_context = _cross_check_compact_selector(candidate, case, selector)
+    else:
+        selector, selector_contract, compact_selector_context = (
+            _selector_from_compact_ordinal_one(candidate, case, points)
+        )
+        contract = selector_contract.as_dict()
+
     producer_identity = _common_producer_identity(artifacts)
     model_identity = _common_model_identity(artifacts)
 
     requested_cold_warmup = _requested_workload_cold_warmup(
-        candidate, case, selector, points, args.workload
+        candidate,
+        case,
+        selector,
+        points,
+        args.workload,
+        ratio_eligible=reference is not None,
     )
     before, after, lifecycle = _lifecycle(
         candidate,
@@ -1538,34 +2007,66 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         selector,
         points,
         args.workload,
-        case.multiplicity in DUAL_AUTHORITY,
+        authority_kind in {AUTHORITY_AMPLICOL, AUTHORITY_RECURRENCE},
     )
-    if recurrence is not None and compiled is not None:
-        rec = _evaluate(recurrence, points, args.workload, selector, resolved=True)
-        comp = _evaluate(compiled, points, args.workload, selector, resolved=True)
+    otf_self_consistency = _compare(before, after, "OTF pre/post clear")
+    if reference is not None:
+        amplicol_values, amplicol_replay = _replay_amplicol(reference, case, points)
         correctness = {
             "status": "passed",
+            "authority": "authenticated-amplicol-generated-library-replay",
+            "claim_scope": {
+                "external_amplicol_point_count": len(points),
+                "external_amplicol_seeds": list(SEEDS),
+                "otf_lifecycle_point_count": len(points),
+                "otf_lifecycle_seeds": list(SEEDS),
+            },
+            "amplicol_replay": amplicol_replay,
+            "otf_seed101_vs_amplicol_matrix_element": _amplicol_singleton_check(
+                before, reference, points
+            ),
+            "otf_before_vs_amplicol_replay": _amplicol_series(
+                before.total,
+                amplicol_values,
+                "OTF before/AmpliCol generated-library replay",
+            ),
+            "otf_after_vs_amplicol_replay": _amplicol_series(
+                after.total,
+                amplicol_values,
+                "OTF after/AmpliCol generated-library replay",
+            ),
+            "pre_post_clear_self_consistency": otf_self_consistency,
+            "within_runtime_total_vs_resolved": {
+                "on_the_fly_before": before.total_vs_resolved,
+                "on_the_fly_after": after.total_vs_resolved,
+            },
+        }
+    elif recurrence is not None:
+        rec = _evaluate(recurrence, points, args.workload, selector, resolved=True)
+        correctness = {
+            "status": "passed",
+            "authority": "fresh-recurrence",
+            "pre_post_clear_self_consistency": otf_self_consistency,
             "within_runtime_total_vs_resolved": {
                 "on_the_fly_before": before.total_vs_resolved,
                 "on_the_fly_after": after.total_vs_resolved,
                 "recurrence": rec.total_vs_resolved,
-                "compiled": comp.total_vs_resolved,
             },
-            "recurrence_vs_compiled": _compare(rec, comp, "recurrence/compiled"),
             "otf_before_vs_recurrence": _compare(before, rec, "OTF before/recurrence"),
             "otf_after_vs_recurrence": _compare(after, rec, "OTF after/recurrence"),
-            "otf_before_vs_compiled": _compare(before, comp, "OTF before/compiled"),
-            "otf_after_vs_compiled": _compare(after, comp, "OTF after/compiled"),
         }
     else:
         correctness = {
             "status": "not-claimed",
-            "reason": "n=8/9 is OTF-only; numerical parity is not claimed",
-            "pre_post_clear_self_consistency": _compare(before, after, "OTF pre/post"),
+            "reason": (
+                "all-flow is an OTF-only feasibility workload"
+                if args.workload == "all-flow"
+                else "n=8/9 is OTF-only; numerical parity is not claimed"
+            ),
+            "pre_post_clear_self_consistency": otf_self_consistency,
         }
 
     timings = {
-        "amplicol": reference.timing,
         "on_the_fly": _benchmark(
             candidate,
             "on-the-fly",
@@ -1575,9 +2076,11 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
             args.target_runtime,
         ),
     }
+    if reference is not None:
+        timings["amplicol"] = reference.timing
     if _census(candidate, case.process_id) != lifecycle["after_rebuild"]:
         raise StudyError("timed requested family did not plateau")
-    if recurrence is not None and compiled is not None:
+    if recurrence is not None:
         timings["recurrence"] = _benchmark(
             recurrence,
             "recurrence",
@@ -1586,14 +2089,9 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
             selector,
             args.target_runtime,
         )
-        timings["compiled"] = _benchmark(
-            compiled, "compiled", points, args.workload, selector, args.target_runtime
-        )
     candidate_timing = timings["on_the_fly"]
     candidate_wall = float(candidate_timing["wall_seconds_per_point"])
     candidate_evaluator = float(candidate_timing["evaluator_seconds_per_point"])
-    reference_wall = float(reference.timing["wall_seconds_per_point"])
-    reference_evaluator = float(reference.timing["evaluator_seconds_per_point"])
 
     generation_warmup_seconds = float(requested_cold_warmup.get("seconds", -1.0))
     if args.workload == "selected":
@@ -1613,37 +2111,83 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         args.workload,
         generation_seconds=generation_seconds,
         warmup_seconds=generation_warmup_seconds,
-        amplicol_generation_seconds=float(reference.timing["generation_seconds"]),
+        amplicol_generation_seconds=(
+            None if reference is None else float(reference.timing["generation_seconds"])
+        ),
         source=generation_source,
     )
-    runtime_ratio: dict[str, object] = {
-        "wall_seconds_per_point": candidate_wall / reference_wall,
-        "evaluator_seconds_per_point": candidate_evaluator / reference_evaluator,
-    }
-    runtime_ratio.update(generation_ratios)
-    ratios: dict[str, object] = {"on_the_fly_over_amplicol": runtime_ratio}
-    for mode in ("recurrence", "compiled"):
-        value = timings.get(mode)
-        if isinstance(value, Mapping):
-            ratios[f"on_the_fly_over_{mode}"] = {
-                "wall_seconds_per_point": candidate_wall
-                / float(value["wall_seconds_per_point"]),
-                "evaluator_seconds_per_point": candidate_evaluator
-                / float(value["evaluator_seconds_per_point"]),
+    ratios: dict[str, object] = {}
+    if reference is not None:
+        runtime_ratio: dict[str, object] = {
+            "wall_seconds_per_point": candidate_wall
+            / float(reference.timing["wall_seconds_per_point"]),
+            "evaluator_seconds_per_point": candidate_evaluator
+            / float(reference.timing["evaluator_seconds_per_point"]),
+        }
+        runtime_ratio.update(generation_ratios)
+        ratios["on_the_fly_over_amplicol"] = runtime_ratio
+    if recurrence is not None:
+        recurrence_timing = timings["recurrence"]
+        ratios["on_the_fly_over_recurrence"] = {
+            "wall_seconds_per_point": candidate_wall
+            / float(recurrence_timing["wall_seconds_per_point"]),
+            "evaluator_seconds_per_point": candidate_evaluator
+            / float(recurrence_timing["evaluator_seconds_per_point"]),
+        }
+        recurrence_generation = generation.get("recurrence")
+        if not isinstance(recurrence_generation, Mapping):
+            raise StudyError("recurrence authority omitted generation timing")
+        recurrence_generation_seconds = float(recurrence_generation["seconds"])
+        if (
+            not math.isfinite(recurrence_generation_seconds)
+            or recurrence_generation_seconds <= 0.0
+        ):
+            raise StudyError("recurrence authority generation timing is invalid")
+        recurrence_generation_ratios = {
+            "generation_only": generation_seconds / recurrence_generation_seconds,
+            "generation_plus_warmup": (generation_seconds + generation_warmup_seconds)
+            / recurrence_generation_seconds,
+        }
+        generation_comparison.update(
+            {
+                "recurrence_notation": "([xG] x(G+W))",
+                "recurrence_generation_seconds": recurrence_generation_seconds,
+                "generation_only_over_recurrence": recurrence_generation_ratios[
+                    "generation_only"
+                ],
+                "generation_plus_warmup_over_recurrence": (
+                    recurrence_generation_ratios["generation_plus_warmup"]
+                ),
             }
+        )
+        recurrence_ratio = ratios["on_the_fly_over_recurrence"]
+        assert isinstance(recurrence_ratio, dict)
+        recurrence_ratio.update(recurrence_generation_ratios)
     return {
         "kind": KIND,
         "schema_version": SCHEMA_VERSION,
         "status": "passed",
-        "scope": "dual-authority" if recurrence is not None else "otf-only-feasibility",
+        "scope": (
+            "otf-only-feasibility"
+            if authority_kind == AUTHORITY_OTF_ONLY
+            else f"{authority_kind}-authority"
+        ),
+        "authority": {
+            "kind": authority_kind,
+            "workload_policy": (
+                "all-flow-reuses-selected-artifact-without-comparator"
+                if args.workload == "all-flow"
+                else "selected-cell-authority"
+            ),
+        },
         "process": dataclass_payload(case),
         "workload": args.workload,
         "artifacts": artifacts,
         "producer_identity": producer_identity,
         "model_identity": model_identity,
-        "amplicol_reference": reference.lineage,
+        "amplicol_reference": None if reference is None else reference.lineage,
         "active_source": active_source.provenance(),
-        "amplicol_candidate_source_binding": candidate_source_binding,
+        "candidate_source_binding": candidate_source_binding,
         "selected_report_lineage": selected_report_lineage,
         "candidate_reuse": (
             {
@@ -1677,23 +2221,39 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
             "correctness_seeds": list(SEEDS),
             "warmup_runs": WARMUP_RUNS,
             "minimum_samples": MINIMUM_SAMPLES,
+            "target_runtime_seconds": args.target_runtime,
+            "runtime_notation": "([evaluator] wall)",
             "performance_is_acceptance_gate": False,
         },
         "timings": timings,
         "generation_comparison": generation_comparison,
         "descriptive_ratios": ratios,
-        "feasibility_only_forbidden_paths": (
-            None
-            if case.multiplicity in DUAL_AUTHORITY
-            else {
-                "comparators": "not-created",
-                "physics_enumeration": "not-called",
-                "resolved_output": "not-called",
-                "recurrence_probe": "not-called",
-                "prepared_model_on_all_flow": "forbidden",
-                "materialized_process_lanes": "generation-poisoned",
-            }
-        ),
+        "forbidden_paths": {
+            "compiled_generation": "not-called",
+            "recurrence_generation": (
+                "authority" if recurrence is not None else "not-called"
+            ),
+            "amplicol_reference": (
+                "authority" if reference is not None else "not-loaded"
+            ),
+            "external_comparator": (
+                authority_kind
+                if authority_kind != AUTHORITY_OTF_ONLY
+                else "not-created"
+            ),
+            "physics_enumeration": (
+                "recurrence-authority-only" if recurrence is not None else "not-called"
+            ),
+            "resolved_output": (
+                "authority-cells-only"
+                if authority_kind != AUTHORITY_OTF_ONLY
+                else "not-called"
+            ),
+            "prepared_model_on_all_flow": (
+                "forbidden" if args.workload == "all-flow" else "not-applicable"
+            ),
+            "materialized_process_lanes": "OTF-generation-poisoned",
+        },
     }
 
 
@@ -1749,17 +2309,22 @@ def _worker_command(args: argparse.Namespace, output: Path) -> list[str]:
         args.workload,
         "--target-runtime",
         str(args.target_runtime),
-        "--reference-repo-root",
-        str(
-            _existing(
-                args.reference_repo_root,
-                directory=True,
-                label="reference repository root",
-            )
-        ),
-        "--reference-profile",
-        args.reference_profile,
     ]
+    if args.reference_repo_root is not None:
+        command.extend(
+            (
+                "--reference-repo-root",
+                str(
+                    _existing(
+                        args.reference_repo_root,
+                        directory=True,
+                        label="reference repository root",
+                    )
+                ),
+                "--reference-profile",
+                args.reference_profile,
+            )
+        )
     for option, value, directory, label in (
         ("--prepared-model", args.prepared_model, False, "prepared model"),
         ("--candidate-artifact", args.candidate_artifact, True, "candidate artifact"),
