@@ -2623,16 +2623,53 @@ def _otf_compact_series_summary(
     authority: Sequence[float],
     *,
     label: str,
+    candidate_scales: Sequence[float] | None = None,
+    authority_scales: Sequence[float] | None = None,
 ) -> dict[str, object]:
     if not candidate or len(candidate) != len(authority):
         raise RunnerError(f"{label} comparison axes are empty or differ")
+    if (candidate_scales is None) != (authority_scales is None):
+        raise RunnerError(f"{label} comparison scales must be paired")
+    if candidate_scales is not None and (
+        len(candidate_scales) != len(candidate)
+        or authority_scales is None
+        or len(authority_scales) != len(authority)
+    ):
+        raise RunnerError(f"{label} comparison scale axes differ")
+
+    if candidate_scales is None:
+        scale_pairs: Sequence[tuple[float | None, float | None]] = (
+            (None, None),
+        ) * len(candidate)
+    else:
+        assert authority_scales is not None
+        scale_pairs = tuple(zip(candidate_scales, authority_scales, strict=True))
     records = tuple(
         pointwise_validation(
             candidate_value,
             authority_value,
             relative_tolerance=RELATIVE_TOLERANCE,
+            candidate_scale=candidate_scale,
+            baseline_scale=authority_scale,
+            candidate_scale_source=(
+                "value-magnitude"
+                if candidate_scale is None
+                else "resolved-component-l1"
+            ),
+            baseline_scale_source=(
+                "value-magnitude"
+                if authority_scale is None
+                else "resolved-component-l1"
+            ),
         )
-        for candidate_value, authority_value in zip(candidate, authority, strict=True)
+        for (candidate_value, authority_value), (
+            candidate_scale,
+            authority_scale,
+        ) in zip(
+            zip(candidate, authority, strict=True),
+            scale_pairs,
+            strict=True,
+        )
     )
     failed = next(
         (
@@ -2685,29 +2722,46 @@ def _otf_capture_comparison(
     }
     candidate_values: list[float] = []
     authority_values: list[float] = []
+    candidate_scales: list[float] = []
+    authority_scales: list[float] = []
+    component_count = len(candidate.helicity_ids) * len(candidate.color_flow_ids)
     for point_index in range(len(candidate.components)):
-        for candidate_helicity_index, helicity_id in enumerate(candidate.helicity_ids):
-            authority_helicity_index = authority_helicities[helicity_id]
-            for candidate_color_index, color_id in enumerate(candidate.color_flow_ids):
-                authority_color_index = authority_colors[color_id]
-                candidate_values.append(
-                    candidate.components[point_index][candidate_helicity_index][
-                        candidate_color_index
-                    ]
-                )
-                authority_values.append(
-                    authority.components[point_index][authority_helicity_index][
-                        authority_color_index
-                    ]
-                )
+        candidate_point = candidate.components[point_index]
+        authority_point = tuple(
+            tuple(
+                authority.components[point_index][authority_helicities[helicity_id]][
+                    authority_colors[color_id]
+                ]
+                for color_id in candidate.color_flow_ids
+            )
+            for helicity_id in candidate.helicity_ids
+        )
+        candidate_scales.extend(
+            [float(_resolved_l1(candidate_point))] * component_count
+        )
+        authority_scales.extend(
+            [float(_resolved_l1(authority_point))] * component_count
+        )
+        for candidate_row, authority_row in zip(
+            candidate_point,
+            authority_point,
+            strict=True,
+        ):
+            for candidate_value, authority_value in zip(
+                candidate_row,
+                authority_row,
+                strict=True,
+            ):
+                candidate_values.append(candidate_value)
+                authority_values.append(authority_value)
     resolved = _otf_compact_series_summary(
         candidate_values,
         authority_values,
         label=f"{label} resolved components",
+        candidate_scales=candidate_scales,
+        authority_scales=authority_scales,
     )
-    resolved["component_count"] = len(candidate.helicity_ids) * len(
-        candidate.color_flow_ids
-    )
+    resolved["component_count"] = component_count
     return {
         "authority_cell_id": authority_cell_id,
         "total": total,

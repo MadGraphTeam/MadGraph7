@@ -79,12 +79,14 @@ class _Runtime:
         reverse_resolved_axis: bool = False,
         mutate_nonfirst_component: bool = False,
         inconsistent_total: bool = False,
+        structural_zero_residue: float | None = None,
     ) -> None:
         self.execution_mode = mode.value
         self.artifact_id = artifact_character * 64
         self.reverse_resolved_axis = reverse_resolved_axis
         self.mutate_nonfirst_component = mutate_nonfirst_component
         self.inconsistent_total = inconsistent_total
+        self.structural_zero_residue = structural_zero_residue
         self.events: list[tuple[object, ...]] = []
         self.physics = SimpleNamespace(
             color_accuracy="lc",
@@ -154,6 +156,12 @@ class _Runtime:
                         + FLOW_IDS.index(color_id)
                     )
                     component = (helicity_id, color_id)
+                    if (
+                        self.structural_zero_residue is not None
+                        and point_index == 0
+                        and component == (HELICITY_IDS[0], FLOW_IDS[0])
+                    ):
+                        value = self.structural_zero_residue
                     if self.mutate_nonfirst_component and point_index == 1:
                         if component == first_component:
                             value -= 1.0
@@ -348,6 +356,58 @@ def test_mutated_nonfirst_component_fails_before_public_profile(
 
     assert profile_calls == []
     assert ("clear",) not in candidate.events
+
+
+def test_pure_gluon_structural_zero_residue_uses_resolved_slice_scale() -> None:
+    cell = _otf_cell(Workload.SELECTED_FLOW)
+    recurrence_cell, compiled_cell = _authorities(cell)
+    record = on_the_fly_dual_authority_validation(
+        _Runtime(
+            ExecutionMode.ON_THE_FLY,
+            "a",
+            structural_zero_residue=1.0e-30,
+        ),
+        POINTS,
+        cell=cell,
+        selector_contract=_contract(),
+        authorities=(
+            (
+                "recurrence",
+                recurrence_cell,
+                _Runtime(
+                    ExecutionMode.RECURRENCE,
+                    "b",
+                    reverse_resolved_axis=True,
+                    structural_zero_residue=0.0,
+                ),
+            ),
+            (
+                "compiled",
+                compiled_cell,
+                _Runtime(
+                    ExecutionMode.COMPILED,
+                    "c",
+                    structural_zero_residue=0.0,
+                ),
+            ),
+        ),
+    )
+
+    comparisons = tuple(
+        comparison
+        for stage in (record["before_clear"], record["after_clear"])
+        for comparison in stage["comparisons"]
+    )
+    assert all(
+        comparison["resolved_components"]["maximum_absolute_delta"]
+        == pytest.approx(1.0e-30)
+        for comparison in comparisons
+    )
+    assert all(
+        comparison["resolved_components"]["maximum_conditioned_residual"]
+        < report_runner.RELATIVE_TOLERANCE
+        for comparison in comparisons
+    )
 
 
 def test_inconsistent_optimized_and_resolved_sum_fails_before_clear() -> None:
