@@ -1671,6 +1671,14 @@ def _on_the_fly_artifact_contract(artifact: Path, runtime: object) -> dict[str, 
         "payload_root": "model/eager-kernels",
     }:
         raise GateError("generated on-the-fly kernel-pack paths are not canonical")
+    runtime_options = _mapping(
+        record.get("runtime_options"), "on-the-fly runtime options"
+    )
+    if (
+        set(runtime_options) != {"point_tile_size", "query_construction_threads"}
+        or runtime_options.get("query_construction_threads") != 1
+    ):
+        raise GateError("generated on-the-fly runtime options differ")
     selector_policy = _mapping(
         record.get("selector_policy"),
         "on-the-fly selector policy",

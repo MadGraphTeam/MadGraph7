@@ -1271,14 +1271,18 @@ impl NativeRuntime {
             prepared_backend,
             eager_effective_point_tile_size,
             eager_workspace_bytes,
+            on_the_fly_requested_query_construction_threads,
+            on_the_fly_effective_query_construction_threads,
         ) = match &self.execution_lane {
-            NativeExecutionLane::Compiled => ("compiled", None, None, None),
+            NativeExecutionLane::Compiled => ("compiled", None, None, None, None, None),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Eager(runtime) => (
                 "eager",
                 Some(runtime.backend_name().to_string()),
                 Some(runtime.effective_point_tile_size()),
                 Some(runtime.workspace_bytes()),
+                None,
+                None,
             ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => (
@@ -1286,9 +1290,18 @@ impl NativeRuntime {
                 Some(runtime.backend_name().to_string()),
                 Some(runtime.effective_point_tile_size()),
                 None,
+                None,
+                None,
             ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::OnTheFly(_) => ("on-the-fly", None, None, None),
+            NativeExecutionLane::OnTheFly(runtime) => (
+                "on-the-fly",
+                None,
+                None,
+                None,
+                Some(runtime.lane.requested_query_construction_threads()),
+                Some(runtime.lane.effective_query_construction_threads()),
+            ),
         };
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         let compiled_direct_configuration = compiled_direct_configuration_snapshot(&self.runtime);
@@ -1325,6 +1338,8 @@ impl NativeRuntime {
             prepared_backend,
             eager_effective_point_tile_size,
             eager_workspace_bytes,
+            on_the_fly_requested_query_construction_threads,
+            on_the_fly_effective_query_construction_threads,
             compiled_direct_minimum_effective_tile_capacity,
             compiled_direct_maximum_physical_scalar_values_per_point,
             compiled_direct_maximum_hot_scalar_values_per_point,

@@ -34,12 +34,8 @@ _RECURRENCE_RUNTIME_KIND = "pyamplicol-runtime-recurrence-execution"
 _ON_THE_FLY_RUNTIME_KIND = "pyamplicol-runtime-on-the-fly-execution"
 _ON_THE_FLY_PUBLIC_METADATA_KIND = "pyamplicol-on-the-fly-public-metadata"
 _RETIRED_RECURRENCE_RUNTIME_CAPABILITY = "rusticol.recurrence-runtime.complex-f64.v1"
-_RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = (
-    "schedule/recurrence-direct-schedule-v2.bin"
-)
-_RECURRENCE_COLOR_CONTRACTION_CODEC_ABI = (
-    "pyamplicol-recurrence-color-contraction-v3"
-)
+_RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = "schedule/recurrence-direct-schedule-v2.bin"
+_RECURRENCE_COLOR_CONTRACTION_CODEC_ABI = "pyamplicol-recurrence-color-contraction-v3"
 _EAGER_PLAN_V3_ABI = "pyamplicol-eager-plan-v3"
 _EAGER_RUNTIME_CAPABILITIES = frozenset(
     {
@@ -142,6 +138,7 @@ class ArtifactProcessInspection:
     selector_domain_membership_count: int | None = None
     requested_point_tile_size: int | None = None
     effective_point_tile_size: int | None = None
+    requested_query_construction_threads: int | None = None
     workspace_limit_bytes: int | None = None
     workspace_bytes: int | None = None
     arena_semantic_component_count: int | None = None
@@ -329,6 +326,7 @@ class _ExecutionInspection:
     selector_domain_membership_count: int | None = None
     requested_point_tile_size: int | None = None
     effective_point_tile_size: int | None = None
+    requested_query_construction_threads: int | None = None
     workspace_limit_bytes: int | None = None
     workspace_bytes: int | None = None
     arena_semantic_component_count: int | None = None
@@ -1364,9 +1362,7 @@ def _recurrence_execution_inspection(
         recurrence_color_logical_entry_count=color_logical_entry_count,
         recurrence_color_factorization_kind=color_factorization_kind,
         recurrence_color_factorization_rank=color_factorization_rank,
-        recurrence_color_factorization_coset_count=(
-            color_factorization_coset_count
-        ),
+        recurrence_color_factorization_coset_count=(color_factorization_coset_count),
         packed_input_bytes=0,
         packed_output_bytes=0,
         scatter_bytes=0,
@@ -1395,9 +1391,8 @@ def _execution_inspection(
         ON_THE_FLY_RUNTIME_CAPABILITY,
     }
     if not on_the_fly_capabilities.isdisjoint(capability_values):
-        if (
-            capability_values != on_the_fly_capabilities
-            or len(capabilities) != len(on_the_fly_capabilities)
+        if capability_values != on_the_fly_capabilities or len(capabilities) != len(
+            on_the_fly_capabilities
         ):
             raise ArtifactError(
                 "on-the-fly execution must declare exactly its two compact LC "
@@ -1558,11 +1553,19 @@ def _execution_inspection(
             execution.get("runtime_options"),
             "on-the-fly execution.runtime_options",
         )
-        if set(runtime_options) != {"point_tile_size"}:
+        if set(runtime_options) != {
+            "point_tile_size",
+            "query_construction_threads",
+        }:
             raise ArtifactError("on-the-fly execution.runtime_options is invalid")
         point_tile_size = _integer(
             runtime_options.get("point_tile_size"),
             "on-the-fly execution.runtime_options.point_tile_size",
+            minimum=1,
+        )
+        query_construction_threads = _integer(
+            runtime_options.get("query_construction_threads"),
+            "on-the-fly execution.runtime_options.query_construction_threads",
             minimum=1,
         )
         return _ExecutionInspection(
@@ -1571,6 +1574,7 @@ def _execution_inspection(
             physical_color_flow_count=color_flow_count,
             requested_point_tile_size=point_tile_size,
             effective_point_tile_size=point_tile_size,
+            requested_query_construction_threads=query_construction_threads,
             native_profile_phases=_ON_THE_FLY_PROFILE_PHASES,
         )
     if RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in capability_values:
@@ -1765,8 +1769,7 @@ def _physics_inspection(
                 or not isinstance(external.get("pdg"), int)
                 or external.get("pdg") != pdg
                 or external.get("momentum_slot") != index
-                or external.get("role")
-                != ("initial" if index < 2 else "final")
+                or external.get("role") != ("initial" if index < 2 else "final")
                 or external.get("momentum_components") != ["E", "px", "py", "pz"]
             ):
                 raise ArtifactError(
@@ -2202,6 +2205,9 @@ def _process_inspection(
         selector_domain_membership_count=execution.selector_domain_membership_count,
         requested_point_tile_size=execution.requested_point_tile_size,
         effective_point_tile_size=execution.effective_point_tile_size,
+        requested_query_construction_threads=(
+            execution.requested_query_construction_threads
+        ),
         workspace_limit_bytes=execution.workspace_limit_bytes,
         workspace_bytes=execution.workspace_bytes,
         arena_semantic_component_count=execution.arena_semantic_component_count,

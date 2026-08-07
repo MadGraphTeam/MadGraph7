@@ -74,6 +74,7 @@ pub(super) struct OnTheFlyKernelPackReference {
 #[serde(deny_unknown_fields)]
 pub(super) struct OnTheFlyRuntimeOptions {
     pub(super) point_tile_size: u32,
+    pub(super) query_construction_threads: u32,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
@@ -156,6 +157,11 @@ impl OnTheFlyExecutionManifest {
         if self.runtime_options.point_tile_size == 0 {
             return Err(RusticolError::artifact(
                 "on-the-fly point_tile_size must be positive",
+            ));
+        }
+        if self.runtime_options.query_construction_threads == 0 {
+            return Err(RusticolError::artifact(
+                "on-the-fly query_construction_threads must be positive",
             ));
         }
         self.selector_policy.validate()?;
@@ -569,7 +575,10 @@ mod tests {
                 "manifest_path": ON_THE_FLY_KERNEL_PACK_MANIFEST_PATH,
                 "payload_root": ON_THE_FLY_KERNEL_PAYLOAD_ROOT,
             },
-            "runtime_options": {"point_tile_size": 64},
+            "runtime_options": {
+                "point_tile_size": 64,
+                "query_construction_threads": 4
+            },
             "selector_policy": {
                 "color_coverage": "complete",
                 "reference_color_word": null,
@@ -640,6 +649,7 @@ mod tests {
     fn accepts_only_the_compact_lc_contract() {
         let parsed = parse(&manifest()).unwrap();
         assert_eq!(parsed.runtime_options.point_tile_size, 64);
+        assert_eq!(parsed.runtime_options.query_construction_threads, 4);
         assert_eq!(
             parsed.selector_policy.selector_census,
             OnTheFlySelectorCensus {
@@ -673,6 +683,10 @@ mod tests {
             .unwrap()
             .remove("physical_color_flow_count");
         assert!(parse(&incomplete_census).is_err());
+
+        let mut zero_query_construction_threads = manifest();
+        zero_query_construction_threads["runtime_options"]["query_construction_threads"] = json!(0);
+        assert!(parse(&zero_query_construction_threads).is_err());
     }
 
     #[test]

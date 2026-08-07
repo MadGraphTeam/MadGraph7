@@ -3184,6 +3184,16 @@ class GenerationBackend:
         run = self._run_config
         if run is None:  # pragma: no cover - guarded by execution mode
             raise GenerationError("on-the-fly generation requires RunConfig")
+        query_construction_threads = run.evaluator.optimization.cores
+        if (
+            isinstance(query_construction_threads, bool)
+            or not isinstance(query_construction_threads, int)
+            or query_construction_threads < 1
+        ):
+            raise GenerationError(
+                "on-the-fly generation requires resolved positive "
+                "evaluator.optimization.cores"
+            )
         selection = self._process_selection
         coupling_policy = str(run.process.coupling_order_policy)
         explicit_limits = self._coupling_order_limits
@@ -3283,6 +3293,7 @@ class GenerationBackend:
                 "selector_census": selector_census,
             },
             point_tile_size=run.evaluator.recurrence.point_tile_size,
+            query_construction_threads=query_construction_threads,
             validation_point=points[0],
             generation_filters={
                 "on_the_fly": {

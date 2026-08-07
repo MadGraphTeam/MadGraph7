@@ -21,6 +21,7 @@ from pyamplicol.artifacts import inspection as artifact_inspection
 from pyamplicol.config import (
     Action,
     EvaluatorConfig,
+    EvaluatorOptimizationConfig,
     GenerationConfig,
     GenerationValidationConfig,
     RunConfig,
@@ -143,7 +144,10 @@ def _configuration() -> _GenerationConfigProvenance:
                     post_build_validation=False,
                 ),
             ),
-            evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
+            evaluator=EvaluatorConfig(
+                execution_mode="on-the-fly",
+                optimization=EvaluatorOptimizationConfig(cores=1),
+            ),
         )
     )
 
@@ -227,6 +231,7 @@ def _process_artifact(
             },
         },
         point_tile_size=128,
+        query_construction_threads=3,
         validation_point=ValidationPointRecord(
             process_id=_PROCESS_ID,
             process="d d~ > z",
@@ -343,6 +348,10 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
             "physical_helicity_count": 1,
             "physical_color_flow_count": 1,
         }
+        assert execution["runtime_options"] == {
+            "point_tile_size": 128,
+            "query_construction_threads": 3,
+        }
         assert execution["runtime_container"] == {
             "kind": artifact_writer.ON_THE_FLY_RUNTIME_CONTAINER_KIND,
             "path": "on-the-fly-runtime.pacbin",
@@ -352,6 +361,7 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
         }
         inspected = inspect_artifact(output).processes[0]
         assert inspected.execution_mode == "on-the-fly"
+        assert inspected.requested_query_construction_threads == 3
         assert inspected.physical_helicities == inspected.computed_helicities == 1
         assert inspected.physical_color_components == 1
         assert inspected.computed_color_components == 1

@@ -94,7 +94,7 @@ from tools.performance_report.source_identity import (  # noqa: E402
 )
 
 KIND = "pyamplicol-on-the-fly-high-multiplicity-study"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SUPPORTED_PROCESS_IDS = (7, 8, 11, 13, 14, 15)
 SUPPORTED_MULTIPLICITIES = (5, 6, 7, 8, 9)
 SUPPORTED_PROCESS_MULTIPLICITIES = {
@@ -109,10 +109,15 @@ AMPLI_COL_AUTHORITY_IDS = frozenset({7, 8, 11, 13, 15})
 AUTHORITY_AMPLICOL = "amplicol"
 AUTHORITY_RECURRENCE = "recurrence"
 AUTHORITY_OTF_ONLY = "otf-only"
+LIFECYCLE_EXHAUSTIVE = "exhaustive-clear-rebuild"
+LIFECYCLE_LEAN = "lean-retained-requested-family"
+REQUESTED_COLD_WARMUP_KIND = "on-the-fly-requested-workload-cold-warmup-v2"
 SEEDS = n4.SEEDS
 BATCH_SIZE = 128
 WARMUP_RUNS = 2
 MINIMUM_SAMPLES = 5
+OTF_QUERY_CONSTRUCTION_THREADS = 4
+RECURRENCE_GENERATION_THREADS = 1
 WATCHDOG_BYTES = 30 * GIB
 STATE_KIND = "rusticol-on-the-fly-runtime-state-census-v1"
 STATE_METHOD = "_on_the_fly_runtime_state_census_json"
@@ -304,6 +309,61 @@ def _case(process_table_id: int, multiplicity: int) -> Case:
         f"otf_p{process_table_id}_{family.key}_n{multiplicity}",
         pdgs,
     )
+
+
+def _lifecycle_policy(case: Case, workload: str) -> dict[str, object]:
+    if workload not in {"selected", "all-flow"}:
+        raise StudyError(f"unsupported lifecycle workload {workload!r}")
+    lean = case.multiplicity >= 7 or (
+        case.process_table_id == 8 and case.multiplicity >= 6
+    )
+    if not lean:
+        return {
+            "mode": LIFECYCLE_EXHAUSTIVE,
+            "retain_requested_family_after_cold_warmup": False,
+            "clear_rebuild": "required",
+            "reason": "lower-cost cell provides the exhaustive lifecycle proof",
+            "expected_prior_campaign_prerequisite": None,
+        }
+    baselines = tuple(
+        multiplicity
+        for multiplicity in SUPPORTED_PROCESS_MULTIPLICITIES[case.process_table_id]
+        if multiplicity < case.multiplicity
+        and not (
+            multiplicity >= 7 or (case.process_table_id == 8 and multiplicity >= 6)
+        )
+    )
+    if not baselines:
+        raise StudyError("lean lifecycle has no exhaustive lower-cost baseline")
+    baseline = max(baselines)
+    return {
+        "mode": LIFECYCLE_LEAN,
+        "retain_requested_family_after_cold_warmup": True,
+        "clear_rebuild": "omitted",
+        "reason": (
+            "the requested family is high-cost; same-workload clear/rebuild at "
+            "the recorded lower multiplicity is an expected prior campaign "
+            "prerequisite not authenticated by this report"
+        ),
+        "expected_prior_campaign_prerequisite": {
+            "evidence_status": "expected-not-authenticated-by-this-report",
+            "process_table_id": case.process_table_id,
+            "multiplicity": baseline,
+            "workload": workload,
+            "policy": LIFECYCLE_EXHAUSTIVE,
+        },
+    }
+
+
+def _clear_rebuild_evidence(policy: Mapping[str, object]) -> dict[str, object]:
+    omitted = policy.get("mode") == LIFECYCLE_LEAN
+    return {
+        "status": "omitted" if omitted else "performed",
+        "reason": policy["reason"],
+        "expected_prior_campaign_prerequisite": policy[
+            "expected_prior_campaign_prerequisite"
+        ],
+    }
 
 
 def _authority_kind(case: Case, workload: str) -> str:
@@ -972,7 +1032,13 @@ def _config(mode: str, layout: str) -> RunConfig:
         evaluator=EvaluatorConfig(
             backend="jit",
             execution_mode=mode,
-            optimization=EvaluatorOptimizationConfig(cores=1),
+            optimization=EvaluatorOptimizationConfig(
+                cores=(
+                    OTF_QUERY_CONSTRUCTION_THREADS
+                    if mode == "on-the-fly"
+                    else RECURRENCE_GENERATION_THREADS
+                )
+            ),
             jit=JITConfig(optimization_level=2),
         ),
     )
@@ -1014,13 +1080,27 @@ def _generate_otf(case: Case, path: Path, model: object) -> dict[str, object]:
         Generator(_config("on-the-fly", "topology-replay")).generate(
             ProcessRequest.parse(case.process, name=case.process_id), path, model=model
         )
+    elapsed_seconds = time.perf_counter() - started
     if (seed_calls, seed_count, materialized_calls) != (1, 1, 0):
         raise StudyError("OTF generation did not create exactly one compact seed")
+    execution = _read(path / "processes" / case.process_id / "execution.json")
+    runtime_options = execution.get("runtime_options")
+    if (
+        not isinstance(runtime_options, Mapping)
+        or set(runtime_options) != {"point_tile_size", "query_construction_threads"}
+        or runtime_options.get("query_construction_threads")
+        != OTF_QUERY_CONSTRUCTION_THREADS
+    ):
+        raise StudyError("OTF artifact did not authenticate its four-thread budget")
     return {
-        "seconds": time.perf_counter() - started,
+        "seconds": elapsed_seconds,
         "seed_binding_calls": seed_calls,
         "seed_count": seed_count,
         "materialized_lane_calls": materialized_calls,
+        "query_construction_threads": OTF_QUERY_CONSTRUCTION_THREADS,
+        "query_construction_threads_source": (
+            "resolved evaluator.optimization.cores in execution.runtime_options"
+        ),
     }
 
 
@@ -1033,6 +1113,8 @@ def _generate_recurrence(case: Case, path: Path, model: object) -> dict[str, obj
         "execution_mode": "recurrence",
         "layout": "topology-replay",
         "seconds": time.perf_counter() - started,
+        "generation_threads": RECURRENCE_GENERATION_THREADS,
+        "generation_threads_source": "evaluator.optimization.cores",
     }
 
 
@@ -1222,6 +1304,7 @@ def _requested_workload_cold_warmup(
     workload: str,
     *,
     ratio_eligible: bool,
+    retain_family: bool = False,
 ) -> dict[str, object]:
     """Time one requested-workload call on a cold 128xseed-101 batch."""
 
@@ -1243,12 +1326,14 @@ def _requested_workload_cold_warmup(
         handles=1,
         minimum_bindings=1,
     )
-    runtime.clear()
-    cleared = _census(runtime, case.process_id)
-    _assert_cold(cleared, "requested-workload warm-up clear")
+    cleared = None
+    if not retain_family:
+        runtime.clear()
+        cleared = _census(runtime, case.process_id)
+        _assert_cold(cleared, "requested-workload warm-up clear")
     seconds = elapsed_ns / 1_000_000_000.0
     return {
-        "kind": "on-the-fly-requested-workload-cold-warmup-v1",
+        "kind": REQUESTED_COLD_WARMUP_KIND,
         "timer": "time.perf_counter_ns",
         "runtime_state": "census-proven-cold",
         "requested_workload": workload,
@@ -1265,7 +1350,13 @@ def _requested_workload_cold_warmup(
         "after_first_evaluation": warmed,
         "active_family_union_census": active,
         "after_clear": cleared,
-        "clear_restored_cold_state": True,
+        "clear_call_status": (
+            "omitted-retained-for-lean-lifecycle"
+            if retain_family
+            else "performed-for-exhaustive-lifecycle"
+        ),
+        "clear_restored_cold_state": None if retain_family else True,
+        "retained_for_followup": retain_family,
         "excluded_from_elapsed": [
             "Runtime.load",
             "artifact generation",
@@ -1276,6 +1367,10 @@ def _requested_workload_cold_warmup(
         "ratio_eligible": ratio_eligible,
         "generation_pair_eligible": True,
         "acceptance_eligible": False,
+        "query_construction_threads": OTF_QUERY_CONSTRUCTION_THREADS,
+        "query_construction_threads_source": (
+            "authenticated execution.runtime_options"
+        ),
     }
 
 
@@ -1437,6 +1532,55 @@ def _lifecycle(
     workload: str,
     resolved: bool,
 ) -> tuple[Evaluation, Evaluation, dict[str, object]]:
+    policy = _lifecycle_policy(case, workload)
+    if policy["mode"] == LIFECYCLE_LEAN:
+        retained = _census(runtime, case.process_id)
+        _assert_family_state(
+            retained,
+            "retained requested family",
+            families=1,
+            selections=1,
+            handles=1,
+            minimum_bindings=1,
+        )
+        headline = _evaluate(runtime, points, workload, selector, resolved=resolved)
+        headline_census = _census(runtime, case.process_id)
+        if headline_census != retained:
+            raise StudyError(
+                "8-point headline evaluation did not reuse retained family"
+            )
+        repeat_points = points[:1]
+        repeated = _evaluate(runtime, repeat_points, workload, selector, resolved=False)
+        repeated_census = _census(runtime, case.process_id)
+        if repeated_census != headline_census:
+            raise StudyError("retained-family seed-101 repeat did not plateau")
+        repeat_comparison = _compare(
+            repeated,
+            Evaluation(headline.total[:1], None),
+            "retained-family seed-101 repeat",
+        )
+        return (
+            headline,
+            headline,
+            {
+                "policy": policy,
+                "retained_requested_family": retained,
+                "requested_family": headline_census,
+                "requested_repeat": repeated_census,
+                "headline_point_count": len(points),
+                "headline_seeds": list(SEEDS),
+                "plateau_repeat_point_count": len(repeat_points),
+                "plateau_repeat_seed": SEEDS[0],
+                "plateau_repeat_self_consistency": repeat_comparison,
+                "clear_rebuild": _clear_rebuild_evidence(policy),
+                "final_plateau": repeated_census,
+                "sequence": (
+                    "retained requested family; 8-point headline; "
+                    "seed-101 plateau repeat"
+                ),
+            },
+        )
+
     cold = _census(runtime, case.process_id)
     _assert_cold(cold, "cold runtime")
     selected_a = _first_selected_evaluation(
@@ -1522,6 +1666,9 @@ def _lifecycle(
                 "after_rebuild_selected_a": rebuilt_a_census,
                 "after_rebuild_exact_c": rebuilt_c_census,
                 "after_rebuild": rebuilt_census,
+                "final_plateau": rebuilt_census,
+                "policy": policy,
+                "clear_rebuild": _clear_rebuild_evidence(policy),
                 "sequence": "A,C,C,A; clear; A,C,A",
             },
         )
@@ -1577,6 +1724,9 @@ def _lifecycle(
             "selected_a_revisit": revisit,
             "after_clear": cleared,
             "after_rebuild": rebuilt_census,
+            "final_plateau": rebuilt_census,
+            "policy": policy,
+            "clear_rebuild": _clear_rebuild_evidence(policy),
             "sequence": "A,B,B,A; clear; A,B",
         },
     )
@@ -1684,6 +1834,10 @@ def _selected_report_lineage(
     authority = selected.get("authority")
     correctness = selected.get("correctness")
     compact = selected.get("compact_selector_context")
+    lifecycle_policy = selected.get("lifecycle_policy")
+    cache_lifecycle = selected.get("cache_lifecycle")
+    requested_cold_warmup = selected.get("requested_workload_cold_warmup")
+    expected_lifecycle_policy = _lifecycle_policy(case, "selected")
     candidate_source_binding = selected.get("candidate_source_binding")
     expected_producer = candidate.get("producer_identity")
     expected_model = candidate.get("model_identity")
@@ -1692,6 +1846,9 @@ def _selected_report_lineage(
         or authority.get("kind") != expected_authority
         or not isinstance(correctness, Mapping)
         or not isinstance(compact, Mapping)
+        or lifecycle_policy != expected_lifecycle_policy
+        or not isinstance(cache_lifecycle, Mapping)
+        or cache_lifecycle.get("policy") != expected_lifecycle_policy
         or not isinstance(candidate_source_binding, Mapping)
         or not isinstance(expected_producer, Mapping)
         or not isinstance(expected_model, Mapping)
@@ -1702,13 +1859,60 @@ def _selected_report_lineage(
         != _candidate_source_binding(active_source, expected_producer)
     ):
         raise StudyError("selected report omitted its authority/source lineage")
+    if (
+        not isinstance(requested_cold_warmup, Mapping)
+        or requested_cold_warmup.get("query_construction_threads")
+        != OTF_QUERY_CONSTRUCTION_THREADS
+    ):
+        raise StudyError("selected report omitted its warm-up thread contract")
+    lean_lifecycle = expected_lifecycle_policy["mode"] == LIFECYCLE_LEAN
+    self_consistency_key = (
+        "retained_family_plateau_self_consistency"
+        if lean_lifecycle
+        else "pre_post_clear_self_consistency"
+    )
+    self_consistency = correctness.get(self_consistency_key)
+    expected_self_consistency_checks = 1 if lean_lifecycle else len(SEEDS)
+    self_consistency_valid = (
+        isinstance(self_consistency, Mapping)
+        and isinstance(self_consistency.get("total"), Mapping)
+        and self_consistency["total"].get("checks") == expected_self_consistency_checks
+    )
+    if lean_lifecycle:
+        retained_requested_family = cache_lifecycle.get("retained_requested_family")
+        lifecycle_valid = (
+            cache_lifecycle.get("headline_point_count") == len(SEEDS)
+            and cache_lifecycle.get("headline_seeds") == list(SEEDS)
+            and cache_lifecycle.get("plateau_repeat_point_count") == 1
+            and isinstance(cache_lifecycle.get("final_plateau"), Mapping)
+            and cache_lifecycle.get("clear_rebuild")
+            == _clear_rebuild_evidence(expected_lifecycle_policy)
+            and isinstance(retained_requested_family, Mapping)
+            and isinstance(requested_cold_warmup, Mapping)
+            and requested_cold_warmup.get("kind") == REQUESTED_COLD_WARMUP_KIND
+            and requested_cold_warmup.get("requested_workload") == "selected"
+            and requested_cold_warmup.get("batch_size") == BATCH_SIZE
+            and requested_cold_warmup.get("point_count") == BATCH_SIZE
+            and requested_cold_warmup.get("query_construction_threads")
+            == OTF_QUERY_CONSTRUCTION_THREADS
+            and requested_cold_warmup.get("retained_for_followup") is True
+            and requested_cold_warmup.get("clear_call_status")
+            == "omitted-retained-for-lean-lifecycle"
+            and requested_cold_warmup.get("after_clear") is None
+            and requested_cold_warmup.get("after_first_evaluation")
+            == retained_requested_family
+        )
+    else:
+        lifecycle_valid = isinstance(
+            cache_lifecycle.get("final_plateau"), Mapping
+        ) and cache_lifecycle.get("clear_rebuild") == _clear_rebuild_evidence(
+            expected_lifecycle_policy
+        )
     if expected_authority == AUTHORITY_OTF_ONLY:
-        self_consistency = correctness.get("pre_post_clear_self_consistency")
         correctness_valid = (
             correctness.get("status") == "not-claimed"
-            and isinstance(self_consistency, Mapping)
-            and isinstance(self_consistency.get("total"), Mapping)
-            and self_consistency["total"].get("checks") == len(SEEDS)
+            and self_consistency_valid
+            and lifecycle_valid
         )
         compact_valid = compact.get(
             "selector_source"
@@ -1716,31 +1920,52 @@ def _selected_report_lineage(
             "requested_color_ids"
         ) == ["1"]
     else:
-        before_key, after_key = (
-            ("otf_before_vs_amplicol_replay", "otf_after_vs_amplicol_replay")
-            if expected_authority == AUTHORITY_AMPLICOL
-            else ("otf_before_vs_recurrence", "otf_after_vs_recurrence")
-        )
+        if lean_lifecycle:
+            before_key = (
+                "otf_retained_vs_amplicol_replay"
+                if expected_authority == AUTHORITY_AMPLICOL
+                else "otf_retained_vs_recurrence"
+            )
+            after_key = None
+        else:
+            before_key, after_key = (
+                ("otf_before_vs_amplicol_replay", "otf_after_vs_amplicol_replay")
+                if expected_authority == AUTHORITY_AMPLICOL
+                else ("otf_before_vs_recurrence", "otf_after_vs_recurrence")
+            )
         before_comparison = correctness.get(before_key)
-        after_comparison = correctness.get(after_key)
+        after_comparison = None if after_key is None else correctness.get(after_key)
         if expected_authority == AUTHORITY_AMPLICOL:
             authority_checks_valid = (
                 isinstance(before_comparison, Mapping)
                 and before_comparison.get("checks") == len(SEEDS)
-                and isinstance(after_comparison, Mapping)
-                and after_comparison.get("checks") == len(SEEDS)
+                and (
+                    lean_lifecycle
+                    or (
+                        isinstance(after_comparison, Mapping)
+                        and after_comparison.get("checks") == len(SEEDS)
+                    )
+                )
             )
         else:
             authority_checks_valid = (
                 isinstance(before_comparison, Mapping)
                 and isinstance(before_comparison.get("total"), Mapping)
                 and before_comparison["total"].get("checks") == len(SEEDS)
-                and isinstance(after_comparison, Mapping)
-                and isinstance(after_comparison.get("total"), Mapping)
-                and after_comparison["total"].get("checks") == len(SEEDS)
+                and (
+                    lean_lifecycle
+                    or (
+                        isinstance(after_comparison, Mapping)
+                        and isinstance(after_comparison.get("total"), Mapping)
+                        and after_comparison["total"].get("checks") == len(SEEDS)
+                    )
+                )
             )
         correctness_valid = (
-            correctness.get("status") == "passed" and authority_checks_valid
+            correctness.get("status") == "passed"
+            and authority_checks_valid
+            and self_consistency_valid
+            and lifecycle_valid
         )
         compact_valid = (
             compact.get("ordinal_one_required") is False
@@ -1764,8 +1989,19 @@ def _selected_report_lineage(
         or on_the_fly.get("seed_binding_calls") != 1
         or on_the_fly.get("seed_count") != 1
         or on_the_fly.get("materialized_lane_calls") != 0
+        or on_the_fly.get("query_construction_threads")
+        != OTF_QUERY_CONSTRUCTION_THREADS
     ):
         raise StudyError("selected report does not prove one compact OTF seed")
+    timing_contract = selected.get("timing_contract")
+    if (
+        not isinstance(timing_contract, Mapping)
+        or timing_contract.get("on_the_fly_query_construction_threads")
+        != OTF_QUERY_CONSTRUCTION_THREADS
+        or timing_contract.get("recurrence_generation_threads")
+        != RECURRENCE_GENERATION_THREADS
+    ):
+        raise StudyError("selected report omitted its bounded thread contract")
     raw_contract = selected.get("selector_contract")
     if not isinstance(raw_contract, Mapping):
         raise StudyError("selected report omitted its selector contract")
@@ -1830,6 +2066,7 @@ def _selected_report_lineage(
         "watchdog": dict(watchdog),
         "seed_binding_calls": 1,
         "seed_count": 1,
+        "on_the_fly_query_construction_threads": OTF_QUERY_CONSTRUCTION_THREADS,
         "on_the_fly_generation_seconds": float(generation_seconds),
         "selector_contract": selected_contract,
     }
@@ -1992,6 +2229,8 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
     producer_identity = _common_producer_identity(artifacts)
     model_identity = _common_model_identity(artifacts)
 
+    lifecycle_policy = _lifecycle_policy(case, args.workload)
+    lean_lifecycle = lifecycle_policy["mode"] == LIFECYCLE_LEAN
     requested_cold_warmup = _requested_workload_cold_warmup(
         candidate,
         case,
@@ -1999,6 +2238,7 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         points,
         args.workload,
         ratio_eligible=reference is not None or recurrence is not None,
+        retain_family=lean_lifecycle,
     )
     before, after, lifecycle = _lifecycle(
         candidate,
@@ -2008,7 +2248,12 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         args.workload,
         authority_kind in {AUTHORITY_AMPLICOL, AUTHORITY_RECURRENCE},
     )
-    otf_self_consistency = _compare(before, after, "OTF pre/post clear")
+    if lean_lifecycle:
+        otf_self_consistency = lifecycle["plateau_repeat_self_consistency"]
+        self_consistency_key = "retained_family_plateau_self_consistency"
+    else:
+        otf_self_consistency = _compare(before, after, "OTF pre/post clear")
+        self_consistency_key = "pre_post_clear_self_consistency"
     if reference is not None:
         amplicol_values, amplicol_replay = _replay_amplicol(reference, case, points)
         correctness = {
@@ -2024,36 +2269,68 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
             "otf_seed101_vs_amplicol_matrix_element": _amplicol_singleton_check(
                 before, reference, points
             ),
-            "otf_before_vs_amplicol_replay": _amplicol_series(
+            (
+                "otf_retained_vs_amplicol_replay"
+                if lean_lifecycle
+                else "otf_before_vs_amplicol_replay"
+            ): _amplicol_series(
                 before.total,
                 amplicol_values,
-                "OTF before/AmpliCol generated-library replay",
+                (
+                    "OTF retained/AmpliCol generated-library replay"
+                    if lean_lifecycle
+                    else "OTF before/AmpliCol generated-library replay"
+                ),
             ),
-            "otf_after_vs_amplicol_replay": _amplicol_series(
+            self_consistency_key: otf_self_consistency,
+            "within_runtime_total_vs_resolved": {
+                "on_the_fly_before": before.total_vs_resolved,
+                **(
+                    {}
+                    if lean_lifecycle
+                    else {"on_the_fly_after": after.total_vs_resolved}
+                ),
+            },
+        }
+        if not lean_lifecycle:
+            correctness["otf_after_vs_amplicol_replay"] = _amplicol_series(
                 after.total,
                 amplicol_values,
                 "OTF after/AmpliCol generated-library replay",
-            ),
-            "pre_post_clear_self_consistency": otf_self_consistency,
-            "within_runtime_total_vs_resolved": {
-                "on_the_fly_before": before.total_vs_resolved,
-                "on_the_fly_after": after.total_vs_resolved,
-            },
-        }
+            )
     elif recurrence is not None:
         rec = _evaluate(recurrence, points, args.workload, selector, resolved=True)
         correctness = {
             "status": "passed",
             "authority": "fresh-recurrence",
-            "pre_post_clear_self_consistency": otf_self_consistency,
+            self_consistency_key: otf_self_consistency,
             "within_runtime_total_vs_resolved": {
                 "on_the_fly_before": before.total_vs_resolved,
-                "on_the_fly_after": after.total_vs_resolved,
+                **(
+                    {}
+                    if lean_lifecycle
+                    else {"on_the_fly_after": after.total_vs_resolved}
+                ),
                 "recurrence": rec.total_vs_resolved,
             },
-            "otf_before_vs_recurrence": _compare(before, rec, "OTF before/recurrence"),
-            "otf_after_vs_recurrence": _compare(after, rec, "OTF after/recurrence"),
+            (
+                "otf_retained_vs_recurrence"
+                if lean_lifecycle
+                else "otf_before_vs_recurrence"
+            ): _compare(
+                before,
+                rec,
+                (
+                    "OTF retained/recurrence"
+                    if lean_lifecycle
+                    else "OTF before/recurrence"
+                ),
+            ),
         }
+        if not lean_lifecycle:
+            correctness["otf_after_vs_recurrence"] = _compare(
+                after, rec, "OTF after/recurrence"
+            )
     else:
         correctness = {
             "status": "not-claimed",
@@ -2062,7 +2339,7 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
                 if args.workload == "all-flow"
                 else "n=8/9 is OTF-only; numerical parity is not claimed"
             ),
-            "pre_post_clear_self_consistency": otf_self_consistency,
+            self_consistency_key: otf_self_consistency,
         }
 
     timings = {
@@ -2077,7 +2354,7 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
     }
     if reference is not None:
         timings["amplicol"] = reference.timing
-    if _census(candidate, case.process_id) != lifecycle["after_rebuild"]:
+    if _census(candidate, case.process_id) != lifecycle["final_plateau"]:
         raise StudyError("timed requested family did not plateau")
     if recurrence is not None:
         timings["recurrence"] = _benchmark(
@@ -2187,6 +2464,7 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         "amplicol_reference": None if reference is None else reference.lineage,
         "active_source": active_source.provenance(),
         "candidate_source_binding": candidate_source_binding,
+        "lifecycle_policy": lifecycle_policy,
         "selected_report_lineage": selected_report_lineage,
         "candidate_reuse": (
             {
@@ -2221,6 +2499,12 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
             "warmup_runs": WARMUP_RUNS,
             "minimum_samples": MINIMUM_SAMPLES,
             "target_runtime_seconds": args.target_runtime,
+            "on_the_fly_query_construction_threads": (OTF_QUERY_CONSTRUCTION_THREADS),
+            "recurrence_generation_threads": RECURRENCE_GENERATION_THREADS,
+            "thread_budget_source": (
+                "resolved evaluator.optimization.cores authenticated in the "
+                "OTF execution manifest"
+            ),
             "runtime_notation": "([evaluator] wall)",
             "performance_is_acceptance_gate": False,
         },

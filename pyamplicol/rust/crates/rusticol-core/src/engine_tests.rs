@@ -3958,9 +3958,18 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
         },
     )
     .unwrap();
-    let lane =
-        OnTheFlyNativeRuntime::new(templates, direct, seed, resolver, defaults, Vec::new(), &[])
-            .unwrap();
+    let lane = OnTheFlyNativeRuntime::new(
+        templates,
+        direct,
+        seed,
+        resolver,
+        1,
+        1,
+        defaults,
+        Vec::new(),
+        &[],
+    )
+    .unwrap();
     let mut execution = empty_generic_runtime();
     execution.external_count = 2;
     execution.external_pdg_order = vec![900_000, 900_000];
@@ -4011,6 +4020,15 @@ fn on_the_fly_runtime_state_census_is_observational() {
     };
 
     let mut runtime = scalar_on_the_fly_native_runtime();
+    let metadata = runtime.metadata();
+    assert_eq!(
+        metadata.on_the_fly_requested_query_construction_threads,
+        Some(1)
+    );
+    assert_eq!(
+        metadata.on_the_fly_effective_query_construction_threads,
+        Some(1)
+    );
     let cold_state = retained_state(&runtime);
     let cold_census = census(&runtime);
     assert_eq!(census(&runtime), cold_census);

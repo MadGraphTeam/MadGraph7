@@ -276,7 +276,10 @@ mod tests {
                 "manifest_path": ON_THE_FLY_KERNEL_PACK_MANIFEST_PATH,
                 "payload_root": ON_THE_FLY_KERNEL_PAYLOAD_ROOT,
             },
-            "runtime_options": {"point_tile_size": 64},
+            "runtime_options": {
+                "point_tile_size": 64,
+                "query_construction_threads": 1
+            },
             "selector_policy": {
                 "color_coverage": "complete",
                 "reference_color_word": null,

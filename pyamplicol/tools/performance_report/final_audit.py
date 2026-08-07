@@ -4854,6 +4854,7 @@ def _audit_on_the_fly_execution(
     *,
     process_id: str,
     execution_manifest_path: str,
+    effective_config: Mapping[str, object] | None = None,
 ) -> int:
     """Authenticate the compact OTF seed and its prepared JIT source pack."""
 
@@ -4909,13 +4910,37 @@ def _audit_on_the_fly_execution(
         "on-the-fly execution runtime_options",
     )
     point_tile_size = runtime_options.get("point_tile_size")
+    query_construction_threads = runtime_options.get("query_construction_threads")
     if (
-        set(runtime_options) != {"point_tile_size"}
+        set(runtime_options) != {"point_tile_size", "query_construction_threads"}
         or isinstance(point_tile_size, bool)
         or not isinstance(point_tile_size, int)
         or point_tile_size < 1
+        or isinstance(query_construction_threads, bool)
+        or not isinstance(query_construction_threads, int)
+        or query_construction_threads < 1
     ):
-        raise FinalAuditError("on-the-fly execution point tile is invalid")
+        raise FinalAuditError("on-the-fly execution runtime options are invalid")
+    if effective_config is not None:
+        evaluator = _mapping(
+            effective_config.get("evaluator"),
+            "on-the-fly authenticated effective evaluator configuration",
+        )
+        optimization = _mapping(
+            evaluator.get("optimization"),
+            "on-the-fly authenticated effective evaluator optimization",
+        )
+        effective_cores = optimization.get("cores")
+        if (
+            isinstance(effective_cores, bool)
+            or not isinstance(effective_cores, int)
+            or effective_cores < 1
+            or query_construction_threads != effective_cores
+        ):
+            raise FinalAuditError(
+                "on-the-fly query construction threads differ from the "
+                "authenticated effective evaluator cores"
+            )
     selector_policy = _mapping(
         execution.get("selector_policy"),
         "on-the-fly selector_policy",
@@ -5228,6 +5253,7 @@ def audit_artifact(
             cell,
             process_id=process_id,
             execution_manifest_path=execution_path,
+            effective_config=effective_config,
         )
         direct_leaf_count = 0
         source_jit_identity = None

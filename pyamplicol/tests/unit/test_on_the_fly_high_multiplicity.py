@@ -161,6 +161,52 @@ def test_timing_batch_repeats_only_seed101_point() -> None:
     assert points[1] not in timing
 
 
+def test_otf_and_recurrence_use_explicit_distinct_thread_budgets() -> None:
+    otf = study._config("on-the-fly", "topology-replay")
+    recurrence = study._config("recurrence", "topology-replay")
+
+    assert otf.evaluator.optimization.cores == study.OTF_QUERY_CONSTRUCTION_THREADS == 4
+    assert (
+        recurrence.evaluator.optimization.cores
+        == study.RECURRENCE_GENERATION_THREADS
+        == 1
+    )
+
+
+def test_high_cost_lifecycle_policy_has_an_exhaustive_same_family_baseline() -> None:
+    expected = {
+        (7, 5): study.LIFECYCLE_EXHAUSTIVE,
+        (7, 6): study.LIFECYCLE_EXHAUSTIVE,
+        (7, 7): study.LIFECYCLE_LEAN,
+        (8, 5): study.LIFECYCLE_EXHAUSTIVE,
+        (8, 6): study.LIFECYCLE_LEAN,
+        (14, 6): study.LIFECYCLE_EXHAUSTIVE,
+        (14, 7): study.LIFECYCLE_LEAN,
+    }
+    for (process_id, multiplicity), mode in expected.items():
+        case = study._case(process_id, multiplicity)
+        policy = study._lifecycle_policy(case, "selected")
+        assert policy["mode"] == mode
+        assert policy["retain_requested_family_after_cold_warmup"] is (
+            mode == study.LIFECYCLE_LEAN
+        )
+        baseline = policy["expected_prior_campaign_prerequisite"]
+        if mode == study.LIFECYCLE_LEAN:
+            assert baseline["evidence_status"] == (
+                "expected-not-authenticated-by-this-report"
+            )
+            assert baseline["process_table_id"] == process_id
+            assert baseline["multiplicity"] < multiplicity
+            assert baseline["workload"] == "selected"
+            assert baseline["policy"] == study.LIFECYCLE_EXHAUSTIVE
+            all_flow_baseline = study._lifecycle_policy(case, "all-flow")[
+                "expected_prior_campaign_prerequisite"
+            ]
+            assert all_flow_baseline["workload"] == "all-flow"
+        else:
+            assert baseline is None
+
+
 def test_selector_derivation_and_compact_path_never_open_physics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -836,11 +882,86 @@ def test_requested_workload_cold_warmup_is_batch128_and_clears(
     assert evidence["seed"] == 101
     assert evidence["singleton_seed_point_digest"] == study.point_digest((points[0],))
     assert evidence["elapsed_nanoseconds"] == 3_000_000
+    assert evidence["kind"] == study.REQUESTED_COLD_WARMUP_KIND
+    assert (
+        evidence["query_construction_threads"]
+        == study.OTF_QUERY_CONSTRUCTION_THREADS
+        == 4
+    )
     assert evidence["clear_restored_cold_state"] is True
     assert "Runtime.load" in evidence["excluded_from_elapsed"]
     assert "artifact generation" in evidence["excluded_from_elapsed"]
     assert evidence["ratio_eligible"] is (workload == "selected")
     runtime.clear.assert_called_once_with()
+
+
+def test_lean_cold_warmup_correctness_repeat_and_benchmark_reuse_one_family(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cold = _state(0)
+    warm = _state(1, _active(2, 1))
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.state = copy.deepcopy(cold)
+            self.family_builds = 0
+            self.clear_calls = 0
+            self.point_counts: list[int] = []
+
+        def evaluate(self, points: object, **_kwargs: object) -> tuple[complex, ...]:
+            point_count = len(points)  # type: ignore[arg-type]
+            self.point_counts.append(point_count)
+            if self.state["retained_family_count"] == 0:
+                self.family_builds += 1
+                self.state = copy.deepcopy(warm)
+            return (1.0 + 0.0j,) * point_count
+
+        def clear(self) -> None:
+            self.clear_calls += 1
+            self.state = copy.deepcopy(cold)
+
+    runtime = Runtime()
+    monkeypatch.setattr(
+        study, "_census", lambda candidate, _process: copy.deepcopy(candidate.state)
+    )
+    monkeypatch.setattr(
+        study.time,
+        "perf_counter_ns",
+        mock.Mock(side_effect=(1_000_000, 4_000_000)),
+    )
+    case = study._case(8, 6)
+    selector = study.Selector((1,), "flow:1", (-1,), "h:-1")
+    points = tuple(((float(index), 0.0, 0.0, 1.0),) for index in range(8))
+
+    cold_evidence = study._requested_workload_cold_warmup(
+        runtime,
+        case,
+        selector,
+        points,
+        "selected",
+        ratio_eligible=True,
+        retain_family=True,
+    )
+    before, after, lifecycle = study._lifecycle(
+        runtime, case, selector, points, "selected", False
+    )
+    runtime.evaluate(study._timing_points(points), color_flows=(selector.flow_id,))
+
+    assert before is after and len(before.total) == len(study.SEEDS)
+    assert runtime.family_builds == 1
+    assert runtime.clear_calls == 0
+    assert runtime.point_counts == [128, 8, 1, 128]
+    assert cold_evidence["retained_for_followup"] is True
+    assert cold_evidence["kind"] == study.REQUESTED_COLD_WARMUP_KIND
+    assert cold_evidence["after_clear"] is None
+    assert cold_evidence["clear_call_status"] == ("omitted-retained-for-lean-lifecycle")
+    assert lifecycle["policy"]["mode"] == study.LIFECYCLE_LEAN
+    assert lifecycle["headline_point_count"] == 8
+    assert lifecycle["plateau_repeat_point_count"] == 1
+    assert lifecycle["plateau_repeat_self_consistency"]["total"]["checks"] == 1
+    assert lifecycle["clear_rebuild"]["status"] == "omitted"
+    assert lifecycle["final_plateau"] == warm
+    assert runtime.state == lifecycle["final_plateau"]
 
 
 def test_a_b_repeat_revisit_clear_rebuild_and_census_invariants(
@@ -869,6 +990,9 @@ def test_a_b_repeat_revisit_clear_rebuild_and_census_invariants(
     )[2]
     assert lifecycle["sequence"] == "A,B,B,A; clear; A,B"
     assert lifecycle["after_rebuild"] == state_b
+    assert lifecycle["final_plateau"] == state_b
+    assert lifecycle["policy"]["mode"] == study.LIFECYCLE_EXHAUSTIVE
+    assert lifecycle["clear_rebuild"]["status"] == "performed"
     assert "cold_first_evaluation_timing" not in lifecycle
     runtime.evaluate.assert_called_once_with(
         ((((1.0, 0.0, 0.0, 1.0),),)), color_flows=("flow:1",)
@@ -927,7 +1051,7 @@ def test_selected_a_c_repeat_revisit_and_rebuild(
     )
     lifecycle = study._lifecycle(
         runtime,
-        study._case(7, 8),
+        study._case(7, 6),
         study.Selector((1,), "flow:1", (-1,), "h:-1"),
         ((((1.0, 0.0, 0.0, 1.0),),)),
         "selected",
@@ -946,6 +1070,9 @@ def test_selected_a_c_repeat_revisit_and_rebuild(
     assert lifecycle["sequence"] == "A,C,C,A; clear; A,C,A"
     assert lifecycle["requested_family"] == state_c
     assert lifecycle["after_rebuild"] == revisit
+    assert lifecycle["final_plateau"] == revisit
+    assert lifecycle["policy"]["mode"] == study.LIFECYCLE_EXHAUSTIVE
+    assert lifecycle["clear_rebuild"]["status"] == "performed"
     assert "cold_first_evaluation_timing" not in lifecycle
     runtime.clear.assert_called_once_with()
 
@@ -1013,18 +1140,26 @@ def _patch_selected_worker_basics(
     return source, identity
 
 
-@pytest.mark.parametrize("process_id", (7, 8, 11, 13, 15))
+@pytest.mark.parametrize(
+    ("process_id", "multiplicity"),
+    ((7, 5), (8, 5), (11, 5), (13, 5), (15, 5), (7, 7)),
+)
 def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, process_id: int
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    process_id: int,
+    multiplicity: int,
 ) -> None:
-    args = _args(tmp_path, 5, "selected", process_id=process_id)
+    args = _args(tmp_path, multiplicity, "selected", process_id=process_id)
     args.prepared_model = tmp_path / "model"
     args.prepared_model.touch()
-    case = study._case(process_id, 5)
+    case = study._case(process_id, multiplicity)
     points = tuple(((float(index), 0.0, 0.0, 1.0),) for index in range(8))
     selector, contract = _worker_selector(case, points)
     candidate = SimpleNamespace()
     _patch_selected_worker_basics(monkeypatch, tmp_path, case, points, candidate)
+    cold_warmup = mock.Mock(return_value={"seconds": 0.5})
+    monkeypatch.setattr(study, "_requested_workload_cold_warmup", cold_warmup)
     reference = study.AmplicolReference(
         selector=selector,
         contract=contract,
@@ -1046,6 +1181,7 @@ def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
             "seed_binding_calls": 1,
             "seed_count": 1,
             "materialized_lane_calls": 0,
+            "query_construction_threads": study.OTF_QUERY_CONSTRUCTION_THREADS,
         },
     )
     forbidden_recurrence = mock.Mock(
@@ -1061,7 +1197,10 @@ def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
     )
     monkeypatch.setattr(study, "_cross_check_compact_selector", compact)
     evaluation = study.Evaluation((3.0, *(4.0 for _ in range(7))), None)
-    lifecycle = mock.Mock(return_value=(evaluation, evaluation, {"after_rebuild": {}}))
+    lifecycle_evidence: dict[str, object] = {"final_plateau": {}}
+    if multiplicity >= 7:
+        lifecycle_evidence["plateau_repeat_self_consistency"] = {"total": {"checks": 1}}
+    lifecycle = mock.Mock(return_value=(evaluation, evaluation, lifecycle_evidence))
     monkeypatch.setattr(study, "_lifecycle", lifecycle)
     replay = mock.Mock(
         return_value=(
@@ -1089,7 +1228,12 @@ def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
         result["correctness"]["otf_seed101_vs_amplicol_matrix_element"]["status"]
         == "passed"
     )
-    assert result["correctness"]["otf_before_vs_amplicol_replay"]["checks"] == 8
+    authority_key = (
+        "otf_retained_vs_amplicol_replay"
+        if multiplicity >= 7
+        else "otf_before_vs_amplicol_replay"
+    )
+    assert result["correctness"][authority_key]["checks"] == 8
     assert result["correctness"]["claim_scope"]["external_amplicol_point_count"] == 8
     assert result["forbidden_paths"]["compiled_generation"] == "not-called"
     assert result["forbidden_paths"]["recurrence_generation"] == "not-called"
@@ -1098,18 +1242,28 @@ def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
     )
     replay.assert_called_once_with(reference, case, points)
     assert lifecycle.call_args.args[-1] is True
+    assert cold_warmup.call_args.kwargs["retain_family"] is (multiplicity >= 7)
+    if multiplicity >= 7:
+        assert (
+            result["correctness"]["retained_family_plateau_self_consistency"]["total"][
+                "checks"
+            ]
+            == 1
+        )
+        assert "pre_post_clear_self_consistency" not in result["correctness"]
     forbidden_recurrence.assert_not_called()
     with pytest.raises(study.StudyError, match="forbids execution mode"):
         study._config("compiled", "topology-replay")
 
 
+@pytest.mark.parametrize("multiplicity", (6, 7))
 def test_id14_uses_recurrence_only_and_derives_its_selector(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, multiplicity: int
 ) -> None:
-    args = _args(tmp_path, 6, "selected", process_id=14)
+    args = _args(tmp_path, multiplicity, "selected", process_id=14)
     args.prepared_model = tmp_path / "model"
     args.prepared_model.touch()
-    case = study._case(14, 6)
+    case = study._case(14, multiplicity)
     points = tuple(((float(index), 0.0, 0.0, 1.0),) for index in range(8))
     selector, contract = _worker_selector(case, points)
     candidate = SimpleNamespace()
@@ -1150,6 +1304,7 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
             "seed_binding_calls": 1,
             "seed_count": 1,
             "materialized_lane_calls": 0,
+            "query_construction_threads": study.OTF_QUERY_CONSTRUCTION_THREADS,
         },
     )
     generate_recurrence = mock.Mock(
@@ -1157,6 +1312,7 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
             "execution_mode": "recurrence",
             "layout": "topology-replay",
             "seconds": 4.0,
+            "generation_threads": study.RECURRENCE_GENERATION_THREADS,
         }
     )
     monkeypatch.setattr(study, "_generate_recurrence", generate_recurrence)
@@ -1173,14 +1329,17 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
     )
     monkeypatch.setattr(study, "_cross_check_compact_selector", compact)
     evaluation = study.Evaluation((3.0,) * 8, None)
+    lifecycle_evidence: dict[str, object] = {"final_plateau": {}}
+    if multiplicity >= 7:
+        lifecycle_evidence["plateau_repeat_self_consistency"] = {"total": {"checks": 1}}
     monkeypatch.setattr(
         study,
         "_lifecycle",
-        lambda *_args: (evaluation, evaluation, {"after_rebuild": {}}),
+        lambda *_args: (evaluation, evaluation, lifecycle_evidence),
     )
     evaluate = mock.Mock(return_value=evaluation)
     monkeypatch.setattr(study, "_evaluate", evaluate)
-    monkeypatch.setattr(study, "_compare", lambda *_args: {"checks": 8})
+    monkeypatch.setattr(study, "_compare", lambda *_args: {"total": {"checks": 8}})
     monkeypatch.setattr(
         study,
         "_benchmark",
@@ -1214,6 +1373,21 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
         candidate, case, selector, require_ordinal_one=False
     )
     assert cold_warmup.call_args.kwargs["ratio_eligible"] is True
+    assert cold_warmup.call_args.kwargs["retain_family"] is (multiplicity >= 7)
+    authority_key = (
+        "otf_retained_vs_recurrence"
+        if multiplicity >= 7
+        else "otf_before_vs_recurrence"
+    )
+    assert result["correctness"][authority_key]["total"]["checks"] == 8
+    if multiplicity >= 7:
+        assert (
+            result["correctness"]["retained_family_plateau_self_consistency"]["total"][
+                "checks"
+            ]
+            == 1
+        )
+        assert "pre_post_clear_self_consistency" not in result["correctness"]
     evaluate.assert_called_once_with(
         recurrence, points, "selected", selector, resolved=True
     )
@@ -1261,10 +1435,20 @@ def test_n8_selected_is_compact_ordinal_one_and_forbids_comparators(
             "seed_binding_calls": 1,
             "seed_count": 1,
             "materialized_lane_calls": 0,
+            "query_construction_threads": study.OTF_QUERY_CONSTRUCTION_THREADS,
         },
     )
     evaluation = study.Evaluation((3.0,) * 8, None)
-    lifecycle = mock.Mock(return_value=(evaluation, evaluation, {"after_rebuild": {}}))
+    lifecycle = mock.Mock(
+        return_value=(
+            evaluation,
+            evaluation,
+            {
+                "final_plateau": {},
+                "plateau_repeat_self_consistency": {"total": {"checks": 1}},
+            },
+        )
+    )
     monkeypatch.setattr(study, "_lifecycle", lifecycle)
     monkeypatch.setattr(study, "_compare", lambda *_args: {"checks": 8})
     monkeypatch.setattr(
@@ -1399,7 +1583,34 @@ def test_identity_n8_forbidden_route_and_worker_argv(
                     "authority": {"kind": study.AUTHORITY_OTF_ONLY},
                     "correctness": {
                         "status": "not-claimed",
-                        "pre_post_clear_self_consistency": {"total": {"checks": 8}},
+                        "retained_family_plateau_self_consistency": {
+                            "total": {"checks": 1}
+                        },
+                    },
+                    "lifecycle_policy": study._lifecycle_policy(case, "selected"),
+                    "cache_lifecycle": {
+                        "policy": study._lifecycle_policy(case, "selected"),
+                        "headline_point_count": 8,
+                        "headline_seeds": list(study.SEEDS),
+                        "plateau_repeat_point_count": 1,
+                        "retained_requested_family": {"retained_family_count": 1},
+                        "clear_rebuild": study._clear_rebuild_evidence(
+                            study._lifecycle_policy(case, "selected")
+                        ),
+                        "final_plateau": {"retained_family_count": 1},
+                    },
+                    "requested_workload_cold_warmup": {
+                        "kind": study.REQUESTED_COLD_WARMUP_KIND,
+                        "requested_workload": "selected",
+                        "batch_size": 128,
+                        "point_count": 128,
+                        "query_construction_threads": (
+                            study.OTF_QUERY_CONSTRUCTION_THREADS
+                        ),
+                        "retained_for_followup": True,
+                        "clear_call_status": ("omitted-retained-for-lean-lifecycle"),
+                        "after_clear": None,
+                        "after_first_evaluation": {"retained_family_count": 1},
                     },
                     "compact_selector_context": {
                         "selector_source": "compact-seed-one-based-color-ordinal-1",
@@ -1419,7 +1630,18 @@ def test_identity_n8_forbidden_route_and_worker_argv(
                             "seed_binding_calls": 1,
                             "seed_count": 1,
                             "materialized_lane_calls": 0,
+                            "query_construction_threads": (
+                                study.OTF_QUERY_CONSTRUCTION_THREADS
+                            ),
                         }
+                    },
+                    "timing_contract": {
+                        "on_the_fly_query_construction_threads": (
+                            study.OTF_QUERY_CONSTRUCTION_THREADS
+                        ),
+                        "recurrence_generation_threads": (
+                            study.RECURRENCE_GENERATION_THREADS
+                        ),
                     },
                     "selector_contract": contract.as_dict(),
                     "artifacts": {"candidate": candidate_identity},
@@ -1463,7 +1685,10 @@ def test_identity_n8_forbidden_route_and_worker_argv(
         lambda *args: (
             study.Evaluation((1j,), None),
             study.Evaluation((1j,), None),
-            {"after_rebuild": {}},
+            {
+                "final_plateau": {},
+                "plateau_repeat_self_consistency": {"total": {"checks": 1}},
+            },
         ),
     )
     monkeypatch.setattr(
@@ -1500,6 +1725,32 @@ def test_identity_n8_forbidden_route_and_worker_argv(
     assert result["descriptive_ratios"] == {}
     assert result["forbidden_paths"]["external_comparator"] == "not-created"
     assert result["forbidden_paths"]["physics_enumeration"] == "not-called"
+    valid_selected = json.loads(selected_report.read_text(encoding="utf-8"))
+    for mutation in (
+        "missing-warmup",
+        "wrong-warmed-census",
+        "wrong-prerequisite",
+        "wrong-thread-contract",
+    ):
+        invalid = copy.deepcopy(valid_selected)
+        selected = invalid["study"]
+        if mutation == "missing-warmup":
+            del selected["requested_workload_cold_warmup"]
+        elif mutation == "wrong-warmed-census":
+            selected["requested_workload_cold_warmup"]["after_first_evaluation"] = {
+                "retained_family_count": 2
+            }
+        elif mutation == "wrong-prerequisite":
+            selected["cache_lifecycle"]["clear_rebuild"][
+                "expected_prior_campaign_prerequisite"
+            ]["workload"] = "all-flow"
+        else:
+            selected["timing_contract"]["on_the_fly_query_construction_threads"] = 1
+        selected_report.write_text(json.dumps(invalid), encoding="utf-8")
+        with pytest.raises(study.StudyError):
+            study._selected_report_lineage(
+                selected_report, case, candidate_identity, active_source
+            )
     forbidden.assert_not_called()
 
 
@@ -1577,6 +1828,18 @@ def test_selected_report_binds_exact_candidate(
                 "status": "passed",
                 "otf_before_vs_amplicol_replay": {"checks": 8},
                 "otf_after_vs_amplicol_replay": {"checks": 8},
+                "pre_post_clear_self_consistency": {"total": {"checks": 8}},
+            },
+            "lifecycle_policy": study._lifecycle_policy(case, "selected"),
+            "cache_lifecycle": {
+                "policy": study._lifecycle_policy(case, "selected"),
+                "clear_rebuild": study._clear_rebuild_evidence(
+                    study._lifecycle_policy(case, "selected")
+                ),
+                "final_plateau": {"retained_family_count": 2},
+            },
+            "requested_workload_cold_warmup": {
+                "query_construction_threads": study.OTF_QUERY_CONSTRUCTION_THREADS,
             },
             "compact_selector_context": {
                 "ordinal_one_required": False,
@@ -1597,7 +1860,16 @@ def test_selected_report_binds_exact_candidate(
                     "seed_binding_calls": 1,
                     "seed_count": 1,
                     "materialized_lane_calls": 0,
+                    "query_construction_threads": (
+                        study.OTF_QUERY_CONSTRUCTION_THREADS
+                    ),
                 }
+            },
+            "timing_contract": {
+                "on_the_fly_query_construction_threads": (
+                    study.OTF_QUERY_CONSTRUCTION_THREADS
+                ),
+                "recurrence_generation_threads": (study.RECURRENCE_GENERATION_THREADS),
             },
             "selector_contract": SelectorContract(
                 ("flow:2,5,6,7,4,3,1",),

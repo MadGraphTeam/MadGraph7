@@ -822,6 +822,7 @@ dependencies = [
  "libc",
  "libloading",
  "num-complex",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",

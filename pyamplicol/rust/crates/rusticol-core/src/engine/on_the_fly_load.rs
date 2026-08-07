@@ -37,6 +37,10 @@ pub(super) struct LoadedOnTheFlyRuntime {
     pub(super) public_metadata: OnTheFlyPublicMetadataV1,
 }
 
+fn clamp_query_construction_threads(requested: usize, available: usize) -> usize {
+    requested.min(available.max(1))
+}
+
 pub(super) fn load_on_the_fly_native_runtime(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
@@ -102,11 +106,24 @@ pub(super) fn load_on_the_fly_native_runtime(
     let selectors = metadata_selectors
         .clone()
         .with_public_permutation(&selection.external_permutation)?;
+    let requested_query_construction_threads =
+        usize::try_from(manifest.runtime_options.query_construction_threads).map_err(|_| {
+            RusticolError::artifact("on-the-fly query construction thread count exceeds usize")
+        })?;
+    let available_query_construction_threads = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    let effective_query_construction_threads = clamp_query_construction_threads(
+        requested_query_construction_threads,
+        available_query_construction_threads,
+    );
     let lane = OnTheFlyNativeRuntime::new(
         templates,
         direct_catalog,
         seed,
         resolver,
+        requested_query_construction_threads,
+        effective_query_construction_threads,
         defaults,
         projection,
         &common.model_parameter_values_f64,
@@ -118,6 +135,18 @@ pub(super) fn load_on_the_fly_native_runtime(
         metadata_selectors,
         public_metadata,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_query_construction_threads;
+
+    #[test]
+    fn query_construction_threads_are_capped_by_positive_host_availability() {
+        assert_eq!(clamp_query_construction_threads(8, 3), 3);
+        assert_eq!(clamp_query_construction_threads(2, 8), 2);
+        assert_eq!(clamp_query_construction_threads(4, 0), 1);
+    }
 }
 
 fn load_public_metadata(

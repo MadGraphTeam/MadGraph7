@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ffi::c_int;
 
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 
 use super::construct::{
@@ -217,10 +218,11 @@ pub(crate) fn prepare_on_the_fly_process_v1(
     Ok((grammar, policy))
 }
 
-/// Build one exact public query family while sharing all immutable grammar
-/// preparation.  The query-local sweep intentionally remains independent for
-/// each selector: only immutable model/process work is batched here.
-pub(crate) fn build_selected_lc_query_family_v1(
+fn resolve_indexed_query_results<T>(outcomes: Vec<RusticolResult<T>>) -> RusticolResult<Vec<T>> {
+    outcomes.into_iter().collect()
+}
+
+fn build_selected_lc_query_family_serial_v1(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
     seed: &OnTheFlyProcessSeedV1,
@@ -242,6 +244,73 @@ pub(crate) fn build_selected_lc_query_family_v1(
             )
         })
         .collect()
+}
+
+/// Build one exact public query family while sharing all immutable grammar
+/// preparation.  Independent query-local sweeps run in parallel; their
+/// outcomes and errors retain public selector order.
+pub(crate) fn build_selected_lc_query_family_v1(
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct: &PreparedDirectExecutorCatalog,
+    seed: &OnTheFlyProcessSeedV1,
+    coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
+    grammar: &PreparedOnTheFlyGrammarV1,
+    query_construction_threads: usize,
+    queries: impl IntoIterator<Item = DecodedLcQueryV1>,
+) -> RusticolResult<Vec<OnTheFlySelectedQueryOutcomeV1>> {
+    if query_construction_threads == 0 {
+        return Err(invalid(
+            "on-the-fly query construction thread count must be positive",
+        ));
+    }
+    if query_construction_threads == 1 {
+        return build_selected_lc_query_family_serial_v1(
+            templates,
+            direct,
+            seed,
+            coupling_policy,
+            grammar,
+            queries,
+        );
+    }
+
+    let queries = queries.into_iter().collect::<Vec<_>>();
+    if queries.len() < 2 {
+        return build_selected_lc_query_family_serial_v1(
+            templates,
+            direct,
+            seed,
+            coupling_policy,
+            grammar,
+            queries,
+        );
+    }
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(query_construction_threads.min(queries.len()))
+        .build()
+        .map_err(|error| {
+            RusticolError::internal(format!(
+                "could not create bounded on-the-fly query construction pool: {error}"
+            ))
+        })?;
+    let outcomes = pool.install(|| {
+        queries
+            .into_par_iter()
+            .map(|query| {
+                build_selected_lc_query_trace_impl(
+                    templates,
+                    direct,
+                    seed,
+                    coupling_policy,
+                    grammar,
+                    query,
+                    true,
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    resolve_indexed_query_results(outcomes)
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -481,6 +550,36 @@ fn build_selected_lc_trace_impl(
 mod structural_zero_tests {
     use super::*;
     use crate::recurrence::validated_template_fixture;
+
+    #[test]
+    fn indexed_query_results_keep_order_and_report_the_lowest_error() {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
+        let ordered = pool.install(|| {
+            (0..32_u32)
+                .into_par_iter()
+                .map(Ok::<_, RusticolError>)
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            resolve_indexed_query_results(ordered).unwrap(),
+            (0..32_u32).collect::<Vec<_>>()
+        );
+
+        let failures = pool.install(|| {
+            (0..32_u32)
+                .into_par_iter()
+                .map(|index| match index {
+                    5 | 19 => Err(invalid(format!("query index {index}"))),
+                    _ => Ok(index),
+                })
+                .collect::<Vec<_>>()
+        });
+        let error = resolve_indexed_query_results(failures).unwrap_err();
+        assert!(error.to_string().contains("query index 5"));
+    }
 
     #[test]
     fn selected_closure_domain_fails_closed_when_missing_or_inconsistent() {

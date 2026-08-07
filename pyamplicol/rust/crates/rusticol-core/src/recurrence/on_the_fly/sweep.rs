@@ -1132,6 +1132,95 @@ fn include_transition(
     Ok(())
 }
 
+#[derive(Debug)]
+struct QuerySupportSizeIndex {
+    support_size_by_current: Vec<usize>,
+    current_ids_by_size: Vec<Vec<usize>>,
+}
+
+impl QuerySupportSizeIndex {
+    fn new(currents: &[PendingCurrent], source_count: usize) -> RusticolResult<Self> {
+        let mut index = Self {
+            support_size_by_current: Vec::with_capacity(currents.len()),
+            current_ids_by_size: (0..source_count).map(|_| Vec::new()).collect(),
+        };
+        for (current_id, current) in currents.iter().enumerate() {
+            index.append(current_id, current.key.support_source_slots().len())?;
+        }
+        Ok(index)
+    }
+
+    fn append(&mut self, current_id: usize, support_size: usize) -> RusticolResult<()> {
+        if current_id != self.support_size_by_current.len() {
+            return Err(integrity(
+                "query-local support-size index lost current-ID order",
+            ));
+        }
+        let bucket = self
+            .current_ids_by_size
+            .get_mut(support_size)
+            .filter(|_| support_size > 0)
+            .ok_or_else(|| integrity("query-local current has invalid forward support size"))?;
+        self.support_size_by_current.push(support_size);
+        bucket.push(current_id);
+        Ok(())
+    }
+
+    fn append_stage(
+        &mut self,
+        currents: &[PendingCurrent],
+        stage_current_start: usize,
+        target_size: usize,
+    ) -> RusticolResult<()> {
+        if stage_current_start != self.support_size_by_current.len()
+            || stage_current_start > currents.len()
+        {
+            return Err(integrity(
+                "query-local support-size index differs from the stage prefix",
+            ));
+        }
+        for (current_id, current) in currents.iter().enumerate().skip(stage_current_start) {
+            let support_size = current.key.support_source_slots().len();
+            if support_size != target_size {
+                return Err(integrity(
+                    "query-local sweep produced a current in the wrong support-size stage",
+                ));
+            }
+            self.append(current_id, support_size)?;
+        }
+        Ok(())
+    }
+
+    fn for_each_parent_pair(
+        &self,
+        target_size: usize,
+        stage_current_end: usize,
+        mut visit: impl FnMut([usize; 2]) -> RusticolResult<()>,
+    ) -> RusticolResult<()> {
+        if stage_current_end != self.support_size_by_current.len() {
+            return Err(integrity(
+                "query-local support-size schedule differs from its current prefix",
+            ));
+        }
+        for left_id in 0..stage_current_end {
+            let left_size = self.support_size_by_current[left_id];
+            if left_size >= target_size {
+                continue;
+            }
+            let right_size = target_size - left_size;
+            let right_ids = self
+                .current_ids_by_size
+                .get(right_size)
+                .ok_or_else(|| integrity("query-local right support-size bucket is absent"))?;
+            let first_right = right_ids.partition_point(|right_id| *right_id <= left_id);
+            for right_id in right_ids[first_right..].iter().copied() {
+                visit([left_id, right_id])?;
+            }
+        }
+        Ok(())
+    }
+}
+
 pub(super) fn build_forward_currents(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
@@ -1144,32 +1233,28 @@ pub(super) fn build_forward_currents(
 ) -> RusticolResult<()> {
     let source_count = seed.source_anchors.len();
     let contact_orbits = PreparedContactOrbitIndex::new(transitions)?;
+    let mut support_size_index = QuerySupportSizeIndex::new(currents, source_count)?;
     for target_size in 2..source_count {
         let stage_current_start = currents.len();
-        let eligible = currents
-            .iter()
-            .enumerate()
-            .filter(|(_, current)| current.key.support_source_slots().len() < target_size)
-            .map(|(id, _)| id)
-            .collect::<Vec<_>>();
-        for (left_offset, left_index) in eligible.iter().copied().enumerate() {
-            for right_index in eligible.iter().copied().skip(left_offset + 1) {
+        support_size_index.for_each_parent_pair(
+            target_size,
+            stage_current_start,
+            |[left_index, right_index]| {
                 let left = &currents[left_index].key;
                 let right = &currents[right_index].key;
-                if left.support_source_slots().len() + right.support_source_slots().len()
-                    != target_size
-                    || !supports_are_disjoint(
-                        left.support_source_slots(),
-                        right.support_source_slots(),
-                    )
+                debug_assert_eq!(
+                    left.support_source_slots().len() + right.support_source_slots().len(),
+                    target_size,
+                );
+                if !supports_are_disjoint(left.support_source_slots(), right.support_source_slots())
                 {
-                    continue;
+                    return Ok(());
                 }
                 let left_state = left.current_state_template_id();
                 let right_state = right.current_state_template_id();
                 let Some(rows) = transitions.get(&canonical_state_pair(left_state, right_state))
                 else {
-                    continue;
+                    return Ok(());
                 };
                 let left_id = checked_u32(left_index, "query-local parent ID")?;
                 let right_id = checked_u32(right_index, "query-local parent ID")?;
@@ -1192,8 +1277,9 @@ pub(super) fn build_forward_currents(
                         current_ids,
                     )?;
                 }
-            }
-        }
+                Ok(())
+            },
+        )?;
         if !contact_orbits.is_empty()
             && let Some(plan) = plan_on_the_fly_contact_orbit_owners(
                 stage_current_start,
@@ -1203,6 +1289,7 @@ pub(super) fn build_forward_currents(
         {
             plan.commit(currents);
         }
+        support_size_index.append_stage(currents, stage_current_start, target_size)?;
     }
     Ok(())
 }
@@ -1553,6 +1640,85 @@ mod tests {
             }],
             stage: u32::try_from(support.len().saturating_sub(1)).unwrap(),
         }
+    }
+
+    fn legacy_support_size_pairs(support_sizes: &[usize], target_size: usize) -> Vec<[usize; 2]> {
+        let mut pairs = Vec::new();
+        for left_id in 0..support_sizes.len() {
+            if support_sizes[left_id] >= target_size {
+                continue;
+            }
+            for right_id in (left_id + 1)..support_sizes.len() {
+                if support_sizes[right_id] < target_size
+                    && support_sizes[left_id] + support_sizes[right_id] == target_size
+                {
+                    pairs.push([left_id, right_id]);
+                }
+            }
+        }
+        pairs
+    }
+
+    #[test]
+    fn query_support_size_index_preserves_legacy_pair_order() {
+        let mut random_state = 0x6a09_e667_f3bc_c909_u64;
+        for source_count in 3..=12 {
+            for case_index in 0..64 {
+                let current_count = source_count + case_index % (source_count * 3);
+                let mut support_sizes = Vec::with_capacity(current_count);
+                for _ in 0..current_count {
+                    random_state = random_state
+                        .wrapping_mul(6_364_136_223_846_793_005)
+                        .wrapping_add(1_442_695_040_888_963_407);
+                    support_sizes.push(
+                        1 + usize::try_from(random_state % (source_count as u64 - 1)).unwrap(),
+                    );
+                }
+
+                let mut index = QuerySupportSizeIndex {
+                    support_size_by_current: Vec::new(),
+                    current_ids_by_size: (0..source_count).map(|_| Vec::new()).collect(),
+                };
+                for (current_id, support_size) in support_sizes.iter().copied().enumerate() {
+                    index.append(current_id, support_size).unwrap();
+                }
+
+                for target_size in 2..source_count {
+                    let mut indexed_pairs = Vec::new();
+                    index
+                        .for_each_parent_pair(target_size, support_sizes.len(), |pair| {
+                            indexed_pairs.push(pair);
+                            Ok(())
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        indexed_pairs,
+                        legacy_support_size_pairs(&support_sizes, target_size),
+                        "source_count={source_count}, case_index={case_index}, target_size={target_size}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn query_support_size_index_enforces_stage_prefix() {
+        let mut index = QuerySupportSizeIndex {
+            support_size_by_current: Vec::new(),
+            current_ids_by_size: (0..4).map(|_| Vec::new()).collect(),
+        };
+        index.append(0, 1).unwrap();
+        index.append(1, 1).unwrap();
+        index.append(2, 1).unwrap();
+
+        let error = index
+            .for_each_parent_pair(2, 2, |_| Ok(()))
+            .expect_err("a size bucket extending past the stage prefix must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("differs from its current prefix")
+        );
     }
 
     fn contact_transition(

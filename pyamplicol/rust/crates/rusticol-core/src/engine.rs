@@ -3202,6 +3202,8 @@ pub struct NativeRuntimeMetadata {
     pub prepared_backend: Option<String>,
     pub eager_effective_point_tile_size: Option<usize>,
     pub eager_workspace_bytes: Option<usize>,
+    pub on_the_fly_requested_query_construction_threads: Option<usize>,
+    pub on_the_fly_effective_query_construction_threads: Option<usize>,
     pub compiled_direct_minimum_effective_tile_capacity: Option<usize>,
     pub compiled_direct_maximum_physical_scalar_values_per_point: Option<usize>,
     pub compiled_direct_maximum_hot_scalar_values_per_point: Option<usize>,

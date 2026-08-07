@@ -48,7 +48,10 @@ def _write_on_the_fly_contract_artifact(
             "manifest_path": "model/eager-kernel-pack.json",
             "payload_root": "model/eager-kernels",
         },
-        "runtime_options": {"point_tile_size": 128},
+        "runtime_options": {
+            "point_tile_size": 128,
+            "query_construction_threads": 1,
+        },
         "selector_policy": {
             "color_coverage": "complete",
             "reference_color_word": None,

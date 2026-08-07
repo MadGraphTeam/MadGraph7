@@ -303,6 +303,7 @@ class OnTheFlyProcessArtifact:
     runtime_metadata: Mapping[str, object]
     selector_policy: Mapping[str, object]
     point_tile_size: int
+    query_construction_threads: int
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
 
@@ -757,8 +758,7 @@ def write_schema_v3_artifact(
                 require_eager_direct=(
                     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
                     in required_runtime_capabilities
-                    or ON_THE_FLY_RUNTIME_CAPABILITY
-                    in required_runtime_capabilities
+                    or ON_THE_FLY_RUNTIME_CAPABILITY in required_runtime_capabilities
                 ),
                 retain_recurrence_templates=retain_recurrence_templates,
             )
@@ -1630,8 +1630,7 @@ def _validate_staged_on_the_fly_runtime(
         index = reader.index
         if (
             len(index.members) != 1
-            or index.members[0].logical_path
-            != _ON_THE_FLY_PROCESS_SEED_MEMBER_PATH
+            or index.members[0].logical_path != _ON_THE_FLY_PROCESS_SEED_MEMBER_PATH
             or index.members[0].kind is not PacbinMemberKind.ON_THE_FLY_PROCESS_SEED
         ):
             raise ValueError(
@@ -1692,6 +1691,11 @@ def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
             "point_tile_size": _nonnegative_integer(
                 process.point_tile_size,
                 "on-the-fly point tile size",
+                minimum=1,
+            ),
+            "query_construction_threads": _nonnegative_integer(
+                process.query_construction_threads,
+                "on-the-fly query construction threads",
                 minimum=1,
             ),
         },
@@ -2858,10 +2862,7 @@ def _compiled_plane_arena_stage(
                 and leaf_map["direct_codegen_optimization_level"]
                 != leaf_map["optimization_level"]
             )
-            or (
-                native_contract
-                and leaf_map["direct_codegen_optimization_level"] != 3
-            )
+            or (native_contract and leaf_map["direct_codegen_optimization_level"] != 3)
             or len(input_indices) != int(leaf_map["input_len"])
             or leaf_map["output_start"] != output_cursor
             or leaf_map["output_stop"] != output_cursor + int(leaf_map["output_len"])
@@ -3574,14 +3575,11 @@ def _artifact_target_metadata(
             and config.evaluator.jit.optimization_level == 2
         )
     )
-    portable_64le = (
-        requested_o2_jit
-        and not {
-            SYMBOLICA_ASM_RUNTIME_CAPABILITY,
-            SYMBOLICA_CPP_RUNTIME_CAPABILITY,
-            SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
-        }.intersection(runtime_capabilities)
-    )
+    portable_64le = requested_o2_jit and not {
+        SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+        SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+        SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
+    }.intersection(runtime_capabilities)
     if portable_64le:
         target = {
             "triple": PORTABLE_64LE_TARGET,

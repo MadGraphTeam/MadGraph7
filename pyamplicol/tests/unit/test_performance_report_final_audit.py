@@ -1195,7 +1195,10 @@ def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
             "manifest_path": pack_relative,
             "payload_root": "model/eager-kernels",
         },
-        "runtime_options": {"point_tile_size": 128},
+        "runtime_options": {
+            "point_tile_size": 128,
+            "query_construction_threads": 4,
+        },
         "selector_policy": {
             "color_coverage": "complete",
             "reference_color_word": None,
@@ -1245,6 +1248,7 @@ def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
         },
     }
     cell = _cell(ExecutionMode.ON_THE_FLY, optimization_level=2)
+    effective_config = {"evaluator": {"optimization": {"cores": 4}}}
     monkeypatch.setattr(
         final_audit_module,
         "_expected_eager_prepared_pack_identity",
@@ -1268,9 +1272,23 @@ def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
             cell,
             process_id=process_id,
             execution_manifest_path=f"processes/{process_id}/execution.json",
+            effective_config=effective_config,
         )
         == 1
     )
+
+    mismatched_threads = deepcopy(execution)
+    mismatched_threads["runtime_options"]["query_construction_threads"] = 3  # type: ignore[index]
+    with pytest.raises(FinalAuditError, match="effective evaluator cores"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            mismatched_threads,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+            effective_config=effective_config,
+        )
 
     for mutation in ("missing", "zero", "extra", "seed-mismatch"):
         changed_execution = deepcopy(execution)

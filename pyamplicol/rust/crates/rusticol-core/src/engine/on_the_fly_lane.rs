@@ -221,6 +221,8 @@ pub(super) struct OnTheFlyNativeRuntime {
     templates: ValidatedRecurrenceTemplateInput,
     direct_catalog: PreparedDirectExecutorCatalog,
     seed: OnTheFlyProcessSeedV1,
+    requested_query_construction_threads: usize,
+    effective_query_construction_threads: usize,
     prepared_grammar: Option<PreparedOnTheFlyGrammarV1>,
     coupling_policy: Option<OnTheFlyResolvedCouplingPolicyV1>,
     coupling_policy_resolution: Option<Duration>,
@@ -245,6 +247,8 @@ impl OnTheFlyNativeRuntime {
         direct_catalog: PreparedDirectExecutorCatalog,
         seed: OnTheFlyProcessSeedV1,
         resolver: NativeOnTheFlyPreparedExecutorResolver,
+        requested_query_construction_threads: usize,
+        effective_query_construction_threads: usize,
         parameter_defaults: Vec<crate::EagerComplex64>,
         parameter_projection: Vec<PreparedParameterProjectionEntry>,
         runtime_parameter_values: &[f64],
@@ -275,6 +279,14 @@ impl OnTheFlyNativeRuntime {
                 "on-the-fly runtime parameter value is not finite",
             ));
         }
+        if requested_query_construction_threads == 0
+            || effective_query_construction_threads == 0
+            || effective_query_construction_threads > requested_query_construction_threads
+        {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly effective query construction threads must be in the positive requested domain",
+            ));
+        }
 
         let prepared_parameters = projected_prepared_parameter_values(
             &parameter_defaults,
@@ -288,6 +300,8 @@ impl OnTheFlyNativeRuntime {
             templates,
             direct_catalog,
             seed,
+            requested_query_construction_threads,
+            effective_query_construction_threads,
             prepared_grammar: None,
             coupling_policy: None,
             coupling_policy_resolution: None,
@@ -308,6 +322,14 @@ impl OnTheFlyNativeRuntime {
 
     pub(super) const fn seed(&self) -> &OnTheFlyProcessSeedV1 {
         &self.seed
+    }
+
+    pub(super) const fn requested_query_construction_threads(&self) -> usize {
+        self.requested_query_construction_threads
+    }
+
+    pub(super) const fn effective_query_construction_threads(&self) -> usize {
+        self.effective_query_construction_threads
     }
 
     /// Execute one retained public query through the production batched
@@ -539,6 +561,7 @@ impl OnTheFlyNativeRuntime {
             self.prepared_grammar.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly grammar disappeared after preparation")
             })?,
+            self.effective_query_construction_threads,
             requests.iter().map(|request| request.query.clone()),
         )?;
         if outcomes.len() != requests.len() {
@@ -1173,7 +1196,7 @@ mod tests {
     }
 
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-    fn scalar_lane() -> OnTheFlyNativeRuntime {
+    fn scalar_lane_with_threads(query_construction_threads: usize) -> OnTheFlyNativeRuntime {
         let mut template_input = validated_template_fixture().into_input();
         template_input.coupling_order_ranges.push(IndexedRangeRow {
             id: 1,
@@ -1204,8 +1227,22 @@ mod tests {
             crate::EagerComplex64::new(0.0, 0.0);
             usize::try_from(summary.parameter_count).unwrap()
         ];
-        OnTheFlyNativeRuntime::new(templates, direct, seed, resolver, defaults, Vec::new(), &[])
-            .unwrap()
+        OnTheFlyNativeRuntime::new(
+            templates,
+            direct,
+            seed,
+            resolver,
+            query_construction_threads,
+            query_construction_threads,
+            defaults,
+            Vec::new(),
+            &[],
+        )
+        .unwrap()
+    }
+
+    fn scalar_lane() -> OnTheFlyNativeRuntime {
+        scalar_lane_with_threads(4)
     }
 
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -1249,6 +1286,35 @@ mod tests {
     fn lc_query_rejects_zero_total_reduction_weight() {
         let zero = vec![OnTheFlyLcReductionTargetV1::new(0, 0, 0.0).unwrap()];
         assert!(OnTheFlyLcQueryRequestV1::new(scalar_query(), zero).is_err());
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    #[test]
+    fn serial_and_bounded_parallel_query_construction_match() {
+        let mut serial = scalar_lane_with_threads(1);
+        let mut parallel = scalar_lane_with_threads(4);
+        let serial_requests = [scalar_request(&serial, 1.0), scalar_request(&serial, 2.0)];
+        let parallel_requests = [
+            scalar_request(&parallel, 1.0),
+            scalar_request(&parallel, 2.0),
+        ];
+
+        assert!(!serial.prepare_lc_queries(&serial_requests, 1).unwrap());
+        assert!(!parallel.prepare_lc_queries(&parallel_requests, 1).unwrap());
+        assert_eq!(
+            serial.retained_state_census(),
+            parallel.retained_state_census()
+        );
+
+        let mut serial_value = [f64::NAN];
+        let mut parallel_value = [f64::NAN];
+        serial
+            .run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut serial_value)
+            .unwrap();
+        parallel
+            .run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut parallel_value)
+            .unwrap();
+        assert_eq!(serial_value, parallel_value);
     }
 
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
