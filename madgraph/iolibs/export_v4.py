@@ -8064,11 +8064,6 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': replace_dict['proc_prefix']}
-        # When the matrix is handed over compressed, CF is filled at run time
-        # and this routine is what fills it.
-        replace_dict['color_init_routine'] = "\n".join(
-                self.get_color_init_routine(matrix_element,
-                                            replace_dict['proc_prefix']))
 
 
         # Set the size of Wavefunction
