@@ -205,8 +205,11 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 repr_dict[leg.get("number")] = self.model.get_particle(
                     leg.get("id")
                 ).get_color() * (-1) ** (1 + leg.get("state"))
-            # Get the list of color flows
-            color_flow_dicts = self.color_basis.color_flow_decomposition(repr_dict, n_initial)
+            # Get the list of color flows. This is about color flows, so
+            # always the trace basis, even when the color sum runs on the DDM
+            # one.
+            color_flow_dicts = self.color_basis.get_flow_basis().\
+                               color_flow_decomposition(repr_dict, n_initial)
             # And output them properly
             color_flows = [
                 [[color_flow_dict[leg.get("number")][i] for i in [0, 1]] for leg in legs]

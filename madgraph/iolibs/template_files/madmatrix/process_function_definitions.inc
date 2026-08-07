@@ -83,6 +83,7 @@ namespace mg5amcCpu
   constexpr int npar = CPPProcess::npar;     // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
   constexpr int ncomb = CPPProcess::ncomb;   // #helicity combinations: e.g. 16 for e+ e- -> mu+ mu- (2**4 = fermion spin up/down ** npar)
   constexpr int ncolor = CPPProcess::ncolor; // the number of leading colors
+  constexpr int ncolor_flow = CPPProcess::ncolor_flow; // the color structures the color flow is picked among
   constexpr int nmaxflavor = CPPProcess::nmaxflavor; // the maximum number of flavor combinations
 
   // [NB: I am currently unable to get the right value of nwf in CPPProcess.h - will hardcode it in CPPProcess.cc instead (#644)]
@@ -770,7 +771,7 @@ namespace mg5amcCpu
                        const fptype* allrndcol,           // input: random numbers[nevt] for color selection
                        const fptype* allrnddiagram,       // input: random numbers[nevt] for diagram selection
                        const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
-                       const fptype_sv* allJamp2s,        // input: jamp2[ncolor][nevt] for color choice (nullptr if disabled)
+                       const fptype_sv* allJamp2s,        // input: jamp2[ncolor_flow][nevt] for color choice (nullptr if disabled)
                        const fptype* allNumerators,       // input: all numerators
                        const fptype* allDenominators,     // input: all denominators
                        const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
@@ -811,7 +812,7 @@ namespace mg5amcCpu
         assert( channelId <= mgOnGpu::nchannels ); // SANITY CHECK #919 #910
       }
       // Determine the jamp2 for this event (TEMPORARY? could do this with a dedicated memory accessor instead...)
-      fptype_sv jamp2_sv[ncolor] = { 0 };
+      fptype_sv jamp2_sv[ncolor_flow] = { 0 };
       assert( allJamp2s != nullptr ); // sanity check
       using J2_ACCESS = DeviceAccessJamp2;
       for( int icolC = 0; icolC < ncolor; icolC++ )

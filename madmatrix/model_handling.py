@@ -1503,6 +1503,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_process_class_definitions(self, write=True):
         replace_dict = super().get_process_class_definitions(write=False)
         replace_dict['process_lines'] = replace_dict['process_lines'].replace('\n','\n  ')
+        # ncolor_flow sits next to ncolor in the class, so it has to be known
+        # here as well as in get_process_function_definitions
+        self.set_color_flow_lines_cpp(self.matrix_elements[0], replace_dict)
         ###misc.sprint( replace_dict['nwavefuncs'] ) # NB: this (from export_cpp) is the WRONG value of nwf, e.g. 6 for gg_tt (#644)
         ###misc.sprint( self.matrix_elements[0].get_number_of_wavefunctions() ) # NB: this is a different WRONG value of nwf, e.g. 7 for gg_tt (#644)
         ###replace_dict['nwavefunc'] = self.matrix_elements[0].get_number_of_wavefunctions() # how do I get HERE the right value of nwf, e.g. 5 for gg_tt?
@@ -1729,6 +1732,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['all_flavors'] = replace_dict['all_flavors'].replace('flavors', 'tFlavors')
         color_amplitudes = [me.get_color_amplitudes() for me in self.matrix_elements] # as in OneProcessExporterCPP.get_process_function_definitions
         replace_dict['ncolor'] = len(color_amplitudes[0])
+        # The color sum can run on the (n-2)! DDM basis while the color flow
+        # probabilities keep using the (n-1)! trace one
+        self.set_color_flow_lines_cpp(self.matrix_elements[0], replace_dict)
         # broken_symmetry_factor function: use the shared decay-aware symmetry
         # data (same as the Fortran / standalone_cpp exporters) instead of the
         # old simple PID-count version, so identical-particle and decay-chain
@@ -2128,6 +2134,49 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return replace_dict
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix fptype and improve formatting)
+    def set_color_flow_lines_cpp(self, matrix_element, replace_dict):
+        """Fill in replace_dict everything the process template needs to know
+        about the color flow basis.
+
+        For a fully adjoint (multi-gluon) process the color sum can be done on
+        the (n-2)! Del Duca-Dixon-Maltoni basis, but a color flow still has to
+        be picked among the (n-1)! trace structures. The trace jamps are then
+        not built from the amplitudes but obtained from the DDM ones through
+        the Kleiss-Kuijf relations, which is (n-1) times cheaper."""
+
+        color_basis = matrix_element.get('color_basis')
+        flow_basis = color_basis.get_flow_basis() if color_basis else None
+
+        if flow_basis is None or flow_basis is color_basis:
+            replace_dict['ncolor_flow'] = replace_dict['ncolor']
+            replace_dict['jampflow_lines'] = ''
+            replace_dict['jamp_flow'] = 'jamp_sv'
+            return
+
+        projection = color_basis.get_flow_projection()
+        lines = ['',
+                 '      // The color flow jamps, rebuilt from the ones entering',
+                 '      // the color sum through the Kleiss-Kuijf relations',
+                 '      cxtype_sv jampf_sv[ncolor_flow] = {};']
+        for i, coeff_list in enumerate(projection):
+            terms = ''.join('%sjamp_sv[%d]' % (self.coeff(coefficient[0],
+                                                          coefficient[1],
+                                                          coefficient[2],
+                                                          coefficient[3]),
+                                               number - 1)
+                            for coefficient, number in coeff_list)
+            lines.append('      jampf_sv[%d] = %s;' % (i, terms if terms
+                                                       else 'cxzero_sv()'))
+
+        replace_dict['ncolor_flow'] = max(1, len(flow_basis))
+        replace_dict['jampflow_lines'] = '\n'.join(lines)
+        replace_dict['jamp_flow'] = 'jampf_sv'
+
+        logger.debug('Color sum on %d DDM structures, color flow on %d trace '
+                     'structures (%d Kleiss-Kuijf terms)',
+                     replace_dict['ncolor'], replace_dict['ncolor_flow'],
+                     sum(len(row) for row in projection))
+
     def get_color_matrix_lines(self, matrix_element):
         """Return the color matrix definition lines for this matrix element. Split rows in chunks of size n."""
         import madgraph.core.color_algebra as color

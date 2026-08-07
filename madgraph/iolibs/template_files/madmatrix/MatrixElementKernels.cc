@@ -310,7 +310,7 @@ namespace mg5amcGpu
     , m_pHelJamps()
     , m_pHelNumerators()
     , m_pHelDenominators()
-    , m_colJamp2s( CPPProcess::ncolor * this->nevt() )
+    , m_colJamp2s( CPPProcess::ncolor_flow * this->nevt() )
 #ifdef MGONGPU_CHANNELID_DEBUG
     , m_hstChannelIds( this->nevt() )
 #endif
