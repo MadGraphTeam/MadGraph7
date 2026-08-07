@@ -1805,6 +1805,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
   // ** NB2: NEW Nov2024! in CUDA this now takes a channelId array as input (it used to take a scalar channelId as input)
   // In C++, this function processes a single event "page" or SIMD vector (or for two in "mixed" precision mode, nParity=2)
   // *** NB: in C++, calculate_jamps accepts a SCALAR channelId because it is GUARANTEED that all events in a SIMD vector have the same channelId #898
+
+  // Accumulate a multichannel numerator contribution in place.
+  // In CUDA all good-helicity blocks/streams for a given event race on the same numerator slot
+  // (the helicity dimension has been removed to save memory), so an atomicAdd is mandatory.
+  // In C++ each event page is processed serially within the helicity loop, so a plain sum suffices.
+#ifdef MGONGPUCPP_GPUIMPL
+#define NUM_ATOMIC_ADD( DST, VAL ) atomicAdd( &( DST ), VAL )
+#else
+#define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
+#endif
+
   __global__ void /* clang-format off */
   calculate_jamps( int ihel,
                    const fptype* allmomenta,          // input: momenta[nevt*npar*4]
@@ -1838,7 +1849,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     using CI_ACCESS = DeviceAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
     using F_ACCESS = DeviceAccessIflavorVec;      // non-trivial access: buffer includes all events
     using NUM_ACCESS = DeviceAccessNumerators;    // non-trivial access: buffer includes all events
-    using DEN_ACCESS = DeviceAccessDenominators;  // non-trivial access: buffer includes all events
 #else
     using namespace mg5amcCpu;
     using M_ACCESS = HostAccessMomenta;         // non-trivial access: buffer includes all events
@@ -1848,7 +1858,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     using CI_ACCESS = HostAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
     using F_ACCESS = HostAccessIflavorVec;      // non-trivial access: buffer includes all events
     using NUM_ACCESS = HostAccessNumerators;    // non-trivial access: buffer includes all events
-    using DEN_ACCESS = HostAccessDenominators;  // non-trivial access: buffer includes all events
 #endif
     mgDebug( 0, __FUNCTION__ );
     //bool debug = true;
@@ -1863,8 +1872,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
       int ighel = blockIdx.y;
       ihel = dcGoodHel[ighel];
       allJamps = allJamps + ighel * nevt;
-      allNumerators = allNumerators + ighel * nevt * processConfig::ndiagrams;
-      allDenominators = allDenominators + ighel * nevt;
+      // NB: the numerators buffer has NO helicity dimension anymore: all good-helicity blocks
+      // for a given event accumulate in place into the same [nevt][ndiagrams] slot via atomicAdd.
+      // The denominators are no longer accumulated here (derived as the sum of numerators later).
     }
 #endif /* clang-format on */""")
             nwavefuncs = self.matrix_elements[0].get_number_of_wavefunctions()
@@ -2449,7 +2459,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
       fptype* numerators = &allNumerators[ievt * processConfig::ndiagrams];
-      fptype* denominators = allDenominators;
 #else
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
       const fptype* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
@@ -2460,7 +2469,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )     // FIX #823
         COUPs[ndcoup + iicoup] = allCOUPs[ndcoup + iicoup]; // independent couplings, fixed for all events
       fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
-      fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
 #endif
       // Create an array of views over the Flavor Couplings
       FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
@@ -2494,9 +2502,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
       for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv(); }
 
-      // Numerators and denominators for the current event (CUDA) or SIMD event page (C++)
+      // Numerators for the current event (CUDA) or SIMD event page (C++)
+      // (denominators are no longer accumulated here: they are derived as the sum of numerators later)
       fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
       // Scalar iflavor for the current event
       // for GPU it is an int
       // for SIMD it is also an int, since it is constant across the SIMD vector
@@ -2560,8 +2568,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     diagnum = diagram.get('number')
                     amp_block.append("if( storeChannelWeights )")
                     amp_block.append("{")
-                    amp_block.append("  numerators_sv[%i] += cxabs2( amp_sv[0] );" % (diagnum-1))
-                    amp_block.append("  denominators_sv += cxabs2( amp_sv[0] );")
+                    amp_block.append("  NUM_ATOMIC_ADD( numerators_sv[%i], cxabs2( amp_sv[0] ) );" % (diagnum-1))
                     amp_block.append("}")
                 for njamp, coeff in color[namp].items():
                     scoeff = OneProcessExporterMadMatrix.coeff(*coeff) # AV
