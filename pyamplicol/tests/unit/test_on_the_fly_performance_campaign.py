@@ -245,16 +245,17 @@ def test_otf_artifact_requires_exactly_two_compact_runtime_capabilities(
         validate_artifact_contract(cell, Path("/artifact"))
 
 
-def test_otf_public_profile_owns_first_evaluation_and_retains_cold_warmup(
+@pytest.mark.parametrize("workload", (Workload.SELECTED_FLOW, Workload.ALL_FLOW))
+def test_otf_public_profile_owns_first_evaluation_without_dense_physics(
     monkeypatch: pytest.MonkeyPatch,
+    workload: Workload,
 ) -> None:
     import pyamplicol.api
 
     cell = next(
         cell
         for cell in _otf_cells()
-        if cell.measurement.accuracy is Accuracy.LC
-        and cell.workload is Workload.SELECTED_FLOW
+        if cell.measurement.accuracy is Accuracy.LC and cell.workload is workload
     )
     points = (((1.0, 0.0, 0.0, 1.0),),)
     contract = SelectorContract(
@@ -265,21 +266,50 @@ def test_otf_public_profile_owns_first_evaluation_and_retains_cold_warmup(
         point_digest=point_digest(points),
     )
     events: list[str] = []
+    selector_calls: list[tuple[str, tuple[str, ...]]] = []
+    dense_physics_accesses = 0
+
+    class Backend:
+        @staticmethod
+        def _on_the_fly_benchmark_context(
+            requested: tuple[str, ...],
+        ) -> dict[str, object]:
+            assert requested == ()
+            return {
+                "process_id": "compact-profile-candidate",
+                "process_expression": cell.process,
+                "color_accuracy": "lc",
+                "helicity_count": 2,
+                "color_count": 2,
+                "selected_color_ids": [],
+            }
+
+        @staticmethod
+        def _point_selector_indices(
+            values: tuple[str, ...],
+            name: str,
+        ) -> tuple[int, ...]:
+            selector_calls.append((name, tuple(values)))
+            return (0,)
 
     class Runtime:
-        physics = SimpleNamespace(
-            color_accuracy="lc",
-            selector_capabilities=("helicity", "color_flow"),
-            color_flows=(SimpleNamespace(id="flow:1,2", word=(1, 2)),),
-            helicities=(SimpleNamespace(id="h:+1,-1", values=(1, -1)),),
-            external_particles=(
-                SimpleNamespace(label=1),
-                SimpleNamespace(label=2),
-            ),
-        )
+        execution_mode = "on-the-fly"
+        _backend = Backend()
+
+        @property
+        def physics(self) -> object:
+            nonlocal dense_physics_accesses
+            dense_physics_accesses += 1
+            raise AssertionError("OTF profile opened dense physics")
 
         def evaluate(self, *_args: object, **_kwargs: object) -> list[float]:
             events.append("campaign-evaluate")
+            expected = (
+                {"helicities": None, "color_flows": ("flow:1,2",)}
+                if workload is Workload.SELECTED_FLOW
+                else {"helicities": ("h:+1,-1",), "color_flows": None}
+            )
+            assert _kwargs == expected
             return [2.0]
 
     @dataclass(frozen=True)
@@ -330,6 +360,11 @@ def test_otf_public_profile_owns_first_evaluation_and_retains_cold_warmup(
 
     assert result["status"] == "ok"
     assert events == ["public-profile", "campaign-evaluate"]
+    assert dense_physics_accesses == 0
+    assert selector_calls == [
+        ("color_flow_by_point", ("flow:1,2",)),
+        ("helicity_by_point", ("h:+1,-1",)),
+    ]
 
 
 def test_otf_benchmark_measurement_requires_and_stores_cold_warmup() -> None:
@@ -349,9 +384,7 @@ def test_otf_benchmark_measurement_requires_and_stores_cold_warmup() -> None:
         "evaluator_total_time_raw_seconds_per_point": 9.0e-7,
         "evaluator_total_time_status": "measured",
         "evaluator_total_time_ratio_eligible": False,
-        "evaluator_total_time_source": (
-            "runtime._benchmark_f64_wall_time.accumulated"
-        ),
+        "evaluator_total_time_source": ("runtime._benchmark_f64_wall_time.accumulated"),
         "evaluator_total_time_sample_contract": (
             "accumulated-repeated-warmed-evaluator-total-v1"
         ),

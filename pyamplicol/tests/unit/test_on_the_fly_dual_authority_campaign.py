@@ -19,7 +19,7 @@ from tools.performance_report.agreements import (
     incoming_agreement_edges,
 )
 from tools.performance_report.catalog import REPORT_CATALOG
-from tools.performance_report.models import Accuracy, ExecutionMode, Workload
+from tools.performance_report.models import Accuracy, CellSpec, ExecutionMode, Workload
 from tools.performance_report.runner import (
     OTF_DUAL_AUTHORITY_VALIDATION_FIELD,
     GeneratedArtifact,
@@ -27,9 +27,12 @@ from tools.performance_report.runner import (
     RunnerSettings,
     SelectorContract,
     config_values,
+    derive_selector_contract,
     on_the_fly_dual_authority_validation,
     point_digest,
     runtime_identity_payload,
+    validate_runtime_contract,
+    validate_selector_contract,
 )
 
 POINTS = (((1.0,),), ((2.0,),))
@@ -104,6 +107,29 @@ class _Runtime:
                 SimpleNamespace(label=2),
             ),
         )
+
+    def _on_the_fly_benchmark_context(
+        self,
+        requested: tuple[str, ...],
+    ) -> dict[str, object]:
+        assert self.execution_mode == ExecutionMode.ON_THE_FLY.value
+        return {
+            "process_id": "compact-candidate",
+            "process_expression": "d d~ > z",
+            "color_accuracy": "lc",
+            "helicity_count": len(HELICITY_IDS),
+            "color_count": len(FLOW_IDS),
+            "selected_color_ids": list(requested),
+        }
+
+    def _point_selector_indices(
+        self,
+        values: tuple[str, ...],
+        name: str,
+    ) -> tuple[int, ...]:
+        assert self.execution_mode == ExecutionMode.ON_THE_FLY.value
+        available = HELICITY_IDS if name == "helicity_by_point" else FLOW_IDS
+        return tuple(available.index(identifier) for identifier in values)
 
     def evaluate(
         self,
@@ -209,6 +235,88 @@ class _Runtime:
         self.events.append(("clear",))
 
 
+class _CompactBackend:
+    def __init__(
+        self,
+        cell: CellSpec,
+        *,
+        context_updates: dict[str, object] | None = None,
+        ordinal_overrides: dict[str, tuple[int, ...]] | None = None,
+    ) -> None:
+        self.cell = cell
+        self.context_updates = context_updates or {}
+        self.ordinal_overrides = ordinal_overrides or {}
+        self.context_requests: list[tuple[str, ...]] = []
+        self.ordinal_requests: list[tuple[str, tuple[str, ...]]] = []
+
+    def _on_the_fly_benchmark_context(
+        self,
+        requested: tuple[str, ...],
+    ) -> dict[str, object]:
+        self.context_requests.append(requested)
+        value = {
+            "process_id": "compact-candidate",
+            "process_expression": self.cell.process,
+            "color_accuracy": "lc",
+            "helicity_count": len(HELICITY_IDS),
+            "color_count": len(FLOW_IDS),
+            "selected_color_ids": list(requested),
+        }
+        value.update(self.context_updates)
+        return value
+
+    def _point_selector_indices(
+        self,
+        values: tuple[str, ...],
+        name: str,
+    ) -> tuple[int, ...]:
+        frozen = tuple(values)
+        self.ordinal_requests.append((name, frozen))
+        override = self.ordinal_overrides.get(name)
+        if override is not None:
+            return override
+        available = HELICITY_IDS if name == "helicity_by_point" else FLOW_IDS
+        return tuple(available.index(identifier) for identifier in frozen)
+
+
+class _CompactCandidate:
+    execution_mode = ExecutionMode.ON_THE_FLY.value
+    artifact_id = "a" * 64
+
+    def __init__(
+        self,
+        cell: CellSpec,
+        *,
+        context_updates: dict[str, object] | None = None,
+        ordinal_overrides: dict[str, tuple[int, ...]] | None = None,
+    ) -> None:
+        self._delegate = _Runtime(ExecutionMode.ON_THE_FLY, "a")
+        self._backend = _CompactBackend(
+            cell,
+            context_updates=context_updates,
+            ordinal_overrides=ordinal_overrides,
+        )
+        self.dense_physics_access_count = 0
+
+    @property
+    def physics(self) -> object:
+        self.dense_physics_access_count += 1
+        raise AssertionError("compact candidate opened dense physics")
+
+    @property
+    def events(self) -> list[tuple[object, ...]]:
+        return self._delegate.events
+
+    def evaluate(self, *args: object, **kwargs: object) -> tuple[float, ...]:
+        return self._delegate.evaluate(*args, **kwargs)
+
+    def evaluate_resolved(self, *args: object, **kwargs: object) -> SimpleNamespace:
+        return self._delegate.evaluate_resolved(*args, **kwargs)
+
+    def clear(self) -> None:
+        self._delegate.clear()
+
+
 def _valid_gate(workload: Workload):
     cell = _otf_cell(workload)
     recurrence_cell, compiled_cell = _authorities(cell)
@@ -231,6 +339,126 @@ def _valid_gate(workload: Workload):
         ),
     )
     return cell, contract, record, candidate, recurrence, compiled
+
+
+@pytest.mark.parametrize("workload", (Workload.SELECTED_FLOW, Workload.ALL_FLOW))
+def test_dual_authority_candidate_uses_only_compact_selector_contract(
+    workload: Workload,
+) -> None:
+    cell = _otf_cell(workload)
+    recurrence_cell, compiled_cell = _authorities(cell)
+    candidate = _CompactCandidate(cell)
+
+    record = on_the_fly_dual_authority_validation(
+        candidate,
+        POINTS,
+        cell=cell,
+        selector_contract=_contract(),
+        authorities=(
+            (
+                "recurrence",
+                recurrence_cell,
+                _Runtime(ExecutionMode.RECURRENCE, "b"),
+            ),
+            (
+                "compiled",
+                compiled_cell,
+                _Runtime(ExecutionMode.COMPILED, "c"),
+            ),
+        ),
+    )
+
+    assert record["status"] == "ok"
+    assert candidate.dense_physics_access_count == 0
+    assert candidate._backend.context_requests == [(), ()]
+    assert candidate._backend.ordinal_requests == [
+        ("color_flow_by_point", (FLOW_IDS[0],)),
+        ("helicity_by_point", (HELICITY_IDS[0],)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("context_updates", "message"),
+    (
+        ({"process_expression": "g g > g"}, "identity differs"),
+        ({"helicity_count": 0}, "helicity_count is invalid"),
+        ({"color_count": False}, "color_count is invalid"),
+    ),
+)
+def test_compact_runtime_contract_rejects_invalid_identity_or_counts(
+    context_updates: dict[str, object],
+    message: str,
+) -> None:
+    cell = _otf_cell(Workload.SELECTED_FLOW)
+    candidate = _CompactCandidate(cell, context_updates=context_updates)
+
+    with pytest.raises(RunnerError, match=message):
+        validate_runtime_contract(cell, candidate)
+
+    assert candidate.dense_physics_access_count == 0
+
+
+@pytest.mark.parametrize(
+    ("name", "count"),
+    (
+        ("color_flow_by_point", len(FLOW_IDS)),
+        ("helicity_by_point", len(HELICITY_IDS)),
+    ),
+)
+def test_compact_selector_contract_rejects_out_of_range_ordinal(
+    name: str,
+    count: int,
+) -> None:
+    cell = _otf_cell(Workload.SELECTED_FLOW)
+    candidate = _CompactCandidate(
+        cell,
+        ordinal_overrides={name: (count,)},
+    )
+
+    with pytest.raises(RunnerError, match=rf"invalid {name} ordinals"):
+        validate_selector_contract(
+            candidate,
+            _contract(),
+            POINTS,
+            cell=cell,
+        )
+
+    assert candidate.dense_physics_access_count == 0
+
+
+def test_selector_derivation_rejects_otf_before_dense_physics_access() -> None:
+    cell = _otf_cell(Workload.SELECTED_FLOW)
+    candidate = _CompactCandidate(cell)
+
+    with pytest.raises(RunnerError, match="must be inherited from a dense authority"):
+        derive_selector_contract(candidate, POINTS)
+
+    assert candidate.dense_physics_access_count == 0
+    assert candidate._backend.context_requests == []
+
+
+@pytest.mark.parametrize("validation", ("runtime", "selector"))
+def test_compact_runtime_rejects_non_otf_cell_before_dense_physics_access(
+    validation: str,
+) -> None:
+    otf_cell = _otf_cell(Workload.SELECTED_FLOW)
+    recurrence_cell, _compiled_cell = _authorities(otf_cell)
+    candidate = _CompactCandidate(otf_cell)
+
+    with pytest.raises(RunnerError, match="wrong execution mode"):
+        if validation == "runtime":
+            validate_runtime_contract(recurrence_cell, candidate)
+        else:
+            validate_selector_contract(
+                candidate,
+                _contract(),
+                POINTS,
+                cell=recurrence_cell,
+            )
+
+    assert candidate.dense_physics_access_count == 0
+    assert candidate._backend.context_requests == []
+    assert candidate._backend.ordinal_requests == []
 
 
 @pytest.mark.parametrize("workload", (Workload.SELECTED_FLOW, Workload.ALL_FLOW))

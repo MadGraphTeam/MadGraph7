@@ -5344,6 +5344,7 @@ def _replay_cell(
             runtime,  # type: ignore[arg-type]
             SelectorContract.from_mapping(_mapping(raw_selector, context)),
             points,
+            cell=cell,
         )
     selectors = _selector_kwargs(cell, measurement)
     optimized = tuple(
@@ -5410,6 +5411,16 @@ def _replay_cell(
             raise FinalAuditError(
                 f"{context} recomputed conditioned resolved evidence differs"
             )
+        maximum_absolute = _finite_number(
+            replayed_resolved.get("maximum_absolute_difference"),
+            f"{context}.maximum_absolute_difference",
+            nonnegative=True,
+        )
+        maximum_relative = _finite_number(
+            replayed_resolved.get("maximum_relative_difference"),
+            f"{context}.maximum_relative_difference",
+            nonnegative=True,
+        )
     else:
         resolved_totals = tuple(resolved.total())
         maximum_absolute, maximum_relative = _resolved_differences(

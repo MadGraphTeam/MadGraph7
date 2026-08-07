@@ -2303,6 +2303,117 @@ def _lc_common_component(cell_id: str) -> dict[str, object]:
     }
 
 
+def test_otf_v2_replay_uses_compact_selector_context_without_dense_physics(
+    tmp_path: Path,
+) -> None:
+    cell = _cell(ExecutionMode.ON_THE_FLY, optimization_level=2)
+    points = final_audit_module.shared_validation_points(cell.process)
+    raw_selector = _selector()
+    raw_selector["point_digest"] = report_runner.point_digest(points)
+    contract = report_runner.SelectorContract.from_mapping(raw_selector)
+
+    class Backend:
+        def __init__(self) -> None:
+            self.context_requests: list[tuple[str, ...]] = []
+            self.selector_requests: list[tuple[str, tuple[str, ...]]] = []
+
+        def _on_the_fly_benchmark_context(
+            self,
+            requested: tuple[str, ...],
+        ) -> dict[str, object]:
+            self.context_requests.append(requested)
+            return {
+                "process_id": "d_dbar_to_z",
+                "process_expression": cell.process,
+                "color_accuracy": "lc",
+                "helicity_count": 1,
+                "color_count": 1,
+                "selected_color_ids": list(requested),
+            }
+
+        def _point_selector_indices(
+            self,
+            values: tuple[str, ...],
+            name: str,
+        ) -> tuple[int, ...]:
+            self.selector_requests.append((name, values))
+            return (0,)
+
+    class Runtime:
+        artifact_id = _ARTIFACT_ID
+        execution_mode = "on-the-fly"
+
+        def __init__(self) -> None:
+            self._backend = Backend()
+            self.dense_physics_access_count = 0
+
+        @property
+        def physics(self) -> object:
+            self.dense_physics_access_count += 1
+            raise AssertionError("OTF replay opened dense physics")
+
+        def evaluate(self, _points: object, **_kwargs: object) -> tuple[complex, ...]:
+            return (1.0 + 0.0j,)
+
+        def evaluate_resolved(self, _points: object, **_kwargs: object) -> _Resolved:
+            return _Resolved()
+
+    runtime = Runtime()
+    resolved_sum = report_runner.resolved_sum_validation(
+        runtime,
+        points,
+        cell=cell,
+        selector_contract=contract,
+    )
+    measurement = {
+        "matrix_element": 1.0,
+        "selector_contract": raw_selector,
+        "validation": {
+            "resolved_sum": resolved_sum,
+            LC_COMMON_COMPONENT_FIELD: {
+                "abi": LC_COMMON_COMPONENT_ABI,
+                "cell_id": cell.cell_id,
+                "value": 1.0,
+                "point_digest": contract.point_digest,
+                "helicity_ids": list(contract.all_flow_helicity_ids),
+                "color_flow_ids": list(contract.selected_color_flow_ids),
+            },
+        },
+        "provenance": {"runtime_identity": {"loaded_execution_mode": "on-the-fly"}},
+    }
+    reference = final_audit_module._ArtifactReference(
+        cell=cell,
+        measurement=measurement,
+        path=tmp_path,
+        process_id="d_dbar_to_z",
+    )
+    evidence = ArtifactEvidence(
+        artifact_id=_ARTIFACT_ID,
+        process_id="d_dbar_to_z",
+        runtime_version="test",
+        runtime_capabilities=(),
+        execution_manifest_path="execution.json",
+        execution_manifest_sha256="1" * 64,
+        execution_mode="on-the-fly",
+        arena_record_count=1,
+        direct_leaf_count=0,
+        effective_config={},
+        source_jit_identity=None,
+    )
+
+    replay = final_audit_module._replay_cell(runtime, reference, evidence)
+
+    assert replay.matrix_element == 1.0
+    assert replay.resolved_maximum_absolute == 0.0
+    assert replay.resolved_maximum_relative == 0.0
+    assert runtime.dense_physics_access_count == 0
+    assert runtime._backend.context_requests == [(), ()]
+    assert runtime._backend.selector_requests == [
+        ("color_flow_by_point", ("flow:2,1",)),
+        ("helicity_by_point", ("h:-1,+1,-1",)),
+    ]
+
+
 def _source_provenance() -> dict[str, object]:
     tree = "c" * 40
     return {

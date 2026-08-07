@@ -932,7 +932,91 @@ def _physics_ids(physics: object, name: str) -> tuple[str, ...]:
     return tuple(str(item.id) for item in getattr(physics, name, ()))
 
 
+def _on_the_fly_compact_context(
+    cell: CellSpec,
+    runtime: RuntimeLike,
+) -> tuple[int, int]:
+    """Validate OTF process identity and return compact selector counts."""
+
+    backend = getattr(runtime, "_backend", runtime)
+    operation = getattr(backend, "_on_the_fly_benchmark_context", None)
+    if not callable(operation):
+        raise RunnerError("on-the-fly report runtime has no compact selector context")
+    try:
+        raw = operation(())
+    except Exception as error:
+        raise RunnerError(
+            "on-the-fly report runtime compact selector context is unavailable"
+        ) from error
+    if not isinstance(raw, Mapping):
+        raise RunnerError(
+            "on-the-fly report runtime compact selector context is invalid"
+        )
+    process_id = raw.get("process_id")
+    selected_color_ids = raw.get("selected_color_ids")
+    if (
+        not isinstance(process_id, str)
+        or not process_id
+        or raw.get("process_expression") != cell.process
+        or raw.get("color_accuracy") != cell.measurement.accuracy.value
+        or not isinstance(selected_color_ids, Sequence)
+        or isinstance(selected_color_ids, (str, bytes))
+        or selected_color_ids
+    ):
+        raise RunnerError("on-the-fly report runtime compact selector identity differs")
+    counts: list[int] = []
+    for field in ("helicity_count", "color_count"):
+        value = raw.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise RunnerError(f"on-the-fly report runtime compact {field} is invalid")
+        counts.append(value)
+    return counts[0], counts[1]
+
+
+def _on_the_fly_selector_ordinals(
+    runtime: RuntimeLike,
+    values: Sequence[str],
+    *,
+    name: str,
+    count: int,
+) -> tuple[int, ...]:
+    backend = getattr(runtime, "_backend", runtime)
+    operation = getattr(backend, "_point_selector_indices", None)
+    if not callable(operation):
+        raise RunnerError("on-the-fly report runtime has no compact selector resolver")
+    try:
+        raw = operation(values, name)
+    except Exception as error:
+        raise RunnerError(f"on-the-fly report runtime cannot resolve {name}") from error
+    if (
+        not isinstance(raw, Sequence)
+        or isinstance(raw, (str, bytes))
+        or len(raw) != len(values)
+        or any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            or value >= count
+            for value in raw
+        )
+        or len(set(raw)) != len(raw)
+    ):
+        raise RunnerError(f"on-the-fly report runtime returned invalid {name} ordinals")
+    return tuple(raw)
+
+
 def validate_runtime_contract(cell: CellSpec, runtime: RuntimeLike) -> None:
+    runtime_is_on_the_fly = (
+        _runtime_execution_mode(runtime) == ExecutionMode.ON_THE_FLY.value
+    )
+    cell_is_on_the_fly = cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+    if runtime_is_on_the_fly:
+        if not cell_is_on_the_fly:
+            raise RunnerError("on-the-fly report runtime has the wrong execution mode")
+        _on_the_fly_compact_context(cell, runtime)
+        return
+    if cell_is_on_the_fly:
+        raise RunnerError("on-the-fly report runtime has the wrong execution mode")
     physics = runtime.physics
     accuracy = str(getattr(physics, "color_accuracy", ""))
     if accuracy != cell.measurement.accuracy.value:
@@ -2317,6 +2401,10 @@ def derive_selector_contract(
 ) -> SelectorContract:
     """Select one backend-independent labelled LC flow and helicity."""
 
+    if _runtime_execution_mode(runtime) == ExecutionMode.ON_THE_FLY.value:
+        raise RunnerError(
+            "on-the-fly selector contracts must be inherited from a dense authority"
+        )
     physics = runtime.physics
     color_flows = tuple(getattr(physics, "color_flows", ()))
     helicities = tuple(getattr(physics, "helicities", ()))
@@ -2401,9 +2489,63 @@ def validate_selector_contract(
     runtime: RuntimeLike,
     contract: SelectorContract,
     points: object,
+    *,
+    cell: CellSpec | None = None,
 ) -> None:
     if point_digest(points) != contract.point_digest:
         raise RunnerError("selector contract and measurement point differ")
+    runtime_is_on_the_fly = (
+        _runtime_execution_mode(runtime) == ExecutionMode.ON_THE_FLY.value
+    )
+    cell_is_on_the_fly = (
+        cell is not None and cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+    )
+    if runtime_is_on_the_fly:
+        if cell is None:
+            raise RunnerError("on-the-fly selector validation requires its report cell")
+        if not cell_is_on_the_fly:
+            raise RunnerError("on-the-fly report runtime has the wrong execution mode")
+        helicity_count, color_count = _on_the_fly_compact_context(
+            cell,
+            runtime,
+        )
+        for identifier, word in zip(
+            contract.selected_color_flow_ids,
+            contract.selected_color_words,
+            strict=True,
+        ):
+            try:
+                canonical_word = canonical_lc_flow_word(word)
+            except SelectorPolicyError as error:
+                raise RunnerError(str(error)) from error
+            if canonical_word != word or selector_color_flow_id(word) != identifier:
+                raise RunnerError(
+                    f"artifact does not expose selected physical flow {identifier!r}"
+                )
+        expected_states = tuple(
+            state for _label, state in sorted(contract.all_flow_source_helicities)
+        )
+        runtime_helicity_ids = contract.runtime_all_flow_helicity_ids
+        if runtime_helicity_ids != (selector_helicity_id(expected_states),):
+            raise RunnerError(
+                "artifact does not expose selected physical helicity "
+                f"{contract.all_flow_helicity_ids[0]!r}"
+            )
+        _on_the_fly_selector_ordinals(
+            runtime,
+            contract.selected_color_flow_ids,
+            name="color_flow_by_point",
+            count=color_count,
+        )
+        _on_the_fly_selector_ordinals(
+            runtime,
+            runtime_helicity_ids,
+            name="helicity_by_point",
+            count=helicity_count,
+        )
+        return
+    if cell_is_on_the_fly:
+        raise RunnerError("on-the-fly report runtime has the wrong execution mode")
     physics = runtime.physics
     colors = {
         str(flow.id): tuple(int(label) for label in flow.word)
@@ -2821,7 +2963,12 @@ def on_the_fly_dual_authority_validation(
     validate_runtime_contract(cell, candidate)
     if _runtime_execution_mode(candidate) != ExecutionMode.ON_THE_FLY.value:
         raise RunnerError("on-the-fly candidate runtime has the wrong execution mode")
-    validate_selector_contract(candidate, selector_contract, points)
+    validate_selector_contract(
+        candidate,
+        selector_contract,
+        points,
+        cell=cell,
+    )
     candidate_artifact_id = _otf_runtime_artifact_id(candidate, "on-the-fly candidate")
 
     authority_captures: list[tuple[str, CellSpec, _OtfAuthorityCapture]] = []
@@ -4810,7 +4957,12 @@ def profile_runtime(
 ) -> dict[str, object]:
     validate_runtime_contract(cell, runtime)
     if selector_contract is not None:
-        validate_selector_contract(runtime, selector_contract, points)
+        validate_selector_contract(
+            runtime,
+            selector_contract,
+            points,
+            cell=cell,
+        )
     selectors = _selector_kwargs(cell, selector_contract)
     values = (
         None
