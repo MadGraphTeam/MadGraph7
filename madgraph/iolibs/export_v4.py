@@ -7478,7 +7478,10 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     # helicity recycling, so the definitions cannot sit at the end of it
     jamp_gather = True
     done_warning_tchannel = False
-    
+    # set as soon as one matrix element is written with the batched color
+    # sum, so that only then is the library linked in
+    blas_used = False
+
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
@@ -7937,6 +7940,16 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                      'cpp': mg5options['cpp_compiler'],
                      'f2py': mg5options['f2py_compiler']}
 
+        # a matrix element written with the batched color sum needs the
+        # library it calls into on the link line
+        if self.blas_used:
+            makefile = pjoin(self.dir_path, 'SubProcesses', 'makefile')
+            if os.path.exists(makefile):
+                text = open(makefile).read()
+                text = text.replace('BLASLIBS =',
+                                    'BLASLIBS = %s' % self.blas_link_flags())
+                open(makefile, 'w').write(text)
+
         # indicate that the output type is not grouped
         if  not isinstance(self, ProcessExporterFortranMEGroup):
             self.proc_characteristic['grouped_matrix'] = False
@@ -8060,6 +8073,242 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         #return to the initial dir
         #os.chdir(old_pos)               
+
+    #===========================================================================
+    # BLAS-3 color sum
+    #===========================================================================
+    @staticmethod
+    def get_blas_routine_me(prefix, proc_id, nfold, nampso, nsqampso,
+                            ncomb, cf_dim, chosen_so):
+        """The color sum for a whole batch of helicities at once.
+
+        The color matrix is the same for every helicity, so the helicities
+        are the columns of a single right hand side and the sum is two
+        DSYMM calls. DSYMM is real, so the two parts of JAMP go through
+        separately; the color matrix is real and symmetric, so that is all
+        it takes, and the two products add up term by term.
+
+        With split orders JAMP carries a second index, and every (M,N) pair
+        the squared order mask keeps is one more column pairing. The mask is
+        symmetric, since SQSOINDEX adds the two amplitude orders, and that is
+        what lets the triangle the scalar sum walks be traded for the whole
+        symmetric matrix here."""
+
+        return """
+      SUBROUTINE {p}GET_MATRIX_BATCH{i}(JR,JI,NB,ANSB)
+      IMPLICIT NONE
+      INTEGER NFOLD, NAMPSO, NSQAMPSO, NBMAX
+      PARAMETER (NFOLD={n}, NAMPSO={a})
+      PARAMETER (NSQAMPSO={q}, NBMAX={c})
+      INTEGER NB
+      DOUBLE PRECISION JR(NFOLD,NAMPSO,*), JI(NFOLD,NAMPSO,*)
+      DOUBLE PRECISION ANSB(*)
+      LOGICAL CHOSEN_SO_CONFIGS(NSQAMPSO)
+      DATA CHOSEN_SO_CONFIGS/{s}/
+      SAVE CHOSEN_SO_CONFIGS
+      INTEGER I,J,K,M,N,CFI,NRHS
+      DOUBLE PRECISION S
+      DOUBLE PRECISION, ALLOCATABLE, SAVE :: CFULL(:,:)
+      DOUBLE PRECISION, ALLOCATABLE, SAVE :: TR(:,:), TI(:,:)
+      LOGICAL FIRST
+      DATA FIRST /.TRUE./
+      SAVE FIRST
+      INTEGER CF({d})
+      INTEGER DENOM
+      COMMON /{p}color_matrix{i}/ CF,DENOM
+      INTEGER SQSOINDEX{i}
+      IF (FIRST) THEN
+        CALL {p}INIT_CF{i}()
+        ALLOCATE(CFULL(NFOLD,NFOLD))
+        ALLOCATE(TR(NFOLD,NAMPSO*NBMAX))
+        ALLOCATE(TI(NFOLD,NAMPSO*NBMAX))
+C       The triangle written out has its off diagonal doubled, since
+C       the scalar sum walks it once. BLAS wants the whole matrix,
+C       with every entry counted once.
+        CFI = 0
+        DO I = 1, NFOLD
+          DO J = I, NFOLD
+            CFI = CFI + 1
+            IF (I.EQ.J) THEN
+              CFULL(I,J) = DBLE(CF(CFI))
+            ELSE
+              CFULL(I,J) = DBLE(CF(CFI))/2D0
+              CFULL(J,I) = CFULL(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+        FIRST = .FALSE.
+      ENDIF
+      NRHS = NB*NAMPSO
+      CALL DSYMM('L','U',NFOLD,NRHS,1D0,CFULL,NFOLD,JR,NFOLD,0D0,TR,NFOLD)
+      CALL DSYMM('L','U',NFOLD,NRHS,1D0,CFULL,NFOLD,JI,NFOLD,0D0,TI,NFOLD)
+      DO K = 1, NB
+        S = 0D0
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            IF (CHOSEN_SO_CONFIGS(SQSOINDEX{i}(M,N))) THEN
+              DO I = 1, NFOLD
+                S = S + TR(I,(K-1)*NAMPSO+M)*JR(I,N,K)
+                S = S + TI(I,(K-1)*NAMPSO+M)*JI(I,N,K)
+              ENDDO
+            ENDIF
+          ENDDO
+        ENDDO
+        ANSB(K) = S / DBLE(DENOM)
+      ENDDO
+      END
+""".format(p=prefix, i=proc_id, n=nfold, a=nampso, q=nsqampso, c=ncomb,
+           d=cf_dim, s=chosen_so)
+
+    # For every template where MATRIX is one helicity at a time: the call
+    # SMATRIX makes in its helicity loop, what selects the helicities worth
+    # computing, when the good helicities have settled, the arguments MATRIX
+    # takes on top of its own, and the dimension the file declares the color
+    # matrix with (the common block is laid out by it, so DENOM only lands
+    # where the batched routine looks for it if the two agree).
+    blas_me_shape = {
+        'matrix_madevent_v4.inc': {
+            'call': 'MATRIX%(proc_id)s(P,NHEL(1,I),IFLAV, IVEC)',
+            'collect': 'MATRIX%(proc_id)s(P,NHEL(1,IBH),IFLAV,IVEC,'
+                       'JRB,JIB,BLASGATE,BLASNB)',
+            'select': 'GOODHEL(IBH,IFLAV) .OR. NTRY(IFLAV) .LE. MAXTRIES'
+                      '.OR.(ISUM_HEL.NE.0)',
+            'settled': 'NTRY(IFLAV).GT.MAXTRIES',
+            'cf_dim': 'NFOLD*(NFOLD+1)'},
+        'matrix_madevent_group_v4.inc': {
+            'call': 'MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2,'
+                    ' IVEC)',
+            'collect': 'MATRIX%(proc_id)s(P,NHEL(1,IBH),IFLAV,IBH,AMP2,'
+                       'JAMP2,IVEC,JRB,JIB,BLASGATE,BLASNB)',
+            'select': 'GOODHEL(IBH,IFLAV,%(proc_id)s) .OR. '
+                      'NTRY(IFLAV,%(proc_id)s).LE.MAXTRIES.or.'
+                      '(ISUM_HEL.NE.0)',
+            'settled': 'NTRY(IFLAV,%(proc_id)s).GT.MAXTRIES',
+            'cf_dim': 'NFOLD*(NFOLD+1)/2'},
+        }
+
+    def set_blas_replace_dict(self, replace_dict, ncomb, nfold):
+        """Template replacements for the BLAS-3 color sum.
+
+        Everything the batched path adds hangs off the end of a line that is
+        already there, so with BLAS off the generated file is character for
+        character the one written before any of this existed.
+
+        Two shapes are covered. The helicity recycled matrix element already
+        walks every helicity inside one call, so there the batch is the loop
+        it is already running (the blas_hel_* keys). Everywhere else MATRIX is
+        one helicity at a time and SMATRIX is the one holding the loop, so the
+        columns are gathered there and the value each helicity ends up with is
+        read back out of the batch (the blas_* keys)."""
+
+        keys = ['blas_hel_decl', 'blas_hel_setup', 'blas_hel_gather',
+                'blas_hel_gate', 'blas_hel_finish', 'blas_hel_routine',
+                'blas_decl', 'blas_arg', 'blas_gather', 'blas_gate',
+                'blas_smatrix_decl', 'blas_branch', 'blas_matrix_args',
+                'blas_routine']
+        shape = self.blas_me_shape.get(self.matrix_file)
+        for key in keys:
+            replace_dict[key] = ''
+        replace_dict['blas_matrix_call'] = \
+            (shape['call'] % replace_dict) if shape else ''
+
+        nampso = replace_dict['nAmpSplitOrders']
+        if not self.blas_wanted(nfold):
+            return
+        self.blas_used = True
+
+        prefix = replace_dict['proc_prefix']
+        proc_id = replace_dict['proc_id']
+        replace_dict['blas_hel_decl'] = "\n".join([
+            "",
+            "      DOUBLE PRECISION JRB(NCOLORFOLD,NAMPSO,NCOMB)",
+            "      DOUBLE PRECISION JIB(NCOLORFOLD,NAMPSO,NCOMB)",
+            "      SAVE JRB, JIB",
+            "      INTEGER BLASGATE",
+            "      LOGICAL BLAS_COLOR_SUM",
+            "      COMMON/TO_BLAS_COLOR_SUM/BLAS_COLOR_SUM"])
+        replace_dict['blas_hel_setup'] = "\n".join([
+            "",
+            "      BLASGATE = 1",
+            "      IF (BLAS_COLOR_SUM) BLASGATE = 0"])
+        replace_dict['blas_hel_gather'] = "\n".join([
+            "",
+            "        JRB(:,:,K) = DBLE(%s(:,:))"
+                                    % replace_dict['color_fold_array'],
+            "        JIB(:,:,K) = DIMAG(%s(:,:))"
+                                    % replace_dict['color_fold_array']])
+        # a zero trip count leaves the scalar sum out without changing a
+        # single block, which is what the helicity recycling rewriter walks
+        replace_dict['blas_hel_gate'] = "*BLASGATE"
+        replace_dict['blas_hel_finish'] = "\n".join([
+            "",
+            "      IF (BLASGATE.EQ.0) CALL %sGET_MATRIX_BATCH%s(JRB,JIB,"
+            "NCOMB,TS)" % (prefix, proc_id)])
+        replace_dict['blas_hel_routine'] = self.get_blas_routine_me(
+            prefix, proc_id, nfold, nampso,
+            replace_dict['nSqAmpSplitOrders'], ncomb,
+            'NFOLD*(NFOLD+1)', replace_dict['chosen_so_configs'])
+
+        if not shape or self.opt.get('hel_recycling'):
+            # with helicity recycling on, this file is only what the good
+            # helicities are found with, and what the rewriter reads: it stays
+            # scalar, and the batch lives in the recycled matrix element above
+            return
+
+        replace_dict['blas_decl'] = "\n".join([
+            "",
+            "    DOUBLE PRECISION JRB(NCOLORFOLD,NAMPSO,%d)" % ncomb,
+            "    DOUBLE PRECISION JIB(NCOLORFOLD,NAMPSO,%d)" % ncomb,
+            "    INTEGER BLASGATE, BLASCOL"])
+        replace_dict['blas_arg'] = ",JRB,JIB,BLASGATE,BLASCOL"
+        replace_dict['blas_gather'] = "\n".join([
+            "",
+            "    JRB(:,:,BLASCOL) = DBLE(%s(:,:))"
+                                    % replace_dict['color_fold_array'],
+            "    JIB(:,:,BLASCOL) = DIMAG(%s(:,:))"
+                                    % replace_dict['color_fold_array']])
+        # a zero trip count leaves the scalar sum out
+        replace_dict['blas_gate'] = "*BLASGATE"
+        replace_dict['blas_matrix_args'] = ",JRB,JIB,1,1"
+        replace_dict['blas_smatrix_decl'] = "\n".join([
+            "",
+            "    DOUBLE PRECISION JRB(%d,%d,%d)" % (nfold, nampso, ncomb),
+            "    DOUBLE PRECISION JIB(%d,%d,%d)" % (nfold, nampso, ncomb),
+            "    SAVE JRB, JIB",
+            "    DOUBLE PRECISION BLASB(NCOMB), BLASP(NCOMB)",
+            # BLAS_COLOR_SUM itself comes with run.inc, which SMATRIX has
+            "    INTEGER BLASIDX(NCOMB), BLASNB, BLASGATE, IBH"])
+        select = shape['select'] % replace_dict
+        # One sweep over the helicities worth computing fills BLASB, either
+        # helicity by helicity as before or, once the good helicities have
+        # settled, as one batch; the loop below then only reads it back, so
+        # nothing is computed twice and AMP2/JAMP2 still add up once.
+        replace_dict['blas_branch'] = "\n".join([
+            "      BLASGATE = 1",
+            "      IF (BLAS_COLOR_SUM .AND. %s) BLASGATE = 0"
+                                                    % (shape['settled']
+                                                       % replace_dict),
+            "      BLASNB = 0",
+            "      DO IBH = 1, NCOMB",
+            "        IF (%s) THEN" % select,
+            "          BLASNB = BLASNB + 1",
+            "          BLASIDX(BLASNB) = IBH",
+            "          BLASB(IBH) = %s" % (shape['collect'] % replace_dict),
+            "        ENDIF",
+            "      ENDDO",
+            "      IF (BLASGATE.EQ.0 .AND. BLASNB.GT.0) THEN",
+            "        CALL %sGET_MATRIX_BATCH%s(JRB,JIB,BLASNB,BLASP)"
+                                                    % (prefix, proc_id),
+            "        DO IBH = 1, BLASNB",
+            "          BLASB(BLASIDX(IBH)) = BLASP(IBH)",
+            "        ENDDO",
+            "      ENDIF",
+            ""])
+        replace_dict['blas_matrix_call'] = "BLASB(I)"
+        replace_dict['blas_routine'] = self.get_blas_routine_me(
+            prefix, proc_id, nfold, nampso,
+            replace_dict['nSqAmpSplitOrders'], ncomb,
+            shape['cf_dim'], replace_dict['chosen_so_configs'])
 
     #===========================================================================
     # write_matrix_element_v4
@@ -8283,6 +8532,12 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # The color sum can run on the (n-2)! DDM basis while the color flow
         # probabilities keep using the (n-1)! trace one
         ncolor = self.set_color_flow_lines(matrix_element, replace_dict, ncolor)
+
+        # BLAS-3 color sum: the helicities are the columns of a single right
+        # hand side, so the whole sum is two DSYMM calls instead of one
+        # triangular loop per helicity.
+        self.set_blas_replace_dict(replace_dict, ncomb,
+                                   int(replace_dict['ncolorfold']))
 
         if self.beam_polarization == [True, True]:
             replace_dict['beam_polarization'] = """

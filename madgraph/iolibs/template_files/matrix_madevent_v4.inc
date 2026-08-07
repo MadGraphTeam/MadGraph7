@@ -71,7 +71,7 @@ C   row-level information to apply the identical-particle correction.
     %(get_flavor_row_matrix)s
     INTEGER IPSEL
     COMMON /SUBPROC/ IPSEL
-    INTEGER BROKEN_SYM%(proc_id)s
+    INTEGER BROKEN_SYM%(proc_id)s%(blas_smatrix_decl)s
 
 C
 C GLOBAL VARIABLES
@@ -121,9 +121,9 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
 
 !   If the helicity grid status is 0, this means that it is not yet initialized.
     IF (ISUM_HEL.EQ.0.or.(DS_get_dim_status('Helicity').eq.0)) THEN
-        DO I=1,NCOMB
+%(blas_branch)s        DO I=1,NCOMB
            IF (GOODHEL(I,IFLAV) .OR. NTRY(IFLAV) .LE. MAXTRIES.OR.(ISUM_HEL.NE.0)) THEN
-               T=MATRIX%(proc_id)s(P,NHEL(1,I),IFLAV, IVEC)
+               T=%(blas_matrix_call)s
             %(beam_polarization)s
              IF (ISUM_HEL.NE.0) then
                call DS_add_entry('Helicity',I,T)
@@ -165,7 +165,7 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
 C           The helicity configuration was chosen already by genps and put in a common block defined in genps.inc.
             I = HEL_PICKED
 
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV, IVEC)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV, IVEC%(blas_matrix_args)s)
             %(beam_polarization)s
 c           Always one helicity at a time
             ANS = T
@@ -225,7 +225,7 @@ C     Returns the flavor array for a given flavor index IFLAV
       END
 
 
-REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IVEC)
+REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IVEC%(blas_arg)s)
 use model_object
 use aloha_object
 C  
@@ -278,7 +278,7 @@ C
     INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
     INTEGER CF_INDEX,DENOM
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
-    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_decl)s
 %(color_fold_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
@@ -324,9 +324,9 @@ AMP(:) = (0d0,0d0)
 %(helas_calls)s
 %(jamp_lines)s
 
-%(color_fold_gather)s
+%(color_fold_gather)s%(blas_gather)s
     MATRIX%(proc_id)s = 0.D0 
-    DO M = 1, NAMPSO
+    DO M = 1, NAMPSO%(blas_gate)s
       CF_INDEX = 0
       DO I = 1, NCOLORFOLD
         ZTEMP = (0.D0,0.D0)
@@ -357,6 +357,6 @@ AMP(:) = (0d0,0d0)
     END
 
 
-%(color_init_routine)s
+%(color_init_routine)s%(blas_routine)s
 
     %(broken_sym_function)s

@@ -113,3 +113,8 @@ c                          2 means approximation by the denominator of the propa
 c
        double precision limhel
        common/to_limhel/limhel
+c
+c      whether the color sum may go through the batched BLAS-3 call, where
+c      the matrix element was generated with one
+       logical blas_color_sum
+       common/to_blas_color_sum/blas_color_sum

@@ -244,7 +244,7 @@ C
     INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
     INTEGER DENOM, CF_INDEX
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
-    COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
+    COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_hel_decl)s
 %(color_fold_decl)s
 %(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
@@ -291,17 +291,17 @@ if (first) then
 endif
 C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
     CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
-%(flavor_mask_setup)s
+%(flavor_mask_setup)s%(blas_hel_setup)s
     AMP(:,:) = (0d0,0d0)
 ${helas_calls}
 
     JAMP(:,:)  = (0d0,0d0)
     DO K = 1, NCOMB
 ${jamp_lines}
-%(color_fold_gather)s
+%(color_fold_gather)s%(blas_hel_gather)s
 %(jampflow_lines)s
         TS(K) = 0.D0 
-    	DO M = 1, NAMPSO
+    	DO M = 1, NAMPSO%(blas_hel_gate)s
           CF_INDEX = 0
           DO I = 1, NCOLORFOLD
             ZTEMP = (0.D0,0.D0)
@@ -329,7 +329,7 @@ ${jamp_lines}
     		enddo
     	  enddo
         Enddo
-    ENDDO ! K
+    ENDDO ! K%(blas_hel_finish)s
 
     END
 
@@ -342,6 +342,6 @@ ${jamp_lines}
     end
 
 
-%(color_init_routine)s
+%(color_init_routine)s%(blas_hel_routine)s
 
     %(broken_sym_function)s
