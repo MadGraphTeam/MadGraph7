@@ -407,31 +407,25 @@ class ProcessExporterFortran(ColorReflectionFolding, VirtualExporter,
     # jamp_fold (sum |M|^2 over one color flow per reversal pair) comes from
     # ColorReflectionFolding and stays off unless the template sums over
     # NCOLORFOLD: get_color_data_lines is shared by every fortran exporter.
-    # jamp_optim, myjamp_count and jamp_integer_walk come from JampOptimiser.
+    # jamp_optim, myjamp_count and jamp_integer_walk come from JampOptimiser,
+    # and so does the orbit equivariant optimisation itself: jamp_orbit,
+    # jamp_greedy_tail and jamp_compare_max_size. What is left here is how the
+    # definitions it produces are written out.
     # BLAS-3 for the color sum: all helicities at once as one right hand side.
     # None means take it when the library is there and the process is big
     # enough for it to pay.
     blas = None
     blas_min_ncolor = 100
-    # write the JAMP definitions as one recipe per orbit of the permutations
-    # leaving the color basis invariant, instead of one line per definition
-    jamp_orbit = False
     # How the definitions reach memory: 'recipes' rebuilds them at the first
     # call from one recipe per orbit, 'tables' writes the operand indices out
     # as DATA. Both run the very same loop, and both start from the orbit
     # equivariant optimisation, so they only differ in the source they need.
     jamp_emit = 'tables'
-    # finish with the plain scan once the orbit rounds have nothing left to
-    # take as a whole (only used by the table emission, see below)
-    jamp_greedy_tail = True
     # Read the amplitudes of the current helicity into a buffer before running
     # the definitions over it, instead of holding the definitions at the end of
     # AMP. Needed where AMP is indexed by helicity, which is what madevent does
     # once it rewrites the matrix element for helicity recycling.
     jamp_gather = False
-    # up to this many entries in the matrix, both optimisations are run and the
-    # shorter result kept (see optimise_jamp_best)
-    jamp_compare_max_size = 20000
     # Below this many definitions writing them out is both smaller and faster:
     # the lines still fit in the instruction cache, while the loop reading the
     # operands from a table pays for the two indirections whatever the size.
@@ -3204,43 +3198,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         return res_list, len(defs)
 
-    def optimise_jamp_best(self, all_element, symmetry):
-        """Taking whole orbits only pays once there is enough of them to share:
-        on a small matrix it can end up asking for more additions than the plain
-        scan, which is free to take whatever it likes. g g > t t~ g is such a
-        case, 46 additions against 39.
-
-        Small matrices are cheap to optimise, so rather than guess where the
-        turn is, do both and keep the shorter. Above that size only the orbit
-        version is run: it wins by a wide margin on everything that big, and
-        the plain scan is the slow one there."""
-
-        orbit_element, orbit_defs = self.optimise_jamp_equivariant(
-                                            dict(all_element), symmetry)
-        if len(all_element) > self.jamp_compare_max_size:
-            return orbit_element, orbit_defs
-
-        orbits = self.jamp_orbits
-        plain_element, plain_defs = self.optimise_jamp(dict(all_element))
-        if self.jamp_operation_count(plain_element, plain_defs) < \
-                    self.jamp_operation_count(orbit_element, orbit_defs):
-            self.jamp_orbits = None
-            return plain_element, plain_defs
-        self.jamp_orbits = orbits
-        return orbit_element, orbit_defs
-
-    #===========================================================================
-    # Orbit equivariant version of the JAMP optimisation
-    #===========================================================================
-    # A permutation of the external color indices which maps the color basis
-    # onto itself (see color_amp.ColorBasisSymmetry) also permutes the columns
-    # of the JAMP matrix, up to a sign. The whole matrix is then invariant, so
-    # the sub-expressions the optimisation looks for come in orbits: every one
-    # of them is worth exactly as much as the others. Introducing a whole orbit
-    # at a time, rather than one sub-expression at a time as the plain scan
-    # does, leaves the matrix invariant at every step, and the definitions can
-    # be written as one recipe per orbit.
-
     _blas_available = None
 
     @classmethod
@@ -3388,280 +3345,6 @@ C       matrix with each entry counted once.
             'color_fold_gather': "    JFOLD(:,:) = JAMP(COLREP(:),:)",
             'color_fold_array': 'JFOLD'}
 
-    @staticmethod
-    def jamp_column_form(column):
-        """Canonical form of one column of the JAMP matrix up to a global sign,
-        together with the sign which was taken out."""
-
-        entries = sorted(column.items())
-        first = entries[0][1]
-        sign = -1 if (first.real, first.imag) < (0., 0.) else 1
-        return tuple((i, sign * value) for i, value in entries), sign
-
-    @classmethod
-    def jamp_amp_permutation(cls, columns, induced):
-        """Permutation of the amplitudes induced by the permutation induced of
-        the color basis: return {amp: (amp, sign)} such that
-
-            M[induced[i], sigma(j)] = sign(j) * M[i, j]
-
-        or None if the columns are not mapped onto each other.
-
-        Several amplitudes often have the very same column, so the columns are
-        gathered by their canonical form and one target is taken out of each
-        group at a time: looking the image up would not give a bijection."""
-
-        groups = collections.defaultdict(collections.deque)
-        for j in sorted(columns):
-            form, sign = cls.jamp_column_form(columns[j])
-            groups[form].append((j, sign))
-
-        action = {}
-        for j in sorted(columns):
-            image = dict((induced[i - 1] + 1, value)
-                         for i, value in columns[j].items())
-            form, sign = cls.jamp_column_form(image)
-            group = groups.get(form)
-            if not group:
-                return None
-            target, target_sign = group.popleft()
-            factor = sign * target_sign
-            other = columns[target]
-            if len(other) != len(image) or \
-                 any(other.get(i) != factor * value
-                     for i, value in image.items()):
-                return None
-            action[j] = (target, factor)
-        return action
-
-    def get_jamp_symmetry(self, matrix_element, all_element):
-        """Permutations leaving the JAMP matrix invariant: for each of them the
-        permutation of the color basis lines, and the permutation of the
-        amplitude columns with the sign that goes with it. None when there is
-        none, or when the matrix element does not carry a color basis."""
-
-        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
-            return None
-        color_basis = matrix_element.get('color_basis')
-        if not color_basis or len(color_basis) < 2:
-            return None
-        symmetry = color_amp.ColorBasisSymmetry(sorted(color_basis.keys()))
-        if not symmetry.generators1:
-            return None
-
-        columns = collections.defaultdict(dict)
-        for (i, j), value in all_element.items():
-            if value:
-                columns[j][i] = value
-        if not columns:
-            return None
-
-        nb_line = len(symmetry.keys1)
-        rowperms, actions = [], []
-        for induced in symmetry.generators1:
-            action = self.jamp_amp_permutation(columns, induced)
-            if action is None:
-                continue
-            rowperms.append([0] + [induced[i] + 1 for i in range(nb_line)])
-            actions.append(action)
-        if not actions:
-            return None
-
-        # one line per orbit is enough to see every sub-expression: any other
-        # line is the image of one of them, and so are the sub-expressions it
-        # holds. This is what keeps the scan below from being quadratic in the
-        # number of terms of the whole matrix.
-        parent = list(range(nb_line + 1))
-
-        def find(x):
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        for rowperm in rowperms:
-            for i in range(1, nb_line + 1):
-                ri, rj = find(i), find(rowperm[i])
-                if ri != rj:
-                    parent[ri] = rj
-        line_reps = [i for i in range(1, nb_line + 1) if find(i) == i]
-
-        return {'rowperms': rowperms, 'actions': actions,
-                'nb_line': nb_line, 'line_reps': line_reps}
-
-    @staticmethod
-    def jamp_operation_image(action, operation):
-        """Image of the sub-expression operation=(j1,j2,R) under one
-        permutation, and the factor relating the column the image defines to
-        the image of the column operation defines."""
-
-        j1, j2, ratio = operation
-        first, sign1 = action[j1]
-        second, sign2 = action[j2]
-        if first < second:
-            return (first, second, ratio * sign2 / sign1), sign1
-        return (second, first, sign1 / (sign2 * ratio)), sign2 * ratio
-
-    def optimise_jamp_equivariant(self, all_element, symmetry):
-        """Same optimisation as optimise_jamp, but introducing whole orbits of
-        sub-expressions at a time so that the result is closed under the
-        symmetry. Fills self.jamp_orbits with, for every definition, the orbit
-        it belongs to and the definition and permutation it comes from."""
-
-        actions = [dict(action) for action in symmetry['actions']]
-        line_reps = symmetry['line_reps']
-        added = 0
-        defs = []
-        # (orbit, parent definition, permutation) for every definition
-        tree = []
-        # the definitions introduced together: none of them uses another, so
-        # they can be reordered freely
-        levels = []
-        nb_orbit = 0
-
-        while True:
-            columns = collections.defaultdict(list)
-            lines = collections.defaultdict(list)
-            for (i, j), value in all_element.items():
-                if value:
-                    columns[j].append(i)
-                    lines[i].append(j)
-            for line in lines.values():
-                line.sort()
-
-            # every sub-expression is the image of one living on a
-            # representative line, so only those have to be looked at
-            candidates = set()
-            for i in line_reps:
-                line = lines.get(i, [])
-                for pos, j1 in enumerate(line):
-                    value = all_element[(i, j1)]
-                    for j2 in line[pos + 1:]:
-                        candidates.add((j1, j2, all_element[(i, j2)] / value))
-
-            max_count = 0
-            best = []
-            for operation in candidates:
-                count = len(self.jamp_operation_lines(all_element, columns,
-                                                      operation))
-                if count > max_count:
-                    max_count, best = count, [operation]
-                elif count == max_count:
-                    best.append(operation)
-            if max_count <= 1:
-                break
-
-            orbits = self.jamp_operation_orbits(actions, best)
-            first_of_level = added + 1
-            for orbit, parent in orbits:
-                rows = dict((operation,
-                             self.jamp_operation_lines(all_element, columns,
-                                                       operation))
-                            for operation in orbit)
-                if not self.jamp_orbit_usable(rows):
-                    continue
-                index = {}
-                for operation in orbit:
-                    added += 1
-                    index[operation] = added
-                    origin, permutation = parent[operation]
-                    tree.append((nb_orbit, index[origin] if origin else 0,
-                                 permutation))
-                    defs.append((added, operation[0], operation[1],
-                                 operation[2], len(rows[operation])))
-                nb_orbit += 1
-                for operation, new in index.items():
-                    j1, j2 = operation[0], operation[1]
-                    for i in rows[operation]:
-                        all_element[(i, -new)] = all_element[(i, j1)]
-                        del all_element[(i, j1)]
-                        del all_element[(i, j2)]
-                for action in actions:
-                    for operation, new in index.items():
-                        image, factor = self.jamp_operation_image(action,
-                                                                  operation)
-                        action[-new] = (-index[image], factor)
-            if added < first_of_level:
-                # nothing could be introduced as a whole orbit
-                break
-            levels.append((first_of_level, added))
-            logger.log(5, "Define %d new shortcut reused %d times",
-                       added - first_of_level + 1, max_count)
-
-        self.jamp_orbits = {'tree': tree, 'nb_orbit': nb_orbit,
-                            'levels': levels, 'actions': actions,
-                            'symmetry': symmetry}
-
-        if self.jamp_emit == 'tables' and self.jamp_greedy_tail:
-            # The orbit rounds stop while the JAMP lines still hold a good many
-            # terms, since an orbit can only be taken as a whole. The plain
-            # scan has no such scruple and can still shorten those lines. Its
-            # sub-expressions are not orbits of anything, which rules them out
-            # of the recipes, but the table emission does not care: there a
-            # definition costs three numbers of DATA and one indirect add,
-            # against a term of a line and a direct add.
-            all_element, tail = self.optimise_jamp(all_element, added=added)
-            defs.extend(tail)
-
-        return all_element, defs
-
-    @staticmethod
-    def jamp_operation_lines(all_element, columns, operation):
-        """Lines where both columns of the sub-expression are still there with
-        its ratio. The values are read from the matrix as it is now, so lines
-        already taken by an orbit introduced before are simply gone."""
-
-        j1, j2, ratio = operation
-        res = []
-        for i in columns.get(j1, ()):
-            value = all_element.get((i, j1), 0)
-            if not value:
-                continue
-            other = all_element.get((i, j2), 0)
-            if other and other / value == ratio:
-                res.append(i)
-        return res
-
-    def jamp_operation_orbits(self, actions, operations):
-        """Orbits of the sub-expressions, walked breadth first, with the
-        (sub-expression, permutation) each of them is reached from."""
-
-        seen = set()
-        orbits = []
-        for start in sorted(operations, key=lambda op: (op[0], op[1],
-                                                        op[2].real,
-                                                        op[2].imag)):
-            if start in seen:
-                continue
-            orbit, parent = [start], {start: (None, 0)}
-            seen.add(start)
-            queue = collections.deque([start])
-            while queue:
-                current = queue.popleft()
-                for position, action in enumerate(actions):
-                    image = self.jamp_operation_image(action, current)[0]
-                    if image in seen:
-                        continue
-                    seen.add(image)
-                    parent[image] = (current, position + 1)
-                    orbit.append(image)
-                    queue.append(image)
-            orbits.append((orbit, parent))
-        return orbits
-
-    @staticmethod
-    def jamp_i_power(factor):
-        """The exponent of i this factor is, or None when it is not one of the
-        four powers of i. The factors the optimisation produces are products of
-        signs and of the i the color coefficients carry, so this is what they
-        all are in practice."""
-
-        value = complex(factor)
-        for exponent, power in enumerate((1, 1j, -1, -1j)):
-            if value == power:
-                return exponent
-        return None
-
     def jamp_orbit_recipes(self, defs, nb_amp):
         """Describe the definitions by one recipe per orbit: the amplitude
         permutations, the first definition of every orbit, and the definitions
@@ -3803,30 +3486,6 @@ C       matrix with each entry counted once.
                                   for old, new in renumber.items()),
                 'complex_factor': any(complex(new_defs[one - 1][3]).imag
                                       for one in general)}
-
-    @staticmethod
-    def jamp_definition_levels(defs):
-        """Group the definitions by how deep they sit in their own operands:
-        one which uses no other is at the first level, and any other one comes
-        after both of the ones it uses. Nothing inside a level uses anything
-        else of that level, so they can be reordered freely.
-
-        Read off the operands rather than off the rounds of the optimisation,
-        so that whatever the plain scan adds at the end lands where it belongs.
-        The operands of a definition always come before it, so one pass is
-        enough."""
-
-        depth = {}
-        levels = collections.defaultdict(list)
-        for index, left, right, _ratio, _count in defs:
-            here = 0
-            if left < 0:
-                here = max(here, depth[-left])
-            if right < 0:
-                here = max(here, depth[-right])
-            depth[index] = here + 1
-            levels[here + 1].append(index)
-        return [levels[key] for key in sorted(levels)]
 
     @staticmethod
     def jamp_number_data_lines(name, values, per_line, var='IJMP'):
@@ -4117,10 +3776,18 @@ C       matrix with each entry counted once.
 
         return True
 
-    def jamp_orbit_allowed(self, matrix_element):
-        """Whether the orbit equivariant optimisation is used here."""
+    def jamp_greedy_tail_enabled(self):
+        """The tail of the plain scan is only within reach of the emission
+        which writes the operands out: the definitions it adds are not orbits
+        of anything, so INIT_JAMP could not rebuild them from the recipes."""
 
-        if not self.jamp_orbit:
+        return self.jamp_greedy_tail and self.jamp_emit == 'tables'
+
+    def jamp_orbit_allowed(self, matrix_element):
+        """Whether the orbit equivariant optimisation is used here: only the
+        templates which know how to write the definitions it produces."""
+
+        if not super().jamp_orbit_allowed(matrix_element):
             return False
 
         if isinstance(self, ProcessExporterFortranME):
@@ -4268,31 +3935,6 @@ C       matrix with each entry counted once.
                     seen.add(image)
                     queue.append(image)
         return len(seen)
-
-    @staticmethod
-    def jamp_orbit_usable(rows):
-        """Restrict an orbit to the entries only one of its sub-expressions
-        wants, and say whether what is left can be introduced as a whole. Which
-        of two sub-expressions of the same orbit gets a shared entry cannot be
-        decided in a way that commutes with the symmetry, so those entries are
-        left in the matrix and get another chance in a later round."""
-
-        sizes = set(len(use) for use in rows.values())
-        if len(sizes) != 1 or sizes == set([0]):
-            return False
-        entry = collections.Counter()
-        for operation, use in rows.items():
-            for i in use:
-                entry[(i, operation[0])] += 1
-                entry[(i, operation[1])] += 1
-        if max(entry.values()) == 1:
-            return True
-        for operation in list(rows):
-            rows[operation] = [i for i in rows[operation]
-                               if entry[(i, operation[0])] == 1
-                               and entry[(i, operation[1])] == 1]
-        sizes = set(len(use) for use in rows.values())
-        return len(sizes) == 1 and sizes != set([0])
 
 
 

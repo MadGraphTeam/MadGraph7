@@ -2424,6 +2424,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # optimisation finds, instead of one line per (color flow, amplitude) pair
     # (see build_jamp_plan). Toggled by --jamp_optim=True|False.
     jamp_optim = True
+    # Look for those sub-expressions by whole orbits of the permutations
+    # leaving the color basis invariant (see JampOptimiser). Toggled by
+    # --jamp_orbit=True|False.
+    jamp_orbit = True
     # Class structure information
     #  - object
     #  - dict(object) [built-in]
@@ -2664,7 +2668,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 pieces.append('%s %s%s' % ('-' if sign < 0 else '+', factor, name))
         return '%s %s %s;' % (target, '=' if assign else '+=', ' '.join(pieces))
 
-    def build_jamp_plan(self, color_amplitudes):
+    def build_jamp_plan(self, matrix_element, color_amplitudes):
         """Work out how the color flows are built from shared sub-expressions,
         and return (ntmp, captures, combines, final):
           - captures[n] are the lines to write while amplitude n sits in
@@ -2681,7 +2685,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         all_element = self.jamp_matrix(color_amplitudes)
         if not all_element:
             return None
-        new_mat, defs = self.optimise_jamp_matrix(all_element)
+        new_mat, defs = self.optimise_jamp_matrix(all_element,
+                                                  matrix_element=matrix_element)
         if not defs:
             return None
         order, ready = self.jamp_definition_order(defs)
@@ -2768,7 +2773,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 color[namp][njamp] = coeff
         # Color flows through shared sub-expressions (None to write them out
         # one (color flow, amplitude) pair at a time, as before)
-        jamp_plan = self.build_jamp_plan(color_amplitudes)
+        jamp_plan = self.build_jamp_plan(matrix_element, color_amplitudes)
         self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
         if jamp_plan is not None:
             _ntmp, jamp_captures, jamp_combines, jamp_final = jamp_plan
