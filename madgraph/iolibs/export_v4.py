@@ -2389,6 +2389,78 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         return "DATA IDEN/%2r/" % \
                matrix_element.get_denominator_factor()
 
+    def get_flow_jamp_lines(self, projection, JAMP_format, AMP_format):
+        """The Kleiss-Kuijf definitions of the trace JAMPs in terms of the DDM
+        ones. The common subexpression pass is skipped: the map has only a
+        handful of terms per line and its temporaries would collide with the
+        ones of the JAMP definitions proper."""
+
+        cmd_options = dict(self.cmd_options)
+        self.cmd_options['jamp_optim'] = False
+        try:
+            lines, nb_temp = self.get_JAMP_lines(projection,
+                                                 JAMP_format=JAMP_format,
+                                                 AMP_format=AMP_format)
+        finally:
+            self.cmd_options = cmd_options
+
+        return lines
+
+    def set_color_flow_lines_sa(self, matrix_element, replace_dict, ncolor):
+        """Same as set_color_flow_lines, for the standalone template: the JAMPs
+        are not split per amplitude order there, and the flow JAMPs get their
+        own routine so that they can be timed on their own."""
+
+        prefix = replace_dict['proc_prefix']
+        color_basis = matrix_element.get('color_basis')
+        flow_basis = color_basis.get_flow_basis() if color_basis else None
+
+        if flow_basis is None or flow_basis is color_basis:
+            replace_dict['ncolor_flow'] = ncolor
+            replace_dict['jampflow_decl'] = ''
+            replace_dict['jampflow_call'] = ''
+            replace_dict['jampflow_routine'] = ''
+            return ncolor
+
+        ncolor_flow = max(1, len(flow_basis))
+        projection = color_basis.get_flow_projection()
+        lines = self.get_flow_jamp_lines(projection, JAMP_format="JAMPF(%s)",
+                                         AMP_format="JAMP(%s)")
+
+        replace_dict['ncolor_flow'] = ncolor_flow
+        replace_dict['jampflow_decl'] = "\n".join([
+            "      INTEGER NCOLOR_FLOW",
+            "      PARAMETER (NCOLOR_FLOW=%d)" % ncolor_flow,
+            "      COMPLEX*16 JAMPF(NCOLOR_FLOW)",
+            "      DOUBLE PRECISION %sJAMP2(NCOLOR_FLOW)" % prefix,
+            "      COMMON /%sJAMP2_COMMON/ %sJAMP2" % (prefix, prefix)])
+        # accumulated exactly like madevent does, so that the work is real
+        replace_dict['jampflow_call'] = "\n".join([
+            "      CALL %sGET_JAMPF(JAMP,JAMPF)" % prefix,
+            "      DO I = 1, NCOLOR_FLOW",
+            "        %sJAMP2(I) = %sJAMP2(I)" % (prefix, prefix),
+            "     $           + DABS(DBLE(JAMPF(I)*DCONJG(JAMPF(I))))",
+            "      ENDDO"])
+        replace_dict['jampflow_routine'] = "\n".join([
+            "      SUBROUTINE %sGET_JAMPF(JAMP,JAMPF)" % prefix,
+            "CF2PY INTENT(OUT) :: JAMPF",
+            "CF2PY INTENT(IN) :: JAMP",
+            "      IMPLICIT NONE",
+            "      INTEGER    NCOLOR, NCOLOR_FLOW",
+            "      PARAMETER (NCOLOR=%d)" % ncolor,
+            "      PARAMETER (NCOLOR_FLOW=%d)" % ncolor_flow,
+            "      COMPLEX*16 IMAG1",
+            "      PARAMETER (IMAG1=(0D0,1D0))",
+            "      COMPLEX*16 JAMP(NCOLOR), JAMPF(NCOLOR_FLOW)"] + lines +
+            ["      END"])
+
+        logger.debug('Color sum on %d DDM structures, color flow on %d trace '
+                     'structures (%d Kleiss-Kuijf terms)',
+                     ncolor, ncolor_flow,
+                     sum(len(row) for row in projection))
+
+        return ncolor_flow
+
     def set_color_flow_lines(self, matrix_element, replace_dict, ncolor):
         """Fill in replace_dict everything the matrix element template needs to
         know about the color flow basis, and return its size.
@@ -2415,16 +2487,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # The Kleiss-Kuijf map only acts on color, so it is the same for every
         # split order
         lines = []
-        cmd_options = dict(self.cmd_options)
-        self.cmd_options['jamp_optim'] = False
-        try:
-            for iso in range(replace_dict['nAmpSplitOrders']):
-                flow_lines, nb_temp = self.get_JAMP_lines(projection,
-                        JAMP_format="JAMPF(%%s,%d)" % (iso + 1),
-                        AMP_format="JAMP(%%s,%d)" % (iso + 1))
-                lines.extend(flow_lines)
-        finally:
-            self.cmd_options = cmd_options
+        for iso in range(replace_dict['nAmpSplitOrders']):
+            lines.extend(self.get_flow_jamp_lines(projection,
+                    JAMP_format="JAMPF(%%s,%d)" % (iso + 1),
+                    AMP_format="JAMP(%%s,%d)" % (iso + 1)))
 
         replace_dict['ncolor_flow'] = ncolor_flow
         replace_dict['jampflow_decl'] = \
@@ -5146,8 +5212,11 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     jamp_fold = True
     jamp_orbit = True
     default_vector_size = 0
-    # standalone only squares the amplitude, it never writes color flows
+    # standalone only squares the amplitude, so it can use the DDM basis. It
+    # still carries the Kleiss-Kuijf reconstruction of the trace JAMPs, because
+    # this is the mode used to time the matrix element and madevent pays it.
     support_ddm_color_basis = True
+    ddm_needs_flow_basis = True
     # When True, emit per-call IAND(WF_FLAVOR_MASK/AMP_FLAVOR_MASK,
     # CURRENT_FLAV_BIT) guards in MATRIX so that wavefunctions and amplitudes
     # which contribute zero for the current input flavor are skipped at
@@ -6143,6 +6212,11 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
 
+        # The color flow JAMPs, rebuilt from the ones entering the color sum.
+        # Standalone does not need a color flow, but it is the mode used to
+        # time the matrix element, so it carries the same work as madevent.
+        self.set_color_flow_lines_sa(matrix_element, replace_dict, ncolor)
+
         # The definitions written as one recipe per orbit are held in one
         # array together with the amplitudes, so that the loop running them
         # reads its two operands from the same place.
@@ -6165,6 +6239,23 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         prefix = replace_dict['proc_prefix']
         reps = ([line + 1 for line in folding['representatives']] if folding
                 else list(range(1, ncolor + 1)))
+        # The batch branch does not go through MATRIX, so it has to carry the
+        # color flow JAMPs itself, exactly like the per-helicity path does
+        nflow = replace_dict.get('ncolor_flow', ncolor)
+        flow_decl, flow_lines = [], []
+        if replace_dict.get('jampflow_routine'):
+            flow_decl = ["      COMPLEX*16 JAMPFB(%d)" % nflow,
+                         "      DOUBLE PRECISION %sJAMP2(%d)" % (prefix, nflow),
+                         "      COMMON /%sJAMP2_COMMON/ %sJAMP2" % (prefix,
+                                                                    prefix)]
+            flow_lines = [
+                "            CALL %sGET_JAMPF(JAMPB,JAMPFB)" % prefix,
+                "            DO IBH = 1, %d" % nflow,
+                "              %sJAMP2(IBH) = %sJAMP2(IBH)" % (prefix, prefix),
+                "     $              + DABS(DBLE(JAMPFB(IBH)*DCONJG(JAMPFB(IBH"
+                "))))",
+                "            ENDDO"]
+
         if self.blas_wanted(nfold):
             replace_dict['blas_guard_open'] = "("
             replace_dict['blas_guard'] = ") .AND. .NOT.BLASDONE"
@@ -6177,7 +6268,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                                                if recipes else 0), ncolor),
                 "      DOUBLE PRECISION, ALLOCATABLE, SAVE :: JRB(:,:)",
                 "      DOUBLE PRECISION, ALLOCATABLE, SAVE :: JIB(:,:)",
-                "      INTEGER COLREPB(%d)" % nfold] +
+                "      INTEGER COLREPB(%d)" % nfold] + flow_decl +
                 self.get_int_data_lines("COLREPB", reps, var='IBH'))
             replace_dict['blas_branch'] = "\n".join([
                 "      BLASDONE = .FALSE.",
@@ -6193,7 +6284,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 "            NBHEL = NBHEL + 1",
                 "            CALL %sGET_AMP(P,NHEL(1,IHEL),JC(1),FLAV_IDX,AMPB)"
                                                                     % prefix,
-                "            CALL %sGET_JAMP(AMPB,JAMPB)" % prefix,
+                "            CALL %sGET_JAMP(AMPB,JAMPB)" % prefix] +
+                flow_lines + [
                 "            DO IBH = 1, %d" % nfold,
                 "              JRB(IBH,NBHEL) = DBLE(JAMPB(COLREPB(IBH)))",
                 "              JIB(IBH,NBHEL) = DIMAG(JAMPB(COLREPB(IBH)))",

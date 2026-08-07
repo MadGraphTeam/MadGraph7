@@ -232,6 +232,7 @@ C
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
       COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
 %(jamp_tmp_decl)s
+%(jampflow_decl)s
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
@@ -251,6 +252,7 @@ C ----------
 c      WRITE (*,*) '  -> AMP = ', AMP
       call %(proc_prefix)sGET_JAMP(AMP,JAMP)
 c      WRITE (*,*) '  -> JAMP = ', JAMP
+%(jampflow_call)s
       call %(proc_prefix)sGET_MATRIX(JAMP,%(proc_prefix)sMATRIX)
 c      write (*,*) "  -> col.ave. |M|^2 for HEL=[", NHEL ,"] = ", %(proc_prefix)sMATRIX
 
@@ -353,6 +355,8 @@ C
 
 %(jamp_lines)s
       END
+
+%(jampflow_routine)s
 
       SUBROUTINE %(proc_prefix)sGET_MATRIX(JAMP,MATRIX)
 C
