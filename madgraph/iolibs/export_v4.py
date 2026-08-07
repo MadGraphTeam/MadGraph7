@@ -2304,7 +2304,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                           ','.join(str(int(v)) for v in chunk)))
         return lines
 
-    def get_color_init_routine(self, matrix_element, proc_prefix):
+    def get_color_init_routine(self, matrix_element, proc_prefix,
+                               suffix=''):
         """Fortran source rebuilding the color matrix from its compressed
         description, or an empty routine when the entries are written out."""
 
@@ -2312,7 +2313,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         nb_color = encoding['nb_color'] if encoding else \
                    (len(matrix_element.get('color_matrix')._sorted_keys1)
                     if matrix_element.get('color_matrix') else 0)
-        header = ["      SUBROUTINE %sINIT_CF()" % proc_prefix]
+        header = ["      SUBROUTINE %sINIT_CF%s()" % (proc_prefix, suffix)]
         if not encoding:
             return header + ["      RETURN", "      END"]
 
@@ -2332,8 +2333,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             "      PARAMETER (NCFGEN=%d)" % nb_gen,
             "      INTEGER %sCF(NCOLOR*(NCOLOR+1)/2)" % proc_prefix,
             "      INTEGER %sDENOM" % proc_prefix,
-            "      COMMON /%scolor_matrix/ %sCF,%sDENOM" % \
-                                    (proc_prefix, proc_prefix, proc_prefix),
+            "      COMMON /%scolor_matrix%s/ %sCF,%sDENOM" % \
+                            (proc_prefix, suffix, proc_prefix, proc_prefix),
             "      INTEGER CFROW(NCOLOR*NCFREP)",
             "      INTEGER CFGEN(NCOLOR*NCFGEN)",
             "      INTEGER CFPAR(2*NCOLOR)",
@@ -8064,6 +8065,12 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': replace_dict['proc_prefix']}
+        # A compressed color matrix is rebuilt at run time, into the common
+        # block the matrix element reads it from.
+        replace_dict['color_init_routine'] = "\n".join(
+                self.get_color_init_routine(matrix_element,
+                                            replace_dict['proc_prefix'],
+                                            suffix=str(replace_dict['proc_id'])))
 
 
         # Set the size of Wavefunction
