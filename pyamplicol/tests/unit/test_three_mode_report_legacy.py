@@ -1071,7 +1071,8 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     }
     flattened = [" ".join(command) for command in executor.commands]
     assert any("--library=create" in command for command in flattened)
-    assert any("--amplicol_momenta_probe=10" in command for command in flattened)
+    assert any("--seed=101" in command for command in flattened)
+    assert not any("--amplicol_momenta_probe=10" in command for command in flattened)
     assert not any("--library=create-raw" in command for command in flattened)
     assert not any("amplicol_color_probe" in command for command in flattened)
     momenta_file = (
@@ -1650,6 +1651,8 @@ def test_contracted_publishes_dedicated_library_probe_with_imode2_diagnostic(
     assert api.color_calls == [(accuracy.value, None)]
     flattened = [" ".join(command) for command in executor.commands]
     assert any("--library=create-raw" in command for command in flattened)
+    assert any("--amplicol_momenta_probe=10" in command for command in flattened)
+    assert not any("--seed=101" in command for command in flattened)
     probe_build = (
         "make",
         "-j1",

@@ -1644,6 +1644,18 @@ class LegacyMeasurementAdapter:
             nullcontext() if phase_reporter is None else phase_reporter.generation()
         )
         with generation_context:
+            # Optimized LC library creation discovers numerical-zero and alias
+            # helicities over ten accepted events.  The supplied-momenta probe
+            # rereads one point and repeats it ten times, which can permanently
+            # prune a live helicity that is accidentally tiny at that point.
+            # Use standard, reproducibly seeded integration so those ten events
+            # carry genuinely distinct kinematics.  Raw-color creation does not
+            # apply this filter, so preserve its existing single-point path.
+            generation_point_arguments = (
+                ("--amplicol_momenta_probe=10", "--amplicol_probe_quiet")
+                if raw_color
+                else ("--seed=101",)
+            )
             momenta_directory = repository / "Utilities" / "ME_checks"
             momenta_directory.mkdir(parents=True, exist_ok=True)
             for entry in context.entries:
@@ -1674,8 +1686,7 @@ class LegacyMeasurementAdapter:
                         "./amplicol_generate",
                         f"--library={'create-raw' if raw_color else 'create'}",
                         f"--process={process_arg}",
-                        "--amplicol_momenta_probe=10",
-                        "--amplicol_probe_quiet",
+                        *generation_point_arguments,
                         "--timing=none",
                     ),
                     ("make", f"-j{settings.jobs}", "amplicol_generate_library"),
