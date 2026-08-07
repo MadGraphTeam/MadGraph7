@@ -80,6 +80,7 @@ from tools.performance_report.final_audit import (
     _runtime_namespace_paths,
     _shared_artifact_contract,
     _validation_baseline_for_audit,
+    audit_artifact,
     audit_final_report,
 )
 from tools.performance_report.measurement_lineage import (
@@ -1477,6 +1478,97 @@ def test_otf_effective_config_contract() -> None:
     wrong_layout["color"]["lc_flow_layout"] = "all-flow-union"  # type: ignore[index]
     with pytest.raises(FinalAuditError, match=r"color\.lc_flow_layout"):
         _audit_effective_config_mapping(cell, wrong_layout, context="otf")
+
+
+@pytest.mark.parametrize("workload", (Workload.SELECTED_FLOW, Workload.ALL_FLOW))
+def test_otf_artifact_audit_distinguishes_requested_and_physical_layout(
+    tmp_path: Path,
+    monkeypatch,
+    workload: Workload,
+) -> None:
+    cell = replace(
+        _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+        workload=workload,
+    )
+    process_id = "d_dbar_to_z"
+    effective = {
+        "evaluator": {
+            "execution_mode": "on-the-fly",
+            "backend": "jit",
+            "jit": {"optimization_level": 2},
+        },
+        "color": {"accuracy": "lc", "lc_flow_layout": "topology-replay"},
+        "generation": {
+            "relation_discovery": {"mode": "off"},
+            "validation": {
+                "enabled": False,
+                "samples": 10,
+                "seed": 12345,
+                "relative_tolerance": 1.0e-12,
+                "absolute_tolerance": 1.0e-300,
+                "post_build_validation": False,
+            },
+        },
+    }
+    capability = final_audit_module._ARENA_CAPABILITY[ExecutionMode.ON_THE_FLY]
+    process = {
+        "id": process_id,
+        "expression": cell.process,
+        "color_accuracy": cell.measurement.accuracy.value,
+        "required_runtime_capabilities": (capability,),
+    }
+    manifest = SimpleNamespace(
+        artifact_id=_ARTIFACT_ID,
+        processes=(process,),
+        runtime={"engine_version": "runtime-v1"},
+    )
+    inspected = SimpleNamespace(
+        id=process_id,
+        execution_mode=ExecutionMode.ON_THE_FLY.value,
+        generation_specialized_axes=(),
+        selected_source_helicities=(),
+        selected_color_sector_ids=(),
+        lc_flow_layout="compact/query-local",
+    )
+    inspection = SimpleNamespace(integrity="verified", processes=(inspected,))
+
+    monkeypatch.setattr(
+        "pyamplicol.artifacts.inspect_artifact", lambda _artifact: inspection
+    )
+    monkeypatch.setattr(
+        "pyamplicol.artifacts.load_manifest", lambda *_args, **_kwargs: manifest
+    )
+    monkeypatch.setattr(
+        final_audit_module,
+        "_authenticated_effective_config",
+        lambda _artifact, _manifest: effective,
+    )
+    monkeypatch.setattr(
+        final_audit_module, "_audit_model_source", lambda _cell, _effective: None
+    )
+    monkeypatch.setattr(
+        final_audit_module,
+        "_find_process_execution",
+        lambda _artifact, _manifest, _process_id: (
+            {},
+            f"processes/{process_id}/execution.json",
+            "1" * 64,
+            (capability,),
+        ),
+    )
+    monkeypatch.setattr(
+        final_audit_module,
+        "_audit_on_the_fly_execution",
+        lambda *_args, **_kwargs: 1,
+    )
+
+    evidence = audit_artifact(cell, tmp_path, process_id)
+    assert evidence.execution_mode == ExecutionMode.ON_THE_FLY.value
+    assert evidence.arena_record_count == 1
+
+    inspected.lc_flow_layout = "topology-replay"
+    with pytest.raises(FinalAuditError, match="physics/execution contract"):
+        audit_artifact(cell, tmp_path, process_id)
 
 
 def test_effective_toml_is_payload_authenticated_and_model_bound(

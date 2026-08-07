@@ -5183,7 +5183,7 @@ def audit_artifact(
     process = process_matches[0]
     inspected = inspected_matches[0]
     expected_layout = (
-        "topology-replay"
+        "compact/query-local"
         if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
         else (
             "all-flow-union"

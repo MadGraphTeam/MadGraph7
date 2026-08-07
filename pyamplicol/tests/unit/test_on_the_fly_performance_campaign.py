@@ -257,7 +257,7 @@ def test_otf_artifact_requires_exactly_two_compact_runtime_capabilities(
         generation_specialized_axes=(),
         selected_source_helicities=(),
         selected_color_sector_ids=(),
-        lc_flow_layout="topology-replay",
+        lc_flow_layout="compact/query-local",
     )
     inspection = SimpleNamespace(
         processes=(process,),
@@ -272,6 +272,10 @@ def test_otf_artifact_requires_exactly_two_compact_runtime_capabilities(
     )
 
     validate_artifact_contract(cell, Path("/artifact"))
+    process.lc_flow_layout = "topology-replay"
+    with pytest.raises(RunnerError, match="compact/query-local"):
+        validate_artifact_contract(cell, Path("/artifact"))
+    process.lc_flow_layout = "compact/query-local"
     inspection.runtime_capabilities += ("unexpected-capability",)
     with pytest.raises(RunnerError, match="exactly its two compact"):
         validate_artifact_contract(cell, Path("/artifact"))

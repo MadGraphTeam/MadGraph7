@@ -1149,7 +1149,7 @@ def validate_artifact_contract(cell: CellSpec, artifact_path: Path) -> None:
         )
     if cell.measurement.accuracy is Accuracy.LC:
         expected_layout = (
-            "topology-replay"
+            "compact/query-local"
             if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
             else (
                 "all-flow-union"
