@@ -106,7 +106,7 @@ c
        double precision P1(0:3, nexternal)
       integer channel
       double precision rwgt_value
-C  
+%(dsig_xg_decl)sC
 C DATA
 C  
 %(pdf_data)s
@@ -166,7 +166,7 @@ C     Continue only if IMODE is 0, 4 or 5
           WGT = WGT * %(maxflavor)d
         endif
       endif
-      CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
+%(dsig_getflavor)s
 %(passcuts_begin)s
 ## if( nogrouping) {
       ! for no grouping update the scale here (done in main autodsig for grouping
@@ -214,7 +214,7 @@ C     and IFLAV are still set above so SMATRIX gets valid arguments.
          rwgt_value=1d0
       endif
 
-     CALL SMATRIX%(proc_id)s(P1, IFLAV, RHEL, RCOL,channel,1, DSIGUU, selected_hel(1), selected_col(1))
+%(dsig_smatrix_call)s
 
      DSIGUU = DSIGUU* rwgt_value
 
@@ -389,9 +389,9 @@ c
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 	   integer igraph(VECSIZE_MEMMAX)
 	   common/vec_igraph/igraph
-C  
+%(dsig_xg_decl_vec)sC
 C DATA
-C  
+C
 %(pdf_data_vec)s
 C ----------
 C BEGIN CODE
@@ -442,7 +442,7 @@ C     Select a flavor combination (need to do here for right sign)
        %(get_channel_vec)s
 
 
-       CALL GET_FLAVOR%(proc_id)s(IFLAV_VEC(IVEC), FLAVOR)
+%(dsig_getflavor_vec)s
        if (IMODE.eq.0) then
          ALL_RWGT(IVEC) = REWGT(all_PP(0,1,IVEC),FLAVOR,ivec)
        else
@@ -549,22 +549,22 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
      INTEGER VECSIZE_USED
 
      integer ivec
-
+%(dsig_xg_decl_multi)s
 %(additional_header)s
 
 
 %(OMP_PREFIX)s
       DO IVEC=1, VECSIZE_USED
-         call SMATRIX%(proc_id)s(p_multi(0,1,IVEC),
-     &                           IFLAV_VEC(IVEC), 
+         call %(dsig_smatrix_vec_name)s(p_multi(0,1,IVEC),
+     &                           %(dsig_smatrix_vec_flav)s, 
      &                           hel_rand(IVEC),
      &                           col_rand(IVEC),
-     &               channels(IVEC),
+     &               %(dsig_smatrix_vec_chan)s,
      &                           IVEC,
      &               out(IVEC),
      &               selected_hel(IVEC),
      &               selected_col(IVEC)
-     &               )
+     &               )%(dsig_smatrix_vec_post)s
       ENDDO
 %(OMP_POSTFIX)s
 
@@ -573,19 +573,32 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 
     integer FUNCTION GET_NHEL%(proc_id)s(hel, ipart)
 c         if hel>0 return the helicity of particule ipart for the selected helicity configuration
-c         if hel=0 return the number of helicity state possible for that particle 
+c         if hel=0 return the number of helicity state possible for that particle
       implicit none
-      integer hel,i, ipart
+      integer hel, i, ipart
       Include 'nexternal.inc'
-      integer one_nhel(nexternal)
-      INTEGER                 NCOMB
-      PARAMETER (             NCOMB=%(ncomb)d)
-      INTEGER NHEL(NEXTERNAL,0:NCOMB)
-      %(helicity_lines)s
-
-      get_nhel%(proc_id)s = nhel(ipart, iabs(hel))
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+      %(nhstate_data)s
+      %(states_data)s
+      INTEGER XGW, XGD, XGK
+      IF (hel.EQ.0) THEN
+c        Number of helicity states for particle ipart.
+         get_nhel%(proc_id)s = NHSTATE(ipart)
+      ELSE
+c        Decode the canonical mixed-radix helicity code into particle ipart's
+c        helicity value (last external leg = least-significant digit).
+         XGW = 1
+         DO XGK = ipart+1, NEXTERNAL
+            XGW = XGW * NHSTATE(XGK)
+         ENDDO
+         XGD = MOD((IABS(hel)-1)/XGW, NHSTATE(ipart))
+         get_nhel%(proc_id)s = STATES(XGD+1, ipart)
+      ENDIF
       return
       end
 
+%(dsig_xg_helper)s
 
 %(ADDITIONAL_FCT)s

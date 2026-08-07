@@ -36,5 +36,14 @@ shared:  $(LIBDIR)$(LIBRARY_SHARED)
 
 clean:
 	$(RM) *.o $(LIBDIR)$(LIBRARY)
-	
+
 all: $(LIBDIR)$(LIBRARY)
+
+# aloha_functions.o provides the aloha_object F90 module (module ALOHA_OBJECT)
+# that every ALOHA routine does "use aloha_object". Build it first so a parallel
+# (-j) sub-make cannot compile a routine before aloha_object.mod exists.
+# Order-only (|) so the routines are not recompiled when it merely rebuilds.
+# NB: keep this AFTER the first (default-goal) target above -- a bare rule for
+# $(ALOHARoutine) placed first would hijack the default goal and libdhelas would
+# never be built.
+$(ALOHARoutine): | $(BASIC_OBJS)

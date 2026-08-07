@@ -411,8 +411,26 @@ class HelicityRecycler():
         self.template_dict['helas_calls'] = []
         self.template_dict['jamp_lines'] = '\n'
         self.template_dict['amp2_lines'] = '\n'
-        self.template_dict['ncomb'] = '0'  
-        self.template_dict['nwavefuncs'] = '0' 
+        self.template_dict['ncomb'] = '0'
+        self.template_dict['nwavefuncs'] = '0'
+        # C-parity de-duplication: fortran that copies a dropped C-partner's
+        # |M|^2 back from its representative (TS(flip)=TS(rep)). Empty unless
+        # gen_ximprove supplies C-symmetric pairs: it keeps the partner's
+        # helicity row but adds all its amplitudes to bad_amps_perhel, so their
+        # HELAS calls are never generated and only the representatives are
+        # computed. The indices here are the optim's re-numbered helicities.
+        self.template_dict['csym_reuse'] = '\n'
+        # Optional IF/ENDIF around the AMP2 (multi-channel) and JAMP2
+        # (colour-flow) accumulation of the helicity loop, so a config can
+        # contribute to the |M|^2 sum without contributing to either weight.
+        # Empty -- every kept config feeds both, as it always did -- unless
+        # gen_ximprove is recycling a matrix element SHARED by a crossing, whose
+        # config set has to cover every member of the class: a config that is
+        # dead for the caller at hand still has non-zero individual diagrams and
+        # JAMPs, and those are not the gauge-invariant |M|^2. See
+        # gen_ximprove.gensym.get_helicity.
+        self.template_dict['dead_row_if'] = '\n'
+        self.template_dict['dead_row_endif'] = '\n'
 
         self.dag = DAG()
 

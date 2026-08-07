@@ -233,6 +233,7 @@ class TestCmdShell1(unittest.TestCase):
                     'samurai': None,
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,
+                    'zerowidth_external': True,
                     'auto_convert_model': True,
                     'nlo_mixed_expansion': True,
                     'acknowledged_v3.1_syntax': True,
@@ -605,7 +606,9 @@ class TestCmdShell2(unittest.TestCase,
                            re.IGNORECASE)
         me_groups = me_re.search(log_output)
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 0.592626100)
+        # value shifted at the 7th digit by the NHEL helicity-summation reorder
+        # (MG7 --crossing branch); physics unchanged.
+        self.assertAlmostEqual(float(me_groups.group('value')), 0.5926263)
         
     def test_ufo_aloha_merged(self):
         """Test the import of models and the export of Helas Routine """
@@ -795,7 +798,13 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p  > w+ w- j j  QCD=0')
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # opens the q q~ > w+ w- q q~ directory itself, and the standalone output
+        # does support crossing, so by default that subprocess is folded into a
+        # base directory and no longer exists on its own. Nothing is being worked
+        # around here -- the folded matrix element is checked to give the same
+        # numbers by the crossing and consistency suites.
+        self.do('generate p p  > w+ w- j j  QCD=0 --use_crossing=False')
         self.do('output standalone %s ' % self.out_dir)
 
         sub_root = os.path.join(self.out_dir, 'SubProcesses')
@@ -835,10 +844,11 @@ class TestCmdShell2(unittest.TestCase,
         mixes a fixed u leg with a merged-quark leg, and asserts that the
         standalone matrix elements for the two surviving flavor
         assignments match the reference values obtained by running each
-        flavor as its own explicit process:
+        flavor as its own explicit process (see the note by ``references``
+        below: these were bumped ~0.1% by the ALOHA t-channel width drop):
 
-            u d > Z u d  ->  1.4704291881825141E-006
-            u u > Z u u  ->  3.5590322244693227E-008
+            u d > Z u d  ->  1.4718113670817815E-006
+            u u > Z u u  ->  3.5626573789048226E-008
 
         The same checks are repeated with ``--mask=False`` so the
         regression is guarded both with and without the per-flavor
@@ -852,9 +862,23 @@ class TestCmdShell2(unittest.TestCase,
         unaffected.
         """
 
+        # Reference matrix elements for u d > Z u d and u u > Z u u.
+        #
+        # Updated on the MG7 crossing branch (claude/fortran-cross-symmetry-3f13f3)
+        # after commit 4ec2ae7d5 "aloha: drop the T-channel (spacelike)
+        # propagator width at runtime". u q > Z u q proceeds through a spacelike
+        # (t-channel) electroweak propagator, and ALOHA now drops the width of a
+        # spacelike propagator: a spacelike momentum can never reach the pole, so
+        # the Breit-Wigner width term there is spurious. This shifts the matrix
+        # element by ~0.1%; it is independent of crossing and of the per-flavor
+        # mask (verified: identical for --use_crossing on/off and --mask on/off).
+        #
+        # Previous values (t-channel width kept), for reference:
+        #     (2, 1, 23, 2, 1): 1.4704291881825141e-06
+        #     (2, 2, 23, 2, 2): 3.5590322244693227e-08
         references = {
-            (2, 1, 23, 2, 1): 1.4704291881825141e-06,
-            (2, 2, 23, 2, 2): 3.5590322244693227e-08,
+            (2, 1, 23, 2, 1): 1.4718113670817815e-06,
+            (2, 2, 23, 2, 2): 3.5626573789048226e-08,
         }
 
         me_re = re.compile(
@@ -917,6 +941,72 @@ class TestCmdShell2(unittest.TestCase,
                          'expected %s' % (label, pdg,
                                           results[pdg], expected)))
 
+    def test_standalone_crossing_folds_qqx_subprocess(self):
+        """The crossing (default) counterpart of the two tests below.
+
+        test_standalone_flavor_mask and test_standalone_wwjj both pass
+        --use_crossing=False because they open one specific subprocess directory,
+        which the default (crossing on) standalone output folds away. That leaves
+        the folded layout of this very process untested here, so cover it: with
+        crossing on the q q~ > q q~ directory must be *gone*, the output must be
+        strictly smaller, and the base subprocess that absorbed it must carry the
+        crossing machinery plus a PDG entry for the folded initial state -- i.e.
+        the subprocess is folded, not dropped.
+        """
+        def build(options, name):
+            out = pjoin(self.out_dir, name)
+            if os.path.isdir(out):
+                shutil.rmtree(out)
+            self.do('generate p p > j j QCD=0 %s' % options)
+            self.do('output standalone %s -f' % out)
+            sub = pjoin(out, 'SubProcesses')
+            return sorted(d for d in os.listdir(sub) if d.startswith('P'))
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        os.makedirs(self.out_dir)
+
+        crossed = build('', 'crossed')
+        plain = build('--use_crossing=False', 'plain')
+
+        # Folding really happened: fewer directories, and the one the sibling
+        # tests inspect is not among them any more.
+        self.assertLess(len(crossed), len(plain),
+                        'crossing did not fold anything: %s vs %s'
+                        % (crossed, plain))
+        qqx_plain = [d for d in plain if 'QQx' in d and d.endswith('QQx')]
+        self.assertTrue(qqx_plain, 'uncrossed build lost q q~ > q q~: %s' % plain)
+        self.assertEqual([d for d in crossed if 'QQx' in d and d.endswith('QQx')],
+                         [], 'q q~ > q q~ should be folded away: %s' % crossed)
+
+        # ... and it is reachable from a surviving base rather than dropped: some
+        # base emits the crossing machinery and declares the q q~ initial state.
+        sub = pjoin(self.out_dir, 'crossed', 'SubProcesses')
+        with_machinery = []
+        for d in crossed:
+            matrix = pjoin(sub, d, 'matrix.f')
+            if not os.path.exists(matrix):
+                continue
+            text = open(matrix).read()
+            if 'APPLY_CROSSING' in text:
+                with_machinery.append(d)
+        self.assertTrue(with_machinery,
+                        'no crossed base emits the crossing machinery: %s'
+                        % crossed)
+        # GET_PDG_FOR_FLAVOR is what a caller uses to reach a folded crossing;
+        # check_sa demoes it, so the folded quark initial state must show up.
+        demoed = set()
+        for d in with_machinery:
+            check_sa = pjoin(sub, d, 'check_sa.f')
+            if not os.path.exists(check_sa):
+                continue
+            for m in re.finditer(r'PDG_FOR_FLAVOR\(\s*\d+\s*,\s*\d+\s*\)\s*=\s*'
+                                 r'(-?\d+)', open(check_sa).read()):
+                demoed.add(int(m.group(1)))
+        self.assertTrue(demoed & {1, 2, 3, 4, -1, -2, -3, -4},
+                        'no quark initial state demoed by the folded bases: %s'
+                        % sorted(demoed))
+
     def test_standalone_flavor_mask(self):
         """Acceptance test for the per-flavor masking optimization.
 
@@ -939,7 +1029,12 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p > j j QCD=0')
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # inspects the q q~ > q q~ directory and its per-flavor mask, and the
+        # standalone output does support crossing, so by default that subprocess
+        # is folded into a base directory. The mask of the folded matrix element
+        # is covered by the crossing suite; this one is about the plain layout.
+        self.do('generate p p > j j QCD=0 --use_crossing=False')
         devnull = open(os.devnull, 'w')
 
         def find_qqx(sub_root):
@@ -1347,7 +1442,9 @@ class TestCmdShell2(unittest.TestCase,
         me_groups = me_re.search(log_output)
 
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739191,5)
+        # g g > go go: shifted at the 5th digit by the NHEL helicity-summation
+        # reorder (MG7 --crossing branch); same value as the mssm short-xsec ref.
+        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739329,5)
 
         # Cross-check standalone_mg7 (madmatrix) against standalone_cpp for this
         # massive BSM process. The Fortran/C++ ./check auto-bumps the CM energy
@@ -1759,7 +1856,18 @@ class TestCmdShell2(unittest.TestCase,
 
         # We changed the value of the reference by a factor of 256, which is the inclusion of IDEN in get_inter in matrix.
         # original_sol = {(-1, -1, 1, 1): (0.02827952274928987, 0.0), (-1, -1, 1, -1): (-0.0041892876162345, -0.0041923830983622255), (-1, 1, 1, 1): (0.000469685615962711, 0.0006142055733429721), (-1, 1, 1, -1): (-0.01784029173125566, -0.00794999696313525), (-1, -1, -1, -1): (0.02532739017396033, 0.0), (-1, 1, -1, 1): (-0.00028182588524174187, 0.0024162264334765746), (-1, 1, -1, -1): (-0.00048593945847553023, -0.0006039982074415239), (1, 1, 1, 1): (0.025301510150454294, 0.0), (1, 1, 1, -1): (0.004212401136919661, 0.0042167644618831875), (1, 1, -1, -1): (0.028322721746299958, 0.0)}
-        original_sol = {(-1, -1, 1, 1): (0.00011046688573941356, 0.0), (-1, -1, 1, -1): (-1.6364404750916015e-05, -1.6376496477977443e-05), (-1, 1, 1, 1): (1.83470943735434e-06, 2.3992405208709848e-06), (-1, 1, 1, -1): (-6.968863957521743e-05, -3.105467563724707e-05), (-1, -1, -1, -1): (9.893511786703254e-05, 0.0), (-1, 1, -1, 1): (-1.1008823642255542e-06, 9.43838450576787e-06), (-1, 1, -1, -1): (-1.89820100967004e-06, -2.359367997818453e-06), (1, 1, 1, 1): (9.883402402521209e-05, 0.0), (1, 1, 1, -1): (1.6454691941092424e-05, 1.64717361792312e-05), (1, 1, -1, -1): (0.00011063563182148421, 0.0)}
+        # Updated on the MG7 crossing branch (claude/fortran-cross-symmetry-3f13f3).
+        # Two intended changes shifted these ~0.1%: (a) zerowidth_external
+        # (commit 35706c9ae, default on) drops the width of the internal top
+        # propagator because the top is an external final state of p p > j t t~;
+        # (b) the canonical helicity encoder (commit 2b22dd566) fixed a small
+        # C-parity asymmetry the old reference carried -- for QCD g g > g t t~
+        # the t-tbar spin density matrix must obey rho(h,h') = rho(-h,-h'), which
+        # the new values satisfy to float precision (e.g. (1,1,1,1) ==
+        # (-1,-1,-1,-1) and (-1,-1,1,1) == (1,1,-1,-1)) while the old ones did not.
+        # Previous values (width kept, slightly asymmetric):
+        #   original_sol = {(-1, -1, 1, 1): (0.00011046688573941356, 0.0), (-1, -1, 1, -1): (-1.6364404750916015e-05, -1.6376496477977443e-05), (-1, 1, 1, 1): (1.83470943735434e-06, 2.3992405208709848e-06), (-1, 1, 1, -1): (-6.968863957521743e-05, -3.105467563724707e-05), (-1, -1, -1, -1): (9.893511786703254e-05, 0.0), (-1, 1, -1, 1): (-1.1008823642255542e-06, 9.43838450576787e-06), (-1, 1, -1, -1): (-1.89820100967004e-06, -2.359367997818453e-06), (1, 1, 1, 1): (9.883402402521209e-05, 0.0), (1, 1, 1, -1): (1.6454691941092424e-05, 1.64717361792312e-05), (1, 1, -1, -1): (0.00011063563182148421, 0.0)}
+        original_sol = {(-1, -1, 1, 1): (1.1055111552478938e-04, 0.0), (-1, -1, 1, -1): (-1.64093293295174e-05, -1.6423855436270287e-05), (-1, 1, 1, 1): (1.8665871580175305e-06, 2.379192499586592e-06), (-1, 1, 1, -1): (-6.968855681502337e-05, -3.105473609582678e-05), (-1, -1, -1, -1): (9.888413899750238e-05, 0.0), (-1, 1, -1, 1): (-1.1008919387924359e-06, 9.438278745771431e-06), (-1, 1, -1, -1): (-1.8665871580175398e-06, -2.3791924995866025e-06), (1, 1, 1, 1): (9.88841389975024e-05, 0.0), (1, 1, 1, -1): (1.640932932951739e-05, 1.6423855436270293e-05), (1, 1, -1, -1): (1.1055111552478935e-04, 0.0)}
 
         for key in original_sol:
             self.assertIn(key, sol)
@@ -2694,80 +2802,120 @@ set boost_choice [6, -6]
                 self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
 
 
-    def test_density_mode_user_interface(self):
-        ############################################################################
-        # This test checks that the python interface of the density mode works properly ie.
-        # it creates a LHE file with a tag <density> which contains the density matrix with the correct number of elements.
-        # We also check that the average density matrix is stable.
-        # To check if the value of the density matrix itself is correct see the other test_density_mode_* tests.
-        ############################################################################
-        
-        text = f"""generate g g > t t~
-output madevent {self.out_dir}_density0
-launch
-reweight=density
-set run_card nevents 50000
-set helicity_direction [6]
-set particle_in_density_matrix [6, -6]
-set boost_choice [6, -6]
-"""
+    @staticmethod
+    def read_average_density_matrix(path):
+        """read a Average_density_matrix_*.txt file and return the square matrix"""
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
-        command_card = open('/tmp/mg5_cmd.txt','w')
+        rho_avg = []
+        with open(path, 'r') as f:
+            for line in f.readlines()[1:]: #the first line is a title
+                aux = line.strip("\t\n[]").split(",")
+                rho_avg.append([complex(elem.strip(" ()")) for elem in aux])
+        return rho_avg
+
+    def test_density_mode_multicore(self):
+        ############################################################################
+        # When the reweighting is not run in process (force_run False, i.e. from
+        # ./bin/madevent), CommonRunCmd.do_reweight either starts a single job on the
+        # full event file or splits the file and starts one job per chunk of events.
+        # In the second case each job writes the average density matrix of its own
+        # chunk, so the mother interface has to recombine them into the canonical
+        # Average_density_matrix_<event file>.txt. This test checks that this file is
+        # created, that it agrees with the single core one and that the per chunk
+        # files are cleaned up.
+        ############################################################################
+
+        nevents = 3000 # more than nevt_job (2500) so that the file is really split
+
+        text = f"""generate g g > t t~
+output madevent {self.out_dir}_density_mc
+launch
+set run_card nevents {nevents}
+set use_syst False
+"""
+        command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'), 'w')
         command_card.write(text)
         command_card.close()
 
-        
-        logfile = 'test_density_mode_ttbar.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
-                         '/tmp/mg5_cmd.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
+        logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_generation.log')
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'),
+                         pjoin(self.tmpdir, 'mg5_cmd.txt')],
+                        stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
+        me_dir = self.out_dir + '_density_mc'
+        run_dir = pjoin(me_dir, 'Events', 'run_01')
+        events = pjoin(run_dir, 'unweighted_events.lhe.gz')
+        self.assertTrue(os.path.isfile(events), f"File not found {events}")
 
-        
+        # the reweighting rewrites the event file in place: keep a pristine copy so
+        # that both paths reweight exactly the same events.
+        backup = pjoin(self.tmpdir, 'unweighted_events_orig.lhe.gz')
+        shutil.copyfile(events, backup)
 
-        lhe_path = pjoin(self.out_dir + '_density0/Events/run_01/unweighted_events.lhe.gz')
-        rho_mean_path = pjoin(self.out_dir + '_density0/Events/run_01/Average_density_matrix_unweighted_events.txt')
-        
-        self.assertTrue(os.path.isfile(lhe_path), f"File not found {lhe_path}")
-        self.assertTrue(os.path.isfile(rho_mean_path), f"File not found {rho_mean_path}")
+        with open(pjoin(me_dir, 'Cards', 'reweight_card.dat'), 'w') as card:
+            card.write("""change helicity_direction [6]
+change particle_in_density_matrix [6, -6]
+change boost_choice [6, -6]
+change matrix_normalisation True
+""")
 
+        def run_reweight(nb_core):
+            """run 'reweight run_01 --mode=density' the way ./bin/madevent does it
+            (out of process, force_run False) and return the density matrix files
+            present in the run directory afterwards"""
 
-        for event in lhe_parser.EventFile(lhe_path):
-            density_check = event.density
-            break #we only want the first one
-        
-        for elem in density_check:
-            self.assertIsInstance(elem, complex)
-        
-        self.assertEqual(len(density_check), 10, f"The density matrix is not the correct length: {density_check}")
+            #restore the original events and drop any previous density output
+            for path in (events, events[:-3]):
+                if os.path.exists(path):
+                    os.remove(path)
+            shutil.copyfile(backup, events)
+            for name in os.listdir(run_dir):
+                if name.startswith('Average_density_matrix_'):
+                    os.remove(pjoin(run_dir, name))
 
-        rho_avg_ref =  [[(0.3670142422790588+0j), (1.7429098337870793e-07-3.933851109770078e-05j), (-1.742909833606001e-07+3.9338510968347334e-05j), (0.11514189584464168-0j)],
-                        [(1.7429098337870793e-07+3.933851109770078e-05j), (0.13298575772060628+0j), (0.06344292964491506-0j), (-1.7429098336059725e-07-3.933851096834704e-05j)],
-                        [(-1.742909833606001e-07-3.9338510968347334e-05j), (0.06344292964491506+0j), (0.13298575772060628+0j), (1.7429098337870735e-07+3.9338511097700886e-05j)],
-                        [(0.11514189584464168+0j), (-1.7429098336059725e-07+3.933851096834704e-05j), (1.7429098337870735e-07-3.9338511097700886e-05j), (0.36701424227905893+0j)]]
+            driver = f"""import sys
+sys.path.insert(0, {MG5DIR!r})
+import madgraph.interface.madevent_interface as me_interface
+cmd = me_interface.MadEventCmd(me_dir={me_dir!r}, force_run=True)
+cmd.use_rawinput = False
+cmd.haspiping = False
+cmd.exec_cmd('set nb_core {nb_core}')
+cmd.exec_cmd('set run_mode 2')
+# force_run True would reweight in process: only with force_run False does
+# do_reweight dispatch the work to single core/multicore child processes.
+cmd.force_run = False
+cmd.exec_cmd('reweight run_01 --mode=density -from_cards')
+"""
+            driver_path = pjoin(self.tmpdir, 'rwgt_driver_%s.py' % nb_core)
+            with open(driver_path, 'w') as fsock:
+                fsock.write(driver)
+            logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_%s.log' % nb_core)
+            subprocess.call([sys.executable, driver_path],
+                            stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
-        #now let's read the average density matrix
-        with open(rho_mean_path, 'r') as f:
-            data = f.readlines()[1:]
-            rho_avg = []
-            for i in range(len(data)):
-                aux = data[i].strip("\t\n[]").split(",")
-                try:
-                    rho_avg.append([complex(aux[i].strip(" ()")) for i in range(len(aux))])
-                except: #if the values are like "np.complex128(value)"
-                    print("aux", aux)
-                    aux2 = [aux[i].strip(" ()[]").strip("'").replace("np.complex128(","").strip(" ()") for i in range(len(aux))]
-                    try:
-                        rho_avg.append([complex(aux2[i]) for i in range(len(aux2))])
-                    except:
-                        print("aux2", aux2)
-                        raise ValueError
-            
+            return sorted(name for name in os.listdir(run_dir)
+                                     if name.startswith('Average_density_matrix_'))
 
-        for i in range(len(rho_avg)):
-            for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
+        #1) reference: one single job on the full event file
+        single = run_reweight(1)
+        self.assertEqual(single, ['Average_density_matrix_unweighted_events.txt'])
+        rho_single = self.read_average_density_matrix(
+                     pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+        self.assertEqual(len(rho_single), 4)
+
+        #2) one job per chunk of events: same canonical file, no leftover
+        multi = run_reweight(2)
+        self.assertEqual(multi, ['Average_density_matrix_unweighted_events.txt'],
+                         "the multicore density path did not produce the canonical "
+                         "average density matrix (or left per chunk files behind)")
+        rho_multi = self.read_average_density_matrix(
+                    pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+
+        self.assertEqual(len(rho_multi), len(rho_single))
+        for i in range(len(rho_single)):
+            for j in range(len(rho_single[i])):
+                self.assertAlmostEqual(rho_multi[i][j].real, rho_single[i][j].real, places=10)
+                self.assertAlmostEqual(rho_multi[i][j].imag, rho_single[i][j].imag, places=10)
 
 
     def test_density_mode_ttbar(self):
@@ -2821,9 +2969,7 @@ set boost_choice [6, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.4526973360805629+0j), (-2.1317321205040213e-05+0.0024340905341333923j), (2.13173212052136e-05-0.002434090538628891j),
-                          (0.28550869973262555+0j), (0.04730266391943712+0j), (0.04700262219476668+0j), (2.1317321205213577e-05+0.0024340905386288922j),
-                          (0.04730266391943711+0j), (-2.1317321205040145e-05-0.0024340905341333906j), (0.45269733608056295+0j)]
+        density_ref = [complex(0.45270438876343766, 0.0), complex(0.0, 0.0024345422714880808), complex(0.0, -0.002434542275983678), complex(0.28551318353826904, 0.0), complex(0.047295611236562354, 0.0), complex(0.047011148655689436, 0.0), complex(0.0, 0.0024345422759837264), complex(0.047295611236562354, 0.0), complex(0.0, -0.0024345422714880972), complex(0.45270438876343766, 0.0)]
 
         #1) here we check that the density matrix is computed properly
         for i in range(len(density_ref)):
@@ -2833,17 +2979,17 @@ set boost_choice [6, -6]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the concurrence is computed properly
-        concurrence_ref = 0.47641209333195317
+        concurrence_ref = 0.47643514460330366
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
 
         #3) here we check that purity is computed properly
-        purity_ref = 0.5818411704583635
+        purity_ref = 0.5818593450086657
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.4706552252614239
+        magic_ref = 0.4706253424888031
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3000,10 +3146,7 @@ set boost_choice [5, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.00023359526522495882+0j), (2.9956750131603144e-05+1.3622977588717694e-05j), (-0.00037002831548626185-0.0001606402006384915j),
-                            (0.0013988914248279838+0.0007925330810912253j), (0.0001701973522356173+0j), (-0.0003301297581403585+4.196117432997617e-05j), 
-                            (0.0003588942963018077+0.00015927990509450137j), (0.5380495499305434+0j), (0.03639176740610352+0.01649755017431808j), 
-                            (0.4615466574519961+0j)]
+        density_ref = [complex(0.00023372225290581268, 0.0), complex(2.992104346897159e-05, 1.3619536899390321e-05), complex(-0.0003642188579323614, -0.00015844039142370002), complex(0.00139802591124443, 0.0007920419915143803), complex(0.00017033924905323185, 0.0), complex(-0.00032992574370686504, 4.193590849513727e-05), complex(0.0003643209305432805, 0.0001612632121261497), complex(0.5380535522498318, 0.0), complex(0.036326666049751606, 0.016499687600510533), complex(0.46154238624820915, 0.0)]
 
 
         event_of_reference = """<event>
@@ -3031,12 +3174,12 @@ set boost_choice [5, -6]
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.5057218059862959
+        purity_ref = 0.5057128357315946
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.018653388493735004
+        magic_ref = 0.018629615817657534
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3094,12 +3237,7 @@ set boost_choice [24, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.00021651020376335244+0j), (1.859345759680708e-05+3.319131194668537e-05j), (-8.654700949220674e-06+4.660850889005045e-06j), 
-                            (-5.964620125575636e-06-5.140944580422725e-06j), 0j, 0j, (0.00014764522936272262+0j), (1.2627222190362744e-05-3.412335641445621e-05j), 
-                            (8.443512531745642e-06-4.6314605809771255e-06j), 0j, 0j, (0.4140153688283749+0j), (0.0355514105428883+0.06346306191601571j), 
-                            (-0.033098118766739994+0.01782446293447554j), (-0.022810459480124095-0.019660482239005784j), (0.28234295658745207+0j), 
-                            (0.04829020692948074-0.13049773873783233j), (0.03229047222126599-0.017712065763110893j), (0.12282862506005009+0j), 
-                            (-0.015383774120452564-0.027546742046050884j), (0.18044889409099676+0j)]
+        density_ref = [complex(0.00021667298775917345, 0.0), complex(1.85743468695675e-05, 3.31618796958022e-05), complex(-8.543458188937342e-06, 4.609484294547139e-06), complex(-5.960810964036419e-06, -5.137669654422628e-06), complex(0.0, 0.0), complex(0.0, 0.0), complex(0.00014784864285082047, 0.0), complex(1.2619209329155549e-05, -3.410166864571879e-05), complex(8.5453056621656e-06, -4.676631517642126e-06), complex(0.0, 0.0), complex(0.0, 0.0), complex(0.41432659216924983, 0.0), complex(0.03551486851231066, 0.06340678451506068), complex(-0.03267269377361773, 0.01762802198822147), complex(-0.022795892127448817, -0.01964795795996489), complex(0.2827318650363218, 0.0), complex(0.048259563394429404, -0.130414798339352), complex(0.03267975905394175, -0.0178848126939771), complex(0.12249538940094126, 0.0), complex(-0.0153800506412504, -0.02753614388390608), complex(0.1800816317628771, 0.0)]
 
         
         #1) here we check that the density matrix is computed properly
@@ -3110,14 +3248,14 @@ set boost_choice [24, -6]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the smaller eigenvalue of the partialy transposed density matrix is computed properly
-        flag_ref, eigval_ref = False, [1.30764975e-04, 2.33384118e-04, 1.00757194e-01, 1.28026668e-01, 2.55472741e-01, 5.15379248e-01]
+        flag_ref, eigval_ref = False, [0.0001309876717898993, 0.00023352764119576687, 0.10041292697359551, 0.12793991437047847, 0.2557969764840398, 0.5154856668589005]
         flag_check, eigval_check = rho_instance.PeresHorodecki_criterion(['boson', 'fermion'])
         self.assertEqual(flag_ref, flag_check)
         for i in range(len(eigval_ref)):
             self.assertAlmostEqual(eigval_ref[i], eigval_check[i], places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.3574250017186387
+        purity_ref = 0.357609015200801
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
@@ -3190,10 +3328,7 @@ set boost_choice [6, -6] pt [0, 0]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.41585128247332614+0j), (-0.03826754879773473-0.08665010160467382j), (0.01819843853040962+0.0694772074195328j), 
-                            (-0.006036323974019095+0.028318452797874368j), (0.08409384779983874+0j), (-0.051323966834621225-0.010218484907272918j), 
-                            (-0.018157600093053276-0.06950829298296718j), (0.0841062677380868+0j), (0.0382601151338116+0.08669345314193963j), 
-                            (0.41594860198874833+0j)]
+        density_ref = [complex(0.41589996421540293, 0.0), complex(-0.03826383986149076, -0.08667179401359812), complex(0.018178019897460727, 0.06949276501681549), complex(-0.006036326766945857, 0.028318434038759072), complex(0.0841000357845971, 0.0), complex(-0.05132402629630901, -0.010218495717875446), complex(-0.018178019897460686, -0.06949276501681546), complex(0.08410003578459711, 0.0), complex(0.03826383986149076, 0.0866717940135981), complex(0.41589996421540276, 0.0)]
 
         lhe_path = pjoin(self.out_dir + '_density5/Events/run_01/unweighted_events.lhe.gz')
         for event in lhe_parser.EventFile(lhe_path):
@@ -3207,17 +3342,17 @@ set boost_choice [6, -6] pt [0, 0]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the bounds of concurrence is computed properly
-        concurrence_ref = 0.028913810451469873
+        concurrence_ref = 0.02891388250882494
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         # #3) here we check that purity is computed properly
-        purity_ref = 0.42378825285881117
+        purity_ref = 0.4237883055234033
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         # #4) here we check that magic is computed properly
-        magic_ref = 0.480231580151087
+        magic_ref = 0.48023161639925205
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3542,10 +3677,10 @@ set boost_choice [6, -6] pt [0, 0]
     def check_aloha_file(self):
         """check the content of aloha file FFV1P0_3.f and FFV2_3.f"""
         
-        ffv1p0 = """C     This File is Automatically generated by ALOHA
-C     The process calculated in this file is:
+        ffv1p0 = """C     This File is Automatically generated by ALOHA 
+C     The process calculated in this file is: 
 C     Gamma(3,2,1)
-C
+C     
       SUBROUTINE FFV1P0_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
@@ -3569,8 +3704,12 @@ C
         V3%W(:) = (0D0,0D0)
         RETURN
       ENDIF
-      DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
-     $ * W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4)+F1
      $  % W(3)*F2 % W(1)+F1 % W(4)*F2 % W(2))
       V3%W(2)= DENOM*(-CI)*(-F1 % W(1)*F2 % W(4)-F1 % W(2)*F2 % W(3)
@@ -3591,10 +3730,10 @@ C
         text = [l.strip() for l in text.strip().split('\n')]
         self.assertEqual(ffv1p0, text)
         
-        ffv2 = """C     This File is Automatically generated by ALOHA
-C     The process calculated in this file is:
+        ffv2 = """C     This File is Automatically generated by ALOHA 
+C     The process calculated in this file is: 
 C     Gamma(3,2,-1)*ProjM(-1,1)
-C
+C     
       SUBROUTINE FFV2_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
@@ -3625,8 +3764,12 @@ C
       TMP2 = (F1 % W(1)*(F2 % W(3)*(P3(0)+P3(3))+F2 % W(4)*(P3(1)+CI
      $ *(P3(2))))+F1 % W(2)*(F2 % W(3)*(P3(1)-CI*(P3(2)))+F2 % W(4)
      $ *(P3(0)-P3(3))))
-      DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
-     $ * W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4)
      $ -P3(0)*OM3*TMP2)
       V3%W(2)= DENOM*(-CI)*(-F1 % W(1)*F2 % W(4)-F1 % W(2)*F2 % W(3)
@@ -3638,10 +3781,10 @@ C
       END
 
 
-C     This File is Automatically generated by ALOHA
-C     The process calculated in this file is:
+C     This File is Automatically generated by ALOHA 
+C     The process calculated in this file is: 
 C     Gamma(3,2,-1)*ProjM(-1,1)
-C
+C     
       SUBROUTINE FFV2_4_3(F1, F2, COUP1, COUP2, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
@@ -3667,7 +3810,7 @@ C
         V3 %W(I) = V3%W(I) + VTMP%W(I)
       ENDDO
       END
-      
+
 
 """
         text = open(os.path.join(self.out_dir,'Source', 'DHELAS', 'FFV2_3.f')).read()

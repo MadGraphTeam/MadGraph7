@@ -177,11 +177,12 @@ namespace mg5amcCpu
 #endif
   static int cNGoodHel;
   static int cGoodHel[ncomb];
+%(goodhel_percross_statics)s%(csym_statics)s
 
   // Host-side flavor table: single source of truth for PDG ids (used by both the
   // constructor copy into cFlavors and the public CPPProcess::flavorPDG accessor).
 %(all_flavors)s
-
+%(crossing_decl)s
   //--------------------------------------------------------------------------
 
 #ifdef MGONGPUCPP_GPUIMPL
@@ -266,7 +267,7 @@ namespace mg5amcCpu
   int
   CPPProcess::flavorPDG( int iflavor, int ipar )
   {
-    return flavorPDGs[iflavor][ipar];
+%(flavorpdg_body)s
   }
 
   //--------------------------------------------------------------------------
@@ -550,9 +551,9 @@ namespace mg5amcCpu
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
     (void)iflavorVec; // flavor is forced below to scan every flavor combination
     unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
-    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+%(csym_gh_flip)s%(goodhel_percross_decl)s    for( int iflav = 0; iflav < %(goodhel_scan_count)s; ++iflav )
     {
-    for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
+    %(goodhel_scan_skip)sfor( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */
@@ -582,7 +583,7 @@ namespace mg5amcCpu
 #endif
         calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 ); //maxtry?
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
-        for( int ieppV = 0; ieppV < neppV; ++ieppV )
+%(csym_gh_record)s        for( int ieppV = 0; ieppV < neppV; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
           //std::cout << "sigmaKin_getGoodHel allMEs[ievt]=" << allMEs[ievt] << std::endl;
@@ -590,20 +591,20 @@ namespace mg5amcCpu
           {
             //if ( !isGoodHel[ihel] ) std::cout << "sigmaKin_getGoodHel ihel=" << ihel << " TRUE" << std::endl;
             isGoodHel[ihel] = true;
-          }
+%(goodhel_percross_record)s          }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           if( allMEs[ievt2] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
           {
             //if ( !isGoodHel[ihel] ) std::cout << "sigmaKin_getGoodHel ihel=" << ihel << " TRUE" << std::endl;
             isGoodHel[ihel] = true;
-          }
+%(goodhel_percross_record)s          }
 #endif
         }
       }
-    }
+%(csym_gh_check)s    }
     } // end loop over flavor combinations (per-flavor good-helicity union)
-  }
+%(goodhel_percross_build)s  }
 #endif
 
   //--------------------------------------------------------------------------
@@ -628,7 +629,7 @@ namespace mg5amcCpu
 #endif
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
-    return nGoodHel;
+%(csym_pairbuild)s    return nGoodHel;
   }
 
   //--------------------------------------------------------------------------

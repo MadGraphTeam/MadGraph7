@@ -65,6 +65,12 @@ pjoin = os.path.join
 logger = logging.getLogger('cmdprint') # -> stdout
 logger_stderr = logging.getLogger('fatalerror') # ->stderr
 
+# Options baked into the matrix element at 'output' time (generation-time only,
+# e.g. the T-channel width treatment): they can appear in the MG5 history but
+# are rejected by the run interface's check_set (common_run_interface), so any
+# replay of generation-time 'set' commands into a run interface must skip them.
+NON_RUNTIME_SET_OPTIONS = ('zerowidth_tchannel',)
+
 # a new function for the improved NLO generation
 glob_directories_map = []
 def generate_directories_fks_async(i):
@@ -1035,9 +1041,18 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             else:
                 ME = run_interface.aMCatNLOCmd(me_dir=argss[0],options=self.options)
                 ME.pass_in_web_mode()
-            # transfer interactive configuration
+            # transfer interactive configuration.  Generation-time-only options
+            # (e.g. zerowidth_tchannel, whose T-channel-width treatment is baked
+            # into the matrix element at 'output' time) appear in the MG5 history
+            # but are NOT valid run-time 'set' options -- replaying them would
+            # raise in the run interface's check_set.  Skip them here; a genuine
+            # run-time 'set zerowidth_tchannel' typed at the run prompt still
+            # goes straight to the run interface and correctly crashes.
             config_line = [l for l in self.history if l.strip().startswith('set')]
             for line in config_line:
+                opt = line.split()[1] if len(line.split()) > 1 else ''
+                if opt in NON_RUNTIME_SET_OPTIONS:
+                    continue
                 ME.exec_cmd(line)
             stop = self.define_child_cmd_interface(ME)                
             return stop

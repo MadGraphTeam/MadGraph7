@@ -1389,3 +1389,78 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_vs_standalone_LI1 -pA -t0 -l INFO
 
+
+  # ---------------------------------------------------------------------------
+  # Crossing symmetry (tests/acceptance_tests/test_standalone_cross_symmetry.py)
+  #
+  # Split by toolchain and cost. NOTE: test_manager.py exits 1 when a test is
+  # SKIPPED (not only when it fails), and the crossing tests self-skip when
+  # gfortran / f2py / g++ are missing -- so the toolchain steps below are not
+  # optional, they are what keeps these jobs green.
+  # ---------------------------------------------------------------------------
+  acceptancetest_crossing_static:
+    # The parts that only inspect generated code / python objects: the crossing
+    # partition of a multi-flavor process, the multi-channel config map that
+    # pairs a routed subprocess's channels with the base's diagrams, the
+    # canonical colour-flow code, and the outputs that cannot decode a crossing
+    # (they get the folded crossings expanded back instead). No compilation, so
+    # this is the fast smoke test.
+    #
+    # TestCrossingConfigMap earns its place here rather than in an integration
+    # job because what it guards is invisible downstream: a mis-paired config map
+    # leaves every matrix element and the cross section itself correct, and only
+    # degrades the multi-channel sampling, so no xsec comparison catches it
+    # reliably -- it shows up as a slow, unstable integration behind an error
+    # estimate that no longer means anything.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: crossing partition / config map / colour-flow code / unsupported outputs
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestCrossingPartition TestCrossingConfigMap TestColorFlowCode TestCrossingUnsupportedOutput -t0 -l INFO
+
+
+  acceptancetest_crossing_fortran:
+    # The fortran standalone reference suite: a crossed SMATRIX call must
+    # reproduce the process it crosses into (2->2 and 2->3, every merged flavor,
+    # split orders), the density matrix must follow the crossing, an s-channel
+    # constraint must disable the machinery, and the good-helicity sets must obey
+    # the crossing's row permutation. TestGoodHelCParityDedup rides along (same
+    # backend, ~10s): the C-parity de-duplication of the helicity sum must hold
+    # where it engages and refuse itself where the pairs do not match.
+    # Needs gfortran AND f2py (restore-pip-cache provides meson/ninja and sets
+    # f2py_compiler); the f2py-backed tests skip without it, which fails the job.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: crossing symmetry + C-parity good-helicity dedup, fortran standalone
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestStandaloneCrossSymmetry TestGoodHelCParityDedup -t0 -l INFO
+
+
+  acceptancetest_crossing_cpp:
+    # The two C++ backends (standalone_cpp and standalone_mg7/madmatrix, incl.
+    # the per-event mixed-crossing SIMD page) plus the `check crossing`
+    # subcommand end to end over all three exporters.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: crossing symmetry, C++ / madmatrix backends and `check crossing`
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestStandaloneCppCrossSymmetry TestStandaloneMg7CrossSymmetry TestCheckCrossingCommand -t0 -l INFO
+

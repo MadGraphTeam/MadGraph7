@@ -36,7 +36,44 @@ CF2PY double precision, intent(in) :: SCALE2
 
       return
       end
-  
+
+  subroutine %(f2py_prefix)sf77_smatrixhel_idx(procindex, flav_idx, npdg, p, ALPHAS, SCALE2, nhel, ANS)
+  use model_object
+  use aloha_object
+  IMPLICIT NONE
+C Same as f77_smatrixhel, but selecting the matrix element by its slot in
+C get_pdg_order/get_prefix (PROCINDEX, 1-based) and taking the extended flavor
+C index (FLAV_IDX = cross*NFLAV + flav) as given rather than resolving it from
+C the PDG codes. This is the only way in to a FOLDED crossed subprocess: it has
+C no PDG entry of its own, so the dispatch above cannot name it, and the FLAVOR
+C array cannot express a crossing (see matrix_standalone_f2py_flav_idx.inc).
+C The alphas/scale2 setup is deliberately the same as in f77_smatrixhel.
+CF2PY double precision, intent(in), dimension(0:3,npdg) :: p
+CF2PY integer, intent(in) :: procindex
+CF2PY integer, intent(in) :: flav_idx
+CF2PY integer, intent(in) :: npdg
+CF2PY double precision, intent(out) :: ANS
+CF2PY double precision, intent(in) :: ALPHAS
+CF2PY double precision, intent(in) :: SCALE2
+  integer procindex, flav_idx, npdg, nhel
+  double precision p(*)
+  double precision ANS, ALPHAS, PI, SCALE2
+  include 'coupl.inc'
+
+  if (scale2.eq.0)then
+       PI = 3.141592653589793D0
+       G = 2* DSQRT(ALPHAS*PI)
+       CALL UPDATE_AS_PARAM()
+  else
+       CALL UPDATE_AS_PARAM2(scale2, ALPHAS)
+  endif
+
+  ANS = 0d0
+%(smatrixhel_idx)s
+
+      return
+      end
+
   subroutine %(f2py_prefix)sf77_density(pdgs, npdg, procid, P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)
   IMPLICIT NONE
 CF2PY double precision, intent(in) :: p

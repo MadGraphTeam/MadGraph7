@@ -42,6 +42,19 @@ C
       INTEGER PDG_FOR_FLAVOR(NEXTERNAL,MAXFLAVOR)
       INTEGER FLAV_IDX
       INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+C     Signed per-leg PDG of a crossed process (filled by GET_PDG_FOR_FLAVOR),
+C     the two crossing-partner loop indices, and the number of flavor
+C     combinations; used only by the crossing-symmetry demonstration below.
+      INTEGER XPDG(NEXTERNAL)
+      INTEGER FLIP1, FLIP2, NFLAV
+C     Per-leg loop index and the two match flags of the crossing demonstration.
+      INTEGER XCK
+      LOGICAL XCVALID, XCMATCH
+C     Representative signed-PDG signatures of the crossed subprocesses folded
+C     into this matrix element; a crossing is demonstrated when its runtime PDG
+C     (GET_PDG_FOR_FLAVOR) matches one of them.
+      INTEGER XCSIG(NEXTERNAL, (NEXTERNAL+1)*(NEXTERNAL+1))
+      INTEGER XCNSIG, XCS
 C
 C     EXTERNAL
 C
@@ -130,6 +143,8 @@ c
       write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)
       write (*,*) "-----------------------------------------------------------------------------"
       enddo
+
+%(crossing_example)s
 
       if (%(use_density)s)then
          do I=1, MAXFLAVOR

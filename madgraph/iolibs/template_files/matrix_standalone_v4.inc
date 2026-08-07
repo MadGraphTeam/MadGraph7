@@ -86,10 +86,32 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       PARAMETER (NGOODHEL_FLAV=NCOMB*NFLAV)
       INTEGER FLAV_IDX
       INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+C     FLAV_USE is the flavor part of FLAV_IDX.
+      INTEGER FLAV_USE
+%(smatrix_cross_decl)s
       INTEGER NTRY(NFLAV)
       LOGICAL GOODHEL(NCOMB,NFLAV)
       DATA NTRY/NNTRY_FLAV*0/
       DATA GOODHEL/NGOODHEL_FLAV*.FALSE./
+C     C-parity helicity de-duplication (see the SMATRIX loop): FLIP(IHEL) is the
+C     row with every helicity negated (built once, an involution); TSTORE caches
+C     the per-row |M|^2 within a scan point; DEDUP turns the reuse on in the fast
+C     phase only. The reuse is ALL-OR-NOTHING per flavor: CSYM(J) stays true only
+C     while EVERY row is in a genuine matched pair -- a self-paired row
+C     (FLIP(IHEL)=IHEL) or a single pair with |M(IHEL)|^2 != |M(FLIP)|^2 at any
+C     scan point clears it for good. Halving the whole loop (rather than an
+C     arbitrary subset of rows) is what keeps any per-row accumulation done
+C     inside MATRIX uniformly scaled, so the same rule is used by every backend.
+C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM is built and
+C     applied for the base process only, because a crossing permutes/sign-flips
+C     the helicities so FLIP (a base-row negation) is no longer the crossed
+C     C-parity partner. Crossed flavours therefore keep the full helicity sum.
+      INTEGER FLIP(NCOMB), JHEL, KHEL, NTRY_CSYM(NFLAV)
+      LOGICAL CSYM(NFLAV), HELSAME, DEDUP
+      REAL*8 TSTORE(NCOMB)
+      DATA FLIP/NCOMB*0/
+      DATA CSYM/NNTRY_FLAV*.TRUE./
+      DATA NTRY_CSYM/NNTRY_FLAV*0/
 
 C
 C GLOBAL VARIABLES
@@ -101,7 +123,10 @@ C
       common/%(proc_prefix)shelreset/HELRESET
       data HELRESET/.true./
 
-%(helicity_lines)s
+C     Allowed canonical helicity codes (mixed-radix over the per-leg states).
+C     The explicit NHEL config table is materialized at runtime by FILL_NHEL.
+      INTEGER HELALLOW(NCOMB)
+%(hel_allow_data)s
 %(den_factor_line)s
 
       INTEGER POLARIZATIONS(0:NEXTERNAL,0:5)
@@ -120,6 +145,10 @@ c---------
 if (HELRESET) then
    do i=1,NFLAV
       NTRY(i) = 0
+      NTRY_CSYM(i) = 0
+   enddo
+   do j=1,NFLAV
+      CSYM(j) = .true.
    enddo
    do i=1,NCOMB
       do j=1,NFLAV
@@ -132,19 +161,45 @@ endif
 C ----------
 C BEGIN CODE
 C ----------
-C     FLAV_IDX=0 (or out of range) means GET_FLAVOR_INDEX could not resolve
-C     the requested flavor: it is not an allowed combination, so its matrix
-C     element is identically zero. Short-circuit before touching the
-C     1..NFLAV GOODHEL/NTRY arrays.
-      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) THEN
+C     FLAV_USE = mod(FLAV_IDX-1, NFLAV) + 1 is the flavor used for masking.
+C     FLAV_IDX<1 means GET_FLAVOR_INDEX could not resolve the requested flavor:
+C     it is not an allowed combination, so its matrix element is identically
+C     zero. Short-circuit before touching the 1..NFLAV GOODHEL/NTRY arrays.
+      IF (FLAV_IDX.LT.1) THEN
         ANS = 0D0
         RETURN
       ENDIF
-      CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX, FLAVOR)
-      IF(USERHEL.EQ.-1) NTRY(FLAV_IDX)=NTRY(FLAV_IDX)+1
+      FLAV_USE = MOD(FLAV_IDX-1, NFLAV) + 1
+%(smatrix_cross_decode)s
+C     The helicity filter is deliberately shared by every crossing of a given
+C     flavor, so it is indexed by FLAV_USE rather than by the full FLAV_IDX.
+      CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
+      CALL %(proc_prefix)sFILL_NHEL()
+C     C-parity partner of each helicity row (all helicities negated): an
+C     involution, self-paired when every helicity is 0. Fixed per process, so
+C     built once (FLIP starts at 0).
+      IF (FLIP(1).EQ.0) THEN
+        DO IHEL=1,NCOMB
+          FLIP(IHEL)=IHEL
+          DO JHEL=1,NCOMB
+            HELSAME=.TRUE.
+            DO KHEL=1,NEXTERNAL
+              IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,IHEL)) HELSAME=.FALSE.
+            ENDDO
+            IF (HELSAME) THEN
+              FLIP(IHEL)=JHEL
+              EXIT
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDIF
+      IF(USERHEL.EQ.-1) NTRY(FLAV_USE)=NTRY(FLAV_USE)+1
+      IF(USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV)
+     &   NTRY_CSYM(FLAV_USE)=NTRY_CSYM(FLAV_USE)+1
       DO IHEL=1,NEXTERNAL
          JC(IHEL) = +1
       ENDDO
+%(smatrix_cross_apply)s
 C     When spin-2 particles are involved, the Helicity filtering is dangerous for the 2->1 topology.
 C     This is because depending on the MC setup the initial PS points have back-to-back initial states
 C     for which some of the spin-2 helicity configurations are zero. But they are no longer zero
@@ -158,25 +213,61 @@ C     For this reason, we simply remove the filterin when there is only three ex
           ENDDO
         ENDDO
       ENDIF
+C     C-parity de-duplication is only safe for the plain unpolarized helicity
+C     sum of the uncrossed process (FLAV_IDX in [1,NFLAV]) and only once its own
+C     scan has settled (NTRY_CSYM>=20).
+      DEDUP = NTRY_CSYM(FLAV_USE).GE.20 .AND. CSYM(FLAV_USE)
+     &        .AND. USERHEL.EQ.-1
+     &        .AND. POLARIZATIONS(0,0).EQ.-1 .AND. FLAV_IDX.LE.NFLAV
       ANS = 0D0
 %(blas_branch)s
           DO IHEL=1,NCOMB
-             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.IHEL%(blas_guard)s) THEN
-                IF (GOODHEL(IHEL,FLAV_IDX) .OR. NTRY(FLAV_IDX) .LT. 20.OR.USERHEL.NE.-1) THEN
-                    IF(NTRY(FLAV_IDX).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
+             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.HELALLOW(IHEL)%(blas_guard)s) THEN
+%(smatrix_goodhel_gate)s
+                    IF(NTRY(FLAV_USE).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
                     ENDIF
-                    T=%(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_IDX)
+C                   Fast phase: a row whose fully flipped C-parity partner has an
+C                   identical |M|^2 (CSYM) is computed once, at the lower index,
+C                   and counted twice -- skip the higher-index partner here.
+                    IF (DEDUP.AND.IHEL.GT.FLIP(IHEL)) CYCLE
+C                   MATRIX/GET_AMP get already crossed arrays and the reduced
+C                   flavor index: the crossing was applied once, above.
+%(smatrix_matrix_call)s
+C                   Scan phase (uncrossed only): cache |M|^2 to test the
+C                   C-parity partner below.
+                    IF (FLAV_IDX.LE.NFLAV.AND.NTRY_CSYM(FLAV_USE).LT.20)
+     &                  TSTORE(IHEL)=T
+C                   Fast phase: the representative carries its skipped partner's
+C                   identical contribution.
+                    IF (DEDUP.AND.IHEL.LT.FLIP(IHEL)) T=T+T
                     IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
                         ANS=ANS+T
                     ENDIF
-                    IF (T .NE. 0D0 .AND. .NOT.    GOODHEL(IHEL,FLAV_IDX)) THEN
-                        GOODHEL(IHEL,FLAV_IDX)=.TRUE.
-                    ENDIF
+%(smatrix_goodhel_train)s
                 ENDIF
              ENDIF
           ENDDO
-      ANS=ANS/DBLE(IDEN)*%(proc_prefix)sBROKEN_SYM(FLAVOR)
+C     Scan phase: drop the C-parity pairing of any row whose fully flipped
+C     partner gave a different |M|^2 (parity/C violation). One mismatch at any
+C     scan point permanently invalidates the pair (robust, like the zero-filter).
+      IF (USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV
+     &    .AND.NTRY_CSYM(FLAV_USE).LT.20
+     &    .AND.POLARIZATIONS(0,0).EQ.-1) THEN
+        DO IHEL=1,NCOMB
+          IF (FLIP(IHEL).EQ.IHEL) THEN
+C           Self-paired row: no distinct partner, so the loop cannot be
+C           halved uniformly -- refuse the reuse for this flavor.
+            CSYM(FLAV_USE)=.FALSE.
+          ELSE IF (FLIP(IHEL).GT.IHEL) THEN
+            IF (ABS(TSTORE(IHEL)-TSTORE(FLIP(IHEL))).GT.
+     &          1D-6*(ABS(TSTORE(IHEL))+ABS(TSTORE(FLIP(IHEL))))) THEN
+              CSYM(FLAV_USE)=.FALSE.
+            ENDIF
+          ENDIF
+        ENDDO
+      ENDIF
+%(smatrix_iden_line)s
       IF(USERHEL.NE.-1) THEN
           ANS=ANS*HELAVGFACTOR
       ELSE
@@ -197,6 +288,10 @@ C
 C
 C Returns amplitude squared -- no average over initial state/symmetry factor
 c for the point with external lines W(0:6,NEXTERNAL)
+C
+C CONTRACT: P, NHEL and IC must ALREADY be crossed and FLAV_IDX must ALREADY
+C be reduced to [1,NFLAV] (see GET_AMP). SMATRIX applies the crossing once,
+C before its helicity loop; this routine never decodes anything.
 C
 %(process_lines)s
 C
@@ -270,19 +365,89 @@ CF2PY INTENT(OUT) :: IDEN_STAR
       INTEGER                 NCOMB
       PARAMETER (             NCOMB=%(ncomb)d)
 
-      INTEGER NHEL(NEXTERNAL,NCOMB),NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
       INTEGER IDEN,IDEN_STAR
-
-%(helicity_lines)s
 %(den_factor_line)s
+      CALL %(proc_prefix)sFILL_NHEL()
       IDEN_STAR = IDEN
       NHEL_STAR = NHEL
+      END
+
+      SUBROUTINE %(proc_prefix)sGET_NHEL_IDX(FLAV_IDX_IN,IDEN_STAR,
+     & NHEL_STAR)
+C     Same as GET_NHEL, but reporting the denominator SMATRIX ACTUALLY
+C     divides by for FLAV_IDX_IN, rather than the static IDEN.
+C
+C     The static IDEN is the averaging/symmetry factor of the uncrossed
+C     *representative* flavor. SMATRIX never uses it bare: it applies
+C     IDEN/BROKEN_SYM(FLAVOR) uncrossed (BROKEN_SYM correcting the
+C     identical-particle count of the representative to that of the actual
+C     flavor) and GET_SPINCOL_CROSS*GET_IDENT_CROSS when crossed. A caller
+C     that reads GET_NHEL and multiplies ANS by it to recover the raw
+C     helicity/color sum -- the natural thing to do, and what makes two
+C     crossings comparable -- is therefore wrong for every crossed flavor
+C     and for every non-representative one.
+C
+C     GET_NHEL is deliberately left alone: its signature and its value are
+C     what existing uncrossed callers expect.
+%(nhel_idx_decl)s
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER    NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
+CF2PY INTENT(IN) :: FLAV_IDX_IN
+CF2PY INTENT(OUT) :: NHEL_STAR
+CF2PY INTENT(OUT) :: IDEN_STAR
+      INTEGER FLAV_IDX_IN
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER IDEN_STAR
+      INTEGER NHI_FLAV, NHI_CROSS
+      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER %(proc_prefix)sBROKEN_SYM
+
+      CALL %(proc_prefix)sGET_NHEL(IDEN_STAR, NHEL_STAR)
+C     An index naming no valid flavor gives a zero matrix element; report a
+C     0 denominator rather than a plausible-looking one.
+      IF (FLAV_IDX_IN .LT. 1) THEN
+        IDEN_STAR = 0
+        RETURN
+      ENDIF
+      NHI_FLAV = MOD(FLAV_IDX_IN-1, NFLAV) + 1
+      NHI_CROSS = (FLAV_IDX_IN-1) / NFLAV
+      CALL %(proc_prefix)sGET_FLAVOR(NHI_FLAV, FLAVOR)
+%(nhel_idx_body)s
+      RETURN
       END
 
       SUBROUTINE %(proc_prefix)sGET_AMP(P,NHEL,IC,FLAV_IDX,AMP)
       use model_object
 C
 %(process_lines)s
+C
+C     CONTRACT (this routine is pure: it decodes nothing).
+C
+C       P(0:3,NEXTERNAL) : momenta, ALREADY crossed.
+C       NHEL(NEXTERNAL)  : helicities, ALREADY crossed (permuted, NOT negated:
+C                          helas uses nh=nhel*nsf, so the sign follows IC).
+C       IC(NEXTERNAL)    : NSF/NSV flag per leg, ALREADY crossed (-1 on a leg
+C                          the crossing moved across).
+C       FLAV_IDX         : flavor index ALREADY reduced to [1,NFLAV]; it must
+C                          NOT be an extended index carrying a crossing.
+C
+C     When the crossing machinery is written out (see %(proc_prefix)sGET_CROSS_PERM below;
+C     it is left out when the process was generated with --use_crossing=False,
+C     in which case FLAV_IDX is never extended), the callers inside this file
+C     (SMATRIX via MATRIX, GET_ALL_INTER_CROSSED) apply the crossing ONCE per
+C     entry point with %(proc_prefix)sAPPLY_CROSSING / %(proc_prefix)sAPPLY_CROSSING_TABLE and then call
+C     this routine in their inner loop. An external (f2py) caller holding an
+C     extended FLAV_IDX must call the public %(proc_prefix)sAPPLY_CROSSING itself first;
+C     passing the extended index here would otherwise silently return the
+C     UNCROSSED amplitude, so the range is checked below and violations are
+C     reported and return AMP=0.
 C
 CF2PY INTENT(OUT) :: AMP
 CF2PY INTENT(IN) :: NHEL
@@ -301,6 +466,8 @@ C
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NWAVEFUNCS, NCOLOR
       PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d)
+      INTEGER    NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
 C
@@ -309,11 +476,15 @@ C
       REAL*8 P(0:3,NEXTERNAL)
       INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
       INTEGER FLAV_IDX
-      INTEGER FLAVOR(NEXTERNAL)
+      COMPLEX*16 AMP(NGRAPHS)
 C
 C LOCAL VARIABLES
 C
-      COMPLEX*16 AMP(NGRAPHS)
+C     FLAVOR is rebuilt from FLAV_IDX below and is NOT permuted by any
+C     crossing: each slot keeps its own flavor-group position, which is what
+C     the mask indexes.
+      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER AMP_I
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
@@ -327,6 +498,18 @@ C
 C
 C
       bwcutoff=15 ! use if $ syntax is defined in the process
+C     Contract guard: an extended FLAV_IDX (one carrying a crossing) reaching
+C     this routine would be silently truncated to its flavor part and give the
+C     uncrossed amplitude. Fail loudly and return zero instead.
+      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) THEN
+        WRITE(*,*) 'ERROR: GET_AMP got FLAV_IDX', FLAV_IDX, 'NFLAV', NFLAV
+        WRITE(*,*) 'GET_AMP needs a reduced index and crossed P/NHEL/IC.'
+        WRITE(*,*) 'Returning AMP=0.'
+        DO AMP_I = 1, NGRAPHS
+          AMP(AMP_I) = (0D0, 0D0)
+        ENDDO
+        RETURN
+      ENDIF
 %(flavor_mask_setup)s
 %(helas_calls)s
 %(amp2_lines)s
@@ -475,12 +658,53 @@ C        ZTEMP = DCONJG(JAMP_2(I))
 
 
       SUBROUTINE  %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)
+C     Entry point taking the full FLAVOR(NEXTERNAL) array (back-compat):
+C     resolve it to FLAV_IDX and forward to GET_DENSITY_IDX. A crossing can
+C     only be requested through GET_DENSITY_IDX: an extended FLAV_IDX carries
+C     a crossing code, which no FLAVOR array can express (GET_FLAVOR_INDEX
+C     only ever returns 1..NFLAV).
+      implicit none
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
+CF2PY INTENT(IN) :: POS(N_CHANGING)
+CF2PY INTENT(IN) :: N_CHANGING
+CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
+CF2PY INTENT(IN) :: N_COMB
+CF2PY INTENT(IN) :: FLAVOR(%(nexternal)d)
+CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: SCALE2
+CF2PY INTENT(OUT) :: INTER(N_COMB*(N_COMB+1)/2)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
+      DOUBLE PRECISION ALPHAS, SCALE2
+      DOUBLE COMPLEX INTER(*)
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+
+      CALL %(proc_prefix)sGET_DENSITY_IDX(P, POS, N_CHANGING, ALLOW_HEL,
+     & N_COMB, %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR), ALPHAS, SCALE2,
+     & INTER)
+      RETURN
+      END
+
+
+      SUBROUTINE  %(proc_prefix)sGET_DENSITY_IDX(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAV_IDX, ALPHAS, SCALE2, INTER)
 c     P momenta
 c     NHEL base of helicity that are not changing
 c     POS(N_CHNGING): position of the changing helicity
 c     n_changing: number of changing helicity
 c     ALLOW_HEL(NCOMB, N_CHANGING): combination of helicity to consider (all jamp computed)
 c     INTER(NCOMB*(NCOMB+1)/2): all interference term (not the symmetric one)
+c     FLAV_IDX may carry a crossing. It is decoded and applied ONCE here (the
+c     whole NHEL table, the momenta and the NSF flags in one go) and only
+c     crossed arrays plus the reduced flavor index travel further down. POS and
+c     the helicity labels refer to the UNCROSSED (source process) leg ordering
+c     and are mapped through the crossing permutation here. No helicity flip is
+c     needed on top: helas folds it into nh=nhel*nsf when the NSF flag of a
+c     crossed leg is flipped.
       use model_object
       implicit none
 CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
@@ -488,7 +712,7 @@ CF2PY INTENT(IN) :: POS(N_CHANGING)
 CF2PY INTENT(IN) :: N_CHANGING
 CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
 CF2PY INTENT(IN) :: N_COMB
-CF2PY INTENT(IN) :: FLAVOR(%(nexternal)d)
+CF2PY INTENT(IN) :: FLAV_IDX
 CF2PY INTENT(IN) :: ALPHAS
 CF2PY INTENT(IN) :: SCALE2
 CF2PY INTENT(OUT) :: INTER(N_COMB*(N_COMB+1)/2)
@@ -504,7 +728,7 @@ C
       INTEGER N_CHANGING, N_COMB
       INTEGER POS(*)
       INTEGER ALLOW_HEL(*)
-      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER FLAV_IDX
       DOUBLE PRECISION ALPHAS, SCALE2
       DOUBLE COMPLEX INTER(*)
       INTEGER NINTER
@@ -514,6 +738,13 @@ C
 c LOCAL
       INTEGER I,IHEL,IPART
       DOUBLE PRECISION PI
+C     Crossed copies, built once (see the crossing block below).
+      REAL*8 PUSE(0:3,NEXTERNAL)
+      INTEGER NHELUSE(NEXTERNAL,NB_NHEL)
+      INTEGER IC(NEXTERNAL), ICUSE(NEXTERNAL)
+      INTEGER PERM(NEXTERNAL), SGN(NEXTERNAL), CPOS(NEXTERNAL)
+      INTEGER FLAV_USE, DUMFLAV
+      DOUBLE PRECISION RESCALE
 C
       INTEGER NHEL(NEXTERNAL,NB_NHEL)
 C     put in common block to expose this variable to python interface
@@ -536,13 +767,30 @@ C
           G = 2* DSQRT(ALPHAS*pi)
           call UPDATE_AS_PARAM()
       ENDIF
+C     Unresolved flavor (GET_FLAVOR_INDEX miss): the matrix element and hence
+C     every interference term is identically zero. Guarded after the alphas
+C     update so that side effect is unchanged.
+      IF (FLAV_IDX.LT.1) THEN
+        return
+      ENDIF
+C     Decode and apply the crossing ONCE for the whole density matrix: the
+C     permutation is the same for every helicity row, so the NHEL table is
+C     permuted in one sweep. RESCALE carries the flavor / crossing dependent
+C     part of the normalisation (RESCALE=0 = impossible crossing).
+      IC(:) = 1
+      CALL %(proc_prefix)sGET_INTER_RESCALE(FLAV_IDX, FLAV_USE, RESCALE)
+      IF (RESCALE.EQ.0D0) THEN
+        return
+      ENDIF
+      CALL %(proc_prefix)sFILL_NHEL()
+%(density_cross_apply)s
       DO IHEL =1, NB_NHEL
-        THISNHEL(:) = NHEL(:, IHEL)
+        THISNHEL(:) = NHELUSE(:, IHEL)
         DO IPART=1,N_CHANGING
-            if(THISNHEL(POS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 10 !BYPASS COMPUTATION FOR HELICITY
+            if(THISNHEL(CPOS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 10 !BYPASS COMPUTATION FOR HELICITY
         ENDDO
         TMP_INTER(:) = 0
-        call  %(proc_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+        call  %(proc_prefix)sGET_ALL_INTER_CROSSED(PUSE, THISNHEL, ICUSE, CPOS, N_CHANGING, ALLOW_HEL, N_COMB, FLAV_USE, RESCALE, TMP_INTER)
         do I = 1, N_COMB*(N_COMB+1)/2
            INTER(I) = INTER(I) + TMP_INTER(I)
         enddo
@@ -552,13 +800,11 @@ C
       end
 
       SUBROUTINE  %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
-c     P momenta
-c     NHEL base of helicity that are not changing
-c     POS(N_CHNGING): position of the changing helicity
-c     n_changing: number of changing helicity
-c     ALLOW_HEL(NCOMB, N_CHANGING): combination of helicity to consider (all jamp computed)
-c     INTER((NCOMB*NCOMB+1)/2: all interference term (not the symmetric one)
+C     Entry point taking the full FLAVOR(NEXTERNAL) array (back-compat); see
+C     GET_DENSITY. Use GET_ALL_INTER_IDX to request a crossing.
       implicit none
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
 CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
 CF2PY INTENT(IN) :: NHEL(%(nexternal)d)
 CF2PY INTENT(IN) :: POS(N_CHANGING)
@@ -566,6 +812,41 @@ CF2PY INTENT(IN) :: N_CHANGING
 CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
 CF2PY INTENT(IN) :: N_COMB
 CF2PY INTENT(IN) :: FLAVOR(%(nexternal)d)
+CF2PY INTENT(OUT) :: INTER(NCOMB*(NCOMB+1)/2)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
+      DOUBLE COMPLEX INTER(*)
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+
+      CALL %(proc_prefix)sGET_ALL_INTER_IDX(P, NHEL, POS, N_CHANGING,
+     & ALLOW_HEL, N_COMB, %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR), INTER)
+      RETURN
+      END
+
+
+      SUBROUTINE  %(proc_prefix)sGET_ALL_INTER_IDX(P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAV_IDX, INTER)
+c     P momenta
+c     NHEL base of helicity that are not changing
+c     POS(N_CHNGING): position of the changing helicity
+c     n_changing: number of changing helicity
+c     ALLOW_HEL(NCOMB, N_CHANGING): combination of helicity to consider (all jamp computed)
+c     INTER((NCOMB*NCOMB+1)/2: all interference term (not the symmetric one)
+c     FLAV_IDX may carry a crossing: it is decoded and applied ONCE here, and
+c     GET_ALL_INTER_CROSSED below then only sees crossed arrays. POS is given
+c     in the UNCROSSED (source process) slot numbering and is mapped through
+c     the crossing permutation here.
+      implicit none
+CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
+CF2PY INTENT(IN) :: NHEL(%(nexternal)d)
+CF2PY INTENT(IN) :: POS(N_CHANGING)
+CF2PY INTENT(IN) :: N_CHANGING
+CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
+CF2PY INTENT(IN) :: N_COMB
+CF2PY INTENT(IN) :: FLAV_IDX
 CF2PY INTENT(OUT) :: INTER(NCOMB*(NCOMB+1)/2)
 c
 C
@@ -578,7 +859,97 @@ C
       INTEGER N_CHANGING, N_COMB
       INTEGER POS(*)
       INTEGER ALLOW_HEL(*)
+      INTEGER FLAV_IDX
+      DOUBLE COMPLEX INTER(*)
+c
+c     LOCAL
+c
+      INTEGER I, IPART
+      INTEGER IC(NEXTERNAL), ICUSE(NEXTERNAL)
+      REAL*8 PUSE(0:3,NEXTERNAL)
+      INTEGER NHELUSE(NEXTERNAL)
+      INTEGER PERM(NEXTERNAL), SGN(NEXTERNAL), CPOS(NEXTERNAL)
+      INTEGER FLAV_USE, DUMFLAV
+      DOUBLE PRECISION RESCALE
+C ----------
+C BEGIN CODE
+C ----------
+C     Unresolved flavor (not an allowed combination): the matrix element and
+C     therefore all interference terms are zero.
+      IF (FLAV_IDX.LT.1) THEN
+         DO I = 1, N_COMB*(N_COMB+1)/2
+            INTER(I) = (0d0, 0d0)
+         ENDDO
+         RETURN
+      ENDIF
+C     RESCALE carries everything flavor / crossing dependent in the
+C     normalisation; RESCALE=0 marks a crossing that cannot be applied.
+      CALL %(proc_prefix)sGET_INTER_RESCALE(FLAV_IDX, FLAV_USE, RESCALE)
+      IF (RESCALE.EQ.0D0) THEN
+         DO I = 1, N_COMB*(N_COMB+1)/2
+            INTER(I) = (0d0, 0d0)
+         ENDDO
+         RETURN
+      ENDIF
+%(allinter_cross_apply)s
+      CALL %(proc_prefix)sGET_ALL_INTER_CROSSED(PUSE, NHELUSE, ICUSE, CPOS,
+     & N_CHANGING, ALLOW_HEL, N_COMB, FLAV_USE, RESCALE, INTER)
+      RETURN
+      END
+
+
+      SUBROUTINE %(proc_prefix)sGET_INTER_RESCALE(FLAV_IDX, FLAV_USE,
+     & RESCALE)
+C     Split an extended FLAV_IDX and return the factor by which GET_INTER's
+C     output must be multiplied.
+C
+C     GET_INTER only ever sees JAMPs, so it cannot know the flavor: it
+C     normalises with the bare static IDEN and everything flavor dependent has
+C     to be applied by its caller. That is also what keeps the density matrix
+C     consistent with SMATRIX. RESCALE=0 marks a crossing that cannot be
+C     applied (zero matrix element).
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
+      INTEGER FLAV_IDX, FLAV_USE
+      DOUBLE PRECISION RESCALE
       INTEGER FLAVOR(NEXTERNAL)
+      INTEGER %(proc_prefix)sBROKEN_SYM
+%(inter_rescale_decl)s
+
+      FLAV_USE = MOD(FLAV_IDX-1, NFLAV) + 1
+      CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
+%(inter_rescale_body)s
+
+      RETURN
+      END
+
+
+      SUBROUTINE  %(proc_prefix)sGET_ALL_INTER_CROSSED(P, NHEL, IC, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAV_IDX, RESCALE, INTER)
+c     Inner worker of the density machinery.
+c
+c     CONTRACT: P, NHEL and IC are ALREADY crossed, POS is expressed in the
+c     CROSSED slot numbering, FLAV_IDX is ALREADY reduced to [1,NFLAV] and
+c     RESCALE already accounts for BROKEN_SYM / the crossed denominator. The
+c     callers (GET_ALL_INTER_IDX, GET_DENSITY_IDX) decode and apply the
+c     crossing once, so nothing is decoded per GET_AMP call here.
+c     NHEL is overwritten at the POS slots.
+      implicit none
+C
+C ARGUMENTS
+C
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      INTEGER IC(NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAV_IDX
+      DOUBLE PRECISION RESCALE
       DOUBLE COMPLEX INTER(*)
 c
 c     Intermediate array
@@ -587,18 +958,14 @@ c
       PARAMETER (NGRAPHS=%(ngraphs)d)
       INTEGER    NCOLOR
       PARAMETER (NCOLOR=%(ncolor)d)
-      INTEGER IC(NEXTERNAL)
 
       DOUBLE COMPLEX AMP(%(namp_dim)s)
       DOUBLE COMPLEX, ALLOCATABLE, SAVE :: JAMP(:,:)
       INTEGER, SAVE :: S_NCOMB = 0
-
 c
 c     LOCAL
 c
       INTEGER I,J,SOL,N
-      INTEGER FLAV_IDX
-      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
 
       if (allocated(jamp) .and. S_NCOMB.ne.N_COMB) then
            deallocate(jamp)
@@ -611,16 +978,6 @@ c
 C ----------
 C BEGIN CODE
 C ----------
-      IC(:)=1
-      FLAV_IDX = %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
-C     Unresolved flavor (not an allowed combination): the matrix element and
-C     therefore all interference terms are zero.
-      IF (FLAV_IDX.EQ.0) THEN
-         DO I = 1, N_COMB*(N_COMB+1)/2
-            INTER(I) = (0d0, 0d0)
-         ENDDO
-         RETURN
-      ENDIF
       do I = 1, N_COMB
          do N = 1, N_CHANGING
             NHEL(POS(N)) = ALLOW_HEL((I-1)*N_CHANGING+N)
@@ -634,6 +991,7 @@ C     therefore all interference terms are zero.
        DO J= I, N_COMB
          SOL = SOL +1
          call %(proc_prefix)sGET_INTER(JAMP(1,I), JAMP(1,J), INTER(SOL))
+         INTER(SOL) = INTER(SOL)*RESCALE
        ENDDO
     ENDDO
 
@@ -803,6 +1161,89 @@ C     ----------
       END
 
 
+      SUBROUTINE %(proc_prefix)sDECODE_HEL(CODE, THISNHEL)
+C     Decode a canonical mixed-radix helicity CODE (1..NCOMBFULL) into the
+C     per-leg helicity values THISNHEL(NEXTERNAL). The last external leg is the
+C     least-significant digit, matching the itertools.product ordering used to
+C     build the allowed-code list HELALLOW.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER CODE, THISNHEL(NEXTERNAL)
+      INTEGER I, K, R, D
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      R = CODE - 1
+      DO K=NEXTERNAL,1,-1
+        D = MOD(R, NHSTATE(K))
+        THISNHEL(K) = STATES(D+1, K)
+        R = R / NHSTATE(K)
+      ENDDO
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sENCODE_HEL(THISNHEL, CODE)
+C     Inverse of DECODE_HEL: encode per-leg helicity values THISNHEL into the
+C     canonical mixed-radix code (used by the crossing-aware routines).
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER THISNHEL(NEXTERNAL), CODE
+      INTEGER I, K, D
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      CODE = 0
+      DO K=1,NEXTERNAL
+        DO D=1,NHSTATE(K)
+          IF (STATES(D,K).EQ.THISNHEL(K)) GOTO 5
+        ENDDO
+        D = 1
+ 5      CONTINUE
+        CODE = CODE*NHSTATE(K) + (D-1)
+      ENDDO
+      CODE = CODE + 1
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sFILL_NHEL()
+C     Materialize the PROCESS_NHEL config table by decoding the list of allowed
+C     canonical helicity codes (HELALLOW). Runs once; the table is a runtime
+C     cache of the encoder/decoder representation, kept for the density-matrix
+C     and python (f2py) interfaces.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER HELALLOW(NCOMB)
+      INTEGER I, K, THIS(NEXTERNAL)
+      LOGICAL DONE
+      SAVE DONE
+%(hel_allow_data)s
+      DATA DONE /.FALSE./
+      IF (DONE) RETURN
+      DO I=1,NCOMB
+        CALL %(proc_prefix)sDECODE_HEL(HELALLOW(I), THIS)
+        DO K=1,NEXTERNAL
+          NHEL(K,I) = THIS(K)
+        ENDDO
+      ENDDO
+      DONE = .TRUE.
+      RETURN
+      END
+
+
+%(crossing_routines)s
+
+
 %(broken_sym_function)s
 
 
@@ -810,3 +1251,6 @@ C     ----------
 
 
 %(flavor_array_function)s
+
+
+%(flavor_pdg_function)s

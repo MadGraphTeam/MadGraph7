@@ -1108,12 +1108,18 @@ class Interaction(PhysicsObject):
            """
         
         pdgs = [p.get_pdg_code() for p in self.get('particles')]
+        # 'merged_particles' is keyed by the positive merged code only
+        # ({81: [1,2,3,4], 82: [11,13], ...}) while pdgs holds the *signed* code:
+        # a leg that is an antiparticle instance reports -82, not 82. Membership
+        # must therefore always be tested through abs() -- a bare `pdg in ...`
+        # silently misses an interaction whose merged legs are all antiparticles
+        # (e.g. the l+ pair of a lepton-number-violating H-- l+ l+ vertex).
+        positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model.get('merged_particles')]
         flavor = [map_flavor[pdg].pop() if abs(pdg) in model.get('merged_particles') else 0 for pdg in pdgs]
         for coupling in self.get('couplings').values():
             if isinstance(coupling, str):
                 # if no PDG in merge range -> return True
-                if any([pdg in model['merged_particles'] for pdg in pdgs]):
-                    positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model['merged_particles']]
+                if positions:
                     if len(positions) != 2:
                         raise Exception
                     elif flavor[positions[0]] == flavor[positions[1]]:

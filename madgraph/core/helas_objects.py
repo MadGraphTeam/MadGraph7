@@ -125,6 +125,16 @@ class IdentifyMETag(diagram_generation.DiagramTag):
                 process.get('is_decay_chain'),
                 identical_particle_factor,
                 dc,
+                # Two modules told to cover DIFFERENT halves of a pattern's
+                # flavors (set_excluded_flavors) must not be identified, however
+                # alike their diagrams: this tag deliberately identifies
+                # processes that agree up to a leg permutation, and the split
+                # that lets a crossing serve q q~ > q' q~' is exactly such a
+                # pair. Merging them would relabel one to the other's leg order
+                # (reorder_process below) and undo the split silently. Empty for
+                # every process that was never told anything, so ordinary
+                # flavor combination is untouched.
+                getattr(process, '_excluded_flavors', ()),
                 perms,
                 sorted_tags]
 
@@ -871,6 +881,12 @@ class HelasWavefunction(base_objects.PhysicsObject):
             self['lcut_size'] = self.get_lcut_size()  
 
         if name in ['spin', 'mass', 'width', 'self_antipart']:
+            # onshell_zero_width (a runtime annotation set post-generation on an
+            # internal propagator whose particle is also an external/on-shell
+            # state) forces a ZERO width there -- see
+            # HelasMatrixElement.set_onshell_particles_width_to_zero.
+            if name == 'width' and getattr(self, 'onshell_zero_width', False):
+                return 'ZERO'
             return self['particle'].get(name)
         elif name == 'pdg_code':
             return self['particle'].get_pdg_code()
@@ -3984,6 +4000,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # has_mirror_process is True if the same process but with the
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
+        # Crossed subprocesses folded into this ME and NOT generated on their
+        # own (merge_crossing='record'); carried over from the base amplitude so
+        # the exporter can reach them through this ME's crossing-aware SMATRIX.
+        # Each entry is (crossed Process, base_permutation, crossed_permutation).
+        self['crossed_processes'] = []
         self['allowed_flavors'] = [] # list of all allowed flavors for the process
         self['allowed_flavors_with_iden'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
         self['allowed_flavors_with_iden_sign'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
@@ -4030,6 +4051,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if name == 'has_mirror_process':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid boolean" % str(value))
+        if name == 'crossed_processes':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError("%s is not a valid list" % str(value))
         return True
 
     def get_sorted_keys(self):
@@ -4037,7 +4061,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return ['processes', 'identical_particle_factor',
                 'diagrams', 'color_basis', 'color_matrix',
-                'base_amplitude', 'has_mirror_process']
+                'base_amplitude', 'has_mirror_process',
+                'crossed_processes']
 
     # Enhanced get function
     def get(self, name):
@@ -4062,6 +4087,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 self.get('processes').append(amplitude.get('process'))
                 self.set('has_mirror_process',
                          amplitude.get('has_mirror_process'))
+                if 'crossed_processes' in amplitude and \
+                        amplitude.get('crossed_processes'):
+                    self.set('crossed_processes',
+                             list(amplitude.get('crossed_processes')))
                 self.generate_helas_diagrams(amplitude, optimization, decay_ids)
                 self.calculate_fermionfactors()
                 self.calculate_identical_particle_factor()
@@ -5388,6 +5417,79 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return set([(d.get('mass'),d.get('width')) for d in self.get_all_wavefunctions()])
 
 
+    def set_onshell_particles_width_to_zero(self):
+        """Drop the width of any internal propagator whose particle is also an
+        external (initial/final) state of the process.
+
+        An external particle is an on-shell asymptotic state, so treating an
+        internal propagator of the same field as an unstable resonance
+        (the i*M*Gamma in its denominator) is inconsistent: e.g. the s/u-channel
+        top in t a > t a. This mirrors the T-channel width drop but is keyed on
+        the particle being external rather than on the propagator momentum being
+        spacelike. It is applied by setting the propagator wavefunction's width
+        to ZERO, which every UFO backend reads for the propagator's W argument
+        (see HelasWavefunction.get_helas_call_dict); in the complex-mass scheme
+        the same ZERO makes that propagator use the real mass. Controlled by the
+        zerowidth_external option; returns True if any width was dropped."""
+        # The asymptotic external states are the decay LEAVES: in a decay chain
+        # (d d~ > z z, z > e+ e-) the core final z is not asymptotic, it is a
+        # resonance decaying to e+ e-, so expand the decays (a no-op without
+        # them). Using the core legs would wrongly flag the resonance's field.
+        external_pdgs = set()
+        offshell_pdgs = set()
+        for proc in self.get('processes'):
+            legs = proc.get_legs_with_decays() \
+                if hasattr(proc, 'get_legs_with_decays') else proc.get('legs')
+            for leg in legs:
+                external_pdgs.add(abs(leg.get('id')))
+            # A leg tagged off-shell (the "particle*" syntax -> leg['offshell'])
+            # is deliberately NOT treated as an asymptotic on-shell state: it
+            # stands for an off-shell resonance whose Breit-Wigner width must be
+            # kept (e.g. p p > t* t~*). Exclude its field so no propagator of it
+            # has the width dropped.
+            for leg in proc.get('legs'):
+                if leg.get('offshell'):
+                    offshell_pdgs.add(abs(leg.get('id')))
+        external_pdgs -= offshell_pdgs
+        # A would-be Goldstone boson is eaten by -- and shares the mass of -- its
+        # gauge boson (G+ <-> W+, G0 <-> Z). In Feynman/FD gauge the Goldstone
+        # propagates explicitly, so if the gauge boson is an external on-shell
+        # state the Goldstone's internal propagator must drop its width too:
+        # otherwise the vector propagator carries ZERO width while its Goldstone
+        # keeps i*M*Gamma, an inconsistency that breaks the gauge-boson/Goldstone
+        # Ward identity. Add the Goldstone PDGs whose (shared) mass matches an
+        # external massive gauge boson. No-op in unitary gauge (no Goldstones)
+        # and for processes without an external vector boson.
+        model = self.get('processes')[0].get('model') if self.get('processes') \
+            else None
+        if model is not None and external_pdgs:
+            ext_vector_masses = set()
+            for pdg in external_pdgs:
+                part = model.get_particle(pdg)
+                if part and part.get('spin') == 3 \
+                        and str(part.get('mass')).lower() != 'zero':
+                    ext_vector_masses.add(part.get('mass'))
+            if ext_vector_masses:
+                for part in model.get('particles'):
+                    if part.get('goldstone') \
+                            and part.get('mass') in ext_vector_masses:
+                        external_pdgs.add(abs(part.get('pdg_code')))
+        dropped = False
+        for wf in self.get_all_wavefunctions():
+            # a wavefunction with no mothers is an external leg (no propagator,
+            # hence no width); only internal propagators carry the i*M*Gamma.
+            # A decay-chain resonance (onshell is True: produced on shell then
+            # decayed) MUST keep its Breit-Wigner width even if the same field
+            # also appears as an asymptotic external leg (e.g. one top decays
+            # while the other is final).
+            if wf.get('mothers') and wf.get('width') != 'ZERO' \
+                    and wf.get('onshell') is not True \
+                    and abs(wf.get_pdg_code()) in external_pdgs:
+                wf.onshell_zero_width = True
+                dropped = True
+        return dropped
+
+
     def get_coupling_for_flv(self, flv, model):
         """Return the coupling constant for a specific flavor"""
 
@@ -5545,6 +5647,46 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
             yield one_flavor, signed_pdg, signature
 
+    def set_excluded_flavors(self, flavors):
+        """Declare external-flavor assignments this module does NOT cover.
+
+        A merged matrix element offers every flavor its diagrams support. That
+        is right while one module covers a whole pattern, and wrong as soon as
+        two modules are meant to SHARE a pattern's flavors between them -- each
+        would offer the other's, and the two would double count.
+
+        The case that needs it: ``Q Q~ > Q Q~`` bundles three coupling classes,
+        and the flavor-changing annihilation ``q q~ > q' q~'`` is the one class a
+        crossing of ``Q Q > Q Q`` reaches only with the two light legs the other
+        way round. A module cannot list that class in the reachable order
+        (its leg pattern is shared by every row -- the FLAVOR table carries
+        unsigned group POSITIONS), so freeing it means generating a sibling with
+        the reordered pattern and giving each module HALF the flavors. This is
+        how a module is told which half is not its own.
+
+        `flavors` is an iterable of flavor-index tuples, in the same convention
+        as get_external_flavors(). Setting it invalidates the populated store so
+        the next read recomputes; passing an empty set restores the default
+        "cover everything the diagrams support".
+
+        The set is stored on the PROCESS, not on this matrix element, because a
+        matrix element is a derived object: the exporter rebuilds it from the
+        amplitude, and an exclusion recorded here would be silently dropped on
+        the way. The process travels with the amplitude, so the module that
+        comes out the far end still knows which half of the flavors is not its
+        own.
+        """
+        excluded = frozenset(tuple(f) for f in flavors)
+        for proc in self.get('processes'):
+            proc._excluded_flavors = excluded
+        # force a repopulate: allowed_flavors and everything derived from it
+        # (masks, pdg tables, coupling classes) must be rebuilt.
+        self._flavor_populated = False
+        self['allowed_flavors'] = []
+        self['allowed_flavors_pdgs'] = []
+        self['allowed_flavors_with_iden'] = []
+        self['allowed_flavors_with_iden_pdgs'] = []
+
     def populate_flavor_validity(self, model=None):
         """Eager, single-source-of-truth pass for multi-flavor generation.
 
@@ -5616,6 +5758,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         flavor_list = []
         pdg_list = []
+        # Flavors this module has been told are not its own (set_excluded_
+        # flavors); carried on the process so it survives the exporter
+        # rebuilding the matrix element from the amplitude.
+        excluded_flavors = getattr(self.get('processes')[0],
+                                   '_excluded_flavors', ())
         # signature -> whether some diagram is valid for it, used to skip
         # permutation-equivalent assignments we have already decided on.
         checked = {}
@@ -5654,8 +5801,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
             # populate every diagram's store for this flavor
             if self.check_flavor_for_all_diagrams(one_flavor, model):
-                flavor_list.append(one_flavor)
-                pdg_list.append(signed_pdg)
+                # A flavor this module has been told it does not cover (see
+                # set_excluded_flavors) is still CHECKED -- the per-diagram
+                # store stays an honest record of what the diagrams support --
+                # but it is not offered, so it gets no bit in the flavor masks
+                # and no row anywhere downstream. Everything that describes the
+                # module's flavor content (compute_flavor_masks, the PDG
+                # tables, get_external_flavors_with_iden, the generated FLAVOR
+                # table) reads allowed_flavors, so dropping it here is the one
+                # place that needs to know.
+                if tuple(one_flavor) not in excluded_flavors:
+                    flavor_list.append(one_flavor)
+                    pdg_list.append(signed_pdg)
                 checked[signature] = True
             else:
                 checked[signature] = False

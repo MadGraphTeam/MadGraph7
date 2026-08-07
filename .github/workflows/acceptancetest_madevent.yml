@@ -996,3 +996,94 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madevent_mssm_gogo -pA -t0 -l INFO
+
+
+  # ---------------------------------------------------------------------------
+  # Crossing symmetry, madevent end-to-end. Each of these runs one or more full
+  # (small) madevent generations, hence one job apiece.
+  # ---------------------------------------------------------------------------
+  acceptancetest_crossing_madevent_labels:
+    # The event LABELS a crossed subprocess writes to the LHE: the W+ helicity of
+    # p p > w+ j (the crossed leg is a massive vector, so a bad relabel scrambles
+    # it), the colour flow of u u~ > u u~ (98/2 asymmetric, so a swapped flow
+    # label is detectable), and the colour flow a within-group router CHOOSES
+    # (which mask it selects with, not just which label it writes).
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: crossed helicity and colour-flow labels written to the LHE
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMadeventCrossingHelicity TestMadeventColorFlowRatio -t0 -l INFO
+
+      # Separate step (and ~4 minutes of its own): a within-group router must
+      # RESELECT the colour flow with its own colour-config mask rather than
+      # relabel the one its base picked. Only an event-level comparison sees
+      # this -- the cross section agreed to 0.02% while ~10% of the affected
+      # flavour class carried a flow the --use_crossing=False build never picks
+      # -- so this integrates the process twice and compares the colour-topology
+      # distribution class by class.
+      - name: within-group router colour selection
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMadeventRouterColorSelection -t0 -l INFO
+
+
+  acceptancetest_crossing_madevent_xsec:
+    # The cross-section-level guards on the crossing router: each process is
+    # integrated twice (crossing-routed vs --use_crossing=False, same seed) and
+    # the two results must agree.
+    #   p p > w+ j, w+ > j j   decay chain riding on a crossed production
+    #   p p > t t~ j j         inclusive, and the only test that integrates the
+    #                          cross-GROUP (Track B) router
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: crossing cross-section regressions (decay chain + inclusive)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMadeventDecayChainCrossing TestMadeventInclusiveCrossingXsec -t0 -l INFO
+
+
+  acceptancetest_crossing_reweight:
+    # The folded-subprocess layout of the default (crossing on) standalone output,
+    # and the reweighting of a sample whose events sit in a grouped subprocess
+    # where every merged leg is an anti-particle (the -81 label regression).
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: folded subprocesses + merged anti-particle labels in reweight
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_crossing_folds_qqx_subprocess test_reweight_merged_antiparticle_labels -pA -t0 -l INFO
+
+
+  acceptancetest_density_multicore:
+    # do_reweight splits the event file across jobs in multicore mode; each job
+    # writes the average density matrix of its own chunk and the mother interface
+    # has to recombine them into the canonical Average_density_matrix_*.txt.
+    # Generates 3000 events (> nevt_job) so the file is really split, then
+    # reweights twice (1 core vs 2) -- the slowest of the new jobs.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: test one of the test test_density_mode_multicore
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_multicore -pA -t0 -l INFO

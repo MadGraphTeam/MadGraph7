@@ -51,6 +51,7 @@ C
         INTEGER I,IDEN
         INTEGER FLAVOR(NEXTERNAL)
         INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
+%(smatrix_hel_cross_decl)s
 C       Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
 C       table above can collapse distinct same-flavor / different-flavor
 C       leshouche rows that share the same coupling group; BROKEN_SYM needs
@@ -70,6 +71,7 @@ C GLOBAL VARIABLES
 C
     include '../../Source/vector.inc' ! defines VECSIZE_MEMMAX
     DOUBLE PRECISION AMP2(MAXAMPS), JAMP2(0:MAXFLOW)
+%(xg_jamp2_decl)s
 
 
 C
@@ -96,7 +98,8 @@ ${helicity_lines}
 C ----------
 C BEGIN CODE
 C ----------
-    CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
+%(smatrix_hel_cross_decode)s
+    CALL GET_FLAVOR%(proc_id)s(%(me_flav_key)s, FLAVOR)
 
     IF (multi_channel) THEN
         DO I=1,NDIAGS
@@ -113,9 +116,13 @@ C ----------
 
     TS(:) = 0d0
 
-    call MATRIX%(proc_id)s(P ,IFLAV, TS, AMP2, JAMP2, IVEC)
-    DO I=1,NCOMB     
-       T=TS(I)  
+    call MATRIX%(proc_id)s(%(hel_matrix_call_args)s)
+C   C-parity de-duplication: a dropped partner's HELAS calls were never
+C   generated, so its TS() is 0 here; copy the representative's identical |M|^2
+C   back into it (the recycled MATRIX above computed only the representatives).
+${csym_reuse}
+    DO I=1,NCOMB
+       T=TS(I)
        DO JJ=1,nincoming
           IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
              T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0 ! NB_SPIN_STATE(JJ)/2d0 is added for polarised beam
@@ -144,7 +151,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     IF (MULTI_CHANNEL) THEN
         XTOT=0D0
         DO I=1,LMAXCONFIGS
-	    J = CONFSUB(%(proc_id)s, I)
+	    J = %(me_confsub_j)s
 	    if (J.ne.0)then
 	      if (sde_strat.eq.1)then
 	         AMP2(J) = AMP2(J) * GET_CHANNEL_CUT(P, I)
@@ -167,11 +174,13 @@ c         Set right sign for ANS, based on sign of chosen helicity
     ELSE
        FLAVOR_FOR_SYM(:) = FLAVOR(:)
     ENDIF
-    ANS=ANS/DBLE(IDEN)*BROKEN_SYM%(proc_id)s(FLAVOR_FOR_SYM)
+%(smatrix_me_iden_line)s
 
+%(xg_jamp2_pub)s
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
 
     END
+%(crossing_routines_me)s
 
 
       SUBROUTINE GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR_OUT)
@@ -187,7 +196,7 @@ C     Returns the flavor array for a given flavor index IFLAV
       END
 
 
-Subroutine  MATRIX%(proc_id)s(P,IFLAV, TS, AMP2, JAMP2, IVEC)
+Subroutine  MATRIX%(proc_id)s(P,%(hel_matrix_ic_param)sIFLAV, TS, AMP2, JAMP2, IVEC)
 C  
 %(info_lines)s
 C
@@ -230,6 +239,7 @@ C ARGUMENTS
 C
     REAL*8 P(0:3,NEXTERNAL)
     INTEGER IFLAV
+%(me_matrix_ic_decl)s
     INTEGER FLAVOR(NEXTERNAL)
     REAL*8 TS(NCOMB)
     INTEGER IVEC
@@ -317,6 +327,7 @@ ${jamp_lines}
         ENDDO ! I
     ENDDO ! M
     TS(K) = TS(K) / DENOM
+    ${dead_row_if}
 	if(sde_strat.eq.1) then
         ${amp2_lines}
 	endif
@@ -329,6 +340,7 @@ ${jamp_lines}
     		enddo
     	  enddo
         Enddo
+    ${dead_row_endif}
     ENDDO ! K%(blas_hel_finish)s
 
     END

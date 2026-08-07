@@ -668,6 +668,8 @@ c
       INTEGER I,J,SOL,N
       INTEGER FLAV_IDX
       INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+      INTEGER %(proc_prefix)sBROKEN_SYM
+      DOUBLE PRECISION RESCALE
 
 C ----------
 C BEGIN CODE
@@ -689,11 +691,17 @@ C ----------
          call %(proc_prefix)sGET_JAMP(AMP,JAMP(1,1,I))
       enddo
 
+C     GET_INTER only sees JAMPs, so it normalises with the bare static IDEN
+C     and cannot apply any flavor dependent factor. SMATRIX does
+C     ANS/IDEN*BROKEN_SYM(FLAVOR); the density matrix must use the same
+C     normalisation or the sum of its diagonal stops matching SMATRIX.
+      RESCALE = DBLE(%(proc_prefix)sBROKEN_SYM(FLAVOR))
      SOL = 0
      DO I = 1, N_COMB
         DO J= I, N_COMB
           SOL = SOL +1
           call %(proc_prefix)sGET_INTER(JAMP(1,1,I), JAMP(1,1,J), INTER(1,SOL))
+          INTER(:,SOL) = INTER(:,SOL) * RESCALE
         ENDDO
      ENDDO
 
