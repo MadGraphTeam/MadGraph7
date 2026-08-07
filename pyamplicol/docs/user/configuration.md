@@ -299,7 +299,7 @@ the runtime may reduce the tile size to stay within the workspace limit.
 
 On-the-fly execution currently accepts LC requests only and evaluates at
 native `f64` precision. It does not materialize either LC flow layout: one
-compact query-local artifact supports both selected-flow helicity sums and
+compact process-seed artifact supports both selected-flow helicity sums and
 all-flow sums at a selected helicity. Consequently, `inspect` reports the
 static physical helicity and color-flow census, not a dense artifact axis or a
 topology-replay census. The relevant physical selection is constructed only
