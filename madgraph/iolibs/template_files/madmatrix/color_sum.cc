@@ -24,21 +24,42 @@ namespace mg5amcCpu
 %(color_matrix_lines)s
 
 #ifdef MGONGPUCPP_GPUIMPL
-  // The normalized color matrix (divide each column by denom)
+  // The normalized folded color matrix (divide each column by denom)
   template<typename T>
   struct NormalizedColorMatrix
   {
     constexpr __host__ __device__ NormalizedColorMatrix()
       : value()
     {
-      for( int icol = 0; icol < ncolor; icol++ )
-        for( int jcol = 0; jcol < ncolor; jcol++ )
-          value[icol * ncolor + jcol] = colorMatrix[icol][jcol] / colorDenom[icol];
+      for( int ifold = 0; ifold < ncolorfold; ifold++ )
+        for( int jfold = 0; jfold < ncolorfold; jfold++ )
+          value[ifold * ncolorfold + jfold] = colorMatrix[ifold][jfold] / colorDenom[ifold];
+    }
+    T value[ncolorfold * ncolorfold];
+  };
+  // The fptype2 version is the default used by kernels (supporting mixed floating point mode)
+  static __device__ fptype2 s_pNormalizedColorMatrixFold2[ncolorfold * ncolorfold];
+#ifndef MGONGPU_HAS_NO_BLAS
+  // The same matrix spread back over the ncolor unfolded color flows, which is what BLAS
+  // multiplies: the rows and columns of the flows which are not kept are left at zero, so
+  // the dropped flows contribute nothing and the product is the folded sum written out in
+  // full. The BLAS color sum is therefore NOT folded - it does the same ncolor x ncolor
+  // work it did before - but it takes its numbers from the one folded matrix which is
+  // written out, so it cannot drift away from what the kernel computes.
+  template<typename T>
+  struct UnfoldedNormalizedColorMatrix
+  {
+    constexpr __host__ __device__ UnfoldedNormalizedColorMatrix()
+      : value()
+    {
+      for( int ifold = 0; ifold < ncolorfold; ifold++ )
+        for( int jfold = 0; jfold < ncolorfold; jfold++ )
+          value[hostColorFoldRep[ifold] * ncolor + hostColorFoldRep[jfold]] = colorMatrix[ifold][jfold] / colorDenom[ifold];
     }
     T value[ncolor * ncolor];
   };
-  // The fptype2 version is the default used by kernels (supporting mixed floating point mode also in blas)
   static __device__ fptype2 s_pNormalizedColorMatrix2[ncolor * ncolor];
+#endif
 #endif
 
   //--------------------------------------------------------------------------
@@ -51,7 +72,11 @@ namespace mg5amcCpu
     {
       first = false;
       constexpr NormalizedColorMatrix<fptype2> normalizedColorMatrix2;
-      gpuMemcpyToSymbol( s_pNormalizedColorMatrix2, normalizedColorMatrix2.value, ncolor * ncolor * sizeof( fptype2 ) );
+      gpuMemcpyToSymbol( s_pNormalizedColorMatrixFold2, normalizedColorMatrix2.value, ncolorfold * ncolorfold * sizeof( fptype2 ) );
+#ifndef MGONGPU_HAS_NO_BLAS
+      constexpr UnfoldedNormalizedColorMatrix<fptype2> unfoldedNormalizedColorMatrix2;
+      gpuMemcpyToSymbol( s_pNormalizedColorMatrix2, unfoldedNormalizedColorMatrix2.value, ncolor * ncolor * sizeof( fptype2 ) );
+#endif
     }
   }
 #endif
@@ -71,64 +96,62 @@ namespace mg5amcCpu
       __host__ __device__ constexpr TriangularNormalizedColorMatrix()
         : value()
       {
-        for( int icol = 0; icol < ncolor; icol++ )
+        for( int ifold = 0; ifold < ncolorfold; ifold++ )
         {
           // Diagonal terms
-          value[icol][icol] = colorMatrix[icol][icol] / colorDenom[icol];
+          value[ifold][ifold] = colorMatrix[ifold][ifold] / colorDenom[ifold];
           // Off-diagonal terms
-          for( int jcol = icol + 1; jcol < ncolor; jcol++ )
-            value[icol][jcol] = 2 * colorMatrix[icol][jcol] / colorDenom[icol];
+          for( int jfold = ifold + 1; jfold < ncolorfold; jfold++ )
+            value[ifold][jfold] = 2 * colorMatrix[ifold][jfold] / colorDenom[ifold];
         }
       }
-      fptype2 value[ncolor][ncolor];
+      fptype2 value[ncolorfold][ncolorfold];
     };
     static constexpr auto cf2 = TriangularNormalizedColorMatrix();
     // Use the property that M is a real matrix (see #475):
     // we can rewrite the quadratic form (A-iB)(M)(A+iB) as AMA - iBMA + iBMA + BMB = AMA + BMB
     // In addition, on C++ use the property that M is symmetric (see #475),
-    // and also use constexpr to compute "2*" and "/colorDenom[icol]" once and for all at compile time:
+    // and also use constexpr to compute "2*" and "/colorDenom[ifold]" once and for all at compile time:
     // we gain (not a factor 2...) in speed here as we only loop over the up diagonal part of the matrix.
     // Strangely, CUDA is slower instead, so keep the old implementation for the moment.
     fptype_sv deltaMEs = { 0 };
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     fptype_sv deltaMEs_next = { 0 };
-    // Mixed mode: merge two neppV vectors into one neppV2 vector
-    fptype2_sv jampR_sv[ncolor];
-    fptype2_sv jampI_sv[ncolor];
-    for( int icol = 0; icol < ncolor; icol++ )
-    {
-      jampR_sv[icol] = fpvmerge( cxreal( allJamp_sv[icol] ), cxreal( allJamp_sv[ncolor + icol] ) );
-      jampI_sv[icol] = fpvmerge( cximag( allJamp_sv[icol] ), cximag( allJamp_sv[ncolor + icol] ) );
-    }
-#else
-    const cxtype_sv* jamp_sv = allJamp_sv;
 #endif
-    // Loop over icol
-    for( int icol = 0; icol < ncolor; icol++ )
+    // Gather the color flows the sum runs over: one per reversal pair when the color basis
+    // folds (ncolorfold < ncolor), every flow otherwise (ncolorfold == ncolor, identity map).
+    // NB in mixed mode the two neppV vectors of allJamp_sv, at icol and at ncolor+icol, are
+    // two halves of the event page and not two colors: it is the color index inside each of
+    // them which is gathered, and the two are merged into one neppV2 vector.
+    fptype2_sv jampR_sv[ncolorfold];
+    fptype2_sv jampI_sv[ncolorfold];
+    for( int ifold = 0; ifold < ncolorfold; ifold++ )
+    {
+      const int icol = colorFoldRep[ifold];
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+      jampR_sv[ifold] = fpvmerge( cxreal( allJamp_sv[icol] ), cxreal( allJamp_sv[ncolor + icol] ) );
+      jampI_sv[ifold] = fpvmerge( cximag( allJamp_sv[icol] ), cximag( allJamp_sv[ncolor + icol] ) );
+#else
+      jampR_sv[ifold] = (fptype2_sv)( cxreal( allJamp_sv[icol] ) );
+      jampI_sv[ifold] = (fptype2_sv)( cximag( allJamp_sv[icol] ) );
+#endif
+    }
+    // Loop over ifold
+    for( int ifold = 0; ifold < ncolorfold; ifold++ )
     {
       // Diagonal terms
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-      fptype2_sv& jampRi_sv = jampR_sv[icol];
-      fptype2_sv& jampIi_sv = jampI_sv[icol];
-#else
-      fptype2_sv jampRi_sv = (fptype2_sv)( cxreal( jamp_sv[icol] ) );
-      fptype2_sv jampIi_sv = (fptype2_sv)( cximag( jamp_sv[icol] ) );
-#endif
-      fptype2_sv ztempR_sv = cf2.value[icol][icol] * jampRi_sv;
-      fptype2_sv ztempI_sv = cf2.value[icol][icol] * jampIi_sv;
-      // Loop over jcol
-      for( int jcol = icol + 1; jcol < ncolor; jcol++ )
+      fptype2_sv& jampRi_sv = jampR_sv[ifold];
+      fptype2_sv& jampIi_sv = jampI_sv[ifold];
+      fptype2_sv ztempR_sv = cf2.value[ifold][ifold] * jampRi_sv;
+      fptype2_sv ztempI_sv = cf2.value[ifold][ifold] * jampIi_sv;
+      // Loop over jfold
+      for( int jfold = ifold + 1; jfold < ncolorfold; jfold++ )
       {
         // Off-diagonal terms
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-        fptype2_sv& jampRj_sv = jampR_sv[jcol];
-        fptype2_sv& jampIj_sv = jampI_sv[jcol];
-#else
-        fptype2_sv jampRj_sv = (fptype2_sv)( cxreal( jamp_sv[jcol] ) );
-        fptype2_sv jampIj_sv = (fptype2_sv)( cximag( jamp_sv[jcol] ) );
-#endif
-        ztempR_sv += cf2.value[icol][jcol] * jampRj_sv;
-        ztempI_sv += cf2.value[icol][jcol] * jampIj_sv;
+        fptype2_sv& jampRj_sv = jampR_sv[jfold];
+        fptype2_sv& jampIj_sv = jampI_sv[jfold];
+        ztempR_sv += cf2.value[ifold][jfold] * jampRj_sv;
+        ztempI_sv += cf2.value[ifold][jfold] * jampIj_sv;
       }
       fptype2_sv deltaMEs2 = ( jampRi_sv * ztempR_sv + jampIi_sv * ztempI_sv ); // may underflow #831
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
@@ -167,40 +190,42 @@ namespace mg5amcCpu
       allJamps = allJamps + ighel * nevtIfAllHelicities; // Jamps for one specific helicity ighel
     }
     using J_ACCESS = DeviceAccessJamp;
-    fptype jampR[ncolor];
-    fptype jampI[ncolor];
-    for( int icol = 0; icol < ncolor; icol++ )
+    // Gather the color flows the sum runs over: one per reversal pair when the color basis
+    // folds (ncolorfold < ncolor), every flow otherwise (ncolorfold == ncolor, identity map)
+    fptype jampR[ncolorfold];
+    fptype jampI[ncolorfold];
+    for( int ifold = 0; ifold < ncolorfold; ifold++ )
     {
       constexpr int ihel0 = 0; // the input buffer allJamps already points to a specific helicity
-      cxtype jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, icol, ihel0, nGoodHel );
-      jampR[icol] = jamp.real();
-      jampI[icol] = jamp.imag();
+      cxtype jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, colorFoldRep[ifold], ihel0, nGoodHel );
+      jampR[ifold] = jamp.real();
+      jampI[ifold] = jamp.imag();
     }
-    // Loop over icol
+    // Loop over ifold
     fptype deltaMEs = { 0 };
-    for( int icol = 0; icol < ncolor; icol++ )
+    for( int ifold = 0; ifold < ncolorfold; ifold++ )
     {
       fptype2 ztempR = { 0 };
       fptype2 ztempI = { 0 };
-      fptype2 jampRi = jampR[icol];
-      fptype2 jampIi = jampI[icol];
-      // OLD IMPLEMENTATION (ihel3: symmetric square matrix) - Loop over all jcol
-      //for( int jcol = 0; jcol < ncolor; jcol++ )
+      fptype2 jampRi = jampR[ifold];
+      fptype2 jampIi = jampI[ifold];
+      // OLD IMPLEMENTATION (ihel3: symmetric square matrix) - Loop over all jfold
+      //for( int jfold = 0; jfold < ncolorfold; jfold++ )
       //{
-      //  fptype2 jampRj = jampR[jcol];
-      //  fptype2 jampIj = jampI[jcol];
-      //  ztempR += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype2 version of color matrix
-      //  ztempI += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype2 version of color matrix
+      //  fptype2 jampRj = jampR[jfold];
+      //  fptype2 jampIj = jampI[jfold];
+      //  ztempR += s_pNormalizedColorMatrixFold2[ifold * ncolorfold + jfold] * jampRj; // use fptype2 version of color matrix
+      //  ztempI += s_pNormalizedColorMatrixFold2[ifold * ncolorfold + jfold] * jampIj; // use fptype2 version of color matrix
       //}
-      // NEW IMPLEMENTATION #475 (ihel3p1: triangular lower diagonal matrix) - Loop over jcol < icol
-      ztempR += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampRi; // use fptype2 version of color matrix
-      ztempI += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampIi; // use fptype2 version of color matrix
-      for( int jcol = 0; jcol < icol; jcol++ )
+      // NEW IMPLEMENTATION #475 (ihel3p1: triangular lower diagonal matrix) - Loop over jfold < ifold
+      ztempR += s_pNormalizedColorMatrixFold2[ifold * ncolorfold + ifold] * jampRi; // use fptype2 version of color matrix
+      ztempI += s_pNormalizedColorMatrixFold2[ifold * ncolorfold + ifold] * jampIi; // use fptype2 version of color matrix
+      for( int jfold = 0; jfold < ifold; jfold++ )
       {
-        fptype2 jampRj = jampR[jcol];
-        fptype2 jampIj = jampI[jcol];
-        ztempR += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype2 version of color matrix
-        ztempI += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype2 version of color matrix
+        fptype2 jampRj = jampR[jfold];
+        fptype2 jampIj = jampI[jfold];
+        ztempR += 2 * s_pNormalizedColorMatrixFold2[ifold * ncolorfold + jfold] * jampRj; // use fptype2 version of color matrix
+        ztempI += 2 * s_pNormalizedColorMatrixFold2[ifold * ncolorfold + jfold] * jampIj; // use fptype2 version of color matrix
       }
       deltaMEs += ztempR * jampRi;
       deltaMEs += ztempI * jampIi;
@@ -271,6 +296,13 @@ namespace mg5amcCpu
                   const int gputhreads )        // input: cuda gputhreads
   {
     const int nevt = gpublocks * gputhreads;
+
+    // NB: unlike color_sum_cpu and color_sum_kernel, the BLAS color sum is NOT folded onto one
+    // color flow per reversal pair. Folding it would mean compacting allJamps from ncolor down
+    // to ncolorfold, which the jamps are not written in, so it would take a gather kernel and a
+    // second buffer. Instead the matrix it multiplies is the folded one spread back over the
+    // ncolor flows (see UnfoldedNormalizedColorMatrix): same numbers, same ncolor x ncolor work
+    // as before. Compacting the jamps would make this a factor 4 cheaper and is left to do.
 
     // Get the address associated with the normalized color matrix in device memory
     static fptype2* devNormColMat = nullptr;

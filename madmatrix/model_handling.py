@@ -1462,13 +1462,17 @@ import madgraph.core.base_objects as base_objects
 # (NB: enable this via ProcessExporterMadMatrix.oneprocessclass in output.py)
 # (NB: use this directly also in MadMatrixUFOModelConverter.read_template_file)
 # (NB: use this directly also in MadMatrixGPUFOHelasCallWriter.super_get_matrix_element_calls)
-class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
+class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
+                                  export_mg7.OneProcessExporterMG7):
     # Class structure information
     #  - object
     #  - OneProcessExporterCPP(object) [in madgraph/iolibs/export_cpp.py]
     #  - OneProcessExporterMG7(OneProcessExporterCPP) [in madgraph/iolibs/export_mg7.py]
     #  - OneProcessExporterMadMatrix(OneProcessExporterCPP)
     #      This class
+
+    # Sum |M|^2 over one color flow per reversal pair (color_sum.cc)
+    jamp_fold = True
 
     # AV - change defaults from export_cpp.OneProcessExporterCPP
     cc_ext = 'cc' # create CPPProcess.cc
@@ -2166,6 +2170,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         else:
             return replace_dict
 
+    # The folded color matrix is always written out, never rebuilt at run time
+    # as the fortran output can do, and folded it is a quarter of the size of
+    # the matrix which would be written otherwise. So take every folding found.
+    def jamp_fold_worthwhile(self, sign, nb_pairs):
+        return True
+
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix fptype and improve formatting)
     def set_color_flow_lines_cpp(self, matrix_element, replace_dict):
         """Fill in replace_dict everything the process template needs to know
@@ -2211,31 +2221,89 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                      sum(len(row) for row in projection))
 
     def get_color_matrix_lines(self, matrix_element):
-        """Return the color matrix definition lines for this matrix element. Split rows in chunks of size n."""
-        import madgraph.core.color_algebra as color
+        """Return the color matrix definition lines for this matrix element. Split rows in chunks of size n.
+
+        |M|^2 is summed over one color flow per reversal pair when the basis
+        allows it (see ColorReflectionFolding), so what is written out is the
+        color matrix folded onto those flows, together with the list of the
+        flows kept. Without a folding every flow is its own representative and
+        the matrix is the plain one."""
         if not matrix_element.get('color_matrix'):
-            return '\n'.join(['  static constexpr fptype2 colorDenom[1] = {1.};', 'static const fptype2 cf[1][1] = {1.};'])
+            return '\n'.join([
+                self.get_color_fold_lines(None, 1),
+                '  static constexpr fptype2 colorDenom[1] = {1.};',
+                '  static constexpr fptype2 colorMatrix[1][1] = {1.};'])
         else:
-            color_denominators = matrix_element.get('color_matrix').\
-                                                 get_line_denominators()
-            denom_string = '  static constexpr fptype2 colorDenom[ncolor] = { %s }; // 1-D array[%i]' \
-                           % ( ', '.join(['%i' % denom for denom in color_denominators]), len(color_denominators) )
-            matrix_strings = []
-            for index, denominator in enumerate(color_denominators):
-                # Then write the numerators for the matrix elements
-                num_list = matrix_element.get('color_matrix').get_line_numerators(index, denominator)
-                matrix_strings.append('{ %s }' % ', '.join(['%d' % i for i in num_list]))
-            matrix_string = '  static constexpr fptype2 colorMatrix[ncolor][ncolor] = '
+            folding = self.get_jamp_folding(matrix_element)
+            if folding:
+                denominator, rows = self.jamp_folded_color_matrix(
+                    matrix_element, folding['reverse'], folding['sign'])
+                color_denominators = [denominator] * len(rows)
+                num_lists = rows
+                ncolor = len(folding['reverse'])
+            else:
+                color_denominators = matrix_element.get('color_matrix').\
+                                                     get_line_denominators()
+                num_lists = [matrix_element.get('color_matrix').
+                                 get_line_numerators(index, denominator)
+                             for index, denominator
+                             in enumerate(color_denominators)]
+                ncolor = len(color_denominators)
+            nfold = len(color_denominators)
+            denom_string = '  static constexpr fptype2 colorDenom[ncolorfold] = { %s }; // 1-D array[%i]' \
+                           % ( ', '.join(['%i' % denom for denom in color_denominators]), nfold )
+            matrix_strings = ['{ %s }' % ', '.join(['%d' % i for i in num_list])
+                              for num_list in num_lists]
+            matrix_string = '  static constexpr fptype2 colorMatrix[ncolorfold][ncolorfold] = '
             if len( matrix_strings ) > 1:
                 matrix_string += '{\n    ' + ',\n    '.join(matrix_strings) + ' };'
             else:
                 matrix_string += '{ ' + matrix_strings[0] + ' };'
-            matrix_string += ' // 2-D array[%i][%i]' % ( len(color_denominators), len(color_denominators) )
-            denom_comment = '\n  // The color denominators (initialize all array elements, with ncolor=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % len(color_denominators)
-            matrix_comment = '\n  // The color matrix (initialize all array elements, with ncolor=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % len(color_denominators)
+            matrix_string += ' // 2-D array[%i][%i]' % ( nfold, nfold )
+            denom_comment = '\n  // The color denominators (initialize all array elements, with ncolorfold=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % nfold
+            matrix_comment = '\n  // The color matrix (initialize all array elements, with ncolorfold=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % nfold
             denom_string = denom_comment + denom_string
             matrix_string = matrix_comment + matrix_string
-            return '\n'.join([denom_string, matrix_string])
+            return '\n'.join([self.get_color_fold_lines(folding, ncolor),
+                              denom_string, matrix_string])
+
+    @staticmethod
+    def get_color_fold_lines(folding, ncolor):
+        """The number of color flows the sum runs over and which flow it keeps
+        out of every reversal pair. Without a folding this is every flow."""
+
+        if folding:
+            representatives = folding['representatives']
+            comment = (
+                '\n  // Reversing a color flow gives the same flow back up to an overall sign\n'
+                '  // (JAMP[reverse(i)] = %+i * JAMP[i] here), so only one flow of each reversal\n'
+                '  // pair carries anything of its own: |M|^2 is summed over those, against the\n'
+                '  // color matrix folded onto them (see ColorReflectionFolding in export_v4.py).\n'
+                % folding['sign'])
+        else:
+            representatives = list(range(ncolor))
+            comment = (
+                '\n  // Reversal does not map this color basis onto itself up to one overall\n'
+                '  // sign, so every color flow enters the sum on its own.\n')
+        chunks = [', '.join('%i' % line for line in representatives[start:start + 20])
+                  for start in range(0, len(representatives), 20)]
+        values = '{\n    ' + ',\n    '.join(chunks) + ' }'
+        # colorFoldRep is indexed at run time inside the GPU kernel, so it has to
+        # live in device memory, and a host copy is needed next to it: same split
+        # as channel2iconfig/hostChannel2iconfig in coloramps.h
+        return comment + \
+            '  constexpr int ncolorfold = %i; // the number of color flows |M|^2 is summed over\n' % len(representatives) + \
+            '  // Which color flow of each reversal pair is kept (C indexing, in [0, ncolor-1])\n' + \
+            '  // (NB: this array is created on the host in C++ code and on the device in GPU code)\n' + \
+            '  __device__ constexpr int colorFoldRep[ncolorfold] = %s; // 1-D array[%i]\n' \
+            % (values, len(representatives)) + \
+            '#ifdef MGONGPUCPP_GPUIMPL\n' + \
+            '  // Host copy of the colorFoldRep array (needed to fold the color matrix at compile time)\n' + \
+            '  constexpr int hostColorFoldRep[ncolorfold] = %s; // 1-D array[%i]\n' \
+            % (values, len(representatives)) + \
+            '#else\n' + \
+            '  constexpr const int* hostColorFoldRep = colorFoldRep;\n' + \
+            '#endif'
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (improve formatting)
     def get_initProc_lines(self, matrix_element, color_amplitudes):
