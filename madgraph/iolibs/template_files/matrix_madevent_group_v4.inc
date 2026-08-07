@@ -124,7 +124,7 @@ C  To be able to control when the matrix<i> subroutine can add entries to the gr
 C
 C  FUNCTION
 C
-   INTEGER BROKEN_SYM%(proc_id)s
+   INTEGER BROKEN_SYM%(proc_id)s%(blas_smatrix_decl)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -148,9 +148,9 @@ C ----------
 !   If the helicity grid status is 0, this means that it is not yet initialized.
 !   If HEL_PICKED==-1, this means that calls to other matrix<i> where in initialization mode as well for the helicity.
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
-      DO I=1,NCOMB
+%(blas_branch)s      DO I=1,NCOMB
          IF (GOODHEL(I,IFLAV,%(proc_id)s) .OR. NTRY(IFLAV,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)) THEN
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC)
+            T=%(blas_matrix_call)s
             %(beam_polarization)s
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
 			  call DS_add_entry('Helicity',I,T)
@@ -197,7 +197,7 @@ C ----------
 C           The helicity configuration was chosen already by genps and put in a common block defined in genps.inc.
             I = HEL_PICKED
 
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC%(blas_matrix_args)s)
 
             %(beam_polarization)s
 c           Always one helicity at a time
@@ -274,7 +274,7 @@ C     Returns the flavor array for a given flavor index IFLAV
       END
 
 
-REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IHEL,AMP2, JAMP2, IVEC)
+REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IHEL,AMP2, JAMP2, IVEC%(blas_arg)s)
 C  
 %(info_lines)s
 C
@@ -328,7 +328,7 @@ C
     INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1)/2)
     INTEGER DENOM, CF_INDEX
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
-    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_decl)s
 %(color_fold_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
@@ -400,9 +400,9 @@ JAMP(:,:) = (0d0,0d0)
       ENDDO
     endif	
 
-%(color_fold_gather)s
+%(color_fold_gather)s%(blas_gather)s
     MATRIX%(proc_id)s = 0.D0 
-	DO M = 1, NAMPSO
+	DO M = 1, NAMPSO%(blas_gate)s
       CF_INDEX = 0
       DO I = 1, NCOLORFOLD
         ZTEMP = (0.D0,0.D0)
@@ -473,6 +473,6 @@ JAMP(:,:) = (0d0,0d0)
     end
     
 
-%(color_init_routine)s
+%(color_init_routine)s%(blas_routine)s
 
     %(broken_sym_function)s
