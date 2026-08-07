@@ -372,9 +372,8 @@ C
       INCLUDE 'genps.inc'
       INCLUDE 'nexternal.inc'
       INCLUDE 'maxamps.inc'
-      INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
+      INTEGER    NWAVEFUNCS,     NCOLOR
       PARAMETER (NWAVEFUNCS=5, NCOLOR=2)
-      PARAMETER (NCOLORFOLD=2)
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
       COMPLEX*16 IMAG1
@@ -398,13 +397,10 @@ C
 C     LOCAL VARIABLES 
 C     
       INTEGER I,J,M,N
-      COMPLEX*16 ZTEMP
-      COMPLEX*16 TMP_JAMP(0)
-
-      INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1)/2)
+      COMPLEX*16 ZTEMP, TMP_JAMP(0)
+      INTEGER CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER DENOM, CF_INDEX
       COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
-
       TYPE(ALOHA) W(NWAVEFUNCS)
 C     Needed for v4 models
       COMPLEX*16 DUM0,DUM1
@@ -452,7 +448,6 @@ C
 C     1 T(2,1) T(3,4)
       DATA (CF(I),I=  3,  3) /9/
 C     1 T(2,4) T(3,1)
-
 C     ----------
 C     BEGIN CODE
 C     ----------
@@ -515,13 +510,12 @@ C     JAMPs contributing to orders ALL_ORDERS=1
         ENDDO
       ENDIF
 
-
       MATRIX1 = 0.D0
       DO M = 1, NAMPSO
         CF_INDEX = 0
-        DO I = 1, NCOLORFOLD
+        DO I = 1, NCOLOR
           ZTEMP = (0.D0,0.D0)
-          DO J = I, NCOLORFOLD
+          DO J = I, NCOLOR
             CF_INDEX = CF_INDEX + 1
             ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
           ENDDO
