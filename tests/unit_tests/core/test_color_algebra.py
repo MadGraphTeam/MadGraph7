@@ -166,6 +166,11 @@ class ColorObjectTest(unittest.TestCase):
         self.assertEqual(my_f.simplify(),
                          color.ColorFactor([col_str1, col_str2]))
 
+        # f is real, so complex conjugation must NOT reverse the indices
+        # (which would flip the sign of the totally antisymmetric f)
+        self.assertEqual(color.f(1, 2, 3).complex_conjugate(),
+                         color.f(1, 2, 3))
+
     def test_d_object(self):
         """Test the d color object"""
         # T should have exactly 3 indices!

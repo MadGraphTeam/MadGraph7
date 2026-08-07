@@ -17,6 +17,7 @@
 color information for diagrams."""
 
 from __future__ import absolute_import
+import collections
 import copy
 import fractions
 
@@ -997,3 +998,133 @@ class ColorSquareTest(unittest.TestCase):
                 self.assertEqual(node, representative[line])
                 self.assertEqual([rows[node][perm[j]]
                                   for j in range(len(keys))], rows[line])
+
+
+class DDMColorBasisTest(unittest.TestCase):
+    """Test the Del Duca-Dixon-Maltoni (n-2)! adjoint color basis"""
+
+    mypartlist = base_objects.ParticleList()
+    myinterlist = base_objects.InteractionList()
+    mymodel = base_objects.Model()
+
+    def setUp(self):
+        # same gluon + quark model as ColorSquareTest, built only once
+        if not len(self.mypartlist):
+            ColorSquareTest.setUp(self)
+        color_amp.set_ddm_basis(True)
+
+    def tearDown(self):
+        color_amp.set_ddm_basis(False)
+
+    def get_amplitude(self, ids):
+        """Amplitude for the process with the given pdg codes, the first two
+        being in the initial state."""
+
+        myleglist = base_objects.LegList()
+        for i, pdg in enumerate(ids):
+            myleglist.append(base_objects.Leg({'id': pdg, 'state': i > 1}))
+
+        myamplitude = diagram_generation.Amplitude()
+        myamplitude.set('process', base_objects.Process({'legs': myleglist,
+                                                    'model': self.mymodel}))
+        myamplitude.generate_diagrams()
+
+        return myamplitude
+
+    def test_ddm_half_ladder(self):
+        """The half-ladder structures written down explicitly"""
+
+        self.assertEqual(color_amp.ddm_half_ladder((2,), 1, 3),
+                         (('f', (1, 2, 3)),))
+        self.assertEqual(color_amp.ddm_half_ladder((3, 2), 1, 4),
+                         (('f', (-1, 2, 4)), ('f', (1, 3, -1))))
+        self.assertEqual(color_amp.ddm_half_ladder((2, 3, 4), 1, 5),
+                         (('f', (-2, 4, 5)), ('f', (-1, 3, -2)),
+                          ('f', (1, 2, -1))))
+
+    def test_ddm_basis_size_multi_gluons(self):
+        """The DDM basis of gg > n*g has (n+2-2)! elements instead of (n+1)!"""
+
+        for n, size in enumerate([1, 2, 6, 24]):
+            amplitude = self.get_amplitude([21] * (n + 3))
+            self.assertEqual(len(color_amp.ColorBasis(amplitude)), size)
+
+    def test_ddm_reduction_matches_trace_basis(self):
+        """Expanding the DDM decomposition of every diagram back on the trace
+        basis must give the direct trace decomposition."""
+
+        def trace_expand(col_str):
+            res = collections.defaultdict(fractions.Fraction)
+            for cs in color.ColorFactor([col_str]).full_simplify():
+                res[(cs.to_immutable(), cs.is_imaginary, cs.Nc_power)] += \
+                                                                     cs.coeff
+            return dict((k, v) for k, v in res.items() if v)
+
+        for nb_gluons in range(3, 6):
+            amplitude = self.get_amplitude([21] * nb_gluons)
+            col_basis = color_amp.ColorBasis()
+            color_dicts = col_basis.create_color_dict_list(amplitude)
+            ends = col_basis.get_ddm_ends()
+            self.assertEqual(ends, (1, nb_gluons))
+
+            nb_checked = 0
+            for color_dict in color_dicts:
+                for col_str in color_dict.values():
+                    via_ddm = collections.defaultdict(fractions.Fraction)
+                    for ddm_str in color_amp.reduce_to_ddm(col_str, *ends):
+                        for k, v in trace_expand(ddm_str).items():
+                            via_ddm[k] += v
+                    self.assertEqual(trace_expand(col_str),
+                                dict((k, v) for k, v in via_ddm.items() if v))
+                    nb_checked += 1
+            self.assertTrue(nb_checked > 0)
+
+    def test_ddm_color_matrix_gg_gg(self):
+        """The 2x2 DDM color matrix of gg > gg, N^2(N^2-1) on the diagonal and
+        half of it off diagonal"""
+
+        col_basis = color_amp.ColorBasis(self.get_amplitude([21] * 4))
+        col_matrix = color_amp.ColorMatrix(col_basis, Nc=3)
+
+        self.assertEqual(len(col_basis), 2)
+        for i, j, goal in [(0, 0, 72), (1, 1, 72), (0, 1, 36), (1, 0, 36)]:
+            self.assertEqual(col_matrix.col_matrix_fixed_Nc[(i, j)],
+                             (fractions.Fraction(goal, 1), 0))
+
+    def test_ddm_color_matrix_is_positive_definite(self):
+        """A Gram matrix of real color tensors: the diagonal must be positive
+        and the matrix symmetric, for an even as well as an odd number of
+        gluons."""
+
+        for nb_gluons in range(3, 6):
+            col_basis = color_amp.ColorBasis(self.get_amplitude([21] * nb_gluons))
+            col_matrix = color_amp.ColorMatrix(col_basis, Nc=3)
+            for i in range(len(col_basis)):
+                real, imag = col_matrix.col_matrix_fixed_Nc[(i, i)]
+                self.assertTrue(real > 0)
+                self.assertEqual(imag, 0)
+                for j in range(len(col_basis)):
+                    self.assertEqual(col_matrix.col_matrix_fixed_Nc[(i, j)],
+                                     col_matrix.col_matrix_fixed_Nc[(j, i)])
+
+    def test_ddm_fall_back_on_trace_basis(self):
+        """Processes which are not fully adjoint keep the trace basis"""
+
+        # u u~ > g g has T objects in its color structures
+        col_basis = color_amp.ColorBasis(self.get_amplitude([2, -2, 21, 21]))
+        self.assertEqual(col_basis._ddm_ends, None)
+        self.assertEqual(len(col_basis), 2)
+
+        # and so has u u~ > u u~
+        col_basis = color_amp.ColorBasis(self.get_amplitude([2, -2, 2, -2]))
+        self.assertEqual(col_basis._ddm_ends, None)
+        self.assertEqual(len(col_basis), 2)
+
+    def test_ddm_no_color_flow_decomposition(self):
+        """The color flow decomposition is not defined in the DDM basis, and
+        must say so instead of returning something wrong."""
+
+        col_basis = color_amp.ColorBasis(self.get_amplitude([21] * 4))
+        self.assertRaises(color_amp.ColorBasis.ColorBasisError,
+                          col_basis.color_flow_decomposition,
+                          {1: 8, 2: 8, 3: 8, 4: 8}, 2)

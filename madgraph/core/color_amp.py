@@ -22,6 +22,8 @@ import collections
 import copy
 import fractions
 import itertools
+import itertools
+import logging
 import operator
 import re
 import array
@@ -35,6 +37,242 @@ from functools import reduce
 
 if madgraph.ordering:
     set = misc.OrderedSet
+
+logger = logging.getLogger('madgraph.color_amp')
+
+#===============================================================================
+# Del Duca-Dixon-Maltoni (adjoint) color basis
+#===============================================================================
+# For a process whose color structure is purely adjoint (all colored external
+# legs are octets) the historical trace basis Tr(1,sigma(2),...,sigma(n)) has
+# (n-1)! elements while, thanks to the Jacobi identity, the color factor of any
+# such amplitude can be written on the (n-2)! "half-ladder" (multi-peripheral)
+# structures
+#     F(sigma) = f(1,sigma(2),x1) f(x1,sigma(3),x2) ... f(x(n-3),sigma(n-1),n)
+# where legs 1 and n are kept fixed at the two ends of the ladder. This is the
+# Del Duca-Dixon-Maltoni basis. Using it divides the number of JAMPs by (n-1)
+# and the size of the color matrix by (n-1)^2.
+#
+# Module level switch selecting the color basis used for fully adjoint
+# processes. Set through 'set color_basis' in the MG5 interface (the exporters
+# which need a color flow decomposition, i.e. anything writing leshouche
+# information, must keep the trace basis).
+ddm_basis = False
+# Whether the trace basis must be built next to the DDM one. Needed by the
+# output formats which have to assign a color flow to an event: the color sum
+# then runs over the (n-2)! DDM structures while the color flow probabilities
+# keep using the (n-1)! trace ones, obtained from the DDM JAMPs through the
+# Kleiss-Kuijf relations.
+ddm_flow_basis = False
+
+
+def set_ddm_basis(value, with_flow=False):
+    """Set the module wide switch selecting the DDM color basis."""
+
+    global ddm_basis, ddm_flow_basis
+    ddm_basis = bool(value)
+    ddm_flow_basis = ddm_basis and bool(with_flow)
+
+
+class DDMError(Exception):
+    """Raised when a color string cannot be mapped onto the DDM basis. Always
+    caught by ColorBasis.build, which then falls back on the trace basis."""
+
+
+def ddm_half_ladder(perm, first, last):
+    """Return the immutable color string of the DDM half-ladder structure
+        f(first,perm[0],-1) f(-1,perm[1],-2) ... f(-(m-1),perm[m-1],last)
+    for the ordered tuple perm of the (n-2) legs sitting between the two fixed
+    ends first and last."""
+
+    if len(perm) == 1:
+        col_objs = [color_algebra.f(first, perm[0], last)]
+    else:
+        col_objs = [color_algebra.f(first, perm[0], -1)]
+        col_objs.extend([color_algebra.f(-(i + 1), leg, -(i + 2)) \
+                         for i, leg in enumerate(perm[1:-1])])
+        col_objs.append(color_algebra.f(-(len(perm) - 1), perm[-1], last))
+
+    return color_algebra.ColorString(col_objs).to_immutable()
+
+
+def _reorder_sign(stored, wanted):
+    """Signature of the permutation bringing the three indices of an f object
+    from the order 'stored' to the order 'wanted'. f is totally antisymmetric,
+    so f(stored) = _reorder_sign(stored,wanted) * f(wanted)."""
+
+    perm = [stored.index(index) for index in wanted]
+    sign = 1
+    for i in range(len(perm)):
+        for j in range(i + 1, len(perm)):
+            if perm[i] > perm[j]:
+                sign = -sign
+
+    return sign
+
+
+class _ColorTree(object):
+    """A product of f objects seen as a tree: the f's are the nodes, the summed
+    (negative) indices the internal edges and the external (positive) indices
+    the leaves. Provides the reduction onto the DDM half-ladder basis."""
+
+    def __init__(self, col_str):
+        """Build the tree from a ColorString made of f objects only. Raise
+        DDMError as soon as the string is not a fully adjoint color tree."""
+
+        self.nodes = []
+        for col_obj in col_str:
+            if col_obj.__class__.__name__ == 'ColorOne':
+                continue
+            if type(col_obj) is not color_algebra.f:
+                raise DDMError("%s is not an f object" % str(col_obj))
+            self.nodes.append(tuple(col_obj))
+
+        if not self.nodes:
+            raise DDMError("empty color string")
+
+        # Locate each index. External indices must appear once, summed ones
+        # exactly twice and in two different nodes.
+        self.where = collections.defaultdict(list)
+        for i, node in enumerate(self.nodes):
+            if node[0] == node[1] or node[1] == node[2] or node[0] == node[2]:
+                raise DDMError("f object %s has repeated indices" % str(node))
+            for index in node:
+                self.where[index].append(i)
+
+        self.externals = []
+        nb_internal = 0
+        for index, nodes in self.where.items():
+            if index > 0:
+                if len(nodes) != 1:
+                    raise DDMError("external index %i appears %i times" % \
+                                                        (index, len(nodes)))
+                self.externals.append(index)
+            else:
+                if len(nodes) != 2:
+                    raise DDMError("summed index %i appears %i times" % \
+                                                        (index, len(nodes)))
+                nb_internal += 1
+
+        # A connected graph with V nodes and V-1 edges is a tree
+        if nb_internal != len(self.nodes) - 1:
+            raise DDMError("color structure is not a tree")
+
+    def _neighbour(self, index, node):
+        """The node sharing the summed index 'index' with node 'node'."""
+
+        first, second = self.where[index]
+        return second if first == node else first
+
+    def _spine(self, first, last):
+        """The list of nodes on the path going from the leaf 'first' to the
+        leaf 'last'."""
+
+        if first not in self.externals or last not in self.externals:
+            raise DDMError("legs %s and %s are not both external here" % \
+                                                              (first, last))
+        start = self.where[first][0]
+        end = self.where[last][0]
+
+        # Depth first search on the node tree, keeping track of the path
+        stack = [(start, None, [start])]
+        while stack:
+            node, from_index, path = stack.pop()
+            if node == end:
+                return path
+            for index in self.nodes[node]:
+                if index > 0 or index == from_index:
+                    continue
+                stack.append((self._neighbour(index, node), index,
+                              path + [self._neighbour(index, node)]))
+
+        raise DDMError("color structure is not connected")
+
+    def _subtree(self, index, from_node):
+        """Expansion of the adjoint matrix associated to the subtree hanging on
+        the edge 'index' of node 'from_node', as a list of
+        (sign, ordered tuple of legs). A single leaf gives the generator
+        itself, and a node with two children A and B gives the commutator
+        [M_B, M_A] (which is where the (n-2)! counting comes from)."""
+
+        if index > 0:
+            return [(1, (index,))]
+
+        node_i = self._neighbour(index, from_node)
+        node = self.nodes[node_i]
+        children = list(node)
+        children.remove(index)
+        alpha, beta = children
+        sign = _reorder_sign(node, (index, alpha, beta))
+
+        exp_a = self._subtree(alpha, node_i)
+        exp_b = self._subtree(beta, node_i)
+
+        result = []
+        for (sa, wa), (sb, wb) in itertools.product(exp_a, exp_b):
+            result.append((sign * sa * sb, wb + wa))
+            result.append((-sign * sa * sb, wa + wb))
+
+        return result
+
+    def reduce_to_ddm(self, first, last):
+        """Decompose the tree onto the DDM half-ladder basis with the legs
+        'first' and 'last' at the two ends. Returns {ordered legs: coefficient}
+        where the keys are the (n-2) other external legs in ladder order."""
+
+        spine = self._spine(first, last)
+
+        # Split each node of the spine into (incoming, hanging, outgoing)
+        global_sign = 1
+        hanging = []
+        for pos, node_i in enumerate(spine):
+            node = self.nodes[node_i]
+            if pos == 0:
+                in_index = first
+            else:
+                in_index = [i for i in node if i in self.nodes[spine[pos - 1]]][0]
+            if pos == len(spine) - 1:
+                out_index = last
+            else:
+                out_index = [i for i in node if i in self.nodes[spine[pos + 1]]][0]
+            off_index = [i for i in node if i not in (in_index, out_index)][0]
+            global_sign *= _reorder_sign(node, (in_index, off_index, out_index))
+            hanging.append(self._subtree(off_index, node_i))
+
+        # The whole structure is the matrix product M_m ... M_1 between the
+        # ends, and (M_i1 ... M_ik) contracted between 'last' and 'first' is the
+        # half-ladder with the legs in the reversed order.
+        result = collections.defaultdict(int)
+        for combination in itertools.product(*reversed(hanging)):
+            sign = global_sign
+            word = []
+            for term_sign, term_word in combination:
+                sign *= term_sign
+                word.extend(term_word)
+            result[tuple(reversed(word))] += sign
+
+        return dict((perm, coeff) for perm, coeff in result.items() if coeff)
+
+
+def reduce_to_ddm(col_str, first, last):
+    """Decompose the ColorString col_str (a product of f objects) onto the DDM
+    half-ladder basis, returning a ColorFactor whose strings are the basis
+    elements. Raise DDMError if col_str is not a fully adjoint color tree."""
+
+    decomposition = _ColorTree(col_str).reduce_to_ddm(first, last)
+
+    col_fact = color_algebra.ColorFactor()
+    for perm, coeff in decomposition.items():
+        new_str = color_algebra.ColorString()
+        new_str.from_immutable(ddm_half_ladder(perm, first, last))
+        new_str.coeff = col_str.coeff * coeff
+        new_str.is_imaginary = col_str.is_imaginary
+        new_str.Nc_power = col_str.Nc_power
+        new_str.loop_Nc_power = col_str.loop_Nc_power
+        col_fact.append(new_str)
+
+    return col_fact
+
 
 #===============================================================================
 # ColorBasis
@@ -60,6 +298,15 @@ class ColorBasis(dict):
     # Color objects whose canonical form is fully determined by
     # permute_immutable (Tr is cyclic, T is an open chain, ColorOne is empty).
     fast_relabel_objects = frozenset(['Tr', 'T', 'ColorOne'])
+
+    # Legs at the two ends of the DDM half-ladders (None for the trace basis)
+    _ddm_ends = None
+
+    # Trace basis built next to a DDM one, carrying the color flows
+    _flow_basis = None
+
+    # Dictionary to save the DDM decompositions already done
+    _ddm_dict = {}
 
 
     class ColorBasisError(Exception):
@@ -305,8 +552,128 @@ class ColorBasis(dict):
         self._fast_relabel_dict[canonical_rep] = verdict
         return fast if verdict else slow
 
+    def get_ddm_ends(self):
+        """If every color structure of this basis is a fully adjoint color tree
+        over one and the same set of external legs -- i.e. if the process is a
+        pure multi-gluon one -- return the two legs to be put at the ends of the
+        DDM half-ladders. Return None otherwise."""
+
+        legs = None
+        for colorize_dict in self._list_color_dict:
+            for col_str in colorize_dict.values():
+                externals = []
+                for col_obj in col_str:
+                    if col_obj.__class__.__name__ == 'ColorOne':
+                        continue
+                    if type(col_obj) is not color_algebra.f:
+                        return None
+                    externals.extend([i for i in col_obj if i > 0])
+                if len(externals) != len(set(externals)):
+                    return None
+                externals = sorted(externals)
+                if legs is None:
+                    legs = externals
+                    if len(legs) < 3:
+                        return None
+                elif legs != externals:
+                    return None
+
+        if legs is None:
+            return None
+
+        return (legs[0], legs[-1])
+
+    def update_color_basis_ddm(self, colorize_dict, index):
+        """Same as update_color_basis, but decomposing the color structures on
+        the (n-2)! DDM half-ladder basis instead of the (n-1)! trace one."""
+
+        first, last = self._ddm_ends
+
+        for col_chain, col_str in colorize_dict.items():
+            # The decomposition only depends on the tree structure, so
+            # normalize the summed indices to make the cache hit as often as
+            # possible.
+            repl_dict = {}
+            for col_obj in col_str:
+                for i in col_obj:
+                    if i < 0 and i not in repl_dict:
+                        repl_dict[i] = -len(repl_dict) - 1
+            canonical_str = col_str.create_copy()
+            canonical_str.replace_indices(repl_dict)
+            canonical_rep = canonical_str.to_immutable()
+
+            try:
+                decomposition = self._ddm_dict[canonical_rep]
+            except KeyError:
+                decomposition = _ColorTree(canonical_str).reduce_to_ddm(first,
+                                                                        last)
+                self._ddm_dict[canonical_rep] = decomposition
+
+            for perm, coeff in decomposition.items():
+                basis_entry = (index,
+                               col_chain,
+                               col_str.coeff * coeff,
+                               col_str.is_imaginary,
+                               col_str.Nc_power,
+                               col_str.loop_Nc_power)
+                immutable_col_str = ddm_half_ladder(perm, first, last)
+                try:
+                    self[immutable_col_str].append(basis_entry)
+                except KeyError:
+                    self[immutable_col_str] = [basis_entry]
+
+    def build_flow_basis(self):
+        """Build, next to the DDM basis, the trace basis which is the one
+        carrying the color flow information. Only the basis is built, not its
+        (n-1)!^2 color matrix, since the color sum stays in the DDM basis."""
+
+        flow_basis = ColorBasis()
+        flow_basis._list_color_dict = self._list_color_dict
+        for index, color_dict in enumerate(self._list_color_dict):
+            flow_basis.update_color_basis(color_dict, index)
+
+        self._flow_basis = flow_basis
+
+    def get_flow_basis(self):
+        """The color basis carrying the color flow information: the trace basis
+        built next to the DDM one, or simply self for a trace basis."""
+
+        return self._flow_basis if self._flow_basis else self
+
+    def get_flow_projection(self):
+        """Return the Kleiss-Kuijf relations giving each trace JAMP as a linear
+        combination of the DDM ones, i.e. the coefficients of the expansion of
+        the half-ladders on the trace basis, transposed. The format is the one
+        of get_color_amplitudes, so that the same writers can be used: a list
+        (one entry per element of the flow basis) of
+        ((1, coefficient, is_imaginary, Nc power), DDM basis index+1)."""
+
+        if not self._flow_basis:
+            raise ColorBasis.ColorBasisError(
+                              "No flow basis attached to this color basis")
+
+        flow_index = dict((struct, i) for i, struct in \
+                          enumerate(sorted(self._flow_basis.keys())))
+        projection = [[] for i in range(len(flow_index))]
+
+        for i, struct in enumerate(sorted(self.keys())):
+            col_str = color_algebra.ColorString()
+            col_str.from_immutable(struct)
+            for cs in color_algebra.ColorFactor([col_str]).full_simplify():
+                try:
+                    row = flow_index[cs.to_immutable()]
+                except KeyError:
+                    raise ColorBasis.ColorBasisError(
+                        "The half-ladder %s expands on the trace structure %s "
+                        "which is not part of the flow basis" % \
+                        (str(col_str), str(cs)))
+                projection[row].append(((1, cs.coeff, cs.is_imaginary,
+                                         cs.Nc_power), i + 1))
+
+        return projection
+
     def update_color_basis(self, colorize_dict, index):
-        """Update the current color basis by adding information from 
+        """Update the current color basis by adding information from
         the colorize dictionary (produced by the colorize routine)
         associated to diagram with index index. Keep track of simplification
         results for maximal optimization."""
@@ -400,17 +767,33 @@ class ColorBasis(dict):
 
     def build(self, amplitude=None):
         """Build the a color basis object using information contained in
-        amplitude (otherwise use info from _list_color_dict). 
+        amplitude (otherwise use info from _list_color_dict).
         Returns a list of color """
 
         if amplitude:
             self.create_color_dict_list(amplitude)
+
+        if ddm_basis:
+            self._ddm_ends = self.get_ddm_ends()
+        if self._ddm_ends:
+            try:
+                for index, color_dict in enumerate(self._list_color_dict):
+                    self.update_color_basis_ddm(color_dict, index)
+                if ddm_flow_basis:
+                    self.build_flow_basis()
+                return
+            except DDMError as error:
+                logger.debug('Falling back on the trace color basis: %s', error)
+                self.clear()
+                self._ddm_ends = None
+                self._flow_basis = None
+
         for index, color_dict in enumerate(self._list_color_dict):
             self.update_color_basis(color_dict, index)
 
     def __init__(self, *args):
         """Initialize a new color basis object, either empty or filled (0
-        or 1 arguments). If one arguments is given, it's interpreted as 
+        or 1 arguments). If one arguments is given, it's interpreted as
         an amplitude."""
 
         assert len(args) < 2, "Object ColorBasis must be initialized with 0 or 1 arguments"
@@ -426,6 +809,16 @@ class ColorBasis(dict):
 
         # Whether relabel_canonical may take its shortcut, per canonical form
         self._fast_relabel_dict = {}
+
+        # Legs at the two ends of the DDM half-ladders, None when the basis is
+        # the standard trace one
+        self._ddm_ends = None
+
+        # Trace basis built next to a DDM one, carrying the color flows
+        self._flow_basis = None
+
+        # Dictionary to save the DDM decompositions already done
+        self._ddm_dict = {}
 
 
         if args:
@@ -528,6 +921,11 @@ class ColorBasis(dict):
         (X,Y) for octets). Other color representations are not yet supported 
         here (an error is raised). Needs a dictionary with keys being external
         leg numbers, and value the corresponding color representation."""
+
+        if self._ddm_ends:
+            raise ColorBasis.ColorBasisError(
+                "A DDM color basis has no single color flow per basis element."
+                " Use 'set color_basis trace' for this output format.")
 
         # Offsets used to introduce fake quark indices for gluons
         offset1 = 1000
@@ -947,6 +1345,7 @@ class ColorMatrix(dict):
     _col_basis1 = None
     _col_basis2 = None
     col_matrix_fixed_Nc = {}
+    _ddm_expansions = None
 
     def __init__(self, col_basis, col_basis2=None,
                  Nc=3, Nc_power_min=None, Nc_power_max=None):
@@ -962,6 +1361,8 @@ class ColorMatrix(dict):
         self._val_index = array.array('i')
         self._sorted_keys1 = []
         self._sorted_keys2 = []
+        # Set by setup_ddm_entries for a DDM (half-ladder) color basis
+        self._ddm_expansions = None
         self.col_matrix_fixed_Nc = _ColorMatrixView(self, 1)
 
         self._col_basis1 = col_basis
@@ -1108,6 +1509,10 @@ class ColorMatrix(dict):
         if not n1 or not n2:
             return
 
+        if getattr(self._col_basis1, '_ddm_ends', None) and \
+           getattr(self._col_basis2, '_ddm_ends', None):
+            self.setup_ddm_entries()
+
         canonical_dict = {}
         symmetry = ColorBasisSymmetry(keys1,
                             None if keys2 is keys1 else keys2)
@@ -1160,12 +1565,141 @@ class ColorMatrix(dict):
             assert progressed, "Color matrix orbit exploration made no progress"
             remaining = still_missing
 
+    def setup_ddm_entries(self):
+        """Switch create_new_entry over to the assembly used for a DDM
+        (half-ladder) color basis.
+
+        Contracting two half-ladders head on is exponentially expensive, since
+        the simplification rules turn every one of the 2(n-2) f objects into a
+        pair of traces. Each ladder is instead expanded once on the trace basis
+        (2^(n-2) traces) and the entry is assembled from trace-trace products,
+        which are recycled between all the entries. Everything else, including
+        the orbit symmetry of the basis, is left to build_matrix."""
+
+        self._ddm_expansions = {}
+        self._ddm_half_dict = {}
+        self._ddm_trace_dict = {}
+
+    def get_ddm_trace_expansion(self, struct):
+        """Expansion of one half-ladder on the trace basis, as a list of
+        (immutable trace, coefficient, is_imaginary, Nc power)."""
+
+        try:
+            return self._ddm_expansions[struct]
+        except KeyError:
+            pass
+
+        col_str = color_algebra.ColorString()
+        col_str.from_immutable(struct)
+        expansion = [(cs.to_immutable(), cs.coeff, cs.is_imaginary,
+                      cs.Nc_power) for cs in \
+                     color_algebra.ColorFactor([col_str]).full_simplify()]
+
+        self._ddm_expansions[struct] = expansion
+        return expansion
+
+    def create_new_entry_ddm(self, struct1, struct2,
+                             Nc_power_min, Nc_power_max, Nc):
+        """create_new_entry for two half-ladders, through their trace
+        expansions."""
+
+        contraction = collections.defaultdict(fractions.Fraction)
+        for trace, coeff, is_imaginary, Nc_power in \
+                                     self.get_ddm_trace_expansion(struct1):
+            self.accumulate_number(contraction,
+                                   (coeff, is_imaginary, Nc_power),
+                                   self.get_half_ladder_contraction(trace,
+                                                                    struct2))
+
+        result = color_algebra.ColorFactor()
+        for (is_imaginary, Nc_power), coeff in contraction.items():
+            if not coeff:
+                continue
+            if Nc_power_min is not None and Nc_power < Nc_power_min:
+                continue
+            if Nc_power_max is not None and Nc_power > Nc_power_max:
+                continue
+            result.append(color_algebra.ColorString([], coeff, is_imaginary,
+                                                    Nc_power))
+
+        return result, result.set_Nc(Nc)
+
+    @staticmethod
+    def accumulate_number(target, factor, numbers):
+        """Add factor*numbers to target, where a number is a dictionary
+        {(is_imaginary, Nc power): coefficient} and factor a single
+        (coefficient, is_imaginary, Nc power) triplet."""
+
+        coeff, is_imaginary, Nc_power = factor
+        for (other_imaginary, other_power), other_coeff in numbers.items():
+            new_coeff = coeff * other_coeff
+            if is_imaginary and other_imaginary:
+                new_coeff = -new_coeff
+                new_imaginary = False
+            else:
+                new_imaginary = is_imaginary or other_imaginary
+            target[(new_imaginary, Nc_power + other_power)] += new_coeff
+
+    def get_half_ladder_contraction(self, trace, struct2):
+        """Contraction of the single trace \'trace\' with the complex conjugate
+        of the half-ladder \'struct2\'."""
+
+        canonical_rep, dummy = \
+            color_algebra.ColorString().to_canonical(trace + struct2)
+        try:
+            return self._ddm_half_dict[canonical_rep]
+        except KeyError:
+            pass
+
+        result = collections.defaultdict(fractions.Fraction)
+        for trace2, coeff, is_imaginary, Nc_power in \
+                                      self.get_ddm_trace_expansion(struct2):
+            # complex conjugation of the coefficient of the second ladder
+            if is_imaginary:
+                coeff = -coeff
+            self.accumulate_number(result, (coeff, is_imaginary, Nc_power),
+                                   self.get_trace_contraction(trace, trace2))
+
+        self._ddm_half_dict[canonical_rep] = result
+        return result
+
+    def get_trace_contraction(self, trace1, trace2):
+        """Contraction of two single traces, as a dictionary
+        {(is_imaginary, Nc power): coefficient}."""
+
+        canonical_rep, dummy = \
+            color_algebra.ColorString().to_canonical(trace1 + trace2)
+        try:
+            return self._ddm_trace_dict[canonical_rep]
+        except KeyError:
+            pass
+
+        col_str = color_algebra.ColorString()
+        col_str.from_immutable(trace1)
+        col_str2 = color_algebra.ColorString()
+        col_str2.from_immutable(trace2)
+        col_str.product(col_str2.complex_conjugate())
+
+        result = collections.defaultdict(fractions.Fraction)
+        for cs in color_algebra.ColorFactor([col_str]).full_simplify():
+            assert not len(cs), \
+                "Trace contraction %s did not simplify to a number" % str(cs)
+            result[(cs.is_imaginary, cs.Nc_power)] += cs.coeff
+
+        self._ddm_trace_dict[canonical_rep] = result
+        return result
+
+
     def create_new_entry(self, struct1, struct2,
                          Nc_power_min, Nc_power_max, Nc):
         """ Create a new product result, and result with fixed Nc for two color
         basis entries. Implement Nc power limits."""
 
-        # Create color string objects corresponding to color basis 
+        if self._ddm_expansions is not None:
+            return self.create_new_entry_ddm(struct1, struct2,
+                                             Nc_power_min, Nc_power_max, Nc)
+
+        # Create color string objects corresponding to color basis
         # keys
         col_str = color_algebra.ColorString()
         col_str.from_immutable(struct1)

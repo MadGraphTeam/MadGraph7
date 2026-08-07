@@ -103,7 +103,7 @@ C ----------
             AMP2(I)=0D0
         ENDDO
     ENDIF
-    JAMP2(0)=%(ncolor)d
+    JAMP2(0)=%(ncolor_flow)d
     DO I=1,INT(JAMP2(0))
             JAMP2(I)=0D0
     ENDDO
@@ -210,6 +210,8 @@ C
     INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
     PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d) 
     PARAMETER (NCOLORFOLD=%(ncolorfold)d)
+    INTEGER    NCOLOR_FLOW
+    PARAMETER (NCOLOR_FLOW=%(ncolor_flow)d)
     REAL*8     ZERO
     PARAMETER (ZERO=0D0)
     COMPLEX*16 IMAG1
@@ -244,6 +246,7 @@ C
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
 %(color_fold_decl)s
+%(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
@@ -296,6 +299,7 @@ ${helas_calls}
     DO K = 1, NCOMB
 ${jamp_lines}
 %(color_fold_gather)s
+%(jampflow_lines)s
         TS(K) = 0.D0 
     	DO M = 1, NAMPSO
           CF_INDEX = 0
@@ -316,11 +320,11 @@ ${jamp_lines}
 	if(sde_strat.eq.1) then
         ${amp2_lines}
 	endif
-        Do I = 1, NCOLOR
+        Do I = 1, NCOLOR_FLOW
     	  DO M = 1, NAMPSO
     		DO N = 1, NAMPSO
 			%(select_configs_if)s
-                Jamp2(i)=Jamp2(i)+DABS(DBLE(Jamp(i,m)*dconjg(Jamp(i,n))))
+                Jamp2(i)=Jamp2(i)+DABS(DBLE(%(jamp_flow)s(i,m)*dconjg(%(jamp_flow)s(i,n))))
 			%(select_configs_endif)s
     		enddo
     	  enddo

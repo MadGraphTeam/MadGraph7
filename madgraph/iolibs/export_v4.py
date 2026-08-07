@@ -109,6 +109,13 @@ class VirtualExporter(object):
     exporter = 'v4'
     # language of the output 'v4' for Fortran output
     #                        'cpp' for C++ output
+    support_ddm_color_basis = False
+    # True for the output formats which can use the (n-2)! Del Duca-Dixon-
+    # Maltoni basis for the color sum of multi-gluon processes.
+    ddm_needs_flow_basis = False
+    # True when the format also needs a color flow per event: the trace basis
+    # is then built next to the DDM one, and the trace JAMPs are obtained from
+    # the DDM ones through the Kleiss-Kuijf relations.
 
     default_vector_size = 0
     
@@ -1775,8 +1782,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             * (-1)**(1+l.get('state'))
                     # Get the list of color flows
                     color_flow_list = \
-                        matrix_element.get('color_basis').color_flow_decomposition(repr_dict,
-                                                                                   ninitial)
+                        matrix_element.get('color_basis').get_flow_basis().\
+                                  color_flow_decomposition(repr_dict, ninitial)
                     # And output them properly
                     for cf_i, color_flow_dict in enumerate(color_flow_list):
                         for i in [0, 1]:
@@ -2382,6 +2389,56 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         return "DATA IDEN/%2r/" % \
                matrix_element.get_denominator_factor()
 
+    def set_color_flow_lines(self, matrix_element, replace_dict, ncolor):
+        """Fill in replace_dict everything the matrix element template needs to
+        know about the color flow basis, and return its size.
+
+        For a fully adjoint (multi-gluon) process the color sum can be done on
+        the (n-2)! Del Duca-Dixon-Maltoni basis, but a color flow still has to
+        be picked among the (n-1)! trace structures. The trace JAMPs are then
+        not built from the amplitudes but obtained from the DDM ones through
+        the Kleiss-Kuijf relations, which is (n-1) times cheaper."""
+
+        color_basis = matrix_element.get('color_basis')
+        flow_basis = color_basis.get_flow_basis() if color_basis else None
+
+        if flow_basis is None or flow_basis is color_basis:
+            replace_dict['ncolor_flow'] = ncolor
+            replace_dict['jampflow_decl'] = ''
+            replace_dict['jampflow_lines'] = ''
+            replace_dict['jamp_flow'] = 'JAMP'
+            return ncolor
+
+        ncolor_flow = max(1, len(flow_basis))
+        projection = color_basis.get_flow_projection()
+
+        # The Kleiss-Kuijf map only acts on color, so it is the same for every
+        # split order
+        lines = []
+        cmd_options = dict(self.cmd_options)
+        self.cmd_options['jamp_optim'] = False
+        try:
+            for iso in range(replace_dict['nAmpSplitOrders']):
+                flow_lines, nb_temp = self.get_JAMP_lines(projection,
+                        JAMP_format="JAMPF(%%s,%d)" % (iso + 1),
+                        AMP_format="JAMP(%%s,%d)" % (iso + 1))
+                lines.extend(flow_lines)
+        finally:
+            self.cmd_options = cmd_options
+
+        replace_dict['ncolor_flow'] = ncolor_flow
+        replace_dict['jampflow_decl'] = \
+                             '    COMPLEX*16 JAMPF(NCOLOR_FLOW,NAMPSO)'
+        replace_dict['jampflow_lines'] = '\n'.join(lines)
+        replace_dict['jamp_flow'] = 'JAMPF'
+
+        logger.debug('Color sum on %d DDM structures, color flow on %d trace '
+                     'structures (%d Kleiss-Kuijf terms)',
+                     ncolor, ncolor_flow,
+                     sum(len(row) for row in projection))
+
+        return ncolor_flow
+
     def get_icolamp_lines(self, mapconfigs, matrix_element, num_matrix_element):
         """Return the ICOLAMP matrix, showing which JAMPs contribute to
         which configs (diagrams)."""
@@ -2404,20 +2461,21 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # There is a color basis - create a list showing which JAMPs have
         # contributions to which configs
 
-        # Only want to include leading color flows, so find max_Nc
-        color_basis = matrix_element.get('color_basis')
-        
+        # Only want to include leading color flows, so find max_Nc. This is
+        # about color flows, so always the trace basis
+        color_basis = matrix_element.get('color_basis').get_flow_basis()
+
         # We don't want to include the power of Nc's which come from the potential
         # loop color trace (i.e. in the case of a closed fermion loop for example)
         # so we subtract it here when computing max_Nc
-        max_Nc = max(sum([[(v[4]-v[5]) for v in val] for val in 
+        max_Nc = max(sum([[(v[4]-v[5]) for v in val] for val in
                                                       color_basis.values()],[]))
 
         # Crate dictionary between diagram number and JAMP number
         diag_jamp = {}
         for ijamp, col_basis_elem in \
-                enumerate(sorted(matrix_element.get('color_basis').keys())):
-            for diag_tuple in matrix_element.get('color_basis')[col_basis_elem]:
+                enumerate(sorted(color_basis.keys())):
+            for diag_tuple in color_basis[col_basis_elem]:
                 # Only use color flows with Nc == max_Nc. However, notice that
                 # we don't want to include the Nc power coming from the loop
                 # in this counting.
@@ -5088,6 +5146,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     jamp_fold = True
     jamp_orbit = True
     default_vector_size = 0
+    # standalone only squares the amplitude, it never writes color flows
+    support_ddm_color_basis = True
     # When True, emit per-call IAND(WF_FLAVOR_MASK/AMP_FLAVOR_MASK,
     # CURRENT_FLAV_BIT) guards in MATRIX so that wavefunctions and amplitudes
     # which contribute zero for the current input flavor are skipped at
@@ -6365,6 +6425,8 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
            
 
     matrix_template = "matrix_standalone_matchbox.inc"
+    # matchbox needs the color flow information
+    support_ddm_color_basis = False
     
     @staticmethod    
     def get_color_string_lines(matrix_element):
@@ -8126,6 +8188,10 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         replace_dict['jamp_tmp_decl'] = '' if recipes else \
                             "    COMPLEX*16 TMP_JAMP(%i)" % nb_temp
 
+        # The color sum can run on the (n-2)! DDM basis while the color flow
+        # probabilities keep using the (n-1)! trace one
+        ncolor = self.set_color_flow_lines(matrix_element, replace_dict, ncolor)
+
         if self.beam_polarization == [True, True]:
             replace_dict['beam_polarization'] = """
                          DO JJ=1,nincoming
@@ -9410,6 +9476,10 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     """Class to take care of exporting a set of matrix elements to
     MadEvent subprocess group format."""
 
+
+    # the color sum uses the DDM basis, the color flows the trace one
+    support_ddm_color_basis = True
+    ddm_needs_flow_basis = True
 
     matrix_file = "matrix_madevent_group_v4.inc"
     grouped_mode = 'madevent'

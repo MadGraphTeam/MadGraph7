@@ -627,6 +627,9 @@ class Switcher(object):
     def help_set2_output_dependencies(self, *args, **opts):
         return self.cmd.help_set2_output_dependencies(self, *args, **opts)
 
+    def help_set2_color_basis(self, *args, **opts):
+        return self.cmd.help_set2_color_basis(self, *args, **opts)
+
     def help_set2_zerowidth_tchannel(self, *args, **opts):
         return self.cmd.help_set2_zerowidth_tchannel(self, *args, **opts)
 

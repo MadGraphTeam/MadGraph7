@@ -60,6 +60,7 @@ from madgraph import MG4DIR, MG5DIR, MadGraph5Error
 
 
 import madgraph.core.base_objects as base_objects
+import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_base_objects as loop_base_objects
@@ -3155,8 +3156,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'max_t_for_channel',
                     'zerowidth_tchannel',
                     'default_unset_couplings',
-                    'nlo_mixed_expansion'
+                    'nlo_mixed_expansion',
+                    'color_basis'
                     ]
+    _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
     _valid_sqso_types = ['==','<=','=','>']
     _valid_amp_so_types = ['=','<=', '==', '>']
@@ -3238,7 +3241,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
                           'nlo_mixed_expansion':True,
-                          'apply_flavor_grouping': True 
+                          'apply_flavor_grouping': True,
+                          'color_basis': 'auto'
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -4238,6 +4242,9 @@ This implies that with decay chains:
             return lCMS_values
         
         ###### BEGIN do_check
+
+        # No exporter here, so 'auto' means the safe trace basis
+        self.set_color_basis_mode()
 
         args = self.split_arg(line)
         # Check args validity
@@ -9355,6 +9362,28 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         """    
         self.options['apply_flavor_grouping'] = banner_module.ConfigFile.format_variable(args[0], bool, 'apply_flavor_grouping')
 
+    def help_set2_color_basis(self):
+        logger.info("color_basis <value>",'$MG:color:GREEN')
+        logger.info(" > (default: auto) select the color basis used for processes")
+        logger.info("   whose color structure is purely adjoint (multi-gluon).")
+        logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
+        logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
+        logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
+        logger.info(" > auto:  ddm for the output formats which do not need a color")
+        logger.info("          flow decomposition (standalone), trace otherwise")
+
+    def set2_color_basis(self, args, log=True):
+        """Set the color basis used for fully adjoint (multi-gluon) processes.
+        Example: set color_basis ddm
+        """
+        args = ['color_basis'] + args
+        self.check_set(args)
+        value = args[1].lower()
+        if value not in self._valid_color_basis:
+            raise self.InvalidCmd('color_basis needs one of %s, got %s' % \
+                                  (self._valid_color_basis, args[1]))
+        self.options['color_basis'] = value
+
 
 
 # not documented options:
@@ -9798,10 +9827,47 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self._export_dir = None
 
     # Export a matrix element
-    def export(self, nojpeg = False, main_file_name = "", group_processes=True, 
+    def set_color_basis_mode(self, *exporters):
+        """Set the color basis used for fully adjoint (multi-gluon) processes.
+        The (n-2)! Del Duca-Dixon-Maltoni basis can only be used by the output
+        formats which never need a color flow decomposition, so in 'auto' mode
+        every exporter involved must support it."""
+
+        mode = self.options.get('color_basis', 'auto')
+        exporters = [exporter for exporter in exporters if exporter]
+        if mode == 'auto':
+            use_ddm = bool(exporters) and \
+                all(getattr(exporter, 'support_ddm_color_basis', False)
+                    for exporter in exporters)
+        else:
+            use_ddm = (mode == 'ddm')
+
+        # An exporter which has to write a color flow per event also needs the
+        # trace basis next to the DDM one
+        with_flow = any(getattr(exporter, 'ddm_needs_flow_basis', False)
+                        for exporter in exporters)
+
+        color_amp.set_ddm_basis(use_ddm, with_flow=with_flow)
+        if use_ddm:
+            logger.debug('Using the Del Duca-Dixon-Maltoni color basis for '
+                         'fully adjoint processes (flow basis: %s)', with_flow)
+
+    def export(self, nojpeg = False, main_file_name = "", group_processes=True,
                                                                        args=[]):
         """Export a generated amplitude to file."""
 
+        self.set_color_basis_mode(self._curr_exporter, self._me_curr_exporter)
+        try:
+            return self._export(nojpeg, main_file_name, group_processes, args)
+        finally:
+            # the color basis is tied to this output, it must not leak to the
+            # next command
+            color_amp.set_ddm_basis(False)
+
+    def _export(self, nojpeg = False, main_file_name = "", group_processes=True,
+                                                                       args=[]):
+        """Export a generated amplitude to file, with the color basis already
+        selected."""
 
         # Define the helas call  writer
         if hasattr(self._curr_exporter, 'helas_exporter') and self._curr_exporter.helas_exporter:

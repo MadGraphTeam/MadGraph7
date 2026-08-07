@@ -332,6 +332,13 @@ class f(ColorObject):
 
         return ColorFactor([col_str1, col_str2])
 
+    def complex_conjugate(self):
+        """f (and d) are real, so complex conjugation leaves them untouched.
+        The default behaviour of reversing the indices would introduce a
+        spurious sign, since f is totally antisymmetric."""
+
+        return self
+
 #===============================================================================
 # d
 #===============================================================================
