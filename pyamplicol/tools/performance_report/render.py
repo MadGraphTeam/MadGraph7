@@ -46,6 +46,11 @@ from .models import (
     Workload,
     ZVariant,
 )
+from .runner import (
+    OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD,
+    SelectorContract,
+    validate_on_the_fly_recurrence_authority_validation_record,
+)
 from .timing import (
     evaluator_total_seconds_per_point,
     evaluator_total_timing_record,
@@ -229,6 +234,7 @@ class JoinedWorkload:
     baseline: Measurement
     candidate: Measurement
     comparison_linked: bool = False
+    generation_comparison_linked: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,6 +272,7 @@ class BestModeWorkload:
     mode: ExecutionMode | None
     terminal_label: _TerminalSummary | None
     comparison_linked: bool = False
+    generation_comparison_linked: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -591,6 +598,149 @@ class BaselineCandidateAdapter:
         )
         return peers[0] if len(peers) == 1 else None
 
+    @staticmethod
+    def _runtime_artifact_id(measurement: Measurement) -> str | None:
+        provenance = measurement.get("provenance")
+        runtime_identity = (
+            provenance.get("runtime_identity")
+            if isinstance(provenance, Mapping)
+            else None
+        )
+        artifact_id = (
+            runtime_identity.get("artifact_id")
+            if isinstance(runtime_identity, Mapping)
+            else None
+        )
+        return artifact_id if isinstance(artifact_id, str) else None
+
+    def _otf_recurrence_authority_link(
+        self,
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        recurrence_cell: CellSpec,
+        recurrence: Measurement,
+    ) -> bool:
+        """Authenticate the dedicated OTF-to-recurrence numerical edge."""
+
+        if not (_ok(candidate) and _ok(recurrence)) or not self._selectors_match(
+            candidate_cell,
+            candidate,
+            recurrence,
+        ):
+            return False
+        validation = candidate.get("validation")
+        authority_record = (
+            validation.get(OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD)
+            if isinstance(validation, Mapping)
+            else None
+        )
+        authority = (
+            authority_record.get("authority")
+            if isinstance(authority_record, Mapping)
+            else None
+        )
+        candidate_artifact_id = self._runtime_artifact_id(candidate)
+        recurrence_artifact_id = self._runtime_artifact_id(recurrence)
+        if (
+            candidate_artifact_id is None
+            or recurrence_artifact_id is None
+            or not isinstance(authority, Mapping)
+            or authority.get("artifact_id") != recurrence_artifact_id
+        ):
+            return False
+        try:
+            validate_on_the_fly_recurrence_authority_validation_record(
+                authority_record,
+                expected_cell=candidate_cell,
+                selector_contract=candidate.get("selector_contract"),
+                candidate_artifact_id=candidate_artifact_id,
+                expected_authority_cell_id=recurrence_cell.cell_id,
+            )
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    @staticmethod
+    def _same_performance_scope(
+        candidate_cell: CellSpec,
+        baseline_cell: CellSpec,
+    ) -> bool:
+        """Match process-wide timing identities without using a numerical edge."""
+
+        return (
+            candidate_cell.process == baseline_cell.process
+            and candidate_cell.process_key == baseline_cell.process_key
+            and candidate_cell.n_final == baseline_cell.n_final
+            and candidate_cell.workload is baseline_cell.workload
+            and candidate_cell.measurement.model is ModelKey.BUILTIN_SM
+            and baseline_cell.measurement.model is None
+            and candidate_cell.measurement.accuracy
+            is baseline_cell.measurement.accuracy
+        )
+
+    @staticmethod
+    def _otf_amplicol_runtime_selectors_match(
+        workload: Workload,
+        candidate: Measurement,
+        baseline: Measurement,
+    ) -> bool:
+        candidate_selector = candidate.get("selector_contract")
+        baseline_selector = baseline.get("selector_contract")
+        if not isinstance(candidate_selector, Mapping) or not isinstance(
+            baseline_selector,
+            Mapping,
+        ):
+            return False
+        try:
+            candidate_contract = SelectorContract.from_mapping(candidate_selector)
+            baseline_contract = SelectorContract.from_mapping(baseline_selector)
+        except (TypeError, ValueError):
+            return False
+        if workload is Workload.SELECTED_FLOW:
+            return candidate_contract == baseline_contract
+        if workload is Workload.ALL_FLOW:
+            return (
+                candidate_contract.point_digest == baseline_contract.point_digest
+                and candidate_contract.all_flow_helicity_ids
+                == baseline_contract.all_flow_helicity_ids
+                and candidate_contract.all_flow_source_helicities
+                == baseline_contract.all_flow_source_helicities
+            )
+        return False
+
+    def _otf_amplicol_performance_link(
+        self,
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        baseline_cell: CellSpec,
+        baseline: Measurement,
+        *,
+        require_runtime_selectors: bool,
+    ) -> bool:
+        if not (_ok(candidate) and _ok(baseline)) or not self._same_performance_scope(
+            candidate_cell,
+            baseline_cell,
+        ):
+            return False
+        recurrence_cell = self._recurrence_bridge(candidate_cell)
+        if recurrence_cell is None:
+            return False
+        recurrence = self.index.for_cell(recurrence_cell)
+        if not self._otf_recurrence_authority_link(
+            candidate_cell,
+            candidate,
+            recurrence_cell,
+            recurrence,
+        ):
+            return False
+        return not require_runtime_selectors or (
+            self._otf_amplicol_runtime_selectors_match(
+                candidate_cell.workload,
+                candidate,
+                baseline,
+            )
+        )
+
     def _comparison_linked(
         self,
         candidate_cell: CellSpec,
@@ -600,11 +750,21 @@ class BaselineCandidateAdapter:
     ) -> bool:
         if (
             baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and candidate_cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        ):
+            return self._otf_amplicol_performance_link(
+                candidate_cell,
+                candidate,
+                baseline_cell,
+                baseline,
+                require_runtime_selectors=True,
+            )
+        if (
+            baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             and candidate_cell.measurement.execution_mode
             in {
                 ExecutionMode.COMPILED,
                 ExecutionMode.EAGER,
-                ExecutionMode.ON_THE_FLY,
             }
         ):
             recurrence_cell = self._recurrence_bridge(candidate_cell)
@@ -623,6 +783,31 @@ class BaselineCandidateAdapter:
                 baseline,
             )
         return self._direct_link(
+            candidate_cell,
+            candidate,
+            baseline_cell,
+            baseline,
+        )
+
+    def _generation_comparison_linked(
+        self,
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        baseline_cell: CellSpec,
+        baseline: Measurement,
+    ) -> bool:
+        if (
+            baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and candidate_cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        ):
+            return self._otf_amplicol_performance_link(
+                candidate_cell,
+                candidate,
+                baseline_cell,
+                baseline,
+                require_runtime_selectors=False,
+            )
+        return self._comparison_linked(
             candidate_cell,
             candidate,
             baseline_cell,
@@ -691,12 +876,19 @@ class BaselineCandidateAdapter:
                 assert baseline_cell is not None
                 candidate = self.index.for_cell(candidate_cell)
                 baseline = self.index.for_cell(baseline_cell)
+                comparison_linked = self._comparison_linked(
+                    candidate_cell,
+                    candidate,
+                    baseline_cell,
+                    baseline,
+                )
                 joined_items.append(
                     JoinedWorkload(
                         workload,
                         baseline,
                         candidate,
-                        self._comparison_linked(
+                        comparison_linked,
+                        self._generation_comparison_linked(
                             candidate_cell,
                             candidate,
                             baseline_cell,
@@ -733,11 +925,18 @@ class BaselineCandidateAdapter:
         baseline_cell = self.catalog.baseline_cell(candidate_cell)
         assert baseline_cell is not None
         candidate = self.index.for_cell(candidate_cell)
+        comparison_linked = self._comparison_linked(
+            candidate_cell,
+            candidate,
+            baseline_cell,
+            baseline,
+        )
         return JoinedWorkload(
             workload,
             baseline,
             candidate,
-            self._comparison_linked(
+            comparison_linked,
+            self._generation_comparison_linked(
                 candidate_cell,
                 candidate,
                 baseline_cell,
@@ -833,6 +1032,12 @@ class BaselineCandidateAdapter:
                     baseline_cell,
                     baseline,
                 )
+                generation_comparison_linked = self._generation_comparison_linked(
+                    winner_cell,
+                    winner,
+                    baseline_cell,
+                    baseline,
+                )
             else:
                 _recurrence_mode, _winner_cell, recurrence = next(
                     candidate
@@ -845,6 +1050,7 @@ class BaselineCandidateAdapter:
                     winner_mode, winner = ExecutionMode.RECURRENCE, recurrence
                 terminal_label = None
                 comparison_linked = False
+                generation_comparison_linked = False
             joined_workloads.append(
                 BestModeWorkload(
                     workload,
@@ -853,6 +1059,7 @@ class BaselineCandidateAdapter:
                     winner_mode,
                     terminal_label,
                     comparison_linked,
+                    generation_comparison_linked,
                 )
             )
         return BestModeMatrixCell(
@@ -1819,6 +2026,16 @@ def _legacy_baseline_unavailable(
     )
 
 
+def _generation_comparison_linked(
+    joined: JoinedWorkload | BestModeWorkload,
+) -> bool:
+    """Use a metric-specific link when generation is process-wide."""
+
+    if joined.generation_comparison_linked is None:
+        return joined.comparison_linked
+    return joined.generation_comparison_linked
+
+
 def _fixed_mode_generation_comparison_layout(
     joined: JoinedWorkload,
     *,
@@ -1851,7 +2068,7 @@ def _fixed_mode_generation_comparison_layout(
             joined.workload is Workload.ALL_FLOW
             or baseline_static_na
             or not comparable
-            or not joined.comparison_linked
+            or not _generation_comparison_linked(joined)
             or not _ok(joined.baseline)
         ):
             return _otf_generation_pair_layout(joined.candidate, None)
@@ -1859,7 +2076,7 @@ def _fixed_mode_generation_comparison_layout(
     if (
         baseline_static_na
         or not comparable
-        or not joined.comparison_linked
+        or not _generation_comparison_linked(joined)
         or (baseline_mode is ExecutionMode.AMPLICOL and not _ok(joined.baseline))
     ):
         absolute = _best_mode_metric(joined.candidate, "generation_seconds")
@@ -2011,21 +2228,39 @@ def _contracted_cell(
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> _MatrixCellRows:
     joined = view.workloads[0]
+    candidate_cell = next(
+        cell
+        for cell in catalog.measurement_cells()
+        if cell.dataset_id == view.dataset.dataset_id
+        and cell.process_key == view.process_family.key
+        and cell.n_final == view.n_final
+        and cell.workload is joined.workload
+        and cell.variant is None
+    )
+    candidate_static_na = catalog.static_na_reason(candidate_cell) is not None
     legacy_baseline_unavailable = _legacy_baseline_unavailable(
         view,
         catalog=catalog,
     )
-    candidate_generation = _fixed_mode_generation_comparison_layout(
-        joined,
-        candidate_mode=view.dataset.candidate.execution_mode,
-        baseline_mode=view.dataset.baseline.execution_mode,
-        baseline_static_na=legacy_baseline_unavailable,
+    candidate_generation = (
+        _BestModeComparisonLayout(_static_na(), "", _static_na())
+        if candidate_static_na
+        else _fixed_mode_generation_comparison_layout(
+            joined,
+            candidate_mode=view.dataset.candidate.execution_mode,
+            baseline_mode=view.dataset.baseline.execution_mode,
+            baseline_static_na=legacy_baseline_unavailable,
+        )
     )
-    candidate_runtime = _fixed_mode_runtime_comparison_layout(
-        joined,
-        candidate_mode=view.dataset.candidate.execution_mode,
-        baseline_mode=view.dataset.baseline.execution_mode,
-        baseline_static_na=legacy_baseline_unavailable,
+    candidate_runtime = (
+        _BestModeComparisonLayout(_static_na(), "", _static_na())
+        if candidate_static_na
+        else _fixed_mode_runtime_comparison_layout(
+            joined,
+            candidate_mode=view.dataset.candidate.execution_mode,
+            baseline_mode=view.dataset.baseline.execution_mode,
+            baseline_static_na=legacy_baseline_unavailable,
+        )
     )
     baseline_generation = (
         _static_na()
@@ -2066,7 +2301,11 @@ def _summary_pair(
     valid = [
         item
         for item in joined
-        if item.comparison_linked
+        if (
+            _generation_comparison_linked(item)
+            if field == "generation_seconds"
+            else item.comparison_linked
+        )
         and _ok(item.baseline)
         and _ok(item.candidate)
         and item.baseline.get(field) is not None
@@ -2243,6 +2482,7 @@ def _matrix_block(
                         _matrix_generation_summary(
                             views_by_n[n_final],
                             dataset,
+                            catalog=adapter.catalog,
                         ),
                         accuracy,
                         group_index=group_index,
@@ -2259,6 +2499,8 @@ def _matrix_block(
                         _matrix_wall_summary(
                             views_by_n[n_final],
                             accuracy,
+                            dataset=dataset,
+                            catalog=adapter.catalog,
                         ),
                         accuracy,
                         group_index=group_index,
@@ -2281,7 +2523,11 @@ def _matrix_block(
 def _matrix_generation_summary(
     views: Sequence[JoinedMatrixCell],
     dataset: MatrixDataset,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
 ) -> str:
+    if _matrix_candidates_are_static_na(views, dataset, catalog=catalog):
+        return _static_na()
     if dataset.candidate.accuracy is Accuracy.LC:
         return _summary_pair(
             views,
@@ -2294,7 +2540,16 @@ def _matrix_generation_summary(
 def _matrix_wall_summary(
     views: Sequence[JoinedMatrixCell],
     accuracy: Accuracy,
+    *,
+    dataset: MatrixDataset | None = None,
+    catalog: ReportCatalog = REPORT_CATALOG,
 ) -> str:
+    if dataset is not None and _matrix_candidates_are_static_na(
+        views,
+        dataset,
+        catalog=catalog,
+    ):
+        return _static_na()
     if accuracy is Accuracy.LC:
         selected = _summary_pair(
             views,
@@ -2311,6 +2566,30 @@ def _matrix_wall_summary(
         views,
         Workload.CONTRACTED,
         "wall_seconds_per_point",
+    )
+
+
+def _matrix_candidates_are_static_na(
+    views: Sequence[JoinedMatrixCell],
+    dataset: MatrixDataset,
+    *,
+    catalog: ReportCatalog,
+) -> bool:
+    candidate_cells = {
+        (cell.process_key, cell.n_final, cell.workload): cell
+        for cell in catalog.measurement_cells()
+        if cell.dataset_id == dataset.dataset_id and cell.variant is None
+    }
+    applicable = tuple(view for view in views if view.applicable)
+    return bool(applicable) and all(
+        catalog.static_na_reason(
+            candidate_cells[
+                (view.process_family.key, view.n_final, joined.workload)
+            ]
+        )
+        is not None
+        for view in applicable
+        for joined in view.workloads
     )
 
 
@@ -2634,7 +2913,7 @@ def _best_mode_generation_comparison_layout(
             joined.workload is Workload.ALL_FLOW
             or baseline_static_na
             or not comparable
-            or not joined.comparison_linked
+            or not _generation_comparison_linked(joined)
             or not _ok(joined.baseline)
         )
         pair = _otf_generation_pair_layout(
@@ -2657,7 +2936,7 @@ def _best_mode_generation_comparison_layout(
     if (
         baseline_static_na
         or not comparable
-        or not joined.comparison_linked
+        or not _generation_comparison_linked(joined)
         or not _ok(joined.baseline)
     ):
         absolute = _best_mode_metric(joined.candidate, "generation_seconds")
@@ -2970,7 +3249,11 @@ def _best_mode_summary_items(
     valid = tuple(
         item
         for item in joined
-        if item.comparison_linked
+        if (
+            _generation_comparison_linked(item)
+            if field == "generation_seconds"
+            else item.comparison_linked
+        )
         and item.mode is not None
         and _ok(item.baseline)
         and _ok(item.candidate)
@@ -3000,13 +3283,20 @@ def _best_mode_generation_mode_mix(
     )
     if not valid:
         return ""
+    displayed_modes = (
+        _BEST_MODE_ORDER
+        if accuracy is Accuracy.LC
+        else tuple(
+            mode for mode in _BEST_MODE_ORDER if mode is not ExecutionMode.ON_THE_FLY
+        )
+    )
     counts = {
-        mode: sum(item.mode is mode for item in valid) for mode in _BEST_MODE_ORDER
+        mode: sum(item.mode is mode for item in valid) for mode in displayed_modes
     }
     return (
         r"\bestmodemix{"
         + "|".join(
-            f"{_BEST_MODE_CODES[mode]}:{counts[mode]}" for mode in _BEST_MODE_ORDER
+            f"{_BEST_MODE_CODES[mode]}:{counts[mode]}" for mode in displayed_modes
         )
         + "}"
     )
@@ -4008,6 +4298,9 @@ def summarize_visible_completeness(
                         )
                         continue
                     baseline_static_na = catalog.static_na_reason(baseline) is not None
+                    candidate_static_na = (
+                        catalog.static_na_reason(candidate) is not None
+                    )
                     record(
                         baseline,
                         (
@@ -4054,13 +4347,25 @@ def summarize_visible_completeness(
                             f"{joined.workload.value}/candidate"
                         ),
                         (
-                            candidate_generation.inline,
-                            _fixed_mode_runtime_comparison_layout(
-                                joined,
-                                candidate_mode=(dataset.candidate.execution_mode),
-                                baseline_mode=(dataset.baseline.execution_mode),
-                                baseline_static_na=baseline_static_na,
-                            ).inline,
+                            (
+                                _static_na()
+                                if candidate_static_na
+                                else candidate_generation.inline
+                            ),
+                            (
+                                _static_na()
+                                if candidate_static_na
+                                else _fixed_mode_runtime_comparison_layout(
+                                    joined,
+                                    candidate_mode=(
+                                        dataset.candidate.execution_mode
+                                    ),
+                                    baseline_mode=(
+                                        dataset.baseline.execution_mode
+                                    ),
+                                    baseline_static_na=baseline_static_na,
+                                ).inline
+                            ),
                         ),
                     )
         for n_final, views in views_by_n.items():
@@ -4069,11 +4374,16 @@ def summarize_visible_completeness(
             for label, fragment in (
                 (
                     "generation-summary",
-                    _matrix_generation_summary(views, dataset),
+                    _matrix_generation_summary(views, dataset, catalog=catalog),
                 ),
                 (
                     "wall-summary",
-                    _matrix_wall_summary(views, dataset.candidate.accuracy),
+                    _matrix_wall_summary(
+                        views,
+                        dataset.candidate.accuracy,
+                        dataset=dataset,
+                        catalog=catalog,
+                    ),
                 ),
             ):
                 if _renders_na(fragment):

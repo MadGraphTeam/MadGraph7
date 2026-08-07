@@ -56,7 +56,10 @@ from tools.performance_report.render import (
     render_z_ladder,
     summarize_visible_completeness,
 )
-from tools.performance_report.runner import pointwise_validation
+from tools.performance_report.runner import (
+    OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD,
+    pointwise_validation,
+)
 from tools.performance_report.source_identity import ReportSourceIdentity
 from tools.performance_report.validation_summary import (
     render_validation_summary,
@@ -84,7 +87,14 @@ def test_unavailable_execution_timing_is_never_ratioed() -> None:
 
 
 @pytest.fixture
-def reset_caches() -> dict[str, dict[str, object]]:
+def reset_caches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, dict[str, object]]:
+    monkeypatch.setattr(
+        report_render,
+        "validate_on_the_fly_recurrence_authority_validation_record",
+        lambda *_args, **_kwargs: None,
+    )
     return build_reset_caches()
 
 
@@ -211,6 +221,18 @@ def _ok_measurement(
             "helicity_ids": selector["all_flow_helicity_ids"],
             "color_flow_ids": selector["selected_color_flow_ids"],
         }
+    execution_mode = cell.measurement.execution_mode
+    artifact_id = (
+        "a" * 64
+        if execution_mode is ExecutionMode.ON_THE_FLY
+        else "b" * 64
+        if execution_mode is ExecutionMode.RECURRENCE
+        else "c" * 64
+    )
+    if execution_mode is ExecutionMode.ON_THE_FLY:
+        validation[OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD] = {
+            "authority": {"artifact_id": "b" * 64},
+        }
     return {
         "status": ResultStatus.OK.value,
         "generation_seconds": generation,
@@ -224,7 +246,15 @@ def _ok_measurement(
         "selector_contract": selector,
         "validation": validation,
         "resources": {"peak_rss_gib": 1.0},
-        "provenance": {"source": "test"},
+        "provenance": {
+            "source": "test",
+            "runtime_identity": {"artifact_id": artifact_id},
+            **(
+                {"runtime_profile": {"cold_warmup_elapsed_seconds": 0.25}}
+                if execution_mode is ExecutionMode.ON_THE_FLY
+                else {}
+            ),
+        },
         "failure": None,
     }
 
@@ -563,11 +593,11 @@ def _memory_censor(cell) -> dict[str, object]:
     )
 
 
-def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
+def test_all_fifteen_matrices_render_in_catalog_order(reset_caches) -> None:
     rendered = render_all_matrix_tables(reset_caches)
     expected = [dataset.table_name for dataset in REPORT_CATALOG.matrix_datasets]
 
-    assert len(rendered) == 12
+    assert len(rendered) == 15
     assert list(rendered) == expected
     lc_tex = next(
         rendered[dataset.table_name]
@@ -851,7 +881,10 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         for line in tex.splitlines()
         if line.startswith(r"\multicolumn{3}{@{}l}{} & ") and r"\bestmodemix{" in line
     )
-    assert r"\textbf{n=1}\hspace{0.08in}\bestmodemix{r:0|c:1|e:0}" in summary_header
+    assert (
+        r"\textbf{n=1}\hspace{0.08in}\bestmodemix{r:0|c:1|e:0|o:0}"
+        in summary_header
+    )
     assert summary_header.count(r"\bestmodemix{") == 1
     assert r"r:0|c:0|e:1" not in summary_header
     assert r"\bestmodemix{" not in generation_summary
@@ -871,15 +904,15 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         (
             Accuracy.LC,
             (
-                "r:2|c:0|e:0",
-                "r:8|c:0|e:0",
-                "r:9|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:14|c:0|e:0",
+                "r:2|c:0|e:0|o:0",
+                "r:8|c:0|e:0|o:0",
+                "r:9|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
             ),
         ),
         (
@@ -1014,7 +1047,7 @@ def test_summary_statistics_share_fixed_anchors_and_compact_notes(
         r"\makebox[4.2em][l]{#5}"
     )
 
-    assert len(summary_tables) == 19
+    assert len(summary_tables) == 22
     for tex in summary_tables:
         assert summary_column_layout in tex
         assert fixed_slot_layout in tex
@@ -2704,7 +2737,10 @@ def test_matrix_baseline_labels_follow_dataset_contract(reset_caches) -> None:
 
     for dataset in REPORT_CATALOG.matrix_datasets:
         tex = rendered[dataset.table_name]
-        if dataset.candidate.execution_mode is ExecutionMode.RECURRENCE:
+        if dataset.candidate.execution_mode in {
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.ON_THE_FLY,
+        }:
             assert "Baseline: original AmpliCol" in tex
         else:
             assert "Baseline: recurrence JIT O2" in tex
@@ -3063,9 +3099,9 @@ def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["required_measurement_count"] == 762
-    assert evidence["rendered_required_measurement_count"] == 762
-    assert evidence["structurally_not_applicable_display_slot_count"] == 324
+    assert evidence["required_measurement_count"] == 828
+    assert evidence["rendered_required_measurement_count"] == 828
+    assert evidence["structurally_not_applicable_display_slot_count"] == 405
     assert evidence["not_exposed_display_slot_count"] == 16
     assert evidence["applicable_na_display_slot_count"] == 0
     assert evidence["missing_rendered_cell_count"] == 0
@@ -3081,10 +3117,10 @@ def test_visible_completeness_authenticates_catalog_static_na_slots(
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["declared_measurement_cell_count"] == 1796
-    assert evidence["required_measurement_count"] == 1762
-    assert evidence["catalog_static_na_cell_count"] == 34
-    assert evidence["rendered_catalog_static_na_cell_count"] == 34
+    assert evidence["declared_measurement_cell_count"] == 1962
+    assert evidence["required_measurement_count"] == 1828
+    assert evidence["catalog_static_na_cell_count"] == 134
+    assert evidence["rendered_catalog_static_na_cell_count"] == 134
     assert evidence["applicable_na_display_slot_count"] == 0
     assert evidence["missing_rendered_cell_count"] == 0
 
@@ -4160,7 +4196,7 @@ def test_all_outputs_include_matrices_z_and_scalar_ladders(
 ) -> None:
     rendered = render_all_tables(reset_caches)
 
-    assert len(rendered) == 20
+    assert len(rendered) == 23
     assert "result_validation_summary.tex" in rendered
     assert set(render_all_best_mode_tables(reset_caches)) < set(rendered)
     assert set(render_all_matrix_tables(reset_caches)) < set(rendered)
@@ -4267,35 +4303,35 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
 
     assert r"\begin{tabular}{@{}l r r r l@{}}" in tex
     assert summary.expected_by_n == (
-        (1, 64),
-        (2, 186),
-        (3, 206),
-        (4, 306),
+        (1, 68),
+        (2, 202),
+        (3, 224),
+        (4, 334),
         (5, 305),
         (6, 201),
         (7, 165),
         (8, 165),
         (9, 164),
     )
-    assert summary.declared_total == 1796
+    assert summary.declared_total == 1962
     assert summary.static_na_by_n == (
-        (1, 0),
-        (2, 0),
-        (3, 0),
-        (4, 0),
-        (5, 0),
-        (6, 4),
+        (1, 4),
+        (2, 16),
+        (3, 18),
+        (4, 28),
+        (5, 28),
+        (6, 10),
         (7, 10),
         (8, 10),
         (9, 10),
     )
-    assert summary.static_na_total == 34
-    assert summary.expected_total == 1762
+    assert summary.static_na_total == 134
+    assert summary.expected_total == 1828
     assert summary.passed_total == 4
     assert summary.status_counts == (
-        ("not_available", 1758),
+        ("not_available", 1824),
         ("ok", 4),
-        ("static-na", 34),
+        ("static-na", 134),
     )
     assert summary.oracle_count == 1
     assert summary.independent_count == 1
@@ -4307,10 +4343,10 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 1
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "1796 & 34 & 4" in tex
-    assert "1796 declared cells" in tex
-    assert "1762 measurable cells" in tex
-    assert "34 catalog-authenticated static N/A" in tex
-    assert "432 matrix process/multiplicity positions" in tex
+    assert "1962 & 134 & 4" in tex
+    assert "1962 declared cells" in tex
+    assert "1828 measurable cells" in tex
+    assert "134 catalog-authenticated static N/A" in tex
+    assert "539 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

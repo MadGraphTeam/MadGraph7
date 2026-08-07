@@ -392,7 +392,7 @@ def render_validation_summary(
                 r" \\"
             ),
             (
-                r"compiled/eager versus recurrence"
+                r"compiled/eager/OTF versus recurrence"
                 f" & {summary.cross_mode_count} & "
                 f"{_scientific(summary.cross_mode_maximum_relative_difference)}"
                 r" \\"
@@ -441,7 +441,8 @@ def render_validation_summary(
                 r"Measured source: "
                 + source_text
                 + r". Independent-reference comparisons use a relative "
-                r"tolerance of \(10^{-8}\); cross-mode, resolved-sum, and "
+                r"tolerance of \(10^{-8}\); cross-mode (including "
+                r"OTF/recurrence), resolved-sum, and "
                 r"higher-precision comparisons use \(10^{-12}\).}"
             ),
         ]
