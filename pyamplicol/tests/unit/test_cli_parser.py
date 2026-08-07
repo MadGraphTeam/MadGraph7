@@ -45,6 +45,13 @@ def test_generate_accepts_eager_execution_mode_override() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.EAGER
 
 
+def test_generate_accepts_on_the_fly_execution_mode_override() -> None:
+    config = (
+        parse_cli(("generate", "--execution-mode", "on-the-fly")).resolve().effective
+    )
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
+
+
 def test_generate_defaults_to_recurrence_execution() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
@@ -52,9 +59,7 @@ def test_generate_defaults_to_recurrence_execution() -> None:
 
 def test_generate_validation_samples_default_and_override() -> None:
     default = parse_cli(("generate",)).resolve().effective
-    explicit = parse_cli(
-        ("generate", "--validation-samples", "10")
-    ).resolve().effective
+    explicit = parse_cli(("generate", "--validation-samples", "10")).resolve().effective
 
     assert default.generation.validation.samples == 2
     assert explicit.generation.validation.samples == 10
@@ -129,9 +134,7 @@ def test_generate_accepts_jit_compression_override(
 
 def test_generate_accepts_recurrence_execution_mode_override() -> None:
     config = (
-        parse_cli(("generate", "--execution-mode", "recurrence"))
-        .resolve()
-        .effective
+        parse_cli(("generate", "--execution-mode", "recurrence")).resolve().effective
     )
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
 
@@ -207,6 +210,27 @@ def test_all_contract_actions_have_subcommands() -> None:
         assert parse_cli(argv).action == action
 
     assert parse_cli(("profile",)).action == "benchmark"
+
+
+def test_inspect_full_physics_is_an_explicit_transient_opt_in(
+    tmp_path: Path,
+) -> None:
+    default = parse_cli(
+        ("inspect", str(tmp_path / "artifact"), "--process", "process-id")
+    )
+    full = parse_cli(
+        (
+            "inspect",
+            str(tmp_path / "artifact"),
+            "--process",
+            "process-id",
+            "--full-physics",
+        )
+    )
+
+    assert default.full_physics is False
+    assert full.full_physics is True
+    assert full.resolve().effective.evaluation.process == "process-id"
 
 
 @pytest.mark.parametrize(

@@ -291,7 +291,10 @@ class CompiledModel:
 
     @property
     def is_prepared(self) -> bool:
-        """Whether this handle owns a validated eager kernel pack."""
+        """Whether this handle owns a validated prepared-mode kernel pack.
+
+        The pack is shared by eager, recurrence, and on-the-fly execution.
+        """
 
         return self.prepared_backend is not None
 

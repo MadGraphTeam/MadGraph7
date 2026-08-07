@@ -144,7 +144,13 @@ def run_cli(
         selected_services = (
             DefaultCliServices(resolution=resolution) if services is None else services
         )
-        result = dispatch(config, selected_services, sink, dry_run=invocation.dry_run)
+        result = dispatch(
+            config,
+            selected_services,
+            sink,
+            dry_run=invocation.dry_run,
+            full_physics=invocation.full_physics,
+        )
         close_progress_sink(sink)
         sink = None
         color = config.output.color == "always" or (

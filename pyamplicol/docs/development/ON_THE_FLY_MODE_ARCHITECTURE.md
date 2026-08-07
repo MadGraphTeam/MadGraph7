@@ -208,6 +208,20 @@ immutable and reusable when their bound structural identities do not change.
 
 ## Execution sequence
 
+### Current production LC family retention
+
+The native LC lane currently declares a deterministic `last-family-only`
+policy with a hard limit of one retained selector family. The outer prepared
+selection, lane request family, executor row family, handles, and exact
+semantic binding map advance together only after the candidate's first
+successful evaluation. Preparing or executing a failed candidate discards its
+pending rows and bindings without evicting the last successful family. Before
+any row owner is replaced or cleared, exposed prepared row tables are
+invalidated. `Runtime.clear()` leaves zero retained/pending families,
+selections, handles, destinations, and semantic bindings. The private runtime
+census authenticates this contract as `family_cache_policy =
+"last-family-only"` and `family_cache_limit = 1`.
+
 ### Structural interpreter first
 
 The first numeric implementation interprets `OnTheFlyStructuralTraceV1`

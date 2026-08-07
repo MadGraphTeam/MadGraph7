@@ -34,13 +34,13 @@ def _color_flow(identifier: str, *, computed: bool = True) -> SimpleNamespace:
     return SimpleNamespace(id=identifier, computed=computed)
 
 
-def _on_the_fly_backend() -> GenerationBackend:
+def _on_the_fly_backend(*, validation_enabled: bool = True) -> GenerationBackend:
     return GenerationBackend(
         RunConfig(
             action=Action.GENERATE,
             generation=GenerationConfig(
                 validation=GenerationValidationConfig(
-                    enabled=True,
+                    enabled=validation_enabled,
                     post_build_validation=True,
                 )
             ),
@@ -72,15 +72,65 @@ class _CompactRuntime:
     execution_mode = "on-the-fly"
     representative_process_key = "process"
 
+    def __init__(
+        self,
+        *,
+        total: complex = 1.0 + 0.0j,
+        resolved: complex | None = None,
+    ) -> None:
+        self.total = total
+        self.resolved = total if resolved is None else resolved
+        self.calls: list[
+            tuple[str, int, tuple[str, ...] | None, tuple[str, ...] | None]
+        ] = []
+
     @property
     def physics(self) -> object:
         raise AssertionError("compact validation opened dense process physics")
 
-    def evaluate(self, *_args: object, **_kwargs: object) -> object:
-        raise AssertionError("compact validation evaluated the generated process")
+    def evaluate(
+        self,
+        samples: tuple[object, ...],
+        *,
+        helicities: tuple[str, ...] | None = None,
+        color_flows: tuple[str, ...] | None = None,
+    ) -> tuple[complex, ...]:
+        sample_count = len(samples)
+        self.calls.append(("total", sample_count, helicities, color_flows))
+        return (self.total,) * sample_count
 
-    def evaluate_resolved(self, *_args: object, **_kwargs: object) -> object:
-        raise AssertionError("compact validation evaluated resolved components")
+    def evaluate_resolved(
+        self,
+        samples: tuple[object, ...],
+        *,
+        helicities: tuple[str, ...] | None = None,
+        color_flows: tuple[str, ...] | None = None,
+    ) -> object:
+        sample_count = len(samples)
+        self.calls.append(("resolved", sample_count, helicities, color_flows))
+        values = (self.resolved,) * sample_count
+        return SimpleNamespace(total=lambda: values)
+
+
+_COMPACT_VALIDATION_SELECTORS = {
+    "process": {
+        "helicities": ("h:-1,+1,+0",),
+        "color_flows": ("1",),
+    }
+}
+
+
+def _validation_point() -> ValidationPointRecord:
+    return ValidationPointRecord(
+        process_id="process",
+        process="d d~ > z",
+        seed=1,
+        particles=(
+            (1, (500.0, 0.0, 0.0, 500.0)),
+            (-1, (500.0, 0.0, 0.0, -500.0)),
+            (23, (1000.0, 0.0, 0.0, 0.0)),
+        ),
+    )
 
 
 def _install_compact_validation_spies(
@@ -137,10 +187,7 @@ def test_post_build_validation_slices_large_helicity_color_product(
         ),
         color_flows=tuple(
             [_color_flow("flow:representative")]
-            + [
-                _color_flow(f"flow:{index}", computed=False)
-                for index in range(14)
-            ]
+            + [_color_flow(f"flow:{index}", computed=False) for index in range(14)]
         ),
         contracted_color_components=(),
     )
@@ -246,29 +293,89 @@ def test_post_build_validation_never_evaluates_large_axes_unselected(
     ]
 
 
-def test_on_the_fly_post_build_validation_stays_compact(
+def test_on_the_fly_post_build_validation_runs_one_compact_numerical_sample(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
     runtime = _CompactRuntime()
     _install_compact_validation_spies(monkeypatch, runtime)
-    point = ValidationPointRecord(
-        process_id="process",
-        process="d d~ > z",
-        seed=1,
-        particles=(
-            (1, (500.0, 0.0, 0.0, 500.0)),
-            (-1, (500.0, 0.0, 0.0, -500.0)),
-            (23, (1000.0, 0.0, 0.0, 0.0)),
-        ),
-    )
+    point = _validation_point()
 
     _on_the_fly_backend()._validate_generated_artifact(
         tmp_path,
         ("process",),
-        validation_points={"process": (point,)},
+        validation_points={"process": (point, point)},
+        expected_api_bundle_path=None,
+        compact_validation_selectors=_COMPACT_VALIDATION_SELECTORS,
+    )
+
+    assert runtime.calls == [
+        ("total", 1, ("h:-1,+1,+0",), ("1",)),
+        ("resolved", 1, ("h:-1,+1,+0",), ("1",)),
+    ]
+
+
+def test_on_the_fly_post_build_validation_rejects_total_resolved_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    runtime = _CompactRuntime(resolved=2.0 + 0.0j)
+    _install_compact_validation_spies(monkeypatch, runtime)
+
+    with pytest.raises(GenerationError, match="does not reduce to the total"):
+        _on_the_fly_backend()._validate_generated_artifact(
+            tmp_path,
+            ("process",),
+            validation_points={"process": (_validation_point(),)},
+            expected_api_bundle_path=None,
+            compact_validation_selectors=_COMPACT_VALIDATION_SELECTORS,
+        )
+
+
+def test_on_the_fly_post_build_validation_disabled_skips_numerical_sample(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    runtime = _CompactRuntime()
+    _install_compact_validation_spies(monkeypatch, runtime)
+
+    _on_the_fly_backend(validation_enabled=False)._validate_generated_artifact(
+        tmp_path,
+        ("process",),
+        validation_points={"process": (_validation_point(),)},
         expected_api_bundle_path=None,
     )
+
+    assert runtime.calls == []
+
+
+def test_on_the_fly_validation_selector_uses_first_projected_source_states() -> None:
+    projection = SimpleNamespace(
+        external_sources=(
+            SimpleNamespace(
+                source_states=(
+                    SimpleNamespace(public_helicity=-1),
+                    SimpleNamespace(public_helicity=1),
+                )
+            ),
+            SimpleNamespace(
+                source_states=(
+                    SimpleNamespace(public_helicity=1),
+                    SimpleNamespace(public_helicity=-1),
+                )
+            ),
+            SimpleNamespace(source_states=(SimpleNamespace(public_helicity=0),)),
+        )
+    )
+
+    selectors = generation_service._on_the_fly_validation_selectors_v1(
+        projection  # type: ignore[arg-type]
+    )
+
+    assert dict(selectors) == {
+        "helicities": ("h:-1,+1,+0",),
+        "color_flows": ("1",),
+    }
 
 
 @pytest.mark.parametrize(

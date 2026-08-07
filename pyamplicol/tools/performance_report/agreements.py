@@ -36,13 +36,11 @@ DIRECT_AGREEMENT_V2_ABI = "pyamplicol-report-direct-agreement-v2"
 LC_COMMON_COMPONENT_ABI = "pyamplicol-report-lc-common-component-v1"
 BUILTIN_UFO_RECURRENCE = "builtin-ufo-recurrence"
 Z_RECURRENCE_CROSS_MODE = "z-recurrence-cross-mode"
-OTF_COMPILED_CROSS_MODE = "otf-compiled-cross-mode"
 LC_CROSS_LAYOUT_COMPONENT = "lc-cross-layout-component"
 LC_LEGACY_PYAMPLICOL_COMPONENT = "lc-legacy-pyamplicol-component"
 DIRECT_AGREEMENT_KINDS = (
     BUILTIN_UFO_RECURRENCE,
     Z_RECURRENCE_CROSS_MODE,
-    OTF_COMPILED_CROSS_MODE,
     LC_CROSS_LAYOUT_COMPONENT,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
 )
@@ -196,32 +194,6 @@ def _z_recurrence_peer(
     )
 
 
-def _otf_compiled_peer(
-    cell: CellSpec,
-    cells: Sequence[CellSpec],
-) -> CellSpec | None:
-    if (
-        cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY
-        or cell.measurement.accuracy is not Accuracy.LC
-    ):
-        return None
-    return _unique_cell(
-        tuple(
-            candidate
-            for candidate in cells
-            if candidate.dataset_id == "matrix_compiled_builtin_sm_lc"
-            and candidate.measurement.execution_mode is ExecutionMode.COMPILED
-            and candidate.measurement.model is ModelKey.BUILTIN_SM
-            and candidate.measurement.accuracy is Accuracy.LC
-            and candidate.process == cell.process
-            and candidate.process_key == cell.process_key
-            and candidate.n_final == cell.n_final
-            and candidate.workload is cell.workload
-        ),
-        context=f"{cell.cell_id} on-the-fly/compiled agreement",
-    )
-
-
 def _lc_layout_peer(
     cell: CellSpec,
     cells: Sequence[CellSpec],
@@ -307,9 +279,6 @@ def incoming_agreement_edges(
     recurrence = _z_recurrence_peer(cell, cells)
     if recurrence is not None:
         edges.append(AgreementEdge(Z_RECURRENCE_CROSS_MODE, recurrence, cell))
-    compiled = _otf_compiled_peer(cell, cells)
-    if compiled is not None:
-        edges.append(AgreementEdge(OTF_COMPILED_CROSS_MODE, compiled, cell))
     layout = _lc_layout_peer(cell, cells, catalog=catalog)
     if layout is not None:
         edges.append(AgreementEdge(LC_CROSS_LAYOUT_COMPONENT, layout, cell))
@@ -552,9 +521,7 @@ def _measurement_scale(
     number: float,
 ) -> tuple[float, str, str]:
     validation = measurement.get("validation")
-    if edge.value_kind == LC_COMMON_COMPONENT_FIELD and isinstance(
-        validation, Mapping
-    ):
+    if edge.value_kind == LC_COMMON_COMPONENT_FIELD and isinstance(validation, Mapping):
         component = validation.get(LC_COMMON_COMPONENT_FIELD)
         if isinstance(component, Mapping):
             return (
@@ -582,11 +549,7 @@ def _measurement_scale(
                 ):
                     return float(raw_scale), "resolved-component-l1", source
     stable_validation = (
-        {
-            key: item
-            for key, item in validation.items()
-            if key != DIRECT_AGREEMENT_FIELD
-        }
+        {key: item for key, item in validation.items() if key != DIRECT_AGREEMENT_FIELD}
         if isinstance(validation, Mapping)
         else validation
     )
@@ -657,9 +620,7 @@ def direct_agreement_record(
         comparison_binding={
             "point_digest": candidate_point,
             "selector_component_identity": selector_identity,
-            "selector_component_sha256": _agreement_source_digest(
-                selector_identity
-            ),
+            "selector_component_sha256": _agreement_source_digest(selector_identity),
             "candidate_source_sha256": candidate_source,
             "baseline_source_sha256": baseline_source,
         },
@@ -932,7 +893,6 @@ __all__ = [
     "LC_COMMON_COMPONENT_FIELD",
     "LC_CROSS_LAYOUT_COMPONENT",
     "LC_LEGACY_PYAMPLICOL_COMPONENT",
-    "OTF_COMPILED_CROSS_MODE",
     "STRICT_ABSOLUTE_TOLERANCE",
     "STRICT_RELATIVE_TOLERANCE",
     "Z_RECURRENCE_CROSS_MODE",

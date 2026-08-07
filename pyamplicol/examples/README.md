@@ -62,9 +62,10 @@ These three showcase cards print colorized terminal tables by default. Add
 | `builtin_sm_nlc.toml` | Built-in compatibility SM, default recurrence JIT O2, contracted NLC |
 | `builtin_sm_full.toml` | Built-in compatibility SM, explicit compiled C++, contracted full color |
 | `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O2 pack |
+| `builtin_sm_on_the_fly.toml` | Built-in SM LC generation as a compact on-the-fly seed using the same prepared JIT O2 pack |
 | `all_options.toml` | Every current schema field, active and commented |
 
-## Run `q q~ > Z + 6g` In Three Modes
+## Run `q q~ > Z + 6g` With Recurrence, Compiled, And Eager
 
 Each matched card generates and profiles the same complete-selector,
 topology-replay LC workload:
@@ -83,7 +84,30 @@ pyamplicol profile --card qq_z6g_eager_jit_o2.toml
 Recurrence JIT O2 is the default current-schedule lane, compiled JIT O3 builds
 process-local DAG evaluators, and eager-DAG JIT O2 applies prepared kernels to
 compact process tables. The explicit settings in these cards make the
-three-way comparison stable if project defaults change again.
+materialized-mode comparison stable if project defaults change again.
+
+## Generate A Compact On-The-Fly LC Artifact
+
+The minimal on-the-fly card uses the wheel-owned prepared JIT O2 kernels and
+keeps complete runtime selector coverage in one compact process seed:
+
+```console
+pyamplicol generate --card builtin_sm_on_the_fly.toml
+pyamplicol inspect artifacts/builtin_sm_on_the_fly
+pyamplicol profile --card builtin_sm_on_the_fly.toml \
+  --color-flow 1 --batch-size 128 --target-runtime 5
+```
+
+The inspection reports the physical helicity/color-flow census without
+materializing either LC flow layout. The card's
+`evaluator.optimization.cores = 4` requests four query-construction threads; it
+does not promise four numerical-evaluation threads. Point-tile and workspace
+settings are not currently applied by this mode. The profile measures one
+runtime-selected LC flow with a helicity sum over 128-point batches. Generation
+requires the wheel-owned prepared JIT O2 bundle selected for the built-in
+model; the artifact carries the referenced kernels it needs at runtime.
+On-the-fly execution is LC and native `f64` only; NLC, full color, and higher
+precision remain unsupported.
 
 ## Reproduce The Z-Ladder Workloads
 

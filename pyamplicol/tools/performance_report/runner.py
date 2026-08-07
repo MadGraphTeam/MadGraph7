@@ -78,10 +78,10 @@ ABSOLUTE_TOLERANCE = 1.0e-15
 CONDITIONED_COMPARISON_ABI = "pyamplicol-report-conditioned-comparison-v2"
 RESOLVED_SUM_VALIDATION_ABI = "pyamplicol-report-resolved-sum-validation-v2"
 RESOLVED_COMPONENT_SCALE_ABI = "pyamplicol-report-resolved-component-scale-v1"
-OTF_DUAL_AUTHORITY_VALIDATION_ABI = (
-    "pyamplicol-report-on-the-fly-dual-authority-validation-v2"
+OTF_RECURRENCE_AUTHORITY_VALIDATION_ABI = (
+    "pyamplicol-report-on-the-fly-recurrence-authority-validation-v1"
 )
-OTF_DUAL_AUTHORITY_VALIDATION_FIELD = "on_the_fly_dual_authority"
+OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD = "on_the_fly_recurrence_authority"
 OTF_COLD_WARMUP_FIELDS = frozenset(
     {
         "cold_warmup_elapsed_seconds",
@@ -91,6 +91,12 @@ OTF_COLD_WARMUP_FIELDS = frozenset(
         "cold_warmup_timer_source",
         "cold_warmup_timing_scope",
         "cold_warmup_runtime_freshness",
+        "cold_warmup_runtime_state_evidence",
+        "cold_warmup_runtime_state_before",
+        "cold_warmup_runtime_state_after",
+        "cold_warmup_runtime_cold_before_first_evaluation",
+        "cold_warmup_runtime_retained_before_first_evaluation",
+        "cold_warmup_runtime_retained_after_first_evaluation",
         "cold_warmup_ratio_eligible",
         "cold_warmup_acceptance_eligible",
     }
@@ -112,7 +118,56 @@ OTF_COLD_WARMUP_TIMING_SCOPE = (
     "one initial requested-selector Runtime evaluation on the full benchmark "
     "batch; artifact generation and Runtime/artifact load are excluded"
 )
-OTF_COLD_WARMUP_RUNTIME_FRESHNESS = "not-authenticated-by-benchmark"
+OTF_COLD_WARMUP_RUNTIME_FRESHNESS = "authenticated-cold"
+OTF_COLD_WARMUP_RUNTIME_RETAINED_FRESHNESS = "authenticated-already-retained"
+OTF_COLD_WARMUP_RUNTIME_FRESHNESSES = frozenset(
+    {
+        OTF_COLD_WARMUP_RUNTIME_FRESHNESS,
+        OTF_COLD_WARMUP_RUNTIME_RETAINED_FRESHNESS,
+    }
+)
+OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE = "authenticated-native-otf-census-v1"
+OTF_RUNTIME_STATE_CENSUS_KIND = "rusticol-on-the-fly-runtime-state-census-v1"
+OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY = "last-family-only"
+OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT = 1
+OTF_RUNTIME_STATE_COUNT_FIELDS = (
+    "process_preparation_count",
+    "retained_family_count",
+    "pending_family_count",
+    "retained_selection_count",
+    "retained_request_count",
+    "retained_amplitude_destination_count",
+    "retained_executor_handle_count",
+    "retained_query_local_trace_count",
+    "retained_embedded_lookup_key_count",
+    "semantic_executor_binding_count",
+)
+OTF_RUNTIME_STATE_RETAINED_BASE_POSITIVE_FIELDS = (
+    "process_preparation_count",
+    "retained_family_count",
+    "retained_selection_count",
+    "retained_request_count",
+)
+OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS = (
+    "retained_amplitude_destination_count",
+    "retained_executor_handle_count",
+    "semantic_executor_binding_count",
+)
+OTF_ACTIVE_FAMILY_COUNT_FIELDS = (
+    "query_count",
+    "union_unique_current_count",
+    "union_unique_current_component_count",
+    "union_source_rows",
+    "union_contribution_rows",
+    "union_finalization_rows",
+    "union_closure_rows",
+    "union_amplitude_destination_count",
+    "union_source_executor_call_groups",
+    "union_contribution_executor_call_groups",
+    "union_finalization_executor_call_groups",
+    "union_closure_executor_call_groups",
+)
+OTF_OPERATION_ROLES = ("source", "contribution", "finalization", "closure")
 CONVENTIONAL_WARMUP_TIMING_SCOPE = (
     "configured benchmark warm-up iteration outer wall; includes the headline "
     "evaluation and optional native-profile warm-up; artifact generation and "
@@ -2913,7 +2968,8 @@ def _otf_capture_comparison(
 
 def _otf_stage_record(
     candidate: _OtfAuthorityCapture,
-    authorities: Sequence[tuple[str, CellSpec, _OtfAuthorityCapture]],
+    authority_cell: CellSpec,
+    authority: _OtfAuthorityCapture,
     *,
     stage: str,
 ) -> dict[str, object]:
@@ -2925,41 +2981,32 @@ def _otf_stage_record(
         "candidate_resolved_ordering_sha256": (candidate.resolved_ordering_sha256),
         "candidate_resolved_source_sha256": candidate.resolved_source_sha256,
         "candidate_resolved_sum": candidate.resolved_sum,
-        "comparisons": [
-            _otf_capture_comparison(
-                candidate,
-                authority,
-                authority_cell_id=authority_cell.cell_id,
-                label=f"on-the-fly {stage}/{role}",
-            )
-            for role, authority_cell, authority in authorities
-        ],
+        "comparison": _otf_capture_comparison(
+            candidate,
+            authority,
+            authority_cell_id=authority_cell.cell_id,
+            label=f"on-the-fly {stage}/recurrence",
+        ),
     }
 
 
-def on_the_fly_dual_authority_validation(
+def on_the_fly_recurrence_authority_validation(
     candidate: RuntimeLike,
     points: object,
     *,
     cell: CellSpec,
     selector_contract: SelectorContract,
-    authorities: Sequence[tuple[str, CellSpec, RuntimeLike]],
+    authority: tuple[CellSpec, RuntimeLike],
 ) -> dict[str, object]:
-    """Validate one cold OTF runtime twice, then reset it for public profiling."""
+    """Validate cold OTF against recurrence, then reset it for profiling."""
 
     if (
         cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY
         or cell.measurement.accuracy is not Accuracy.LC
     ):
-        raise RunnerError("dual-authority preflight requires an on-the-fly LC cell")
-    expected_roles = (
-        ("recurrence", ExecutionMode.RECURRENCE),
-        ("compiled", ExecutionMode.COMPILED),
-    )
-    if tuple(role for role, _cell, _runtime in authorities) != tuple(
-        role for role, _mode in expected_roles
-    ):
-        raise RunnerError("on-the-fly preflight requires recurrence then compiled")
+        raise RunnerError(
+            "recurrence-authority preflight requires an on-the-fly LC cell"
+        )
     validate_runtime_contract(cell, candidate)
     if _runtime_execution_mode(candidate) != ExecutionMode.ON_THE_FLY.value:
         raise RunnerError("on-the-fly candidate runtime has the wrong execution mode")
@@ -2971,48 +3018,39 @@ def on_the_fly_dual_authority_validation(
     )
     candidate_artifact_id = _otf_runtime_artifact_id(candidate, "on-the-fly candidate")
 
-    authority_captures: list[tuple[str, CellSpec, _OtfAuthorityCapture]] = []
-    authority_records: list[dict[str, object]] = []
-    for (role, expected_mode), (
-        observed_role,
-        authority_cell,
+    authority_cell, authority_runtime = authority
+    if (
+        authority_cell.measurement.execution_mode is not ExecutionMode.RECURRENCE
+        or authority_cell.measurement.accuracy is not Accuracy.LC
+        or authority_cell.process_key != cell.process_key
+        or authority_cell.n_final != cell.n_final
+        or authority_cell.workload is not cell.workload
+    ):
+        raise RunnerError("on-the-fly recurrence authority cell is incompatible")
+    validate_runtime_contract(authority_cell, authority_runtime)
+    if _runtime_execution_mode(authority_runtime) != ExecutionMode.RECURRENCE.value:
+        raise RunnerError("on-the-fly recurrence authority has the wrong mode")
+    validate_selector_contract(authority_runtime, selector_contract, points)
+    authority_capture = _capture_otf_authority_values(
         authority_runtime,
-    ) in zip(expected_roles, authorities, strict=True):
-        if (
-            observed_role != role
-            or authority_cell.measurement.execution_mode is not expected_mode
-            or authority_cell.measurement.accuracy is not Accuracy.LC
-            or authority_cell.process_key != cell.process_key
-            or authority_cell.n_final != cell.n_final
-            or authority_cell.workload is not cell.workload
-        ):
-            raise RunnerError(f"on-the-fly {role} authority cell is incompatible")
-        validate_runtime_contract(authority_cell, authority_runtime)
-        if _runtime_execution_mode(authority_runtime) != expected_mode.value:
-            raise RunnerError(f"on-the-fly {role} authority has the wrong mode")
-        validate_selector_contract(authority_runtime, selector_contract, points)
-        capture = _capture_otf_authority_values(
-            authority_runtime,
-            points,
-            cell=authority_cell,
-            contract=selector_contract,
-            label=f"on-the-fly {role} authority",
-        )
-        authority_captures.append((role, authority_cell, capture))
-        authority_records.append(
-            {
-                "role": role,
-                "cell_id": authority_cell.cell_id,
-                "artifact_id": _otf_runtime_artifact_id(
-                    authority_runtime, f"on-the-fly {role} authority"
-                ),
-                "total_source_sha256": capture.total_source_sha256,
-                "resolved_total_source_sha256": (capture.resolved_total_source_sha256),
-                "resolved_ordering_sha256": capture.resolved_ordering_sha256,
-                "resolved_source_sha256": capture.resolved_source_sha256,
-                "resolved_sum": capture.resolved_sum,
-            }
-        )
+        points,
+        cell=authority_cell,
+        contract=selector_contract,
+        label="on-the-fly recurrence authority",
+    )
+    authority_record = {
+        "cell_id": authority_cell.cell_id,
+        "artifact_id": _otf_runtime_artifact_id(
+            authority_runtime, "on-the-fly recurrence authority"
+        ),
+        "total_source_sha256": authority_capture.total_source_sha256,
+        "resolved_total_source_sha256": (
+            authority_capture.resolved_total_source_sha256
+        ),
+        "resolved_ordering_sha256": authority_capture.resolved_ordering_sha256,
+        "resolved_source_sha256": authority_capture.resolved_source_sha256,
+        "resolved_sum": authority_capture.resolved_sum,
+    }
 
     before = _capture_otf_authority_values(
         candidate,
@@ -3023,7 +3061,8 @@ def on_the_fly_dual_authority_validation(
     )
     before_record = _otf_stage_record(
         before,
-        authority_captures,
+        authority_cell,
+        authority_capture,
         stage="before-clear",
     )
     clear = getattr(candidate, "clear", None)
@@ -3040,7 +3079,8 @@ def on_the_fly_dual_authority_validation(
         )
         after_record = _otf_stage_record(
             after,
-            authority_captures,
+            authority_cell,
+            authority_capture,
             stage="after-clear",
         )
     finally:
@@ -3050,7 +3090,7 @@ def on_the_fly_dual_authority_validation(
     point_count = len(before.totals)
     component_count = len(before.helicity_ids) * len(before.color_flow_ids)
     record = {
-        "abi": OTF_DUAL_AUTHORITY_VALIDATION_ABI,
+        "abi": OTF_RECURRENCE_AUTHORITY_VALIDATION_ABI,
         "status": ResultStatus.OK.value,
         "candidate_cell_id": cell.cell_id,
         "candidate_artifact_id": candidate_artifact_id,
@@ -3062,11 +3102,11 @@ def on_the_fly_dual_authority_validation(
         "point_count": point_count,
         "resolved_component_count": component_count,
         "resolved_check_count": point_count * component_count,
-        "authorities": authority_records,
+        "authority": authority_record,
         "before_clear": before_record,
         "after_clear": after_record,
         "lifecycle": {
-            "authority_artifacts_loaded_only": True,
+            "authority_artifact_loaded_only": True,
             "candidate_loaded_before_validation": True,
             "validated_before_clear": True,
             "validated_after_clear": True,
@@ -3074,22 +3114,19 @@ def on_the_fly_dual_authority_validation(
             "final_clear_before_profile": True,
         },
     }
-    validate_on_the_fly_dual_authority_validation_record(
+    validate_on_the_fly_recurrence_authority_validation_record(
         record,
         expected_cell=cell,
         selector_contract=selector_contract.as_dict(),
         candidate_artifact_id=candidate_artifact_id,
-        expected_authorities=tuple(
-            (role, authority_cell.cell_id)
-            for role, authority_cell, _runtime in authorities
-        ),
+        expected_authority_cell_id=authority_cell.cell_id,
     )
     return record
 
 
 def _require_otf_sha256(value: object, field: str) -> str:
     if not isinstance(value, str) or not _SHA256_PATTERN.fullmatch(value):
-        raise ValueError(f"on-the-fly dual-authority {field} is not SHA-256")
+        raise ValueError(f"on-the-fly recurrence-authority {field} is not SHA-256")
     return value
 
 
@@ -3102,7 +3139,7 @@ def _validate_otf_compact_summary(
     relative_tolerance: float,
 ) -> None:
     if not isinstance(value, Mapping):
-        raise ValueError(f"on-the-fly dual-authority {field} is not an object")
+        raise ValueError(f"on-the-fly recurrence-authority {field} is not an object")
     expected = {
         "check_count",
         "maximum_conditioned_residual",
@@ -3117,7 +3154,7 @@ def _validate_otf_compact_summary(
         or not isinstance(check_count, int)
         or check_count != expected_checks
     ):
-        raise ValueError(f"on-the-fly dual-authority {field} counts differ")
+        raise ValueError(f"on-the-fly recurrence-authority {field} counts differ")
     if expected_components is not None:
         component_count = value.get("component_count")
         if (
@@ -3126,7 +3163,7 @@ def _validate_otf_compact_summary(
             or component_count != expected_components
         ):
             raise ValueError(
-                f"on-the-fly dual-authority {field} component count differs"
+                f"on-the-fly recurrence-authority {field} component count differs"
             )
     for name in ("maximum_conditioned_residual", "maximum_absolute_delta"):
         raw = value.get(name)
@@ -3136,23 +3173,25 @@ def _validate_otf_compact_summary(
             or not math.isfinite(float(raw))
             or float(raw) < 0.0
         ):
-            raise ValueError(f"on-the-fly dual-authority {field}.{name} is invalid")
+            raise ValueError(
+                f"on-the-fly recurrence-authority {field}.{name} is invalid"
+            )
     if float(value["maximum_conditioned_residual"]) > relative_tolerance:
-        raise ValueError(f"on-the-fly dual-authority {field} is not successful")
+        raise ValueError(f"on-the-fly recurrence-authority {field} is not successful")
 
 
-def validate_on_the_fly_dual_authority_validation_record(
+def validate_on_the_fly_recurrence_authority_validation_record(
     value: object,
     *,
     expected_cell: CellSpec | None = None,
     selector_contract: object = None,
     candidate_artifact_id: str | None = None,
-    expected_authorities: Sequence[tuple[str, str]] | None = None,
+    expected_authority_cell_id: str | None = None,
 ) -> None:
     """Validate the compact, success-only OTF numerical preflight record."""
 
     if not isinstance(value, Mapping):
-        raise ValueError("on-the-fly dual-authority validation must be an object")
+        raise ValueError("on-the-fly recurrence-authority validation must be an object")
     expected_fields = {
         "abi",
         "status",
@@ -3166,20 +3205,20 @@ def validate_on_the_fly_dual_authority_validation_record(
         "point_count",
         "resolved_component_count",
         "resolved_check_count",
-        "authorities",
+        "authority",
         "before_clear",
         "after_clear",
         "lifecycle",
     }
     if set(value) != expected_fields:
-        raise ValueError("on-the-fly dual-authority validation fields differ")
+        raise ValueError("on-the-fly recurrence-authority validation fields differ")
     if (
-        value.get("abi") != OTF_DUAL_AUTHORITY_VALIDATION_ABI
+        value.get("abi") != OTF_RECURRENCE_AUTHORITY_VALIDATION_ABI
         or value.get("status") != ResultStatus.OK.value
         or value.get("precision_digits") != 16
         or value.get("relative_tolerance") != RELATIVE_TOLERANCE
     ):
-        raise ValueError("on-the-fly dual-authority validation header is invalid")
+        raise ValueError("on-the-fly recurrence-authority validation header is invalid")
     _require_otf_sha256(value.get("candidate_artifact_id"), "candidate_artifact_id")
     _require_otf_sha256(value.get("point_digest"), "point_digest")
     _require_otf_sha256(value.get("selector_sha256"), "selector_sha256")
@@ -3195,7 +3234,9 @@ def validate_on_the_fly_dual_authority_validation_record(
         or component_count < 1
         or check_count != point_count * component_count
     ):
-        raise ValueError("on-the-fly dual-authority validation counts are invalid")
+        raise ValueError(
+            "on-the-fly recurrence-authority validation counts are invalid"
+        )
     if (
         candidate_artifact_id is not None
         and value.get("candidate_artifact_id") != candidate_artifact_id
@@ -3209,19 +3250,21 @@ def validate_on_the_fly_dual_authority_validation_record(
             or value.get("candidate_cell_id") != expected_cell.cell_id
             or value.get("workload") != expected_cell.workload.value
         ):
-            raise ValueError("on-the-fly dual-authority candidate cell differs")
+            raise ValueError("on-the-fly recurrence-authority candidate cell differs")
         if not isinstance(selector_contract, Mapping):
-            raise ValueError("on-the-fly dual-authority selector contract is absent")
+            raise ValueError(
+                "on-the-fly recurrence-authority selector contract is absent"
+            )
         try:
             contract = SelectorContract.from_mapping(selector_contract)
         except (TypeError, ValueError) as error:
             raise ValueError(
-                "on-the-fly dual-authority selector contract is invalid"
+                "on-the-fly recurrence-authority selector contract is invalid"
             ) from error
         if value.get("point_digest") != contract.point_digest or value.get(
             "selector_sha256"
         ) != _otf_selector_digest(expected_cell, contract):
-            raise ValueError("on-the-fly dual-authority selector binding differs")
+            raise ValueError("on-the-fly recurrence-authority selector binding differs")
     elif (
         not isinstance(value.get("candidate_cell_id"), str)
         or not value.get("candidate_cell_id")
@@ -3231,15 +3274,12 @@ def validate_on_the_fly_dual_authority_validation_record(
             Workload.ALL_FLOW.value,
         }
     ):
-        raise ValueError("on-the-fly dual-authority candidate identity is invalid")
+        raise ValueError(
+            "on-the-fly recurrence-authority candidate identity is invalid"
+        )
 
-    authorities = value.get("authorities")
-    if not isinstance(authorities, list) or len(authorities) != 2:
-        raise ValueError("on-the-fly dual-authority authorities are unavailable")
-    observed_authorities: list[tuple[str, str]] = []
-    authority_cell_ids: list[str] = []
+    authority = value.get("authority")
     authority_fields = {
-        "role",
         "cell_id",
         "artifact_id",
         "total_source_sha256",
@@ -3248,44 +3288,30 @@ def validate_on_the_fly_dual_authority_validation_record(
         "resolved_source_sha256",
         "resolved_sum",
     }
-    for index, authority in enumerate(authorities):
-        if not isinstance(authority, Mapping) or set(authority) != authority_fields:
-            raise ValueError(
-                f"on-the-fly dual-authority authorities[{index}] fields differ"
-            )
-        role = authority.get("role")
-        cell_id = authority.get("cell_id")
-        if (
-            role not in {"recurrence", "compiled"}
-            or not isinstance(cell_id, str)
-            or not cell_id
-        ):
-            raise ValueError("on-the-fly dual-authority authority identity is invalid")
-        observed_authorities.append((role, cell_id))
-        authority_cell_ids.append(cell_id)
-        for field in (
-            "artifact_id",
-            "total_source_sha256",
-            "resolved_total_source_sha256",
-            "resolved_ordering_sha256",
-            "resolved_source_sha256",
-        ):
-            _require_otf_sha256(authority.get(field), f"authority.{field}")
-        _validate_otf_compact_summary(
-            authority.get("resolved_sum"),
-            field=f"authorities[{index}].resolved_sum",
-            expected_checks=point_count,
-            relative_tolerance=RELATIVE_TOLERANCE,
-        )
-    if tuple(role for role, _cell_id in observed_authorities) != (
-        "recurrence",
-        "compiled",
+    if not isinstance(authority, Mapping) or set(authority) != authority_fields:
+        raise ValueError("on-the-fly recurrence-authority fields differ")
+    authority_cell_id = authority.get("cell_id")
+    if not isinstance(authority_cell_id, str) or not authority_cell_id:
+        raise ValueError("on-the-fly recurrence-authority identity is invalid")
+    if (
+        expected_authority_cell_id is not None
+        and authority_cell_id != expected_authority_cell_id
     ):
-        raise ValueError("on-the-fly dual-authority roles are not canonical")
-    if expected_authorities is not None and tuple(observed_authorities) != tuple(
-        expected_authorities
+        raise ValueError("on-the-fly recurrence-authority catalog identity differs")
+    for field in (
+        "artifact_id",
+        "total_source_sha256",
+        "resolved_total_source_sha256",
+        "resolved_ordering_sha256",
+        "resolved_source_sha256",
     ):
-        raise ValueError("on-the-fly dual-authority catalog identities differ")
+        _require_otf_sha256(authority.get(field), f"authority.{field}")
+    _validate_otf_compact_summary(
+        authority.get("resolved_sum"),
+        field="authority.resolved_sum",
+        expected_checks=point_count,
+        relative_tolerance=RELATIVE_TOLERANCE,
+    )
 
     for stage_name in ("before_clear", "after_clear"):
         stage = value.get(stage_name)
@@ -3295,10 +3321,12 @@ def validate_on_the_fly_dual_authority_validation_record(
             "candidate_resolved_ordering_sha256",
             "candidate_resolved_source_sha256",
             "candidate_resolved_sum",
-            "comparisons",
+            "comparison",
         }
         if not isinstance(stage, Mapping) or set(stage) != expected_stage_fields:
-            raise ValueError(f"on-the-fly dual-authority {stage_name} fields differ")
+            raise ValueError(
+                f"on-the-fly recurrence-authority {stage_name} fields differ"
+            )
         for field in (
             "candidate_total_source_sha256",
             "candidate_resolved_total_source_sha256",
@@ -3312,45 +3340,35 @@ def validate_on_the_fly_dual_authority_validation_record(
             expected_checks=point_count,
             relative_tolerance=RELATIVE_TOLERANCE,
         )
-        comparisons = stage.get("comparisons")
-        if not isinstance(comparisons, list) or len(comparisons) != 2:
+        comparison = stage.get("comparison")
+        if not isinstance(comparison, Mapping) or set(comparison) != {
+            "authority_cell_id",
+            "total",
+            "resolved_components",
+        }:
             raise ValueError(
-                f"on-the-fly dual-authority {stage_name} comparisons differ"
+                f"on-the-fly recurrence-authority {stage_name} comparison fields differ"
             )
-        if [
-            comparison.get("authority_cell_id")
-            if isinstance(comparison, Mapping)
-            else None
-            for comparison in comparisons
-        ] != authority_cell_ids:
+        if comparison.get("authority_cell_id") != authority_cell_id:
             raise ValueError(
-                f"on-the-fly dual-authority {stage_name} authority order differs"
+                f"on-the-fly recurrence-authority {stage_name} identity differs"
             )
-        for index, comparison in enumerate(comparisons):
-            if not isinstance(comparison, Mapping) or set(comparison) != {
-                "authority_cell_id",
-                "total",
-                "resolved_components",
-            }:
-                raise ValueError(
-                    f"on-the-fly dual-authority {stage_name} comparison fields differ"
-                )
-            _validate_otf_compact_summary(
-                comparison.get("total"),
-                field=f"{stage_name}.comparisons[{index}].total",
-                expected_checks=point_count,
-                relative_tolerance=RELATIVE_TOLERANCE,
-            )
-            _validate_otf_compact_summary(
-                comparison.get("resolved_components"),
-                field=f"{stage_name}.comparisons[{index}].resolved_components",
-                expected_checks=check_count,
-                expected_components=component_count,
-                relative_tolerance=RELATIVE_TOLERANCE,
-            )
+        _validate_otf_compact_summary(
+            comparison.get("total"),
+            field=f"{stage_name}.comparison.total",
+            expected_checks=point_count,
+            relative_tolerance=RELATIVE_TOLERANCE,
+        )
+        _validate_otf_compact_summary(
+            comparison.get("resolved_components"),
+            field=f"{stage_name}.comparison.resolved_components",
+            expected_checks=check_count,
+            expected_components=component_count,
+            relative_tolerance=RELATIVE_TOLERANCE,
+        )
 
     expected_lifecycle = {
-        "authority_artifacts_loaded_only": True,
+        "authority_artifact_loaded_only": True,
         "candidate_loaded_before_validation": True,
         "validated_before_clear": True,
         "validated_after_clear": True,
@@ -3358,7 +3376,7 @@ def validate_on_the_fly_dual_authority_validation_record(
         "final_clear_before_profile": True,
     }
     if value.get("lifecycle") != expected_lifecycle:
-        raise ValueError("on-the-fly dual-authority lifecycle is invalid")
+        raise ValueError("on-the-fly recurrence-authority lifecycle is invalid")
 
 
 def resolved_sum_validation(
@@ -4376,6 +4394,149 @@ def _warmup_nonnegative_integer(value: object, field: str) -> int:
     return value
 
 
+def _warmup_boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"runtime profile {field} must be a boolean")
+    return value
+
+
+def _warmup_plain_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _warmup_plain_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return tuple(_warmup_plain_value(item) for item in value)
+    if isinstance(value, list):
+        return [_warmup_plain_value(item) for item in value]
+    return value
+
+
+def _validate_otf_runtime_state_census(
+    value: object,
+    field: str,
+) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"runtime profile {field} must be a mapping")
+    expected_fields = {
+        "kind",
+        "process_id",
+        "family_cache_policy",
+        "family_cache_limit",
+        "active_family_union_census",
+        *OTF_RUNTIME_STATE_COUNT_FIELDS,
+    }
+    if set(value) != expected_fields:
+        raise ValueError(f"runtime profile {field} has invalid runtime census fields")
+    if value.get("kind") != OTF_RUNTIME_STATE_CENSUS_KIND:
+        raise ValueError(f"runtime profile {field} has an invalid runtime census kind")
+    if value.get("family_cache_policy") != OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY:
+        raise ValueError(
+            f"runtime profile {field} has an unsupported family cache policy"
+        )
+    family_cache_limit = value.get("family_cache_limit")
+    if (
+        isinstance(family_cache_limit, bool)
+        or not isinstance(family_cache_limit, int)
+        or family_cache_limit != OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT
+    ):
+        raise ValueError(
+            f"runtime profile {field} must use family cache limit "
+            f"{OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT}"
+        )
+    process_id = value.get("process_id")
+    if not isinstance(process_id, str) or not process_id:
+        raise ValueError(
+            f"runtime profile {field} runtime census has an invalid process ID"
+        )
+    for count_field in OTF_RUNTIME_STATE_COUNT_FIELDS:
+        _warmup_nonnegative_integer(value[count_field], f"{field}.{count_field}")
+    if value["retained_family_count"] > OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT:
+        raise ValueError(
+            f"runtime profile {field} retained family count exceeds its cache limit"
+        )
+
+    active = value.get("active_family_union_census")
+    if active is None:
+        return value
+    if not isinstance(active, Mapping):
+        raise ValueError(
+            f"runtime profile {field} active-family census must be a mapping or null"
+        )
+    expected_active_fields = {
+        "basis",
+        "scope",
+        *OTF_ACTIVE_FAMILY_COUNT_FIELDS,
+    }
+    if set(active) != expected_active_fields:
+        raise ValueError(
+            f"runtime profile {field} has invalid active-family census fields"
+        )
+    if (
+        active.get("basis") != "shared-query-family-union-v1"
+        or active.get("scope") != "active-family-union"
+    ):
+        raise ValueError(
+            f"runtime profile {field} has an invalid active-family census identity"
+        )
+    for count_field in OTF_ACTIVE_FAMILY_COUNT_FIELDS:
+        _warmup_nonnegative_integer(
+            active[count_field],
+            f"{field}.active_family_union_census.{count_field}",
+        )
+    if (
+        active["query_count"] < 1
+        or active["union_unique_current_count"]
+        > active["union_unique_current_component_count"]
+        or active["union_amplitude_destination_count"] < 1
+        or active["union_amplitude_destination_count"] > active["query_count"]
+        or active["query_count"] > value["retained_request_count"]
+        or active["union_amplitude_destination_count"]
+        > value["retained_amplitude_destination_count"]
+    ):
+        raise ValueError(
+            f"runtime profile {field} active-family census is inconsistent"
+        )
+    for role in OTF_OPERATION_ROLES:
+        if active[f"union_{role}_executor_call_groups"] > active[f"union_{role}_rows"]:
+            raise ValueError(
+                f"runtime profile {field} active-family {role} call-group "
+                "count exceeds its row count"
+            )
+    return value
+
+
+def _otf_runtime_state_is_cold(value: Mapping[str, object]) -> bool:
+    return all(value[field] == 0 for field in OTF_RUNTIME_STATE_COUNT_FIELDS) and (
+        value["active_family_union_census"] is None
+    )
+
+
+def _otf_runtime_state_is_retained(value: Mapping[str, object]) -> bool:
+    if (
+        value["pending_family_count"] != 0
+        or value["process_preparation_count"] != 1
+        or value["retained_family_count"] != OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT
+        or value["retained_selection_count"] != OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT
+        or _warmup_nonnegative_integer(
+            value["retained_request_count"],
+            "retained_request_count",
+        )
+        < 1
+    ):
+        return False
+    executable_counts = tuple(
+        _warmup_nonnegative_integer(value[field], field)
+        for field in OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS
+    )
+    active = value["active_family_union_census"]
+    if isinstance(active, Mapping):
+        return (
+            executable_counts[0] > 0
+            and executable_counts[1] == OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT
+            and executable_counts[2] > 0
+        )
+    return active is None and all(count == 0 for count in executable_counts)
+
+
 def validate_profile_warmup_evidence(
     value: object,
     *,
@@ -4563,10 +4724,69 @@ def validate_profile_warmup_evidence(
             "on-the-fly cold warm-up scope must exclude artifact generation and "
             "Runtime/artifact load"
         )
-    if value["cold_warmup_runtime_freshness"] != OTF_COLD_WARMUP_RUNTIME_FRESHNESS:
+    if (
+        value["cold_warmup_runtime_state_evidence"]
+        != OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE
+    ):
         raise ValueError(
-            "on-the-fly cold warm-up freshness must remain unauthenticated by the "
-            "benchmark"
+            "on-the-fly cold warm-up runtime state evidence is unsupported"
+        )
+    state_before = _validate_otf_runtime_state_census(
+        value["cold_warmup_runtime_state_before"],
+        "cold_warmup_runtime_state_before",
+    )
+    state_after = _validate_otf_runtime_state_census(
+        value["cold_warmup_runtime_state_after"],
+        "cold_warmup_runtime_state_after",
+    )
+    if state_before["process_id"] != state_after["process_id"]:
+        raise ValueError(
+            "on-the-fly cold warm-up runtime state snapshots identify different "
+            "processes"
+        )
+    runtime_was_cold = _otf_runtime_state_is_cold(state_before)
+    runtime_was_retained = _otf_runtime_state_is_retained(state_before)
+    runtime_is_retained = _otf_runtime_state_is_retained(state_after)
+    if runtime_was_cold == runtime_was_retained:
+        raise ValueError(
+            "on-the-fly runtime state before the first evaluation must be exactly "
+            "cold or strictly retained"
+        )
+    if not runtime_is_retained:
+        raise ValueError(
+            "on-the-fly runtime state after the first evaluation must be strictly "
+            "retained"
+        )
+    if (
+        _warmup_boolean(
+            value["cold_warmup_runtime_cold_before_first_evaluation"],
+            "cold_warmup_runtime_cold_before_first_evaluation",
+        )
+        is not runtime_was_cold
+        or _warmup_boolean(
+            value["cold_warmup_runtime_retained_before_first_evaluation"],
+            "cold_warmup_runtime_retained_before_first_evaluation",
+        )
+        is not runtime_was_retained
+        or _warmup_boolean(
+            value["cold_warmup_runtime_retained_after_first_evaluation"],
+            "cold_warmup_runtime_retained_after_first_evaluation",
+        )
+        is not runtime_is_retained
+    ):
+        raise ValueError(
+            "on-the-fly cold warm-up runtime state booleans do not match the "
+            "authenticated census snapshots"
+        )
+    expected_freshness = (
+        OTF_COLD_WARMUP_RUNTIME_FRESHNESS
+        if runtime_was_cold
+        else OTF_COLD_WARMUP_RUNTIME_RETAINED_FRESHNESS
+    )
+    if value["cold_warmup_runtime_freshness"] != expected_freshness:
+        raise ValueError(
+            "on-the-fly cold warm-up freshness does not match the authenticated "
+            "runtime state"
         )
     if (
         value["cold_warmup_ratio_eligible"] is not False
@@ -4882,7 +5102,7 @@ def _benchmark_measurement(
         raise RunnerError(str(error)) from error
     for field in (*sorted(OTF_COLD_WARMUP_FIELDS), *sorted(CONVENTIONAL_WARMUP_FIELDS)):
         if field in environment:
-            phase_evidence[field] = environment[field]
+            phase_evidence[field] = _warmup_plain_value(environment[field])
     for field in (
         "calibration_elapsed_seconds",
         "calibration_outer_elapsed_seconds",

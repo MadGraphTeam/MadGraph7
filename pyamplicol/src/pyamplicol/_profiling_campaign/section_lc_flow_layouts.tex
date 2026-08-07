@@ -49,7 +49,7 @@ Availability & compiled, eager, recurrence, and on-the-fly to
 \end{center}
 
 On-the-fly execution does not materialize a separate all-flow-union artifact.
-Within its LC scope, one compact topology-replay artifact serves both measured
+Within its LC scope, one compact query-local artifact serves both measured
 workloads: one selected flow with helicities summed, and all physical flows
 with one helicity selected. Thus the all-flow observable remains the same, but
 its on-the-fly execution is reconstructed lazily from the shared compact
@@ -125,8 +125,8 @@ both quantities absolutely and marks their generation comparison as not
 comparable.
 
 Before timing an on-the-fly cell, the complete resolved components for both
-workloads are compared with separately generated recurrence and compiled
-authorities. The same componentwise comparisons are repeated after
+workloads are compared with a separately generated recurrence authority. The
+same componentwise comparison is repeated after
 \texttt{Runtime.clear()} to check the cold reconstruction path.
 
 \subsection{NLC and full colour}

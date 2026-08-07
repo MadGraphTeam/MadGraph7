@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
@@ -13,20 +13,58 @@ from pyamplicol.reporting.summary import render_summary
 from tools.performance_report.runner import (
     CONVENTIONAL_WARMUP_FIELDS,
     CONVENTIONAL_WARMUP_TIMING_SCOPE,
+    OTF_ACTIVE_FAMILY_COUNT_FIELDS,
     OTF_COLD_WARMUP_FIELDS,
     OTF_COLD_WARMUP_RUNTIME_FRESHNESS,
+    OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE,
     OTF_COLD_WARMUP_TIMING_SCOPE,
+    OTF_RUNTIME_STATE_CENSUS_KIND,
+    OTF_RUNTIME_STATE_COUNT_FIELDS,
+    OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+    OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY,
+    OTF_RUNTIME_STATE_RETAINED_BASE_POSITIVE_FIELDS,
+    OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS,
     WARMUP_TIMER_SOURCE,
     RunnerError,
     _benchmark_measurement,
 )
 
 
+def _otf_runtime_state(*, retained: bool) -> dict[str, object]:
+    counts = {field: 0 for field in OTF_RUNTIME_STATE_COUNT_FIELDS}
+    active: dict[str, object] | None = None
+    if retained:
+        counts.update(
+            {
+                field: 1
+                for field in (
+                    *OTF_RUNTIME_STATE_RETAINED_BASE_POSITIVE_FIELDS,
+                    *OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS,
+                )
+            }
+        )
+        active = {
+            "basis": "shared-query-family-union-v1",
+            "scope": "active-family-union",
+            **{field: 1 for field in OTF_ACTIVE_FAMILY_COUNT_FIELDS},
+        }
+    return {
+        "kind": OTF_RUNTIME_STATE_CENSUS_KIND,
+        "process_id": "otf_test",
+        "family_cache_policy": OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY,
+        "family_cache_limit": OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+        **counts,
+        "active_family_union_census": active,
+    }
+
+
 class _OnTheFlyRuntime:
     execution_mode = "on-the-fly"
+    supports_profiling = False
 
     def __init__(self) -> None:
         self.evaluate_calls: list[tuple[int, object, object, int]] = []
+        self.retained = False
 
     @property
     def physics(self) -> object:
@@ -55,7 +93,11 @@ class _OnTheFlyRuntime:
     ) -> tuple[complex, ...]:
         batch = tuple(momenta)  # type: ignore[arg-type]
         self.evaluate_calls.append((len(batch), helicities, color_flows, precision))
+        self.retained = True
         return tuple(1.0 + 0.0j for _ in batch)
+
+    def _on_the_fly_runtime_state_census(self) -> dict[str, object]:
+        return _otf_runtime_state(retained=self.retained)
 
     def evaluate_resolved(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("resolved evaluation is not part of profiling")
@@ -115,7 +157,7 @@ def test_otf_initial_preparation_and_conventional_warmups_are_separate(
     config = BenchmarkConfig(
         target_runtime=0.001,
         batch_size=3,
-        precision=8,
+        precision=16,
         warmup_runs=2,
         minimum_samples=1,
     )
@@ -131,8 +173,14 @@ def test_otf_initial_preparation_and_conventional_warmups_are_separate(
     assert environment["cold_warmup_batch_size"] == 3
     assert environment["cold_warmup_point_count"] == 3
     assert environment["cold_warmup_runtime_freshness"] == (
-        "not-authenticated-by-benchmark"
+        OTF_COLD_WARMUP_RUNTIME_FRESHNESS
     )
+    assert environment["cold_warmup_runtime_state_evidence"] == (
+        OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE
+    )
+    assert environment["cold_warmup_runtime_cold_before_first_evaluation"] is True
+    assert environment["cold_warmup_runtime_retained_before_first_evaluation"] is False
+    assert environment["cold_warmup_runtime_retained_after_first_evaluation"] is True
     assert environment["cold_warmup_ratio_eligible"] is False
     assert environment["cold_warmup_acceptance_eligible"] is False
     assert environment["cold_warmup_timer_source"] == WARMUP_TIMER_SOURCE
@@ -155,9 +203,13 @@ def test_otf_initial_preparation_and_conventional_warmups_are_separate(
 
     rendered = render_summary(result, color=True)
     assert rendered is not None
+    assert "OTF runtime state" in rendered
+    assert "authenticated native census: cold -> strictly retained" in rendered
+    assert "OTF family cache" in rendered
+    assert "last-family-only; limit 1; retained families 0 -> 1" in rendered
     assert "OTF initial preparation" in rendered
     assert "12 ms" in rendered
-    assert "runtime freshness not authenticated here" in rendered
+    assert "runtime freshness not authenticated here" not in rendered
     assert "warm-up wall (total)" in rendered
     assert "11 ms" in rendered
     assert "first warm-up run" in rendered
@@ -183,6 +235,12 @@ def _complete_otf_profile_environment() -> dict[str, object]:
         "cold_warmup_timer_source": WARMUP_TIMER_SOURCE,
         "cold_warmup_timing_scope": OTF_COLD_WARMUP_TIMING_SCOPE,
         "cold_warmup_runtime_freshness": OTF_COLD_WARMUP_RUNTIME_FRESHNESS,
+        "cold_warmup_runtime_state_evidence": (OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE),
+        "cold_warmup_runtime_state_before": _otf_runtime_state(retained=False),
+        "cold_warmup_runtime_state_after": _otf_runtime_state(retained=True),
+        "cold_warmup_runtime_cold_before_first_evaluation": True,
+        "cold_warmup_runtime_retained_before_first_evaluation": False,
+        "cold_warmup_runtime_retained_after_first_evaluation": True,
         "cold_warmup_ratio_eligible": False,
         "cold_warmup_acceptance_eligible": False,
         "warmup_elapsed_seconds": 0.021,
@@ -227,6 +285,29 @@ def test_campaign_preserves_complete_cold_and_conventional_warmup_evidence() -> 
     assert {field: evidence[field] for field in expected} == {
         field: source[field] for field in expected
     }
+
+
+def test_campaign_materializes_frozen_runtime_census_snapshots() -> None:
+    benchmark = _complete_otf_benchmark()
+    for field in (
+        "cold_warmup_runtime_state_before",
+        "cold_warmup_runtime_state_after",
+    ):
+        state = dict(benchmark.environment[field])
+        active = state["active_family_union_census"]
+        if isinstance(active, dict):
+            state["active_family_union_census"] = MappingProxyType(active)
+        benchmark.environment[field] = MappingProxyType(state)
+
+    measurement = _benchmark_measurement(benchmark, matrix_element=2.0)
+
+    evidence = measurement["benchmark_evidence"]
+    assert isinstance(evidence["cold_warmup_runtime_state_before"], dict)
+    assert isinstance(evidence["cold_warmup_runtime_state_after"], dict)
+    assert isinstance(
+        evidence["cold_warmup_runtime_state_after"]["active_family_union_census"],
+        dict,
+    )
 
 
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))

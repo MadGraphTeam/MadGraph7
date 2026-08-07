@@ -38,7 +38,7 @@ from pyamplicol import (  # noqa: E402
     ProcessRequest,
     Runtime,
 )
-from pyamplicol.api.errors import ArtifactError  # noqa: E402
+from pyamplicol.api.errors import ArtifactError, EvaluationError  # noqa: E402
 from pyamplicol.artifacts import load_manifest  # noqa: E402
 from pyamplicol.config import (  # noqa: E402
     ColorConfig,
@@ -94,7 +94,7 @@ from tools.performance_report.source_identity import (  # noqa: E402
 )
 
 KIND = "pyamplicol-on-the-fly-high-multiplicity-study"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SUPPORTED_PROCESS_IDS = (7, 8, 11, 13, 14, 15)
 SUPPORTED_MULTIPLICITIES = (5, 6, 7, 8, 9)
 SUPPORTED_PROCESS_MULTIPLICITIES = {
@@ -120,7 +120,9 @@ OTF_QUERY_CONSTRUCTION_THREADS = 4
 RECURRENCE_GENERATION_THREADS = 1
 WATCHDOG_BYTES = 30 * GIB
 STATE_KIND = "rusticol-on-the-fly-runtime-state-census-v1"
-STATE_METHOD = "_on_the_fly_runtime_state_census_json"
+STATE_INSPECTION_KEY = "on_the_fly_state"
+STATE_FAMILY_CACHE_POLICY = "last-family-only"
+STATE_FAMILY_CACHE_LIMIT = 1
 STATE_COUNTS = (
     "process_preparation_count",
     "retained_family_count",
@@ -153,6 +155,16 @@ ACTIVE_COUNT_FIELDS = (
     "union_closure_executor_call_groups",
 )
 OPERATION_ROLES = ("source", "contribution", "finalization", "closure")
+STATE_FIELDS = frozenset(
+    {
+        "kind",
+        "process_id",
+        "family_cache_policy",
+        "family_cache_limit",
+        *STATE_COUNTS,
+        "active_family_union_census",
+    }
+)
 
 Point = tuple[tuple[float, ...], ...]
 Points = tuple[Point, ...]
@@ -1119,30 +1131,66 @@ def _generate_recurrence(case: Case, path: Path, model: object) -> dict[str, obj
 
 
 def _census(runtime: object, process_id: str) -> dict[str, Any]:
-    native = getattr(getattr(runtime, "_backend", None), "_runtime", None)
-    operation = getattr(native, STATE_METHOD, None)
-    if not callable(operation):
-        raise StudyError(f"OTF runtime does not expose {STATE_METHOD}")
-    raw = operation()
-    try:
-        value = json.loads(raw) if isinstance(raw, str) else None
-    except json.JSONDecodeError as error:
-        raise StudyError("OTF runtime census is invalid JSON") from error
-    if not isinstance(value, dict):
+    inspect_runtime = getattr(runtime, "inspect", None)
+    if not callable(inspect_runtime):
+        raise StudyError("OTF runtime does not expose public inspect()")
+    inspection = inspect_runtime()
+    value = (
+        inspection.get(STATE_INSPECTION_KEY)
+        if isinstance(inspection, Mapping)
+        else None
+    )
+    if not isinstance(value, Mapping):
         raise StudyError("OTF runtime census is unavailable")
-    if value.get("kind") != STATE_KIND or value.get("process_id") != process_id:
-        raise StudyError("OTF runtime census has the wrong identity")
+    result = dict(value)
+    _assert_state_contract(result, "OTF runtime census", process_id=process_id)
+    return result
+
+
+def _assert_cache_contract(value: Mapping[str, object], label: str) -> None:
+    limit = value.get("family_cache_limit")
+    if (
+        value.get("family_cache_policy") != STATE_FAMILY_CACHE_POLICY
+        or isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit != STATE_FAMILY_CACHE_LIMIT
+    ):
+        raise StudyError(f"{label} has the wrong last-family-only cache contract")
+
+
+def _assert_state_contract(
+    value: Mapping[str, object],
+    label: str,
+    *,
+    process_id: str | None = None,
+) -> None:
+    if set(value) != STATE_FIELDS:
+        raise StudyError(f"{label} has the wrong field set")
+    actual_process_id = value.get("process_id")
+    if (
+        value.get("kind") != STATE_KIND
+        or not isinstance(actual_process_id, str)
+        or not actual_process_id
+        or (process_id is not None and actual_process_id != process_id)
+    ):
+        raise StudyError(f"{label} has the wrong identity")
+    _assert_cache_contract(value, label)
     for field in STATE_COUNTS:
         count = value.get(field)
         if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-            raise StudyError(f"OTF runtime census has invalid {field}")
+            raise StudyError(f"{label} has invalid {field}")
     active = value.get("active_family_union_census")
     if active is not None and not isinstance(active, Mapping):
-        raise StudyError("OTF active-family census is invalid")
-    return value
+        raise StudyError(f"{label} has an invalid active-family census")
 
 
-def _assert_cold(value: Mapping[str, object], label: str) -> None:
+def _assert_cold(
+    value: Mapping[str, object],
+    label: str,
+    *,
+    process_id: str | None = None,
+) -> None:
+    _assert_state_contract(value, label, process_id=process_id)
     if (
         any(value[field] != 0 for field in STATE_COUNTS)
         or value.get("active_family_union_census") is not None
@@ -1153,6 +1201,9 @@ def _assert_cold(value: Mapping[str, object], label: str) -> None:
 def _active_family_census(value: object, label: str) -> dict[str, object]:
     if not isinstance(value, Mapping):
         raise StudyError(f"{label} has no active family-union census")
+    expected_fields = {"basis", "scope", *ACTIVE_COUNT_FIELDS}
+    if set(value) != expected_fields:
+        raise StudyError(f"{label} has the wrong active family-union field set")
     if (
         value.get("basis") != "shared-query-family-union-v1"
         or value.get("scope") != "active-family-union"
@@ -1181,17 +1232,15 @@ def _assert_family_state(
     value: Mapping[str, object],
     label: str,
     *,
-    families: int,
-    selections: int,
-    handles: int,
-    minimum_bindings: int,
+    process_id: str | None = None,
 ) -> dict[str, object]:
+    _assert_state_contract(value, label, process_id=process_id)
     if (
         value["process_preparation_count"] != 1
-        or value["retained_family_count"] != families
-        or value["retained_selection_count"] != selections
-        or value["retained_executor_handle_count"] != handles
-        or value["semantic_executor_binding_count"] < minimum_bindings
+        or value["retained_family_count"] != STATE_FAMILY_CACHE_LIMIT
+        or value["retained_selection_count"] != STATE_FAMILY_CACHE_LIMIT
+        or value["retained_executor_handle_count"] != STATE_FAMILY_CACHE_LIMIT
+        or value["semantic_executor_binding_count"] < 1
         or any(value[field] != 0 for field in COMPACT_ZERO_COUNTS)
         or value["retained_request_count"] < 1
         or value["retained_amplitude_destination_count"] < 1
@@ -1209,8 +1258,37 @@ def _assert_family_state(
     return active
 
 
-def _same_counts(left: Mapping[str, object], right: Mapping[str, object]) -> bool:
-    return all(left[field] == right[field] for field in STATE_COUNTS)
+def _failed_candidate_preserves_retained_family(
+    runtime: object,
+    case: Case,
+    selector: Selector,
+    candidate_workload: str,
+    retained: Mapping[str, object],
+) -> dict[str, object]:
+    """Prove a zero-point cold candidate cannot evict the retained family."""
+
+    kwargs = _selector_kwargs(candidate_workload, selector)
+    message: str
+    try:
+        runtime.evaluate((), **kwargs)
+    except EvaluationError as error:
+        message = str(error)
+        if "requires at least one point" not in message:
+            raise StudyError(
+                "failed OTF candidate did not reach zero-point execution"
+            ) from error
+    else:
+        raise StudyError("zero-point OTF candidate unexpectedly succeeded")
+    after = _census(runtime, case.process_id)
+    if after != retained:
+        raise StudyError("failed OTF candidate changed the retained family")
+    return {
+        "status": "passed",
+        "candidate_workload": candidate_workload,
+        "point_count": 0,
+        "failure": message,
+        "retained_family_after_failure": after,
+    }
 
 
 def _selector_kwargs(workload: str, selector: Selector) -> dict[str, tuple[str, ...]]:
@@ -1318,14 +1396,7 @@ def _requested_workload_cold_warmup(
     if elapsed_ns < 0 or len(total) != BATCH_SIZE:
         raise StudyError("requested-workload cold warm-up returned invalid evidence")
     warmed = _census(runtime, case.process_id)
-    active = _assert_family_state(
-        warmed,
-        f"cold {workload} warm-up",
-        families=1,
-        selections=1,
-        handles=1,
-        minimum_bindings=1,
-    )
+    active = _assert_family_state(warmed, f"cold {workload} warm-up")
     cleared = None
     if not retain_family:
         runtime.clear()
@@ -1535,14 +1606,7 @@ def _lifecycle(
     policy = _lifecycle_policy(case, workload)
     if policy["mode"] == LIFECYCLE_LEAN:
         retained = _census(runtime, case.process_id)
-        _assert_family_state(
-            retained,
-            "retained requested family",
-            families=1,
-            selections=1,
-            handles=1,
-            minimum_bindings=1,
-        )
+        _assert_family_state(retained, "retained requested family")
         headline = _evaluate(runtime, points, workload, selector, resolved=resolved)
         headline_census = _census(runtime, case.process_id)
         if headline_census != retained:
@@ -1591,48 +1655,42 @@ def _lifecycle(
         resolved=resolved,
     )
     census_a = _census(runtime, case.process_id)
-    active_a = _assert_family_state(
-        census_a,
-        "selected A",
-        families=1,
-        selections=1,
-        handles=1,
-        minimum_bindings=1,
-    )
+    _assert_family_state(census_a, "selected A")
     if workload == "selected":
         exact_c = _evaluate(runtime, points, "exact", selector, resolved=False)
         census_c = _census(runtime, case.process_id)
-        _assert_family_state(
-            census_c,
-            "exact-selector C",
-            families=2,
-            selections=2,
-            handles=2,
-            minimum_bindings=int(census_a["semantic_executor_binding_count"]),
-        )
+        _assert_family_state(census_c, "exact-selector C")
         repeated = _evaluate(runtime, points, "exact", selector, resolved=False)
         repeated_census = _census(runtime, case.process_id)
         if repeated_census != census_c:
             raise StudyError("repeated exact-selector C did not plateau")
         _compare(repeated, exact_c, "exact-selector C repeat")
+        failed_candidate = _failed_candidate_preserves_retained_family(
+            runtime,
+            case,
+            selector,
+            "selected",
+            census_c,
+        )
         selected_revisit = _evaluate(
             runtime, points, "selected", selector, resolved=False
         )
         revisit = _census(runtime, case.process_id)
-        _assert_family_state(
-            revisit,
-            "selected A revisit",
-            families=2,
-            selections=2,
-            handles=2,
-            minimum_bindings=int(census_c["semantic_executor_binding_count"]),
-        )
-        if (
-            not _same_counts(revisit, census_c)
-            or revisit["active_family_union_census"] != active_a
-        ):
-            raise StudyError("A -> C -> C -> A did not retain both families")
+        _assert_family_state(revisit, "selected A cold rebuild")
+        if revisit != census_a:
+            raise StudyError("selected A cold rebuild did not evict C exactly")
         _compare(selected_revisit, selected_a, "selected A revisit")
+        selected_revisit_repeat = _evaluate(
+            runtime, points, "selected", selector, resolved=False
+        )
+        revisit_repeat = _census(runtime, case.process_id)
+        if revisit_repeat != revisit:
+            raise StudyError("immediate selected A repeat was not warm")
+        _compare(
+            selected_revisit_repeat,
+            selected_revisit,
+            "selected A immediate warm repeat",
+        )
 
         runtime.clear()
         cleared = _census(runtime, case.process_id)
@@ -1648,10 +1706,21 @@ def _lifecycle(
         rebuilt_revisit = _evaluate(
             runtime, points, "selected", selector, resolved=False
         )
-        rebuilt_census = _census(runtime, case.process_id)
-        if rebuilt_census != revisit:
-            raise StudyError("post-clear A/C/A retention did not rebuild exactly")
+        rebuilt_revisit_census = _census(runtime, case.process_id)
+        if rebuilt_revisit_census != census_a:
+            raise StudyError("post-clear selected A revisit did not evict C exactly")
         _compare(rebuilt_revisit, rebuilt, "post-clear selected A revisit")
+        rebuilt_repeat = _evaluate(
+            runtime, points, "selected", selector, resolved=False
+        )
+        rebuilt_census = _census(runtime, case.process_id)
+        if rebuilt_census != rebuilt_revisit_census:
+            raise StudyError("post-clear selected A immediate repeat was not warm")
+        _compare(
+            rebuilt_repeat,
+            rebuilt_revisit,
+            "post-clear selected A immediate warm repeat",
+        )
         _compare(rebuilt, selected_a, "post-clear selected A headline")
         return (
             selected_a,
@@ -1661,48 +1730,54 @@ def _lifecycle(
                 "selected_a": census_a,
                 "requested_family": census_c,
                 "requested_repeat": repeated_census,
+                "failed_selected_a_candidate": failed_candidate,
                 "selected_a_revisit": revisit,
+                "selected_a_revisit_repeat": revisit_repeat,
                 "after_clear": cleared,
                 "after_rebuild_selected_a": rebuilt_a_census,
                 "after_rebuild_exact_c": rebuilt_c_census,
+                "after_rebuild_selected_a_revisit": rebuilt_revisit_census,
+                "after_rebuild_selected_a_repeat": rebuilt_census,
                 "after_rebuild": rebuilt_census,
                 "final_plateau": rebuilt_census,
                 "policy": policy,
                 "clear_rebuild": _clear_rebuild_evidence(policy),
-                "sequence": "A,C,C,A; clear; A,C,A",
+                "sequence": "A,C,C,failed-A,C,A,A; clear; A,C,A,A",
             },
         )
 
     first = _evaluate(runtime, points, "all-flow", selector, resolved=resolved)
     target_census = _census(runtime, case.process_id)
-    _assert_family_state(
-        target_census,
-        "all-flow B",
-        families=2,
-        selections=2,
-        handles=2,
-        minimum_bindings=int(census_a["semantic_executor_binding_count"]),
-    )
+    _assert_family_state(target_census, "all-flow B")
     repeated = _evaluate(runtime, points, "all-flow", selector, resolved=resolved)
     repeated_census = _census(runtime, case.process_id)
     if repeated_census != target_census:
         raise StudyError("repeated all-flow B did not plateau")
     _compare(repeated, first, "all-flow B repeat")
-    _evaluate(runtime, points, "selected", selector, resolved=False)
-    revisit = _census(runtime, case.process_id)
-    _assert_family_state(
-        revisit,
-        "selected A revisit",
-        families=2,
-        selections=2,
-        handles=2,
-        minimum_bindings=int(target_census["semantic_executor_binding_count"]),
+    failed_candidate = _failed_candidate_preserves_retained_family(
+        runtime,
+        case,
+        selector,
+        "selected",
+        target_census,
     )
-    if (
-        not _same_counts(revisit, target_census)
-        or revisit["active_family_union_census"] != active_a
-    ):
-        raise StudyError("A -> B -> B -> A did not retain both families")
+    selected_revisit = _evaluate(runtime, points, "selected", selector, resolved=False)
+    revisit = _census(runtime, case.process_id)
+    _assert_family_state(revisit, "selected A cold rebuild")
+    if revisit != census_a:
+        raise StudyError("selected A cold rebuild did not evict B exactly")
+    _compare(selected_revisit, selected_a, "selected A revisit")
+    selected_revisit_repeat = _evaluate(
+        runtime, points, "selected", selector, resolved=False
+    )
+    revisit_repeat = _census(runtime, case.process_id)
+    if revisit_repeat != revisit:
+        raise StudyError("immediate selected A repeat was not warm")
+    _compare(
+        selected_revisit_repeat,
+        selected_revisit,
+        "selected A immediate warm repeat",
+    )
 
     runtime.clear()
     cleared = _census(runtime, case.process_id)
@@ -1721,13 +1796,15 @@ def _lifecycle(
             "selected_a": census_a,
             "requested_family": target_census,
             "requested_repeat": repeated_census,
+            "failed_selected_a_candidate": failed_candidate,
             "selected_a_revisit": revisit,
+            "selected_a_revisit_repeat": revisit_repeat,
             "after_clear": cleared,
             "after_rebuild": rebuilt_census,
             "final_plateau": rebuilt_census,
             "policy": policy,
             "clear_rebuild": _clear_rebuild_evidence(policy),
-            "sequence": "A,B,B,A; clear; A,B",
+            "sequence": "A,B,B,failed-A,B,A,A; clear; A,B",
         },
     )
 
@@ -1880,14 +1957,26 @@ def _selected_report_lineage(
     )
     if lean_lifecycle:
         retained_requested_family = cache_lifecycle.get("retained_requested_family")
+        retained_state_valid = False
+        if isinstance(retained_requested_family, Mapping):
+            try:
+                _assert_family_state(
+                    retained_requested_family,
+                    "selected report retained requested family",
+                    process_id=case.process_id,
+                )
+            except StudyError:
+                pass
+            else:
+                retained_state_valid = True
         lifecycle_valid = (
             cache_lifecycle.get("headline_point_count") == len(SEEDS)
             and cache_lifecycle.get("headline_seeds") == list(SEEDS)
             and cache_lifecycle.get("plateau_repeat_point_count") == 1
-            and isinstance(cache_lifecycle.get("final_plateau"), Mapping)
+            and cache_lifecycle.get("final_plateau") == retained_requested_family
             and cache_lifecycle.get("clear_rebuild")
             == _clear_rebuild_evidence(expected_lifecycle_policy)
-            and isinstance(retained_requested_family, Mapping)
+            and retained_state_valid
             and isinstance(requested_cold_warmup, Mapping)
             and requested_cold_warmup.get("kind") == REQUESTED_COLD_WARMUP_KIND
             and requested_cold_warmup.get("requested_workload") == "selected"
@@ -1903,10 +1992,65 @@ def _selected_report_lineage(
             == retained_requested_family
         )
     else:
-        lifecycle_valid = isinstance(
-            cache_lifecycle.get("final_plateau"), Mapping
-        ) and cache_lifecycle.get("clear_rebuild") == _clear_rebuild_evidence(
-            expected_lifecycle_policy
+        final_plateau = cache_lifecycle.get("final_plateau")
+        after_clear = cache_lifecycle.get("after_clear")
+        selected_a_state = cache_lifecycle.get("selected_a")
+        requested_family = cache_lifecycle.get("requested_family")
+        lifecycle_state_valid = False
+        if (
+            isinstance(final_plateau, Mapping)
+            and isinstance(after_clear, Mapping)
+            and isinstance(selected_a_state, Mapping)
+            and isinstance(requested_family, Mapping)
+        ):
+            try:
+                _assert_family_state(
+                    final_plateau,
+                    "selected report final family plateau",
+                    process_id=case.process_id,
+                )
+                _assert_family_state(
+                    selected_a_state,
+                    "selected report selected A family",
+                    process_id=case.process_id,
+                )
+                _assert_family_state(
+                    requested_family,
+                    "selected report exact-selector C family",
+                    process_id=case.process_id,
+                )
+                _assert_cold(
+                    after_clear,
+                    "selected report post-clear state",
+                    process_id=case.process_id,
+                )
+            except StudyError:
+                pass
+            else:
+                lifecycle_state_valid = True
+        failed_candidate = cache_lifecycle.get("failed_selected_a_candidate")
+        lifecycle_valid = (
+            lifecycle_state_valid
+            and cache_lifecycle.get("clear_rebuild")
+            == _clear_rebuild_evidence(expected_lifecycle_policy)
+            and cache_lifecycle.get("sequence")
+            == "A,C,C,failed-A,C,A,A; clear; A,C,A,A"
+            and cache_lifecycle.get("requested_repeat") == requested_family
+            and cache_lifecycle.get("selected_a_revisit") == selected_a_state
+            and cache_lifecycle.get("selected_a_revisit_repeat") == selected_a_state
+            and cache_lifecycle.get("after_rebuild_selected_a") == selected_a_state
+            and cache_lifecycle.get("after_rebuild_exact_c") == requested_family
+            and cache_lifecycle.get("after_rebuild_selected_a_revisit")
+            == selected_a_state
+            and cache_lifecycle.get("after_rebuild_selected_a_repeat")
+            == selected_a_state
+            and final_plateau == selected_a_state
+            and isinstance(failed_candidate, Mapping)
+            and failed_candidate.get("status") == "passed"
+            and failed_candidate.get("candidate_workload") == "selected"
+            and failed_candidate.get("point_count") == 0
+            and failed_candidate.get("retained_family_after_failure")
+            == requested_family
         )
     if expected_authority == AUTHORITY_OTF_ONLY:
         correctness_valid = (

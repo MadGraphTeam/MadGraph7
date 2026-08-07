@@ -114,13 +114,18 @@ pub(super) struct OnTheFlySourceDomainBinding {
 /// first, then process-bound source contexts, then the model-level pool.
 pub(super) struct NativeOnTheFlyPreparedExecutorResolver {
     resolved: BTreeMap<OnTheFlyExecutorKeyV1, ResolvedOnTheFlyExecutor>,
+    pending_resolved: Option<BTreeMap<OnTheFlyExecutorKeyV1, ResolvedOnTheFlyExecutor>>,
     sources: OnTheFlySourceDomainBinding,
     pool: NativeRecurrencePreparedExecutorPool,
 }
 
 impl NativeOnTheFlyPreparedExecutorResolver {
+    fn effective_resolved(&self) -> &BTreeMap<OnTheFlyExecutorKeyV1, ResolvedOnTheFlyExecutor> {
+        self.pending_resolved.as_ref().unwrap_or(&self.resolved)
+    }
+
     pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
-        u32::try_from(self.resolved.len()).map_err(|_| {
+        u32::try_from(self.effective_resolved().len()).map_err(|_| {
             RusticolError::integrity("on-the-fly semantic executor binding count exceeds u32")
         })
     }
@@ -130,7 +135,7 @@ impl NativeOnTheFlyPreparedExecutorResolver {
 impl NativeOnTheFlyPreparedExecutorResolver {
     pub(super) fn distinct_prepared_executor_count(&self) -> RusticolResult<u32> {
         let direct_executor_ids = self
-            .resolved
+            .effective_resolved()
             .values()
             .map(|resolved| resolved.direct_executor_id)
             .collect::<BTreeSet<_>>();
@@ -432,6 +437,7 @@ impl NativeRecurrencePreparedExecutorPool {
     ) -> NativeOnTheFlyPreparedExecutorResolver {
         NativeOnTheFlyPreparedExecutorResolver {
             resolved: BTreeMap::new(),
+            pending_resolved: None,
             sources,
             pool: self,
         }
@@ -524,7 +530,20 @@ impl NativeRecurrencePreparedExecutorPool {
 
 impl NativeOnTheFlyPreparedExecutorResolver {
     pub(super) fn clear_resolved_bindings(&mut self) {
+        self.pending_resolved = None;
         self.resolved.clear();
+    }
+
+    pub(super) fn discard_pending_resolved_bindings(&mut self) {
+        self.pending_resolved = None;
+    }
+
+    pub(super) fn commit_pending_resolved_bindings(&mut self) -> RusticolResult<()> {
+        let pending = self.pending_resolved.take().ok_or_else(|| {
+            RusticolError::internal("on-the-fly family retention has no pending semantic bindings")
+        })?;
+        self.resolved = pending;
+        Ok(())
     }
 
     pub(super) fn bind_on_the_fly_trace(
@@ -564,6 +583,9 @@ impl NativeOnTheFlyPreparedExecutorResolver {
             ),
         >,
     ) -> RusticolResult<()> {
+        // A new bind attempt supersedes any uncommitted candidate. The last
+        // committed exact family remains available if authentication fails.
+        self.pending_resolved = None;
         let summary = templates.summary();
         if summary.catalog_digest != self.pool.recurrence_template_catalog_digest
             || summary.compiled_model_digest != self.pool.compiled_model_digest
@@ -579,9 +601,11 @@ impl NativeOnTheFlyPreparedExecutorResolver {
             ));
         }
         let authenticate = authenticated_prepared_executor_binding(templates, direct)?;
-        // Bind transactionally: a malformed candidate cannot leave partial
-        // semantic handles available to a later cold family.
-        let mut resolved = self.resolved.clone();
+        // Bind transactionally into an exact candidate set. The active family
+        // remains untouched until the caller commits this set after successful
+        // execution; malformed or failed candidates can be discarded without
+        // reconstructing the last valid bindings.
+        let mut resolved = BTreeMap::new();
         let mut trace_count = 0_u32;
         for (seed, trace) in traces {
             trace_count = trace_count.checked_add(1).ok_or_else(|| {
@@ -638,7 +662,7 @@ impl NativeOnTheFlyPreparedExecutorResolver {
                 "on-the-fly prepared executor family is empty",
             ));
         }
-        self.resolved = resolved;
+        self.pending_resolved = Some(resolved);
         Ok(())
     }
 }
@@ -669,7 +693,7 @@ impl OnTheFlySourceDomainBinding {
 
 impl OnTheFlyPreparedExecutorResolver for NativeOnTheFlyPreparedExecutorResolver {
     fn resolve(&self, key: OnTheFlyExecutorKeyV1) -> RusticolResult<ResolvedOnTheFlyExecutor> {
-        self.resolved.get(&key).copied().ok_or_else(|| {
+        self.effective_resolved().get(&key).copied().ok_or_else(|| {
             RusticolError::integrity(
                 "on-the-fly operation has no exact authenticated prepared executor",
             )
@@ -1354,6 +1378,64 @@ pub(in crate::engine) mod on_the_fly_adapter_tests {
         resolver
             .bind_on_the_fly_trace(&templates, &direct, &seed, &mut retained)
             .unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
+    }
+
+    #[test]
+    fn semantic_binding_candidates_replace_exactly_only_after_commit() {
+        let templates = validated_template_fixture();
+        let summary = templates.summary();
+        let direct_digest = digest(40);
+        let direct = direct_catalog(direct_digest);
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            direct_digest,
+        )
+        .unwrap();
+        let pool = prepared_pool(&templates, direct_digest);
+        let sources = pool.bind_source_domains(source_domains()).unwrap();
+        let mut resolver = pool.into_on_the_fly_resolver(sources);
+
+        let mut first = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        resolver
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut first)
+            .unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
+        resolver.commit_pending_resolved_bindings().unwrap();
+
+        let mut second = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        second.test_insert_identity_finalizer(direct_digest);
+        resolver
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut second)
+            .unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 3);
+        resolver.discard_pending_resolved_bindings();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
+
+        let mut malformed = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        malformed.test_insert_identity_finalizer(digest(99));
+        assert!(
+            resolver
+                .bind_on_the_fly_trace(&templates, &direct, &seed, &mut malformed)
+                .is_err()
+        );
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
+
+        let mut committed_second = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        committed_second.test_insert_identity_finalizer(direct_digest);
+        resolver
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut committed_second)
+            .unwrap();
+        resolver.commit_pending_resolved_bindings().unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 3);
+
+        let mut revisited_first = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        resolver
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut revisited_first)
+            .unwrap();
+        resolver.commit_pending_resolved_bindings().unwrap();
         assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
     }
 

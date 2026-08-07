@@ -43,13 +43,32 @@ dependency domains, configured workspace, and effective point-tile capacity.
 These fields describe the executable plan without loading or running its
 kernels.
 
-To inspect the detailed resolved-physics metadata for one process, select it by
-expression or stable ID:
+For on-the-fly artifacts the inventory instead identifies the compact,
+query-local LC organization and reports the static physical selector census,
+the requested query-construction thread count, and the f64-only runtime. A
+stored point-tile value is shown as a request that on-the-fly execution does
+not apply; inspection does not load the runtime to invent an effective tile or
+a live selector-cache census.
+
+To restrict the compact inventory to one representative, select it by stable
+ID, alias ID, or exact stored process expression:
 
 ```console
 pyamplicol inspect artifacts/pp_zjj --process 'd d~ > g z g'
 pyamplicol inspect artifacts/pp_zjj --process p_p_to_z_j_j_4
 ```
+
+This remains metadata-only and does not instantiate the runtime or enumerate
+dense helicity and color-flow axes, so it is the safe default at high
+multiplicity. To request the legacy fully materialized physics view explicitly:
+
+```console
+pyamplicol inspect artifacts/pp_zjj --process p_p_to_z_j_j_4 --full-physics
+```
+
+The full view loads executable evaluator state and can be factorially large in
+the number of colored legs. Reserve it for cases where the complete selector
+catalog is actually needed.
 
 ## Load A Concrete Process
 
@@ -61,7 +80,7 @@ from pyamplicol import Runtime
 
 runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > g z g")
 print(runtime.artifact_id)      # 64-character runtime-payload content label
-print(runtime.execution_mode)  # compiled, eager, or recurrence
+print(runtime.execution_mode)  # compiled, eager, recurrence, or on-the-fly
 print(runtime.physics.process)  # d d~ > g Z g
 print(runtime.physics.external_particles)
 print(runtime.physics.helicity_ids)
@@ -272,6 +291,20 @@ ordinary wall-time block. The paired pass never replaces the headline wall
 sample. Rusticol accumulates repeated profiles online with constant aggregate
 storage, so memory use does not grow with the calibrated repetition count.
 
+For on-the-fly execution, profiling first snapshots the native compact runtime
+census, times exactly one requested-selector evaluation over the full benchmark
+batch, then snapshots the census again before configured warmups. The report
+labels whether the first snapshot was authenticated cold or already retained
+and requires the post-evaluation state to be strictly retained. A retained
+structural-zero selector has a family, selection, and request but intentionally
+has no amplitude destination, executor handle, semantic binding, or active
+family-union census. Artifact/runtime load remains outside this
+initial-preparation time. The census also reports the current
+`last-family-only` cache policy and its limit of one retained family.
+Campaign generation-plus-warm-up values add this one initial evaluation to
+generation time; configured warmups remain separate and neither timing is
+ratio- or acceptance-eligible on its own.
+
 For f64 artifacts, wall time starts inside Rusticol after the caller-language
 momentum buffer has been converted and covers repeated ordinary core
 evaluations through reduction. Recurrence profiles expose the recurrence
@@ -360,6 +393,10 @@ are converted through their exact decimal spelling and padded with trailing
 zeros before evaluation at the requested precision. The native evaluator
 profiler is f64-only, so non-f64 benchmarks report wall time for both timing
 fields.
+
+For on-the-fly f64 profiles, the narrower native attribution is labelled as
+the OTF recurrence-schedule core. It is distinct from the complete evaluator
+envelope and from recurrence mode's statically generated core.
 
 `pyamplicol benchmark` is retained as a compatibility alias for `profile` with
 the same flags and output. Existing run cards remain valid and continue to use

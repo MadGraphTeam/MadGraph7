@@ -21,9 +21,7 @@ from .agreements import (
     INDEPENDENT_AUTHORITY_ABI,
     INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
-    OTF_COMPILED_CROSS_MODE,
     evaluate_lc_common_component,
-    incoming_agreement_edges,
     independent_numerical_authorities,
     requires_independent_numerical_authority,
     validate_lc_common_component,
@@ -41,7 +39,7 @@ from .models import (
 from .phase_state import WorkerPhaseReporter
 from .runner import (
     INDEPENDENT_RELATIVE_TOLERANCE,
-    OTF_DUAL_AUTHORITY_VALIDATION_FIELD,
+    OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD,
     RELATIVE_TOLERANCE,
     GeneratedArtifact,
     RunnerError,
@@ -50,7 +48,7 @@ from .runner import (
     _real_nonnegative,
     _selector_kwargs,
     generate_artifact,
-    on_the_fly_dual_authority_validation,
+    on_the_fly_recurrence_authority_validation,
     point_digest,
     pointwise_validation,
     profile_runtime,
@@ -1261,20 +1259,19 @@ def _load_runtime(artifact_path: Path, process_id: str) -> object:
     return Runtime.load(artifact_path, process=process_id)
 
 
-def _load_on_the_fly_authority_runtimes(
+def _load_on_the_fly_recurrence_authority(
     cell: CellSpec,
     *,
     baseline: Mapping[str, object] | None,
-    validation_peers: Mapping[str, Mapping[str, object]] | None,
     catalog: ReportCatalog,
-) -> tuple[tuple[str, CellSpec, object], ...]:
-    """Load the two already measured OTF authorities without generating work."""
+) -> tuple[CellSpec, object]:
+    """Load the already measured recurrence authority without generating work."""
 
     if (
         cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY
         or cell.measurement.accuracy is not Accuracy.LC
     ):
-        return ()
+        raise RunnerError("recurrence authority requires an on-the-fly LC cell")
     recurrence_cell = catalog.validation_baseline_cell(cell)
     if (
         recurrence_cell is None
@@ -1282,36 +1279,12 @@ def _load_on_the_fly_authority_runtimes(
         or baseline is None
     ):
         raise RunnerError("on-the-fly measurement requires its recurrence baseline")
-    compiled_edges = tuple(
-        edge
-        for edge in incoming_agreement_edges(cell, catalog=catalog)
-        if edge.kind == OTF_COMPILED_CROSS_MODE
+    artifact = generated_artifact_from_measurement(baseline)
+    validate_artifact_contract(recurrence_cell, artifact.path)
+    return (
+        recurrence_cell,
+        _load_runtime(artifact.path, artifact.process_id),
     )
-    if len(compiled_edges) != 1:
-        raise RunnerError("on-the-fly measurement requires one compiled hard peer")
-    compiled_cell = compiled_edges[0].baseline
-    peers = {} if validation_peers is None else validation_peers
-    compiled_measurement = peers.get(compiled_cell.cell_id)
-    if compiled_measurement is None:
-        raise RunnerError(
-            "on-the-fly measurement compiled authority artifact is unavailable"
-        )
-
-    loaded: list[tuple[str, CellSpec, object]] = []
-    for role, authority_cell, authority_measurement in (
-        ("recurrence", recurrence_cell, baseline),
-        ("compiled", compiled_cell, compiled_measurement),
-    ):
-        artifact = generated_artifact_from_measurement(authority_measurement)
-        validate_artifact_contract(authority_cell, artifact.path)
-        loaded.append(
-            (
-                role,
-                authority_cell,
-                _load_runtime(artifact.path, artifact.process_id),
-            )
-        )
-    return tuple(loaded)
 
 
 def _resolution_benchmark_config(effective_config: Mapping[str, object]) -> object:
@@ -1409,26 +1382,25 @@ def measure_pyamplicol_cell(
         from .runner import derive_selector_contract
 
         contract = derive_selector_contract(runtime, points)
-    otf_dual_authority: dict[str, object] | None = None
+    otf_recurrence_authority: dict[str, object] | None = None
     if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
         assert contract is not None
-        authority_runtimes = _load_on_the_fly_authority_runtimes(
+        recurrence_authority = _load_on_the_fly_recurrence_authority(
             cell,
             baseline=baseline,
-            validation_peers=validation_peers,
             catalog=catalog,
         )
         try:
-            otf_dual_authority = on_the_fly_dual_authority_validation(
+            otf_recurrence_authority = on_the_fly_recurrence_authority_validation(
                 runtime,
                 points,
                 cell=cell,
                 selector_contract=contract,
-                authorities=authority_runtimes,
+                authority=recurrence_authority,
             )
         finally:
-            # Keep public candidate timing free of two loaded hard peers.
-            del authority_runtimes
+            # Keep public candidate timing free of the loaded recurrence peer.
+            del recurrence_authority
     if phase_reporter is not None:
         phase_reporter.profiling_started()
     profiling_deadlines = tuple(
@@ -1465,8 +1437,8 @@ def measure_pyamplicol_cell(
         "resolved_sum": resolved_sum,
         DIRECT_AGREEMENT_FIELD: [],
         **(
-            {OTF_DUAL_AUTHORITY_VALIDATION_FIELD: otf_dual_authority}
-            if otf_dual_authority is not None
+            {OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD: otf_recurrence_authority}
+            if otf_recurrence_authority is not None
             else {}
         ),
     }

@@ -101,22 +101,37 @@ audit.
 helicity IDs, physical color-flow IDs, contraction metadata, coverage, and
 selector capabilities. LC advertises `("helicity", "color_flow")`; NLC/full
 advertise only `("helicity",)`. Their singleton contracted-color output axis is
-metadata, not a selectable color flow.
+metadata, not a selectable color flow. For an on-the-fly runtime, requesting
+`physics` explicitly materializes the complete compact helicity and color-flow
+axes and retains that compatibility view until the runtime is released;
+`Runtime.clear()` does not discard it.
 
 `Runtime.artifact_id` returns the lowercase 64-hex manifest identity
 authenticated by the native loader. `Runtime.execution_mode` returns exactly
-`"compiled"`, `"eager"`, or `"recurrence"` from authenticated runtime metadata.
-Both fail with `EvaluationError` when an injected backend cannot supply a valid
-identity. These facade properties intentionally are not structural requirements
-of `RuntimeBackend`: keeping the protocol's original minimum surface preserves
-compatibility with third-party backends, while the built-in Rusticol adapter and
-installed-candidate gates must expose both identities.
+`"compiled"`, `"eager"`, `"recurrence"`, or `"on-the-fly"` from authenticated
+runtime metadata. Both fail with `EvaluationError` when an injected backend
+cannot supply a valid identity.
+
+`Runtime.inspect() -> Mapping[str, object]` is the compact, observational
+inspection path implemented by the built-in backend. It returns the
+authenticated native metadata without opening `Runtime.physics`, together with
+the live on-the-fly retained-state census when applicable. The OTF metadata
+includes requested and host-effective query-construction thread counts, and its
+inspection advertises `supported_precisions == (16,)`. Inspection is an optional
+facade capability rather than a structural requirement of `RuntimeBackend`:
+keeping it and the identity properties outside the protocol's original minimum
+surface preserves compatibility with third-party backends.
+The OTF state reports `family_cache_policy == "last-family-only"` and
+`family_cache_limit == 1`; its semantic executor binding count is the exact
+current-family binding cardinality rather than an all-seen cumulative count.
 
 `Runtime.evaluate(momenta, *, helicities=None, color_flows=None,
 helicity_by_point=None, color_flow_by_point=None, precision=16)` returns one
 fully summed value per point. Global and per-point selectors are mutually
 exclusive within each selector dimension. Momenta have shape
-`(point, particle, [E, px, py, pz])`.
+`(point, particle, [E, px, py, pz])`. On-the-fly execution currently supports
+only `precision=16` (native f64); every other precision fails before selector
+resolution or dense metadata access.
 
 `Runtime.evaluate_resolved(momenta, *, helicities=None, color_flows=None,
 precision=16) -> ResolvedEvaluation` returns LC values with shape `(point,
@@ -147,6 +162,14 @@ are normalized per runtime call. Compiled Direct-Arena engine/call counts and
 its input/current-output/amplitude-output boundary-byte counters are likewise
 normalized per runtime call. A valid fused Arena profile reports zero boundary
 traffic and enough Arena calls to cover every evaluator backend call.
+
+For on-the-fly execution, benchmarking snapshots the authenticated compact
+runtime-state census immediately before and after its separately timed first
+requested-workload evaluation, before configured warm-up runs. The environment
+records both immutable snapshots, whether the initial runtime was cold or
+already retained, and evidence that the first evaluation left a complete
+retained family. A missing, mismatched, partial, or malformed census fails
+closed. Other execution modes do not require this private census capability.
 
 `benchmark(...)` is the convenience wrapper.
 

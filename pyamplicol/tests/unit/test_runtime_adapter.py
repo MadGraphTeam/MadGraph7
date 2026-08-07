@@ -134,6 +134,12 @@ class _NativeRuntime:
         self.muted = False
         self.clear_count = 0
         self.physics_access_count = 0
+        self.selector_context_access_count = 0
+        self.selector_ordinal_access_count = 0
+        self.runtime_state_census_access_count = 0
+        self.otf_process_preparation_count = 0
+        self.otf_retained_family_count = 0
+        self.otf_retained_selection_count = 0
 
     @classmethod
     def load(cls, artifact: Path, **kwargs: object) -> _NativeRuntime:
@@ -151,7 +157,14 @@ class _NativeRuntime:
                 "execution_mode": self.execution_mode,
                 "process_key": "uux_g",
                 "representative_process_key": "uux_g",
+                "external_count": 3,
                 "external_permutation": [0, 1, 2],
+                "on_the_fly_requested_query_construction_threads": (
+                    8 if self.execution_mode == "on-the-fly" else None
+                ),
+                "on_the_fly_effective_query_construction_threads": (
+                    4 if self.execution_mode == "on-the-fly" else None
+                ),
             }
         )
 
@@ -159,6 +172,7 @@ class _NativeRuntime:
         self,
         color_flow_ids: tuple[str, ...] | None = None,
     ) -> str:
+        self.selector_context_access_count += 1
         return json.dumps(
             {
                 "process_id": "uux_g",
@@ -175,6 +189,7 @@ class _NativeRuntime:
         helicity_ids: tuple[str, ...] | None = None,
         color_flow_ids: tuple[str, ...] | None = None,
     ) -> str:
+        self.selector_ordinal_access_count += 1
         return json.dumps(
             {
                 "helicity_ordinals": (
@@ -186,11 +201,45 @@ class _NativeRuntime:
             }
         )
 
+    def _on_the_fly_runtime_state_census_json(self) -> str | None:
+        self.runtime_state_census_access_count += 1
+        if self.execution_mode != "on-the-fly":
+            return None
+        return json.dumps(
+            {
+                "kind": "rusticol-on-the-fly-runtime-state-census-v1",
+                "process_id": "uux_g",
+                "family_cache_policy": "last-family-only",
+                "family_cache_limit": 1,
+                "process_preparation_count": self.otf_process_preparation_count,
+                "retained_family_count": self.otf_retained_family_count,
+                "pending_family_count": 0,
+                "retained_selection_count": self.otf_retained_selection_count,
+                "retained_request_count": self.otf_retained_family_count,
+                "retained_amplitude_destination_count": (
+                    self.otf_retained_family_count
+                ),
+                "retained_executor_handle_count": self.otf_retained_family_count,
+                "retained_query_local_trace_count": 0,
+                "retained_embedded_lookup_key_count": 0,
+                "semantic_executor_binding_count": self.otf_retained_family_count,
+                "active_family_union_census": None,
+            }
+        )
+
+    def _warm_on_the_fly(self) -> None:
+        if self.execution_mode == "on-the-fly":
+            self.otf_process_preparation_count = 1
+            self.otf_retained_family_count = 1
+            self.otf_retained_selection_count = 1
+
     def evaluate(self, _momenta: object, **kwargs: object) -> list[object]:
+        self._warm_on_the_fly()
         type(self).last_evaluate_options = dict(kwargs)
         return [Decimal("1.25")] if kwargs["precision"] == 32 else [2.0]
 
     def evaluate_resolved(self, _momenta: object, **kwargs: object) -> SimpleNamespace:
+        self._warm_on_the_fly()
         accuracy = self.physics_value.color_accuracy
         color_id = "c0" if accuracy == "lc" else "contracted"
         scalar: object = Decimal("1.25") if kwargs["precision"] == 32 else 2.0
@@ -204,22 +253,26 @@ class _NativeRuntime:
     def _benchmark_f64_wall_time(
         self, _momenta: object, _repetitions: int, **kwargs: object
     ) -> float:
+        self._warm_on_the_fly()
         type(self).last_benchmark_options = dict(kwargs)
         return 0.25
 
     def profile(self, _momenta: object, **kwargs: object) -> dict[str, object]:
+        self._warm_on_the_fly()
         type(self).last_profile_options = dict(kwargs)
         return {"wall_time_s": 0.25}
 
     def profile_repeated(
         self, _momenta: object, _repetitions: int, **kwargs: object
     ) -> dict[str, object]:
+        self._warm_on_the_fly()
         type(self).last_profile_options = dict(kwargs)
         return {"wall_time_s": 0.5}
 
     def _profile_arena_repeated(
         self, _momenta: object, _repetitions: int, **kwargs: object
     ) -> dict[str, object]:
+        self._warm_on_the_fly()
         type(self).last_arena_profile_options = dict(kwargs)
         return {"wall_time_s": 0.4}
 
@@ -228,6 +281,9 @@ class _NativeRuntime:
 
     def clear(self) -> None:
         self.clear_count += 1
+        self.otf_process_preparation_count = 0
+        self.otf_retained_family_count = 0
+        self.otf_retained_selection_count = 0
 
     def mute_warnings(self) -> None:
         self.muted = True
@@ -331,6 +387,34 @@ def _selector_manifest(
         dependencies=(),
         extensions={},
     )
+
+
+def _load_on_the_fly_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Any:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(
+        tmp_path,
+        capabilities=(
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        ),
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "on-the-fly"
+    _NativeRuntime.physics_value = _native_physics("lc")
+    _NativeRuntime.last_evaluate_options = None
+    _NativeRuntime.last_benchmark_options = None
+    _NativeRuntime.last_profile_options = None
+    _NativeRuntime.last_arena_profile_options = None
+    return backend_module.load_runtime_backend(tmp_path, process="uux_g")
 
 
 def test_runtime_discovery_does_not_import_native_extension(
@@ -461,6 +545,162 @@ def test_default_runtime_paths_do_not_force_process_physics(
 
     backend.evaluate([()], helicity_by_point=("h0",))
     assert backend._runtime.physics_access_count == 1
+
+
+def test_external_permutation_does_not_materialize_process_physics(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    from pyamplicol.runtime import load_runtime_backend
+
+    backend = load_runtime_backend(tmp_path, process="uux_g")
+    runtime = Runtime(backend)
+
+    assert backend._runtime.physics_access_count == 0
+    assert backend.external_count == 3
+    assert backend.external_permutation == (0, 1, 2)
+    assert runtime.external_permutation == (0, 1, 2)
+    assert backend._runtime.physics_access_count == 0
+
+
+def test_on_the_fly_non_f64_paths_fail_before_selector_or_physics_access(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = _load_on_the_fly_backend(monkeypatch, tmp_path)
+    runtime = Runtime(backend)
+    point = ((),)
+    try:
+        operations = (
+            lambda: runtime.evaluate(point, color_flows=("1",), precision=32),
+            lambda: runtime.evaluate_with_prec(
+                point,
+                32,
+                color_flows=("1",),
+            ),
+            lambda: backend.evaluate(
+                point,
+                helicity_by_point=("h0",),
+                precision=32,
+            ),
+            lambda: runtime.evaluate_resolved(
+                point,
+                color_flows=("1",),
+                precision=32,
+            ),
+            lambda: runtime.evaluate_resolved_with_prec(
+                point,
+                32,
+                color_flows=("1",),
+            ),
+            lambda: backend._benchmark_f64_wall_time(
+                point,
+                2,
+                color_flows=("1",),
+                precision=32,
+            ),
+            lambda: backend._profile_arena_repeated(
+                point,
+                2,
+                color_flows=("1",),
+                precision=32,
+            ),
+            lambda: backend.profile(
+                point,
+                color_flows=("1",),
+                precision=32,
+            ),
+            lambda: backend.profile_repeated(
+                point,
+                2,
+                color_flows=("1",),
+                precision=32,
+            ),
+            lambda: backend.evaluate_profile(
+                point,
+                color_flows=("1",),
+                precision=32,
+            ),
+            lambda: runtime._diagnostic_project_onshell(point, precision=32),
+        )
+        for operation in operations:
+            with pytest.raises(
+                CompatibilityError,
+                match=r"on-the-fly execution supports only precision=16",
+            ):
+                operation()
+
+        native = backend._runtime
+        assert native.physics_access_count == 0
+        assert native.selector_context_access_count == 0
+        assert native.selector_ordinal_access_count == 0
+        assert native.runtime_state_census_access_count == 0
+        assert native.otf_process_preparation_count == 0
+        assert native.otf_retained_family_count == 0
+        assert native.otf_retained_selection_count == 0
+        assert backend._exact_executor is None
+        assert _NativeRuntime.last_evaluate_options is None
+        assert _NativeRuntime.last_benchmark_options is None
+        assert _NativeRuntime.last_profile_options is None
+        assert _NativeRuntime.last_arena_profile_options is None
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+def test_runtime_inspect_observes_otf_state_without_opening_physics(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = _load_on_the_fly_backend(monkeypatch, tmp_path)
+    runtime = Runtime(backend)
+    try:
+        cold = runtime.inspect()
+        assert cold["kind"] == "pyamplicol-runtime-inspection"
+        assert cold["schema_version"] == 1
+        assert cold["artifact_id"] == "a" * 64
+        assert cold["supported_precisions"] == (16,)
+        metadata = cold["runtime_metadata"]
+        assert isinstance(metadata, dict)
+        assert metadata["execution_mode"] == "on-the-fly"
+        assert metadata["external_count"] == 3
+        assert metadata["external_permutation"] == [0, 1, 2]
+        assert metadata["on_the_fly_requested_query_construction_threads"] == 8
+        assert metadata["on_the_fly_effective_query_construction_threads"] == 4
+        cold_state = cold["on_the_fly_state"]
+        assert isinstance(cold_state, dict)
+        assert cold_state["family_cache_policy"] == "last-family-only"
+        assert cold_state["family_cache_limit"] == 1
+        assert cold_state["retained_family_count"] == 0
+        assert cold_state["retained_selection_count"] == 0
+
+        metadata["external_permutation"][0] = 2
+        repeated = runtime.inspect()
+        repeated_metadata = repeated["runtime_metadata"]
+        assert isinstance(repeated_metadata, dict)
+        assert repeated_metadata["external_permutation"] == [0, 1, 2]
+
+        assert runtime.evaluate(((),), precision=16) == (2.0 + 0.0j,)
+        warm = runtime.inspect()
+        warm_state = warm["on_the_fly_state"]
+        assert isinstance(warm_state, dict)
+        assert warm_state["process_preparation_count"] == 1
+        assert warm_state["retained_family_count"] == 1
+        assert warm_state["retained_selection_count"] == 1
+
+        runtime.clear()
+        cleared = runtime.inspect()
+        cleared_state = cleared["on_the_fly_state"]
+        assert isinstance(cleared_state, dict)
+        assert cleared_state["process_preparation_count"] == 0
+        assert cleared_state["retained_family_count"] == 0
+        assert cleared_state["retained_selection_count"] == 0
+        assert backend._runtime.physics_access_count == 0
+        assert backend._runtime.selector_context_access_count == 0
+        assert backend._runtime.selector_ordinal_access_count == 0
+        assert backend._runtime.runtime_state_census_access_count == 4
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
 
 
 def test_adapter_accepts_one_based_color_flow_ordinals(

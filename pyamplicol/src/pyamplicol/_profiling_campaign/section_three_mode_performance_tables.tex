@@ -75,7 +75,7 @@ compatible supplementary clock exists, only the wall ratio is shown. Compiled
 and eager generation are compared with recurrence using the same layout.
 
 On-the-fly is the scoped LC exception to the two-artifact layout. One compact
-topology-replay artifact serves both the selected-flow, helicity-summed
+query-local artifact serves both the selected-flow, helicity-summed
 workload and the all-flow, single-helicity workload. Its process-generation
 time is \(G\). For selected flow, \texttt{([xG] x(G+W))} shows the muted
 generation-only multiplier and the normally coloured multiplier after adding
@@ -124,10 +124,10 @@ relying on their separate agreement with \AC{}. Each result must reproduce its
 resolved sum. For LC, the common flow--helicity component is compared directly
 between topology replay and all-flow union, and every \PAC{} all-flow result is
 also compared with the matching independently generated \AC{} component. A
-failed validation has no timing ratio. On-the-fly adds a dual-authority gate:
-for both workloads, its complete resolved-component array must agree with
-separately generated recurrence and compiled results before timing. After
-\texttt{Runtime.clear()}, both full component comparisons and the
+failed validation has no timing ratio. On-the-fly adds a recurrence-authority
+gate: for both workloads, its complete resolved-component array must agree with
+the separately generated recurrence result before timing. After
+\texttt{Runtime.clear()}, the full component comparison and the
 resolved-sum identity are repeated before the cell is accepted.
 
 \subsection*{Cell and summary layout}

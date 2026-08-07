@@ -812,15 +812,8 @@ def write_schema_v3_artifact(
             staged_root = builder.root
             if staged_root is None:  # pragma: no cover - builder invariant
                 raise RuntimeError("artifact builder is not active")
-            on_the_fly_process_ids = frozenset(
-                process.process_id
-                for process in processes
-                if isinstance(process, OnTheFlyProcessArtifact)
-            )
             for process_record in process_records:
                 process_id = str(process_record["id"])
-                if process_id in on_the_fly_process_ids:
-                    continue
                 execution_path = f"processes/{process_id}/execution.json"
                 execution_file = builder.staged_path(execution_path)
                 execution_payload = json.loads(
@@ -830,6 +823,8 @@ def write_schema_v3_artifact(
                     raise ValueError(
                         f"execution payload for {process_id!r} is not an object"
                     )
+                if execution_payload.get("kind") == ON_THE_FLY_RUNTIME_KIND:
+                    continue
                 proof = build_generation_structural_proof(
                     artifact_root=staged_root,
                     process_id=process_id,

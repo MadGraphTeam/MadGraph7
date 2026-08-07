@@ -159,15 +159,20 @@ pyAmpliCol supports:
 - packaged serialized JSON and trusted UFO examples;
 - user-supplied JSON or trusted UFO model paths;
 - leading-color, contracted next-to-leading-color, and contracted full-color
-  calculations;
-- recurrence, compiled-DAG, and eager execution modes;
+  calculations, with on-the-fly execution currently limited to leading color;
+- recurrence, compiled-DAG, eager, and on-the-fly execution modes;
 - JIT, C++, and assembly evaluator backends where supported;
 - binary64 execution without importing Symbolica, plus precision-controlled
-  Python evaluation when exact expressions are retained.
+  Python evaluation when exact expressions are retained. On-the-fly execution
+  currently supports native binary64 only.
 
-Generated artifacts preserve complete public helicity and color axes. Runtime
-calls can select one flow or helicity globally or per phase-space point without
-regenerating the artifact.
+Generated artifacts preserve complete public helicity and color physics.
+Runtime calls can select one flow or helicity globally or per phase-space point
+without regenerating the artifact. On-the-fly artifacts keep this contract in a
+compact query-local seed rather than materializing the full axes in the
+artifact; `inspect` reports their physical census without constructing it.
+Recurrence, eager, and on-the-fly execution reuse the same prepared model
+kernel bundle.
 
 The public C ABI is version 1. Every generated artifact can include standalone
 Python, C11, C++17, Fortran 2008, and dependency-free Rust 2021 drivers backed

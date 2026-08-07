@@ -120,9 +120,10 @@ seed = 1348026701
 [evaluator]
 # evaluator.backend: "jit", "asm", or "cpp". Default jit.
 backend = "jit"
-# evaluator.execution_mode: "compiled", "eager", or "recurrence". Default
-# recurrence. Eager and recurrence built-in-sm use the wheel-owned JIT O2 pack;
-# other packs need an explicit .pyamplicol-model source.
+# evaluator.execution_mode: "compiled", "eager", "recurrence", or
+# "on-the-fly". Default recurrence. Eager, recurrence, and on-the-fly
+# built-in-sm use the wheel-owned JIT O2 pack; other packs need an explicit
+# .pyamplicol-model source. On-the-fly currently supports LC and native f64 only.
 execution_mode = "compiled"
 # evaluator.batch_size: Positive evaluation batch size. Default 128.
 batch_size = 128
@@ -132,6 +133,7 @@ output_chunk_size = 512
 [evaluator.eager]
 # evaluator.eager.point_tile_size: Maximum points per eager workspace tile.
 # The runtime reduces this automatically when required. Default 1024.
+# This eager section is not applied by on-the-fly execution.
 point_tile_size = 1024
 # evaluator.eager.workspace_mib: Maximum reusable eager workspace. Default 256.
 workspace_mib = 256
@@ -139,9 +141,10 @@ workspace_mib = 256
 [evaluator.recurrence]
 # evaluator.recurrence.point_tile_size: Maximum points per recurrence workspace
 # tile. The runtime may reduce this automatically. Default 1024.
+# On-the-fly records this request as provenance but does not currently apply it.
 point_tile_size = 1024
 # evaluator.recurrence.workspace_mib: Maximum reusable recurrence workspace.
-# Default 256.
+# Default 256. This limit is not currently applied by on-the-fly execution.
 workspace_mib = 256
 
 [evaluator.optimization]
@@ -150,7 +153,9 @@ horner_iterations = 10
 # evaluator.optimization.cpe_iterations: Non-negative override. The field is
 # omitted by default so Symbolica selects its backend default; this card uses 0.
 cpe_iterations = 0
-# evaluator.optimization.cores: Positive integer or "auto". Default auto.
+# evaluator.optimization.cores: Positive integer or "auto". Default auto. In
+# on-the-fly mode this is the requested query-construction thread count, not a
+# numerical-evaluation thread guarantee.
 cores = "auto"
 # evaluator.optimization.max_horner_variables: Non-negative limit. Default 1000.
 max_horner_variables = 1000

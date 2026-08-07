@@ -701,12 +701,16 @@ def _benchmark_summary(
     )
     breakdown = result.timing_breakdown
     recurrence_timing = (
-        (breakdown is not None and breakdown.execution_mode == "recurrence")
-        or environment.get("execution_mode") == "recurrence"
-    )
+        breakdown is not None and breakdown.execution_mode == "recurrence"
+    ) or environment.get("execution_mode") == "recurrence"
+    on_the_fly_timing = (
+        breakdown is not None and breakdown.execution_mode == "on-the-fly"
+    ) or environment.get("execution_mode") == "on-the-fly"
     direct_arena_timing = environment.get("compiled_direct_arena_active") is True
     if recurrence_timing:
         profile_metric_label = "recurrence core"
+    elif on_the_fly_timing:
+        profile_metric_label = "OTF recurrence-schedule core"
     elif direct_arena_timing:
         profile_metric_label = "Direct-Arena runtime envelope"
     else:
@@ -787,6 +791,63 @@ def _benchmark_summary(
         else warmup_batch
     )
     warmup_rows: list[tuple[str, str, str | None]] = []
+    state_evidence = environment.get("cold_warmup_runtime_state_evidence")
+    runtime_was_cold = environment.get(
+        "cold_warmup_runtime_cold_before_first_evaluation"
+    )
+    runtime_was_retained = environment.get(
+        "cold_warmup_runtime_retained_before_first_evaluation"
+    )
+    runtime_is_retained = environment.get(
+        "cold_warmup_runtime_retained_after_first_evaluation"
+    )
+    if (
+        state_evidence == "authenticated-native-otf-census-v1"
+        and isinstance(runtime_was_cold, bool)
+        and isinstance(runtime_was_retained, bool)
+        and isinstance(runtime_is_retained, bool)
+    ):
+        before_state = (
+            "cold"
+            if runtime_was_cold
+            else "strictly retained"
+            if runtime_was_retained
+            else "partial"
+        )
+        after_state = "strictly retained" if runtime_is_retained else "partial"
+        warmup_rows.append(
+            (
+                "OTF runtime state",
+                f"authenticated native census: {before_state} -> {after_state}",
+                "GREEN" if runtime_is_retained else "RED",
+            )
+        )
+        state_before = environment.get("cold_warmup_runtime_state_before")
+        state_after = environment.get("cold_warmup_runtime_state_after")
+        if isinstance(state_before, Mapping) and isinstance(state_after, Mapping):
+            cache_policy = state_after.get("family_cache_policy")
+            cache_limit = state_after.get("family_cache_limit")
+            before_families = state_before.get("retained_family_count")
+            after_families = state_after.get("retained_family_count")
+            if (
+                isinstance(cache_policy, str)
+                and isinstance(cache_limit, int)
+                and not isinstance(cache_limit, bool)
+                and isinstance(before_families, int)
+                and not isinstance(before_families, bool)
+                and isinstance(after_families, int)
+                and not isinstance(after_families, bool)
+            ):
+                warmup_rows.append(
+                    (
+                        "OTF family cache",
+                        (
+                            f"{cache_policy}; limit {cache_limit}; retained families "
+                            f"{before_families} -> {after_families}"
+                        ),
+                        "GREEN",
+                    )
+                )
     if cold_warmup is not None:
         warmup_rows.append(
             (
@@ -794,7 +855,7 @@ def _benchmark_summary(
                 (
                     f"{_seconds_text(cold_warmup)} outer wall for 1 requested-selector "
                     f"evaluation x {cold_warmup_batch} points; Runtime/artifact load "
-                    "excluded; runtime freshness not authenticated here"
+                    "excluded"
                 ),
                 "YELLOW",
             )
@@ -960,10 +1021,13 @@ def _benchmark_summary(
     )
     eager_profile = breakdown.execution_mode == "eager"
     recurrence_profile = breakdown.execution_mode == "recurrence"
+    on_the_fly_profile = breakdown.execution_mode == "on-the-fly"
     if eager_profile:
         breakdown_title = "Rusticol Eager Timing Breakdown"
     elif recurrence_profile:
         breakdown_title = "Rusticol Recurrence Timing Breakdown"
+    elif on_the_fly_profile:
+        breakdown_title = "Rusticol OTF Recurrence-Schedule Timing Breakdown"
     else:
         breakdown_title = "Rusticol Timing Breakdown"
     if separate_timing_samples:
@@ -1112,7 +1176,12 @@ def _benchmark_summary(
             ("Selector scatter (exclusive)", breakdown.selector_scatter_time),
             ("Other Rusticol core (exclusive)", breakdown.other_core_time),
         )
-    elif recurrence_profile:
+    elif recurrence_profile or on_the_fly_profile:
+        recurrence_schedule_label = (
+            "OTF recurrence schedule (inclusive)"
+            if on_the_fly_profile
+            else "Recurrence schedule (inclusive)"
+        )
         component_rows = (
             (
                 "Profile wall (headline)"
@@ -1150,7 +1219,7 @@ def _benchmark_summary(
                 breakdown.recurrence_union_source_fill_time,
             ),
             (
-                "Recurrence schedule (inclusive)",
+                recurrence_schedule_label,
                 breakdown.recurrence_schedule_time,
             ),
             (
@@ -1268,6 +1337,7 @@ def _benchmark_summary(
             "Amplitude evaluator envelope (top-level)",
             "Eager execution (inclusive)",
             "Recurrence schedule (inclusive)",
+            "OTF recurrence schedule (inclusive)",
             "Kernel calls (exclusive)",
             "Source kernels (schedule attribution; do not add)",
             "Contribution kernels (schedule attribution; do not add)",
@@ -1706,10 +1776,20 @@ def _artifact_inspection_summary(
                     "; ".join(selection_parts) or "none",
                 )
             )
+            add_execution_row((process_id, "selector provenance", selector_provenance))
+        if mode == "on-the-fly":
             add_execution_row(
-                (process_id, "selector provenance", selector_provenance)
+                (
+                    process_id,
+                    "compact/query-local census",
+                    (
+                        f"{process.get('physical_helicities')} physical helicities; "
+                        f"{process.get('physical_color_components')} physical LC "
+                        "color flows"
+                    ),
+                )
             )
-        if process.get("lc_physical_sector_count") is not None:
+        elif process.get("lc_physical_sector_count") is not None:
             add_execution_row(
                 (
                     process_id,
@@ -1793,6 +1873,24 @@ def _artifact_inspection_summary(
                         ),
                     )
                 )
+            continue
+        if mode == "on-the-fly":
+            requested_tile = process.get("requested_point_tile_size")
+            add_execution_row(
+                (
+                    process_id,
+                    "point tile request",
+                    f"{requested_tile} requested; not applied by on-the-fly execution",
+                )
+            )
+            add_execution_row(
+                (
+                    process_id,
+                    "query construction threads",
+                    f"{process.get('requested_query_construction_threads')} requested",
+                )
+            )
+            add_execution_row((process_id, "numeric runtime", "f64 only"))
             continue
         if mode != "eager":
             continue

@@ -12,6 +12,8 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from pyamplicol.api import BenchmarkResult, BenchmarkStatistics
 from pyamplicol.cli import run_cli
 from pyamplicol.cli.handlers import _load_process_output, _process_set
@@ -197,9 +199,7 @@ class _TerminalScreen:
             self.rows[self.row][start:] = [" "] * (self.columns - start)
         elif command == "J":
             self.frames.append(self.visible_lines())
-            self.rows[self.row][self.column :] = [" "] * (
-                self.columns - self.column
-            )
+            self.rows[self.row][self.column :] = [" "] * (self.columns - self.column)
             for row in range(self.row + 1, len(self.rows)):
                 self.rows[row] = [" "] * self.columns
         return final + 1
@@ -529,4 +529,121 @@ def test_inspect_cli_lists_artifact_processes_as_json() -> None:
     assert payload["kind"] == "pyamplicol-artifact-inspection"
     assert payload["default_process_id"] == "d_dbar_to_z"
     assert payload["processes"][0]["expression"] == "d d~ > z"
+    assert stderr.getvalue() == ""
+
+
+def _inspection_with_alias() -> object:
+    from pyamplicol.artifacts import inspect_artifact
+    from pyamplicol.artifacts.inspection import ArtifactAliasInspection
+
+    artifact = ROOT / "src/pyamplicol/assets/selftest/portable-64le/artifact"
+    inspection = inspect_artifact(artifact)
+    representative = inspection.processes[0]
+    alias = ArtifactAliasInspection(
+        id="stable-alias",
+        expression="alias exact expression",
+        representative_id=representative.id,
+        external_pdgs=representative.external_pdgs,
+    )
+    return replace(
+        inspection,
+        processes=(replace(representative, aliases=(alias,)),),
+    )
+
+
+@pytest.mark.parametrize(
+    "selector",
+    ("d_dbar_to_z", "stable-alias", "d d~ > z"),
+)
+def test_inspect_process_defaults_to_compact_metadata_without_runtime(
+    selector: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol.api as api_module
+    import pyamplicol.artifacts as artifact_module
+
+    inspection = _inspection_with_alias()
+
+    class ForbiddenRuntime:
+        @classmethod
+        def load(cls, *_args: object, **_kwargs: object) -> object:
+            raise AssertionError("compact inspection loaded Runtime.physics")
+
+    monkeypatch.setattr(artifact_module, "inspect_artifact", lambda _path: inspection)
+    monkeypatch.setattr(api_module, "Runtime", ForbiddenRuntime)
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    status = run_cli(
+        (
+            "inspect",
+            str(tmp_path / "artifact"),
+            "--process",
+            selector,
+            "--format",
+            "json",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload["kind"] == "pyamplicol-artifact-inspection"
+    assert [process["id"] for process in payload["processes"]] == ["d_dbar_to_z"]
+    assert stderr.getvalue() == ""
+
+
+def test_inspect_full_physics_is_the_only_runtime_materialization_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol.api as api_module
+    import pyamplicol.artifacts as artifact_module
+
+    inspection = _inspection_with_alias()
+    loads: list[tuple[Path, str | None]] = []
+    dense_physics = {"kind": "dense-legacy-physics"}
+
+    class DenseRuntime:
+        physics = dense_physics
+
+        @classmethod
+        def load(
+            cls,
+            artifact: Path,
+            *,
+            process: str | None = None,
+        ) -> DenseRuntime:
+            loads.append((artifact, process))
+            return cls()
+
+    monkeypatch.setattr(artifact_module, "inspect_artifact", lambda _path: inspection)
+    monkeypatch.setattr(api_module, "Runtime", DenseRuntime)
+    artifact = tmp_path / "artifact"
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+
+    status = run_cli(
+        (
+            "inspect",
+            str(artifact),
+            "--process",
+            "stable-alias",
+            "--full-physics",
+            "--format",
+            "json",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 0
+    assert json.loads(stdout.getvalue()) == dense_physics
+    assert loads == [(artifact.resolve(), "stable-alias")]
     assert stderr.getvalue() == ""

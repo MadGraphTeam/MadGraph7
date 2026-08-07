@@ -39,7 +39,6 @@ use crate::recurrence::on_the_fly::{
     prepare_on_the_fly_process_v1,
 };
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
-use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "on-the-fly-test-support")]
@@ -156,16 +155,6 @@ struct PreparedOnTheFlyLcFamilyV1 {
     logical_point_capacity: u32,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct OnTheFlyLcFamilyLookupKeyV1 {
-    requests: Box<
-        [(
-            crate::recurrence::SemanticDigest,
-            Box<[(usize, usize, u64)]>,
-        )],
-    >,
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct OnTheFlyRetainedStateCensusV1 {
     pub(super) family_count: usize,
@@ -181,34 +170,6 @@ pub(super) struct OnTheFlyRetainedStateCensusV1 {
 pub(super) struct OnTheFlyProcessPreparationCensusV1 {
     pub(super) catalog_validation_count: u64,
     pub(super) grammar_preparation_count: u64,
-}
-
-impl OnTheFlyLcFamilyLookupKeyV1 {
-    fn from_requests(requests: &[OnTheFlyLcQueryRequestV1]) -> Self {
-        Self {
-            requests: requests
-                .iter()
-                .map(|request| {
-                    (
-                        request.query.semantic_digest(),
-                        request
-                            .reduction_targets
-                            .iter()
-                            .map(|target| {
-                                (
-                                    target.helicity_position,
-                                    target.color_position,
-                                    target.coefficient.to_bits(),
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice(),
-                    )
-                })
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        }
-    }
 }
 
 /// Process-local production owner for the private on-the-fly lane.
@@ -233,7 +194,6 @@ pub(super) struct OnTheFlyNativeRuntime {
     parameter_projection: Box<[PreparedParameterProjectionEntry]>,
     runtime_parameter_values: Box<[f64]>,
     families: Vec<PreparedOnTheFlyLcFamilyV1>,
-    family_lookup: BTreeMap<OnTheFlyLcFamilyLookupKeyV1, Vec<usize>>,
     last_family: Option<usize>,
     pending_family: Option<PreparedOnTheFlyLcFamilyV1>,
     source_momenta_scratch: Vec<f64>,
@@ -312,7 +272,6 @@ impl OnTheFlyNativeRuntime {
             parameter_projection: parameter_projection.into_boxed_slice(),
             runtime_parameter_values: runtime_parameter_values.to_vec().into_boxed_slice(),
             families: Vec::new(),
-            family_lookup: BTreeMap::new(),
             last_family: None,
             pending_family: None,
             source_momenta_scratch: Vec::new(),
@@ -480,8 +439,8 @@ impl OnTheFlyNativeRuntime {
             ));
         }
 
-        // The common same-selector path compares the last family directly and
-        // never allocates or consults the all-seen index. When the numeric
+        // The common same-selector path compares the sole retained family
+        // directly. When the numeric
         // workspace is already large enough it also avoids a redundant second
         // identity walk inside the executor.
         if self.pending_family.is_none()
@@ -494,33 +453,48 @@ impl OnTheFlyNativeRuntime {
         {
             return Ok(true);
         }
-        let retained = self
-            .last_family
-            .filter(|&index| {
-                self.families
-                    .get(index)
-                    .is_some_and(|family| family.requests.as_ref() == requests)
-            })
-            .or_else(|| {
-                let lookup_key = OnTheFlyLcFamilyLookupKeyV1::from_requests(requests);
-                self.family_lookup.get(&lookup_key).and_then(|indices| {
-                    indices.iter().copied().find(|&index| {
-                        self.families
-                            .get(index)
-                            .is_some_and(|family| family.requests.as_ref() == requests)
-                    })
-                })
-            });
+        if self
+            .pending_family
+            .as_ref()
+            .is_some_and(|family| family.requests.as_ref() == requests)
+        {
+            let (current_capacity, has_executable_family) = self
+                .pending_family
+                .as_ref()
+                .map(|family| (family.logical_point_capacity, family.census.is_some()))
+                .expect("matching on-the-fly pending family disappeared");
+            if logical_point_capacity > current_capacity && has_executable_family {
+                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
+                    self.discard_pending_lc_queries()?;
+                    return Err(error);
+                }
+            }
+            let family = self
+                .pending_family
+                .as_mut()
+                .expect("matching on-the-fly pending family disappeared after resize");
+            family.logical_point_capacity =
+                family.logical_point_capacity.max(logical_point_capacity);
+            return Ok(false);
+        }
+        // A different uncommitted selector is a failed/superseded candidate,
+        // not another cache entry.
+        self.discard_pending_lc_queries()?;
+
+        let retained = self.last_family.filter(|&index| {
+            self.families
+                .get(index)
+                .is_some_and(|family| family.requests.as_ref() == requests)
+        });
         if let Some(index) = retained {
             let family = self
                 .families
                 .get_mut(index)
-                .expect("on-the-fly family lookup index is absent");
+                .expect("on-the-fly retained family index is absent");
             let cache_hit = if let Some(handle) = family.executor_handle {
                 self.executor
                     .activate_retained_family(handle, logical_point_capacity)?
             } else {
-                self.executor.deactivate()?;
                 true
             };
             family.logical_point_capacity =
@@ -530,128 +504,119 @@ impl OnTheFlyNativeRuntime {
             return Ok(cache_hit);
         }
 
-        if self
-            .pending_family
-            .as_ref()
-            .is_some_and(|family| family.requests.as_ref() == requests)
-        {
-            let family = self
-                .pending_family
-                .as_mut()
-                .expect("matching on-the-fly pending family disappeared");
-            let cache_hit = self.executor.resize_active_family(logical_point_capacity)?;
-            if cache_hit {
-                return Err(RusticolError::integrity(
-                    "pending on-the-fly family unexpectedly resolved as retained",
-                ));
-            }
-            family.logical_point_capacity =
-                family.logical_point_capacity.max(logical_point_capacity);
-            return Ok(false);
+        if self.families.capacity() == 0 {
+            self.families.try_reserve_exact(1).map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "on-the-fly retained-family allocation failed: {error}"
+                ))
+            })?;
         }
-
-        self.ensure_process_prepared()?;
-        let outcomes = build_selected_lc_query_family_v1(
-            &self.templates,
-            &self.direct_catalog,
-            &self.seed,
-            self.coupling_policy.as_ref().ok_or_else(|| {
-                RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
-            })?,
-            self.prepared_grammar.as_ref().ok_or_else(|| {
-                RusticolError::internal("on-the-fly grammar disappeared after preparation")
-            })?,
-            self.effective_query_construction_threads,
-            requests.iter().map(|request| request.query.clone()),
-        )?;
-        if outcomes.len() != requests.len() {
-            return Err(RusticolError::integrity(
-                "on-the-fly batch trace builder changed the query count",
-            ));
-        }
-        let mut traces = Vec::new();
-        let mut amplitude_destinations = vec![None; requests.len()];
-        traces.try_reserve_exact(requests.len()).map_err(|error| {
-            RusticolError::invalid_argument(format!(
-                "on-the-fly trace-family allocation failed: {error}"
-            ))
-        })?;
-        for (request_index, (request, outcome)) in requests.iter().zip(outcomes).enumerate() {
-            match outcome {
-                OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
-                    if selected.query != request.query {
-                        return Err(RusticolError::integrity(
-                            "on-the-fly trace query changed during construction",
-                        ));
-                    }
-                    amplitude_destinations[request_index] = Some(traces.len());
-                    traces.push(selected);
-                }
-                OnTheFlySelectedQueryOutcomeV1::StructuralZero { query } => {
-                    if query != request.query {
-                        return Err(RusticolError::integrity(
-                            "on-the-fly structural-zero query changed during construction",
-                        ));
-                    }
-                }
-            }
-        }
-        let (cache_hit, census) = if traces.is_empty() {
-            self.executor.deactivate()?;
-            (false, None)
-        } else {
-            self.executor.resolver_mut().bind_on_the_fly_family(
+        let candidate_result = (|| {
+            self.ensure_process_prepared()?;
+            let outcomes = build_selected_lc_query_family_v1(
                 &self.templates,
                 &self.direct_catalog,
                 &self.seed,
-                &mut traces,
+                self.coupling_policy.as_ref().ok_or_else(|| {
+                    RusticolError::internal(
+                        "on-the-fly coupling policy disappeared after preparation",
+                    )
+                })?,
+                self.prepared_grammar.as_ref().ok_or_else(|| {
+                    RusticolError::internal("on-the-fly grammar disappeared after preparation")
+                })?,
+                self.effective_query_construction_threads,
+                requests.iter().map(|request| request.query.clone()),
             )?;
-            let inputs = traces
-                .iter()
-                .map(|selected| QueryFamilyTraceInput {
-                    trace: &selected.trace,
-                    projection: selected.projection,
-                })
-                .collect::<Vec<_>>();
-            let cache_hit =
-                self.executor
-                    .prepare(&self.direct_catalog, &inputs, logical_point_capacity)?;
-            let census = self.executor.prepared_census().ok_or_else(|| {
-                RusticolError::integrity("on-the-fly prepared family has no work census")
-            })?;
-            if usize::try_from(census.union_amplitude_destination_count).ok() != Some(traces.len())
-            {
+            if outcomes.len() != requests.len() {
                 return Err(RusticolError::integrity(
-                    "on-the-fly family does not retain one destination per nonzero query",
+                    "on-the-fly batch trace builder changed the query count",
                 ));
             }
-            (cache_hit, Some(census))
-        };
-        self.families.try_reserve(1).map_err(|error| {
-            RusticolError::invalid_argument(format!(
-                "on-the-fly retained-family allocation failed: {error}"
+            let mut traces = Vec::new();
+            let mut amplitude_destinations = vec![None; requests.len()];
+            traces.try_reserve_exact(requests.len()).map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "on-the-fly trace-family allocation failed: {error}"
+                ))
+            })?;
+            for (request_index, (request, outcome)) in requests.iter().zip(outcomes).enumerate() {
+                match outcome {
+                    OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
+                        if selected.query != request.query {
+                            return Err(RusticolError::integrity(
+                                "on-the-fly trace query changed during construction",
+                            ));
+                        }
+                        amplitude_destinations[request_index] = Some(traces.len());
+                        traces.push(selected);
+                    }
+                    OnTheFlySelectedQueryOutcomeV1::StructuralZero { query } => {
+                        if query != request.query {
+                            return Err(RusticolError::integrity(
+                                "on-the-fly structural-zero query changed during construction",
+                            ));
+                        }
+                    }
+                }
+            }
+            let (cache_hit, census) = if traces.is_empty() {
+                (false, None)
+            } else {
+                self.executor.resolver_mut().bind_on_the_fly_family(
+                    &self.templates,
+                    &self.direct_catalog,
+                    &self.seed,
+                    &mut traces,
+                )?;
+                let inputs = traces
+                    .iter()
+                    .map(|selected| QueryFamilyTraceInput {
+                        trace: &selected.trace,
+                        projection: selected.projection,
+                    })
+                    .collect::<Vec<_>>();
+                let cache_hit =
+                    self.executor
+                        .prepare(&self.direct_catalog, &inputs, logical_point_capacity)?;
+                let census = self.executor.prepared_census().ok_or_else(|| {
+                    RusticolError::integrity("on-the-fly prepared family has no work census")
+                })?;
+                if usize::try_from(census.union_amplitude_destination_count).ok()
+                    != Some(traces.len())
+                {
+                    return Err(RusticolError::integrity(
+                        "on-the-fly family does not retain one destination per nonzero query",
+                    ));
+                }
+                if cache_hit && self.executor.active_retained_handle().is_none() {
+                    return Err(RusticolError::integrity(
+                        "on-the-fly cache hit has no retained executor handle",
+                    ));
+                }
+                (cache_hit, Some(census))
+            };
+            Ok((
+                cache_hit,
+                PreparedOnTheFlyLcFamilyV1 {
+                    requests: requests.to_vec().into_boxed_slice(),
+                    amplitude_destinations: amplitude_destinations.into_boxed_slice(),
+                    executor_handle: None,
+                    census,
+                    logical_point_capacity,
+                },
             ))
-        })?;
-        let executor_handle = cache_hit
-            .then(|| self.executor.active_retained_handle())
-            .flatten();
-        if cache_hit && executor_handle.is_none() {
-            return Err(RusticolError::integrity(
-                "on-the-fly cache hit has no retained executor handle",
-            ));
-        }
-        let candidate = PreparedOnTheFlyLcFamilyV1 {
-            requests: requests.to_vec().into_boxed_slice(),
-            amplitude_destinations: amplitude_destinations.into_boxed_slice(),
-            executor_handle,
-            census,
-            logical_point_capacity,
+        })();
+        let (cache_hit, candidate) = match candidate_result {
+            Ok(candidate) => candidate,
+            Err(error) => {
+                self.discard_pending_lc_queries()?;
+                return Err(error);
+            }
         };
-        if cache_hit || traces.is_empty() {
-            self.retain_family(candidate);
-        } else {
-            self.pending_family = Some(candidate);
-        }
+        // Selection-level state is committed only after the first successful
+        // evaluation, including structural-zero and executor-cache-hit cases.
+        self.pending_family = Some(candidate);
         Ok(cache_hit)
     }
 
@@ -672,13 +637,17 @@ impl OnTheFlyNativeRuntime {
             if logical_point_capacity <= family.logical_point_capacity {
                 return Ok(false);
             }
-            let cache_hit = self.executor.resize_active_family(logical_point_capacity)?;
-            if cache_hit {
-                return Err(RusticolError::integrity(
-                    "pending on-the-fly family unexpectedly resolved as retained",
-                ));
+            let has_executable_family = family.census.is_some();
+            if has_executable_family {
+                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
+                    self.discard_pending_lc_queries()?;
+                    return Err(error);
+                }
             }
-            family.logical_point_capacity = logical_point_capacity;
+            self.pending_family
+                .as_mut()
+                .expect("pending on-the-fly family disappeared after resize")
+                .logical_point_capacity = logical_point_capacity;
             return Ok(false);
         }
         let index = self.last_family.ok_or_else(|| {
@@ -698,7 +667,6 @@ impl OnTheFlyNativeRuntime {
             self.executor
                 .activate_retained_family(handle, logical_point_capacity)?
         } else {
-            self.executor.deactivate()?;
             true
         };
         family.logical_point_capacity = logical_point_capacity;
@@ -746,7 +714,6 @@ impl OnTheFlyNativeRuntime {
         self.executor.resolver_mut().clear_resolved_bindings();
         self.pending_family = None;
         self.last_family = None;
-        self.family_lookup.clear();
         self.families.clear();
         self.prepared_grammar = None;
         self.coupling_policy = None;
@@ -767,26 +734,50 @@ impl OnTheFlyNativeRuntime {
             .or_else(|| self.last_family.and_then(|index| self.families.get(index)))
     }
 
+    pub(super) fn discard_pending_lc_queries(&mut self) -> RusticolResult<()> {
+        self.executor.discard_pending_family()?;
+        self.executor
+            .resolver_mut()
+            .discard_pending_resolved_bindings();
+        self.pending_family = None;
+        Ok(())
+    }
+
     fn promote_pending_family(&mut self) -> RusticolResult<()> {
-        let Some(mut family) = self.pending_family.take() else {
+        let Some(family) = self.pending_family.as_ref() else {
             return Ok(());
         };
-        family.executor_handle = Some(self.executor.active_retained_handle().ok_or_else(|| {
-            RusticolError::internal("successful on-the-fly family has no retained executor handle")
-        })?);
+        let executor_handle = if family.census.is_some() {
+            let handle = self.executor.active_retained_handle().ok_or_else(|| {
+                RusticolError::internal(
+                    "successful on-the-fly family has no retained executor handle",
+                )
+            })?;
+            self.executor
+                .resolver_mut()
+                .commit_pending_resolved_bindings()?;
+            Some(handle)
+        } else {
+            // A structural-zero family replaces executable state only after
+            // its evaluation succeeds. Row-table owners disappear before the
+            // semantic bindings to their prepared contexts.
+            self.executor.clear_families()?;
+            self.executor.resolver_mut().clear_resolved_bindings();
+            None
+        };
+        let mut family = self
+            .pending_family
+            .take()
+            .expect("validated on-the-fly pending family disappeared during promotion");
+        family.executor_handle = executor_handle;
         self.retain_family(family);
         Ok(())
     }
 
     fn retain_family(&mut self, family: PreparedOnTheFlyLcFamilyV1) {
-        let lookup_key = OnTheFlyLcFamilyLookupKeyV1::from_requests(&family.requests);
-        let index = self.families.len();
+        self.families.clear();
         self.families.push(family);
-        self.family_lookup
-            .entry(lookup_key)
-            .or_default()
-            .push(index);
-        self.last_family = Some(index);
+        self.last_family = Some(0);
     }
 
     fn prepare_runtime_parameters(&mut self, runtime_values: &[f64]) -> RusticolResult<()> {
@@ -862,6 +853,26 @@ impl OnTheFlyNativeRuntime {
         Duration,
         Duration,
     )> {
+        let candidate_pending = self.pending_family.is_some();
+        let result =
+            self.execute_amplitudes_inner(point_major_momenta, point_count, runtime_parameters);
+        if result.is_err() && candidate_pending {
+            self.discard_pending_lc_queries()?;
+        }
+        result
+    }
+
+    fn execute_amplitudes_inner(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<(
+        OnTheFlyQueryFamilyExecutionReportV1,
+        Duration,
+        Duration,
+        Duration,
+    )> {
         if point_count == 0 {
             return Err(RusticolError::invalid_argument(
                 "on-the-fly evaluation requires at least one point",
@@ -877,9 +888,11 @@ impl OnTheFlyNativeRuntime {
             .current_family()
             .is_some_and(|family| family.census.is_none())
         {
+            let cache_hit = self.pending_family.is_none();
+            self.promote_pending_family()?;
             return Ok((
                 OnTheFlyQueryFamilyExecutionReportV1 {
-                    cache_hit: true,
+                    cache_hit,
                     ..OnTheFlyQueryFamilyExecutionReportV1::default()
                 },
                 parameter_setup,
@@ -1336,8 +1349,8 @@ mod tests {
                 .prepare_lc_queries(std::slice::from_ref(&first), 1)
                 .unwrap()
         );
-        assert_eq!(lane.retained_state_census().family_count, 1);
-        assert_eq!(lane.pending_family_count(), 0);
+        assert_eq!(lane.retained_state_census().family_count, 0);
+        assert_eq!(lane.pending_family_count(), 1);
         assert_eq!(lane.process_preparation_count(), 1);
         assert_eq!(
             lane.process_preparation_census(),
@@ -1357,17 +1370,27 @@ mod tests {
         // does not own; nonzero A -> B -> A executor reuse is covered in the
         // family executor tests below this public lane.
         assert_eq!(first_value, [0.0]);
+        assert_eq!(lane.retained_state_census().family_count, 1);
+        assert_eq!(lane.pending_family_count(), 0);
+        assert!(
+            lane.prepare_lc_queries(std::slice::from_ref(&first), 1)
+                .unwrap()
+        );
 
         let second = scalar_request(&lane, 2.0);
-        lane.prepare_lc_queries(std::slice::from_ref(&second), 1)
-            .unwrap();
+        assert!(
+            !lane
+                .prepare_lc_queries(std::slice::from_ref(&second), 1)
+                .unwrap()
+        );
         let mut second_value = [0.0];
         lane.run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut second_value)
             .unwrap();
         assert_eq!(second_value, [2.0 * first_value[0]]);
 
         assert!(
-            lane.prepare_lc_queries(std::slice::from_ref(&first), 1)
+            !lane
+                .prepare_lc_queries(std::slice::from_ref(&first), 1)
                 .unwrap()
         );
         let mut repeated = [0.0];
@@ -1391,8 +1414,8 @@ mod tests {
         );
 
         let retained = lane.retained_state_census();
-        assert_eq!(retained.family_count, 3);
-        assert_eq!(retained.request_count, 4);
+        assert_eq!(retained.family_count, 1);
+        assert_eq!(retained.request_count, 2);
         assert_eq!(retained.amplitude_destination_count, 0);
         assert_eq!(retained.executor_handle_count, 0);
         assert_eq!(retained.query_local_trace_count, 0);

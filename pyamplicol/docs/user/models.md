@@ -97,7 +97,7 @@ The JSON file above is portable model IR only. A path ending in
 `.pyamplicol-model` is instead a self-contained prepared bundle containing the
 same IR, exact expressions, and one compiled local-kernel backend. Wheels ship
 the portable built-in-SM `built-in-sm-jit-o2` bundle, which is selected
-automatically by:
+automatically by eager, recurrence, and on-the-fly execution. For example:
 
 ```console
 pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_eager \
@@ -115,12 +115,16 @@ pyamplicol generate "d d~ > z g g g" artifacts/ddbar_z3g_ufo_eager \
   --model models/ufo-sm-jit-o2.pyamplicol-model --execution-mode eager
 ```
 
-Process generation from this bundle writes compact invocation tables and
-copies only the referenced kernels into the standalone process artifact. It
-does not construct evaluators or invoke a compiler. Eager generation still
-uses Symbolica for the symbolic generation layer and follows the normal
-license/concurrency policy. A saved JIT application's post-generation f64
-runtime is Symbolica-free; higher precision continues to use Symbolica.
+Process generation from this bundle copies only the referenced kernels into
+the standalone process artifact. Eager mode writes compact invocation tables,
+recurrence mode writes compact current schedules, and on-the-fly mode writes a
+compact process seed from which query-local recurrence schedules are built.
+None of these lanes compiles missing kernels during process generation. Their
+symbolic generation layer still uses Symbolica and follows the normal
+license/concurrency policy. A saved JIT application's post-generation `f64`
+runtime is Symbolica-free; higher precision continues to use Symbolica for
+eager and recurrence execution. On-the-fly execution currently supports LC and
+native `f64` only; it does not support NLC, full color, or higher precision.
 
 JIT bundles retain SymJIT application/MIR state and rebuild executable code for
 the receiving CPU when loaded. SymJIT storage-v3 prepared state is portable

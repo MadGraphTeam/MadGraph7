@@ -169,21 +169,23 @@ def _process_artifact(
     tmp_path: Path,
     *,
     runtime_name: str = "runtime.pacbin",
+    process_id: str = _PROCESS_ID,
+    expression: str = "d d~ > z",
 ) -> OnTheFlyProcessArtifact:
     runtime_path = tmp_path / runtime_name
     runtime_index = _write_seed_container(runtime_path)
     bundle = load_prepared_model_bundle(_prepared_model_path())
     return OnTheFlyProcessArtifact(
-        process_id=_PROCESS_ID,
-        expression="d d~ > z",
+        process_id=process_id,
+        expression=expression,
         color_accuracy="lc",
         external_pdgs=(1, -1, 23),
         aliases=(),
         physics={
             "schema_version": 1,
             "kind": artifact_writer.ON_THE_FLY_PUBLIC_METADATA_KIND,
-            "process_id": _PROCESS_ID,
-            "process": "d d~ > z",
+            "process_id": process_id,
+            "process": expression,
             "color_accuracy": "lc",
             "external_particles": [
                 {
@@ -233,8 +235,8 @@ def _process_artifact(
         point_tile_size=128,
         query_construction_threads=3,
         validation_point=ValidationPointRecord(
-            process_id=_PROCESS_ID,
-            process="d d~ > z",
+            process_id=process_id,
+            process=expression,
             seed=7,
             error="not sampled in writer test",
         ),
@@ -361,12 +363,19 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
         }
         inspected = inspect_artifact(output).processes[0]
         assert inspected.execution_mode == "on-the-fly"
+        assert inspected.lc_flow_layout == "compact/query-local"
+        assert inspected.requested_point_tile_size == 128
+        assert inspected.effective_point_tile_size is None
         assert inspected.requested_query_construction_threads == 3
         assert inspected.physical_helicities == inspected.computed_helicities == 1
         assert inspected.physical_color_components == 1
         assert inspected.computed_color_components == 1
         assert inspected.helicity_coverage == inspected.color_coverage == "complete"
         assert inspected.generation_specialized_axes == ()
+        assert inspected.lc_physical_sector_count == 1
+        assert inspected.lc_materialized_sector_count is None
+        assert inspected.lc_replayed_sector_count is None
+        assert inspected.lc_residual_sector_count is None
 
     assert isinstance(execution, dict)
     process_record = manifest.processes[0]
@@ -388,6 +397,63 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
         second / runtime_relative
     ).read_bytes()
     assert _payload_inventory(first) == _payload_inventory(second)
+
+
+def test_on_the_fly_writer_append_skips_structural_proofs_for_complete_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _prepare_writer_identity(monkeypatch)
+    source_path = _prepared_model_path()
+    source = ModelSource.from_path(source_path)
+    compiled = load_compiled_model(source_path)
+    artifact = tmp_path / "artifact"
+    first = _process_artifact(tmp_path, runtime_name="first.pacbin")
+    second_process_id = "d_dbar_to_z_copy"
+    second = _process_artifact(
+        tmp_path,
+        runtime_name="second.pacbin",
+        process_id=second_process_id,
+    )
+
+    write_schema_v3_artifact(
+        artifact,
+        mode="error",
+        source=source,
+        compiled_model=compiled,
+        configuration=_configuration(),
+        processes=(first,),
+        timings={"total": 0.1},
+        api_bundle_hook=None,
+    )
+    write_schema_v3_artifact(
+        artifact,
+        mode="append",
+        source=source,
+        compiled_model=compiled,
+        configuration=_configuration(),
+        processes=(second,),
+        timings={"total": 0.2},
+        api_bundle_hook=None,
+    )
+
+    manifest = load_manifest(artifact)
+    assert tuple(record["id"] for record in manifest.processes) == (
+        _PROCESS_ID,
+        second_process_id,
+    )
+    assert [
+        record.path
+        for record in manifest.payloads
+        if record.role == artifact_writer.STRUCTURAL_SOURCE_PROOF_ROLE
+    ] == []
+    for process_id in (_PROCESS_ID, second_process_id):
+        assert not (
+            artifact / f"processes/{process_id}/structural-source-proof.json"
+        ).exists()
+    assert [
+        process.execution_mode for process in inspect_artifact(artifact).processes
+    ] == ["on-the-fly", "on-the-fly"]
 
 
 @pytest.mark.parametrize(
@@ -796,6 +862,61 @@ def test_multi_process_on_the_fly_writer_uses_one_ordered_native_batch(
             assert reader.read_member(_SEED_MEMBER, length=member.length) == (
                 f"native-compact-seed-{index}".encode()
             )
+
+
+def test_public_generator_appends_on_the_fly_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _prepare_writer_identity(monkeypatch)
+
+    def batch_builder(
+        ordered_sources: object,
+        *_args: object,
+        **_kwargs: object,
+    ) -> tuple[bytes, ...]:
+        return tuple(
+            b"native-compact-seed:" + source
+            for source in tuple(ordered_sources)  # type: ignore[arg-type]
+        )
+
+    def inspect_seed(payload: bytes) -> dict[str, object]:
+        prefix = b"native-compact-seed:"
+        assert payload.startswith(prefix)
+        source_projection = json.loads(payload.removeprefix(prefix))
+        assert isinstance(source_projection, dict)
+        return _seed_identity_from_source_projection(source_projection)
+
+    monkeypatch.setattr(
+        service_module,
+        "_invoke_rust_on_the_fly_seed_batch_builder_v1",
+        batch_builder,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "_invoke_rust_on_the_fly_seed_inspector_v1",
+        inspect_seed,
+    )
+
+    generator = Generator(_configuration().effective)
+    model = ModelSource.from_path(_prepared_model_path())
+    artifact = tmp_path / "public-append-artifact"
+    generator.generate("d d~ > z", artifact, model=model)
+    generator.generate("u u~ > z", artifact, model=model, mode="append")
+
+    manifest = load_manifest(artifact)
+    assert tuple(record["id"] for record in manifest.processes) == (
+        "d_dbar_to_z",
+        "u_ubar_to_z",
+    )
+    assert [
+        record.path
+        for record in manifest.payloads
+        if record.role == artifact_writer.STRUCTURAL_SOURCE_PROOF_ROLE
+    ] == []
+    assert [
+        process.execution_mode for process in inspect_artifact(artifact).processes
+    ] == ["on-the-fly", "on-the-fly"]
 
 
 def test_on_the_fly_runtime_metadata_reuses_recurrence_support_contract() -> None:

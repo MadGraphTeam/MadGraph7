@@ -16,7 +16,6 @@ from .agreements import (
     INDEPENDENT_AUTHORITY_ABI,
     INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
-    OTF_COMPILED_CROSS_MODE,
     incoming_agreement_edges,
     independent_numerical_authorities,
     requires_independent_numerical_authority,
@@ -29,14 +28,20 @@ from .runner import (
     CONDITIONED_COMPARISON_ABI,
     CONVENTIONAL_WARMUP_FIELDS,
     CONVENTIONAL_WARMUP_TIMING_SCOPE,
+    OTF_ACTIVE_FAMILY_COUNT_FIELDS,
     OTF_COLD_WARMUP_FIELDS,
-    OTF_COLD_WARMUP_RUNTIME_FRESHNESS,
+    OTF_COLD_WARMUP_RUNTIME_FRESHNESSES,
+    OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE,
     OTF_COLD_WARMUP_TIMING_SCOPE,
-    OTF_DUAL_AUTHORITY_VALIDATION_ABI,
-    OTF_DUAL_AUTHORITY_VALIDATION_FIELD,
+    OTF_RECURRENCE_AUTHORITY_VALIDATION_ABI,
+    OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD,
+    OTF_RUNTIME_STATE_CENSUS_KIND,
+    OTF_RUNTIME_STATE_COUNT_FIELDS,
+    OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+    OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY,
     WARMUP_TIMER_SOURCE,
     validate_conditioned_comparison_record,
-    validate_on_the_fly_dual_authority_validation_record,
+    validate_on_the_fly_recurrence_authority_validation_record,
     validate_profile_warmup_evidence,
     validate_resolved_sum_validation_record,
 )
@@ -48,7 +53,7 @@ from .timing import (
     unavailable_execution_timing_record,
 )
 
-CACHE_SCHEMA_VERSION = 4
+CACHE_SCHEMA_VERSION = 5
 REPORT_VERSION = "0.3.0"
 _MEASURED_EXECUTION_TIMING_FIELDS = frozenset(
     {
@@ -671,7 +676,7 @@ def _validate_unverified_direct_agreement_coverage(
         raise ValueError("unverified result direct-agreement coverage is incomplete")
 
 
-def _validate_successful_otf_dual_authority(
+def _validate_successful_otf_recurrence_authority(
     measurement: Mapping[str, object],
     validation: Mapping[str, object],
     *,
@@ -684,17 +689,11 @@ def _validate_successful_otf_dual_authority(
     ):
         return
     recurrence = catalog.validation_baseline_cell(expected_cell)
-    compiled_edges = tuple(
-        edge
-        for edge in incoming_agreement_edges(expected_cell, catalog=catalog)
-        if edge.kind == OTF_COMPILED_CROSS_MODE
-    )
     if (
         recurrence is None
         or recurrence.measurement.execution_mode is not ExecutionMode.RECURRENCE
-        or len(compiled_edges) != 1
     ):
-        raise ValueError("on-the-fly catalog authority chain is invalid")
+        raise ValueError("on-the-fly recurrence authority is invalid")
     provenance = _required_mapping(
         measurement.get("provenance"), "measurement.provenance"
     )
@@ -705,15 +704,12 @@ def _validate_successful_otf_dual_authority(
     candidate_artifact_id = runtime_identity.get("artifact_id")
     if not isinstance(candidate_artifact_id, str):
         raise ValueError("on-the-fly runtime identity has no artifact ID")
-    validate_on_the_fly_dual_authority_validation_record(
-        validation.get(OTF_DUAL_AUTHORITY_VALIDATION_FIELD),
+    validate_on_the_fly_recurrence_authority_validation_record(
+        validation.get(OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD),
         expected_cell=expected_cell,
         selector_contract=measurement.get("selector_contract"),
         candidate_artifact_id=candidate_artifact_id,
-        expected_authorities=(
-            ("recurrence", recurrence.cell_id),
-            ("compiled", compiled_edges[0].baseline.cell_id),
-        ),
+        expected_authority_cell_id=recurrence.cell_id,
     )
 
 
@@ -872,7 +868,7 @@ def validate_measurement(
         elif validation.get(LC_COMMON_COMPONENT_FIELD) is not None:
             raise ValueError("non-LC measurement cannot contain lc_common_component")
         if expected_cell is not None and not retained_diagnostic:
-            _validate_successful_otf_dual_authority(
+            _validate_successful_otf_recurrence_authority(
                 measurement,
                 validation,
                 expected_cell=expected_cell,
@@ -1067,6 +1063,46 @@ def schema_document() -> dict[str, object]:
     nullable_number: dict[str, Any] = {"type": ["number", "null"], "minimum": 0}
     cold_warmup_required = sorted(OTF_COLD_WARMUP_FIELDS)
     otf_warmup_required = sorted(CONVENTIONAL_WARMUP_FIELDS | OTF_COLD_WARMUP_FIELDS)
+    nonnegative_integer: dict[str, Any] = {"type": "integer", "minimum": 0}
+    active_family_fields = {
+        "basis": {"const": "shared-query-family-union-v1"},
+        "scope": {"const": "active-family-union"},
+        **{
+            field: dict(nonnegative_integer) for field in OTF_ACTIVE_FAMILY_COUNT_FIELDS
+        },
+    }
+    active_family_census: dict[str, Any] = {
+        "oneOf": [
+            {"type": "null"},
+            {
+                "type": "object",
+                "required": sorted(active_family_fields),
+                "properties": active_family_fields,
+                "additionalProperties": False,
+            },
+        ]
+    }
+    runtime_state_fields = {
+        "kind": {"const": OTF_RUNTIME_STATE_CENSUS_KIND},
+        "process_id": {"type": "string", "minLength": 1},
+        "family_cache_policy": {"const": OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY},
+        "family_cache_limit": {"const": OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT},
+        **{
+            field: dict(nonnegative_integer) for field in OTF_RUNTIME_STATE_COUNT_FIELDS
+        },
+        "active_family_union_census": active_family_census,
+    }
+    runtime_state_fields["retained_family_count"] = {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+    }
+    runtime_state_census: dict[str, Any] = {
+        "type": "object",
+        "required": sorted(runtime_state_fields),
+        "properties": runtime_state_fields,
+        "additionalProperties": False,
+    }
     runtime_profile: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -1080,8 +1116,16 @@ def schema_document() -> dict[str, object]:
             "cold_warmup_timer_source": {"const": WARMUP_TIMER_SOURCE},
             "cold_warmup_timing_scope": {"const": OTF_COLD_WARMUP_TIMING_SCOPE},
             "cold_warmup_runtime_freshness": {
-                "const": OTF_COLD_WARMUP_RUNTIME_FRESHNESS
+                "enum": sorted(OTF_COLD_WARMUP_RUNTIME_FRESHNESSES)
             },
+            "cold_warmup_runtime_state_evidence": {
+                "const": OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE
+            },
+            "cold_warmup_runtime_state_before": runtime_state_census,
+            "cold_warmup_runtime_state_after": runtime_state_census,
+            "cold_warmup_runtime_cold_before_first_evaluation": {"type": "boolean"},
+            "cold_warmup_runtime_retained_before_first_evaluation": {"type": "boolean"},
+            "cold_warmup_runtime_retained_after_first_evaluation": {"const": True},
             "cold_warmup_ratio_eligible": {"const": False},
             "cold_warmup_acceptance_eligible": {"const": False},
             "warmup_elapsed_seconds": {"type": "number", "minimum": 0},
@@ -1124,7 +1168,6 @@ def schema_document() -> dict[str, object]:
             "enum": [
                 "builtin-ufo-recurrence",
                 "z-recurrence-cross-mode",
-                "otf-compiled-cross-mode",
                 "lc-cross-layout-component",
                 "lc-legacy-pyamplicol-component",
             ]
@@ -1280,7 +1323,7 @@ def schema_document() -> dict[str, object]:
             "candidate_resolved_ordering_sha256",
             "candidate_resolved_source_sha256",
             "candidate_resolved_sum",
-            "comparisons",
+            "comparison",
         ],
         "properties": {
             "candidate_total_source_sha256": {
@@ -1300,19 +1343,13 @@ def schema_document() -> dict[str, object]:
                 "pattern": "^[0-9a-f]{64}$",
             },
             "candidate_resolved_sum": otf_total_summary,
-            "comparisons": {
-                "type": "array",
-                "minItems": 2,
-                "maxItems": 2,
-                "items": otf_comparison,
-            },
+            "comparison": otf_comparison,
         },
         "additionalProperties": False,
     }
     otf_authority: dict[str, Any] = {
         "type": "object",
         "required": [
-            "role",
             "cell_id",
             "artifact_id",
             "total_source_sha256",
@@ -1322,7 +1359,6 @@ def schema_document() -> dict[str, object]:
             "resolved_sum",
         ],
         "properties": {
-            "role": {"enum": ["recurrence", "compiled"]},
             "cell_id": {"type": "string", "minLength": 1},
             **{
                 field: {"type": "string", "pattern": "^[0-9a-f]{64}$"}
@@ -1338,7 +1374,7 @@ def schema_document() -> dict[str, object]:
         },
         "additionalProperties": False,
     }
-    otf_dual_authority: dict[str, Any] = {
+    otf_recurrence_authority: dict[str, Any] = {
         "type": "object",
         "required": [
             "abi",
@@ -1353,13 +1389,13 @@ def schema_document() -> dict[str, object]:
             "point_count",
             "resolved_component_count",
             "resolved_check_count",
-            "authorities",
+            "authority",
             "before_clear",
             "after_clear",
             "lifecycle",
         ],
         "properties": {
-            "abi": {"const": OTF_DUAL_AUTHORITY_VALIDATION_ABI},
+            "abi": {"const": OTF_RECURRENCE_AUTHORITY_VALIDATION_ABI},
             "status": {"const": ResultStatus.OK.value},
             "candidate_cell_id": {"type": "string", "minLength": 1},
             "candidate_artifact_id": {
@@ -1377,18 +1413,13 @@ def schema_document() -> dict[str, object]:
             "point_count": {"type": "integer", "minimum": 1},
             "resolved_component_count": {"type": "integer", "minimum": 1},
             "resolved_check_count": {"type": "integer", "minimum": 1},
-            "authorities": {
-                "type": "array",
-                "minItems": 2,
-                "maxItems": 2,
-                "items": otf_authority,
-            },
+            "authority": otf_authority,
             "before_clear": otf_stage,
             "after_clear": otf_stage,
             "lifecycle": {
                 "type": "object",
                 "required": [
-                    "authority_artifacts_loaded_only",
+                    "authority_artifact_loaded_only",
                     "candidate_loaded_before_validation",
                     "validated_before_clear",
                     "validated_after_clear",
@@ -1396,7 +1427,7 @@ def schema_document() -> dict[str, object]:
                     "final_clear_before_profile",
                 ],
                 "properties": {
-                    "authority_artifacts_loaded_only": {"const": True},
+                    "authority_artifact_loaded_only": {"const": True},
                     "candidate_loaded_before_validation": {"const": True},
                     "validated_before_clear": {"const": True},
                     "validated_after_clear": {"const": True},
@@ -1441,7 +1472,7 @@ def schema_document() -> dict[str, object]:
             "additionalProperties": False,
         },
         LC_COMMON_COMPONENT_FIELD: lc_common_component,
-        OTF_DUAL_AUTHORITY_VALIDATION_FIELD: otf_dual_authority,
+        OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD: otf_recurrence_authority,
     }
     validation_record: dict[str, Any] = {
         "oneOf": [
@@ -1459,8 +1490,8 @@ def schema_document() -> dict[str, object]:
     }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://pyamplicol.dev/schema/report-cache-v4.json",
-        "title": "pyAmpliCol three-mode performance cache",
+        "$id": "https://pyamplicol.dev/schema/report-cache-v5.json",
+        "title": "pyAmpliCol performance cache",
         "type": "object",
         "required": [
             "$schema",

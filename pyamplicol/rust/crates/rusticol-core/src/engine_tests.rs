@@ -4054,7 +4054,7 @@ fn on_the_fly_runtime_state_census_is_observational() {
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
-fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
+fn on_the_fly_public_paths_vectorize_with_a_last_family_only_cache() {
     let retained = |runtime: &NativeRuntime| {
         let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
             panic!("test runtime changed execution lane");
@@ -4092,6 +4092,8 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
         "rusticol-on-the-fly-runtime-state-census-v1"
     );
     assert_eq!(cold_census["process_id"], "s_to_s");
+    assert_eq!(cold_census["family_cache_policy"], "last-family-only");
+    assert_eq!(cold_census["family_cache_limit"], 1);
     assert_eq!(cold_census["process_preparation_count"], 0);
     assert_eq!(cold_census["retained_family_count"], 0);
     assert_eq!(cold_census["pending_family_count"], 0);
@@ -4163,8 +4165,8 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
         assert!(groups <= rows, "{role}");
     }
 
-    // B: one explicit nonzero selector. Switching A -> B -> A retains both
-    // public axes/request mappings and both lower-lane families.
+    // B: one explicit nonzero selector. Switching A -> B -> A retains only
+    // the current public mapping and lower-lane family; evicted A is cold.
     let helicity = vec!["h:+0,+0".to_string()];
     let color = vec!["flow:singlet".to_string()];
     let selected = runtime
@@ -4178,20 +4180,20 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
         )
         .unwrap();
     assert_eq!(selected, global);
-    assert_eq!(retained(&runtime).0, 2);
-    assert_eq!(retained(&runtime).1, 2);
+    assert_eq!(retained(&runtime).0, 1);
+    assert_eq!(retained(&runtime).1, 1);
 
     let global_again = runtime
         .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
         .unwrap();
     assert_eq!(global_again, global);
-    assert_eq!(retained(&runtime).0, 2);
-    assert_eq!(retained(&runtime).1, 2);
+    assert_eq!(retained(&runtime).0, 1);
+    assert_eq!(retained(&runtime).1, 1);
     let revisited_census = census(&runtime);
     assert_eq!(revisited_census["process_preparation_count"], 1);
-    assert_eq!(revisited_census["retained_family_count"], 2);
+    assert_eq!(revisited_census["retained_family_count"], 1);
     assert_eq!(revisited_census["pending_family_count"], 0);
-    assert_eq!(revisited_census["retained_selection_count"], 2);
+    assert_eq!(revisited_census["retained_selection_count"], 1);
     assert_eq!(
         revisited_census["active_family_union_census"],
         global_census["active_family_union_census"]
@@ -4207,8 +4209,8 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
         ["h:+0,+0", "h:+0,+1", "h:+1,+0", "h:+1,+1"]
     );
     assert_eq!(resolved.color_ids, color);
-    assert_eq!(retained(&runtime).0, 2);
-    assert_eq!(retained(&runtime).1, 2);
+    assert_eq!(retained(&runtime).0, 1);
+    assert_eq!(retained(&runtime).1, 1);
 
     // Alternating selectors form two stable three-point partitions. The
     // nonzero partition reaches each prepared row group once, while the
@@ -4231,8 +4233,8 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
         )
         .unwrap();
     assert_eq!(per_point, expected_partitioned);
-    assert_eq!(retained(&runtime).0, 3);
-    assert_eq!(retained(&runtime).1, 3);
+    assert_eq!(retained(&runtime).0, 1);
+    assert_eq!(retained(&runtime).1, 1);
     let partitioned_census = census(&runtime);
 
     let per_point_again = runtime
@@ -4246,8 +4248,8 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
         )
         .unwrap();
     assert_eq!(per_point_again, expected_partitioned);
-    assert_eq!(retained(&runtime).0, 3);
-    assert_eq!(retained(&runtime).1, 3);
+    assert_eq!(retained(&runtime).0, 1);
+    assert_eq!(retained(&runtime).1, 1);
     assert_eq!(census(&runtime), partitioned_census);
 
     let profiled = runtime
@@ -4286,8 +4288,8 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
             .unwrap()
             >= 0.0
     );
-    assert_eq!(retained(&runtime).0, 3);
-    assert_eq!(retained(&runtime).1, 3);
+    assert_eq!(retained(&runtime).0, 1);
+    assert_eq!(retained(&runtime).1, 1);
     assert_eq!(census(&runtime), partitioned_census);
 
     assert!(runtime.physics_v1.get().is_err());

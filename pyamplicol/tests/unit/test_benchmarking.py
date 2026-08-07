@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -394,6 +395,26 @@ class _TimedRuntimeWithRecurrenceRepeatedProfile(_TimedRuntimeWithRepeatedProfil
 class _TimedRuntimeWithOnTheFlyRepeatedProfile(
     _TimedRuntimeWithRecurrenceRepeatedProfile
 ):
+    def __init__(
+        self,
+        clock: _Clock,
+        *,
+        already_retained: bool = False,
+        retain_after_evaluation: bool = True,
+        structural_zero: bool = False,
+    ) -> None:
+        super().__init__(clock)
+        self.native_wall_calls = 0
+        self.repeated_profile_calls = 0
+        self.otf_events: list[str] = []
+        self.otf_context_access_count = 0
+        self.structural_zero = structural_zero
+        self.otf_census = _otf_runtime_state_census(
+            already_retained,
+            structural_zero=structural_zero,
+        )
+        self.retain_after_evaluation = retain_after_evaluation
+
     @property
     def execution_mode(self) -> str:
         return "on-the-fly"
@@ -406,6 +427,7 @@ class _TimedRuntimeWithOnTheFlyRepeatedProfile(
         self,
         color_flow_ids: tuple[str, ...],
     ) -> dict[str, object]:
+        self.otf_context_access_count += 1
         assert color_flow_ids == ()
         return {
             "process_id": "otf-test",
@@ -416,6 +438,37 @@ class _TimedRuntimeWithOnTheFlyRepeatedProfile(
             "selected_color_ids": (),
         }
 
+    def _on_the_fly_runtime_state_census(self) -> dict[str, object]:
+        retained = self.otf_census["retained_family_count"] != 0
+        self.otf_events.append(f"census:{'retained' if retained else 'cold'}")
+        return self.otf_census
+
+    def _benchmark_f64_wall_time(
+        self,
+        momenta: object,
+        repetitions: int,
+        *,
+        helicities: object,
+        color_flows: object,
+        precision: int,
+    ) -> float:
+        self.otf_events.append("evaluate")
+        if self.retain_after_evaluation:
+            self.otf_census.clear()
+            self.otf_census.update(
+                _otf_runtime_state_census(
+                    True,
+                    structural_zero=self.structural_zero,
+                )
+            )
+        return super()._benchmark_f64_wall_time(
+            momenta,
+            repetitions,
+            helicities=helicities,
+            color_flows=color_flows,
+            precision=precision,
+        )
+
     def profile_repeated(
         self,
         momenta: object,
@@ -425,6 +478,77 @@ class _TimedRuntimeWithOnTheFlyRepeatedProfile(
         profile = super().profile_repeated(momenta, repetitions, **kwargs)
         profile["execution_mode"] = "on-the-fly"
         return profile
+
+
+class _TimedRuntimeWithColdOnTheFlyConstruction(
+    _TimedRuntimeWithOnTheFlyRepeatedProfile
+):
+    def _benchmark_f64_wall_time(
+        self,
+        momenta: object,
+        repetitions: int,
+        *,
+        helicities: object,
+        color_flows: object,
+        precision: int,
+    ) -> float:
+        assert len(momenta) == 2  # type: ignore[arg-type]
+        assert helicities is None
+        assert color_flows is None
+        assert precision == 16
+        cold = self.otf_census["retained_family_count"] == 0
+        self.native_wall_calls += 1
+        self.otf_events.append("evaluate")
+        self.otf_census.clear()
+        self.otf_census.update(_otf_runtime_state_census(True))
+        outer_seconds = 120.0 if cold else repetitions * 0.6e-3
+        evaluator_seconds = 120.0 if cold else repetitions * 0.5e-3
+        self.clock.value += outer_seconds
+        return evaluator_seconds
+
+
+def _otf_runtime_state_census(
+    retained: bool,
+    *,
+    structural_zero: bool = False,
+) -> dict[str, object]:
+    count = int(retained)
+    executable_count = int(retained and not structural_zero)
+    active: dict[str, object] | None = None
+    if executable_count:
+        active = {
+            "basis": "shared-query-family-union-v1",
+            "scope": "active-family-union",
+            "query_count": 1,
+            "union_unique_current_count": 2,
+            "union_unique_current_component_count": 3,
+            "union_source_rows": 2,
+            "union_contribution_rows": 2,
+            "union_finalization_rows": 2,
+            "union_closure_rows": 2,
+            "union_amplitude_destination_count": 1,
+            "union_source_executor_call_groups": 1,
+            "union_contribution_executor_call_groups": 1,
+            "union_finalization_executor_call_groups": 1,
+            "union_closure_executor_call_groups": 1,
+        }
+    return {
+        "kind": "rusticol-on-the-fly-runtime-state-census-v1",
+        "process_id": "otf-test",
+        "family_cache_policy": "last-family-only",
+        "family_cache_limit": 1,
+        "process_preparation_count": count,
+        "retained_family_count": count,
+        "pending_family_count": 0,
+        "retained_selection_count": count,
+        "retained_request_count": count,
+        "retained_amplitude_destination_count": executable_count,
+        "retained_executor_handle_count": executable_count,
+        "retained_query_local_trace_count": 0,
+        "retained_embedded_lookup_key_count": 0,
+        "semantic_executor_binding_count": executable_count,
+        "active_family_union_census": active,
+    }
 
 
 def test_on_the_fly_benchmark_uses_compact_context_without_opening_physics(
@@ -458,6 +582,212 @@ def test_on_the_fly_benchmark_uses_compact_context_without_opening_physics(
     assert result.timing_breakdown is not None
     assert result.timing_breakdown.execution_mode == "on-the-fly"
     assert result.timing_breakdown.recurrence_schedule_time is not None
+    assert runtime.otf_events[:4] == (
+        ["census:cold", "evaluate", "census:retained", "evaluate"]
+    )
+    environment = result.environment
+    assert environment["cold_warmup_runtime_state_evidence"] == (
+        "authenticated-native-otf-census-v1"
+    )
+    assert environment["cold_warmup_runtime_freshness"] == "authenticated-cold"
+    assert environment["cold_warmup_runtime_cold_before_first_evaluation"] is True
+    assert environment["cold_warmup_runtime_retained_before_first_evaluation"] is False
+    assert environment["cold_warmup_runtime_retained_after_first_evaluation"] is True
+    before = environment["cold_warmup_runtime_state_before"]
+    after = environment["cold_warmup_runtime_state_after"]
+    assert isinstance(before, Mapping)
+    assert isinstance(after, Mapping)
+    assert before["retained_family_count"] == 0
+    assert after["retained_family_count"] == 1
+
+
+def test_on_the_fly_benchmark_authenticates_already_retained_runtime_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithOnTheFlyRepeatedProfile(clock, already_retained=True)
+    config = BenchmarkConfig(
+        target_runtime=0.1,
+        batch_size=2,
+        warmup_runs=1,
+        minimum_samples=4,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert runtime.otf_events[:4] == (
+        ["census:retained", "evaluate", "census:retained", "evaluate"]
+    )
+    environment = result.environment
+    assert environment["cold_warmup_runtime_freshness"] == (
+        "authenticated-already-retained"
+    )
+    assert environment["cold_warmup_runtime_cold_before_first_evaluation"] is False
+    assert environment["cold_warmup_runtime_retained_before_first_evaluation"] is True
+    assert environment["cold_warmup_runtime_retained_after_first_evaluation"] is True
+
+
+def test_on_the_fly_benchmark_accepts_retained_structural_zero_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithOnTheFlyRepeatedProfile(
+        clock,
+        structural_zero=True,
+    )
+    result = BenchmarkBackend(
+        BenchmarkConfig(
+            target_runtime=0.1,
+            batch_size=2,
+            warmup_runs=1,
+            minimum_samples=4,
+        ),
+        None,
+    ).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    after = result.environment["cold_warmup_runtime_state_after"]
+    assert isinstance(after, Mapping)
+    assert after["retained_family_count"] == 1
+    assert after["retained_selection_count"] == 1
+    assert after["retained_request_count"] == 1
+    assert after["retained_amplitude_destination_count"] == 0
+    assert after["retained_executor_handle_count"] == 0
+    assert after["semantic_executor_binding_count"] == 0
+    assert after["active_family_union_census"] is None
+    assert (
+        result.environment["cold_warmup_runtime_retained_after_first_evaluation"]
+        is True
+    )
+    for field in (
+        "retained_amplitude_destination_count",
+        "retained_executor_handle_count",
+        "semantic_executor_binding_count",
+    ):
+        partial = dict(after)
+        partial[field] = 1
+        assert not benchmark_module._on_the_fly_runtime_state_is_retained(partial)
+
+
+def test_on_the_fly_cold_construction_does_not_seed_warm_chunk_estimate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntimeWithColdOnTheFlyConstruction(clock)
+    guarded: list[tuple[float | None, str]] = []
+
+    def guard(estimated_seconds: float | None, description: str) -> None:
+        guarded.append((estimated_seconds, description))
+        if estimated_seconds is not None and estimated_seconds > 1.0:
+            raise AssertionError("cold construction estimate leaked into warm timing")
+
+    backend = BenchmarkBackend(
+        BenchmarkConfig(
+            target_runtime=0.01,
+            batch_size=2,
+            warmup_runs=1,
+            minimum_samples=4,
+        ),
+        None,
+    )
+    backend.set_chunk_guard(guard)
+    result = backend.run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    evaluator_guards = [
+        estimate
+        for estimate, description in guarded
+        if description == "runtime evaluator timing chunk"
+    ]
+    assert evaluator_guards[:2] == [None, None]
+    assert result.environment["cold_warmup_elapsed_seconds"] == pytest.approx(120.0)
+    assert result.environment["elapsed_seconds"] < 1.0
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "message"),
+    (
+        ("kind", "wrong-kind", "invalid kind"),
+        ("process_id", "wrong-process", "does not match"),
+        ("family_cache_policy", "all-seen", "cache policy"),
+        ("family_cache_limit", True, "cache limit"),
+        ("retained_family_count", 2, "exceeds its cache limit"),
+        ("retained_family_count", -1, "retained_family_count"),
+        ("pending_family_count", True, "pending_family_count"),
+        ("active_family_union_census", "invalid", "active-family"),
+        ("process_preparation_count", 1, "neither cold nor fully retained"),
+    ),
+)
+def test_on_the_fly_benchmark_rejects_malformed_cold_state_before_evaluation(
+    field: str,
+    replacement: object,
+    message: str,
+) -> None:
+    runtime = _TimedRuntimeWithOnTheFlyRepeatedProfile(_Clock())
+    runtime.otf_census[field] = replacement
+
+    with pytest.raises(EvaluationError, match=message):
+        BenchmarkBackend(BenchmarkConfig(), None).run(
+            runtime,
+            points=(((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+    assert runtime.native_wall_calls == 0
+    assert "evaluate" not in runtime.otf_events
+
+
+def test_on_the_fly_benchmark_requires_first_evaluation_to_retain_family() -> None:
+    runtime = _TimedRuntimeWithOnTheFlyRepeatedProfile(
+        _Clock(),
+        retain_after_evaluation=False,
+    )
+
+    with pytest.raises(EvaluationError, match="did not leave a fully retained"):
+        BenchmarkBackend(BenchmarkConfig(batch_size=2), None).run(
+            runtime,
+            points=(((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+    assert runtime.native_wall_calls == 1
+    assert runtime.otf_events == ["census:cold", "evaluate", "census:cold"]
+
+
+def test_on_the_fly_benchmark_requires_runtime_state_census() -> None:
+    runtime = _TimedRuntimeWithOnTheFlyRepeatedProfile(_Clock())
+    runtime._on_the_fly_runtime_state_census = None  # type: ignore[method-assign]
+
+    with pytest.raises(EvaluationError, match=r"requires.*runtime state census"):
+        BenchmarkBackend(BenchmarkConfig(), None).run(
+            runtime,
+            points=(((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+    assert runtime.native_wall_calls == 0
+    assert runtime.otf_events == []
+
+
+def test_on_the_fly_benchmark_rejects_non_f64_before_compact_state_access() -> None:
+    runtime = _TimedRuntimeWithOnTheFlyRepeatedProfile(_Clock())
+
+    with pytest.raises(EvaluationError, match="supports only precision=16"):
+        BenchmarkBackend(BenchmarkConfig(precision=8), None).run(
+            runtime,
+            points=(((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+    assert runtime.otf_context_access_count == 0
+    assert runtime.native_wall_calls == 0
+    assert runtime.otf_events == []
 
 
 def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:

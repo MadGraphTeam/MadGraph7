@@ -191,7 +191,8 @@ class ModelSource:
         Supplying both ``prepared_output`` and ``evaluator`` additionally writes
         one self-contained ``.pyamplicol-model`` bundle containing exactly the
         requested evaluator backend pack. The returned handle is loaded from that
-        bundle and can be passed directly to eager generation.
+        bundle and can be passed directly to eager, recurrence, or on-the-fly
+        generation.
         """
 
         if (prepared_output is None) != (evaluator is None):
@@ -228,9 +229,7 @@ class ModelSource:
                 raise ModelError(
                     "prepared model output must be path-like or null"
                 ) from exc
-            if not resolved_prepared_output.name.lower().endswith(
-                ".pyamplicol-model"
-            ):
+            if not resolved_prepared_output.name.lower().endswith(".pyamplicol-model"):
                 raise ModelError(
                     "prepared model output must end with '.pyamplicol-model'"
                 )

@@ -60,7 +60,8 @@ wheel or a wheel built with `just wheel` before compiling native consumers.
 
 ## Generated Artifact APIs
 
-Every generated artifact has one API bundle at its root:
+When `generation.emit_api_bundle = true`, a generated artifact has one API
+bundle at its root:
 
 ```text
 artifacts/pp_zjj/API/
@@ -111,11 +112,13 @@ make -C artifacts/pp_zjj/API/fortran run \
 Every driver also accepts `--kinematics PATH`. The file must contain one point
 as `[external][4]`, or a singleton batch `[[external][4]]`, in the ordering
 written in `--process`. Components may be finite JSON numbers or decimal
-strings. The Python driver preserves decimal strings for arbitrary-precision
-execution; native drivers convert the same input to f64. Multiple points,
-booleans, non-finite values, and wrong ranks or particle counts are rejected.
-When the option is omitted, the bundled representative validation point is
-reordered into the requested public process order.
+strings. The Python driver preserves decimal strings for precision-controlled
+execution when the artifact retains an exact evaluator; native drivers convert
+the same input to f64. On-the-fly artifacts are native-f64-only, including
+through the Python driver. Multiple points, booleans, non-finite values, and
+wrong ranks or particle counts are rejected. When the option is omitted, the
+bundled representative validation point is reordered into the requested public
+process order.
 
 For example, `my_sample_point.json` for `d d~ > g z g` may contain the five
 four-momenta below, each ordered as `[E, px, py, pz]` and each leg ordered
@@ -131,9 +134,10 @@ exactly as it appears in that process expression:
 ]
 ```
 
-JSON numbers are also accepted. Decimal strings are useful with the Python
-driver because a non-binary64 `--precision` keeps them as `Decimal` values all
-the way into exact evaluation, without an intermediate f64 conversion:
+JSON numbers are also accepted. For artifacts that retain an exact evaluator,
+decimal strings are useful with the Python driver because a non-binary64
+`--precision` keeps them as `Decimal` values all the way into exact evaluation,
+without an intermediate f64 conversion:
 
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \
@@ -162,19 +166,24 @@ For the copied primary source example, use:
   --set generation.mode=replace
 ```
 
-Compiled and eager artifacts use this same API surface. Eager artifacts carry
-their model-local kernel payloads and compact invocation tables inside the
-artifact, so native callers do not need the prepared model bundle used during
-generation. Flow and helicity selectors are resolved by Rusticol before it
-executes the eager dependency closure.
+Compiled, eager, recurrence, and on-the-fly artifacts use this same API surface
+when the bundle is emitted. Eager and recurrence artifacts carry their
+model-local kernel payloads with compact invocation tables or current
+schedules. On-the-fly artifacts carry the referenced prepared kernels and a
+compact process seed from which Rusticol builds the selected query-local
+schedule. Native callers therefore do not need the source `.pyamplicol-model`
+bundle used during generation. On-the-fly generation still requires a prepared
+kernel bundle, and its runtime support is currently limited to LC at native
+f64 precision.
 
 The C, C++, Fortran, and Rust total-evaluation entry points also accept optional
 zero-based `u32`/`uint32_t` selector arrays with one entry per point. These map
 to the physical helicity and LC-flow ordering exposed by runtime metadata.
 Global string-ID subsets and per-point selectors are mutually exclusive on the
 same axis. Rusticol performs stable grouping internally, preserves caller order
-on output, and uses the same selector planner for compiled and eager artifacts.
-Resolved rectangular evaluation remains batch-global.
+on output, and presents the same selector contract across compiled, eager,
+recurrence, and on-the-fly artifacts; each execution lane applies its own
+internal planner. Resolved rectangular evaluation remains batch-global.
 
 SymJIT evaluator payloads are indexed members of the artifact-root
 `evaluators.pacbin` container. Native loaders require the current artifact
@@ -227,8 +236,9 @@ RUSTICOL_RUST_SOURCE="$(rusticol-config --rust-source)" \
 ```
 
 The Makefile exposes this as `make -C artifacts/pp_zjj/API/rust run-script`.
-`--precision 16` is the only native precision; use the generated Python driver
-for precision-controlled Symbolica evaluation.
+`--precision 16` is the only native precision. Use the generated Python driver
+for precision-controlled Symbolica evaluation when the artifact retains an
+exact evaluator; on-the-fly execution rejects every non-f64 precision.
 
 ## C++17
 
@@ -345,11 +355,20 @@ point-contiguous Direct-Arena execution, ordered fanout, current finalization,
 closure, and reduction. The C ABI, C11 driver, safe Rust wrapper, C++ wrapper,
 Fortran module, and Python extension all execute that same native eager plan.
 
+Prepared recurrence artifacts execute their stored current schedules through
+Rusticol's recurrence Direct-Arena lane. On-the-fly artifacts instead require
+the on-the-fly LC capabilities and construct the requested recurrence family
+from their compact seed before executing the same artifact-local prepared
+kernels. Both remain Symbolica-independent for native f64 evaluation. The
+on-the-fly lane currently supports LC only; NLC and full color are not native
+on-the-fly capabilities.
+
 ASM/C++ libraries are target-specific. Rusticol requires an exact artifact and
 runtime target-triple match and verifies every recorded CPU feature before
 loading executable state. Higher-precision retained evaluator state is not a
-native SDK capability and remains available through the public
-Symbolica-backed Python exact-evaluation path.
+native SDK capability and, where an artifact retains an exact evaluator,
+remains available through the public Symbolica-backed Python exact-evaluation
+path. On-the-fly artifacts do not retain that path and reject higher precision.
 
 Process artifacts are trusted executable inputs. Normal loading does not
 reinterpret self-reported hashes as proof of origin; an explicit Python

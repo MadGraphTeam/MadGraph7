@@ -2011,7 +2011,6 @@ impl OnTheFlyFamilyWorkspaceV1 {
 
 struct BoundOnTheFlyQueryFamilyV1 {
     identity: QueryFamilyCacheIdentityV1,
-    lookup_key: QueryFamilyLookupKeyV1,
     // Single ownership keeps every row address stable for prepared descriptor caches.
     family: OnTheFlyBuiltQueryFamilyV1,
     workspace: OnTheFlyFamilyWorkspaceV1,
@@ -2020,24 +2019,9 @@ struct BoundOnTheFlyQueryFamilyV1 {
     descriptor_exposed: bool,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct QueryFamilyLookupKeyV1 {
-    queries: Box<
-        [(
-            SemanticDigest,
-            SemanticDigest,
-            SemanticDigest,
-            bool,
-            bool,
-            [u32; 3],
-            [u32; 3],
-        )],
-    >,
-}
-
 /// Runtime-private stable address of one successfully warmed family.  The
 /// generation prevents a handle retained above this executor from aliasing a
-/// different family after `clear_families` resets the arena.
+/// different family after replacement or `clear_families` resets the arena.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OnTheFlyQueryFamilyHandleV1 {
     generation: u64,
@@ -2049,7 +2033,6 @@ pub(crate) struct OnTheFlyQueryFamilyExecutorV1<R: OnTheFlyPreparedExecutorResol
     // must disappear before the resolver drops the prepared contexts that
     // their copied handles address.
     families: Vec<BoundOnTheFlyQueryFamilyV1>,
-    family_lookup: BTreeMap<QueryFamilyLookupKeyV1, Vec<usize>>,
     last_used: Option<usize>,
     pending: Option<BoundOnTheFlyQueryFamilyV1>,
     resolver: R,
@@ -2062,7 +2045,6 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
     pub(crate) const fn new(resolver: R) -> Self {
         Self {
             families: Vec::new(),
-            family_lookup: BTreeMap::new(),
             last_used: None,
             pending: None,
             resolver,
@@ -2141,27 +2123,6 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                         selected.trace.query_digest,
                         selected.trace.semantic_digest(),
                         selected.projection,
-                    )
-                })
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        }
-    }
-
-    fn lookup_key(selected: &[QueryFamilyTraceInput<'_>]) -> QueryFamilyLookupKeyV1 {
-        QueryFamilyLookupKeyV1 {
-            queries: selected
-                .iter()
-                .map(|selected| {
-                    let projection = selected.projection;
-                    (
-                        selected.trace.seed_digest,
-                        selected.trace.query_digest,
-                        selected.trace.semantic_digest(),
-                        projection.enabled,
-                        projection.applied,
-                        projection.pre,
-                        projection.post,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -2248,15 +2209,49 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
     /// pool and parameter state. Descriptor invalidation happens first so no
     /// prepared kernel can retain a pointer into the rows being dropped.
     pub(crate) fn clear_families(&mut self) -> RusticolResult<()> {
-        self.invalidate_exposed_row_tables()?;
-        self.pending = None;
-        self.last_used = None;
-        self.family_lookup.clear();
-        self.families.clear();
-        self.family_generation = self
+        let next_generation = self
             .family_generation
             .checked_add(1)
             .ok_or_else(|| invalid("query-family generation exceeds u64"))?;
+        self.invalidate_exposed_row_tables()?;
+        self.pending = None;
+        self.last_used = None;
+        self.families.clear();
+        self.family_generation = next_generation;
+        Ok(())
+    }
+
+    /// Abandon a cold candidate without disturbing the last successfully
+    /// retained family. Any exposed candidate rows are invalidated before
+    /// their owner is dropped.
+    pub(crate) fn discard_pending_family(&mut self) -> RusticolResult<()> {
+        if self.pending.is_none() {
+            return Ok(());
+        }
+        self.invalidate_exposed_row_tables()?;
+        self.pending = None;
+        Ok(())
+    }
+
+    fn commit_pending_family(&mut self) -> RusticolResult<()> {
+        let next_generation = self
+            .family_generation
+            .checked_add(1)
+            .ok_or_else(|| invalid("query-family generation exceeds u64"))?;
+        // A different family was invalidated before the candidate became
+        // pending. Be defensive if an exposed retained owner is nevertheless
+        // present: invalidate it before replacement drops its rows.
+        if self.families.iter().any(|family| family.descriptor_exposed) {
+            self.invalidate_exposed_row_tables()?;
+        }
+        let candidate = self
+            .pending
+            .take()
+            .ok_or_else(|| integrity("query-family commit has no pending candidate"))?;
+        self.families.clear();
+        self.families.push(candidate);
+        self.last_used = Some(0);
+        self.family_generation = next_generation;
         Ok(())
     }
 
@@ -2305,7 +2300,9 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         logical_point_capacity: u32,
     ) -> RusticolResult<bool> {
         if handle.generation != self.family_generation {
-            return Err(integrity("query-family handle belongs to a cleared arena"));
+            return Err(integrity(
+                "query-family handle belongs to a replaced or cleared arena",
+            ));
         }
         self.activate_retained_index(handle.index, logical_point_capacity)
     }
@@ -2335,15 +2332,6 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         self.activate_retained_index(index, logical_point_capacity)
     }
 
-    /// Select no executable family without dropping successfully warmed
-    /// families. This is used by an all-structural-zero public selection.
-    pub(crate) fn deactivate(&mut self) -> RusticolResult<()> {
-        self.invalidate_exposed_row_tables()?;
-        self.pending = None;
-        self.last_used = None;
-        Ok(())
-    }
-
     /// Cold family selection/binding. This must remain outside warmed timing.
     pub(crate) fn prepare(
         &mut self,
@@ -2351,25 +2339,13 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         selected: &[QueryFamilyTraceInput<'_>],
         logical_point_capacity: u32,
     ) -> RusticolResult<bool> {
-        // The common warmed path checks the last exact family directly. It
-        // does not allocate a lookup key or consult the all-seen index.
-        let retained = self
-            .last_used
-            .filter(|&index| {
-                self.families
-                    .get(index)
-                    .is_some_and(|family| Self::matches_inputs(family, direct_catalog, selected))
-            })
-            .or_else(|| {
-                let lookup_key = Self::lookup_key(selected);
-                self.family_lookup.get(&lookup_key).and_then(|indices| {
-                    indices.iter().copied().find(|&index| {
-                        self.families.get(index).is_some_and(|family| {
-                            Self::matches_inputs(family, direct_catalog, selected)
-                        })
-                    })
-                })
-            });
+        // The only retained family is the complete cache. A selector evicted
+        // by a later successful cold execution is deliberately rebuilt.
+        let retained = self.last_used.filter(|&index| {
+            self.families
+                .get(index)
+                .is_some_and(|family| Self::matches_inputs(family, direct_catalog, selected))
+        });
         if let Some(index) = retained {
             return self.activate_retained_index(index, logical_point_capacity);
         }
@@ -2400,6 +2376,10 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             return Ok(false);
         }
 
+        // A superseded or failed candidate must never accumulate alongside a
+        // new one. This leaves the last successful family and its handle valid.
+        self.discard_pending_family()?;
+
         let family = build_query_family_from_traces(direct_catalog, selected)?;
         if family.census.source_frame_partition_count != 1 {
             return Err(invalid(
@@ -2408,14 +2388,15 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         }
         let workspace = OnTheFlyFamilyWorkspaceV1::new(&family, logical_point_capacity)?;
         let resolved_groups = self.bind_groups(&family)?;
-        self.families.try_reserve(1).map_err(|error| {
-            invalid(format!(
-                "query-family retained-family allocation failed: {error}"
-            ))
-        })?;
+        if self.families.capacity() == 0 {
+            self.families.try_reserve_exact(1).map_err(|error| {
+                invalid(format!(
+                    "query-family retained-family allocation failed: {error}"
+                ))
+            })?;
+        }
         let candidate = BoundOnTheFlyQueryFamilyV1 {
             identity,
-            lookup_key: Self::lookup_key(selected),
             family,
             workspace,
             resolved_groups,
@@ -2438,50 +2419,53 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         outputs: &mut [(f64, f64)],
     ) -> RusticolResult<OnTheFlyQueryFamilyExecutionReportV1> {
         let pending = self.pending.is_some();
-        let family = if pending {
-            self.pending
-                .as_mut()
-                .expect("pending query family disappeared before execution")
-        } else {
-            self.last_used
-                .and_then(|index| self.families.get_mut(index))
-                .ok_or_else(|| invalid("query-family execute requires a cold prepare"))?
-        };
-        OnTheFlyFamilyWorkspaceV1::validate_output_shape(
-            family.family.amplitude_destination_count,
-            point_count,
-            outputs.len(),
-        )?;
-        if family.applied_parameter_version != self.parameter_version {
-            family.workspace.refresh_parameters(&self.parameter_state)?;
-            family.applied_parameter_version = self.parameter_version;
+        let result = (|| {
+            let family = if pending {
+                self.pending
+                    .as_mut()
+                    .expect("pending query family disappeared before execution")
+            } else {
+                self.last_used
+                    .and_then(|index| self.families.get_mut(index))
+                    .ok_or_else(|| invalid("query-family execute requires a cold prepare"))?
+            };
+            OnTheFlyFamilyWorkspaceV1::validate_output_shape(
+                family.family.amplitude_destination_count,
+                point_count,
+                outputs.len(),
+            )?;
+            if family.applied_parameter_version != self.parameter_version {
+                family.workspace.refresh_parameters(&self.parameter_state)?;
+                family.applied_parameter_version = self.parameter_version;
+            }
+            family
+                .workspace
+                .refresh_inputs(&family.family, external_momenta, point_count)?;
+            family.descriptor_exposed = true;
+            let mut report = execute_bound_family(family, point_count)?;
+            report.cache_hit = !pending;
+            family.workspace.write_outputs(
+                family.family.amplitude_destination_count,
+                point_count,
+                outputs,
+            )?;
+            Ok(report)
+        })();
+
+        match result {
+            Ok(report) => {
+                if pending {
+                    self.commit_pending_family()?;
+                }
+                Ok(report)
+            }
+            Err(error) => {
+                if pending {
+                    self.discard_pending_family()?;
+                }
+                Err(error)
+            }
         }
-        family
-            .workspace
-            .refresh_inputs(&family.family, external_momenta, point_count)?;
-        family.descriptor_exposed = true;
-        let mut report = execute_bound_family(family, point_count)?;
-        report.cache_hit = !pending;
-        family.workspace.write_outputs(
-            family.family.amplitude_destination_count,
-            point_count,
-            outputs,
-        )?;
-        if pending {
-            let candidate = self
-                .pending
-                .take()
-                .expect("successful pending query family disappeared");
-            let lookup_key = candidate.lookup_key.clone();
-            let index = self.families.len();
-            self.families.push(candidate);
-            self.family_lookup
-                .entry(lookup_key)
-                .or_default()
-                .push(index);
-            self.last_used = Some(index);
-        }
-        Ok(report)
     }
 
     #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -3435,7 +3419,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_execution_invalidates_outputs_and_same_family_can_retry() {
+    fn failed_execution_discards_candidate_and_same_family_can_be_prepared_again() {
         let catalog = direct_catalog();
         let resolver = ProbeResolver::new(catalog.clone());
         let (trace, projection) =
@@ -3457,17 +3441,12 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("returned status 4"));
         assert_eq!(output, [(123.0, 456.0)]);
-        let pending = executor.pending.as_ref().unwrap();
-        assert!(
-            pending
-                .workspace
-                .write_outputs(1, 1, &mut output)
-                .unwrap_err()
-                .to_string()
-                .contains("last successful execution")
-        );
+        assert!(executor.pending.is_none());
+        assert_eq!(executor.retained_family_count(), 0);
+        assert_eq!(executor.resolver().state.invalidations.get(), 1);
 
         executor.resolver().state.fail_role.set(None);
+        assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
         let report = executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
@@ -3497,9 +3476,10 @@ mod tests {
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap_err();
         assert_eq!(executor.retained_family_count(), 0);
+        assert!(executor.pending.is_none());
         let failed_calls = executor.resolver().state.calls.borrow().clone();
         assert_eq!(failed_calls.len(), 3);
-        assert_eq!(executor.resolver().state.invalidations.get(), 0);
+        assert_eq!(executor.resolver().state.invalidations.get(), 1);
 
         let (second, second_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
@@ -3565,7 +3545,7 @@ mod tests {
     }
 
     #[test]
-    fn observed_currents_never_fall_back_to_a_stale_successful_family() {
+    fn failed_candidate_restores_observation_of_last_successful_family() {
         let catalog = direct_catalog();
         let resolver = ProbeResolver::new(catalog.clone());
         let (first, first_projection) =
@@ -3580,6 +3560,7 @@ mod tests {
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
+        let first_handle = executor.active_retained_handle().unwrap();
         assert!(!executor.observed_currents(0).unwrap().is_empty());
 
         let (second, second_projection) =
@@ -3604,12 +3585,16 @@ mod tests {
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap_err();
-        let failed_error = executor.observed_currents(0).unwrap_err();
-        assert!(
-            failed_error
-                .to_string()
-                .contains("outside the last successful execution")
-        );
+        assert!(executor.pending.is_none());
+        assert!(!executor.observed_currents(0).unwrap().is_empty());
+        assert_eq!(executor.retained_family_count(), 1);
+        executor.resolver().state.fail_role.set(None);
+        assert!(executor.activate_retained_family(first_handle, 1).unwrap());
+        let report = executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .unwrap();
+        assert!(report.cache_hit);
+        assert_eq!(output, [(46.0, 0.0)]);
 
         executor.clear_families().unwrap();
         assert!(
@@ -3622,7 +3607,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_families_are_reused_across_a_b_a_with_stable_rows() {
+    fn last_family_only_makes_evicted_a_cold_again_across_a_b_a() {
         let catalog = direct_catalog();
         let resolver = ProbeResolver::new(catalog.clone());
         let (first, first_projection) =
@@ -3645,7 +3630,14 @@ mod tests {
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
         let first_output = output;
-        let first_rows = executor.resolver().state.calls.borrow().clone();
+        let first_schedule = executor
+            .resolver()
+            .state
+            .calls
+            .borrow()
+            .iter()
+            .map(|(role, _, row_count)| (*role, *row_count))
+            .collect::<Vec<_>>();
         let first_handle = executor.active_retained_handle().unwrap();
         executor.resolver().state.calls.borrow_mut().clear();
 
@@ -3654,16 +3646,32 @@ mod tests {
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
         assert_ne!(output, first_output);
+        assert_eq!(executor.retained_family_count(), 1);
         executor.resolver().state.calls.borrow_mut().clear();
 
-        assert!(executor.activate_retained_family(first_handle, 1).unwrap());
+        assert!(
+            executor
+                .activate_retained_family(first_handle, 1)
+                .unwrap_err()
+                .to_string()
+                .contains("cleared arena")
+        );
+        assert!(!executor.prepare(&catalog, &first_selected, 1).unwrap());
         let report = executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
-        assert!(report.cache_hit);
+        assert!(!report.cache_hit);
         assert_eq!(output, first_output);
-        assert_eq!(executor.retained_family_count(), 2);
-        assert_eq!(*executor.resolver().state.calls.borrow(), first_rows);
+        assert_eq!(executor.retained_family_count(), 1);
+        let rebuilt_schedule = executor
+            .resolver()
+            .state
+            .calls
+            .borrow()
+            .iter()
+            .map(|(role, _, row_count)| (*role, *row_count))
+            .collect::<Vec<_>>();
+        assert_eq!(rebuilt_schedule, first_schedule);
         assert_eq!(executor.resolver().state.invalidations.get(), 2);
     }
 
@@ -3717,9 +3725,10 @@ mod tests {
             .unwrap_err();
         assert!(error.to_string().contains("expected 1"));
         assert!(executor.resolver().state.calls.borrow().is_empty());
-        assert!(!executor.pending.as_ref().unwrap().descriptor_exposed);
+        assert!(executor.pending.is_none());
 
         let mut output = [(0.0, 0.0)];
+        assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
@@ -3727,15 +3736,26 @@ mod tests {
     }
 
     #[test]
-    fn executable_query_family_rejects_multiple_source_frames() {
+    fn failed_candidate_prepare_keeps_last_valid_family_and_handle() {
         let catalog = direct_catalog();
         let resolver = ProbeResolver::new(catalog.clone());
         let (first, first_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let first_selected = [QueryFamilyTraceInput {
+            trace: &first,
+            projection: first_projection,
+        }];
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
+        let mut output = [(0.0, 0.0)];
+        executor.prepare(&catalog, &first_selected, 1).unwrap();
+        executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .unwrap();
+        let first_handle = executor.active_retained_handle().unwrap();
+
         let (mut second, second_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
         second.seed_digest = SemanticDigest::new([0x83; 32]).unwrap();
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         let error = executor
             .prepare(
                 &catalog,
@@ -3753,5 +3773,13 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.to_string().contains("one compact source frame"));
+        assert!(executor.pending.is_none());
+        assert_eq!(executor.retained_family_count(), 1);
+        assert!(executor.activate_retained_family(first_handle, 1).unwrap());
+        let report = executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .unwrap();
+        assert!(report.cache_hit);
+        assert_eq!(output, [(46.0, 0.0)]);
     }
 }

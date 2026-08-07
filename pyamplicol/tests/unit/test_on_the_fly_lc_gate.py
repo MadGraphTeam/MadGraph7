@@ -325,11 +325,9 @@ def _fake_public_phase() -> gate.PublicGatePhase:
         total=lambda: (1.0,),
     )
     evaluation = gate.PublicEvaluation(total=(1.0,), resolved=resolved)
-    correctness = gate.DualAuthorityCorrectness(
+    correctness = gate.RecurrenceAuthorityCorrectness(
         recurrence_selected=evaluation,
         recurrence_all_flow=evaluation,
-        compiled_selected=evaluation,
-        compiled_all_flow=evaluation,
         on_the_fly_selected=evaluation,
         on_the_fly_all_flow=evaluation,
         public_correctness={"public": "green"},
@@ -347,21 +345,11 @@ def _fake_public_phase() -> gate.PublicGatePhase:
         artifact_id="c" * 64,
         execution_mode="recurrence",
     )
-    compiled_selected = SimpleNamespace(
-        artifact_id="d" * 64,
-        execution_mode="compiled",
-    )
-    compiled_all = SimpleNamespace(
-        artifact_id="e" * 64,
-        execution_mode="compiled",
-    )
     timing = {"wall_seconds_per_point": 1.0}
     return gate.PublicGatePhase(
         runtime=candidate,
         selected_recurrence_runtime=recurrence_selected,
         all_flow_recurrence_runtime=recurrence_all,
-        compiled_selected_runtime=compiled_selected,
-        compiled_all_flow_runtime=compiled_all,
         comparator_selectors=(),
         points=((((1.0,),),),),
         timing_points=((((1.0,),),),),
@@ -377,7 +365,7 @@ def _fake_public_phase() -> gate.PublicGatePhase:
                 "selected_flow_helicity_sum": timing,
                 "all_flow_single_helicity": timing,
             }
-            for lane in ("on_the_fly", "recurrence", "compiled")
+            for lane in ("on_the_fly", "recurrence")
         },
     )
 
@@ -414,7 +402,8 @@ def test_real_on_the_fly_candidate_and_private_probe_carrier_are_separate() -> N
         SimpleNamespace(artifact_id="b" * 64),
         8,
     )
-    assert authority["authority_kind"] == "validated_production_pyamplicol"
+    assert authority["authority_kind"] == "validated_recurrence"
+    assert authority["authority_execution_mode"] == "recurrence"
     assert authority["runtime_api"] == "Runtime.evaluate_resolved"
     assert authority["selected_flow_artifact_id"] == "a" * 64
     assert authority["all_flow_artifact_id"] == "b" * 64
@@ -446,7 +435,7 @@ def test_resolved_authority_checks_each_component_not_only_the_total() -> None:
         gate._resolved_component_checks(candidate, reference, "canceling components")
 
 
-def test_dual_authority_correctness_uses_public_ids_and_clears_once_in_order() -> None:
+def test_recurrence_authority_correctness_uses_public_ids_and_clears_in_order() -> None:
     events: list[str] = []
     points = tuple((((float(index),),),) for index in range(len(gate.SEEDS)))
 
@@ -479,14 +468,8 @@ def test_dual_authority_correctness_uses_public_ids_and_clears_once_in_order() -
     selected_recurrence = Resolved(
         ("h:first", "h:second"), (gate.FLOW_ID,), ((1.0,), (2.0,))
     )
-    selected_compiled = Resolved(
-        ("h:second", "h:first"), (gate.FLOW_ID,), ((2.0,), (1.0,))
-    )
     all_flow_recurrence = Resolved(
         (gate.HELICITY_ID,), ("flow:first", "flow:second"), ((4.0, 5.0),)
-    )
-    all_flow_compiled = Resolved(
-        (gate.HELICITY_ID,), ("flow:second", "flow:first"), ((5.0, 4.0),)
     )
 
     class Runtime:
@@ -538,18 +521,6 @@ def test_dual_authority_correctness_uses_public_ids_and_clears_once_in_order() -
         all_flow_recurrence,
         flow_ordinal=8,
     )
-    compiled_selected_runtime = Runtime(
-        "compiled-selected",
-        selected_compiled,
-        all_flow_compiled,
-        flow_ordinal=7,
-    )
-    compiled_all_flow_runtime = Runtime(
-        "compiled-all-flow",
-        selected_compiled,
-        all_flow_compiled,
-        flow_ordinal=7,
-    )
     candidate_runtime = Runtime(
         "on-the-fly",
         selected_recurrence,
@@ -557,12 +528,10 @@ def test_dual_authority_correctness_uses_public_ids_and_clears_once_in_order() -
         flow_ordinal=99,
     )
 
-    result = gate._dual_authority_correctness(
+    result = gate._recurrence_authority_correctness(
         candidate_runtime,
         recurrence_selected_runtime,
         recurrence_all_flow_runtime,
-        compiled_selected_runtime,
-        compiled_all_flow_runtime,
         points,
     )
 
@@ -572,10 +541,6 @@ def test_dual_authority_correctness_uses_public_ids_and_clears_once_in_order() -
         "recurrence-selected:selected:resolved",
         "recurrence-all-flow:all-flow:total",
         "recurrence-all-flow:all-flow:resolved",
-        "compiled-selected:selected:total",
-        "compiled-selected:selected:resolved",
-        "compiled-all-flow:all-flow:total",
-        "compiled-all-flow:all-flow:resolved",
         "on-the-fly:selected:total",
         "on-the-fly:selected:resolved",
         "on-the-fly:all-flow:total",
@@ -587,22 +552,22 @@ def test_dual_authority_correctness_uses_public_ids_and_clears_once_in_order() -
         "on-the-fly:all-flow:resolved",
     ]
     assert (
-        result.public_correctness["selected_flow_helicity_sum"][
-            "recurrence_compiled_authority"
-        ]["resolved"]["checks"]
+        result.public_correctness["selected_flow_helicity_sum"]["resolved_authority"][
+            "checks"
+        ]
         == 16
     )
     assert (
-        result.public_correctness["all_flow_single_helicity"][
-            "resolved_compiled_authority"
-        ]["checks"]
+        result.public_correctness["all_flow_single_helicity"]["resolved_authority"][
+            "checks"
+        ]
         == 16
     )
-    assert result.clear_checks["selected_resolved_compiled"]["checks"] == 16
+    assert result.clear_checks["selected_resolved"]["checks"] == 16
     assert events.count("on-the-fly:clear") == 1
 
 
-def test_public_gate_profiles_and_benchmarks_only_after_dual_authority(
+def test_public_gate_profiles_and_benchmarks_only_after_recurrence_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -622,19 +587,13 @@ def test_public_gate_profiles_and_benchmarks_only_after_dual_authority(
         tmp_path / "recurrence-all": SimpleNamespace(
             execution_mode="recurrence", artifact_id="c" * 64, physics=physics
         ),
-        tmp_path / "compiled-selected": SimpleNamespace(
-            execution_mode="compiled", artifact_id="d" * 64, physics=physics
-        ),
-        tmp_path / "compiled-all": SimpleNamespace(
-            execution_mode="compiled", artifact_id="e" * 64, physics=physics
-        ),
     }
     artifact = tmp_path / "candidate"
 
     def load(path: Path, **_kwargs: object) -> object:
         return candidate if Path(path) == artifact else authorities[Path(path)]
 
-    def correctness(*_args: object) -> gate.DualAuthorityCorrectness:
+    def correctness(*_args: object) -> gate.RecurrenceAuthorityCorrectness:
         events.append("correctness")
         return _fake_public_phase().correctness
 
@@ -649,7 +608,7 @@ def test_public_gate_profiles_and_benchmarks_only_after_dual_authority(
     monkeypatch.setattr(gate.Runtime, "load", load)
     monkeypatch.setattr(gate, "_on_the_fly_artifact_contract", lambda *_args: {})
     monkeypatch.setattr(gate, "_points", lambda: ((((1.0,),),),))
-    monkeypatch.setattr(gate, "_dual_authority_correctness", correctness)
+    monkeypatch.setattr(gate, "_recurrence_authority_correctness", correctness)
     monkeypatch.setattr(gate, "_on_the_fly_public_profile", profile)
     monkeypatch.setattr(gate, "_benchmark_runtime", benchmark)
 
@@ -657,14 +616,12 @@ def test_public_gate_profiles_and_benchmarks_only_after_dual_authority(
         artifact,
         tmp_path / "recurrence-selected",
         tmp_path / "recurrence-all",
-        tmp_path / "compiled-selected",
-        tmp_path / "compiled-all",
         0.1,
         1,
     )
 
     assert result.correctness.public_correctness == {"public": "green"}
-    assert events == ["correctness", "profile", "profile"] + ["benchmark"] * 6
+    assert events == ["correctness", "profile", "profile"] + ["benchmark"] * 4
 
 
 @pytest.mark.parametrize(
@@ -705,12 +662,6 @@ def test_public_gate_rejects_wrong_comparator_physics_before_correctness(
         tmp_path / "recurrence-all": SimpleNamespace(
             execution_mode="recurrence", physics=physics
         ),
-        tmp_path / "compiled-selected": SimpleNamespace(
-            execution_mode="compiled", physics=physics
-        ),
-        tmp_path / "compiled-all": SimpleNamespace(
-            execution_mode="compiled", physics=physics
-        ),
     }
 
     def load(path: Path, **_kwargs: object) -> object:
@@ -722,7 +673,7 @@ def test_public_gate_rejects_wrong_comparator_physics_before_correctness(
     monkeypatch.setattr(gate, "_on_the_fly_artifact_contract", lambda *_args: {})
     monkeypatch.setattr(
         gate,
-        "_dual_authority_correctness",
+        "_recurrence_authority_correctness",
         lambda *_args: (_ for _ in ()).throw(
             AssertionError("correctness ran with an invalid authority")
         ),
@@ -733,8 +684,6 @@ def test_public_gate_rejects_wrong_comparator_physics_before_correctness(
             candidate_path,
             tmp_path / "recurrence-selected",
             tmp_path / "recurrence-all",
-            tmp_path / "compiled-selected",
-            tmp_path / "compiled-all",
             0.1,
             1,
         )
@@ -814,13 +763,12 @@ def test_public_correctness_only_report_skips_every_private_lane(
         candidate,
         tmp_path / "recurrence-selected",
         tmp_path / "recurrence-all",
-        tmp_path / "compiled-selected",
-        tmp_path / "compiled-all",
         0.1,
         1,
     )
 
     assert result["status"] == "passed"
+    assert result["correctness_authority_contract"] == "recurrence-only-v1"
     assert result["scope"] == "provisional-public-correctness-only"
     assert result["provisional"] is True
     assert result["public_only"] is True
@@ -835,6 +783,10 @@ def test_public_correctness_only_report_skips_every_private_lane(
         "selected_flow_helicity_sum",
         "all_flow_single_helicity",
     }
+    assert all(
+        set(workload) == {"on_the_fly", "recurrence"}
+        for workload in result["public_timings"].values()
+    )
     outer = gate._driver_report(result, {"passes": True})
     assert outer["source_bound"] is False
     assert outer["source_binding"] == "not-asserted"
@@ -1672,10 +1624,6 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
             "recurrence-selected",
             "--recurrence-all-flow-artifact",
             "recurrence-all-flow",
-            "--compiled-selected-artifact",
-            "compiled-selected",
-            "--compiled-all-flow-artifact",
-            "compiled-all-flow",
             "--target-runtime",
             "2",
             "--batch-size",
@@ -1683,6 +1631,8 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
         ]
     )
     assert "--worker" not in gate._parser().format_help()
+    assert "--compiled-selected-artifact" not in gate._parser().format_help()
+    assert "--compiled-all-flow-artifact" not in gate._parser().format_help()
     command = gate._worker_command(arguments, Path("/tmp/gate"))
     assert command.count("--worker") == 1
     assert "all-flow-union" not in command
@@ -1695,8 +1645,6 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
     for option, name in (
         ("--recurrence-selected-artifact", "recurrence-selected"),
         ("--recurrence-all-flow-artifact", "recurrence-all-flow"),
-        ("--compiled-selected-artifact", "compiled-selected"),
-        ("--compiled-all-flow-artifact", "compiled-all-flow"),
     ):
         assert command[command.index(option) + 1] == str(Path(name).resolve())
     assert arguments.bypass_color_projection is False
@@ -1750,10 +1698,6 @@ def test_public_correctness_only_cli_reuses_candidate_in_same_guarded_worker(
             "recurrence-selected",
             "--recurrence-all-flow-artifact",
             "recurrence-all-flow",
-            "--compiled-selected-artifact",
-            "compiled-selected",
-            "--compiled-all-flow-artifact",
-            "compiled-all-flow",
         ]
     )
 
@@ -1790,10 +1734,6 @@ def test_default_worker_dispatches_full_lane(
             "recurrence-selected",
             "--recurrence-all-flow-artifact",
             "recurrence-all-flow",
-            "--compiled-selected-artifact",
-            "compiled-selected",
-            "--compiled-all-flow-artifact",
-            "compiled-all-flow",
         ]
     )
     events: list[str] = []
@@ -1836,10 +1776,6 @@ def test_public_only_worker_mismatch_cannot_report_success(
             "recurrence-selected",
             "--recurrence-all-flow-artifact",
             "recurrence-all-flow",
-            "--compiled-selected-artifact",
-            "compiled-selected",
-            "--compiled-all-flow-artifact",
-            "compiled-all-flow",
         ]
     )
 
@@ -2035,8 +1971,6 @@ def test_public_candidate_mismatch_fails_before_any_timing_or_private_probe(
     output.mkdir()
     selected = tmp_path / "selected"
     all_flow = tmp_path / "all-flow"
-    compiled_selected = tmp_path / "compiled-selected"
-    compiled_all = tmp_path / "compiled-all"
     flow = SimpleNamespace(id=gate.FLOW_ID, word=gate.FLOW_WORD, index=0)
     helicity = SimpleNamespace(
         id=gate.HELICITY_ID,
@@ -2089,8 +2023,6 @@ def test_public_candidate_mismatch_fails_before_any_timing_or_private_probe(
     candidate = Candidate()
     recurrence_authority = Authority("recurrence")
     recurrence_authority.physics = physics
-    compiled_authority = Authority("compiled")
-    compiled_authority.physics = physics
     monkeypatch.setattr(
         gate,
         "_generate_candidate_with_prepared_model",
@@ -2117,14 +2049,12 @@ def test_public_candidate_mismatch_fails_before_any_timing_or_private_probe(
             return candidate
         if path in (selected, all_flow):
             return recurrence_authority
-        if path in (compiled_selected, compiled_all):
-            return compiled_authority
         raise AssertionError(f"unexpected load before mismatch: {path}")
 
     monkeypatch.setattr(gate.Runtime, "load", load)
 
     def forbidden_timing(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("timing ran before dual-authority correctness passed")
+        raise AssertionError("timing ran before recurrence-authority correctness")
 
     for symbol in (
         "_on_the_fly_public_profile",
@@ -2147,8 +2077,6 @@ def test_public_candidate_mismatch_fails_before_any_timing_or_private_probe(
             None,
             selected,
             all_flow,
-            compiled_selected,
-            compiled_all,
             0.1,
             1,
         )

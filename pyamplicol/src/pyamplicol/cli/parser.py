@@ -15,6 +15,7 @@ from pyamplicol.config import (
     ClampRequest,
     ConfigResolution,
     ConfigurationError,
+    EvaluatorExecutionMode,
     resolve_config,
 )
 
@@ -104,6 +105,7 @@ class CliInvocation:
     dedicated: Mapping[str, object]
     overrides: tuple[str, ...]
     dry_run: bool = False
+    full_physics: bool = False
 
     def __post_init__(self) -> None:
         frozen = _freeze(self.dedicated)
@@ -329,8 +331,7 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         const="certified-reuse",
         default=argparse.SUPPRESS,
         help=(
-            "apply independently certified numerical current relations "
-            "(the default)"
+            "apply independently certified numerical current relations (the default)"
         ),
     )
     numerical_reuse.add_argument(
@@ -358,7 +359,7 @@ def _add_evaluator_options(
         parser.add_argument(
             "--execution-mode",
             dest="evaluator.execution_mode",
-            choices=("compiled", "eager", "recurrence"),
+            choices=tuple(mode.value for mode in EvaluatorExecutionMode),
             default=argparse.SUPPRESS,
         )
         parser.add_argument(
@@ -645,8 +646,17 @@ def build_parser() -> argparse.ArgumentParser:
         dest="evaluation.process",
         default=argparse.SUPPRESS,
         help=(
-            "show detailed physics for one stable process/alias ID or exact "
+            "show compact metadata for one stable process/alias ID or exact "
             "concrete process expression"
+        ),
+    )
+    inspect.add_argument(
+        "--full-physics",
+        dest="_full_physics",
+        action="store_true",
+        help=(
+            "load the selected runtime and materialize complete helicity/color "
+            "physics (potentially very large at high multiplicity)"
         ),
     )
 
@@ -668,7 +678,8 @@ def build_parser() -> argparse.ArgumentParser:
         "compile",
         parents=[common],
         help=(
-            "Compile portable model IR or prepare one eager evaluator backend pack."
+            "Compile portable model IR or prepare one evaluator kernel bundle "
+            "shared by eager, recurrence, and on-the-fly execution."
         ),
     )
     model_compile.add_argument("source", nargs="?", default=None)
@@ -790,6 +801,7 @@ def _namespace_to_invocation(
     )
     overrides = tuple(raw.pop("_overrides", ()))
     dry_run = bool(raw.pop("_dry_run", False))
+    full_physics = bool(raw.pop("_full_physics", False))
 
     positional_process = raw.pop("process", None)
     extra_processes = tuple(raw.pop("_extra_processes", ()))
@@ -837,6 +849,7 @@ def _namespace_to_invocation(
         dedicated=raw,
         overrides=overrides,
         dry_run=dry_run,
+        full_physics=full_physics,
     )
 
 

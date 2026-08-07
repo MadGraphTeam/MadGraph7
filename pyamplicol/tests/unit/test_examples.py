@@ -101,6 +101,14 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert eager.evaluator.backend.value == "jit"
     assert eager.evaluator.jit.optimization_level == 2
 
+    on_the_fly = resolve_config(EXAMPLES / "builtin_sm_on_the_fly.toml").effective
+    assert on_the_fly.model.source == "built-in-sm"
+    assert on_the_fly.color.accuracy.value == "lc"
+    assert on_the_fly.evaluator.execution_mode.value == "on-the-fly"
+    assert on_the_fly.evaluator.backend.value == "jit"
+    assert on_the_fly.evaluator.optimization.cores == 4
+    assert on_the_fly.generation.emit_api_bundle is False
+
     process_set = resolve_config(EXAMPLES / "process_set_mixed_multiplicity.toml")
     assert process_set.effective.process.entries == (
         ProcessEntry("u u~ > Z g", "uubar_Zg"),
@@ -181,9 +189,7 @@ def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:
     assert all_flows.process.selected_source_helicities == {}
     assert all_flows.color.lc_flow_layout.value == "all-flow-union"
     assert all_flows.benchmark.color_flow_ids == ()
-    assert all_flows.benchmark.helicity_ids == (
-        "h:-1,+1,-1,+1,-1,+1,-1,+1,-1",
-    )
+    assert all_flows.benchmark.helicity_ids == ("h:-1,+1,-1,+1,-1,+1,-1,+1,-1",)
 
 
 def test_qq_z6g_examples_cover_the_three_public_execution_modes() -> None:

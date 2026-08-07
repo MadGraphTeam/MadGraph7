@@ -1573,7 +1573,6 @@ def _execution_inspection(
             physical_helicity_count=helicity_count,
             physical_color_flow_count=color_flow_count,
             requested_point_tile_size=point_tile_size,
-            effective_point_tile_size=point_tile_size,
             requested_query_construction_threads=query_construction_threads,
             native_profile_phases=_ON_THE_FLY_PROFILE_PHASES,
         )
@@ -2098,29 +2097,33 @@ def _process_inspection(
     process_id = str(process["id"])
     lc_flow_layout: str | None = None
     if str(process["color_accuracy"]) == "lc":
-        lc_flow_layout = "topology-replay"
-        generation = manifest.extensions.get("generation")
-        if isinstance(generation, Mapping):
-            concrete = generation.get("concrete_processes")
-            if isinstance(concrete, Sequence) and not isinstance(
-                concrete, (str, bytes)
-            ):
-                for record in concrete:
-                    if (
-                        not isinstance(record, Mapping)
-                        or record.get("id") != process_id
-                    ):
-                        continue
-                    filters = record.get("filters")
-                    if not isinstance(filters, Mapping):
-                        continue
-                    candidate = filters.get("lc_flow_layout")
-                    if candidate is not None:
-                        lc_flow_layout = str(candidate)
-                if lc_flow_layout not in {"topology-replay", "all-flow-union"}:
-                    raise ArtifactError(
-                        f"process {process_id}.filters.lc_flow_layout is unsupported"
-                    )
+        if execution.execution_mode == "on-the-fly":
+            lc_flow_layout = "compact/query-local"
+        else:
+            lc_flow_layout = "topology-replay"
+            generation = manifest.extensions.get("generation")
+            if isinstance(generation, Mapping):
+                concrete = generation.get("concrete_processes")
+                if isinstance(concrete, Sequence) and not isinstance(
+                    concrete, (str, bytes)
+                ):
+                    for record in concrete:
+                        if (
+                            not isinstance(record, Mapping)
+                            or record.get("id") != process_id
+                        ):
+                            continue
+                        filters = record.get("filters")
+                        if not isinstance(filters, Mapping):
+                            continue
+                        candidate = filters.get("lc_flow_layout")
+                        if candidate is not None:
+                            lc_flow_layout = str(candidate)
+                    if lc_flow_layout not in {"topology-replay", "all-flow-union"}:
+                        raise ArtifactError(
+                            f"process {process_id}.filters.lc_flow_layout is "
+                            "unsupported"
+                        )
     aliases: list[ArtifactAliasInspection] = []
     for index, raw_alias in enumerate(
         _sequence(process.get("aliases"), f"process {process_id}.aliases")

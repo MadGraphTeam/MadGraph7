@@ -11,6 +11,7 @@ import time
 import tomllib
 import warnings
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -55,6 +56,41 @@ _LC_ALL_FLOW_PROFILE_RECOMMENDATION = (
 )
 _EVALUATOR_TOTAL_SAMPLE_CONTRACT = "accumulated-repeated-warmed-evaluator-total-v1"
 _RECURRENCE_LIKE_EXECUTION_MODES = {"recurrence", "on-the-fly"}
+_OTF_RUNTIME_STATE_CENSUS_KIND = "rusticol-on-the-fly-runtime-state-census-v1"
+_OTF_FAMILY_CACHE_POLICY = "last-family-only"
+_OTF_FAMILY_CACHE_LIMIT = 1
+_OTF_RUNTIME_STATE_COUNT_FIELDS = (
+    "process_preparation_count",
+    "retained_family_count",
+    "pending_family_count",
+    "retained_selection_count",
+    "retained_request_count",
+    "retained_amplitude_destination_count",
+    "retained_executor_handle_count",
+    "retained_query_local_trace_count",
+    "retained_embedded_lookup_key_count",
+    "semantic_executor_binding_count",
+)
+_OTF_RETAINED_STATE_EXECUTABLE_COUNT_FIELDS = (
+    "retained_amplitude_destination_count",
+    "retained_executor_handle_count",
+    "semantic_executor_binding_count",
+)
+_OTF_ACTIVE_FAMILY_COUNT_FIELDS = (
+    "query_count",
+    "union_unique_current_count",
+    "union_unique_current_component_count",
+    "union_source_rows",
+    "union_contribution_rows",
+    "union_finalization_rows",
+    "union_closure_rows",
+    "union_amplitude_destination_count",
+    "union_source_executor_call_groups",
+    "union_contribution_executor_call_groups",
+    "union_finalization_executor_call_groups",
+    "union_closure_executor_call_groups",
+)
+_OTF_OPERATION_ROLES = ("source", "contribution", "finalization", "closure")
 _COMPILED_DIRECT_ARENA_COUNTER_KEYS = (
     "compiled_direct_arena_engine_count",
     "compiled_direct_arena_call_count",
@@ -232,6 +268,14 @@ class BenchmarkBackend:
             else Path(os.fspath(target)).expanduser().resolve(strict=False)
         )
         runtime = self._runtime(target)
+        if (
+            str(getattr(runtime, "execution_mode", "compiled")) == "on-the-fly"
+            and self._config.precision != 16
+        ):
+            raise EvaluationError(
+                "on-the-fly benchmarking supports only precision=16 (native f64); "
+                f"received precision={self._config.precision}"
+            )
         compact_context = _on_the_fly_benchmark_context(
             runtime,
             self._config.color_flow_ids,
@@ -388,6 +432,11 @@ class BenchmarkBackend:
         calibration_task_id = "runtime-profile-calibration"
         active_task_id = calibration_task_id
         cold_warmup_elapsed: float | None = None
+        cold_warmup_state_before: dict[str, object] | None = None
+        cold_warmup_state_after: dict[str, object] | None = None
+        cold_warmup_runtime_was_cold: bool | None = None
+        cold_warmup_runtime_was_retained: bool | None = None
+        cold_warmup_runtime_is_retained: bool | None = None
         warmup_elapsed = 0.0
         warmup_run_outer_wall_seconds: list[float] = []
         calibration: _Calibration | None = None
@@ -412,9 +461,43 @@ class BenchmarkBackend:
             )
         try:
             if compact_context is not None:
+                cold_warmup_state_before = _on_the_fly_runtime_state_census(
+                    runtime,
+                    expected_process_id=compact_context.process_id,
+                )
+                cold_warmup_runtime_was_cold = _on_the_fly_runtime_state_is_cold(
+                    cold_warmup_state_before
+                )
+                cold_warmup_runtime_was_retained = (
+                    _on_the_fly_runtime_state_is_retained(cold_warmup_state_before)
+                )
+                if not (
+                    cold_warmup_runtime_was_cold or cold_warmup_runtime_was_retained
+                ):
+                    raise EvaluationError(
+                        "on-the-fly runtime state before the first requested "
+                        "evaluation is neither cold nor fully retained"
+                    )
                 cold_warmup_started = time.perf_counter()
                 measure_repetitions(1)
                 cold_warmup_elapsed = time.perf_counter() - cold_warmup_started
+                cold_warmup_state_after = _on_the_fly_runtime_state_census(
+                    runtime,
+                    expected_process_id=compact_context.process_id,
+                )
+                cold_warmup_runtime_is_retained = _on_the_fly_runtime_state_is_retained(
+                    cold_warmup_state_after
+                )
+                if not cold_warmup_runtime_is_retained:
+                    raise EvaluationError(
+                        "on-the-fly first requested evaluation did not leave a fully "
+                        "retained runtime family"
+                    )
+                # The required first-selector evaluation can spend minutes
+                # constructing a cold high-multiplicity family. It is reported
+                # separately as OTF warm-up evidence and must not become the
+                # estimate used to guard or calibrate retained evaluations.
+                timer_seconds_per_repetition = None
             last_warmup_seconds: float | None = None
             for warmup_index in range(self._config.warmup_runs):
                 warmup_started = time.perf_counter()
@@ -796,6 +879,17 @@ class BenchmarkBackend:
             }
         cold_warmup_environment: dict[str, object] = {}
         if cold_warmup_elapsed is not None:
+            if (
+                cold_warmup_state_before is None
+                or cold_warmup_state_after is None
+                or cold_warmup_runtime_was_cold is None
+                or cold_warmup_runtime_was_retained is None
+                or cold_warmup_runtime_is_retained is None
+            ):
+                raise EvaluationError(
+                    "on-the-fly benchmark did not retain complete runtime state "
+                    "evidence"
+                )
             cold_warmup_environment = {
                 "cold_warmup_elapsed_seconds": cold_warmup_elapsed,
                 "cold_warmup_run_count": 1,
@@ -807,7 +901,25 @@ class BenchmarkBackend:
                     "benchmark batch; artifact generation and Runtime/artifact load "
                     "are excluded"
                 ),
-                "cold_warmup_runtime_freshness": "not-authenticated-by-benchmark",
+                "cold_warmup_runtime_freshness": (
+                    "authenticated-cold"
+                    if cold_warmup_runtime_was_cold
+                    else "authenticated-already-retained"
+                ),
+                "cold_warmup_runtime_state_evidence": (
+                    "authenticated-native-otf-census-v1"
+                ),
+                "cold_warmup_runtime_state_before": cold_warmup_state_before,
+                "cold_warmup_runtime_state_after": cold_warmup_state_after,
+                "cold_warmup_runtime_cold_before_first_evaluation": (
+                    cold_warmup_runtime_was_cold
+                ),
+                "cold_warmup_runtime_retained_before_first_evaluation": (
+                    cold_warmup_runtime_was_retained
+                ),
+                "cold_warmup_runtime_retained_after_first_evaluation": (
+                    cold_warmup_runtime_is_retained
+                ),
                 "cold_warmup_ratio_eligible": False,
                 "cold_warmup_acceptance_eligible": False,
             }
@@ -856,9 +968,7 @@ class BenchmarkBackend:
                 "warmup_configured_run_count": self._config.warmup_runs,
                 "warmup_batch_size": len(batch),
                 "warmup_point_count": self._config.warmup_runs * len(batch),
-                "warmup_run_outer_wall_seconds": tuple(
-                    warmup_run_outer_wall_seconds
-                ),
+                "warmup_run_outer_wall_seconds": tuple(warmup_run_outer_wall_seconds),
                 "first_warmup_run_outer_wall_seconds": (
                     warmup_run_outer_wall_seconds[0]
                     if warmup_run_outer_wall_seconds
@@ -1029,9 +1139,7 @@ def _on_the_fly_benchmark_context(
 
     selected = raw.get("selected_color_ids")
     if not isinstance(selected, Sequence) or isinstance(selected, (str, bytes)):
-        raise EvaluationError(
-            "on-the-fly benchmark selected color IDs are invalid"
-        )
+        raise EvaluationError("on-the-fly benchmark selected color IDs are invalid")
     selected_color_ids = tuple(str(value) for value in selected)
     if len(selected_color_ids) != len(requested_color_ids) or any(
         not value for value in selected_color_ids
@@ -1047,6 +1155,134 @@ def _on_the_fly_benchmark_context(
         color_count=required_count("color_count"),
         selected_color_ids=selected_color_ids,
     )
+
+
+def _on_the_fly_runtime_state_census(
+    runtime: RuntimeBackend,
+    *,
+    expected_process_id: str,
+) -> dict[str, object]:
+    loader = getattr(runtime, "_on_the_fly_runtime_state_census", None)
+    if not callable(loader):
+        raise EvaluationError(
+            "on-the-fly benchmark requires the installed compact runtime state census"
+        )
+    raw = loader()
+    if not isinstance(raw, Mapping):
+        raise EvaluationError("on-the-fly runtime state census is unavailable")
+    value = deepcopy(dict(raw))
+    if value.get("kind") != _OTF_RUNTIME_STATE_CENSUS_KIND:
+        raise EvaluationError("on-the-fly runtime state census has an invalid kind")
+    if value.get("process_id") != expected_process_id:
+        raise EvaluationError(
+            "on-the-fly runtime state census does not match the benchmark process"
+        )
+    if value.get("family_cache_policy") != _OTF_FAMILY_CACHE_POLICY:
+        raise EvaluationError(
+            "on-the-fly runtime state census has an invalid family cache policy"
+        )
+    cache_limit = value.get("family_cache_limit")
+    if (
+        isinstance(cache_limit, bool)
+        or not isinstance(cache_limit, int)
+        or cache_limit != _OTF_FAMILY_CACHE_LIMIT
+    ):
+        raise EvaluationError(
+            "on-the-fly runtime state census has an invalid family cache limit"
+        )
+
+    counts: dict[str, int] = {}
+    for field in _OTF_RUNTIME_STATE_COUNT_FIELDS:
+        count = value.get(field)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise EvaluationError(
+                f"on-the-fly runtime state census field {field!r} is invalid"
+            )
+        counts[field] = count
+    if counts["retained_family_count"] > _OTF_FAMILY_CACHE_LIMIT:
+        raise EvaluationError(
+            "on-the-fly runtime state census retained family count exceeds its "
+            "cache limit"
+        )
+
+    active = value.get("active_family_union_census")
+    if active is None:
+        return value
+    if not isinstance(active, Mapping):
+        raise EvaluationError(
+            "on-the-fly active-family runtime state census is invalid"
+        )
+    active_value = dict(active)
+    if (
+        active_value.get("basis") != "shared-query-family-union-v1"
+        or active_value.get("scope") != "active-family-union"
+    ):
+        raise EvaluationError(
+            "on-the-fly active-family runtime state census has an invalid identity"
+        )
+    active_counts: dict[str, int] = {}
+    for field in _OTF_ACTIVE_FAMILY_COUNT_FIELDS:
+        count = active_value.get(field)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise EvaluationError(
+                "on-the-fly active-family runtime state census field "
+                f"{field!r} is invalid"
+            )
+        active_counts[field] = count
+    if (
+        active_counts["query_count"] < 1
+        or active_counts["union_unique_current_count"]
+        > active_counts["union_unique_current_component_count"]
+        or active_counts["union_amplitude_destination_count"] < 1
+        or active_counts["union_amplitude_destination_count"]
+        > active_counts["query_count"]
+        or active_counts["query_count"] > counts["retained_request_count"]
+        or active_counts["union_amplitude_destination_count"]
+        > counts["retained_amplitude_destination_count"]
+    ):
+        raise EvaluationError(
+            "on-the-fly active-family runtime state census is inconsistent"
+        )
+    for role in _OTF_OPERATION_ROLES:
+        if (
+            active_counts[f"union_{role}_executor_call_groups"]
+            > active_counts[f"union_{role}_rows"]
+        ):
+            raise EvaluationError(
+                "on-the-fly active-family runtime state census has more "
+                f"{role} executor call groups than rows"
+            )
+    value["active_family_union_census"] = active_value
+    return value
+
+
+def _on_the_fly_runtime_state_is_cold(census: Mapping[str, object]) -> bool:
+    return all(census[field] == 0 for field in _OTF_RUNTIME_STATE_COUNT_FIELDS) and (
+        census["active_family_union_census"] is None
+    )
+
+
+def _on_the_fly_runtime_state_is_retained(census: Mapping[str, object]) -> bool:
+    if (
+        census["pending_family_count"] != 0
+        or census["process_preparation_count"] != 1
+        or census["retained_family_count"] != _OTF_FAMILY_CACHE_LIMIT
+        or census["retained_selection_count"] != _OTF_FAMILY_CACHE_LIMIT
+        or cast(int, census["retained_request_count"]) < 1
+    ):
+        return False
+    executable_counts = tuple(
+        cast(int, census[field])
+        for field in _OTF_RETAINED_STATE_EXECUTABLE_COUNT_FIELDS
+    )
+    active = census["active_family_union_census"]
+    if isinstance(active, Mapping):
+        return (
+            executable_counts[0] > 0
+            and executable_counts[1] == _OTF_FAMILY_CACHE_LIMIT
+            and executable_counts[2] > 0
+        )
+    return active is None and all(count == 0 for count in executable_counts)
 
 
 def _resolve_color_flow_ordinals(

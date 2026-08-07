@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -334,6 +335,69 @@ class RusticolRuntimeBackend:
 
         return self._execution_mode
 
+    def _require_supported_precision(self, precision: int) -> None:
+        if self._execution_mode == "on-the-fly" and precision != 16:
+            raise CompatibilityError(
+                "on-the-fly execution supports only precision=16 (native f64); "
+                f"received precision={precision}"
+            )
+
+    def _on_the_fly_runtime_state_census(self) -> Mapping[str, object] | None:
+        if self._execution_mode != "on-the-fly":
+            return None
+        loader = getattr(
+            self._runtime,
+            "_on_the_fly_runtime_state_census_json",
+            None,
+        )
+        if not callable(loader):
+            raise CompatibilityError(
+                "installed native runtime has no compact on-the-fly state census"
+            )
+        raw = _invoke(self._native_module, loader)
+        if raw is None:
+            raise CompatibilityError(
+                "installed native runtime returned no on-the-fly state census"
+            )
+        try:
+            payload = json.loads(str(raw))
+        except (TypeError, ValueError) as exc:
+            raise ArtifactError(
+                f"native on-the-fly state census is invalid: {exc}"
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise ArtifactError("native on-the-fly state census must be an object")
+        if payload.get("kind") != "rusticol-on-the-fly-runtime-state-census-v1":
+            raise ArtifactError("native on-the-fly state census has an invalid kind")
+        if payload.get("family_cache_policy") != "last-family-only":
+            raise ArtifactError(
+                "native on-the-fly state census has an invalid family cache policy"
+            )
+        cache_limit = payload.get("family_cache_limit")
+        if (
+            isinstance(cache_limit, bool)
+            or not isinstance(cache_limit, int)
+            or cache_limit != 1
+        ):
+            raise ArtifactError(
+                "native on-the-fly state census has an invalid family cache limit"
+            )
+        return dict(payload)
+
+    def inspect(self) -> Mapping[str, object]:
+        """Return compact authenticated metadata without opening dense physics."""
+
+        result: dict[str, object] = {
+            "kind": "pyamplicol-runtime-inspection",
+            "schema_version": 1,
+            "artifact_id": self.artifact_id,
+            "runtime_metadata": deepcopy(dict(self._native_metadata)),
+            "on_the_fly_state": self._on_the_fly_runtime_state_census(),
+        }
+        if self._execution_mode == "on-the-fly":
+            result["supported_precisions"] = (16,)
+        return result
+
     def _on_the_fly_benchmark_context(
         self,
         color_flow_ids: Sequence[str],
@@ -369,11 +433,21 @@ class RusticolRuntimeBackend:
         return value
 
     @property
+    def external_count(self) -> int:
+        """Authenticated number of public external legs."""
+
+        value = self._native_metadata.get("external_count")
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise CompatibilityError(
+                "native runtime metadata has no valid external process count"
+            )
+        return value
+
+    @property
     def external_permutation(self) -> tuple[int, ...]:
         """Representative-index to public-index external-leg permutation."""
 
         raw = self._native_metadata.get("external_permutation")
-        count = len(self.physics.external_particles)
         if not isinstance(raw, list) or any(
             isinstance(value, bool) or not isinstance(value, int) for value in raw
         ):
@@ -381,6 +455,7 @@ class RusticolRuntimeBackend:
                 "native runtime metadata has no external process permutation"
             )
         permutation = tuple(raw)
+        count = self.external_count
         if len(permutation) != count or sorted(permutation) != list(range(count)):
             raise ArtifactError("native runtime external permutation is invalid")
         return permutation
@@ -497,6 +572,7 @@ class RusticolRuntimeBackend:
         color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
     ) -> tuple[complex | Decimal, ...]:
+        self._require_supported_precision(precision)
         helicities = _normalized_selectors(helicities)
         color_flows = _normalized_selectors(color_flows)
         helicity_by_point = _normalized_selectors(helicity_by_point)
@@ -602,18 +678,18 @@ class RusticolRuntimeBackend:
                     "native on-the-fly point-selector response must be an object"
                 )
             key = (
-                "helicity_ordinals"
-                if name == "helicity_by_point"
-                else "color_ordinals"
+                "helicity_ordinals" if name == "helicity_by_point" else "color_ordinals"
             )
             raw = payload.get(key)
-            if not isinstance(raw, list) or len(raw) != len(values) or any(
-                isinstance(value, bool) or not isinstance(value, int) or value < 0
-                for value in raw
-            ):
-                raise ArtifactError(
-                    f"native on-the-fly {name} ordinals are invalid"
+            if (
+                not isinstance(raw, list)
+                or len(raw) != len(values)
+                or any(
+                    isinstance(value, bool) or not isinstance(value, int) or value < 0
+                    for value in raw
                 )
+            ):
+                raise ArtifactError(f"native on-the-fly {name} ordinals are invalid")
             return tuple(raw)
         available = (
             self.physics.helicity_ids
@@ -689,6 +765,7 @@ class RusticolRuntimeBackend:
         color_flow_by_point: Sequence[str] | None = None,
         precision: int = 16,
     ) -> float:
+        self._require_supported_precision(precision)
         helicities = _normalized_selectors(helicities)
         color_flows = _normalized_selectors(color_flows)
         helicity_by_point = _normalized_selectors(helicity_by_point)
@@ -759,6 +836,7 @@ class RusticolRuntimeBackend:
     ) -> Mapping[str, object]:
         """Use the private warmed-Arena profiler without a public fallback."""
 
+        self._require_supported_precision(precision)
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         if precision != 16:
@@ -792,6 +870,7 @@ class RusticolRuntimeBackend:
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
     ) -> ResolvedEvaluation:
+        self._require_supported_precision(precision)
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         if precision != 16:
@@ -834,6 +913,7 @@ class RusticolRuntimeBackend:
         precision: int = 16,
         include_values: bool = False,
     ) -> Mapping[str, object]:
+        self._require_supported_precision(precision)
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         helicity_by_point = _normalized_selectors(helicity_by_point)
@@ -904,6 +984,7 @@ class RusticolRuntimeBackend:
         precision: int = 16,
         include_values: bool = False,
     ) -> Mapping[str, object]:
+        self._require_supported_precision(precision)
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
         helicity_by_point = _normalized_selectors(helicity_by_point)
@@ -991,6 +1072,7 @@ class RusticolRuntimeBackend:
         if color_flows is None or not color_flows:
             return None
         if self._execution_mode == "on-the-fly":
+
             def is_ordinal(value: str) -> bool:
                 try:
                     ordinal = int(value, 10)
@@ -1007,9 +1089,7 @@ class RusticolRuntimeBackend:
                 selected,
                 (str, bytes),
             ):
-                raise ArtifactError(
-                    "native on-the-fly selected color IDs are invalid"
-                )
+                raise ArtifactError("native on-the-fly selected color IDs are invalid")
             return tuple(str(value) for value in selected)
         available = self.physics.color_ids
         resolved: list[str] = []
@@ -1067,6 +1147,7 @@ class RusticolRuntimeBackend:
     ]:
         """Project kinematics only for the bounded validation diagnostic."""
 
+        self._require_supported_precision(precision)
         return self._exact()._diagnostic_project_onshell(
             momenta,
             precision=precision,

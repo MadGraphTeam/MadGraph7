@@ -11,6 +11,7 @@ from pyamplicol.api import (
     BenchmarkResult,
     BenchmarkStatistics,
     ColorFlow,
+    CompatibilityError,
     EvaluationError,
     Generator,
     HelicityConfiguration,
@@ -325,10 +326,32 @@ def test_runtime_identity_is_optional_for_backend_conformance_but_fails_closed()
 ):
     runtime = Runtime(_RuntimeBackend())
 
+    assert runtime.external_permutation == ()
     with pytest.raises(EvaluationError, match="authenticated artifact identity"):
         _ = runtime.artifact_id
     with pytest.raises(EvaluationError, match="valid execution mode"):
         _ = runtime.execution_mode
+    with pytest.raises(CompatibilityError, match="compact runtime inspection"):
+        runtime.inspect()
+
+
+def test_runtime_validates_legacy_permutation_against_physics_count() -> None:
+    backend = _RuntimeBackend()
+    backend.external_permutation = ()
+    runtime = Runtime(backend)
+
+    assert runtime.external_permutation == ()
+    backend.external_permutation = (0,)
+    with pytest.raises(CompatibilityError, match="external permutation is invalid"):
+        _ = runtime.external_permutation
+
+
+def test_runtime_prefers_authenticated_compact_external_count() -> None:
+    backend = _RuntimeBackend()
+    backend.external_count = 1
+    backend.external_permutation = (0,)
+
+    assert Runtime(backend).external_permutation == (0,)
 
 
 @pytest.mark.parametrize("precision", (True, False, 1.5, "32"))

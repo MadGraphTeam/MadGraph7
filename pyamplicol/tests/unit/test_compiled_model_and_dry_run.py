@@ -23,6 +23,7 @@ from pyamplicol import (
     ProcessSet,
     generate,
 )
+from pyamplicol.api.errors import GenerationError
 from pyamplicol.api.results import GenerationResult
 from pyamplicol.cli import run_cli
 from pyamplicol.config import (
@@ -37,6 +38,7 @@ from pyamplicol.config import (
 )
 from pyamplicol.licensing import SymbolicaLicenseState
 from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.prepared_target import canonical_architecture
 
 
 def _snapshot(root: Path) -> tuple[tuple[str, int, int, int, bytes | None], ...]:
@@ -165,16 +167,16 @@ def test_injected_license_plan_avoids_symbolica_and_model_compilers() -> None:
             "-c",
             "\n".join(
                 (
-                        "import sys",
-                        "import pyamplicol.licensing as licensing",
-                        "from pyamplicol import Generator",
-                        "from pyamplicol.config import EvaluatorConfig, RunConfig",
-                        "licensing.detect_symbolica_license = lambda **kwargs: "
-                        "licensing.SymbolicaLicenseState(False, True)",
-                        "assert 'symbolica' not in sys.modules",
-                        "Generator(RunConfig(action='generate', evaluator="
-                        "EvaluatorConfig(execution_mode='compiled'))).plan("
-                        "'d d~ > z')",
+                    "import sys",
+                    "import pyamplicol.licensing as licensing",
+                    "from pyamplicol import Generator",
+                    "from pyamplicol.config import EvaluatorConfig, RunConfig",
+                    "licensing.detect_symbolica_license = lambda **kwargs: "
+                    "licensing.SymbolicaLicenseState(False, True)",
+                    "assert 'symbolica' not in sys.modules",
+                    "Generator(RunConfig(action='generate', evaluator="
+                    "EvaluatorConfig(execution_mode='compiled'))).plan("
+                    "'d d~ > z')",
                     "assert 'symbolica' not in sys.modules",
                     "assert not any(name.startswith("
                     "'pyamplicol.models.compiler') for name in sys.modules)",
@@ -442,6 +444,108 @@ def test_plan_reads_an_existing_external_model_cache_without_modifying_it(
     assert not output.exists()
     assert plan.estimated_coverage["model_kind"] == "json"
     assert len(plan.concrete_processes) == 1
+
+
+def test_on_the_fly_high_multiplicity_dry_run_stays_compact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    for name in (
+        "build_color_plan",
+        "compile_generic_dag",
+        "_invoke_rust_on_the_fly_seed_batch_builder_v1",
+        "write_schema_v3_artifact",
+    ):
+        monkeypatch.setattr(generation_service, name, _forbidden(name))
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    process = "d d~ > " + " ".join(("g",) * 9)
+    prepared_model = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "pyamplicol"
+        / "assets"
+        / "prepared_models"
+        / f"built-in-sm-jit-o2-{canonical_architecture()}.pyamplicol-model"
+    )
+
+    status = run_cli(
+        (
+            "generate",
+            process,
+            "--dry-run",
+            "--execution-mode",
+            "on-the-fly",
+            "--model",
+            str(prepared_model),
+            "--no-collect-factors",
+            "--format",
+            "json",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 0, stderr.getvalue()
+    payload = json.loads(stdout.getvalue())
+    coverage = payload["estimated_coverage"]["processes"][0]
+    assert coverage == {
+        "color_coverage": "complete",
+        "color_diagnostics": [],
+        "color_plan_materialized": False,
+        "color_sector_count": 362880,
+        "coupling_order_limits": {},
+        "dag_compilation_deferred": True,
+        "execution_mode": "on-the-fly",
+        "external_particle_count": 11,
+        "helicity_coverage": "complete",
+        "key": coverage["key"],
+        "native_seed_construction_deferred": True,
+        "physical_color_flow_count": 362880,
+        "physical_helicity_count": 2048,
+        "process": coverage["process"],
+        "selector_representation": "compact-query-local",
+        "source_projection_validated": True,
+    }
+    assert stderr.getvalue() == ""
+
+
+@pytest.mark.parametrize(
+    ("process_config", "field"),
+    (
+        (ProcessConfig(max_color_sectors=1), "process.max_color_sectors"),
+        (
+            ProcessConfig(selected_color_sector_ids=(0,)),
+            "process.selected_color_sector_ids",
+        ),
+        (
+            ProcessConfig(selected_source_helicities={"1": -1}),
+            "process.selected_source_helicities",
+        ),
+    ),
+)
+def test_on_the_fly_plan_and_generation_reject_selector_specialization_identically(
+    process_config: ProcessConfig,
+    field: str,
+    tmp_path: Path,
+) -> None:
+    generator = Generator(
+        RunConfig(
+            action=Action.GENERATE,
+            process=process_config,
+            evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
+        )
+    )
+
+    with pytest.raises(GenerationError) as plan_error:
+        generator.plan("d d~ > z")
+    with pytest.raises(GenerationError) as generation_error:
+        generator.generate("d d~ > z", tmp_path / "artifact")
+
+    assert str(plan_error.value) == str(generation_error.value)
+    assert field in str(plan_error.value)
 
 
 def test_plan_uses_licensed_concrete_process_resource_partition(

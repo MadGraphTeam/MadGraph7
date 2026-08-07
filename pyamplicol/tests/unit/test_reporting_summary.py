@@ -452,6 +452,55 @@ def test_recurrence_profile_reports_paired_schedule_and_nested_attribution() -> 
     assert "runtime_profile_core_recurrence_schedule_time" in rendered
 
 
+def test_on_the_fly_profile_names_its_recurrence_schedule_attribution() -> None:
+    result = _benchmark_result()
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    component = breakdown.source_fill_time
+    schedule = breakdown.stage_evaluator_call_time
+    on_the_fly_breakdown = replace(
+        breakdown,
+        execution_mode="on-the-fly",
+        stage_input_pack_time=None,
+        stage_evaluator_call_time=None,
+        output_assign_time=None,
+        amplitude_input_pack_time=None,
+        amplitude_evaluator_call_time=None,
+        reduction_time=component,
+        stages=(),
+        recurrence_momentum_fill_time=component,
+        recurrence_schedule_time=schedule,
+        recurrence_source_kernel_time=component,
+        recurrence_contribution_kernel_time=component,
+        recurrence_finalization_time=component,
+        recurrence_closure_time=component,
+    )
+    rendered = render_summary(
+        replace(
+            result,
+            environment={
+                **result.environment,
+                "execution_mode": "on-the-fly",
+                "evaluator_time_source": (
+                    "runtime_profile_core_recurrence_schedule_time"
+                ),
+            },
+            timing_breakdown=on_the_fly_breakdown,
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    assert "OTF recurrence-schedule core" in rendered
+    assert "evaluator core" not in rendered
+    assert (
+        "Rusticol OTF Recurrence-Schedule Timing Breakdown "
+        "(paired profiled attribution)" in rendered
+    )
+    assert "OTF recurrence schedule (inclusive)" in rendered
+    assert "Contribution kernels (schedule attribution; do not add)" in rendered
+
+
 def test_runtime_profile_renders_three_independent_clocks_with_full_precision() -> None:
     result = _benchmark_result()
     breakdown = result.timing_breakdown
@@ -801,6 +850,46 @@ def test_eager_artifact_inspection_reports_execution_contract() -> None:
     assert "12 domains; 160 memberships" in rendered
     assert "1024 / available after runtime load" in rendered
     assert "256.00 MiB / available after runtime load" in rendered
+
+
+def test_on_the_fly_artifact_inspection_reports_static_compact_contract() -> None:
+    inspection = _artifact_inspection()
+    on_the_fly_process = replace(
+        inspection.processes[0],
+        execution_mode="on-the-fly",
+        physical_helicities=64,
+        computed_helicities=64,
+        physical_color_components=24,
+        computed_color_components=24,
+        lc_flow_layout="compact/query-local",
+        lc_physical_sector_count=24,
+        lc_union_sector_count=None,
+        requested_point_tile_size=128,
+        effective_point_tile_size=None,
+        requested_query_construction_threads=4,
+        native_profile_phases=(
+            "selector-plan",
+            "recurrence-direct-contribution",
+            "recurrence-direct-closure",
+        ),
+    )
+
+    rendered = render_summary(
+        replace(inspection, processes=(on_the_fly_process,)), color=False
+    )
+
+    assert rendered is not None
+    assert "compact/query-local" in rendered
+    assert "64 physical helicities; 24 physical LC color flows" in rendered
+    assert "128 requested; not applied by on-the-fly execution" in rendered
+    assert "query construction threads" in rendered
+    assert "4 requested" in rendered
+    assert "f64 only" in rendered
+    assert "topology-replay" not in rendered
+    assert "LC replay sectors" not in rendered
+    assert "None materialized" not in rendered
+    assert "None replayed" not in rendered
+    assert "None residual" not in rendered
 
 
 def test_recurrence_artifact_inspection_reports_contracted_color() -> None:

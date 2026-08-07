@@ -819,21 +819,67 @@ def _active(queries: int, destinations: int) -> dict[str, object]:
     return result
 
 
-def _state(families: int, active: dict[str, object] | None = None) -> dict[str, object]:
-    warm = families > 0
+def _state(
+    families: int,
+    active: dict[str, object] | None = None,
+    *,
+    semantic_bindings: int | None = None,
+    process_id: str = "otf-test",
+) -> dict[str, object]:
+    assert families in {0, 1}
+    warm = families == 1
+    requests = int(active["query_count"]) if warm and active is not None else 0
+    destinations = (
+        int(active["union_amplitude_destination_count"])
+        if warm and active is not None
+        else 0
+    )
     return {
+        "kind": study.STATE_KIND,
+        "process_id": process_id,
+        "family_cache_policy": study.STATE_FAMILY_CACHE_POLICY,
+        "family_cache_limit": study.STATE_FAMILY_CACHE_LIMIT,
         "process_preparation_count": int(warm),
         "retained_family_count": families,
         "pending_family_count": 0,
         "retained_selection_count": families,
-        "retained_request_count": families * 2,
-        "retained_amplitude_destination_count": families,
+        "retained_request_count": requests,
+        "retained_amplitude_destination_count": destinations,
         "retained_executor_handle_count": families,
         "retained_query_local_trace_count": 0,
         "retained_embedded_lookup_key_count": 0,
-        "semantic_executor_binding_count": families * 3,
+        "semantic_executor_binding_count": (
+            int(warm) * 3 if semantic_bindings is None else semantic_bindings
+        ),
         "active_family_union_census": active,
     }
+
+
+def test_census_uses_public_inspection_and_exact_last_family_contract() -> None:
+    process_id = "otf_p7_one_quark_line_n5"
+    retained = _state(1, _active(2, 1), process_id=process_id)
+    inspect_runtime = mock.Mock(
+        return_value={study.STATE_INSPECTION_KEY: copy.deepcopy(retained)}
+    )
+    runtime = SimpleNamespace(inspect=inspect_runtime)
+
+    assert study._census(runtime, process_id) == retained
+    inspect_runtime.assert_called_once_with()
+
+    for field, value in (
+        ("family_cache_policy", "all-seen"),
+        ("family_cache_limit", 2),
+        ("family_cache_limit", 1.0),
+        ("family_cache_limit", True),
+        ("unexpected", 1),
+    ):
+        broken = copy.deepcopy(retained)
+        broken[field] = value
+        candidate = SimpleNamespace(
+            inspect=lambda broken=broken: {study.STATE_INSPECTION_KEY: broken}
+        )
+        with pytest.raises(study.StudyError):
+            study._census(candidate, process_id)
 
 
 @pytest.mark.parametrize(
@@ -968,17 +1014,26 @@ def test_a_b_repeat_revisit_clear_rebuild_and_census_invariants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cold, active_a, active_b = _state(0), _active(2, 1), _active(4, 2)
-    state_a, state_b = _state(1, active_a), _state(2, active_b)
-    revisit = copy.deepcopy(state_b)
-    revisit["active_family_union_census"] = active_a
-    values = iter((cold, state_a, state_b, state_b, revisit, cold, state_b))
+    state_a = _state(1, active_a, semantic_bindings=3)
+    state_b = _state(1, active_b, semantic_bindings=5)
+    values = iter(
+        (cold, state_a, state_b, state_b, state_b, state_a, state_a, cold, state_b)
+    )
     monkeypatch.setattr(study, "_census", lambda *_: copy.deepcopy(next(values)))
     monkeypatch.setattr(
         study, "_evaluate", lambda *_, **__: study.Evaluation((1.0 + 0.0j,), None)
     )
     monkeypatch.setattr(study, "_compare", lambda *_: {})
+
+    def native_evaluate(points: object, **_kwargs: object) -> tuple[complex, ...]:
+        if len(points) == 0:  # type: ignore[arg-type]
+            raise study.EvaluationError(
+                "on-the-fly evaluation requires at least one point"
+            )
+        return (1.0 + 0.0j,) * len(points)  # type: ignore[arg-type]
+
     runtime = SimpleNamespace(
-        clear=mock.Mock(), evaluate=mock.Mock(return_value=(1.0 + 0.0j,))
+        clear=mock.Mock(), evaluate=mock.Mock(side_effect=native_evaluate)
     )
     lifecycle = study._lifecycle(
         runtime,
@@ -988,15 +1043,29 @@ def test_a_b_repeat_revisit_clear_rebuild_and_census_invariants(
         "all-flow",
         False,
     )[2]
-    assert lifecycle["sequence"] == "A,B,B,A; clear; A,B"
+    assert lifecycle["sequence"] == "A,B,B,failed-A,B,A,A; clear; A,B"
     assert lifecycle["after_rebuild"] == state_b
     assert lifecycle["final_plateau"] == state_b
+    assert lifecycle["selected_a_revisit"] == state_a
+    assert lifecycle["selected_a_revisit_repeat"] == state_a
+    assert (
+        lifecycle["failed_selected_a_candidate"]["retained_family_after_failure"]
+        == state_b
+    )
+    assert state_a["semantic_executor_binding_count"] == 3
+    assert state_b["semantic_executor_binding_count"] == 5
+    for state in (state_a, state_b):
+        assert state["retained_family_count"] == 1
+        assert state["retained_selection_count"] == 1
+        assert state["retained_executor_handle_count"] == 1
     assert lifecycle["policy"]["mode"] == study.LIFECYCLE_EXHAUSTIVE
     assert lifecycle["clear_rebuild"]["status"] == "performed"
     assert "cold_first_evaluation_timing" not in lifecycle
-    runtime.evaluate.assert_called_once_with(
+    assert runtime.evaluate.call_count == 2
+    assert runtime.evaluate.call_args_list[0] == mock.call(
         ((((1.0, 0.0, 0.0, 1.0),),)), color_flows=("flow:1",)
     )
+    assert runtime.evaluate.call_args_list[1] == mock.call((), color_flows=("flow:1",))
     runtime.clear.assert_called_once_with()
     for field, value in (
         ("retained_amplitude_destination_count", 0),
@@ -1005,26 +1074,34 @@ def test_a_b_repeat_revisit_clear_rebuild_and_census_invariants(
         broken = copy.deepcopy(state_a)
         broken[field] = value
         with pytest.raises(study.StudyError):
-            study._assert_family_state(
-                broken, "A", families=1, selections=1, handles=1, minimum_bindings=1
-            )
+            study._assert_family_state(broken, "A")
     broken = copy.deepcopy(state_a)
     broken["active_family_union_census"]["union_source_executor_call_groups"] = 3
     with pytest.raises(study.StudyError):
-        study._assert_family_state(
-            broken, "A", families=1, selections=1, handles=1, minimum_bindings=1
-        )
+        study._assert_family_state(broken, "A")
 
 
 def test_selected_a_c_repeat_revisit_and_rebuild(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cold, active_a, active_c = _state(0), _active(2, 1), _active(1, 1)
-    state_a, state_c = _state(1, active_a), _state(2, active_c)
-    revisit = copy.deepcopy(state_c)
-    revisit["active_family_union_census"] = active_a
+    state_a = _state(1, active_a, semantic_bindings=3)
+    state_c = _state(1, active_c, semantic_bindings=2)
     values = iter(
-        (cold, state_a, state_c, state_c, revisit, cold, state_a, state_c, revisit)
+        (
+            cold,
+            state_a,
+            state_c,
+            state_c,
+            state_c,
+            state_a,
+            state_a,
+            cold,
+            state_a,
+            state_c,
+            state_a,
+            state_a,
+        )
     )
     calls: list[str] = []
     monkeypatch.setattr(study, "_census", lambda *_: copy.deepcopy(next(values)))
@@ -1046,8 +1123,16 @@ def test_selected_a_c_repeat_revisit_and_rebuild(
 
     monkeypatch.setattr(study, "_evaluate", evaluate)
     monkeypatch.setattr(study, "_compare", lambda *_: {})
+
+    def native_evaluate(points: object, **_kwargs: object) -> tuple[complex, ...]:
+        if len(points) == 0:  # type: ignore[arg-type]
+            raise study.EvaluationError(
+                "on-the-fly evaluation requires at least one point"
+            )
+        return (1.0 + 0.0j,) * len(points)  # type: ignore[arg-type]
+
     runtime = SimpleNamespace(
-        clear=mock.Mock(), evaluate=mock.Mock(return_value=(1.0 + 0.0j,))
+        clear=mock.Mock(), evaluate=mock.Mock(side_effect=native_evaluate)
     )
     lifecycle = study._lifecycle(
         runtime,
@@ -1064,13 +1149,23 @@ def test_selected_a_c_repeat_revisit_and_rebuild(
         "exact",
         "selected",
         "selected",
+        "selected",
         "exact",
         "selected",
+        "selected",
     ]
-    assert lifecycle["sequence"] == "A,C,C,A; clear; A,C,A"
+    assert lifecycle["sequence"] == "A,C,C,failed-A,C,A,A; clear; A,C,A,A"
     assert lifecycle["requested_family"] == state_c
-    assert lifecycle["after_rebuild"] == revisit
-    assert lifecycle["final_plateau"] == revisit
+    assert lifecycle["selected_a_revisit"] == state_a
+    assert lifecycle["selected_a_revisit_repeat"] == state_a
+    assert lifecycle["after_rebuild"] == state_a
+    assert lifecycle["final_plateau"] == state_a
+    assert (
+        lifecycle["failed_selected_a_candidate"]["retained_family_after_failure"]
+        == state_c
+    )
+    assert state_a["semantic_executor_binding_count"] == 3
+    assert state_c["semantic_executor_binding_count"] == 2
     assert lifecycle["policy"]["mode"] == study.LIFECYCLE_EXHAUSTIVE
     assert lifecycle["clear_rebuild"]["status"] == "performed"
     assert "cold_first_evaluation_timing" not in lifecycle
@@ -1564,6 +1659,11 @@ def test_identity_n8_forbidden_route_and_worker_argv(
         "path": str(candidate.resolve()),
         "artifact_id": artifact_id,
     }
+    retained_state = _state(
+        1,
+        _active(2, 1),
+        process_id=case.process_id,
+    )
     selected_report.write_text(
         json.dumps(
             {
@@ -1593,11 +1693,11 @@ def test_identity_n8_forbidden_route_and_worker_argv(
                         "headline_point_count": 8,
                         "headline_seeds": list(study.SEEDS),
                         "plateau_repeat_point_count": 1,
-                        "retained_requested_family": {"retained_family_count": 1},
+                        "retained_requested_family": retained_state,
                         "clear_rebuild": study._clear_rebuild_evidence(
                             study._lifecycle_policy(case, "selected")
                         ),
-                        "final_plateau": {"retained_family_count": 1},
+                        "final_plateau": retained_state,
                     },
                     "requested_workload_cold_warmup": {
                         "kind": study.REQUESTED_COLD_WARMUP_KIND,
@@ -1610,7 +1710,7 @@ def test_identity_n8_forbidden_route_and_worker_argv(
                         "retained_for_followup": True,
                         "clear_call_status": ("omitted-retained-for-lean-lifecycle"),
                         "after_clear": None,
-                        "after_first_evaluation": {"retained_family_count": 1},
+                        "after_first_evaluation": retained_state,
                     },
                     "compact_selector_context": {
                         "selector_source": "compact-seed-one-based-color-ordinal-1",
@@ -1812,6 +1912,19 @@ def test_selected_report_binds_exact_candidate(
         recorded_path = (
             f"{candidate_path.parent}/../{candidate_path.parent.name}/candidate"
         )
+    cold_state = _state(0, process_id=case.process_id)
+    selected_a_state = _state(
+        1,
+        _active(2, 1),
+        semantic_bindings=3,
+        process_id=case.process_id,
+    )
+    exact_c_state = _state(
+        1,
+        _active(1, 1),
+        semantic_bindings=2,
+        process_id=case.process_id,
+    )
     payload = {
         "kind": f"{study.KIND}-run",
         "schema_version": study.SCHEMA_VERSION,
@@ -1836,7 +1949,26 @@ def test_selected_report_binds_exact_candidate(
                 "clear_rebuild": study._clear_rebuild_evidence(
                     study._lifecycle_policy(case, "selected")
                 ),
-                "final_plateau": {"retained_family_count": 2},
+                "selected_a": selected_a_state,
+                "requested_family": exact_c_state,
+                "requested_repeat": exact_c_state,
+                "failed_selected_a_candidate": {
+                    "status": "passed",
+                    "candidate_workload": "selected",
+                    "point_count": 0,
+                    "failure": "on-the-fly evaluation requires at least one point",
+                    "retained_family_after_failure": exact_c_state,
+                },
+                "selected_a_revisit": selected_a_state,
+                "selected_a_revisit_repeat": selected_a_state,
+                "after_clear": cold_state,
+                "after_rebuild_selected_a": selected_a_state,
+                "after_rebuild_exact_c": exact_c_state,
+                "after_rebuild_selected_a_revisit": selected_a_state,
+                "after_rebuild_selected_a_repeat": selected_a_state,
+                "after_rebuild": selected_a_state,
+                "final_plateau": selected_a_state,
+                "sequence": "A,C,C,failed-A,C,A,A; clear; A,C,A,A",
             },
             "requested_workload_cold_warmup": {
                 "query_construction_threads": study.OTF_QUERY_CONSTRUCTION_THREADS,

@@ -165,6 +165,7 @@ pub(super) struct OnTheFlyExecutionRuntime {
     selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
     prepared_selections: Vec<OnTheFlyPreparedSelectionV1>,
     last_prepared_selection: Option<usize>,
+    pending_prepared_selection: Option<OnTheFlyPreparedSelectionV1>,
     point_major_scratch: Vec<f64>,
 }
 
@@ -179,12 +180,14 @@ impl OnTheFlyExecutionRuntime {
             selectors,
             prepared_selections: Vec::new(),
             last_prepared_selection: None,
+            pending_prepared_selection: None,
             point_major_scratch: Vec::new(),
         }
     }
 
     fn clear(&mut self) -> RusticolResult<()> {
         self.lane.clear()?;
+        self.pending_prepared_selection = None;
         self.prepared_selections.clear();
         self.last_prepared_selection = None;
         self.point_major_scratch = Vec::new();
@@ -257,6 +260,8 @@ impl OnTheFlyExecutionRuntime {
         Ok(serde_json::json!({
             "kind": "rusticol-on-the-fly-runtime-state-census-v1",
             "process_id": process_id,
+            "family_cache_policy": "last-family-only",
+            "family_cache_limit": 1,
             "process_preparation_count": self.lane.process_preparation_count(),
             "retained_family_count": retained.family_count,
             "pending_family_count": self.lane.pending_family_count(),
@@ -339,24 +344,28 @@ impl OnTheFlyExecutionRuntime {
     ) -> RusticolResult<(usize, usize)> {
         let point_capacity = u32::try_from(point_count)
             .map_err(|_| RusticolError::invalid_argument("on-the-fly point count exceeds u32"))?;
-        if let Some(index) = self
-            .last_prepared_selection
-            .filter(|index| self.prepared_selections[*index].identity == identity)
-            .or_else(|| {
-                self.prepared_selections
-                    .iter()
-                    .position(|prepared| prepared.identity == identity)
-            })
+        if self
+            .pending_prepared_selection
+            .as_ref()
+            .is_some_and(|prepared| prepared.identity == identity)
         {
-            if self.last_prepared_selection == Some(index) {
-                self.lane.reuse_current_lc_queries(point_capacity)?;
-            } else {
-                self.lane.prepare_lc_queries(
-                    &self.prepared_selections[index].requests,
-                    point_capacity,
-                )?;
-                self.last_prepared_selection = Some(index);
-            }
+            self.lane.reuse_current_lc_queries(point_capacity)?;
+            let prepared = self
+                .pending_prepared_selection
+                .as_ref()
+                .expect("matching pending on-the-fly selection disappeared");
+            return Ok((
+                prepared.helicity_indices.len(),
+                prepared.color_indices.len(),
+            ));
+        }
+        self.discard_pending_selection()?;
+        if let Some(index) = self.last_prepared_selection.filter(|index| {
+            self.prepared_selections
+                .get(*index)
+                .is_some_and(|prepared| prepared.identity == identity)
+        }) {
+            self.lane.reuse_current_lc_queries(point_capacity)?;
             let prepared = &self.prepared_selections[index];
             return Ok((
                 prepared.helicity_indices.len(),
@@ -364,11 +373,15 @@ impl OnTheFlyExecutionRuntime {
             ));
         }
 
-        self.prepared_selections.try_reserve(1).map_err(|error| {
-            RusticolError::invalid_argument(format!(
-                "on-the-fly prepared-selection allocation failed: {error}"
-            ))
-        })?;
+        if self.prepared_selections.capacity() == 0 {
+            self.prepared_selections
+                .try_reserve_exact(1)
+                .map_err(|error| {
+                    RusticolError::invalid_argument(format!(
+                        "on-the-fly prepared-selection allocation failed: {error}"
+                    ))
+                })?;
+        }
         let selection = self.selectors.selection_from_ordinals(
             self.lane.seed(),
             identity.helicity_ordinals.as_deref(),
@@ -390,8 +403,7 @@ impl OnTheFlyExecutionRuntime {
             .collect::<RusticolResult<Vec<_>>>()?;
         let requests = selection.iter().collect::<RusticolResult<Vec<_>>>()?;
         self.lane.prepare_lc_queries(&requests, point_capacity)?;
-        let index = self.prepared_selections.len();
-        self.prepared_selections.push(OnTheFlyPreparedSelectionV1 {
+        self.pending_prepared_selection = Some(OnTheFlyPreparedSelectionV1 {
             identity,
             helicity_indices: helicity_indices.into_boxed_slice(),
             color_indices: color_indices.into_boxed_slice(),
@@ -399,14 +411,32 @@ impl OnTheFlyExecutionRuntime {
             color_ids: color_ids.into_boxed_slice(),
             requests: requests.into_boxed_slice(),
         });
-        self.last_prepared_selection = Some(index);
         Ok((helicity_count, color_count))
     }
 
     fn current_prepared_selection(&self) -> RusticolResult<&OnTheFlyPreparedSelectionV1> {
-        self.last_prepared_selection
-            .and_then(|index| self.prepared_selections.get(index))
+        self.pending_prepared_selection
+            .as_ref()
+            .or_else(|| {
+                self.last_prepared_selection
+                    .and_then(|index| self.prepared_selections.get(index))
+            })
             .ok_or_else(|| RusticolError::internal("on-the-fly selection was not retained"))
+    }
+
+    fn discard_pending_selection(&mut self) -> RusticolResult<()> {
+        self.lane.discard_pending_lc_queries()?;
+        self.pending_prepared_selection = None;
+        Ok(())
+    }
+
+    fn commit_pending_selection(&mut self) {
+        let Some(selection) = self.pending_prepared_selection.take() else {
+            return;
+        };
+        self.prepared_selections.clear();
+        self.prepared_selections.push(selection);
+        self.last_prepared_selection = Some(0);
     }
 
     fn selected_axis_ids(&self) -> RusticolResult<(Vec<String>, Vec<String>)> {
@@ -422,19 +452,31 @@ impl OnTheFlyExecutionRuntime {
         selected_colors: Option<&BTreeSet<String>>,
         output: &mut [f64],
     ) -> RusticolResult<RuntimeProfile> {
-        let point_count = batch.point_count();
-        self.prepare_selection(selected_helicities, selected_colors, point_count)?;
-        let input_len = self.fill_point_major(batch)?;
-        let (_, profile) = self.lane.run_f64_into(
-            &self.point_major_scratch[..input_len],
-            u32::try_from(point_count).map_err(|_| {
-                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
-            })?,
-            &common.model_parameter_values_f64,
-            common.normalization_factor,
-            output,
-        )?;
-        Ok(profile)
+        let result = (|| {
+            let point_count = batch.point_count();
+            self.prepare_selection(selected_helicities, selected_colors, point_count)?;
+            let input_len = self.fill_point_major(batch)?;
+            let (_, profile) = self.lane.run_f64_into(
+                &self.point_major_scratch[..input_len],
+                u32::try_from(point_count).map_err(|_| {
+                    RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+                })?,
+                &common.model_parameter_values_f64,
+                common.normalization_factor,
+                output,
+            )?;
+            Ok(profile)
+        })();
+        match result {
+            Ok(profile) => {
+                self.commit_pending_selection();
+                Ok(profile)
+            }
+            Err(error) => {
+                self.discard_pending_selection()?;
+                Err(error)
+            }
+        }
     }
 
     fn run_total_into_by_ordinals(
@@ -445,19 +487,31 @@ impl OnTheFlyExecutionRuntime {
         color_ordinals: Option<&[usize]>,
         output: &mut [f64],
     ) -> RusticolResult<RuntimeProfile> {
-        let point_count = batch.point_count();
-        self.prepare_selection_from_ordinals(helicity_ordinals, color_ordinals, point_count)?;
-        let input_len = self.fill_point_major(batch)?;
-        let (_, profile) = self.lane.run_f64_into(
-            &self.point_major_scratch[..input_len],
-            u32::try_from(point_count).map_err(|_| {
-                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
-            })?,
-            &common.model_parameter_values_f64,
-            common.normalization_factor,
-            output,
-        )?;
-        Ok(profile)
+        let result = (|| {
+            let point_count = batch.point_count();
+            self.prepare_selection_from_ordinals(helicity_ordinals, color_ordinals, point_count)?;
+            let input_len = self.fill_point_major(batch)?;
+            let (_, profile) = self.lane.run_f64_into(
+                &self.point_major_scratch[..input_len],
+                u32::try_from(point_count).map_err(|_| {
+                    RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+                })?,
+                &common.model_parameter_values_f64,
+                common.normalization_factor,
+                output,
+            )?;
+            Ok(profile)
+        })();
+        match result {
+            Ok(profile) => {
+                self.commit_pending_selection();
+                Ok(profile)
+            }
+            Err(error) => {
+                self.discard_pending_selection()?;
+                Err(error)
+            }
+        }
     }
 
     fn run_resolved(
@@ -467,40 +521,52 @@ impl OnTheFlyExecutionRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
-        let point_count = batch.point_count();
-        let (helicity_count, color_count) =
-            self.prepare_selection(selected_helicities, selected_colors, point_count)?;
-        let prepared = self.current_prepared_selection()?;
-        let helicity_indices = prepared.helicity_indices.to_vec();
-        let color_indices = prepared.color_indices.to_vec();
-        let value_count = point_count
-            .checked_mul(helicity_count)
-            .and_then(|value| value.checked_mul(color_count))
-            .ok_or_else(|| {
-                RusticolError::invalid_argument("on-the-fly resolved shape exceeds usize")
-            })?;
-        let mut values = vec![0.0; value_count];
-        let input_len = self.fill_point_major(batch)?;
-        let (_, profile) = self.lane.run_resolved_f64_into(
-            &self.point_major_scratch[..input_len],
-            u32::try_from(point_count).map_err(|_| {
-                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
-            })?,
-            &common.model_parameter_values_f64,
-            common.normalization_factor,
-            helicity_count,
-            color_count,
-            &mut values,
-        )?;
-        Ok((
-            ResolvedValues {
-                values,
-                point_count,
-                helicity_indices,
-                color_indices,
-            },
-            profile,
-        ))
+        let result = (|| {
+            let point_count = batch.point_count();
+            let (helicity_count, color_count) =
+                self.prepare_selection(selected_helicities, selected_colors, point_count)?;
+            let prepared = self.current_prepared_selection()?;
+            let helicity_indices = prepared.helicity_indices.to_vec();
+            let color_indices = prepared.color_indices.to_vec();
+            let value_count = point_count
+                .checked_mul(helicity_count)
+                .and_then(|value| value.checked_mul(color_count))
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("on-the-fly resolved shape exceeds usize")
+                })?;
+            let mut values = vec![0.0; value_count];
+            let input_len = self.fill_point_major(batch)?;
+            let (_, profile) = self.lane.run_resolved_f64_into(
+                &self.point_major_scratch[..input_len],
+                u32::try_from(point_count).map_err(|_| {
+                    RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+                })?,
+                &common.model_parameter_values_f64,
+                common.normalization_factor,
+                helicity_count,
+                color_count,
+                &mut values,
+            )?;
+            Ok((
+                ResolvedValues {
+                    values,
+                    point_count,
+                    helicity_indices,
+                    color_indices,
+                },
+                profile,
+            ))
+        })();
+        match result {
+            Ok(result) => {
+                self.commit_pending_selection();
+                Ok(result)
+            }
+            Err(error) => {
+                self.discard_pending_selection()?;
+                Err(error)
+            }
+        }
     }
 }
 

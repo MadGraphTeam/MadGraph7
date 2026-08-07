@@ -13,22 +13,18 @@ from jsonschema import Draft202012Validator, ValidationError
 from tools.performance_report import cache as report_cache
 from tools.performance_report import measurement as report_measurement
 from tools.performance_report import runner as report_runner
-from tools.performance_report.agreements import (
-    DIRECT_AGREEMENT_FIELD,
-    OTF_COMPILED_CROSS_MODE,
-    incoming_agreement_edges,
-)
+from tools.performance_report.agreements import DIRECT_AGREEMENT_FIELD
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.models import Accuracy, CellSpec, ExecutionMode, Workload
 from tools.performance_report.runner import (
-    OTF_DUAL_AUTHORITY_VALIDATION_FIELD,
+    OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD,
     GeneratedArtifact,
     RunnerError,
     RunnerSettings,
     SelectorContract,
     config_values,
     derive_selector_contract,
-    on_the_fly_dual_authority_validation,
+    on_the_fly_recurrence_authority_validation,
     point_digest,
     runtime_identity_payload,
     validate_runtime_contract,
@@ -52,15 +48,11 @@ def _otf_cell(workload: Workload):
     )
 
 
-def _authorities(cell):
+def _recurrence_authority(cell):
     recurrence = REPORT_CATALOG.validation_baseline_cell(cell)
     assert recurrence is not None
-    compiled = next(
-        edge.baseline
-        for edge in incoming_agreement_edges(cell)
-        if edge.kind == OTF_COMPILED_CROSS_MODE
-    )
-    return recurrence, compiled
+    assert recurrence.measurement.execution_mode is ExecutionMode.RECURRENCE
+    return recurrence
 
 
 def _contract() -> SelectorContract:
@@ -319,52 +311,40 @@ class _CompactCandidate:
 
 def _valid_gate(workload: Workload):
     cell = _otf_cell(workload)
-    recurrence_cell, compiled_cell = _authorities(cell)
+    recurrence_cell = _recurrence_authority(cell)
     candidate = _Runtime(ExecutionMode.ON_THE_FLY, "a")
     recurrence = _Runtime(
         ExecutionMode.RECURRENCE,
         "b",
         reverse_resolved_axis=True,
     )
-    compiled = _Runtime(ExecutionMode.COMPILED, "c")
     contract = _contract()
-    record = on_the_fly_dual_authority_validation(
+    record = on_the_fly_recurrence_authority_validation(
         candidate,
         POINTS,
         cell=cell,
         selector_contract=contract,
-        authorities=(
-            ("recurrence", recurrence_cell, recurrence),
-            ("compiled", compiled_cell, compiled),
-        ),
+        authority=(recurrence_cell, recurrence),
     )
-    return cell, contract, record, candidate, recurrence, compiled
+    return cell, contract, record, candidate, recurrence
 
 
 @pytest.mark.parametrize("workload", (Workload.SELECTED_FLOW, Workload.ALL_FLOW))
-def test_dual_authority_candidate_uses_only_compact_selector_contract(
+def test_recurrence_authority_candidate_uses_only_compact_selector_contract(
     workload: Workload,
 ) -> None:
     cell = _otf_cell(workload)
-    recurrence_cell, compiled_cell = _authorities(cell)
+    recurrence_cell = _recurrence_authority(cell)
     candidate = _CompactCandidate(cell)
 
-    record = on_the_fly_dual_authority_validation(
+    record = on_the_fly_recurrence_authority_validation(
         candidate,
         POINTS,
         cell=cell,
         selector_contract=_contract(),
-        authorities=(
-            (
-                "recurrence",
-                recurrence_cell,
-                _Runtime(ExecutionMode.RECURRENCE, "b"),
-            ),
-            (
-                "compiled",
-                compiled_cell,
-                _Runtime(ExecutionMode.COMPILED, "c"),
-            ),
+        authority=(
+            recurrence_cell,
+            _Runtime(ExecutionMode.RECURRENCE, "b"),
         ),
     )
 
@@ -442,7 +422,7 @@ def test_compact_runtime_rejects_non_otf_cell_before_dense_physics_access(
     validation: str,
 ) -> None:
     otf_cell = _otf_cell(Workload.SELECTED_FLOW)
-    recurrence_cell, _compiled_cell = _authorities(otf_cell)
+    recurrence_cell = _recurrence_authority(otf_cell)
     candidate = _CompactCandidate(otf_cell)
 
     with pytest.raises(RunnerError, match="wrong execution mode"):
@@ -462,12 +442,10 @@ def test_compact_runtime_rejects_non_otf_cell_before_dense_physics_access(
 
 
 @pytest.mark.parametrize("workload", (Workload.SELECTED_FLOW, Workload.ALL_FLOW))
-def test_dual_authority_gate_aligns_semantic_axes_and_resets_before_profile(
+def test_recurrence_authority_gate_aligns_semantic_axes_and_resets_before_profile(
     workload: Workload,
 ) -> None:
-    _cell, _contract_value, record, candidate, recurrence, compiled = _valid_gate(
-        workload
-    )
+    _cell, _contract_value, record, candidate, recurrence = _valid_gate(workload)
     expected_selectors = (
         (None, (FLOW_IDS[0],))
         if workload is Workload.SELECTED_FLOW
@@ -489,26 +467,22 @@ def test_dual_authority_gate_aligns_semantic_axes_and_resets_before_profile(
         ("resolved", *expected_selectors),
         ("resolved-total", *expected_selectors),
     ]
-    assert compiled.events == recurrence.events
     assert record["lifecycle"]["clear_call_count"] == 2
     assert record["lifecycle"]["final_clear_before_profile"] is True
     assert record["resolved_check_count"] == 4
-    assert all(
-        authority["resolved_sum"]["maximum_conditioned_residual"] == 0.0
-        for authority in record["authorities"]
-    )
+    assert record["authority"]["resolved_sum"]["maximum_conditioned_residual"] == 0.0
     assert all(
         stage["candidate_resolved_sum"]["maximum_conditioned_residual"] == 0.0
         for stage in (record["before_clear"], record["after_clear"])
     )
     assert (
-        record["authorities"][0]["resolved_ordering_sha256"]
+        record["authority"]["resolved_ordering_sha256"]
         != record["before_clear"]["candidate_resolved_ordering_sha256"]
     )
     assert all(
-        comparison["resolved_components"]["maximum_conditioned_residual"] == 0.0
+        stage["comparison"]["resolved_components"]["maximum_conditioned_residual"]
+        == 0.0
         for stage in (record["before_clear"], record["after_clear"])
-        for comparison in stage["comparisons"]
     )
 
 
@@ -517,14 +491,13 @@ def test_mutated_nonfirst_component_fails_before_public_profile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cell = _otf_cell(Workload.SELECTED_FLOW)
-    recurrence_cell, compiled_cell = _authorities(cell)
+    recurrence_cell = _recurrence_authority(cell)
     candidate = _Runtime(
         ExecutionMode.ON_THE_FLY,
         "a",
         mutate_nonfirst_component=True,
     )
     recurrence = _Runtime(ExecutionMode.RECURRENCE, "b")
-    compiled = _Runtime(ExecutionMode.COMPILED, "c")
     contract = _contract()
     generated = GeneratedArtifact(
         path=tmp_path / "candidate",
@@ -556,11 +529,8 @@ def test_mutated_nonfirst_component_fails_before_public_profile(
     )
     monkeypatch.setattr(
         report_measurement,
-        "_load_on_the_fly_authority_runtimes",
-        lambda *_a, **_k: (
-            ("recurrence", recurrence_cell, recurrence),
-            ("compiled", compiled_cell, compiled),
-        ),
+        "_load_on_the_fly_recurrence_authority",
+        lambda *_a, **_k: (recurrence_cell, recurrence),
     )
     monkeypatch.setattr(
         report_measurement,
@@ -588,8 +558,8 @@ def test_mutated_nonfirst_component_fails_before_public_profile(
 
 def test_pure_gluon_structural_zero_residue_uses_resolved_slice_scale() -> None:
     cell = _otf_cell(Workload.SELECTED_FLOW)
-    recurrence_cell, compiled_cell = _authorities(cell)
-    record = on_the_fly_dual_authority_validation(
+    recurrence_cell = _recurrence_authority(cell)
+    record = on_the_fly_recurrence_authority_validation(
         _Runtime(
             ExecutionMode.ON_THE_FLY,
             "a",
@@ -598,33 +568,19 @@ def test_pure_gluon_structural_zero_residue_uses_resolved_slice_scale() -> None:
         POINTS,
         cell=cell,
         selector_contract=_contract(),
-        authorities=(
-            (
-                "recurrence",
-                recurrence_cell,
-                _Runtime(
-                    ExecutionMode.RECURRENCE,
-                    "b",
-                    reverse_resolved_axis=True,
-                    structural_zero_residue=0.0,
-                ),
-            ),
-            (
-                "compiled",
-                compiled_cell,
-                _Runtime(
-                    ExecutionMode.COMPILED,
-                    "c",
-                    structural_zero_residue=0.0,
-                ),
+        authority=(
+            recurrence_cell,
+            _Runtime(
+                ExecutionMode.RECURRENCE,
+                "b",
+                reverse_resolved_axis=True,
+                structural_zero_residue=0.0,
             ),
         ),
     )
 
     comparisons = tuple(
-        comparison
-        for stage in (record["before_clear"], record["after_clear"])
-        for comparison in stage["comparisons"]
+        stage["comparison"] for stage in (record["before_clear"], record["after_clear"])
     )
     assert all(
         comparison["resolved_components"]["maximum_absolute_delta"]
@@ -640,7 +596,7 @@ def test_pure_gluon_structural_zero_residue_uses_resolved_slice_scale() -> None:
 
 def test_inconsistent_optimized_and_resolved_sum_fails_before_clear() -> None:
     cell = _otf_cell(Workload.SELECTED_FLOW)
-    recurrence_cell, compiled_cell = _authorities(cell)
+    recurrence_cell = _recurrence_authority(cell)
     candidate = _Runtime(
         ExecutionMode.ON_THE_FLY,
         "a",
@@ -648,22 +604,14 @@ def test_inconsistent_optimized_and_resolved_sum_fails_before_clear() -> None:
     )
 
     with pytest.raises(RunnerError, match="optimized/resolved sum disagrees"):
-        on_the_fly_dual_authority_validation(
+        on_the_fly_recurrence_authority_validation(
             candidate,
             POINTS,
             cell=cell,
             selector_contract=_contract(),
-            authorities=(
-                (
-                    "recurrence",
-                    recurrence_cell,
-                    _Runtime(ExecutionMode.RECURRENCE, "b"),
-                ),
-                (
-                    "compiled",
-                    compiled_cell,
-                    _Runtime(ExecutionMode.COMPILED, "c"),
-                ),
+            authority=(
+                recurrence_cell,
+                _Runtime(ExecutionMode.RECURRENCE, "b"),
             ),
         )
 
@@ -671,7 +619,7 @@ def test_inconsistent_optimized_and_resolved_sum_fails_before_clear() -> None:
     assert ("clear",) not in candidate.events
 
 
-def test_measurement_releases_authority_runtimes_before_public_profile(
+def test_measurement_releases_recurrence_authority_before_public_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -679,7 +627,7 @@ def test_measurement_releases_authority_runtimes_before_public_profile(
         pass
 
     cell = _otf_cell(Workload.SELECTED_FLOW)
-    recurrence_cell, compiled_cell = _authorities(cell)
+    recurrence_cell = _recurrence_authority(cell)
     candidate = _Runtime(ExecutionMode.ON_THE_FLY, "a")
     contract = _contract()
     generated = GeneratedArtifact(
@@ -693,14 +641,10 @@ def test_measurement_releases_authority_runtimes_before_public_profile(
     )
     authority_refs: list[ReferenceType[_Runtime]] = []
 
-    def load_authorities(*_args: object, **_kwargs: object):
+    def load_authority(*_args: object, **_kwargs: object):
         recurrence = _Runtime(ExecutionMode.RECURRENCE, "b")
-        compiled = _Runtime(ExecutionMode.COMPILED, "c")
-        authority_refs.extend((ref(recurrence), ref(compiled)))
-        return (
-            ("recurrence", recurrence_cell, recurrence),
-            ("compiled", compiled_cell, compiled),
-        )
+        authority_refs.append(ref(recurrence))
+        return (recurrence_cell, recurrence)
 
     def profile(*_args: object, **_kwargs: object):
         gc.collect()
@@ -726,8 +670,8 @@ def test_measurement_releases_authority_runtimes_before_public_profile(
     )
     monkeypatch.setattr(
         report_measurement,
-        "_load_on_the_fly_authority_runtimes",
-        load_authorities,
+        "_load_on_the_fly_recurrence_authority",
+        load_authority,
     )
     monkeypatch.setattr(
         report_measurement,
@@ -751,16 +695,14 @@ def test_measurement_releases_authority_runtimes_before_public_profile(
         )
 
 
-def test_authorities_are_loaded_from_measurements_without_generation(
+def test_recurrence_authority_is_loaded_without_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cell = _otf_cell(Workload.SELECTED_FLOW)
-    recurrence_cell, compiled_cell = _authorities(cell)
+    recurrence_cell = _recurrence_authority(cell)
     recurrence_path = tmp_path / "recurrence"
-    compiled_path = tmp_path / "compiled"
     recurrence_path.mkdir()
-    compiled_path.mkdir()
 
     def measurement(path: Path, process_id: str) -> dict[str, object]:
         return {
@@ -776,7 +718,6 @@ def test_authorities_are_loaded_from_measurements_without_generation(
         }
 
     baseline = measurement(recurrence_path, "recurrence-process")
-    compiled_measurement = measurement(compiled_path, "compiled-process")
     loads: list[tuple[Path, str]] = []
     validations: list[tuple[str, Path]] = []
     monkeypatch.setattr(
@@ -795,25 +736,17 @@ def test_authorities_are_loaded_from_measurements_without_generation(
         lambda *_a, **_k: pytest.fail("authority generation must not run"),
     )
 
-    loaded = report_measurement._load_on_the_fly_authority_runtimes(
-        cell,
-        baseline=baseline,
-        validation_peers={compiled_cell.cell_id: compiled_measurement},
-        catalog=REPORT_CATALOG,
+    loaded_cell, _loaded_runtime = (
+        report_measurement._load_on_the_fly_recurrence_authority(
+            cell,
+            baseline=baseline,
+            catalog=REPORT_CATALOG,
+        )
     )
 
-    assert [(role, authority_cell.cell_id) for role, authority_cell, _ in loaded] == [
-        ("recurrence", recurrence_cell.cell_id),
-        ("compiled", compiled_cell.cell_id),
-    ]
-    assert loads == [
-        (recurrence_path.resolve(), "recurrence-process"),
-        (compiled_path.resolve(), "compiled-process"),
-    ]
-    assert validations == [
-        (recurrence_cell.cell_id, recurrence_path.resolve()),
-        (compiled_cell.cell_id, compiled_path.resolve()),
-    ]
+    assert loaded_cell == recurrence_cell
+    assert loads == [(recurrence_path.resolve(), "recurrence-process")]
+    assert validations == [(recurrence_cell.cell_id, recurrence_path.resolve())]
 
 
 def test_otf_cache_requires_and_authenticates_compact_gate_record() -> None:
@@ -824,8 +757,8 @@ def test_otf_cache_requires_and_authenticates_compact_gate_record() -> None:
             "runtime_identity": {"artifact_id": record["candidate_artifact_id"]}
         },
     }
-    validation = {OTF_DUAL_AUTHORITY_VALIDATION_FIELD: record}
-    report_cache._validate_successful_otf_dual_authority(
+    validation = {OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD: record}
+    report_cache._validate_successful_otf_recurrence_authority(
         measurement,
         validation,
         expected_cell=cell,
@@ -833,7 +766,7 @@ def test_otf_cache_requires_and_authenticates_compact_gate_record() -> None:
     )
 
     with pytest.raises(ValueError, match="must be an object"):
-        report_cache._validate_successful_otf_dual_authority(
+        report_cache._validate_successful_otf_recurrence_authority(
             measurement,
             {},
             expected_cell=cell,
@@ -853,14 +786,42 @@ def test_otf_cache_requires_and_authenticates_compact_gate_record() -> None:
         elif mutation == "lifecycle":
             corrupted["lifecycle"]["clear_call_count"] = 1
         else:
-            corrupted["authorities"][1]["cell_id"] = "wrong-compiled-cell"
+            corrupted["authority"]["cell_id"] = "wrong-recurrence-cell"
         with pytest.raises(ValueError):
-            report_cache._validate_successful_otf_dual_authority(
+            report_cache._validate_successful_otf_recurrence_authority(
                 measurement,
-                {OTF_DUAL_AUTHORITY_VALIDATION_FIELD: corrupted},
+                {OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD: corrupted},
                 expected_cell=cell,
                 catalog=REPORT_CATALOG,
             )
+
+
+def _warmup_runtime_state(*, retained: bool) -> dict[str, object]:
+    counts = {field: 0 for field in report_runner.OTF_RUNTIME_STATE_COUNT_FIELDS}
+    active: dict[str, object] | None = None
+    if retained:
+        counts.update(
+            {
+                field: 1
+                for field in (
+                    *report_runner.OTF_RUNTIME_STATE_RETAINED_BASE_POSITIVE_FIELDS,
+                    *report_runner.OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS,
+                )
+            }
+        )
+        active = {
+            "basis": "shared-query-family-union-v1",
+            "scope": "active-family-union",
+            **{field: 1 for field in report_runner.OTF_ACTIVE_FAMILY_COUNT_FIELDS},
+        }
+    return {
+        "kind": report_runner.OTF_RUNTIME_STATE_CENSUS_KIND,
+        "process_id": "otf_warmup_process",
+        "family_cache_policy": report_runner.OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY,
+        "family_cache_limit": report_runner.OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+        **counts,
+        "active_family_union_census": active,
+    }
 
 
 def _warmup_evidence() -> dict[str, object]:
@@ -874,6 +835,14 @@ def _warmup_evidence() -> dict[str, object]:
         "cold_warmup_runtime_freshness": (
             report_runner.OTF_COLD_WARMUP_RUNTIME_FRESHNESS
         ),
+        "cold_warmup_runtime_state_evidence": (
+            report_runner.OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE
+        ),
+        "cold_warmup_runtime_state_before": _warmup_runtime_state(retained=False),
+        "cold_warmup_runtime_state_after": _warmup_runtime_state(retained=True),
+        "cold_warmup_runtime_cold_before_first_evaluation": True,
+        "cold_warmup_runtime_retained_before_first_evaluation": False,
+        "cold_warmup_runtime_retained_after_first_evaluation": True,
         "cold_warmup_ratio_eligible": False,
         "cold_warmup_acceptance_eligible": False,
         "warmup_elapsed_seconds": 0.021,
@@ -902,6 +871,67 @@ def test_otf_cache_requires_complete_cold_and_conventional_warmups() -> None:
         measurement,
         expected_cell=cell,
     )
+
+    structural_zero = deepcopy(measurement)
+    structural_after = structural_zero["provenance"]["runtime_profile"][
+        "cold_warmup_runtime_state_after"
+    ]
+    for field in report_runner.OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS:
+        structural_after[field] = 0
+    structural_after["active_family_union_census"] = None
+    report_cache._validate_successful_otf_warmup_evidence(
+        structural_zero,
+        expected_cell=cell,
+    )
+    partial_structural_zero = deepcopy(structural_zero)
+    partial_structural_zero["provenance"]["runtime_profile"][
+        "cold_warmup_runtime_state_after"
+    ]["retained_executor_handle_count"] = 1
+    with pytest.raises(
+        ValueError,
+        match=r"after the first evaluation.*strictly retained",
+    ):
+        report_cache._validate_successful_otf_warmup_evidence(
+            partial_structural_zero,
+            expected_cell=cell,
+        )
+
+    retained_before = deepcopy(measurement)
+    retained_profile = retained_before["provenance"]["runtime_profile"]
+    retained_profile["cold_warmup_runtime_state_before"] = _warmup_runtime_state(
+        retained=True
+    )
+    retained_profile["cold_warmup_runtime_freshness"] = (
+        report_runner.OTF_COLD_WARMUP_RUNTIME_RETAINED_FRESHNESS
+    )
+    retained_profile["cold_warmup_runtime_cold_before_first_evaluation"] = False
+    retained_profile["cold_warmup_runtime_retained_before_first_evaluation"] = True
+    report_cache._validate_successful_otf_warmup_evidence(
+        retained_before,
+        expected_cell=cell,
+    )
+
+    partial_after = deepcopy(measurement)
+    partial_after_profile = partial_after["provenance"]["runtime_profile"]
+    partial_after_profile["cold_warmup_runtime_state_after"]["pending_family_count"] = 1
+    with pytest.raises(
+        ValueError,
+        match=r"after the first evaluation.*strictly retained",
+    ):
+        report_cache._validate_successful_otf_warmup_evidence(
+            partial_after,
+            expected_cell=cell,
+        )
+
+    invalid_limit = deepcopy(measurement)
+    invalid_limit["provenance"]["runtime_profile"]["cold_warmup_runtime_state_before"][
+        "family_cache_limit"
+    ] = True
+    with pytest.raises(ValueError, match="family cache limit 1"):
+        report_cache._validate_successful_otf_warmup_evidence(
+            invalid_limit,
+            expected_cell=cell,
+        )
 
     missing = deepcopy(measurement)
     del missing["provenance"]["runtime_profile"]["warmup_timer_source"]
@@ -967,6 +997,26 @@ def test_report_cache_schema_carries_bounded_warmup_field_contracts() -> None:
     assert runtime_profile["properties"]["cold_warmup_ratio_eligible"] == {
         "const": False
     }
+    assert runtime_profile["properties"]["cold_warmup_runtime_freshness"] == {
+        "enum": sorted(report_runner.OTF_COLD_WARMUP_RUNTIME_FRESHNESSES)
+    }
+    assert runtime_profile["properties"]["cold_warmup_runtime_state_evidence"] == {
+        "const": report_runner.OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE
+    }
+    state_schema = runtime_profile["properties"]["cold_warmup_runtime_state_before"]
+    assert state_schema["properties"]["kind"] == {
+        "const": report_runner.OTF_RUNTIME_STATE_CENSUS_KIND
+    }
+    assert state_schema["properties"]["family_cache_policy"] == {
+        "const": report_runner.OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY
+    }
+    assert state_schema["properties"]["family_cache_limit"] == {
+        "const": report_runner.OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT
+    }
+    assert state_schema["additionalProperties"] is False
+    assert runtime_profile["properties"][
+        "cold_warmup_runtime_retained_after_first_evaluation"
+    ] == {"const": True}
     assert runtime_profile["properties"]["warmup_timer_source"] == {
         "const": report_runner.WARMUP_TIMER_SOURCE
     }
@@ -982,12 +1032,16 @@ def test_report_cache_schema_carries_bounded_warmup_field_contracts() -> None:
     assert "warmup_elapsed_seconds" not in runtime_profile["dependentRequired"]
 
     validator = Draft202012Validator(runtime_profile)
+    validator.validate(_warmup_evidence())
     validator.validate({"warmup_elapsed_seconds": 0.2})
     with pytest.raises(ValidationError):
         validator.validate({"cold_warmup_elapsed_seconds": 0.2})
 
-    compiled = _authorities(_otf_cell(Workload.SELECTED_FLOW))[1]
-    historical = report_cache.build_reset_cache(compiled.dataset_id, (compiled,))
+    recurrence = _recurrence_authority(_otf_cell(Workload.SELECTED_FLOW))
+    historical = report_cache.build_reset_cache(
+        recurrence.dataset_id,
+        (recurrence,),
+    )
     historical_measurement = historical["entries"][0]["measurement"]
     historical_measurement["status"] = "ok"
     historical_measurement["validation"] = {DIRECT_AGREEMENT_FIELD: []}

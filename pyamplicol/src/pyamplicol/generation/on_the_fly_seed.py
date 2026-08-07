@@ -191,9 +191,7 @@ def project_on_the_fly_process_seed_v1(
             "on-the-fly coupling-order policy must be 'minimal' or 'explicit'"
         )
 
-    template_ids, _template_references = _project_template_references(
-        template_catalog
-    )
+    template_ids, _template_references = _project_template_references(template_catalog)
     external_sources, selected_sources = _project_external_legs(
         process,
         template_catalog,
@@ -224,6 +222,7 @@ def project_on_the_fly_process_seed_v1(
             for name, _power in record.coupling_orders
         }
     )
+    projected_coupling_limits = _project_coupling_limits(coupling_order_limits)
     model_hierarchies = {
         str(name).upper(): max(1, int(value))
         for name, value in model.coupling_order_hierarchies().items()
@@ -235,10 +234,11 @@ def project_on_the_fly_process_seed_v1(
         parameter_projection=_project_parameters(template_catalog, template_ids),
         coupling_order_policy=coupling_order_policy,
         coupling_hierarchies=tuple(
-            (name, model_hierarchies.get(name, 1))
-            for name in coupling_order_names
+            (name, model_hierarchies.get(name, 1)) for name in coupling_order_names
         ),
-        coupling_limits=_project_coupling_limits(coupling_order_limits),
+        coupling_limits=tuple(
+            row for row in projected_coupling_limits if row.name in coupling_order_names
+        ),
         fermion_pairing=(None if not pairing.endpoints else pairing),
         normalization=normalization,
     )

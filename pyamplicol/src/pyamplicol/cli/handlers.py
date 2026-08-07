@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
@@ -18,6 +19,10 @@ from pyamplicol.reporting import (
 
 if TYPE_CHECKING:
     from pyamplicol.api import ModelSource, ProcessSet
+    from pyamplicol.artifacts.inspection import (
+        ArtifactInspection,
+        ArtifactProcessInspection,
+    )
     from pyamplicol.models.loading import CompiledModel as _CompiledModelPayload
 
 _T = TypeVar("_T")
@@ -34,7 +39,13 @@ class CliServices(Protocol):
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object: ...
 
-    def inspect(self, config: RunConfig, progress: ProgressSink) -> object: ...
+    def inspect(
+        self,
+        config: RunConfig,
+        progress: ProgressSink,
+        *,
+        full_physics: bool = False,
+    ) -> object: ...
 
     def model_inspect(self, config: RunConfig, progress: ProgressSink) -> object: ...
 
@@ -49,6 +60,7 @@ def dispatch(
     progress: ProgressSink,
     *,
     dry_run: bool = False,
+    full_physics: bool = False,
 ) -> object:
     """Dispatch a typed config without importing a concrete domain backend."""
 
@@ -63,6 +75,8 @@ def dispatch(
     if config.action == "benchmark":
         return services.benchmark(config, progress)
     if config.action == "inspect":
+        if full_physics:
+            return services.inspect(config, progress, full_physics=True)
         return services.inspect(config, progress)
     if config.action == "model-inspect":
         return services.model_inspect(config, progress)
@@ -140,6 +154,46 @@ def _load_process_output(
         )
     )
     return result
+
+
+def _select_compact_process_inspection(
+    inspection: ArtifactInspection,
+    selector: str,
+) -> ArtifactInspection:
+    """Select one representative without loading its executable runtime."""
+
+    def select(matches: list[ArtifactProcessInspection]) -> ArtifactInspection:
+        representatives = {item.id: item for item in matches}
+        if len(representatives) > 1:
+            identifiers = ", ".join(sorted(representatives))
+            raise ConfigurationError(
+                f"inspect process selector {selector!r} is ambiguous across "
+                f"representatives: {identifiers}"
+            )
+        if representatives:
+            selected = next(iter(representatives.values()))
+            return replace(inspection, processes=(selected,))
+        raise ConfigurationError(
+            f"inspect process selector {selector!r} did not match a stable "
+            "representative ID, alias ID, or exact process expression"
+        )
+
+    identifier_matches = [
+        process
+        for process in inspection.processes
+        if process.id == selector
+        or any(alias.id == selector for alias in process.aliases)
+    ]
+    if identifier_matches:
+        return select(identifier_matches)
+    return select(
+        [
+            process
+            for process in inspection.processes
+            if process.expression == selector
+            or any(alias.expression == selector for alias in process.aliases)
+        ]
+    )
 
 
 def _compile_configured_model(
@@ -232,14 +286,17 @@ class DefaultCliServices:
             raise ConfigurationError("evaluate requires evaluation.artifact")
         if config.evaluation.momenta is None:
             raise ConfigurationError("evaluate requires evaluation.momenta")
-        parameters: Mapping[
-            str,
-            complex
-            | float
-            | int
-            | list[float | int]
-            | tuple[float | int, float | int],
-        ] | None = None
+        parameters: (
+            Mapping[
+                str,
+                complex
+                | float
+                | int
+                | list[float | int]
+                | tuple[float | int, float | int],
+            ]
+            | None
+        ) = None
         if config.evaluation.model_parameters is not None:
             raw_parameters = _read_json(config.evaluation.model_parameters)
             if not isinstance(raw_parameters, Mapping):
@@ -289,27 +346,43 @@ class DefaultCliServices:
             points=points,
         )
 
-    def inspect(self, config: RunConfig, progress: ProgressSink) -> object:
+    def inspect(
+        self,
+        config: RunConfig,
+        progress: ProgressSink,
+        *,
+        full_physics: bool = False,
+    ) -> object:
         if config.evaluation.artifact is None:
             raise ConfigurationError("inspect requires evaluation.artifact")
-        if config.evaluation.process is None:
-            from pyamplicol.artifacts import inspect_artifact
+        if full_physics and config.evaluation.process is None:
+            raise ConfigurationError("inspect --full-physics requires --process")
 
-            return _load_process_output(
-                config.evaluation.artifact,
-                progress,
-                lambda: inspect_artifact(config.evaluation.artifact),
-            )
+        from pyamplicol.artifacts import inspect_artifact
+
+        inspection = _load_process_output(
+            config.evaluation.artifact,
+            progress,
+            lambda: inspect_artifact(config.evaluation.artifact),
+        )
+        selector = config.evaluation.process
+        if selector is None:
+            return inspection
+        compact = _select_compact_process_inspection(inspection, selector)
+        if not full_physics:
+            return compact
 
         from pyamplicol.api import Runtime
 
         return _load_process_output(
             config.evaluation.artifact,
             progress,
-            lambda: Runtime.load(
-                config.evaluation.artifact,
-                process=config.evaluation.process,
-            ).physics,
+            lambda: (
+                Runtime.load(
+                    config.evaluation.artifact,
+                    process=selector,
+                ).physics
+            ),
         )
 
     def model_inspect(self, config: RunConfig, progress: ProgressSink) -> object:
@@ -322,9 +395,7 @@ class DefaultCliServices:
         if config.generation.output is None:
             raise ConfigurationError("model compile requires generation.output")
         requested_output = config.generation.output
-        prepared_output = requested_output.name.lower().endswith(
-            ".pyamplicol-model"
-        )
+        prepared_output = requested_output.name.lower().endswith(".pyamplicol-model")
         if not prepared_output and config.evaluator != EvaluatorConfig():
             raise ConfigurationError(
                 "model compile evaluator settings require an output ending "
@@ -414,9 +485,7 @@ class DefaultCliServices:
                 "output": str(prepared.output),
                 "prepared_backend": prepared.bundle.backend,
                 "kernel_count": prepared.kernel_count,
-                "preparation_phase_timings": dict(
-                    prepared.phase_timings_seconds
-                ),
+                "preparation_phase_timings": dict(prepared.phase_timings_seconds),
             }
         )
         return result

@@ -354,6 +354,14 @@ class Runtime:
 
     @property
     def physics(self) -> ProcessPhysics:
+        """Return the complete public process metadata.
+
+        On-the-fly runtimes materialize their compact helicity and color-flow
+        axes on first access and retain that compatibility view for the life of
+        the runtime. Use :meth:`inspect` for compact high-multiplicity runtime
+        metadata and cache-state observation.
+        """
+
         result = self._backend.physics
         if not isinstance(result, ProcessPhysics):
             raise EvaluationError("runtime backend returned invalid process physics")
@@ -391,9 +399,25 @@ class Runtime:
             raise EvaluationError(
                 "runtime backend does not expose a valid execution mode"
             )
-        return cast(
-            Literal["compiled", "eager", "recurrence", "on-the-fly"], value
-        )
+        return cast(Literal["compiled", "eager", "recurrence", "on-the-fly"], value)
+
+    def inspect(self) -> Mapping[str, object]:
+        """Return compact authenticated runtime metadata and live cache state.
+
+        This optional facade capability does not form part of the minimum
+        :class:`RuntimeBackend` protocol. The built-in backend implements it
+        without opening dense process physics.
+        """
+
+        operation = getattr(self._backend, "inspect", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "runtime backend does not expose compact runtime inspection"
+            )
+        result = operation()
+        if not isinstance(result, Mapping):
+            raise EvaluationError("runtime backend returned invalid runtime inspection")
+        return dict(result)
 
     def evaluate(
         self,
@@ -567,7 +591,11 @@ class Runtime:
         self._backend.set_model_parameters(dict(mapping))
 
     def clear(self) -> None:
-        """Drop warmed execution state while keeping this artifact loaded."""
+        """Drop warmed execution state while keeping this artifact loaded.
+
+        An already materialized :attr:`physics` compatibility view remains
+        cached until the runtime itself is released.
+        """
 
         self._backend.clear()
 
@@ -583,10 +611,32 @@ class Runtime:
         """Representative-index to public-index external-leg permutation."""
 
         value = getattr(self._backend, "external_permutation", None)
+        count_value = getattr(self._backend, "external_count", None)
+        count: int | None
+        if count_value is None:
+            count = None
+        elif (
+            isinstance(count_value, bool)
+            or not isinstance(count_value, int)
+            or count_value < 1
+        ):
+            raise CompatibilityError("runtime external process count is invalid")
+        else:
+            count = count_value
         if value is None:
-            return tuple(range(len(self.physics.external_particles)))
-        permutation = tuple(value)
-        count = len(self.physics.external_particles)
+            if count is None:
+                # Preserve the original minimum RuntimeBackend contract. The
+                # built-in backend always supplies authenticated compact
+                # metadata, while older injected backends may expose only
+                # ProcessPhysics.
+                return tuple(range(len(self.physics.external_particles)))
+            return tuple(range(count))
+        try:
+            permutation = tuple(value)
+        except TypeError as exc:
+            raise CompatibilityError(
+                "runtime external permutation must be an iterable of integers"
+            ) from exc
         if any(
             isinstance(index, bool) or not isinstance(index, int)
             for index in permutation
@@ -594,7 +644,12 @@ class Runtime:
             raise CompatibilityError(
                 "runtime external permutation must contain integers"
             )
-        if len(permutation) != count or sorted(permutation) != list(range(count)):
+        expected_count = (
+            len(self.physics.external_particles) if count is None else count
+        )
+        if len(permutation) != expected_count or sorted(permutation) != list(
+            range(expected_count)
+        ):
             raise CompatibilityError("runtime external permutation is invalid")
         return permutation
 

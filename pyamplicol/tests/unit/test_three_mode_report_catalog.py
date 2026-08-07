@@ -89,7 +89,7 @@ def test_matrix_catalog_has_requested_fifteen_datasets() -> None:
 
 
 def test_required_agreement_evidence_bumps_report_cache_contract() -> None:
-    assert CACHE_SCHEMA_VERSION == 4
+    assert CACHE_SCHEMA_VERSION == 5
     assert REPORT_VERSION == "0.3.0"
 
 
@@ -195,9 +195,7 @@ def test_n_le_four_matrix_smoke_has_495_logical_process_cells() -> None:
 
 def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> None:
     family = next(
-        family
-        for family in REPORT_CATALOG.process_families
-        if family.identifier == 15
+        family for family in REPORT_CATALOG.process_families if family.identifier == 15
     )
 
     assert family.key == "dd_3q_identical_lines"
@@ -221,10 +219,12 @@ def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> 
         None: 92,
         STATIC_NA_ON_THE_FLY_COLOR_ACCURACY: 6,
     }
-    assert REPORT_CATALOG.cell(
-        "matrix-recurrence-builtin-sm-full-n6-"
-        "dd-3q-identical-lines-contracted"
-    ).process == "d d~ > u u~ u u~ g g"
+    assert (
+        REPORT_CATALOG.cell(
+            "matrix-recurrence-builtin-sm-full-n6-dd-3q-identical-lines-contracted"
+        ).process
+        == "d d~ > u u~ u u~ g g"
+    )
 
 
 def test_z_catalog_adds_recurrence_and_corrects_eager_label() -> None:
@@ -506,16 +506,11 @@ def test_contracted_n6_rows_are_canonical_reset_cache_entries() -> None:
 
     validate_cache(payload, expected_cells=expected)
     entries = {
-        entry["cell_id"]: entry
-        for entry in payload["entries"]
-        if entry["n_final"] == 6
+        entry["cell_id"]: entry for entry in payload["entries"] if entry["n_final"] == 6
     }
     assert set(entries) == {
         "matrix-recurrence-builtin-sm-full-n6-dd-3q-lines-contracted",
-        (
-            "matrix-recurrence-builtin-sm-full-n6-"
-            "dd-3q-identical-lines-contracted"
-        ),
+        ("matrix-recurrence-builtin-sm-full-n6-dd-3q-identical-lines-contracted"),
         "matrix-recurrence-builtin-sm-full-n6-dd-4q-lines-contracted",
     }
     assert all(
@@ -809,9 +804,7 @@ def _unverified_candidate_measurement(cell: CellSpec) -> dict[str, object]:
             "high_precision_resolved_sum": p32,
             "high_precision": high_precision,
             "precision_diagnostic": {
-                "abi": (
-                    "pyamplicol-report-validation-failure-precision-diagnostic-v2"
-                ),
+                "abi": ("pyamplicol-report-validation-failure-precision-diagnostic-v2"),
                 "status": "unavailable",
                 "promotes_measurement": False,
                 "error": {"kind": "FixtureUnavailable", "message": "fixture"},
@@ -1063,9 +1056,10 @@ def test_unverified_presentation_overlay_is_attempt_bound_and_json_isolated(
     )
 
     tables = service._render_tables(render_caches)
-    assert "unverified" in tables[
-        "result_matrix_compiled_builtin_sm_full_table.tex"
-    ].lower()
+    assert (
+        "unverified"
+        in tables["result_matrix_compiled_builtin_sm_full_table.tex"].lower()
+    )
     service._snapshot_files(publication_caches, tables)
     installed_payloads = tuple(
         path
@@ -1074,7 +1068,8 @@ def test_unverified_presentation_overlay_is_attempt_bound_and_json_isolated(
     )
     assert installed_payloads
     assert all(
-        '"status":"unverified"' not in json.dumps(
+        '"status":"unverified"'
+        not in json.dumps(
             json.loads(path.read_text(encoding="ascii")),
             separators=(",", ":"),
         )
@@ -1122,14 +1117,8 @@ def test_unverified_presentation_overlay_is_attempt_bound_and_json_isolated(
 
 
 def test_unverified_measurement_requires_every_hard_direct_agreement() -> None:
-    cell = REPORT_CATALOG.cell(
-        "matrix-compiled-builtin-sm-lc-n1-dd-z-jets-all-flow"
-    )
-    required = next(
-        edge
-        for edge in incoming_agreement_edges(cell)
-        if edge.required
-    )
+    cell = REPORT_CATALOG.cell("matrix-compiled-builtin-sm-lc-n1-dd-z-jets-all-flow")
+    required = next(edge for edge in incoming_agreement_edges(cell) if edge.required)
     with pytest.raises(ValueError, match="coverage is incomplete"):
         _validate_unverified_direct_agreement_coverage(
             {DIRECT_AGREEMENT_FIELD: []},
@@ -1171,10 +1160,7 @@ def _arena_unavailable_candidate_measurement() -> dict[str, object]:
         **{field: 0 for field in ZERO_ARENA_COUNTER_FIELDS},
         **{field: 0.0 for field in ZERO_ARENA_PHASE_TIME_FIELDS},
         **{field: [] for field in EMPTY_ARENA_PHASE_VECTOR_FIELDS},
-        **{
-            field: 0
-            for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS
-        },
+        **{field: 0 for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS},
         "compiled_direct_arena_engine_count": 1,
         "compiled_direct_arena_call_count": 128,
         "evaluator_backend_call_count": 128,
@@ -1210,9 +1196,7 @@ def _arena_unavailable_candidate_measurement() -> dict[str, object]:
         "identical_repetitions": True,
         "execution_mode": "compiled",
         "warmed_boundary_wall_seconds_per_point": 1.1e-6,
-        "arena_profile_evidence_sha256": digest_arena_profile_value(
-            arena_evidence
-        ),
+        "arena_profile_evidence_sha256": digest_arena_profile_value(arena_evidence),
     }
     return measurement
 
@@ -1240,9 +1224,7 @@ def test_future_evaluator_total_provenance_is_optional_and_fail_closed() -> None
         "raw_seconds_per_point": 1.0e-6,
         "source": "runtime._benchmark_f64_wall_time.accumulated",
         "execution_mode": "compiled",
-        "sample_contract": (
-            "accumulated-repeated-warmed-evaluator-total-v1"
-        ),
+        "sample_contract": ("accumulated-repeated-warmed-evaluator-total-v1"),
         "sample_count": 5,
         "repetitions_per_sample": 1,
         "batch_size": 128,

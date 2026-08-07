@@ -11,7 +11,6 @@ import pytest
 from pyamplicol.config import BenchmarkConfig
 from tools.performance_report.agreements import (
     LC_CROSS_LAYOUT_COMPONENT,
-    OTF_COMPILED_CROSS_MODE,
     incoming_agreement_edges,
 )
 from tools.performance_report.artifacts import ArtifactStore
@@ -26,8 +25,16 @@ from tools.performance_report.render import _BEST_MODE_CODES, render_all_matrix_
 from tools.performance_report.runner import (
     CONVENTIONAL_WARMUP_TIMING_SCOPE,
     LOADED_RUNTIME_PROFILE_COMMAND_PATH,
+    OTF_ACTIVE_FAMILY_COUNT_FIELDS,
     OTF_COLD_WARMUP_RUNTIME_FRESHNESS,
+    OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE,
     OTF_COLD_WARMUP_TIMING_SCOPE,
+    OTF_RUNTIME_STATE_CENSUS_KIND,
+    OTF_RUNTIME_STATE_COUNT_FIELDS,
+    OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+    OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY,
+    OTF_RUNTIME_STATE_RETAINED_BASE_POSITIVE_FIELDS,
+    OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS,
     PUBLIC_CLI_COMMAND_PATH,
     WARMUP_TIMER_SOURCE,
     RunnerError,
@@ -40,6 +47,34 @@ from tools.performance_report.runner import (
     validate_artifact_contract,
 )
 from tools.performance_report.scheduler import CampaignSettings, plan_campaign
+
+
+def _otf_warmup_runtime_state(*, retained: bool) -> dict[str, object]:
+    counts = {field: 0 for field in OTF_RUNTIME_STATE_COUNT_FIELDS}
+    active: dict[str, object] | None = None
+    if retained:
+        counts.update(
+            {
+                field: 1
+                for field in (
+                    *OTF_RUNTIME_STATE_RETAINED_BASE_POSITIVE_FIELDS,
+                    *OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS,
+                )
+            }
+        )
+        active = {
+            "basis": "shared-query-family-union-v1",
+            "scope": "active-family-union",
+            **{field: 1 for field in OTF_ACTIVE_FAMILY_COUNT_FIELDS},
+        }
+    return {
+        "kind": OTF_RUNTIME_STATE_CENSUS_KIND,
+        "process_id": "otf_campaign_process",
+        "family_cache_policy": OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY,
+        "family_cache_limit": OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+        **counts,
+        "active_family_union_census": active,
+    }
 
 
 def _otf_cells():
@@ -71,7 +106,7 @@ def test_otf_matrix_surface_and_static_color_placeholders_are_exact() -> None:
     assert _BEST_MODE_CODES[ExecutionMode.ON_THE_FLY] == "o"
 
 
-def test_otf_uses_amplicol_for_display_and_two_pyamplicol_authorities() -> None:
+def test_otf_uses_amplicol_for_display_and_recurrence_for_correctness() -> None:
     all_flow = next(
         cell
         for cell in _otf_cells()
@@ -88,10 +123,8 @@ def test_otf_uses_amplicol_for_display_and_two_pyamplicol_authorities() -> None:
     assert display.measurement.execution_mode is ExecutionMode.AMPLICOL
     assert validation is not None
     assert validation.measurement.execution_mode is ExecutionMode.RECURRENCE
-    assert any(
-        edge.kind == OTF_COMPILED_CROSS_MODE
-        and edge.baseline.measurement.execution_mode is ExecutionMode.COMPILED
-        and edge.required
+    assert all(
+        edge.baseline.measurement.execution_mode is not ExecutionMode.COMPILED
         for edge in edges
     )
     selected = next(
@@ -124,7 +157,6 @@ def test_otf_plan_orders_authorities_and_omits_static_placeholders(
 
     assert tuple(item.cell.measurement.execution_mode for item in planned) == (
         ExecutionMode.RECURRENCE,
-        ExecutionMode.COMPILED,
         ExecutionMode.ON_THE_FLY,
     )
     assert (
@@ -396,6 +428,12 @@ def test_otf_benchmark_measurement_requires_and_stores_cold_warmup() -> None:
         "cold_warmup_timer_source": WARMUP_TIMER_SOURCE,
         "cold_warmup_timing_scope": OTF_COLD_WARMUP_TIMING_SCOPE,
         "cold_warmup_runtime_freshness": OTF_COLD_WARMUP_RUNTIME_FRESHNESS,
+        "cold_warmup_runtime_state_evidence": (OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE),
+        "cold_warmup_runtime_state_before": _otf_warmup_runtime_state(retained=False),
+        "cold_warmup_runtime_state_after": _otf_warmup_runtime_state(retained=True),
+        "cold_warmup_runtime_cold_before_first_evaluation": True,
+        "cold_warmup_runtime_retained_before_first_evaluation": False,
+        "cold_warmup_runtime_retained_after_first_evaluation": True,
         "cold_warmup_ratio_eligible": False,
         "cold_warmup_acceptance_eligible": False,
         "warmup_elapsed_seconds": 0.2,
@@ -426,6 +464,22 @@ def test_otf_benchmark_measurement_requires_and_stores_cold_warmup() -> None:
 
     measurement = _benchmark_measurement(benchmark, matrix_element=2.0)
     assert measurement["benchmark_evidence"]["cold_warmup_elapsed_seconds"] == 0.25
+    assert (
+        measurement["benchmark_evidence"]["cold_warmup_runtime_state_evidence"]
+        == OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE
+    )
+    assert (
+        measurement["benchmark_evidence"]["cold_warmup_runtime_state_before"][
+            "retained_family_count"
+        ]
+        == 0
+    )
+    assert (
+        measurement["benchmark_evidence"]["cold_warmup_runtime_state_after"][
+            "retained_family_count"
+        ]
+        == 1
+    )
     assert measurement["evaluator_total_timing"] == {
         "abi": "pyamplicol-report-evaluator-total-timing-v1",
         "status": "measured",

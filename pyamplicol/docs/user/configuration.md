@@ -152,9 +152,10 @@ replay identity. Generation emits one warning when an applied relation set
 lacks exact structural proof.
 
 This policy applies to LC, NLC, and full colour and to compiled, eager, and
-recurrence generation with built-in or prepared external/UFO models. Invalid,
-non-finite, unstable, or stale evidence is rejected. To retain the unoptimized
-path, use:
+recurrence generation with built-in or prepared external/UFO models. The
+compact on-the-fly source projection does not run this configurable
+relation-discovery pass. Invalid, non-finite, unstable, or stale evidence is
+rejected. To retain the unoptimized path, use:
 
 ```console
 pyamplicol generate ... --no-numerical-current-reuse
@@ -240,6 +241,7 @@ Execution mode and evaluator backend are independent choices:
 | `recurrence` | Default. Uses prepared local kernels through compact current-recursion schedules. |
 | `compiled` | Compiles process-wide stage evaluators during generation. |
 | `eager` | Uses a prepared model's local kernels and writes compact DAG invocation tables. |
+| `on-the-fly` | LC-only native `f64`. Stores a compact process seed and constructs query-local recurrence schedules when selected. |
 
 | Backend | Use |
 | --- | --- |
@@ -247,7 +249,8 @@ Execution mode and evaluator backend are independent choices:
 | `asm` | Symbolica assembly evaluator |
 | `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
 
-Recurrence and eager modes normally require a `.pyamplicol-model` bundle
+Recurrence, eager, and on-the-fly modes normally require a
+`.pyamplicol-model` bundle
 already prepared for exactly one backend. The `built-in-sm` source is the
 exception: installed wheels carry the portable `built-in-sm-jit-o2` pack.
 Generation never compiles missing prepared kernels. The prepared backend and
@@ -261,8 +264,8 @@ sequences into internal SymJIT applets. It is enabled by default and changes
 only generated evaluator structure, not physics results or runtime APIs. Use
 `--no-jit-compress` or set the card field to `false` for controlled A/B
 measurements and debugging. Prepared bundles bake this choice into their
-kernel pack, so eager generation reports the pack's value as the effective
-configuration when it differs from the request.
+kernel pack, so eager, recurrence, and on-the-fly generation report the pack's
+value as the effective configuration when it differs from the request.
 
 `.pyAmplicol-model.json` model IR is architecture-independent. SymJIT
 storage-v3 prepared packs and newly generated all-JIT process artifacts at
@@ -293,6 +296,21 @@ kernel pack is unavailable; prepare the model or select `compiled` explicitly.
 `evaluator.recurrence.point_tile_size` defaults to 1024, and
 `evaluator.recurrence.workspace_mib` defaults to 256 MiB. As with eager mode,
 the runtime may reduce the tile size to stay within the workspace limit.
+
+On-the-fly execution currently accepts LC requests only and evaluates at
+native `f64` precision. It does not materialize either LC flow layout: one
+compact query-local artifact supports both selected-flow helicity sums and
+all-flow sums at a selected helicity. Consequently, `inspect` reports the
+static physical helicity and color-flow census, not a dense artifact axis or a
+topology-replay census. The relevant physical selection is constructed only
+when a runtime query asks for it.
+
+For on-the-fly generation, `evaluator.optimization.cores` is the requested
+query-construction thread count. It is not a promise that numerical evaluation
+uses that many threads. The current on-the-fly runtime records the recurrence
+`point_tile_size` request for provenance but does not apply recurrence or eager
+point tiling or workspace limits. Input batches are not capped by that setting;
+no on-the-fly tile or workspace tuning surface is exposed yet.
 
 The default batch size is 128 and the default output chunk size is 512.
 Optimization defaults are 10

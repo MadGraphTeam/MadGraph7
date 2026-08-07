@@ -67,9 +67,7 @@ def _state(
     role: str,
     orientation: str,
 ) -> CurrentStateTemplateV1:
-    representation = {"adjoint": 8, "fundamental": 3, "antifundamental": -3}[
-        role
-    ]
+    representation = {"adjoint": 8, "fundamental": 3, "antifundamental": -3}[role]
     shape = {
         "adjoint": "adjoint-segment",
         "fundamental": "fundamental-open-string",
@@ -340,6 +338,13 @@ def test_projection_is_deterministic_and_scales_with_external_sources_only() -> 
     ) == (8, 12, 16)
 
 
+def test_projection_omits_limits_absent_from_template_coupling_dimension() -> None:
+    projection = _project(_gluon_process(4)).seed
+
+    assert projection.coupling_hierarchies == ()
+    assert projection.coupling_limits == ()
+
+
 def test_vector_execution_states_cross_only_for_initials() -> None:
     catalog = _catalog()
     projection = _project(_gluon_process(4)).seed
@@ -382,6 +387,9 @@ def test_builtin_incoming_fermions_keep_crossed_execution_contract() -> None:
         coupling_order_limits={"QED": 1},
     ).seed
 
+    assert tuple(
+        (row.name, row.minimum, row.maximum) for row in projection.coupling_limits
+    ) == (("QED", 0, 1),)
     assert projection.process_digest == (
         "8395a16bc0f605c05c7c746d7b428b07f175fb869ebd84f856f8886fe139d82f"
     )

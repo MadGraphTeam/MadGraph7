@@ -1129,6 +1129,30 @@ def _on_the_fly_selector_census_v1(
     return census
 
 
+def _on_the_fly_validation_selectors_v1(
+    projection: OnTheFlyProcessSeedProjectionV1,
+) -> Mapping[str, tuple[str, ...]]:
+    """Choose one deterministic compact selector without opening dense axes."""
+
+    helicities: list[int] = []
+    for source_index, source in enumerate(projection.external_sources):
+        if not source.source_states:
+            raise GenerationError(
+                "on-the-fly validation source "
+                f"{source_index} exposes no public helicity states"
+            )
+        helicities.append(int(source.source_states[0].public_helicity))
+    if not helicities:
+        raise GenerationError("on-the-fly validation requires external sources")
+    helicity_id = "h:" + ",".join(f"{value:+d}" for value in helicities)
+    return MappingProxyType(
+        {
+            "helicities": (helicity_id,),
+            "color_flows": ("1",),
+        }
+    )
+
+
 def _validate_on_the_fly_process_seed_identity_v1(
     value: object,
 ) -> dict[str, object]:
@@ -2161,6 +2185,7 @@ class _GeneratedOnTheFlyProcess:
     expanded: _ExpandedProcess
     artifact: OnTheFlyProcessArtifact
     validation_points: tuple[ValidationPointRecord, ...]
+    validation_selectors: Mapping[str, tuple[str, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -2552,11 +2577,24 @@ class GenerationBackend:
             )
         try:
             self._validate_recurrence_request()
+            self._validate_on_the_fly_process_selection()
             license_state = self._detect_symbolica_license()
             self._apply_symbolica_resource_policy(license_state)
             resolved_model = self._resolve_model_for_plan(source)
             self._require_eager_kernel_pack(resolved_model)
             self._apply_prepared_kernel_pack_policy(resolved_model)
+            if self._on_the_fly_execution_enabled and resolved_model.model is None:
+                compiled = resolved_model.compiled
+                if compiled is None:  # pragma: no cover - model preflight invariant
+                    raise GenerationError(
+                        "on-the-fly planning requires a resolved model"
+                    )
+                from ..models.external import CompiledUFOModel
+
+                resolved_model = replace(
+                    resolved_model,
+                    model=CompiledUFOModel(compiled),
+                )
             expanded = self._expand_process_set(
                 processes,
                 resolved_model,
@@ -2567,13 +2605,32 @@ class GenerationBackend:
                 process_count=len(expanded),
             )
             coverage: list[dict[str, object]] = []
-            for entry in expanded:
-                coverage.append(
-                    self._plan_concrete_process(
-                        entry.process_ir,
-                        model=resolved_model.model,
+            if self._on_the_fly_execution_enabled:
+                generation_model = resolved_model.model
+                if generation_model is None:  # pragma: no cover - guarded above
+                    raise GenerationError(
+                        "on-the-fly planning requires a resolved model"
                     )
-                )
+                model_inputs = self._recurrence_model_inputs(resolved_model)
+                for index, entry in enumerate(expanded):
+                    coverage.append(
+                        self._plan_on_the_fly_process(
+                            self._project_on_the_fly_process(
+                                entry,
+                                generation_model,
+                                model_inputs,
+                                index=index,
+                            )
+                        )
+                    )
+            else:
+                for entry in expanded:
+                    coverage.append(
+                        self._plan_concrete_process(
+                            entry.process_ir,
+                            model=resolved_model.model,
+                        )
+                    )
             result = GenerationPlan(
                 concrete_processes=tuple(entry.request for entry in expanded),
                 estimated_coverage={
@@ -2643,6 +2700,7 @@ class GenerationBackend:
         generation_started = time.perf_counter()
         try:
             self._validate_recurrence_request()
+            self._validate_on_the_fly_process_selection()
             license_state = self._detect_symbolica_license()
             self._apply_symbolica_resource_policy(license_state)
             source = model or self._configured_model_source()
@@ -3086,6 +3144,10 @@ class GenerationBackend:
             validation_points_by_process = {
                 item.expanded.request.name: item.validation_points for item in generated
             }
+            validation_selectors_by_process = {
+                item.expanded.request.name: item.validation_selectors
+                for item in generated
+            }
             expected_process_ids = tuple(
                 process.process_id for process in artifact_processes
             )
@@ -3101,14 +3163,29 @@ class GenerationBackend:
         ) as phase:
             validation = self._generation_config.validation
             if validation.post_build_validation:
+                numerical_sample_count = sum(
+                    1
+                    for points in validation_points_by_process.values()
+                    if any(point.available for point in points)
+                )
                 self._validate_generated_artifact(
                     write_result.output,
                     expected_process_ids,
                     validation_points=validation_points_by_process,
+                    compact_validation_selectors=(validation_selectors_by_process),
                     expected_api_bundle_path=write_result.api_bundle_path,
                     progress=phase,
                 )
-                message = "compact schema, seed, selectors, and prepared model"
+                if not validation.enabled:
+                    message = "compact schema, seed, selectors, and prepared model"
+                elif numerical_sample_count == 0:
+                    message = "compact schema; zero numerical samples available"
+                else:
+                    suffix = "" if numerical_sample_count == 1 else "s"
+                    message = (
+                        f"compact schema and {numerical_sample_count} "
+                        f"selector-bounded numerical sample{suffix}"
+                    )
             else:
                 message = "post-build validation disabled"
             phase.update(1, message=message)
@@ -3136,19 +3213,7 @@ class GenerationBackend:
         run = self._run_config
         if run is None:  # pragma: no cover - guarded by execution mode
             raise GenerationError("on-the-fly generation requires RunConfig")
-        selection = self._process_selection
-        incompatible = []
-        if selection.max_color_sectors is not None:
-            incompatible.append("process.max_color_sectors")
-        if selection.selected_color_sector_ids is not None:
-            incompatible.append("process.selected_color_sector_ids")
-        if selection.selected_source_helicities is not None:
-            incompatible.append("process.selected_source_helicities")
-        if incompatible:
-            raise GenerationError(
-                "on-the-fly artifacts retain complete runtime selector coverage; "
-                "remove " + ", ".join(incompatible)
-            )
+        self._validate_on_the_fly_process_selection()
         coupling_policy = str(run.process.coupling_order_policy)
         explicit_limits = self._coupling_order_limits
         projection = project_on_the_fly_process_seed_v1(
@@ -3166,6 +3231,23 @@ class GenerationBackend:
             expanded=expanded,
             projection=projection,
         )
+
+    def _validate_on_the_fly_process_selection(self) -> None:
+        if not self._on_the_fly_execution_enabled:
+            return
+        selection = self._process_selection
+        incompatible = []
+        if selection.max_color_sectors is not None:
+            incompatible.append("process.max_color_sectors")
+        if selection.selected_color_sector_ids is not None:
+            incompatible.append("process.selected_color_sector_ids")
+        if selection.selected_source_helicities is not None:
+            incompatible.append("process.selected_source_helicities")
+        if incompatible:
+            raise GenerationError(
+                "on-the-fly artifacts retain complete runtime selector coverage; "
+                "remove " + ", ".join(incompatible)
+            )
 
     def _construct_on_the_fly_artifact(
         self,
@@ -3202,6 +3284,7 @@ class GenerationBackend:
             process_seed_identity,
             projection.seed,
         )
+        validation_selectors = _on_the_fly_validation_selectors_v1(projection.seed)
         selector_census = _on_the_fly_selector_census_v1(
             projection.seed,
             expanded.process_ir,
@@ -3307,6 +3390,7 @@ class GenerationBackend:
             expanded=expanded,
             artifact=artifact,
             validation_points=points,
+            validation_selectors=validation_selectors,
         )
 
     def _generate_recurrence_processes(
@@ -5662,6 +5746,8 @@ class GenerationBackend:
         *,
         validation_points: Mapping[str, Sequence[ValidationPointRecord]],
         expected_api_bundle_path: str | None,
+        compact_validation_selectors: Mapping[str, Mapping[str, tuple[str, ...]]]
+        | None = None,
         progress: PhaseHandle | None = None,
     ) -> None:
         import cmath
@@ -5701,6 +5787,12 @@ class GenerationBackend:
                     f"artifact payload set is incomplete for {process_id!r}"
                 )
             runtime = Runtime.load(output, process=process_id)
+            validation = self._generation_config.validation
+            samples = tuple(
+                point.four_vectors
+                for point in validation_points.get(process_id, ())
+                if point.available
+            )
             if self._on_the_fly_execution_enabled:
                 if runtime.artifact_id != manifest.artifact_id:
                     raise GenerationError(
@@ -5715,6 +5807,80 @@ class GenerationBackend:
                     raise GenerationError(
                         f"Rusticol selected the wrong process for {process_id!r}"
                     )
+                validated_samples = 0
+                if validation.enabled and samples:
+                    raw_selectors = (
+                        None
+                        if compact_validation_selectors is None
+                        else compact_validation_selectors.get(process_id)
+                    )
+                    if not isinstance(raw_selectors, Mapping) or set(raw_selectors) != {
+                        "helicities",
+                        "color_flows",
+                    }:
+                        raise GenerationError(
+                            "on-the-fly validation has no authenticated compact "
+                            f"selector for {process_id!r}"
+                        )
+                    helicities = raw_selectors.get("helicities")
+                    color_flows = raw_selectors.get("color_flows")
+                    if (
+                        not isinstance(helicities, tuple)
+                        or len(helicities) != 1
+                        or not isinstance(helicities[0], str)
+                        or not helicities[0].startswith("h:")
+                        or not isinstance(color_flows, tuple)
+                        or color_flows != ("1",)
+                    ):
+                        raise GenerationError(
+                            "on-the-fly validation compact selector is malformed "
+                            f"for {process_id!r}"
+                        )
+                    selector_label = "compact helicity+flow"
+                    selectors = {
+                        "helicities": helicities,
+                        "color_flows": color_flows,
+                    }
+                    selected_samples = samples[:1]
+                    total = runtime.evaluate(selected_samples, **selectors)
+                    resolved_total = runtime.evaluate_resolved(
+                        selected_samples, **selectors
+                    ).total()
+                    if len(total) != 1 or len(resolved_total) != 1:
+                        raise GenerationError(
+                            f"Rusticol returned an invalid validation shape for "
+                            f"{process_id!r} ({selector_label})"
+                        )
+                    summed = total[0]
+                    resolved = resolved_total[0]
+                    if progress is not None:
+                        progress.update(
+                            process_index - 1,
+                            total=process_total,
+                            message=f"{process_id}: {selector_label}, sample 1",
+                            details={
+                                "process": process_id,
+                                "step": "numerical validation",
+                                "selector_case": selector_label,
+                                "validation_slice": selector_label,
+                                "sample_index": 1,
+                                "sample_total": 1,
+                            },
+                        )
+                    difference = abs(complex(summed) - complex(resolved))
+                    if not cmath.isclose(
+                        complex(summed),
+                        complex(resolved),
+                        rel_tol=validation.relative_tolerance,
+                        abs_tol=validation.absolute_tolerance,
+                    ):
+                        raise GenerationError(
+                            "resolved Rusticol validation does not reduce to "
+                            f"the total for {process_id!r} ({selector_label}) "
+                            "sample 1 "
+                            f"(absolute difference {difference:.3e})"
+                        )
+                    validated_samples = 1
                 if progress is not None:
                     progress.update(
                         process_index,
@@ -5722,8 +5888,8 @@ class GenerationBackend:
                         message=process_id,
                         details={
                             "process": process_id,
-                            "step": "compact runtime validated",
-                            "samples": 0,
+                            "step": "validated",
+                            "samples": validated_samples,
                         },
                     )
                 continue
@@ -5731,12 +5897,6 @@ class GenerationBackend:
                 raise GenerationError(
                     f"Rusticol selected the wrong process for {process_id!r}"
                 )
-            validation = self._generation_config.validation
-            samples = tuple(
-                point.four_vectors
-                for point in validation_points.get(process_id, ())
-                if point.available
-            )
             if validation.enabled and samples:
                 selector_cases = (
                     _recurrence_validation_selector_cases(runtime.physics)
@@ -5851,7 +6011,7 @@ class GenerationBackend:
         )
 
     def _validate_recurrence_request(self) -> None:
-        """Keep recurrence requests out of compiled/eager generation lanes."""
+        """Keep recurrence-family requests out of compiled/eager lanes."""
 
         if self._on_the_fly_execution_enabled and self._color_accuracy != "lc":
             raise GenerationError(
@@ -6103,7 +6263,7 @@ class GenerationBackend:
             path = materialize_packaged_prepared_model()
         except (OSError, PackagedPreparedModelError, RuntimeError, ValueError) as exc:
             raise ModelError(
-                "the wheel-owned built-in-SM eager model is unavailable or stale: "
+                "the wheel-owned prepared built-in-SM model is unavailable or stale: "
                 f"{exc}"
             ) from exc
         return ModelSource.from_path(path)
@@ -6203,7 +6363,9 @@ class GenerationBackend:
         compiled = resolved.compiled
         bundle = None if compiled is None else compiled.prepared_bundle
         if bundle is None:  # pragma: no cover - guarded by _require_eager_kernel_pack
-            raise GenerationError("eager generation has no prepared kernel pack")
+            raise GenerationError(
+                f"{execution_mode} generation has no prepared kernel pack"
+            )
         resolution = self._resource_config
         if not isinstance(resolution, ConfigResolution):
             resolution = resolve_config(config_to_dict(self._config))
@@ -6381,6 +6543,34 @@ class GenerationBackend:
             ),
             "color_diagnostics": tuple(color_plan.diagnostics),
             "coupling_order_limits": self._coupling_order_limits,
+            "dag_compilation_deferred": True,
+        }
+
+    def _plan_on_the_fly_process(
+        self,
+        projected: _ProjectedOnTheFlyProcess,
+    ) -> dict[str, object]:
+        process = projected.expanded.process_ir
+        census = _on_the_fly_selector_census_v1(
+            projected.projection.seed,
+            process,
+        )
+        return {
+            "key": process.key,
+            "process": process.process,
+            "external_particle_count": len(process.legs),
+            "execution_mode": "on-the-fly",
+            "selector_representation": "compact-query-local",
+            "physical_helicity_count": census["physical_helicity_count"],
+            "physical_color_flow_count": census["physical_color_flow_count"],
+            "color_sector_count": census["physical_color_flow_count"],
+            "color_coverage": "complete",
+            "helicity_coverage": "complete",
+            "color_diagnostics": (),
+            "coupling_order_limits": self._coupling_order_limits,
+            "color_plan_materialized": False,
+            "source_projection_validated": True,
+            "native_seed_construction_deferred": True,
             "dag_compilation_deferred": True,
         }
 

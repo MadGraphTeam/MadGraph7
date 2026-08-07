@@ -90,7 +90,8 @@ Malformed, non-finite, unstable, or stale evidence fails closed.
 
 The feature is enabled by default for LC, NLC, and full colour, for compiled,
 eager, and recurrence generation using built-in or prepared external/UFO
-models. `mode = "off"`—or the public
+models. The compact on-the-fly source projection does not run this configurable
+relation-discovery pass. `mode = "off"`—or the public
 `--no-numerical-current-reuse` flag—selects the unoptimized path without
 changing numerical results. Direct vertex-kernel equivalence remains
 model-certificate-owned.
@@ -98,7 +99,7 @@ model-certificate-owned.
 ## Evaluator
 
 - `backend: jit | asm | cpp = jit`
-- `execution_mode: compiled | eager | recurrence = recurrence`
+- `execution_mode: compiled | eager | recurrence | on-the-fly = recurrence`
 - `batch_size: int = 128`
 - `output_chunk_size: int | null = 512`
 - Stage-local parameter layout is mandatory and is not a public toggle.
@@ -135,6 +136,23 @@ missing prepared pack fails closed; configuration resolution never falls back
 to compiled execution. Cards that require process-local compiled DAGs must set
 `execution_mode = "compiled"` explicitly.
 
+### On-The-Fly Execution
+
+On-the-fly execution currently requires `color.accuracy = "lc"`, a prepared
+model bundle, and native `f64` precision. It stores a compact process seed and
+constructs recurrence schedules for the requested selector instead of
+materializing a topology-replay or all-flow-union process layout. Static
+inspection therefore exposes the physical helicity/color-flow census, not a
+dense artifact axis; the runtime still supplies the complete physical LC
+selection contract.
+
+`evaluator.optimization.cores` resolves to a positive requested
+query-construction thread count for this mode. It is not a numerical-runtime
+thread guarantee. On-the-fly metadata records the recurrence
+`point_tile_size` request for provenance, but the current runtime applies
+neither recurrence/eager point tiling nor their workspace limits. There is no
+on-the-fly-specific tile or workspace configuration section.
+
 ### Evaluator Optimization
 
 - `horner_iterations: int = 10`
@@ -144,6 +162,9 @@ to compiled execution. Cards that require process-local compiled DAGs must set
 - `max_common_pair_cache_entries: int = 5000000`
 - `max_common_pair_distance: int = 1000`
 - `collect_factors: auto | bool = auto`
+
+For on-the-fly execution, only `cores` has a mode-specific runtime meaning;
+the prepared kernel pack remains authoritative for code-shaping optimization.
 
 ### JIT
 

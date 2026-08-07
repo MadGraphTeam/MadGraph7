@@ -289,7 +289,10 @@ def prepare_model_bundle(
     evaluator: EvaluatorConfig,
     progress: PreparedModelProgress | None = None,
 ) -> PreparedModelBuildResult:
-    """Build exactly one eager backend pack and return its validated bundle."""
+    """Build a prepared evaluator-kernel bundle.
+
+    The bundle is shared by eager, recurrence, and on-the-fly execution.
+    """
 
     started = time.perf_counter()
     model = _runtime_model(compiled_model)

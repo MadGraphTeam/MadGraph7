@@ -24,7 +24,6 @@ from tools.performance_report.agreements import (
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
-    OTF_COMPILED_CROSS_MODE,
     Z_RECURRENCE_CROSS_MODE,
     agreement_edges,
     attach_direct_agreements,
@@ -126,11 +125,11 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
         and edge.baseline.cell_id in measurable_ids
     )
 
-    assert len(declared_edges) == 1803
+    assert len(declared_edges) == 1737
     assert (
         len(declared_edges) == final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
     )
-    assert len(measurable_edges) == 1755
+    assert len(measurable_edges) == 1689
     assert sum(
         final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS.values()
     ) == len(measurable_edges)
@@ -230,8 +229,6 @@ def test_final_audit_count_contract_bounds_only_optional_authority_edges(
             expected_edges,
             optional_categories=optional_categories,
         )
-
-    assert expected_edges[OTF_COMPILED_CROSS_MODE] == 66
 
     for optional_category in optional_categories:
         too_many_optional = dict(expected_edges)
@@ -2920,6 +2917,34 @@ def test_portable_artifact_locator_resolves_only_within_profile_root(
         )
 
 
+def _otf_warmup_runtime_state(*, retained: bool) -> dict[str, object]:
+    counts = {field: 0 for field in report_runner.OTF_RUNTIME_STATE_COUNT_FIELDS}
+    active: dict[str, object] | None = None
+    if retained:
+        counts.update(
+            {
+                field: 1
+                for field in (
+                    *report_runner.OTF_RUNTIME_STATE_RETAINED_BASE_POSITIVE_FIELDS,
+                    *report_runner.OTF_RUNTIME_STATE_RETAINED_EXECUTABLE_FIELDS,
+                )
+            }
+        )
+        active = {
+            "basis": "shared-query-family-union-v1",
+            "scope": "active-family-union",
+            **{field: 1 for field in report_runner.OTF_ACTIVE_FAMILY_COUNT_FIELDS},
+        }
+    return {
+        "kind": report_runner.OTF_RUNTIME_STATE_CENSUS_KIND,
+        "process_id": "otf_warmup_process",
+        "family_cache_policy": report_runner.OTF_RUNTIME_STATE_FAMILY_CACHE_POLICY,
+        "family_cache_limit": report_runner.OTF_RUNTIME_STATE_FAMILY_CACHE_LIMIT,
+        **counts,
+        "active_family_union_census": active,
+    }
+
+
 def _otf_warmup_profile() -> dict[str, object]:
     return {
         "cold_warmup_elapsed_seconds": 4.767252833,
@@ -2931,6 +2956,14 @@ def _otf_warmup_profile() -> dict[str, object]:
         "cold_warmup_runtime_freshness": (
             report_runner.OTF_COLD_WARMUP_RUNTIME_FRESHNESS
         ),
+        "cold_warmup_runtime_state_evidence": (
+            report_runner.OTF_COLD_WARMUP_RUNTIME_STATE_EVIDENCE
+        ),
+        "cold_warmup_runtime_state_before": _otf_warmup_runtime_state(retained=False),
+        "cold_warmup_runtime_state_after": _otf_warmup_runtime_state(retained=True),
+        "cold_warmup_runtime_cold_before_first_evaluation": True,
+        "cold_warmup_runtime_retained_before_first_evaluation": False,
+        "cold_warmup_runtime_retained_after_first_evaluation": True,
         "cold_warmup_ratio_eligible": False,
         "cold_warmup_acceptance_eligible": False,
         "warmup_elapsed_seconds": 0.021,
@@ -2968,7 +3001,21 @@ def test_final_audit_accepts_bounded_otf_warmup_evidence() -> None:
     (
         ("cold_warmup_run_count", 2, "exactly one run"),
         ("cold_warmup_batch_size", 64, "full benchmark batch"),
-        ("cold_warmup_runtime_freshness", "fresh", "unauthenticated"),
+        (
+            "cold_warmup_runtime_freshness",
+            "fresh",
+            "authenticated runtime state",
+        ),
+        (
+            "cold_warmup_runtime_state_evidence",
+            "self-reported",
+            "state evidence is unsupported",
+        ),
+        (
+            "cold_warmup_runtime_cold_before_first_evaluation",
+            False,
+            "booleans do not match",
+        ),
         ("cold_warmup_acceptance_eligible", True, "ineligible"),
         ("warmup_configured_run_count", 1, "effective benchmark configuration"),
     ),
@@ -4225,7 +4272,6 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert result["direct_agreement_edge_counts"] == {
         "builtin-ufo-recurrence": 0,
         "z-recurrence-cross-mode": 0,
-        "otf-compiled-cross-mode": 0,
         "lc-cross-layout-component": 0,
         "lc-legacy-pyamplicol-component": 0,
     }

@@ -70,6 +70,12 @@ campaign's default; the run option overrides the saved default. The
 `amplicol_with_patches` branch works now; a compatible upstream revision will
 work unchanged after the PR is merged.
 
+For on-the-fly LC cells in the n<=4 matrix, the matching recurrence cell is the
+single numerical correctness authority. No compiled artifact is generated or
+loaded for that gate. Original AmpliCol remains the independent performance
+baseline used by the OTF-versus-AmpliCol tables. This contract is report-cache
+schema v5; v4 two-authority records are intentionally not migrated.
+
 Rebuild every table and the PDF from one stable current-result snapshot with:
 
 ```console

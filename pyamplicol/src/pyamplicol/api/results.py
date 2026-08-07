@@ -852,11 +852,12 @@ class BenchmarkResult:
     Rusticol around repeated core evaluations of an already packed momentum
     buffer; caller-language conversion and adapter overhead are excluded.
     For compiled/eager execution, ``evaluator_time_per_point`` is the relevant
-    evaluator envelope measured by the bounded native profiler. For recurrence,
-    it is the inclusive recurrence schedule measured by the paired profiled
-    pass. ``evaluator_total_time_per_point`` is the accumulated warmed headline
-    evaluator duration divided by its authenticated measured-point count; it is
-    distinct from both wall-sample statistics and execution attribution.
+    evaluator envelope measured by the bounded native profiler. For recurrence
+    and on-the-fly execution, it is the inclusive recurrence schedule measured
+    by the paired profiled pass. ``evaluator_total_time_per_point`` is the
+    accumulated warmed headline evaluator duration divided by its authenticated
+    measured-point count; it is distinct from both wall-sample statistics and
+    execution attribution.
     ``interrupted`` marks a valid partial result computed only from timing blocks
     that finished before sampling was interrupted.
     """

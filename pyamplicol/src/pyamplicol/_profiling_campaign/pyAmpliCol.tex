@@ -301,7 +301,7 @@ Eager and recurrence modes include construction and serialization of their
 respective numerical schedules. Preparation of a reusable built-in or UFO/JSON
 model bundle occurs before this timer and is therefore excluded from the
 process-generation values in the tables. On-the-fly generation serializes one
-compact topology-replay artifact; the separately reported first cold
+compact query-local artifact; the separately reported first cold
 evaluation is not part of that generation timer.
 
 Runtime measurements use the summed matrix element. The reported native wall
@@ -335,8 +335,8 @@ applicable, direct contact-tensor contraction. Every result must reproduce its
 resolved sum and preserve expected structural zeros.
 
 For each on-the-fly LC cell, both measured workloads must agree component by
-component with independently generated recurrence and compiled results. The
-complete resolved-component checks are performed before and after
+component with an independently generated recurrence result. The complete
+resolved-component check is performed before and after
 \texttt{Runtime.clear()}, and the resolved components must reproduce the total
 on both passes.
 
