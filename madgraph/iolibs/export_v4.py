@@ -3247,15 +3247,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'color_fold_decl': (
                 "    COMPLEX*16 JFOLD(NCOLORFOLD,NAMPSO)\n"
                 "    INTEGER COLREP(NCOLORFOLD)\n"
-                "    INTEGER ICF, ICFSO"),
+                "    INTEGER ICF"),
             'color_fold_index': "\n".join(
                 self.get_int_data_lines("COLREP", lines, var='ICF')),
-            'color_fold_gather': (
-                "    DO ICFSO = 1, NAMPSO\n"
-                "      DO ICF = 1, NCOLORFOLD\n"
-                "        JFOLD(ICF,ICFSO) = JAMP(COLREP(ICF),ICFSO)\n"
-                "      ENDDO\n"
-                "    ENDDO"),
+            'color_fold_gather': "    JFOLD(:,:) = JAMP(COLREP(:),:)",
             'color_fold_array': 'JFOLD'}
 
     def jamp_folded_color_matrix(self, matrix_element, reverse, sign):
@@ -7093,9 +7088,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     MadEvent format."""
 
     matrix_file = "matrix_madevent_v4.inc"
-    # The templates carry the folded color sum, but the numbers come out
-    # wrong (g g > g g is 6x too large), so it stays off until that is found.
-    jamp_fold = False
+    jamp_fold = True
     jamp_orbit = True
     # AMP is indexed by helicity once the matrix element is rewritten for
     # helicity recycling, so the definitions cannot sit at the end of it
