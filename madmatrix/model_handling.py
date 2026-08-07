@@ -1483,6 +1483,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     process_wavefunction_template = pjoin('madmatrix', 'cpp_process_wavefunctions.inc')
     process_sigmaKin_function_template = pjoin('madmatrix', 'process_sigmaKin_function.inc')
     single_process_template = pjoin('madmatrix', 'process_matrix.inc')
+    blas_color_sum_template = pjoin('madmatrix', 'color_sum_blas.inc')
+    blas_helicity_loop_template = pjoin('madmatrix', 'color_sum_blas_loop.inc')
     support_multichannel = False
     multichannel_var = ',fptype& multi_chanel_num, fptype& multi_chanel_denom'
     imaginary_unit = "cxtype(0,1)"
@@ -1777,6 +1779,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nb_channel'] = len(self.multi_channel_map)
         replace_dict['nb_color'] = max(1, len(self.matrix_elements[0].get('color_basis')))
 
+        replace_dict['cpp_blas_helicity_loop'] = ''
+        replace_dict['cpp_blas_helicity_loop_end'] = ''
+        if self.cpp_blas_wanted():
+            replace_dict['cpp_blas_helicity_loop'] = \
+                self.read_template_file(self.blas_helicity_loop_template)
+            replace_dict['cpp_blas_helicity_loop_end'] = \
+                '\n#endif // MGONGPU_CPP_HAS_BLAS'
+
         if write:
             file = self.read_template_file(self.process_sigmaKin_function_template) % replace_dict
             file = strip_banner(file, banner_mark = "!") # skip first 8 lines in process_sigmaKin_function.inc (copyright)
@@ -1991,6 +2001,24 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.close()
 
     # AV - new method
+    @classmethod
+    def cpp_blas_wanted_for(cls, ncolor):
+        """Whether the C++ color sum goes through a host BLAS: only when one
+        carrying SYMM can be linked, and when the color matrix is big enough
+        that the call is worth setting up. Both the probe and the threshold are
+        the ones the Fortran color sum already uses. With BLAS off nothing is
+        written out, so color_sum.cc and CPPProcess.cc are character for
+        character the files written before any of this existed."""
+        from madgraph.iolibs.export_v4 import ProcessExporterFortran
+        if not ProcessExporterFortran.blas_is_available():
+            return False
+        return ncolor >= ProcessExporterFortran.blas_min_ncolor
+
+    def cpp_blas_wanted(self):
+        return self.cpp_blas_wanted_for(
+            max(1, len(self.matrix_elements[0].get('color_basis'))))
+
+    # AV - new method
     def edit_colorsum(self):
         """Generate color_sum.cc"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colorsum')
@@ -1998,6 +2026,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict = {}
         # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
+        replace_dict['cpp_blas_color_sum'] = ''
+        if self.cpp_blas_wanted():
+            replace_dict['cpp_blas_color_sum'] = strip_banner(
+                open(pjoin(self.template_path, self.blas_color_sum_template), 'r').read(),
+                banner_mark='/')
         ff = open(pjoin(self.path, 'color_sum.cc'),'w')
         ff.write(template % replace_dict)
         ff.close()

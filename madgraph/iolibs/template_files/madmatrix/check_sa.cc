@@ -648,8 +648,10 @@ namespace
     }
     const std::vector<fptype> masses( massesD.begin(), massesD.end() );
 
+    // NB: feed the double-precision masses to the classic RAMBO, which works in
+    // double throughout: 'masses' is fptype and would not convert at FPTYPE=f.
     std::vector<std::vector<double>> point =
-      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, masses, rambowgt );
+      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 
     // alpha_s from the param card so the couplings match the Fortran/C++
     // 'check' drivers (UMAMI otherwise falls back to a hardcoded g_s).

@@ -35,7 +35,7 @@ standalone_all: all.$(TAG) check_sa.exe
 # code (the AOSOA->SoA transposition kernel).
 ifeq ($(GPUCC),)
 check_sa.exe: $(standalone_objects) $(LIBDIR)/lib$(MADMATRIX_LIB).so $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
-	$(CXX) -o $@ $(standalone_objects) $(CXXLIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
+	$(CXX) -o $@ $(standalone_objects) $(CXXLIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS) $(CPPBLASLIBFLAGS)
 else
 check_sa.exe: $(standalone_objects) $(LIBDIR)/lib$(MADMATRIX_LIB).so $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
 	$(GPUCC) -o $@ $(standalone_objects) $(GPULIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
