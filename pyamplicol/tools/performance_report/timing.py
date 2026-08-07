@@ -167,6 +167,7 @@ def evaluator_total_timing_record(
             "compiled",
             "eager",
             "recurrence",
+            "on-the-fly",
         }
         or record.get("sample_contract") != EVALUATOR_TOTAL_SAMPLE_CONTRACT
         or isinstance(sample_count, bool)

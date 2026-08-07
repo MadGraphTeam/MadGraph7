@@ -341,8 +341,21 @@ def test_otf_benchmark_measurement_requires_and_stores_cold_warmup() -> None:
         "evaluator_time_ratio_eligible": True,
         "evaluator_time_source": "runtime_profile_core_recurrence_schedule_time",
         "native_profile_points_per_sample": 128,
+        "native_profile_repetitions_per_sample": 1,
+        "native_profile_batch_size": 128,
         "timing_sample_contract": "paired-native-repeated-profile-v1",
         "elapsed_seconds": 1.0,
+        "measured_point_count": 640,
+        "evaluator_total_time_raw_seconds_per_point": 9.0e-7,
+        "evaluator_total_time_status": "measured",
+        "evaluator_total_time_ratio_eligible": False,
+        "evaluator_total_time_source": (
+            "runtime._benchmark_f64_wall_time.accumulated"
+        ),
+        "evaluator_total_time_sample_contract": (
+            "accumulated-repeated-warmed-evaluator-total-v1"
+        ),
+        "evaluator_total_accumulated_seconds": 5.76e-4,
         "cold_warmup_elapsed_seconds": 0.25,
         "cold_warmup_run_count": 1,
         "cold_warmup_batch_size": 128,
@@ -368,6 +381,7 @@ def test_otf_benchmark_measurement_requires_and_stores_cold_warmup() -> None:
         ),
         environment=environment,
         evaluator_time_per_point=8.0e-7,
+        evaluator_total_time_per_point=9.0e-7,
         wall_time_per_point=1.0e-6,
         sample_count=5,
         effective_config=SimpleNamespace(
@@ -379,6 +393,21 @@ def test_otf_benchmark_measurement_requires_and_stores_cold_warmup() -> None:
 
     measurement = _benchmark_measurement(benchmark, matrix_element=2.0)
     assert measurement["benchmark_evidence"]["cold_warmup_elapsed_seconds"] == 0.25
+    assert measurement["evaluator_total_timing"] == {
+        "abi": "pyamplicol-report-evaluator-total-timing-v1",
+        "status": "measured",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": 9.0e-7,
+        "source": "runtime._benchmark_f64_wall_time.accumulated",
+        "execution_mode": "on-the-fly",
+        "sample_contract": "accumulated-repeated-warmed-evaluator-total-v1",
+        "sample_count": 5,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
+        "points_per_sample": 128,
+        "measured_point_count": 640,
+        "accumulated_seconds": 5.76e-4,
+    }
 
     del environment["cold_warmup_elapsed_seconds"]
     with pytest.raises(RunnerError, match="incomplete cold warm-up evidence"):
