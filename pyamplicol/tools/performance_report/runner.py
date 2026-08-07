@@ -78,9 +78,51 @@ ABSOLUTE_TOLERANCE = 1.0e-15
 CONDITIONED_COMPARISON_ABI = "pyamplicol-report-conditioned-comparison-v2"
 RESOLVED_SUM_VALIDATION_ABI = "pyamplicol-report-resolved-sum-validation-v2"
 RESOLVED_COMPONENT_SCALE_ABI = "pyamplicol-report-resolved-component-scale-v1"
+OTF_DUAL_AUTHORITY_VALIDATION_ABI = (
+    "pyamplicol-report-on-the-fly-dual-authority-validation-v2"
+)
+OTF_DUAL_AUTHORITY_VALIDATION_FIELD = "on_the_fly_dual_authority"
+OTF_COLD_WARMUP_FIELDS = frozenset(
+    {
+        "cold_warmup_elapsed_seconds",
+        "cold_warmup_run_count",
+        "cold_warmup_batch_size",
+        "cold_warmup_point_count",
+        "cold_warmup_timer_source",
+        "cold_warmup_timing_scope",
+        "cold_warmup_runtime_freshness",
+        "cold_warmup_ratio_eligible",
+        "cold_warmup_acceptance_eligible",
+    }
+)
+CONVENTIONAL_WARMUP_FIELDS = frozenset(
+    {
+        "warmup_elapsed_seconds",
+        "warmup_configured_run_count",
+        "warmup_batch_size",
+        "warmup_point_count",
+        "warmup_run_outer_wall_seconds",
+        "first_warmup_run_outer_wall_seconds",
+        "warmup_timer_source",
+        "warmup_timing_scope",
+    }
+)
+WARMUP_TIMER_SOURCE = "python_outer_time.perf_counter"
+OTF_COLD_WARMUP_TIMING_SCOPE = (
+    "one initial requested-selector Runtime evaluation on the full benchmark "
+    "batch; artifact generation and Runtime/artifact load are excluded"
+)
+OTF_COLD_WARMUP_RUNTIME_FRESHNESS = "not-authenticated-by-benchmark"
+CONVENTIONAL_WARMUP_TIMING_SCOPE = (
+    "configured benchmark warm-up iteration outer wall; includes the headline "
+    "evaluation and optional native-profile warm-up; artifact generation and "
+    "Runtime/artifact load are excluded"
+)
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 GENERATION_VALIDATION_SEED = 12345
 DEFAULT_TARGET_RUNTIME_SECONDS = 5.0
+REPORT_BENCHMARK_BATCH_SIZE = 128
+REPORT_BENCHMARK_WARMUP_RUNS = 2
 _ARENA_MINIMUM_SAMPLES = 5
 _ARENA_MAX_SAMPLES = 64
 _ARENA_MAX_CALIBRATION_BLOCKS = 4
@@ -159,10 +201,10 @@ def profiling_chunk_guard(
 @dataclass(frozen=True, slots=True)
 class RunnerSettings:
     target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
-    batch_size: int = 128
+    batch_size: int = REPORT_BENCHMARK_BATCH_SIZE
     worker_cores: int = 1
     memory_limit_bytes: int | None = None
-    warmup_runs: int = 2
+    warmup_runs: int = REPORT_BENCHMARK_WARMUP_RUNS
     minimum_samples: int = 5
     model_cache_dir: Path | None = None
     progress: ProgressSink | None = None
@@ -337,6 +379,8 @@ class RuntimeLike(Protocol):
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
     ) -> object: ...
+
+    def clear(self) -> None: ...
 
 
 def _canonical_json(value: object) -> bytes:
@@ -645,9 +689,7 @@ def validate_conditioned_comparison_record(
                 "baseline_source_sha256",
             }
             if set(binding) != expected_binding_fields:
-                raise ValueError(
-                    "conditioned comparison source binding fields differ"
-                )
+                raise ValueError("conditioned comparison source binding fields differ")
             selector_identity = binding.get("selector_component_identity")
             if not isinstance(selector_identity, Mapping) or not selector_identity:
                 raise ValueError(
@@ -756,9 +798,22 @@ def config_values(
         raise RunnerError("original AmpliCol does not use the pyAmpliCol runner")
     if measurement.model is None:
         raise RunnerError("pyAmpliCol measurement requires an explicit model")
+    on_the_fly = measurement.execution_mode is ExecutionMode.ON_THE_FLY
+    if on_the_fly and measurement.accuracy is not Accuracy.LC:
+        raise RunnerError("on-the-fly campaign measurements currently require LC")
+    if on_the_fly and (
+        measurement.backend != "jit" or measurement.jit_optimization_level != 2
+    ):
+        raise RunnerError("on-the-fly campaign measurements require prepared JIT O2")
     model_path = _model_source_path(repo_root, measurement.model)
     layout = (
-        "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
+        "topology-replay"
+        if on_the_fly
+        else (
+            "all-flow-union"
+            if cell.workload is Workload.ALL_FLOW
+            else "topology-replay"
+        )
     )
     values: dict[str, object] = {
         "model": {
@@ -776,15 +831,16 @@ def config_values(
         },
         "generation": {
             "workers": settings.worker_cores,
-            "emit_api_bundle": True,
+            "emit_api_bundle": not on_the_fly,
             "validation": {
-                "enabled": True,
+                "enabled": not on_the_fly,
                 "samples": 10,
                 "seed": GENERATION_VALIDATION_SEED,
                 "relative_tolerance": RELATIVE_TOLERANCE,
                 "absolute_tolerance": 1.0e-300,
-                "post_build_validation": True,
+                "post_build_validation": not on_the_fly,
             },
+            **({"relation_discovery": {"mode": "off"}} if on_the_fly else {}),
         },
         "evaluator": {
             "backend": measurement.backend,
@@ -819,9 +875,7 @@ def config_values(
         workspace_mib = settings.memory_limit_bytes // _MIB
         evaluator = values["evaluator"]
         assert isinstance(evaluator, dict)
-        evaluator[measurement.execution_mode.value] = {
-            "workspace_mib": workspace_mib
-        }
+        evaluator[measurement.execution_mode.value] = {"workspace_mib": workspace_mib}
     return values
 
 
@@ -908,6 +962,8 @@ def validate_artifact_contract(cell: CellSpec, artifact_path: Path) -> None:
     from pyamplicol._internal.versions import (
         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+        ON_THE_FLY_RUNTIME_CAPABILITY,
         RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     )
     from pyamplicol.artifacts import inspect_artifact
@@ -928,21 +984,39 @@ def validate_artifact_contract(cell: CellSpec, artifact_path: Path) -> None:
         )
     if process.selected_source_helicities or process.selected_color_sector_ids:
         raise RunnerError("report artifact contains forbidden generation selectors")
-    expected_arena_capability = {
+    expected_runtime_capability = {
         ExecutionMode.COMPILED: COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         ExecutionMode.EAGER: EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         ExecutionMode.RECURRENCE: RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        ExecutionMode.ON_THE_FLY: ON_THE_FLY_RUNTIME_CAPABILITY,
     }[cell.measurement.execution_mode]
-    if expected_arena_capability not in set(inspection.runtime_capabilities):
+    runtime_capabilities = set(inspection.runtime_capabilities)
+    if expected_runtime_capability not in runtime_capabilities:
         raise RunnerError(
-            "report artifact does not require the final Arena execution lane "
-            f"{expected_arena_capability!r}"
+            "report artifact does not require its authenticated execution lane "
+            f"{expected_runtime_capability!r}"
+        )
+    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and (
+        len(inspection.runtime_capabilities) != 2
+        or runtime_capabilities
+        != {
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+        }
+    ):
+        raise RunnerError(
+            "on-the-fly report artifact does not expose exactly its two compact "
+            "LC runtime capabilities"
         )
     if cell.measurement.accuracy is Accuracy.LC:
         expected_layout = (
-            "all-flow-union"
-            if cell.workload is Workload.ALL_FLOW
-            else "topology-replay"
+            "topology-replay"
+            if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+            else (
+                "all-flow-union"
+                if cell.workload is Workload.ALL_FLOW
+                else "topology-replay"
+            )
         )
         if process.lc_flow_layout != expected_layout:
             raise RunnerError(
@@ -968,6 +1042,8 @@ def runtime_identity_payload(
         EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         EAGER_DIRECT_TABLE_BINDING_ABI,
         NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+        ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+        ON_THE_FLY_RUNTIME_CAPABILITY,
         RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
         RECURRENCE_RUNTIME_LAYOUT_ABI,
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
@@ -1009,6 +1085,18 @@ def runtime_identity_payload(
     required_capabilities = tuple(
         str(value) for value in process["required_runtime_capabilities"]
     )
+    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and (
+        len(required_capabilities) != 2
+        or set(required_capabilities)
+        != {
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+        }
+    ):
+        raise RunnerError(
+            "on-the-fly report runtime identity requires exactly its two "
+            "compact LC capabilities"
+        )
     arena_capability, evaluator_abi, source_evaluator_abi = {
         ExecutionMode.EAGER: (
             EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
@@ -1026,6 +1114,11 @@ def runtime_identity_payload(
                     "asm": SYMBOLICA_ASM_RUNTIME_CAPABILITY,
                 }.get(cell.measurement.backend)
             ),
+        ),
+        ExecutionMode.ON_THE_FLY: (
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            "pyamplicol-runtime-on-the-fly-execution",
+            SYMJIT_PLANE_APPLICATION_ABI,
         ),
     }.get(
         cell.measurement.execution_mode,
@@ -1173,7 +1266,11 @@ def runtime_identity_payload(
             )
         if (
             cell.measurement.execution_mode
-            in {ExecutionMode.EAGER, ExecutionMode.RECURRENCE}
+            in {
+                ExecutionMode.EAGER,
+                ExecutionMode.RECURRENCE,
+                ExecutionMode.ON_THE_FLY,
+            }
             and source_level != 2
         ):
             raise RunnerError(
@@ -2341,6 +2438,728 @@ def validate_selector_contract(
             )
 
 
+@dataclass(frozen=True, slots=True)
+class _OtfAuthorityCapture:
+    totals: tuple[float, ...]
+    helicity_ids: tuple[str, ...]
+    color_flow_ids: tuple[str, ...]
+    components: tuple[tuple[tuple[float, ...], ...], ...]
+    total_source_sha256: str
+    resolved_total_source_sha256: str
+    resolved_ordering_sha256: str
+    resolved_source_sha256: str
+    resolved_sum: dict[str, object]
+
+
+def _finite_real(value: object, label: str) -> float:
+    try:
+        number = complex(value)  # type: ignore[arg-type]
+    except (OverflowError, TypeError, ValueError) as error:
+        raise RunnerError(f"{label} is not numeric") from error
+    if not math.isfinite(number.real) or not math.isfinite(number.imag):
+        raise RunnerError(f"{label} is not finite")
+    if number.imag != 0.0:
+        raise RunnerError(f"{label} is not real")
+    return float(number.real)
+
+
+def _otf_selector_digest(cell: CellSpec, contract: SelectorContract) -> str:
+    selectors = _selector_kwargs(cell, contract)
+    return hashlib.sha256(
+        _canonical_json(
+            {
+                "accuracy": cell.measurement.accuracy.value,
+                "workload": cell.workload.value,
+                "selector_contract": contract.as_dict(),
+                "helicities": (
+                    None
+                    if selectors["helicities"] is None
+                    else list(selectors["helicities"])
+                ),
+                "color_flows": (
+                    None
+                    if selectors["color_flows"] is None
+                    else list(selectors["color_flows"])
+                ),
+            }
+        )
+    ).hexdigest()
+
+
+def _otf_runtime_artifact_id(runtime: object, label: str) -> str:
+    artifact_id = getattr(runtime, "artifact_id", None)
+    if not isinstance(artifact_id, str) or not _SHA256_PATTERN.fullmatch(artifact_id):
+        raise RunnerError(f"{label} runtime has no authenticated artifact ID")
+    return artifact_id
+
+
+def _runtime_execution_mode(runtime: object) -> str:
+    value = getattr(runtime, "execution_mode", None)
+    return value.value if isinstance(value, ExecutionMode) else str(value)
+
+
+def _capture_otf_authority_values(
+    runtime: RuntimeLike,
+    points: object,
+    *,
+    cell: CellSpec,
+    contract: SelectorContract,
+    label: str,
+) -> _OtfAuthorityCapture:
+    selectors = _selector_kwargs(cell, contract)
+    raw_totals = tuple(runtime.evaluate(points, precision=16, **selectors))
+    try:
+        expected_point_count = len(points)  # type: ignore[arg-type]
+    except TypeError as error:
+        raise RunnerError("on-the-fly authority points have no finite axis") from error
+    if expected_point_count < 1 or len(raw_totals) != expected_point_count:
+        raise RunnerError(f"{label} total point axis is empty or differs")
+    totals = tuple(_real_nonnegative(value) for value in raw_totals)
+
+    resolved = runtime.evaluate_resolved(points, precision=16, **selectors)
+    helicity_ids = tuple(str(item) for item in getattr(resolved, "helicity_ids", ()))
+    color_flow_ids = tuple(str(item) for item in getattr(resolved, "color_ids", ()))
+    if (
+        not helicity_ids
+        or not color_flow_ids
+        or any(not item for item in helicity_ids + color_flow_ids)
+        or len(set(helicity_ids)) != len(helicity_ids)
+        or len(set(color_flow_ids)) != len(color_flow_ids)
+    ):
+        raise RunnerError(f"{label} resolved axes are empty or ambiguous")
+    if cell.workload is Workload.SELECTED_FLOW and (
+        len(color_flow_ids) != len(contract.selected_color_flow_ids)
+        or set(color_flow_ids) != set(contract.selected_color_flow_ids)
+    ):
+        raise RunnerError(f"{label} resolved output ignored the selected flow")
+    if cell.workload is Workload.ALL_FLOW and (
+        len(helicity_ids) != len(contract.runtime_all_flow_helicity_ids)
+        or set(helicity_ids) != set(contract.runtime_all_flow_helicity_ids)
+    ):
+        raise RunnerError(f"{label} resolved output ignored the selected helicity")
+
+    raw_components = getattr(resolved, "values", None)
+    to_list = getattr(raw_components, "tolist", None)
+    if callable(to_list):
+        raw_components = to_list()
+    if (
+        not isinstance(raw_components, Sequence)
+        or isinstance(raw_components, (str, bytes, bytearray))
+        or len(raw_components) != expected_point_count
+    ):
+        raise RunnerError(f"{label} resolved point axis is invalid")
+    components: list[tuple[tuple[float, ...], ...]] = []
+    for point_index, raw_point in enumerate(raw_components):
+        if (
+            not isinstance(raw_point, Sequence)
+            or isinstance(raw_point, (str, bytes, bytearray))
+            or len(raw_point) != len(helicity_ids)
+        ):
+            raise RunnerError(f"{label} resolved helicity axis is invalid")
+        point_rows: list[tuple[float, ...]] = []
+        for helicity_index, raw_row in enumerate(raw_point):
+            if (
+                not isinstance(raw_row, Sequence)
+                or isinstance(raw_row, (str, bytes, bytearray))
+                or len(raw_row) != len(color_flow_ids)
+            ):
+                raise RunnerError(f"{label} resolved color-flow axis is invalid")
+            point_rows.append(
+                tuple(
+                    _finite_real(
+                        value,
+                        (
+                            f"{label} resolved component "
+                            f"{point_index}/{helicity_index}/{color_index}"
+                        ),
+                    )
+                    for color_index, value in enumerate(raw_row)
+                )
+            )
+        components.append(tuple(point_rows))
+    frozen_components = tuple(components)
+    resolved_total = getattr(resolved, "total", None)
+    if not callable(resolved_total):
+        raise RunnerError(f"{label} resolved result does not expose total()")
+    raw_resolved_totals = tuple(resolved_total())
+    if len(raw_resolved_totals) != expected_point_count:
+        raise RunnerError(f"{label} resolved total point axis differs")
+    resolved_totals = tuple(_real_nonnegative(value) for value in raw_resolved_totals)
+    resolved_sum = _otf_compact_series_summary(
+        totals,
+        resolved_totals,
+        label=f"{label} optimized/resolved sum",
+    )
+    ordering = {
+        "helicity_ids": list(helicity_ids),
+        "color_flow_ids": list(color_flow_ids),
+    }
+    return _OtfAuthorityCapture(
+        totals=totals,
+        helicity_ids=helicity_ids,
+        color_flow_ids=color_flow_ids,
+        components=frozen_components,
+        total_source_sha256=hashlib.sha256(
+            _canonical_json(_resolved_component_payload(totals))
+        ).hexdigest(),
+        resolved_total_source_sha256=hashlib.sha256(
+            _canonical_json(_resolved_component_payload(resolved_totals))
+        ).hexdigest(),
+        resolved_ordering_sha256=hashlib.sha256(_canonical_json(ordering)).hexdigest(),
+        resolved_source_sha256=hashlib.sha256(
+            _canonical_json(
+                {
+                    **ordering,
+                    "values": _resolved_component_payload(frozen_components),
+                }
+            )
+        ).hexdigest(),
+        resolved_sum=resolved_sum,
+    )
+
+
+def _otf_compact_series_summary(
+    candidate: Sequence[float],
+    authority: Sequence[float],
+    *,
+    label: str,
+) -> dict[str, object]:
+    if not candidate or len(candidate) != len(authority):
+        raise RunnerError(f"{label} comparison axes are empty or differ")
+    records = tuple(
+        pointwise_validation(
+            candidate_value,
+            authority_value,
+            relative_tolerance=RELATIVE_TOLERANCE,
+        )
+        for candidate_value, authority_value in zip(candidate, authority, strict=True)
+    )
+    failed = next(
+        (
+            index
+            for index, record in enumerate(records)
+            if record["status"] != ResultStatus.OK.value
+        ),
+        None,
+    )
+    if failed is not None:
+        raise RunnerError(
+            f"{label} disagrees at check {failed}: conditioned residual "
+            f"{records[failed]['conditioned_residual']!r}"
+        )
+    return {
+        "check_count": len(records),
+        "maximum_conditioned_residual": max(
+            float(record["conditioned_residual"]) for record in records
+        ),
+        "maximum_absolute_delta": max(
+            float(record["absolute_difference"]) for record in records
+        ),
+    }
+
+
+def _otf_capture_comparison(
+    candidate: _OtfAuthorityCapture,
+    authority: _OtfAuthorityCapture,
+    *,
+    authority_cell_id: str,
+    label: str,
+) -> dict[str, object]:
+    total = _otf_compact_series_summary(
+        candidate.totals,
+        authority.totals,
+        label=f"{label} totals",
+    )
+    if (
+        len(candidate.helicity_ids) != len(authority.helicity_ids)
+        or set(candidate.helicity_ids) != set(authority.helicity_ids)
+        or len(candidate.color_flow_ids) != len(authority.color_flow_ids)
+        or set(candidate.color_flow_ids) != set(authority.color_flow_ids)
+    ):
+        raise RunnerError(f"{label} resolved semantic axes differ")
+    authority_helicities = {
+        identifier: index for index, identifier in enumerate(authority.helicity_ids)
+    }
+    authority_colors = {
+        identifier: index for index, identifier in enumerate(authority.color_flow_ids)
+    }
+    candidate_values: list[float] = []
+    authority_values: list[float] = []
+    for point_index in range(len(candidate.components)):
+        for candidate_helicity_index, helicity_id in enumerate(candidate.helicity_ids):
+            authority_helicity_index = authority_helicities[helicity_id]
+            for candidate_color_index, color_id in enumerate(candidate.color_flow_ids):
+                authority_color_index = authority_colors[color_id]
+                candidate_values.append(
+                    candidate.components[point_index][candidate_helicity_index][
+                        candidate_color_index
+                    ]
+                )
+                authority_values.append(
+                    authority.components[point_index][authority_helicity_index][
+                        authority_color_index
+                    ]
+                )
+    resolved = _otf_compact_series_summary(
+        candidate_values,
+        authority_values,
+        label=f"{label} resolved components",
+    )
+    resolved["component_count"] = len(candidate.helicity_ids) * len(
+        candidate.color_flow_ids
+    )
+    return {
+        "authority_cell_id": authority_cell_id,
+        "total": total,
+        "resolved_components": resolved,
+    }
+
+
+def _otf_stage_record(
+    candidate: _OtfAuthorityCapture,
+    authorities: Sequence[tuple[str, CellSpec, _OtfAuthorityCapture]],
+    *,
+    stage: str,
+) -> dict[str, object]:
+    return {
+        "candidate_total_source_sha256": candidate.total_source_sha256,
+        "candidate_resolved_total_source_sha256": (
+            candidate.resolved_total_source_sha256
+        ),
+        "candidate_resolved_ordering_sha256": (candidate.resolved_ordering_sha256),
+        "candidate_resolved_source_sha256": candidate.resolved_source_sha256,
+        "candidate_resolved_sum": candidate.resolved_sum,
+        "comparisons": [
+            _otf_capture_comparison(
+                candidate,
+                authority,
+                authority_cell_id=authority_cell.cell_id,
+                label=f"on-the-fly {stage}/{role}",
+            )
+            for role, authority_cell, authority in authorities
+        ],
+    }
+
+
+def on_the_fly_dual_authority_validation(
+    candidate: RuntimeLike,
+    points: object,
+    *,
+    cell: CellSpec,
+    selector_contract: SelectorContract,
+    authorities: Sequence[tuple[str, CellSpec, RuntimeLike]],
+) -> dict[str, object]:
+    """Validate one cold OTF runtime twice, then reset it for public profiling."""
+
+    if (
+        cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY
+        or cell.measurement.accuracy is not Accuracy.LC
+    ):
+        raise RunnerError("dual-authority preflight requires an on-the-fly LC cell")
+    expected_roles = (
+        ("recurrence", ExecutionMode.RECURRENCE),
+        ("compiled", ExecutionMode.COMPILED),
+    )
+    if tuple(role for role, _cell, _runtime in authorities) != tuple(
+        role for role, _mode in expected_roles
+    ):
+        raise RunnerError("on-the-fly preflight requires recurrence then compiled")
+    validate_runtime_contract(cell, candidate)
+    if _runtime_execution_mode(candidate) != ExecutionMode.ON_THE_FLY.value:
+        raise RunnerError("on-the-fly candidate runtime has the wrong execution mode")
+    validate_selector_contract(candidate, selector_contract, points)
+    candidate_artifact_id = _otf_runtime_artifact_id(candidate, "on-the-fly candidate")
+
+    authority_captures: list[tuple[str, CellSpec, _OtfAuthorityCapture]] = []
+    authority_records: list[dict[str, object]] = []
+    for (role, expected_mode), (
+        observed_role,
+        authority_cell,
+        authority_runtime,
+    ) in zip(expected_roles, authorities, strict=True):
+        if (
+            observed_role != role
+            or authority_cell.measurement.execution_mode is not expected_mode
+            or authority_cell.measurement.accuracy is not Accuracy.LC
+            or authority_cell.process_key != cell.process_key
+            or authority_cell.n_final != cell.n_final
+            or authority_cell.workload is not cell.workload
+        ):
+            raise RunnerError(f"on-the-fly {role} authority cell is incompatible")
+        validate_runtime_contract(authority_cell, authority_runtime)
+        if _runtime_execution_mode(authority_runtime) != expected_mode.value:
+            raise RunnerError(f"on-the-fly {role} authority has the wrong mode")
+        validate_selector_contract(authority_runtime, selector_contract, points)
+        capture = _capture_otf_authority_values(
+            authority_runtime,
+            points,
+            cell=authority_cell,
+            contract=selector_contract,
+            label=f"on-the-fly {role} authority",
+        )
+        authority_captures.append((role, authority_cell, capture))
+        authority_records.append(
+            {
+                "role": role,
+                "cell_id": authority_cell.cell_id,
+                "artifact_id": _otf_runtime_artifact_id(
+                    authority_runtime, f"on-the-fly {role} authority"
+                ),
+                "total_source_sha256": capture.total_source_sha256,
+                "resolved_total_source_sha256": (capture.resolved_total_source_sha256),
+                "resolved_ordering_sha256": capture.resolved_ordering_sha256,
+                "resolved_source_sha256": capture.resolved_source_sha256,
+                "resolved_sum": capture.resolved_sum,
+            }
+        )
+
+    before = _capture_otf_authority_values(
+        candidate,
+        points,
+        cell=cell,
+        contract=selector_contract,
+        label="on-the-fly candidate before clear",
+    )
+    before_record = _otf_stage_record(
+        before,
+        authority_captures,
+        stage="before-clear",
+    )
+    clear = getattr(candidate, "clear", None)
+    if not callable(clear):
+        raise RunnerError("on-the-fly candidate does not expose Runtime.clear()")
+    clear()
+    try:
+        after = _capture_otf_authority_values(
+            candidate,
+            points,
+            cell=cell,
+            contract=selector_contract,
+            label="on-the-fly candidate after clear",
+        )
+        after_record = _otf_stage_record(
+            after,
+            authority_captures,
+            stage="after-clear",
+        )
+    finally:
+        # The public profiler must own the next evaluation and its cold clock.
+        clear()
+
+    point_count = len(before.totals)
+    component_count = len(before.helicity_ids) * len(before.color_flow_ids)
+    record = {
+        "abi": OTF_DUAL_AUTHORITY_VALIDATION_ABI,
+        "status": ResultStatus.OK.value,
+        "candidate_cell_id": cell.cell_id,
+        "candidate_artifact_id": candidate_artifact_id,
+        "workload": cell.workload.value,
+        "precision_digits": 16,
+        "relative_tolerance": RELATIVE_TOLERANCE,
+        "point_digest": point_digest(points),
+        "selector_sha256": _otf_selector_digest(cell, selector_contract),
+        "point_count": point_count,
+        "resolved_component_count": component_count,
+        "resolved_check_count": point_count * component_count,
+        "authorities": authority_records,
+        "before_clear": before_record,
+        "after_clear": after_record,
+        "lifecycle": {
+            "authority_artifacts_loaded_only": True,
+            "candidate_loaded_before_validation": True,
+            "validated_before_clear": True,
+            "validated_after_clear": True,
+            "clear_call_count": 2,
+            "final_clear_before_profile": True,
+        },
+    }
+    validate_on_the_fly_dual_authority_validation_record(
+        record,
+        expected_cell=cell,
+        selector_contract=selector_contract.as_dict(),
+        candidate_artifact_id=candidate_artifact_id,
+        expected_authorities=tuple(
+            (role, authority_cell.cell_id)
+            for role, authority_cell, _runtime in authorities
+        ),
+    )
+    return record
+
+
+def _require_otf_sha256(value: object, field: str) -> str:
+    if not isinstance(value, str) or not _SHA256_PATTERN.fullmatch(value):
+        raise ValueError(f"on-the-fly dual-authority {field} is not SHA-256")
+    return value
+
+
+def _validate_otf_compact_summary(
+    value: object,
+    *,
+    field: str,
+    expected_checks: int,
+    expected_components: int | None = None,
+    relative_tolerance: float,
+) -> None:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"on-the-fly dual-authority {field} is not an object")
+    expected = {
+        "check_count",
+        "maximum_conditioned_residual",
+        "maximum_absolute_delta",
+    }
+    if expected_components is not None:
+        expected.add("component_count")
+    check_count = value.get("check_count")
+    if (
+        set(value) != expected
+        or isinstance(check_count, bool)
+        or not isinstance(check_count, int)
+        or check_count != expected_checks
+    ):
+        raise ValueError(f"on-the-fly dual-authority {field} counts differ")
+    if expected_components is not None:
+        component_count = value.get("component_count")
+        if (
+            isinstance(component_count, bool)
+            or not isinstance(component_count, int)
+            or component_count != expected_components
+        ):
+            raise ValueError(
+                f"on-the-fly dual-authority {field} component count differs"
+            )
+    for name in ("maximum_conditioned_residual", "maximum_absolute_delta"):
+        raw = value.get(name)
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, (int, float))
+            or not math.isfinite(float(raw))
+            or float(raw) < 0.0
+        ):
+            raise ValueError(f"on-the-fly dual-authority {field}.{name} is invalid")
+    if float(value["maximum_conditioned_residual"]) > relative_tolerance:
+        raise ValueError(f"on-the-fly dual-authority {field} is not successful")
+
+
+def validate_on_the_fly_dual_authority_validation_record(
+    value: object,
+    *,
+    expected_cell: CellSpec | None = None,
+    selector_contract: object = None,
+    candidate_artifact_id: str | None = None,
+    expected_authorities: Sequence[tuple[str, str]] | None = None,
+) -> None:
+    """Validate the compact, success-only OTF numerical preflight record."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("on-the-fly dual-authority validation must be an object")
+    expected_fields = {
+        "abi",
+        "status",
+        "candidate_cell_id",
+        "candidate_artifact_id",
+        "workload",
+        "precision_digits",
+        "relative_tolerance",
+        "point_digest",
+        "selector_sha256",
+        "point_count",
+        "resolved_component_count",
+        "resolved_check_count",
+        "authorities",
+        "before_clear",
+        "after_clear",
+        "lifecycle",
+    }
+    if set(value) != expected_fields:
+        raise ValueError("on-the-fly dual-authority validation fields differ")
+    if (
+        value.get("abi") != OTF_DUAL_AUTHORITY_VALIDATION_ABI
+        or value.get("status") != ResultStatus.OK.value
+        or value.get("precision_digits") != 16
+        or value.get("relative_tolerance") != RELATIVE_TOLERANCE
+    ):
+        raise ValueError("on-the-fly dual-authority validation header is invalid")
+    _require_otf_sha256(value.get("candidate_artifact_id"), "candidate_artifact_id")
+    _require_otf_sha256(value.get("point_digest"), "point_digest")
+    _require_otf_sha256(value.get("selector_sha256"), "selector_sha256")
+    point_count = value.get("point_count")
+    component_count = value.get("resolved_component_count")
+    check_count = value.get("resolved_check_count")
+    if (
+        isinstance(point_count, bool)
+        or not isinstance(point_count, int)
+        or point_count < 1
+        or isinstance(component_count, bool)
+        or not isinstance(component_count, int)
+        or component_count < 1
+        or check_count != point_count * component_count
+    ):
+        raise ValueError("on-the-fly dual-authority validation counts are invalid")
+    if (
+        candidate_artifact_id is not None
+        and value.get("candidate_artifact_id") != candidate_artifact_id
+    ):
+        raise ValueError("on-the-fly candidate artifact ID differs")
+
+    if expected_cell is not None:
+        if (
+            expected_cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY
+            or expected_cell.measurement.accuracy is not Accuracy.LC
+            or value.get("candidate_cell_id") != expected_cell.cell_id
+            or value.get("workload") != expected_cell.workload.value
+        ):
+            raise ValueError("on-the-fly dual-authority candidate cell differs")
+        if not isinstance(selector_contract, Mapping):
+            raise ValueError("on-the-fly dual-authority selector contract is absent")
+        try:
+            contract = SelectorContract.from_mapping(selector_contract)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                "on-the-fly dual-authority selector contract is invalid"
+            ) from error
+        if value.get("point_digest") != contract.point_digest or value.get(
+            "selector_sha256"
+        ) != _otf_selector_digest(expected_cell, contract):
+            raise ValueError("on-the-fly dual-authority selector binding differs")
+    elif (
+        not isinstance(value.get("candidate_cell_id"), str)
+        or not value.get("candidate_cell_id")
+        or value.get("workload")
+        not in {
+            Workload.SELECTED_FLOW.value,
+            Workload.ALL_FLOW.value,
+        }
+    ):
+        raise ValueError("on-the-fly dual-authority candidate identity is invalid")
+
+    authorities = value.get("authorities")
+    if not isinstance(authorities, list) or len(authorities) != 2:
+        raise ValueError("on-the-fly dual-authority authorities are unavailable")
+    observed_authorities: list[tuple[str, str]] = []
+    authority_cell_ids: list[str] = []
+    authority_fields = {
+        "role",
+        "cell_id",
+        "artifact_id",
+        "total_source_sha256",
+        "resolved_total_source_sha256",
+        "resolved_ordering_sha256",
+        "resolved_source_sha256",
+        "resolved_sum",
+    }
+    for index, authority in enumerate(authorities):
+        if not isinstance(authority, Mapping) or set(authority) != authority_fields:
+            raise ValueError(
+                f"on-the-fly dual-authority authorities[{index}] fields differ"
+            )
+        role = authority.get("role")
+        cell_id = authority.get("cell_id")
+        if (
+            role not in {"recurrence", "compiled"}
+            or not isinstance(cell_id, str)
+            or not cell_id
+        ):
+            raise ValueError("on-the-fly dual-authority authority identity is invalid")
+        observed_authorities.append((role, cell_id))
+        authority_cell_ids.append(cell_id)
+        for field in (
+            "artifact_id",
+            "total_source_sha256",
+            "resolved_total_source_sha256",
+            "resolved_ordering_sha256",
+            "resolved_source_sha256",
+        ):
+            _require_otf_sha256(authority.get(field), f"authority.{field}")
+        _validate_otf_compact_summary(
+            authority.get("resolved_sum"),
+            field=f"authorities[{index}].resolved_sum",
+            expected_checks=point_count,
+            relative_tolerance=RELATIVE_TOLERANCE,
+        )
+    if tuple(role for role, _cell_id in observed_authorities) != (
+        "recurrence",
+        "compiled",
+    ):
+        raise ValueError("on-the-fly dual-authority roles are not canonical")
+    if expected_authorities is not None and tuple(observed_authorities) != tuple(
+        expected_authorities
+    ):
+        raise ValueError("on-the-fly dual-authority catalog identities differ")
+
+    for stage_name in ("before_clear", "after_clear"):
+        stage = value.get(stage_name)
+        expected_stage_fields = {
+            "candidate_total_source_sha256",
+            "candidate_resolved_total_source_sha256",
+            "candidate_resolved_ordering_sha256",
+            "candidate_resolved_source_sha256",
+            "candidate_resolved_sum",
+            "comparisons",
+        }
+        if not isinstance(stage, Mapping) or set(stage) != expected_stage_fields:
+            raise ValueError(f"on-the-fly dual-authority {stage_name} fields differ")
+        for field in (
+            "candidate_total_source_sha256",
+            "candidate_resolved_total_source_sha256",
+            "candidate_resolved_ordering_sha256",
+            "candidate_resolved_source_sha256",
+        ):
+            _require_otf_sha256(stage.get(field), f"{stage_name}.{field}")
+        _validate_otf_compact_summary(
+            stage.get("candidate_resolved_sum"),
+            field=f"{stage_name}.candidate_resolved_sum",
+            expected_checks=point_count,
+            relative_tolerance=RELATIVE_TOLERANCE,
+        )
+        comparisons = stage.get("comparisons")
+        if not isinstance(comparisons, list) or len(comparisons) != 2:
+            raise ValueError(
+                f"on-the-fly dual-authority {stage_name} comparisons differ"
+            )
+        if [
+            comparison.get("authority_cell_id")
+            if isinstance(comparison, Mapping)
+            else None
+            for comparison in comparisons
+        ] != authority_cell_ids:
+            raise ValueError(
+                f"on-the-fly dual-authority {stage_name} authority order differs"
+            )
+        for index, comparison in enumerate(comparisons):
+            if not isinstance(comparison, Mapping) or set(comparison) != {
+                "authority_cell_id",
+                "total",
+                "resolved_components",
+            }:
+                raise ValueError(
+                    f"on-the-fly dual-authority {stage_name} comparison fields differ"
+                )
+            _validate_otf_compact_summary(
+                comparison.get("total"),
+                field=f"{stage_name}.comparisons[{index}].total",
+                expected_checks=point_count,
+                relative_tolerance=RELATIVE_TOLERANCE,
+            )
+            _validate_otf_compact_summary(
+                comparison.get("resolved_components"),
+                field=f"{stage_name}.comparisons[{index}].resolved_components",
+                expected_checks=check_count,
+                expected_components=component_count,
+                relative_tolerance=RELATIVE_TOLERANCE,
+            )
+
+    expected_lifecycle = {
+        "authority_artifacts_loaded_only": True,
+        "candidate_loaded_before_validation": True,
+        "validated_before_clear": True,
+        "validated_after_clear": True,
+        "clear_call_count": 2,
+        "final_clear_before_profile": True,
+    }
+    if value.get("lifecycle") != expected_lifecycle:
+        raise ValueError("on-the-fly dual-authority lifecycle is invalid")
+
+
 def resolved_sum_validation(
     runtime: RuntimeLike,
     points: object,
@@ -3234,12 +4053,12 @@ def _run_report_benchmark(
 ) -> object:
     """Select the authenticated timing command path without fallback.
 
-    Recurrence uses the public ``profile`` parser/config/dispatch path.  Its
-    narrowly scoped service override supplies the already authenticated runtime
-    and exact in-memory point set, avoiding an artifact reload inside the
-    measured campaign.  Compiled/eager retain the report-only paired private
-    Arena protocol because the public profiler does not expose that paired
-    headline/attribution boundary.
+    Recurrence and on-the-fly use the public ``profile`` parser/config/dispatch
+    path.  Their narrowly scoped service override supplies the already
+    authenticated runtime and exact in-memory point set, avoiding an artifact
+    reload inside the measured campaign.  Compiled/eager retain the report-only
+    paired private Arena protocol because the public profiler does not expose
+    that paired headline/attribution boundary.
     """
 
     if execution_mode in {ExecutionMode.EAGER, ExecutionMode.COMPILED}:
@@ -3258,7 +4077,7 @@ def _run_report_benchmark(
             progress=progress,
             chunk_guard=chunk_guard,
         )
-    if execution_mode is ExecutionMode.RECURRENCE:
+    if execution_mode in {ExecutionMode.RECURRENCE, ExecutionMode.ON_THE_FLY}:
         from pyamplicol.api import BenchmarkRunner
         from pyamplicol.cli import CliInvocation, parse_cli
         from pyamplicol.cli.handlers import DefaultCliServices, dispatch
@@ -3331,6 +4150,230 @@ def _run_report_benchmark(
     raise RunnerError(
         f"unsupported pyAmpliCol report execution mode: {execution_mode.value}"
     )
+
+
+def _warmup_finite_number(
+    value: object,
+    field: str,
+    *,
+    positive: bool = False,
+) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or (float(value) <= 0.0 if positive else float(value) < 0.0)
+    ):
+        qualifier = "positive" if positive else "non-negative"
+        raise ValueError(f"runtime profile {field} must be a finite {qualifier} number")
+    return float(value)
+
+
+def _warmup_nonnegative_integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"runtime profile {field} must be a non-negative integer")
+    return value
+
+
+def validate_profile_warmup_evidence(
+    value: object,
+    *,
+    execution_mode: ExecutionMode | str,
+    expected_batch_size: int | None = None,
+    expected_warmup_run_count: int | None = None,
+) -> None:
+    """Validate bounded OTF cold preparation and conventional warm-ups.
+
+    The fields are the flat environment evidence emitted by
+    :class:`BenchmarkBackend`; this validator deliberately does not introduce a
+    second timing record or reinterpret the backend's clocks.
+    """
+
+    if not isinstance(value, Mapping):
+        raise ValueError("runtime profile warm-up evidence must be a mapping")
+    mode = (
+        execution_mode.value
+        if isinstance(execution_mode, ExecutionMode)
+        else execution_mode
+    )
+    is_otf = mode == ExecutionMode.ON_THE_FLY.value
+    conventional_present = CONVENTIONAL_WARMUP_FIELDS & value.keys()
+    cold_present = OTF_COLD_WARMUP_FIELDS & value.keys()
+    if is_otf and conventional_present != CONVENTIONAL_WARMUP_FIELDS:
+        missing = sorted(CONVENTIONAL_WARMUP_FIELDS - value.keys())
+        raise ValueError(
+            "on-the-fly runtime profile has incomplete conventional warm-up "
+            f"evidence; missing={missing}"
+        )
+    if is_otf and cold_present != OTF_COLD_WARMUP_FIELDS:
+        missing = sorted(OTF_COLD_WARMUP_FIELDS - value.keys())
+        raise ValueError(
+            "on-the-fly runtime profile has incomplete cold warm-up evidence; "
+            f"missing={missing}"
+        )
+    if not is_otf and cold_present:
+        raise ValueError(
+            "non-on-the-fly runtime profile cannot contain cold warm-up evidence"
+        )
+    if (
+        not is_otf
+        and conventional_present
+        and conventional_present != CONVENTIONAL_WARMUP_FIELDS
+    ):
+        if conventional_present != {"warmup_elapsed_seconds"}:
+            missing = sorted(CONVENTIONAL_WARMUP_FIELDS - value.keys())
+            raise ValueError(
+                "runtime profile has unsupported partial conventional warm-up "
+                f"evidence; missing={missing}"
+            )
+        _warmup_finite_number(
+            value["warmup_elapsed_seconds"],
+            "warmup_elapsed_seconds",
+        )
+        return
+    if not conventional_present:
+        return
+
+    warmup_elapsed = _warmup_finite_number(
+        value["warmup_elapsed_seconds"],
+        "warmup_elapsed_seconds",
+    )
+    warmup_count = _warmup_nonnegative_integer(
+        value["warmup_configured_run_count"],
+        "warmup_configured_run_count",
+    )
+    if expected_warmup_run_count is not None and (
+        isinstance(expected_warmup_run_count, bool)
+        or not isinstance(expected_warmup_run_count, int)
+        or expected_warmup_run_count < 0
+        or warmup_count != expected_warmup_run_count
+    ):
+        raise ValueError(
+            "runtime profile warmup_configured_run_count does not match the "
+            "effective benchmark configuration"
+        )
+    warmup_batch_size = _warmup_nonnegative_integer(
+        value["warmup_batch_size"],
+        "warmup_batch_size",
+    )
+    if warmup_batch_size < 1:
+        raise ValueError("runtime profile warmup_batch_size must be positive")
+    warmup_point_count = _warmup_nonnegative_integer(
+        value["warmup_point_count"],
+        "warmup_point_count",
+    )
+    if warmup_point_count != warmup_count * warmup_batch_size:
+        raise ValueError(
+            "runtime profile warmup_point_count does not equal configured runs "
+            "times batch size"
+        )
+    raw_runs = value["warmup_run_outer_wall_seconds"]
+    if isinstance(raw_runs, (str, bytes)) or not isinstance(raw_runs, Sequence):
+        raise ValueError(
+            "runtime profile warmup_run_outer_wall_seconds must be a sequence"
+        )
+    runs = tuple(
+        _warmup_finite_number(item, "warmup_run_outer_wall_seconds[]")
+        for item in raw_runs
+    )
+    if len(runs) != warmup_count:
+        raise ValueError(
+            "runtime profile warmup_run_outer_wall_seconds length does not match "
+            "the configured run count"
+        )
+    warmup_sum = sum(runs)
+    consistency_tolerance = max(
+        1.0e-12,
+        max(abs(warmup_elapsed), abs(warmup_sum)) * 1.0e-12,
+    )
+    if abs(warmup_sum - warmup_elapsed) > consistency_tolerance:
+        raise ValueError(
+            "runtime profile warmup_elapsed_seconds does not equal its per-run "
+            "outer-wall timing sum"
+        )
+    first_run = value["first_warmup_run_outer_wall_seconds"]
+    if warmup_count == 0:
+        if first_run is not None:
+            raise ValueError(
+                "runtime profile first_warmup_run_outer_wall_seconds must be null "
+                "when no warm-up runs are configured"
+            )
+    elif (
+        _warmup_finite_number(
+            first_run,
+            "first_warmup_run_outer_wall_seconds",
+        )
+        != runs[0]
+    ):
+        raise ValueError(
+            "runtime profile first warm-up timing does not match the first per-run "
+            "timing"
+        )
+    if value["warmup_timer_source"] != WARMUP_TIMER_SOURCE:
+        raise ValueError("runtime profile warmup_timer_source is unsupported")
+    if value["warmup_timing_scope"] != CONVENTIONAL_WARMUP_TIMING_SCOPE:
+        raise ValueError("runtime profile warmup_timing_scope is unsupported")
+
+    if not is_otf:
+        return
+    cold_elapsed = _warmup_finite_number(
+        value["cold_warmup_elapsed_seconds"],
+        "cold_warmup_elapsed_seconds",
+        positive=True,
+    )
+    if cold_elapsed <= 0.0:  # Defensive clarity for static type narrowing.
+        raise ValueError("on-the-fly cold warm-up timing must be positive")
+    cold_runs = _warmup_nonnegative_integer(
+        value["cold_warmup_run_count"],
+        "cold_warmup_run_count",
+    )
+    cold_batch_size = _warmup_nonnegative_integer(
+        value["cold_warmup_batch_size"],
+        "cold_warmup_batch_size",
+    )
+    cold_point_count = _warmup_nonnegative_integer(
+        value["cold_warmup_point_count"],
+        "cold_warmup_point_count",
+    )
+    if cold_runs != 1:
+        raise ValueError("on-the-fly cold warm-up must contain exactly one run")
+    if (
+        cold_batch_size < 1
+        or cold_point_count != cold_batch_size
+        or cold_batch_size != warmup_batch_size
+    ):
+        raise ValueError(
+            "on-the-fly cold warm-up must cover exactly the full benchmark batch"
+        )
+    if expected_batch_size is not None and (
+        isinstance(expected_batch_size, bool)
+        or not isinstance(expected_batch_size, int)
+        or expected_batch_size < 1
+        or cold_batch_size != expected_batch_size
+    ):
+        raise ValueError(
+            "on-the-fly cold warm-up batch does not match the effective "
+            "benchmark configuration"
+        )
+    if value["cold_warmup_timer_source"] != WARMUP_TIMER_SOURCE:
+        raise ValueError("on-the-fly cold warm-up timer source is unsupported")
+    if value["cold_warmup_timing_scope"] != OTF_COLD_WARMUP_TIMING_SCOPE:
+        raise ValueError(
+            "on-the-fly cold warm-up scope must exclude artifact generation and "
+            "Runtime/artifact load"
+        )
+    if value["cold_warmup_runtime_freshness"] != OTF_COLD_WARMUP_RUNTIME_FRESHNESS:
+        raise ValueError(
+            "on-the-fly cold warm-up freshness must remain unauthenticated by the "
+            "benchmark"
+        )
+    if (
+        value["cold_warmup_ratio_eligible"] is not False
+        or value["cold_warmup_acceptance_eligible"] is not False
+    ):
+        raise ValueError(
+            "on-the-fly cold warm-up must be ineligible for ratios and acceptance"
+        )
 
 
 def _benchmark_measurement(
@@ -3585,8 +4628,61 @@ def _benchmark_measurement(
             raise RunnerError("benchmark has an invalid public CLI command path")
         command_evidence["report_public_cli_path"] = public_path
     phase_evidence: dict[str, object] = {}
+    raw_execution_mode = environment.get("execution_mode")
+    benchmark_batch_size: int | None = None
+    benchmark_warmup_runs: int | None = None
+    if raw_execution_mode == ExecutionMode.ON_THE_FLY.value:
+        raw_batch_size = environment.get("batch_size")
+        effective_batch_size = getattr(
+            benchmark.effective_config,
+            "batch_size",
+            None,
+        )
+        effective_warmup_runs = getattr(
+            benchmark.effective_config,
+            "warmup_runs",
+            None,
+        )
+        if (
+            isinstance(raw_batch_size, bool)
+            or not isinstance(raw_batch_size, int)
+            or raw_batch_size < 1
+            or isinstance(effective_batch_size, bool)
+            or not isinstance(effective_batch_size, int)
+            or effective_batch_size < 1
+            or raw_batch_size != effective_batch_size
+        ):
+            raise RunnerError(
+                "on-the-fly benchmark batch size does not match its effective "
+                "configuration"
+            )
+        if (
+            isinstance(effective_warmup_runs, bool)
+            or not isinstance(effective_warmup_runs, int)
+            or effective_warmup_runs < 0
+        ):
+            raise RunnerError(
+                "on-the-fly benchmark has an invalid effective warm-up run count"
+            )
+        benchmark_batch_size = effective_batch_size
+        benchmark_warmup_runs = effective_warmup_runs
+    try:
+        validate_profile_warmup_evidence(
+            environment,
+            execution_mode=(
+                raw_execution_mode
+                if isinstance(raw_execution_mode, str)
+                else "<unknown>"
+            ),
+            expected_batch_size=benchmark_batch_size,
+            expected_warmup_run_count=benchmark_warmup_runs,
+        )
+    except ValueError as error:
+        raise RunnerError(str(error)) from error
+    for field in (*sorted(OTF_COLD_WARMUP_FIELDS), *sorted(CONVENTIONAL_WARMUP_FIELDS)):
+        if field in environment:
+            phase_evidence[field] = environment[field]
     for field in (
-        "warmup_elapsed_seconds",
         "calibration_elapsed_seconds",
         "calibration_outer_elapsed_seconds",
         "measurement_phase_elapsed_seconds",
@@ -3662,8 +4758,12 @@ def profile_runtime(
     if selector_contract is not None:
         validate_selector_contract(runtime, selector_contract, points)
     selectors = _selector_kwargs(cell, selector_contract)
-    values = runtime.evaluate(points, **selectors)
-    if not values:
+    values = (
+        None
+        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        else runtime.evaluate(points, **selectors)
+    )
+    if values is not None and not values:
         raise RunnerError("runtime returned no matrix elements")
     selected_config = replace(
         benchmark_config,
@@ -3679,6 +4779,12 @@ def profile_runtime(
         progress=progress,
         chunk_guard=profiling_chunk_guard(profiling_deadline_monotonic),
     )
+    # The public OTF profiler owns the first evaluation so that its separately
+    # reported cold warm-up is not destroyed by campaign-side validation.
+    if values is None:
+        values = runtime.evaluate(points, **selectors)
+    if not values:
+        raise RunnerError("runtime returned no matrix elements")
     result = _benchmark_measurement(
         benchmark,
         matrix_element=_real_nonnegative(values[0]),
@@ -3787,6 +4893,7 @@ def generate_artifact(
         prepared_execution = cell.measurement.execution_mode in {
             ExecutionMode.EAGER,
             ExecutionMode.RECURRENCE,
+            ExecutionMode.ON_THE_FLY,
         }
         if prepared_model_path is not None:
             model = ModelSource.from_path(prepared_model_path)
@@ -3852,10 +4959,14 @@ def generate_artifact(
         generation_seconds = time.perf_counter() - generation_started
     effective_config = _authenticated_effective_config(destination)
     process_id = _single_process_id(destination, cell.process)
-    (
-        numerical_relation_correctness,
-        numerical_relation_fallback,
-    ) = _artifact_numerical_relation_metadata(destination, process_id)
+    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+        numerical_relation_correctness = None
+        numerical_relation_fallback = None
+    else:
+        (
+            numerical_relation_correctness,
+            numerical_relation_fallback,
+        ) = _artifact_numerical_relation_metadata(destination, process_id)
     return GeneratedArtifact(
         path=destination,
         process_id=process_id,

@@ -75,7 +75,7 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     assert publisher.watch is False
     assert publisher.interval_seconds == 600.0
     assert publisher.pdf_timeout_seconds == 900.0
-    assert publisher.expected_page_count == 59
+    assert publisher.expected_page_count == 65
 
     worker = _parser().parse_args(
         (
@@ -284,7 +284,7 @@ def test_final_audit_is_routed_through_the_isolated_result_tables_entrypoint() -
     assert arguments.expected_source_revision == "a" * 40
     assert arguments.publication_revision == "b" * 40
     assert arguments.max_n_final == 9
-    assert arguments.expected_cell_count == 1796
+    assert arguments.expected_cell_count == 1962
     assert arguments.structural_only is True
 
 
@@ -357,7 +357,7 @@ def test_final_audit_receives_the_bound_architecture_profile_service(
     assert observed["expected_source_revision"] == "a" * 40
     assert observed["expected_publication_revision"] == "b" * 40
     assert observed["max_n_final"] == 9
-    assert observed["expected_cell_count"] == 1796
+    assert observed["expected_cell_count"] == 1962
     assert observed["replay"] is False
     assert environment_checks == [(repo.resolve(), profile, "a" * 40)]
     assert json.loads(capsys.readouterr().out)["final_gate_complete"] is True
@@ -490,7 +490,7 @@ def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
 
     assert main(("--repo-root", str(repo), "validate")) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["table_count"] == 20
+    assert payload["table_count"] == 23
     assert payload["cache_count"] > 12
 
     assert main(("--repo-root", str(repo), "audit")) == 0

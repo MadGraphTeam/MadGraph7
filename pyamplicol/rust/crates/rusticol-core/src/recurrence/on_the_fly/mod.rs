@@ -133,8 +133,9 @@ pub(crate) use source_builder::{
 #[cfg(test)]
 pub(crate) use source_seed::scalar_adapter_test_seed;
 pub(crate) use source_seed::{
-    OnTheFlyCouplingOrderPolicyV1, OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1,
-    OnTheFlyPairingEndpointV1, OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1,
+    ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI, OnTheFlyCouplingOrderPolicyV1,
+    OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1, OnTheFlyPairingEndpointV1,
+    OnTheFlyProcessSeedIdentityV1, OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1,
     OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1, OnTheFlySourceStateV1,
     OnTheFlySourceWavefunctionFamilyV1,
 };

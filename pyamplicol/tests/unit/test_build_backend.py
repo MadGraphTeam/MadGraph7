@@ -1164,7 +1164,15 @@ def test_wheel_profiling_campaign_is_a_bounded_reset_template() -> None:
             path.relative_to(packaged) for path in packaged.rglob("*") if path.is_file()
         }
         assert copied == set(backend._profiling_campaign_inventory(source))
-        assert len(copied) == 55
+        assert len(copied) == 61
+        assert {
+            Path("result_matrix_on_the_fly_builtin_sm_full_table.tex"),
+            Path("result_matrix_on_the_fly_builtin_sm_lc_table.tex"),
+            Path("result_matrix_on_the_fly_builtin_sm_nlc_table.tex"),
+            Path("results/matrix_on_the_fly_builtin_sm_full.json"),
+            Path("results/matrix_on_the_fly_builtin_sm_lc.json"),
+            Path("results/matrix_on_the_fly_builtin_sm_nlc.json"),
+        } <= copied
         assert {
             path.relative_to(packaged): path.read_bytes()
             for path in packaged.rglob("*")

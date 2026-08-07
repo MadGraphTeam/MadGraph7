@@ -239,6 +239,32 @@ def _mapping_digest(value: Mapping[str, object]) -> str:
     return _sha256(_canonical_json(value))
 
 
+def prepared_kernel_pack_manifest_identity_sha256(
+    manifest: Mapping[str, object],
+) -> str:
+    """Return the outer identity of one canonical prepared-bundle manifest.
+
+    This is deliberately distinct from :func:`prepared_kernel_pack_identity`,
+    which authenticates the callable kernel contract and referenced payloads.
+    Artifact manifests use this identity to name the exact prepared bundle from
+    which their copied evaluator pack was derived.
+    """
+
+    normalized = _freeze_mapping(manifest, "prepared bundle manifest identity")
+    canonical_manifest = json.dumps(
+        _thaw_json(normalized),
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return _sha256(
+        PREPARED_KERNEL_PACK_IDENTITY_ABI.encode("ascii")
+        + b"\x00"
+        + canonical_manifest
+    )
+
+
 def prepared_expression_digest(expressions: Sequence[str]) -> str:
     """Digest the ordered exact-expression contract of a scalar kernel."""
 
@@ -2203,6 +2229,7 @@ __all__ = [
     "prepared_expression_digest",
     "prepared_input_contract_digest",
     "prepared_kernel_pack_identity",
+    "prepared_kernel_pack_manifest_identity_sha256",
     "prepared_optimization_settings_digest",
     "prepared_output_contract_digest",
     "prepared_payload_identity_records",

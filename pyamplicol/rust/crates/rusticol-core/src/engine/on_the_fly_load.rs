@@ -45,6 +45,11 @@ pub(super) fn load_on_the_fly_native_runtime(
 ) -> RusticolResult<LoadedOnTheFlyRuntime> {
     let public_metadata = load_public_metadata(artifact, manifest, &selection.process)?;
     let seed = load_process_seed(artifact, evaluator_root, manifest)?;
+    if seed.identity() != manifest.runtime_metadata.process_seed_identity {
+        return Err(RusticolError::integrity(
+            "on-the-fly execution metadata does not identify its decoded process seed",
+        ));
+    }
     let (pack_bytes, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
     let raw_templates = pack.recurrence_template.as_ref().ok_or_else(|| {
         RusticolError::compatibility(

@@ -41,11 +41,19 @@ Retained physics & every flow and helicity &
   every flow and helicity \\
 Main reuse & equivalent flow topologies related by exact permutations and
   factors & currents and closures shared directly across all flows \\
-Availability & compiled, eager, and recurrence &
+Availability & compiled, eager, recurrence, and on-the-fly to
+  \(n_{\mathrm{final}}=4\) &
   compiled, eager, and recurrence \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+On-the-fly execution does not materialize a separate all-flow-union artifact.
+Within its LC scope, one compact topology-replay artifact serves both measured
+workloads: one selected flow with helicities summed, and all physical flows
+with one helicity selected. Thus the all-flow observable remains the same, but
+its on-the-fly execution is reconstructed lazily from the shared compact
+artifact rather than from \(D_{\mathrm{union}}\).
 
 In topology replay, exact relations partition physical flows into equivalence
 classes. If \(\rho(f)\) represents the class containing \(f\), the calculation
@@ -73,7 +81,8 @@ one graph traversal then reuses intermediate currents across all flows.
 
 Compiled mode specializes the chosen layout to process-wide stage evaluators.
 Eager mode applies prepared-model kernels to the same dependency structure,
-and recurrence mode constructs a compact current schedule directly. These
+recurrence mode constructs a compact current schedule directly, and on-the-fly
+mode reconstructs query-local traces from its compact process seed. These
 execution choices do not change \(\mathcal H\), \(\mathcal F\), or
 Eq.~\eqref{eq:lc-runtime-selection}.
 
@@ -99,6 +108,13 @@ Cross-mode comparisons use the same layout on both sides.  Preparation of
 reusable model-level kernels occurs before the process-generation timer and is
 not included in these table values.
 
+The on-the-fly exception has one process-generation quantity \(G\), because
+the selected-flow and all-flow workloads share one compact artifact. Its first
+full-batch evaluation \(W\) constructs the initially requested selector-family
+state. Artifact loading and the conventional benchmark warmup calls are timed
+separately and are excluded from \(W\). Calling \texttt{Runtime.clear()} drops
+the lazy on-the-fly state without replacing the process artifact.
+
 The original-\AC{} reference uses two different routes. For the selected-flow
 workload, its generation value measures creation of the process library. For
 the all-flow workload, the reported setup value measures preparation of direct
@@ -107,6 +123,11 @@ same physical workloads as \PAC{}, but the all-flow setup quantities do not
 define a like-for-like process-generation speedup. The table therefore reports
 both quantities absolutely and marks their generation comparison as not
 comparable.
+
+Before timing an on-the-fly cell, the complete resolved components for both
+workloads are compared with separately generated recurrence and compiled
+authorities. The same componentwise comparisons are repeated after
+\texttt{Runtime.clear()} to check the cold reconstruction path.
 
 \subsection{NLC and full colour}
 
@@ -120,4 +141,6 @@ colour metric:
   \label{eq:contracted-colour-layout}
 \end{equation}
 These treatments do not expose the physical leading-colour flow axis, so there
-is no topology-replay or all-flow-union distinction.
+is no topology-replay or all-flow-union distinction. On-the-fly NLC and
+full-colour entries are explicit future placeholders rather than runnable
+measurements.

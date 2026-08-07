@@ -1413,6 +1413,20 @@ pub(crate) fn _build_on_the_fly_process_seed_v1(
     Ok(PyBytes::new(py, &payload).unbind())
 }
 
+/// Private authoritative decoder used to bind a compact seed to the JSON
+/// execution manifest and publication audit.
+#[pyfunction]
+pub(crate) fn _inspect_on_the_fly_process_seed_v1(
+    py: Python<'_>,
+    payload: &Bound<'_, PyBytes>,
+) -> PyResult<String> {
+    let payload = payload.as_bytes().to_vec();
+    py.detach(move || {
+        rusticol_core::__private::inspect_on_the_fly_process_seed_identity_json_v1(&payload)
+    })
+    .map_err(python_error)
+}
+
 #[cfg(feature = "on-the-fly-test-support")]
 fn on_the_fly_artifact_probe_mapping(
     py: Python<'_>,

@@ -321,7 +321,7 @@ def test_campaign_command_holds_shared_destination_lock(
 
 
 def test_catalog_and_fresh_profile_are_complete_but_measurement_empty() -> None:
-    assert len(REPORT_CATALOG.measurement_cells()) == 1796
+    assert len(REPORT_CATALOG.measurement_cells()) == 1962
     assert PROFILE.is_dir()
     assert not (PROFILE / "pyAmpliCol.pdf").exists()
     assert not any(PROFILE.rglob("current.json"))
@@ -363,7 +363,7 @@ def test_selector_repetition_wildcard_aliases_and_intersection() -> None:
 
     all_arguments = _parse("inspect", "--table", "*", "--model", "all")
     _all_selection, all_cells = selection_from_arguments(all_arguments)
-    assert len(all_cells) == 1796
+    assert len(all_cells) == 1962
 
 
 def test_variant_filter_keeps_unvaried_matrix_rows_in_a_broad_selection() -> None:
@@ -391,14 +391,15 @@ def test_variant_filter_keeps_unvaried_matrix_rows_in_a_broad_selection() -> Non
     assert all(cell.variant in {None, "recurrence_jit_o2", "jit_o3"} for cell in cells)
 
 
-def test_matrix_best_is_all_three_builtin_candidate_modes() -> None:
+def test_matrix_best_is_all_four_builtin_candidate_modes() -> None:
     arguments = _parse("inspect", "--table", "matrix_best")
     _selection, cells = selection_from_arguments(arguments)
-    assert len(cells) == 942
+    assert len(cells) == 1108
     assert {cell.measurement.execution_mode for cell in cells} == {
         ExecutionMode.RECURRENCE,
         ExecutionMode.COMPILED,
         ExecutionMode.EAGER,
+        ExecutionMode.ON_THE_FLY,
     }
     assert {cell.measurement.model for cell in cells} == {ModelKey.BUILTIN_SM}
 
@@ -560,7 +561,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
             "--remove-sections",
             "scope",
         )
-    assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 59
+    assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 65
     underscore = _parse("inspect", "--color_approximation", "lc")
     _selection, cells = selection_from_arguments(underscore)
     assert cells
@@ -5855,5 +5856,5 @@ def test_fresh_manual_report_compiles_with_the_manual_page_contract(
         expected_page_count=DEFAULT_MANUAL_EXPECTED_PAGE_COUNT,
         timeout_seconds=900.0,
     )
-    assert pages == 59
+    assert pages == 65
     assert (docs / "pyAmpliCol.pdf").stat().st_size > 100_000

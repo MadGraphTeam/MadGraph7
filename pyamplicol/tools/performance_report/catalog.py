@@ -200,6 +200,8 @@ def _matrix_dataset(
     model: ModelKey,
     accuracy: Accuracy,
     baseline_mode: ExecutionMode,
+    multiplicities: tuple[int, ...] | None = None,
+    static_na_reason_code: str | None = None,
 ) -> MatrixDataset:
     model_label = "Built-in SM" if model is ModelKey.BUILTIN_SM else "UFO-SM"
     accuracy_label = {
@@ -211,13 +213,14 @@ def _matrix_dataset(
         ExecutionMode.RECURRENCE: "recurrence",
         ExecutionMode.COMPILED: "compiled JIT O3",
         ExecutionMode.EAGER: "eager-DAG JIT O2",
+        ExecutionMode.ON_THE_FLY: "on-the-fly JIT O2",
     }[mode]
     baseline_label = (
         "AmpliCol"
         if baseline_mode is ExecutionMode.AMPLICOL
         else "recurrence JIT O2"
     )
-    stem = f"matrix_{mode.value}_{model.value}_{accuracy.value}"
+    stem = f"matrix_{mode.value.replace('-', '_')}_{model.value}_{accuracy.value}"
     return MatrixDataset(
         dataset_id=stem,
         cache_name=f"{stem}.json",
@@ -225,7 +228,12 @@ def _matrix_dataset(
         title=f"{model_label} {mode_label} versus {baseline_label} {accuracy_label}",
         candidate=_measurement(mode, model, accuracy),
         baseline=_measurement(baseline_mode, ModelKey.BUILTIN_SM, accuracy),
-        multiplicities=matrix_multiplicities(accuracy),
+        multiplicities=(
+            matrix_multiplicities(accuracy)
+            if multiplicities is None
+            else multiplicities
+        ),
+        static_na_reason_code=static_na_reason_code,
     )
 
 
@@ -248,6 +256,24 @@ MATRIX_DATASETS = tuple(
         baseline_mode=ExecutionMode.RECURRENCE,
     )
     for mode in (ExecutionMode.COMPILED, ExecutionMode.EAGER)
+    for accuracy in Accuracy
+) + tuple(
+    _matrix_dataset(
+        mode=ExecutionMode.ON_THE_FLY,
+        model=ModelKey.BUILTIN_SM,
+        accuracy=accuracy,
+        baseline_mode=ExecutionMode.AMPLICOL,
+        multiplicities=(
+            (1, 2, 3, 4)
+            if accuracy is Accuracy.LC
+            else matrix_multiplicities(accuracy)
+        ),
+        static_na_reason_code=(
+            None
+            if accuracy is Accuracy.LC
+            else "on-the-fly-color-accuracy-not-supported-v1"
+        ),
+    )
     for accuracy in Accuracy
 )
 
@@ -327,8 +353,14 @@ STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT = (
 STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6 = (
     "native-backend-generation-cap-n6-v1"
 )
+STATIC_NA_ON_THE_FLY_COLOR_ACCURACY = (
+    "on-the-fly-color-accuracy-not-supported-v1"
+)
 STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION = (
     "user cap: native C++/ASM generation is not attempted above n=6"
+)
+STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION = (
+    "on-the-fly execution currently supports leading colour only"
 )
 
 
@@ -493,17 +525,28 @@ class ReportCatalog:
         return matches[0]
 
     def equivalent_cells(self, cell: CellSpec) -> tuple[CellSpec, ...]:
-        """Return cells that can reuse exactly the same generated artifact."""
+        """Return artifact owners whose generated artifact this cell may reuse."""
 
         if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
             return ()
-        identity = (
-            cell.process,
-            cell.n_final,
-            cell.process_key,
-            cell.measurement,
-            cell.workload,
+        directional_otf_artifact = (
+            cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+            and cell.measurement.accuracy is Accuracy.LC
+            and cell.workload in {Workload.SELECTED_FLOW, Workload.ALL_FLOW}
         )
+        if directional_otf_artifact and cell.workload is Workload.SELECTED_FLOW:
+            return ()
+
+        def identity(candidate: CellSpec) -> tuple[object, ...]:
+            return (
+                candidate.process,
+                candidate.n_final,
+                candidate.process_key,
+                candidate.measurement,
+                None if directional_otf_artifact else candidate.workload,
+            )
+
+        expected = identity(cell)
         return tuple(
             sorted(
                 (
@@ -511,13 +554,10 @@ class ReportCatalog:
                     for candidate in self.measurement_cells()
                     if candidate.cell_id != cell.cell_id
                     and (
-                        candidate.process,
-                        candidate.n_final,
-                        candidate.process_key,
-                        candidate.measurement,
-                        candidate.workload,
+                        not directional_otf_artifact
+                        or candidate.workload is Workload.SELECTED_FLOW
                     )
-                    == identity
+                    and identity(candidate) == expected
                 ),
                 key=lambda candidate: candidate.cell_id,
             )
@@ -579,6 +619,10 @@ class ReportCatalog:
         oracle cannot represent the concrete process at all.
         """
 
+        if cell.dataset_id.startswith("matrix_"):
+            dataset = self.dataset(cell.dataset_id)
+            if dataset.static_na_reason_code is not None:
+                return dataset.static_na_reason_code
         if cell.dataset_id.startswith("z_") and cell.variant is not None:
             variant = next(
                 (
@@ -607,6 +651,8 @@ class ReportCatalog:
         reason = self.static_na_reason(cell)
         if reason == STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6:
             return STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION
+        if reason == STATIC_NA_ON_THE_FLY_COLOR_ACCURACY:
+            return STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION
         return reason
 
     def validation_baseline_cell(self, cell: CellSpec) -> CellSpec | None:
@@ -617,6 +663,19 @@ class ReportCatalog:
         otherwise model-generic recurrence measurements.
         """
 
+        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+            return next(
+                candidate
+                for candidate in self.measurement_cells()
+                if candidate.dataset_id
+                == (
+                    "matrix_recurrence_builtin_sm_"
+                    f"{cell.measurement.accuracy.value}"
+                )
+                and candidate.process_key == cell.process_key
+                and candidate.n_final == cell.n_final
+                and candidate.workload is cell.workload
+            )
         baseline = self.baseline_cell(cell)
         if (
             baseline is not None
@@ -646,6 +705,8 @@ __all__ = [
     "SCALAR_GRAVITY",
     "STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6",
     "STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION",
+    "STATIC_NA_ON_THE_FLY_COLOR_ACCURACY",
+    "STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION",
     "STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT",
     "UFO_SM",
     "Z_VARIANTS",

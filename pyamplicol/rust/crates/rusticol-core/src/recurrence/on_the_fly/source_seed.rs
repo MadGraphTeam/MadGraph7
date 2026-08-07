@@ -2,6 +2,46 @@
 
 use super::*;
 
+pub(crate) const ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI: &str =
+    "pyamplicol-on-the-fly-process-seed-identity-v1";
+
+/// Compact publicable identity of one decoded process-seed source state.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OnTheFlyProcessSeedStateIdentityV1 {
+    pub(crate) state_index: u32,
+    pub(crate) public_helicity: i32,
+    pub(crate) prepared_mass_parameter_slot: Option<u32>,
+}
+
+/// Compact publicable identity of one decoded process-seed source anchor.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OnTheFlyProcessSeedSourceIdentityV1 {
+    pub(crate) source_slot: u32,
+    pub(crate) public_label: u32,
+    pub(crate) is_initial: bool,
+    pub(crate) states: Vec<OnTheFlyProcessSeedStateIdentityV1>,
+}
+
+/// Exact compact identity embedded beside the sole native process seed.
+///
+/// This is derived only from a successfully decoded seed.  It deliberately
+/// records source-domain facts rather than reproducing the binary seed.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct OnTheFlyProcessSeedIdentityV1 {
+    pub(crate) abi: String,
+    pub(crate) process_digest: String,
+    pub(crate) compiled_model_digest: String,
+    pub(crate) recurrence_template_catalog_digest: String,
+    pub(crate) prepared_kernel_pack_digest: String,
+    pub(crate) recurrence_direct_template_catalog_digest: String,
+    pub(crate) semantic_digest: String,
+    pub(crate) external_permutation: Vec<u32>,
+    pub(crate) external_sources: Vec<OnTheFlyProcessSeedSourceIdentityV1>,
+}
+
 /// Model-neutral source family needed by the private direct-source adapter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -149,6 +189,10 @@ impl OnTheFlySourceStateV1 {
 
     pub(crate) const fn public_helicity(&self) -> i32 {
         self.public_helicity
+    }
+
+    pub(crate) const fn prepared_mass_parameter_slot(&self) -> Option<u32> {
+        self.prepared_mass_parameter_slot
     }
 }
 
@@ -651,9 +695,39 @@ impl OnTheFlyProcessSeedV1 {
         self.semantic_digest
     }
 
-    #[cfg(feature = "on-the-fly-test-support")]
     pub(crate) const fn process_digest(&self) -> SemanticDigest {
         self.process_digest
+    }
+
+    pub(crate) fn identity(&self) -> OnTheFlyProcessSeedIdentityV1 {
+        OnTheFlyProcessSeedIdentityV1 {
+            abi: ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI.to_owned(),
+            process_digest: self.process_digest().to_string(),
+            compiled_model_digest: self.model_digest().to_string(),
+            recurrence_template_catalog_digest: self.template_catalog_digest().to_string(),
+            prepared_kernel_pack_digest: self.prepared_pack_digest().to_string(),
+            recurrence_direct_template_catalog_digest: self.direct_catalog_digest().to_string(),
+            semantic_digest: self.semantic_digest().to_string(),
+            external_permutation: self.external_permutation().to_vec(),
+            external_sources: self
+                .source_anchors()
+                .iter()
+                .map(|anchor| OnTheFlyProcessSeedSourceIdentityV1 {
+                    source_slot: anchor.source_slot(),
+                    public_label: anchor.external_label(),
+                    is_initial: anchor.is_initial(),
+                    states: anchor
+                        .states()
+                        .iter()
+                        .map(|state| OnTheFlyProcessSeedStateIdentityV1 {
+                            state_index: state.state_index(),
+                            public_helicity: state.public_helicity(),
+                            prepared_mass_parameter_slot: state.prepared_mass_parameter_slot(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
     }
 
     pub(crate) fn external_permutation(&self) -> &[u32] {

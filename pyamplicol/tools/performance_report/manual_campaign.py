@@ -108,7 +108,7 @@ DEFAULT_BATCH_SIZE = 128
 DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
 DEFAULT_WORKER_STALE_SECONDS = 15.0
-DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 59
+DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 65
 _REPORT_SECTION_MARKER = re.compile(
     r"^% pyamplicol-report-section-(begin|end): ([a-z][a-z0-9-]*)$"
 )
@@ -194,6 +194,10 @@ _REPRODUCTION_STAGES = ("prepare", "generate", "profile")
 _SUMMARY_SUCCESS_STATUSES = frozenset(
     {"ok", "success", "recycled", "reused", "skipped-current"}
 )
+_FAIL_FAST_SUCCESS_STATUSES = frozenset(
+    {"ok", "success", "reused", "skipped-current"}
+)
+FAIL_FAST_FAILURE_LOG = "fail_fast_failure.log"
 
 
 class _DashboardTerminalOutcome(StrEnum):
@@ -649,6 +653,8 @@ def _validate_existing_summary_directory(path: Path) -> None:
 def _publish_campaign_summary_ids(
     service: ReportService,
     categories: Mapping[str, Iterable[str]],
+    *,
+    fail_fast_failure_log: str | None = None,
 ) -> tuple[Path, dict[str, int]]:
     target = service.paths.docs_dir / "campaign_summary_ids"
     publication_root = (
@@ -688,6 +694,15 @@ def _publish_campaign_summary_ids(
                 stream.flush()
                 os.fsync(stream.fileno())
             counts[status] = len(cell_ids)
+        if fail_fast_failure_log is not None:
+            if not fail_fast_failure_log.strip():
+                raise ManualCampaignError("fail-fast failure log is empty")
+            failure_path = stage / FAIL_FAST_FAILURE_LOG
+            with failure_path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(fail_fast_failure_log.rstrip("\n"))
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
         _fsync_directory(stage)
         with service.store.named_lock("campaign-summary-ids"):
             moved_old = False
@@ -830,6 +845,9 @@ _MODE_ALIASES = {
     "ampli_col": ExecutionMode.RECURRENCE,
     "compiled": ExecutionMode.COMPILED,
     "eager": ExecutionMode.EAGER,
+    "on_the_fly": ExecutionMode.ON_THE_FLY,
+    "onthefly": ExecutionMode.ON_THE_FLY,
+    "otf": ExecutionMode.ON_THE_FLY,
 }
 _WORKLOAD_ALIASES = {
     "non_union_flow": Workload.SELECTED_FLOW,
@@ -945,7 +963,10 @@ def _empty_selection_error(
         ("--multiplicity", ", ".join(str(value) for value in multiplicities)),
         ("--color-approximation", "lc, nlc, full"),
         ("--generation-mode", "non-union-flow, union-flow, contracted"),
-        ("--generation-engine", "amplicol, recurrence, compiled, eager"),
+        (
+            "--generation-engine",
+            "amplicol, recurrence, compiled, eager, on-the-fly (otf)",
+        ),
         ("--model", "built_in, sm_ufo, scalar_contact, scalar_gravity"),
         ("--variant", ", ".join(variants)),
         (
@@ -1425,6 +1446,7 @@ def reproduction_recipe(
     prepared_execution = cell.measurement.execution_mode in {
         ExecutionMode.EAGER,
         ExecutionMode.RECURRENCE,
+        ExecutionMode.ON_THE_FLY,
     }
     if prepared_execution and cell.measurement.model in {
         ModelKey.BUILTIN_SM,
@@ -1464,12 +1486,19 @@ def reproduction_recipe(
             "tty",
         )
         model_source = os.fspath(prepared_path)
+    on_the_fly = cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
     layout = (
-        "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
+        "topology-replay"
+        if on_the_fly
+        else (
+            "all-flow-union"
+            if cell.workload is Workload.ALL_FLOW
+            else "topology-replay"
+        )
     )
     numerical_reuse_flag = (
         "--no-numerical-current-reuse"
-        if numerical_relation_fallback is not None
+        if on_the_fly or numerical_relation_fallback is not None
         else "--numerical-current-reuse"
     )
     generate = (
@@ -1512,8 +1541,8 @@ def reproduction_recipe(
         str(cell.measurement.jit_optimization_level or 2),
         "--cpp-optimization",
         "O3",
-        "--emit-api-bundle",
-        "--validation",
+        "--no-emit-api-bundle" if on_the_fly else "--emit-api-bundle",
+        "--no-validation" if on_the_fly else "--validation",
         "--validation-samples",
         "10",
         "--validation-seed",
@@ -1522,7 +1551,11 @@ def reproduction_recipe(
         "1e-12",
         "--absolute-tolerance",
         "1e-300",
-        "--post-build-validation",
+        (
+            "--no-post-build-validation"
+            if on_the_fly
+            else "--post-build-validation"
+        ),
         numerical_reuse_flag,
         "--force",
         "--color",
@@ -1572,7 +1605,8 @@ def reproduction_recipe(
     )
     exact = (
         completed
-        and cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.execution_mode
+        in {ExecutionMode.RECURRENCE, ExecutionMode.ON_THE_FLY}
         and selector_ready
         and momenta_ready
     )
@@ -2801,6 +2835,15 @@ def _fresh_attempt_requested(arguments: argparse.Namespace) -> bool:
     )
 
 
+def _artifact_cleanup_enabled(arguments: argparse.Namespace) -> bool:
+    """Keep every failure/cancellation payload when fail-fast is armed."""
+
+    return bool(
+        getattr(arguments, "cleanup_artifacts", False)
+        and not getattr(arguments, "fail_fast", False)
+    )
+
+
 def _selective_retry_category(
     current: LightweightCurrent | None,
     outcome: LightweightPresentationOutcome | None,
@@ -3792,6 +3835,282 @@ class LeaseManager:
         with self._guard:
             self._closed = True
             self.path.unlink(missing_ok=True)
+
+
+@dataclass(frozen=True, slots=True)
+class _FailFastTerminalFailure:
+    observed_at_utc: str
+    cell_id: str
+    status: str
+    detail: str
+    terminal_detail: str | None
+    completed_at_ns: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _FailFastReport:
+    text: str
+    cell_id: str
+    attempt_root: str | None
+    artifact_path: str | None
+    worker_log_path: str | None
+    worker_progress_path: str | None
+
+
+class _FailFastObserver:
+    """Turn the first terminal failure event into the campaign stop signal."""
+
+    def __init__(
+        self,
+        delegate: Callable[[Mapping[str, object]], None],
+        cancellation: threading.Event,
+    ) -> None:
+        self._delegate = delegate
+        self._cancellation = cancellation
+        self._guard = threading.Lock()
+        self._failure: _FailFastTerminalFailure | None = None
+
+    @property
+    def failure(self) -> _FailFastTerminalFailure | None:
+        with self._guard:
+            return self._failure
+
+    def observe(self, payload: Mapping[str, object]) -> None:
+        if payload.get("event") == "finished":
+            status = str(payload.get("status") or "unknown")
+            if status not in _FAIL_FAST_SUCCESS_STATUSES and status != "cancelled":
+                with self._guard:
+                    if self._failure is None and not self._cancellation.is_set():
+                        raw_terminal_detail = payload.get("terminal_detail")
+                        raw_completed_at_ns = payload.get("completed_at_ns")
+                        self._failure = _FailFastTerminalFailure(
+                            observed_at_utc=_utc_now(),
+                            cell_id=str(payload.get("cell_id") or ""),
+                            status=status,
+                            detail=str(payload.get("detail") or ""),
+                            terminal_detail=(
+                                raw_terminal_detail
+                                if isinstance(raw_terminal_detail, str)
+                                else None
+                            ),
+                            completed_at_ns=(
+                                raw_completed_at_ns
+                                if isinstance(raw_completed_at_ns, int)
+                                and not isinstance(raw_completed_at_ns, bool)
+                                else None
+                            ),
+                        )
+                        # The scheduler consults this same event before filling
+                        # another slot, and live supervisors consult it while
+                        # sampling their process trees.
+                        self._cancellation.set()
+        self._delegate(payload)
+
+
+def _attempt_failure_evidence(
+    service: ReportService,
+    *,
+    cell_id: str,
+    attempt_id: str | None,
+) -> tuple[Path | None, Mapping[str, object] | None]:
+    if attempt_id is None:
+        return None, None
+    current: CurrentRecord | None = None
+    with suppress(Exception):
+        current = service.store.load_current(cell_id, missing_ok=True)
+    if current is not None and current.attempt_id == attempt_id:
+        return current.manifest_path.parent, current.result
+
+    live_root: Path | None = None
+    archived_root: Path | None = None
+    with suppress(Exception):
+        live_root = service.store._existing_live_attempt_root(cell_id, attempt_id)
+    with suppress(Exception):
+        archived_root = service.store._existing_archived_attempt_root(
+            cell_id,
+            attempt_id,
+        )
+    roots = tuple(root for root in (live_root, archived_root) if root is not None)
+    root = roots[0] if len(roots) == 1 else None
+    result: Mapping[str, object] | None = None
+    with suppress(Exception):
+        result = service.store.load_sealed_unsuccessful_worker_result(
+            cell_id,
+            attempt_id,
+        )
+    return root, result
+
+
+def _fail_fast_report_value(value: object) -> str:
+    if value is None:
+        return "<unavailable>"
+    text = str(value)
+    return text if text else "<unavailable>"
+
+
+def _fail_fast_report_line(label: str, value: object) -> str:
+    rendered = _fail_fast_report_value(value).replace("\r\n", "\n").replace(
+        "\r",
+        "\n",
+    )
+    return f"{label}: " + rendered.replace("\n", "\n  ")
+
+
+def _build_fail_fast_report(
+    service: ReportService,
+    state: DashboardState,
+    failure: _FailFastTerminalFailure,
+    *,
+    invocation_command: str,
+) -> _FailFastReport:
+    try:
+        cell = service.catalog.cell(failure.cell_id)
+    except KeyError as error:
+        raise ManualCampaignError(
+            f"fail-fast terminal references unknown cell {failure.cell_id!r}"
+        ) from error
+    worker = state.workers.get(failure.cell_id)
+    attempt_id = _canonical_attempt_uuid(
+        None if worker is None else worker.attempt_id
+    )
+    if attempt_id is None:
+        attempt_id = _canonical_attempt_uuid(failure.detail)
+    attempt_root, result = _attempt_failure_evidence(
+        service,
+        cell_id=cell.cell_id,
+        attempt_id=attempt_id,
+    )
+    failure_record = result.get("failure") if isinstance(result, Mapping) else None
+    failure_class = (
+        failure_record.get("kind") if isinstance(failure_record, Mapping) else None
+    )
+    failure_message = (
+        failure_record.get("message")
+        if isinstance(failure_record, Mapping)
+        else None
+    )
+    if not isinstance(failure_class, str) or not failure_class:
+        failure_class = None
+    if not isinstance(failure_message, str) or not failure_message:
+        failure_message = failure.terminal_detail or failure.detail or None
+    artifact = result.get("artifact") if isinstance(result, Mapping) else None
+    raw_artifact_path = artifact.get("path") if isinstance(artifact, Mapping) else None
+    artifact_path = (
+        raw_artifact_path
+        if isinstance(raw_artifact_path, str) and raw_artifact_path
+        else None
+    )
+    if (
+        artifact_path is None
+        and attempt_root is not None
+        and (attempt_root / "artifact").is_dir()
+    ):
+        artifact_path = str(attempt_root / "artifact")
+    worker_log_path = None if worker is None else worker.log_path
+    worker_progress_path = None if worker is None else worker.progress_path
+    if attempt_root is not None:
+        if worker_log_path is None and (attempt_root / "worker.log").is_file():
+            worker_log_path = str(attempt_root / "worker.log")
+        if worker_progress_path is None and (
+            attempt_root / "worker-progress.jsonl"
+        ).is_file():
+            worker_progress_path = str(attempt_root / "worker-progress.jsonl")
+    process_family_id = next(
+        (
+            family.identifier
+            for family in PROCESS_FAMILIES
+            if family.key == cell.process_key
+        ),
+        None,
+    )
+    rows = (
+        ("timestamp_utc", failure.observed_at_utc),
+        ("campaign_invocation_id", state.instance_id),
+        ("campaign_invocation", invocation_command),
+        ("cell_id", cell.cell_id),
+        ("process_family_id", process_family_id),
+        ("process_key", cell.process_key),
+        ("process", cell.process),
+        ("n_final", cell.n_final),
+        ("mode", cell.measurement.execution_mode.value),
+        ("workload", cell.workload.value),
+        ("accuracy", cell.measurement.accuracy.value),
+        ("terminal_status", failure.status),
+        ("outcome_detail", failure.detail),
+        ("terminal_detail", failure.terminal_detail),
+        ("failure_class", failure_class),
+        ("failure_message", failure_message),
+        ("attempt_uuid", attempt_id),
+        ("attempt_root", attempt_root),
+        ("artifact_path", artifact_path),
+        ("worker_log_path", worker_log_path),
+        ("worker_progress_path", worker_progress_path),
+        (
+            "reproduce_prepare",
+            None if worker is None else worker.reproduce_prepare,
+        ),
+        (
+            "reproduce_generate",
+            None if worker is None else worker.reproduce_generate,
+        ),
+        (
+            "reproduce_profile",
+            None if worker is None else worker.reproduce_profile,
+        ),
+    )
+    text = "\n".join(
+        (
+            "pyAmpliCol campaign fail-fast failure",
+            *(_fail_fast_report_line(label, value) for label, value in rows),
+        )
+    )
+    return _FailFastReport(
+        text=text,
+        cell_id=cell.cell_id,
+        attempt_root=None if attempt_root is None else str(attempt_root),
+        artifact_path=artifact_path,
+        worker_log_path=worker_log_path,
+        worker_progress_path=worker_progress_path,
+    )
+
+
+def _publish_completion_summary(
+    service: ReportService,
+    categories: Mapping[str, Iterable[str]],
+    *,
+    state: DashboardState,
+    fail_fast_failure: _FailFastTerminalFailure | None,
+    invocation_command: str,
+    palette: Palette,
+) -> Path:
+    report = (
+        None
+        if fail_fast_failure is None
+        else _build_fail_fast_report(
+            service,
+            state,
+            fail_fast_failure,
+            invocation_command=invocation_command,
+        )
+    )
+    summary_path, summary_counts = _publish_campaign_summary_ids(
+        service,
+        categories,
+        fail_fast_failure_log=None if report is None else report.text,
+    )
+    _print_campaign_summary_ids(summary_path, summary_counts, palette)
+    if report is not None:
+        report_path = summary_path / FAIL_FAST_FAILURE_LOG
+        print(file=sys.stderr)
+        print(
+            palette.failure(
+                "Fail-fast stopped dispatch after the first terminal failure."
+            ),
+            file=sys.stderr,
+        )
+        print(report.text, file=sys.stderr)
+        print(f"fail_fast_report: {report_path}", file=sys.stderr)
+    return summary_path
 
 
 def _print_cleanup_warnings(state: DashboardState, palette: Palette) -> None:
@@ -7034,9 +7353,7 @@ def _campaign_settings(
         cancellation_requested=cancelled,
         manual_terminal_censors=True,
         discard_cancelled_attempts=False,
-        remove_heavy_attempt_artifacts=bool(
-            getattr(arguments, "cleanup_artifacts", False)
-        ),
+        remove_heavy_attempt_artifacts=_artifact_cleanup_enabled(arguments),
         report_profile=None,
         original_amplicol_repository=(
             arguments.original_amplicol
@@ -7486,6 +7803,12 @@ def _run_campaign(
     palette: Palette,
     installed: bool = False,
 ) -> int:
+    invocation_command = getattr(arguments, "_campaign_invocation_command", None)
+    if not isinstance(invocation_command, str) or not invocation_command:
+        invocation_command = (
+            "steer_performance_campaign.py run "
+            "<invocation arguments unavailable to Python API>"
+        )
     selective_retry = _selective_retry_requested(arguments)
     if bool(getattr(arguments, "force_refresh", False)) and selective_retry:
         raise ManualCampaignError(
@@ -7679,8 +8002,13 @@ def _run_campaign(
                         palette.key("artifact cleanup"),
                         (
                             "cleanup enabled (--cleanup-artifacts)"
-                            if bool(getattr(arguments, "cleanup_artifacts", False))
-                            else "retained (default)"
+                            if _artifact_cleanup_enabled(arguments)
+                            else (
+                                "retained (--fail-fast preserves failures and "
+                                "cancellations)"
+                                if bool(getattr(arguments, "fail_fast", False))
+                                else "retained (default)"
+                            )
                         ),
                     ),
                 ),
@@ -7756,7 +8084,7 @@ def _run_campaign(
             palette.warning(f"presentation outcome warning: {warning}"),
             file=sys.stderr,
         )
-    if bool(getattr(arguments, "cleanup_artifacts", False)):
+    if _artifact_cleanup_enabled(arguments):
         cleanup_cells = tuple(
             {
                 cell.cell_id: cell
@@ -7862,11 +8190,20 @@ def _run_campaign(
         )
     lease = LeaseManager(service, state)
     lease.publish()
+    fail_fast_observer = (
+        _FailFastObserver(lease.observe, cancellation)
+        if bool(getattr(arguments, "fail_fast", False))
+        else None
+    )
     settings = _campaign_settings(
         arguments,
         source,
         original_amplicol_available=original_amplicol_available,
-        observer=lease.observe,
+        observer=(
+            lease.observe
+            if fail_fast_observer is None
+            else fail_fast_observer.observe
+        ),
         cancelled=cancellation.is_set,
         campaign_invocation_id=state.instance_id,
     )
@@ -7926,10 +8263,13 @@ def _run_campaign(
     if join_interrupted or worker_alive:
         interrupted = True
         state.interrupted = True
+    fail_fast_failure = (
+        None if fail_fast_observer is None else fail_fast_observer.failure
+    )
     _print_cleanup_warnings(state, palette)
     if interrupted:
         result = result_holder[0] if result_holder else None
-        summary_path, summary_counts = _publish_campaign_summary_ids(
+        _publish_completion_summary(
             service,
             _campaign_summary_categories(
                 static_na_ids=static_na,
@@ -7937,12 +8277,15 @@ def _run_campaign(
                 state=state,
                 interrupted=True,
             ),
+            state=state,
+            fail_fast_failure=fail_fast_failure,
+            invocation_command=invocation_command,
+            palette=palette,
         )
-        _print_campaign_summary_ids(summary_path, summary_counts, palette)
         artifact_outcome = (
             "cleanup of eligible obsolete heavy payloads was enabled by "
             "--cleanup-artifacts"
-            if bool(getattr(arguments, "cleanup_artifacts", False))
+            if _artifact_cleanup_enabled(arguments)
             else "all heavy attempt payloads were retained (default)"
         )
         print(
@@ -7956,16 +8299,22 @@ def _run_campaign(
         return 130
     if error_holder:
         partial_result = result_holder[0] if result_holder else None
-        if _has_invocation_summary_evidence(partial_result, state):
-            summary_path, summary_counts = _publish_campaign_summary_ids(
+        if (
+            fail_fast_failure is not None
+            or _has_invocation_summary_evidence(partial_result, state)
+        ):
+            _publish_completion_summary(
                 service,
                 _campaign_summary_categories(
                     static_na_ids=static_na,
                     result=partial_result,
                     state=state,
                 ),
+                state=state,
+                fail_fast_failure=fail_fast_failure,
+                invocation_command=invocation_command,
+                palette=palette,
             )
-            _print_campaign_summary_ids(summary_path, summary_counts, palette)
         raise error_holder[0]
     result = result_holder[0]
     statuses = Counter(outcome.status for outcome in result.outcomes)
@@ -7977,7 +8326,7 @@ def _run_campaign(
                     palette.key(status),
                     (
                         palette.success(count)
-                        if status in {"ok", "reused", "skipped-current"}
+                        if status in _FAIL_FAST_SUCCESS_STATUSES
                         else palette.warning(count)
                     ),
                 )
@@ -7986,15 +8335,25 @@ def _run_campaign(
             align={"entries": "r"},
         )
     )
-    summary_path, summary_counts = _publish_campaign_summary_ids(
+    _publish_completion_summary(
         service,
         _campaign_summary_categories(
             static_na_ids=static_na,
             result=result,
             state=state,
         ),
+        state=state,
+        fail_fast_failure=fail_fast_failure,
+        invocation_command=invocation_command,
+        palette=palette,
     )
-    _print_campaign_summary_ids(summary_path, summary_counts, palette)
+    if bool(getattr(arguments, "fail_fast", False)):
+        has_terminal_failure = any(
+            outcome.status not in _FAIL_FAST_SUCCESS_STATUSES
+            and outcome.status != "cancelled"
+            for outcome in result.outcomes
+        )
+        return 1 if fail_fast_failure is not None or has_terminal_failure else 0
     return 1 if result.failed else 0
 
 
@@ -8548,7 +8907,8 @@ _ALIAS_SELECTOR_GUIDE = """
   layouts: non_union_flow/selected_flow/single_flow/single_flow_hel_sum/
            topology_replay; union_flow/all_flow/all_flows/
            all_flows_single_hel/all_flow_union; contracted
-  engines: amplicol/legacy; recurrence/ampli_col; compiled; eager
+  engines: amplicol/legacy; recurrence/ampli_col; compiled; eager;
+           on-the-fly/otf
   models: builtin/built_in/built_in_sm/builtin_sm/sm;
           ufo/sm_ufo/ufo_sm/external_sm; scalar_contact; scalar_gravity
 """.strip("\n")
@@ -8620,7 +8980,7 @@ Canonical selector values and aliases
   colour: lc, nlc, full
   layouts: non-union-flow (selected-flow/topology-replay),
            union-flow (all-flow), contracted
-  engines: amplicol, recurrence, compiled, eager
+  engines: amplicol, recurrence, compiled, eager, on-the-fly (otf)
   models: built_in (builtin_sm), sm_ufo (ufo_sm), scalar_contact, scalar_gravity
   variants: recurrence_jit_o2, jit_o1, jit_o3, eager_jit_o2, cpp_o3, asm_o3
             (filters named Z implementations only; unvaried rows remain)
@@ -8655,9 +9015,12 @@ Common recipes
   Four workers, two cores each:
     steer_performance_campaign.py run --workers 4 --cores-per-worker 2
 
+  Stop dispatch on the first terminal failure and retain its full evidence:
+    steer_performance_campaign.py run --fail-fast --workers 4 --table matrix
+
   All pyAmpliCol engines without adding optional authority cells:
     steer_performance_campaign.py run \\
-      --generation-engine recurrence compiled eager \\
+      --generation-engine recurrence compiled eager on-the-fly \\
       --no-dependencies-added
 
   Recompute instead of reusing same-source currents:
@@ -8771,7 +9134,10 @@ def _selector_parent() -> argparse.ArgumentParser:
         nargs="+",
         action="append",
         metavar="ENGINE",
-        help="Engine: amplicol, recurrence, compiled, or eager.",
+        help=(
+            "Engine: amplicol, recurrence, compiled, eager, or on-the-fly "
+            "(alias otf)."
+        ),
     )
     parent.add_argument(
         "--model",
@@ -9033,6 +9399,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     behavior.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help=(
+            "Stop new dispatch after the first terminal non-success, cancel "
+            "other live workers, retain every failed/cancelled attempt payload, "
+            "exit nonzero, and atomically write "
+            "campaign_summary_ids/fail_fast_failure.log with exact diagnostic "
+            "and reproduction paths. Cancelled outcomes caused by the stop are "
+            "not treated as a second failure. With --dry-run no report is "
+            "created; this option overrides --cleanup-artifacts for the run."
+        ),
+    )
+    behavior.add_argument(
         "--continue-across-revisions",
         action="store_true",
         help=(
@@ -9242,7 +9621,12 @@ def main(
     selected_profile = validate_profile_name(profile)
     _ACTIVE_PROFILE = selected_profile
     parser = build_parser()
-    arguments = parser.parse_args(argv)
+    invocation_arguments = tuple(sys.argv[1:] if argv is None else argv)
+    invocation_program = sys.argv[0] if argv is None else parser.prog
+    arguments = parser.parse_args(invocation_arguments)
+    arguments._campaign_invocation_command = _shell_join(
+        (invocation_program, *invocation_arguments)
+    )
     root = (
         Path.cwd().resolve(strict=False)
         if repo_root is None

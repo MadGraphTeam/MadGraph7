@@ -67,6 +67,7 @@ _BEST_MODE_CODES = {
     ExecutionMode.RECURRENCE: "r",
     ExecutionMode.COMPILED: "c",
     ExecutionMode.EAGER: "e",
+    ExecutionMode.ON_THE_FLY: "o",
 }
 _BEST_MODE_ORDER = tuple(_BEST_MODE_CODES)
 _BEST_MODE_TABLE_NAMES = {
@@ -600,7 +601,11 @@ class BaselineCandidateAdapter:
         if (
             baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             and candidate_cell.measurement.execution_mode
-            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+            in {
+                ExecutionMode.COMPILED,
+                ExecutionMode.EAGER,
+                ExecutionMode.ON_THE_FLY,
+            }
         ):
             recurrence_cell = self._recurrence_bridge(candidate_cell)
             if recurrence_cell is None:
@@ -783,17 +788,27 @@ class BaselineCandidateAdapter:
                 workload,
             )
             baseline = self.index.for_cell(baseline_cell)
+            candidate_datasets = tuple(
+                (
+                    mode,
+                    "matrix_"
+                    f"{mode.value.replace('-', '_')}_builtin_sm_"
+                    f"{accuracy.value}",
+                )
+                for mode in _BEST_MODE_ORDER
+            )
             candidates = tuple(
                 (
                     mode,
                     self._cell(
-                        f"matrix_{mode.value}_builtin_sm_{accuracy.value}",
+                        dataset_id,
                         family.key,
                         n_final,
                         workload,
                     ),
                 )
-                for mode in _BEST_MODE_ORDER
+                for mode, dataset_id in candidate_datasets
+                if n_final in self.catalog.dataset(dataset_id).multiplicities
             )
             measured_candidates = tuple(
                 (mode, *self._best_mode_candidate(cell)) for mode, cell in candidates
@@ -1370,6 +1385,69 @@ def _positive_timing_value(
     return number
 
 
+def _otf_cold_warmup_seconds(measurement: Measurement) -> float | None:
+    """Return the separately timed first OTF evaluation from provenance."""
+
+    provenance = measurement.get("provenance")
+    runtime_profile = (
+        provenance.get("runtime_profile")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    value = (
+        runtime_profile.get("cold_warmup_elapsed_seconds")
+        if isinstance(runtime_profile, Mapping)
+        else None
+    )
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0.0:
+        return None
+    return seconds
+
+
+def _otf_generation_pair_layout(
+    candidate: Measurement,
+    baseline: Measurement | None,
+) -> _BestModeComparisonLayout:
+    """Render OTF generation alone beside generation plus its first evaluation."""
+
+    generation = _positive_timing_value(candidate, "generation_seconds")
+    cold_warmup = _otf_cold_warmup_seconds(candidate)
+    if generation is None or cold_warmup is None:
+        unavailable = r"\matrixna{ReportMuted}"
+        return _BestModeComparisonLayout(unavailable, "", unavailable)
+    total = generation + cold_warmup
+    if not math.isfinite(total):
+        unavailable = r"\matrixna{ReportMuted}"
+        return _BestModeComparisonLayout(unavailable, "", unavailable)
+
+    if baseline is None:
+        generation_text = _best_mode_value(generation)
+        total_text = _best_mode_value(total)
+        return _BestModeComparisonLayout(
+            rf"\bestmodecompactabsolute{{{generation_text}}}{{{total_text}}}",
+            rf"\bestmodecompactabsoluteprefix{{{generation_text}}}",
+            rf"\bestmodeabsoluteprimary{{{total_text}}}",
+        )
+
+    denominator = _positive_timing_value(baseline, "generation_seconds")
+    if denominator is None:
+        unavailable = r"\matrixna{ReportMuted}"
+        return _BestModeComparisonLayout(unavailable, "", unavailable)
+    generation_ratio = generation / denominator
+    total_ratio = total / denominator
+    color = _best_mode_ratio_color(total_ratio)
+    generation_text = _best_mode_value(generation_ratio)
+    total_text = _best_mode_value(total_ratio)
+    return _BestModeComparisonLayout(
+        rf"\bestmodecompactratio{{{generation_text}}}{{{color}}}{{{total_text}}}",
+        rf"\bestmodecompactprefix{{{generation_text}}}",
+        rf"\bestmodeprimaryratio{{{color}}}{{{total_text}}}",
+    )
+
+
 def _secondary_runtime_ratio(
     candidate: Measurement,
     baseline: Measurement,
@@ -1655,6 +1733,19 @@ def _compact_comparison_macros() -> list[str]:
             r"#1\hspace{0.04in}}"
         ),
         (
+            r"\providecommand{\bestmodecompactabsolute}[2]{"
+            r"\textcolor{ReportMuted}{\texttt{[#1]}}"
+            r"\hspace{0.04in}\textcolor{black}{\texttt{#2}}}"
+        ),
+        (
+            r"\providecommand{\bestmodecompactabsoluteprefix}[1]{"
+            r"\textcolor{ReportMuted}{\texttt{[#1]}}\hspace{0.04in}}"
+        ),
+        (
+            r"\providecommand{\bestmodeabsoluteprimary}[1]{"
+            r"\textcolor{black}{\texttt{#1}}}"
+        ),
+        (
             r"\providecommand{\bestmodeunverifiedclockprefix}[2]{"
             r"\textcolor{ReportMuted}{\texttt{[}#1\texttt{]}}"
             r"\hspace{0.04in}#2\hspace{0.04in}}"
@@ -1731,6 +1822,7 @@ def _legacy_baseline_unavailable(
 def _fixed_mode_generation_comparison_layout(
     joined: JoinedWorkload,
     *,
+    candidate_mode: ExecutionMode,
     baseline_mode: ExecutionMode,
     baseline_static_na: bool = False,
     comparable: bool = True,
@@ -1751,6 +1843,19 @@ def _fixed_mode_generation_comparison_layout(
     if not _ok(joined.candidate):
         status = _status(joined.candidate)
         return _BestModeComparisonLayout(status, "", status)
+    if (
+        candidate_mode is ExecutionMode.ON_THE_FLY
+        and baseline_mode is ExecutionMode.AMPLICOL
+    ):
+        if (
+            joined.workload is Workload.ALL_FLOW
+            or baseline_static_na
+            or not comparable
+            or not joined.comparison_linked
+            or not _ok(joined.baseline)
+        ):
+            return _otf_generation_pair_layout(joined.candidate, None)
+        return _otf_generation_pair_layout(joined.candidate, joined.baseline)
     if (
         baseline_static_na
         or not comparable
@@ -1836,11 +1941,13 @@ def _lc_cell(
     )
     selected_generation = _fixed_mode_generation_comparison_layout(
         selected,
+        candidate_mode=view.dataset.candidate.execution_mode,
         baseline_mode=view.dataset.baseline.execution_mode,
         baseline_static_na=legacy_baseline_unavailable,
     )
     all_flow_generation = _fixed_mode_generation_comparison_layout(
         all_flow,
+        candidate_mode=view.dataset.candidate.execution_mode,
         baseline_mode=view.dataset.baseline.execution_mode,
         baseline_static_na=legacy_baseline_unavailable,
         comparable=not (
@@ -1910,6 +2017,7 @@ def _contracted_cell(
     )
     candidate_generation = _fixed_mode_generation_comparison_layout(
         joined,
+        candidate_mode=view.dataset.candidate.execution_mode,
         baseline_mode=view.dataset.baseline.execution_mode,
         baseline_static_na=legacy_baseline_unavailable,
     )
@@ -2040,6 +2148,12 @@ def _matrix_block(
     if len(multiplicities) not in (2, 3):
         raise ValueError("matrix blocks must contain two or three multiplicities")
     accuracy = dataset.candidate.accuracy
+    array_stretch = (
+        "1.00"
+        if dataset.candidate.execution_mode is ExecutionMode.ON_THE_FLY
+        and accuracy is Accuracy.LC
+        else "1.04"
+    )
     column_spec = _metric_table_column_spec(
         accuracy,
         len(multiplicities),
@@ -2060,7 +2174,7 @@ def _matrix_block(
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
-        r"\renewcommand{\arraystretch}{1.04}",
+        rf"\renewcommand{{\arraystretch}}{{{array_stretch}}}",
         r"\matrixfitwidth{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
@@ -2206,6 +2320,7 @@ def _mode_label(mode: ExecutionMode) -> str:
         ExecutionMode.RECURRENCE: "recurrence JIT O2",
         ExecutionMode.COMPILED: "compiled JIT O3",
         ExecutionMode.EAGER: "eager-DAG JIT O2",
+        ExecutionMode.ON_THE_FLY: "on-the-fly JIT O2",
     }[mode]
 
 
@@ -2214,6 +2329,20 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
     candidate = _mode_label(dataset.candidate.execution_mode)
     if dataset.candidate.accuracy is Accuracy.LC:
         if (
+            dataset.candidate.execution_mode is ExecutionMode.ON_THE_FLY
+            and dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+        ):
+            detail = (
+                "Each cell shows non-union-flow and union-flow quantities. "
+                "For non-union flow, generation is ([xG] x(G+W)): the muted "
+                "inner multiplier is artifact generation G alone and the "
+                "normally coloured outer multiplier adds exactly the first "
+                "cold on-the-fly evaluation W, both relative to AmpliCol "
+                "selected-flow generation. For union flow, generation is the "
+                "absolute [G] G+W pair, with G muted and G+W in normal black. "
+                "W excludes artifact loading and conventional benchmark warm-ups."
+            )
+        elif (
             dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
             and dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
         ):
@@ -2317,7 +2446,15 @@ def render_matrix_table(
     """Render one matrix dataset into nonbreaking page-sized TeX blocks."""
 
     adapter = BaselineCandidateAdapter(caches, catalog=catalog)
-    blocks = _chunks(dataset.multiplicities, _MATRIX_BLOCK_SIZE)
+    # The scoped OTF LC surface has four multiplicities.  Keep every rendered
+    # matrix block within the established two-or-three-column table grammar.
+    block_size = (
+        2
+        if dataset.candidate.execution_mode is ExecutionMode.ON_THE_FLY
+        and len(dataset.multiplicities) == 4
+        else _MATRIX_BLOCK_SIZE
+    )
+    blocks = _chunks(dataset.multiplicities, block_size)
     lines = [
         "% SPDX-License-Identifier: 0BSD",
         "% Generated by tools/performance_report/render.py; do not edit.",
@@ -2492,6 +2629,31 @@ def _best_mode_generation_comparison_layout(
         )
     assert joined.mode is not None
     mode_code = _BEST_MODE_CODES[joined.mode]
+    if joined.mode is ExecutionMode.ON_THE_FLY:
+        absolute = (
+            joined.workload is Workload.ALL_FLOW
+            or baseline_static_na
+            or not comparable
+            or not joined.comparison_linked
+            or not _ok(joined.baseline)
+        )
+        pair = _otf_generation_pair_layout(
+            joined.candidate,
+            None if absolute else joined.baseline,
+        )
+        if absolute:
+            code = rf"\bestmodecode{{{mode_code}}}"
+            return _BestModeComparisonLayout(
+                rf"{pair.inline}\hspace{{0.025in}}{code}",
+                pair.prefix,
+                rf"{pair.primary}\hspace{{0.025in}}{code}",
+            )
+        code_prefix = rf"\bestmodecodeprefix{{{mode_code}}}"
+        return _BestModeComparisonLayout(
+            f"{code_prefix}{pair.inline}",
+            f"{code_prefix}{pair.prefix}",
+            pair.primary,
+        )
     if (
         baseline_static_na
         or not comparable
@@ -2998,6 +3160,27 @@ def _best_mode_block(
         if accuracy is Accuracy.LC
         else ""
     )
+    otf_generation_note = (
+        r" OTF \texttt{([xG]x(G+W)) | [G]G+W} follows the enclosing "
+        r"cold-start contract."
+        if accuracy is Accuracy.LC
+        else ""
+    )
+    mode_legend_note = (
+        (
+            r" Muted generation-row codes (r)|(c)|(e)|(o) identify "
+            r"recurrence JIT O2, compiled JIT O3, eager-DAG JIT O2, and "
+            r"on-the-fly JIT O2 wall-time winners; runtime rows omit them. "
+            r"Summary mode counts use r|c|e|o in the same order."
+        )
+        if accuracy is Accuracy.LC
+        else (
+            r" Muted generation-row codes (r)|(c)|(e) identify recurrence "
+            r"JIT O2, compiled JIT O3, and eager-DAG JIT O2 wall-time "
+            r"winners; runtime rows omit them. Summary mode counts use "
+            r"r|c|e in the same order."
+        )
+    )
     lines.extend(
         [
             r"\specialrule{1.05pt}{0.22em}{0.18em}",
@@ -3078,19 +3261,16 @@ def _best_mode_block(
                 r"compiled or eager diagnostics are never eligible for best-mode "
                 r"selection or summaries and remain visibly marked unverified."
                 + boundary_note
+                + otf_generation_note
                 + r" Only exact stored same-point links enter ratios."
                 + r" Summary rows contain multipliers only in min, max, "
                 r"median, average, and weighted-average order; the weighted "
                 r"average is the ratio of timing sums and is the framed bold "
                 r"entry. "
-                r"Muted (r), (c), and (e) labels on the generation row "
-                r"identify the recurrence, compiled, and eager winner selected "
-                r"by wall time for each workload; the runtime row does not "
-                r"repeat them. LC generation uses "
-                r"non-union flow only, while LC runtime keeps separate "
-                r"non-union and union wall-only lines. Summary mode counts "
-                r"use r|c|e for recurrence JIT O2, compiled JIT O3, and "
-                r"eager-DAG JIT O2, respectively.}}"
+                r"LC generation is non-union only; LC runtime retains separate "
+                r"non-union and union wall-only lines."
+                + mode_legend_note
+                + r"}}"
             ),
             r"\end{minipage}",
         ]
@@ -3856,6 +4036,7 @@ def summarize_visible_completeness(
                     )
                     candidate_generation = _fixed_mode_generation_comparison_layout(
                         joined,
+                        candidate_mode=dataset.candidate.execution_mode,
                         baseline_mode=dataset.baseline.execution_mode,
                         baseline_static_na=baseline_static_na,
                         comparable=not (

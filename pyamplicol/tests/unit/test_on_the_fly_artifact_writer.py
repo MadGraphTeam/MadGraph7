@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import copy
 import hashlib
 import io
 import json
@@ -48,6 +49,74 @@ from pyamplicol.models.prepared_target import canonical_architecture
 ROOT = Path(__file__).resolve().parents[2]
 _PROCESS_ID = "d_dbar_to_z"
 _SEED_MEMBER = "on-the-fly/process-seed-v1.bin"
+
+
+def _seed_identity(*, process_digest: str = "1" * 64) -> dict[str, object]:
+    return {
+        "abi": "pyamplicol-on-the-fly-process-seed-identity-v1",
+        "process_digest": process_digest,
+        "compiled_model_digest": "2" * 64,
+        "recurrence_template_catalog_digest": "3" * 64,
+        "prepared_kernel_pack_digest": "4" * 64,
+        "recurrence_direct_template_catalog_digest": "5" * 64,
+        "semantic_digest": "6" * 64,
+        "external_permutation": [0, 1, 2],
+        "external_sources": [
+            {
+                "source_slot": slot,
+                "public_label": slot + 1,
+                "is_initial": slot < 2,
+                "states": [
+                    {
+                        "state_index": 0,
+                        "public_helicity": 0,
+                        "prepared_mass_parameter_slot": None,
+                    }
+                ],
+            }
+            for slot in range(3)
+        ],
+    }
+
+
+def _seed_identity_from_source_projection(
+    source_projection: dict[str, object],
+    *,
+    process_digest: str | None = None,
+) -> dict[str, object]:
+    projected_digest = source_projection["process_digest"]
+    permutation = source_projection["external_permutation"]
+    sources = source_projection["external_sources"]
+    assert isinstance(projected_digest, str)
+    assert isinstance(permutation, list)
+    assert isinstance(sources, list)
+    identity = _seed_identity(
+        process_digest=(projected_digest if process_digest is None else process_digest)
+    )
+    identity["external_permutation"] = list(permutation)
+    compact_sources: list[dict[str, object]] = []
+    for source in sources:
+        assert isinstance(source, dict)
+        states = source["states"]
+        assert isinstance(states, list)
+        compact_sources.append(
+            {
+                "source_slot": source["source_slot"],
+                "public_label": source["public_label"],
+                "is_initial": source["is_initial"],
+                "states": [
+                    {
+                        "state_index": state["state_index"],
+                        "public_helicity": state["public_helicity"],
+                        "prepared_mass_parameter_slot": None,
+                    }
+                    for state in states
+                    if isinstance(state, dict)
+                ],
+            }
+        )
+    identity["external_sources"] = compact_sources
+    return identity
 
 
 def _prepared_model_path() -> Path:
@@ -145,6 +214,7 @@ def _process_artifact(
             "external_legs": [],
             "particle_masses": [],
             "normalization": {},
+            "process_seed_identity": _seed_identity(),
         },
         selector_policy={
             "color_coverage": "complete",
@@ -231,9 +301,7 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
     runtime_relative = f"processes/{_PROCESS_ID}/on-the-fly-runtime.pacbin"
     for output in (first, second):
         manifest = load_manifest(output)
-        structural_proof_path = (
-            f"processes/{_PROCESS_ID}/structural-source-proof.json"
-        )
+        structural_proof_path = f"processes/{_PROCESS_ID}/structural-source-proof.json"
         assert [
             (record.path, record.role)
             for record in manifest.payloads
@@ -244,8 +312,7 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
         runtime = output / runtime_relative
         with PacbinReader.open(runtime, verify_payloads=True) as reader:
             assert [
-                (member.logical_path, member.kind)
-                for member in reader.members
+                (member.logical_path, member.kind) for member in reader.members
             ] == [(_SEED_MEMBER, PacbinMemberKind.ON_THE_FLY_PROCESS_SEED)]
         physics = json.loads(
             (output / f"processes/{_PROCESS_ID}/physics.json").read_text(
@@ -418,12 +485,42 @@ def test_on_the_fly_construction_never_enters_materialized_process_lanes(
     ):
         monkeypatch.setattr(service_module, name, forbidden)
     monkeypatch.setattr(backend, "_prepare_process_construction", forbidden)
-
     projected = backend._project_on_the_fly_process(
         expanded,
         model,
         model_inputs,
         index=0,
+    )
+    seed_identity = _seed_identity_from_source_projection(
+        projected.projection.seed.to_json_dict()
+    )
+    wrong_seed_identity = _seed_identity_from_source_projection(
+        projected.projection.seed.to_json_dict(),
+        process_digest="f" * 64,
+    )
+    assert wrong_seed_identity["process_digest"] != (
+        projected.projection.seed.process_digest
+    )
+    monkeypatch.setattr(
+        service_module,
+        "_invoke_rust_on_the_fly_seed_inspector_v1",
+        lambda _payload: wrong_seed_identity,
+    )
+    with pytest.raises(GenerationError, match="process digest disagrees"):
+        backend._construct_on_the_fly_artifact(
+            projected,
+            b"native-compact-seed",
+            model,
+            model_inputs,
+            tmp_path,
+            phase=PhaseHandle("test", None, 1),
+        )
+    assert not (tmp_path / "on-the-fly-runtimes").exists()
+
+    monkeypatch.setattr(
+        service_module,
+        "_invoke_rust_on_the_fly_seed_inspector_v1",
+        lambda _payload: seed_identity,
     )
     generated = backend._construct_on_the_fly_artifact(
         projected,
@@ -458,6 +555,7 @@ def test_on_the_fly_construction_never_enters_materialized_process_lanes(
         "external_legs",
         "particle_masses",
         "normalization",
+        "process_seed_identity",
     }
 
 
@@ -495,6 +593,21 @@ def test_multi_process_on_the_fly_writer_uses_one_ordered_native_batch(
         service_module,
         "_invoke_rust_on_the_fly_seed_batch_builder_v1",
         batch_builder,
+    )
+
+    def inspect_seed(payload: bytes) -> dict[str, object]:
+        index = int(payload.rsplit(b"-", maxsplit=1)[1])
+        assert calls
+        ordered_sources = calls[0]["sources"]
+        assert isinstance(ordered_sources, tuple)
+        source_projection = json.loads(ordered_sources[index])
+        assert isinstance(source_projection, dict)
+        return _seed_identity_from_source_projection(source_projection)
+
+    monkeypatch.setattr(
+        service_module,
+        "_invoke_rust_on_the_fly_seed_inspector_v1",
+        inspect_seed,
     )
 
     def forbidden(*_args: object, **_kwargs: object) -> object:
@@ -618,6 +731,135 @@ def test_on_the_fly_singleton_seed_bridge_wraps_plural_binding(
 
     assert result == b"stable-seed-bytes"
     assert calls == [((b"source",), b"recurrence", b"direct", "a" * 64)]
+
+
+def test_on_the_fly_native_seed_inspector_returns_exact_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _seed_identity()
+    module = SimpleNamespace(
+        _inspect_on_the_fly_process_seed_v1=lambda payload: (
+            json.dumps(identity) if payload == b"seed" else "{}"
+        )
+    )
+    monkeypatch.setattr(service_module.importlib, "import_module", lambda _name: module)
+    monkeypatch.setattr(service_module, "verify_native_module", lambda _module: None)
+
+    assert service_module._invoke_rust_on_the_fly_seed_inspector_v1(b"seed") == (
+        identity
+    )
+
+
+def test_on_the_fly_native_seed_identity_is_bound_to_source_projection() -> None:
+    projection_json: dict[str, object] = {
+        "process_digest": "a" * 64,
+        "external_permutation": [0, 1],
+        "external_sources": [
+            {
+                "source_slot": 0,
+                "public_label": 1,
+                "is_initial": True,
+                "states": [{"state_index": 0, "public_helicity": -1}],
+            },
+            {
+                "source_slot": 1,
+                "public_label": 2,
+                "is_initial": False,
+                "states": [{"state_index": 0, "public_helicity": 1}],
+            },
+        ],
+    }
+    projection = SimpleNamespace(
+        process_digest="a" * 64,
+        external_permutation=(0, 1),
+        external_sources=(
+            SimpleNamespace(
+                source_slot=0,
+                public_label=1,
+                is_initial=True,
+                source_states=(SimpleNamespace(state_index=0, public_helicity=-1),),
+            ),
+            SimpleNamespace(
+                source_slot=1,
+                public_label=2,
+                is_initial=False,
+                source_states=(SimpleNamespace(state_index=0, public_helicity=1),),
+            ),
+        ),
+    )
+    identity = _seed_identity_from_source_projection(projection_json)
+    service_module._bind_on_the_fly_process_seed_identity_v1(
+        identity,
+        projection,  # type: ignore[arg-type]
+    )
+
+    wrong_digest = {**identity, "process_digest": "f" * 64}
+    wrong_permutation = {**identity, "external_permutation": [1, 0]}
+    candidates: list[tuple[dict[str, object], str]] = [
+        (wrong_digest, "process digest disagrees"),
+        (wrong_permutation, "external permutation disagrees"),
+    ]
+    for field, replacement in (
+        ("source_slot", 7),
+        ("public_label", 7),
+        ("is_initial", False),
+    ):
+        candidate = copy.deepcopy(identity)
+        sources = candidate["external_sources"]
+        assert isinstance(sources, list) and isinstance(sources[0], dict)
+        sources[0][field] = replacement
+        candidates.append((candidate, "external source domain disagrees"))
+    for field, replacement in (
+        ("state_index", 7),
+        ("public_helicity", 7),
+    ):
+        candidate = copy.deepcopy(identity)
+        sources = candidate["external_sources"]
+        assert isinstance(sources, list) and isinstance(sources[0], dict)
+        states = sources[0]["states"]
+        assert isinstance(states, list) and isinstance(states[0], dict)
+        states[0][field] = replacement
+        candidates.append((candidate, "external source domain disagrees"))
+
+    for candidate, message in candidates:
+        with pytest.raises(GenerationError, match=message):
+            service_module._bind_on_the_fly_process_seed_identity_v1(
+                candidate,
+                projection,  # type: ignore[arg-type]
+            )
+
+
+@pytest.mark.parametrize(
+    ("binding", "message"),
+    (
+        (None, "does not provide the private"),
+        (lambda _payload: b"not-json-text", "inspection failed"),
+        (lambda _payload: "not-json", "inspection failed"),
+        (
+            lambda _payload: json.dumps(
+                {**_seed_identity(), "abi": "stale-seed-identity-v0"}
+            ),
+            "unsupported ABI",
+        ),
+        (
+            lambda _payload: json.dumps({**_seed_identity(), "invented": True}),
+            "wrong fields",
+        ),
+    ),
+)
+def test_on_the_fly_native_seed_inspector_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    binding: object,
+    message: str,
+) -> None:
+    module = SimpleNamespace()
+    if binding is not None:
+        module._inspect_on_the_fly_process_seed_v1 = binding
+    monkeypatch.setattr(service_module.importlib, "import_module", lambda _name: module)
+    monkeypatch.setattr(service_module, "verify_native_module", lambda _module: None)
+
+    with pytest.raises(GenerationError, match=message):
+        service_module._invoke_rust_on_the_fly_seed_inspector_v1(b"seed")
 
 
 @pytest.mark.parametrize(

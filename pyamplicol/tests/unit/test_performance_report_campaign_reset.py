@@ -12,6 +12,9 @@ from tools.performance_report.campaign_policy import MACBOOK_M3_POLICY
 from tools.performance_report.campaign_reset import (
     BASELINE_GATE_FILENAME,
     CAMPAIGN_MARKER_FILENAME,
+    EXPECTED_AMPLICOL_CELL_COUNT,
+    EXPECTED_CATALOG_CELL_COUNT,
+    EXPECTED_NON_AMPLICOL_CELL_COUNT,
     CampaignResetError,
     OriginalAmplicolSeed,
     ResetTransactionPaths,
@@ -59,6 +62,17 @@ def _cell(mode: ExecutionMode):
             or cell.measurement.accuracy is not Accuracy.LC
         )
     )
+
+
+def test_reset_cardinality_matches_the_current_catalog() -> None:
+    cells = REPORT_CATALOG.measurement_cells()
+    amplicol = sum(
+        cell.measurement.execution_mode is ExecutionMode.AMPLICOL for cell in cells
+    )
+
+    assert EXPECTED_CATALOG_CELL_COUNT == len(cells) == 1962
+    assert EXPECTED_AMPLICOL_CELL_COUNT == amplicol == 314
+    assert EXPECTED_NON_AMPLICOL_CELL_COUNT == len(cells) - amplicol == 1648
 
 
 def _contract() -> dict[str, object]:
@@ -429,8 +443,14 @@ def test_seed_rejects_changed_current_pointer(
         )
 
 
-def test_seed_load_accepts_only_the_pinned_pre_n6_catalog_cardinality(
+@pytest.mark.parametrize(
+    ("catalog_count", "amplicol_count"),
+    ((1646, 284), (1796, 314)),
+)
+def test_seed_load_accepts_only_supported_historical_catalog_cardinality(
     tmp_path: Path,
+    catalog_count: int,
+    amplicol_count: int,
 ) -> None:
     store = _store(tmp_path)
     seed_path = store.artifact_root / "original_amplicol_seed.json"
@@ -441,8 +461,8 @@ def test_seed_load_accepts_only_the_pinned_pre_n6_catalog_cardinality(
         "final_source_revision": _REVISION,
         "final_source_tree": _TREE,
         "expected_legacy_revision": "4" * 40,
-        "catalog_cell_count": 1646,
-        "amplicol_catalog_cell_count": 284,
+        "catalog_cell_count": catalog_count,
+        "amplicol_catalog_cell_count": amplicol_count,
         "seed_count": 0,
         "pins": [],
         "rejected": [],
@@ -458,7 +478,7 @@ def test_seed_load_accepts_only_the_pinned_pre_n6_catalog_cardinality(
     assert loaded.pins_by_cell == {}
 
     payload.pop("seed_manifest_sha256")
-    payload["catalog_cell_count"] = 1645
+    payload["catalog_cell_count"] = catalog_count - 1
     payload["seed_manifest_sha256"] = sha256_payload(payload)
     seed_path.write_text(json.dumps(payload), encoding="ascii")
     with pytest.raises(CampaignResetError, match="catalog coverage differs"):

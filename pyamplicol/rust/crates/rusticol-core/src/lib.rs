@@ -197,5 +197,19 @@ pub mod __private {
         })?;
         Ok(payload)
     }
+
+    /// Unstable cold-path bridge for inspecting one authoritative native
+    /// process seed without exposing the internal seed representation.
+    #[doc(hidden)]
+    pub fn inspect_on_the_fly_process_seed_identity_json_v1(
+        payload: &[u8],
+    ) -> RusticolResult<String> {
+        let seed = crate::recurrence::on_the_fly::decode_on_the_fly_process_seed_v1(payload)?;
+        serde_json::to_string(&seed.identity()).map_err(|error| {
+            crate::RusticolError::serialization(format!(
+                "could not serialize on-the-fly process-seed identity: {error}"
+            ))
+        })
+    }
 }
 pub const ARTIFACT_MANIFEST_FILE: &str = "artifact.json";

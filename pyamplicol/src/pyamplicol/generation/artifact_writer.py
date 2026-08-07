@@ -78,7 +78,10 @@ from .._internal.versions import (
 )
 from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
-from ..models.prepared import PREPARED_KERNEL_PACK_IDENTITY_ABI
+from ..models.prepared import (
+    PREPARED_KERNEL_PACK_IDENTITY_ABI,
+    prepared_kernel_pack_manifest_identity_sha256,
+)
 from .contracts import RuntimeExpressionSchema
 from .eager_columnar import EAGER_LOWERING_INPUT_ABI
 from .eager_lowering import EAGER_RUNTIME_KIND
@@ -1318,24 +1321,14 @@ def _eager_prepared_pack_identity(
         raise ValueError(
             "prepared-kernel artifact writing requires a prepared model bundle"
         )
-    canonical_manifest = json.dumps(
-        _deep_plain(bundle.manifest),
-        ensure_ascii=True,
-        allow_nan=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("ascii")
-    digest = hashlib.sha256(
-        PREPARED_KERNEL_PACK_IDENTITY_ABI.encode("ascii")
-        + b"\x00"
-        + canonical_manifest
-    ).hexdigest()
     return {
         "kind": _EAGER_PACK_IDENTITY_KIND,
         "schema_version": _EAGER_PACK_IDENTITY_SCHEMA_VERSION,
         "abi": PREPARED_KERNEL_PACK_IDENTITY_ABI,
         "eager_kernel_abi": EAGER_KERNEL_ABI,
-        "identity_sha256": digest,
+        "identity_sha256": prepared_kernel_pack_manifest_identity_sha256(
+            bundle.manifest
+        ),
         "backend": bundle.kernel_pack.backend,
         "kernel_count": len(bundle.kernel_pack.kernels),
     }

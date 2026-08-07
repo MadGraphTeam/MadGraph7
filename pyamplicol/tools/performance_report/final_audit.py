@@ -21,6 +21,7 @@ import tomllib
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
 from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -36,6 +37,7 @@ from .agreements import (
     LC_COMMON_COMPONENT_FIELD,
     LC_CROSS_LAYOUT_COMPONENT,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
+    OTF_COMPILED_CROSS_MODE,
     STRICT_ABSOLUTE_TOLERANCE,
     STRICT_RELATIVE_TOLERANCE,
     Z_RECURRENCE_CROSS_MODE,
@@ -67,6 +69,7 @@ from .campaign_policy import (
 from .catalog import (
     REPORT_CATALOG,
     STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6,
+    STATIC_NA_ON_THE_FLY_COLOR_ACCURACY,
     STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
     ReportCatalog,
 )
@@ -98,6 +101,8 @@ from .runner import (
     CONDITIONED_COMPARISON_ABI,
     INDEPENDENT_RELATIVE_TOLERANCE,
     RELATIVE_TOLERANCE,
+    REPORT_BENCHMARK_BATCH_SIZE,
+    REPORT_BENCHMARK_WARMUP_RUNS,
     RESOLVED_SUM_VALIDATION_ABI,
     SelectorContract,
     _valid_symjit_plane_target,
@@ -105,6 +110,7 @@ from .runner import (
     resolved_sum_validation,
     runtime_validation_points,
     validate_conditioned_comparison_record,
+    validate_profile_warmup_evidence,
     validate_resolved_sum_validation_record,
     validate_runtime_contract,
     validate_selector_contract,
@@ -135,7 +141,7 @@ from .workspace import load_profile_campaign_policy
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FULL_CATALOG_MAX_N_FINAL = 9
-_EXPECTED_FULL_CATALOG_CELL_COUNT = 1796
+_EXPECTED_FULL_CATALOG_CELL_COUNT = 1962
 _EXPECTED_FULL_STATIC_NA_REASONS = {
     **{
         cell_id: STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
@@ -161,21 +167,29 @@ _EXPECTED_FULL_STATIC_NA_REASONS = {
         for variant in ("asm-o3", "cpp-o3")
         for workload in ("selected-flow", "all-flow")
     },
+    **{
+        cell.cell_id: STATIC_NA_ON_THE_FLY_COLOR_ACCURACY
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
+    },
 }
 _EXPECTED_FULL_STATIC_NA_CELL_IDS = frozenset(_EXPECTED_FULL_STATIC_NA_REASONS)
-_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1671
-_EXPECTED_N4_CELL_COUNT = 762
+_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1803
+_EXPECTED_N4_CELL_COUNT = 894
 _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 140,
     Z_RECURRENCE_CROSS_MODE: 80,
-    LC_CROSS_LAYOUT_COMPONENT: 213,
-    LC_LEGACY_PYAMPLICOL_COMPONENT: 180,
+    OTF_COMPILED_CROSS_MODE: 66,
+    LC_CROSS_LAYOUT_COMPONENT: 246,
+    LC_LEGACY_PYAMPLICOL_COMPONENT: 213,
 }
 _EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 332,
     Z_RECURRENCE_CROSS_MODE: 156,
-    LC_CROSS_LAYOUT_COMPONENT: 627,
-    LC_LEGACY_PYAMPLICOL_COMPONENT: 508,
+    OTF_COMPILED_CROSS_MODE: 66,
+    LC_CROSS_LAYOUT_COMPONENT: 660,
+    LC_LEGACY_PYAMPLICOL_COMPONENT: 541,
 }
 _FULLY_REPLAYED_PYAMPLICOL = "fully-replayed-pyamplicol"
 _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY = (
@@ -188,13 +202,13 @@ _DIRECT_REPLAY_CATEGORIES = (
     _AUTHENTICATED_STORED_LEGACY_LAYOUT,
 )
 _EXPECTED_N4_DIRECT_REPLAY_COUNTS = {
-    _FULLY_REPLAYED_PYAMPLICOL: 400,
-    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 180,
+    _FULLY_REPLAYED_PYAMPLICOL: 499,
+    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 213,
     _AUTHENTICATED_STORED_LEGACY_LAYOUT: 33,
 }
 _EXPECTED_FULL_DIRECT_REPLAY_COUNTS = {
-    _FULLY_REPLAYED_PYAMPLICOL: 1012,
-    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 508,
+    _FULLY_REPLAYED_PYAMPLICOL: 1111,
+    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 541,
     _AUTHENTICATED_STORED_LEGACY_LAYOUT: 103,
 }
 
@@ -243,6 +257,7 @@ def _replay_count_contract_matches_direct_edges(
         fully_replayed = (
             direct_edge_counts[BUILTIN_UFO_RECURRENCE]
             + direct_edge_counts[Z_RECURRENCE_CROSS_MODE]
+            + direct_edge_counts[OTF_COMPILED_CROSS_MODE]
             + direct_edge_counts[LC_CROSS_LAYOUT_COMPONENT]
             - stored_legacy_layout
         )
@@ -269,7 +284,29 @@ _ARENA_CAPABILITY = {
     ExecutionMode.COMPILED: "compiled-plane-arena-v1",
     ExecutionMode.EAGER: "eager-direct-arena-v1",
     ExecutionMode.RECURRENCE: ("rusticol.recurrence-direct-arena.complex-f64.v1"),
+    ExecutionMode.ON_THE_FLY: "rusticol.on-the-fly.complex-f64.v1",
 }
+_ON_THE_FLY_LC_COLOR_CAPABILITY = "rusticol.on-the-fly.lc-color.v1"
+_ON_THE_FLY_EXECUTION_KIND = "pyamplicol-runtime-on-the-fly-execution"
+_ON_THE_FLY_RUNTIME_CONTAINER_KIND = "pyamplicol-on-the-fly-runtime-container"
+_ON_THE_FLY_RUNTIME_STORAGE_ABI = "pacbin-v1"
+_ON_THE_FLY_SEED_MEMBER_PATH = "on-the-fly/process-seed-v1.bin"
+_ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI = "pyamplicol-on-the-fly-process-seed-identity-v1"
+_ON_THE_FLY_PROCESS_SEED_IDENTITY_FIELDS = frozenset(
+    {
+        "abi",
+        "process_digest",
+        "compiled_model_digest",
+        "recurrence_template_catalog_digest",
+        "prepared_kernel_pack_digest",
+        "recurrence_direct_template_catalog_digest",
+        "semantic_digest",
+        "external_permutation",
+        "external_sources",
+    }
+)
+_EAGER_PREPARED_PACK_IDENTITY_KIND = "pyamplicol-prepared-kernel-pack-identity"
+_EAGER_PREPARED_PACK_IDENTITY_SCHEMA_VERSION = 1
 _COMPILED_DIRECT_ABI = "pyamplicol-compiled-plane-kernel-v2"
 _NATIVE_COMPILED_DIRECT_ABI = "pyamplicol-native-compiled-direct-application-v1"
 _SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
@@ -304,6 +341,64 @@ _PUBLICATION_LINEAGE_KIND = "pyamplicol-report-publication-lineage-v1"
 
 class FinalAuditError(RuntimeError):
     """The final report evidence does not satisfy its publication contract."""
+
+
+@cache
+def _cached_packaged_eager_prepared_pack_identity(
+    model: ModelKey | None,
+    backend: str,
+    jit_optimization_level: int | None,
+) -> dict[str, object]:
+    """Return the exact wheel-owned prepared identity for one report lane."""
+
+    if (
+        model is not ModelKey.BUILTIN_SM
+        or backend != "jit"
+        or jit_optimization_level != 2
+    ):
+        raise FinalAuditError(
+            "on-the-fly report cells require the packaged built-in-SM JIT O2 pack"
+        )
+    try:
+        from pyamplicol.assets.prepared_models import (
+            BUILTIN_SM_JIT_O2,
+            open_packaged_prepared_model,
+        )
+        from pyamplicol.models.prepared import (
+            EAGER_KERNEL_ABI,
+            PREPARED_KERNEL_PACK_IDENTITY_ABI,
+            prepared_kernel_pack_manifest_identity_sha256,
+        )
+
+        with open_packaged_prepared_model(BUILTIN_SM_JIT_O2) as bundle:
+            if bundle.kernel_pack.backend != backend:
+                raise FinalAuditError(
+                    "packaged prepared-kernel backend differs from the report cell"
+                )
+            return {
+                "kind": _EAGER_PREPARED_PACK_IDENTITY_KIND,
+                "schema_version": _EAGER_PREPARED_PACK_IDENTITY_SCHEMA_VERSION,
+                "abi": PREPARED_KERNEL_PACK_IDENTITY_ABI,
+                "eager_kernel_abi": EAGER_KERNEL_ABI,
+                "identity_sha256": (
+                    prepared_kernel_pack_manifest_identity_sha256(bundle.manifest)
+                ),
+                "backend": bundle.kernel_pack.backend,
+                "kernel_count": len(bundle.kernel_pack.kernels),
+            }
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError) as error:
+        raise FinalAuditError(
+            "packaged prepared-kernel identity is unavailable"
+        ) from error
+
+
+def _expected_eager_prepared_pack_identity(cell: CellSpec) -> dict[str, object]:
+    measurement = cell.measurement
+    return _cached_packaged_eager_prepared_pack_identity(
+        measurement.model,
+        measurement.backend,
+        measurement.jit_optimization_level,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -782,14 +877,12 @@ def _audit_pointwise(
             failures.append("candidate scale source differs from resolved evidence")
         if (
             expected_baseline_source_sha256 is not None
-            and binding.get("baseline_source_sha256")
-            != expected_baseline_source_sha256
+            and binding.get("baseline_source_sha256") != expected_baseline_source_sha256
         ):
             failures.append("baseline scale source differs from authority evidence")
         if (
             expected_selector_identity is not None
-            and binding.get("selector_component_identity")
-            != expected_selector_identity
+            and binding.get("selector_component_identity") != expected_selector_identity
         ):
             failures.append("selector/component scale identity differs")
     else:
@@ -1315,6 +1408,7 @@ def _audit_direct_agreements(
         for kind in (
             BUILTIN_UFO_RECURRENCE,
             Z_RECURRENCE_CROSS_MODE,
+            OTF_COMPILED_CROSS_MODE,
             LC_CROSS_LAYOUT_COMPONENT,
             LC_LEGACY_PYAMPLICOL_COMPONENT,
         )
@@ -2261,6 +2355,12 @@ def _expected_evaluator_abis(cell: CellSpec) -> tuple[str, str]:
             else _EAGER_NATIVE_APPLICATION_ABI
         )
         return _EAGER_DIRECT_BINDING_ABI, source
+    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+        if cell.measurement.backend != "jit":
+            raise FinalAuditError(
+                "on-the-fly report cells require prepared JIT source evaluators"
+            )
+        return _ON_THE_FLY_EXECUTION_KIND, _SYMJIT_PLANE_APPLICATION_ABI
     source = (
         _SYMJIT_PLANE_APPLICATION_ABI
         if cell.measurement.backend == "jit"
@@ -2610,8 +2710,15 @@ def _audit_effective_config_mapping(
     validation = _mapping(
         generation.get("validation"), f"{context}.generation.validation"
     )
+    on_the_fly = cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
     expected_layout = (
-        "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
+        "topology-replay"
+        if on_the_fly
+        else (
+            "all-flow-union"
+            if cell.workload is Workload.ALL_FLOW
+            else "topology-replay"
+        )
     )
     mismatches: list[str] = []
     expected = {
@@ -2632,18 +2739,20 @@ def _audit_effective_config_mapping(
         if jit.get("optimization_level") != cell.measurement.jit_optimization_level:
             mismatches.append("evaluator.jit.optimization_level")
     expected_validation = {
-        "enabled": True,
+        "enabled": not on_the_fly,
         "samples": 10,
         "seed": 12345,
         "relative_tolerance": RELATIVE_TOLERANCE,
         "absolute_tolerance": 1.0e-300,
-        "post_build_validation": True,
+        "post_build_validation": not on_the_fly,
     }
     mismatches.extend(
         f"generation.validation.{field}"
         for field, value in expected_validation.items()
         if validation.get(field) != value
     )
+    if on_the_fly and generation.get("relation_discovery") != {"mode": "off"}:
+        mismatches.append("generation.relation_discovery")
     if mismatches:
         raise FinalAuditError(
             f"{context} differs from the report contract: " + ", ".join(mismatches)
@@ -2737,12 +2846,19 @@ def _artifact_reference(
 def _shared_artifact_contract(cell: CellSpec) -> tuple[object, ...]:
     """Fields that must agree when report cells reuse one process artifact."""
 
+    workload = (
+        None
+        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy is Accuracy.LC
+        and cell.workload in {Workload.SELECTED_FLOW, Workload.ALL_FLOW}
+        else cell.workload
+    )
     return (
         cell.process,
         cell.n_final,
         cell.process_key,
         cell.measurement,
-        cell.workload,
+        workload,
     )
 
 
@@ -2836,6 +2952,76 @@ def _publication_policy_errors(
     return tuple(errors)
 
 
+def _audit_runtime_profile_warmup_evidence(
+    cell: CellSpec,
+    provenance: Mapping[str, object],
+    *,
+    context: str,
+) -> None:
+    """Reject incomplete or semantically widened OTF warm-up timings."""
+
+    if cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY:
+        return
+    if provenance.get("runtime_load_included_in_cold_warmup") is not False:
+        raise FinalAuditError(
+            f"{context}.provenance.runtime_load_included_in_cold_warmup must be false"
+        )
+    if provenance.get("generation_timer_excludes_model_preparation") is not True:
+        raise FinalAuditError(
+            f"{context}.provenance.generation_timer_excludes_model_preparation "
+            "must be true"
+        )
+    effective = _mapping(
+        provenance.get("effective_config"),
+        f"{context}.provenance.effective_config",
+    )
+    benchmark = _mapping(
+        effective.get("benchmark"),
+        f"{context}.provenance.effective_config.benchmark",
+    )
+    expected_batch_size = benchmark.get("batch_size")
+    expected_warmup_runs = benchmark.get("warmup_runs")
+    if (
+        isinstance(expected_batch_size, bool)
+        or not isinstance(expected_batch_size, int)
+        or expected_batch_size < 1
+    ):
+        raise FinalAuditError(
+            f"{context}.provenance.effective_config.benchmark.batch_size must "
+            "be positive"
+        )
+    if (
+        isinstance(expected_warmup_runs, bool)
+        or not isinstance(expected_warmup_runs, int)
+        or expected_warmup_runs < 0
+    ):
+        raise FinalAuditError(
+            f"{context}.provenance.effective_config.benchmark.warmup_runs must "
+            "be non-negative"
+        )
+    if expected_batch_size != REPORT_BENCHMARK_BATCH_SIZE:
+        raise FinalAuditError(
+            f"{context}.provenance.effective_config.benchmark.batch_size must "
+            f"equal the final report contract {REPORT_BENCHMARK_BATCH_SIZE}"
+        )
+    if expected_warmup_runs != REPORT_BENCHMARK_WARMUP_RUNS:
+        raise FinalAuditError(
+            f"{context}.provenance.effective_config.benchmark.warmup_runs must "
+            f"equal the final report contract {REPORT_BENCHMARK_WARMUP_RUNS}"
+        )
+    try:
+        validate_profile_warmup_evidence(
+            provenance.get("runtime_profile"),
+            execution_mode=cell.measurement.execution_mode,
+            expected_batch_size=expected_batch_size,
+            expected_warmup_run_count=expected_warmup_runs,
+        )
+    except ValueError as error:
+        raise FinalAuditError(
+            f"{context}.provenance.runtime_profile: {error}"
+        ) from error
+
+
 def _audit_measurement(
     cell: CellSpec,
     measurement: Mapping[str, object],
@@ -2877,6 +3063,11 @@ def _audit_measurement(
         )
     provenance = _mapping(
         measurement.get("provenance"), f"{context}.measurement.provenance"
+    )
+    _audit_runtime_profile_warmup_evidence(
+        cell,
+        provenance,
+        context=f"{context}.measurement",
     )
     if provenance.get("report_source_revision") != expected_source_revision:
         raise FinalAuditError(
@@ -3264,8 +3455,7 @@ def _validation_baseline_endpoint_for_audit(
         selected = measurements.get(selected_id)
         if (
             selected is None
-            or measurement_states.get(selected_id)
-            is not PolicyMeasurementState.SUCCESS
+            or measurement_states.get(selected_id) is not PolicyMeasurementState.SUCCESS
         ):
             raise FinalAuditError(
                 f"selected independent authority {selected_id!r} is unavailable"
@@ -3339,8 +3529,7 @@ def _validation_baseline_endpoint_for_audit(
             ):
                 return authority_cell, authority
             if (
-                authority_cell.measurement.execution_mode
-                is ExecutionMode.RECURRENCE
+                authority_cell.measurement.execution_mode is ExecutionMode.RECURRENCE
                 and _stored_direct_agreement(
                     measurement,
                     edge_kind=Z_RECURRENCE_CROSS_MODE,
@@ -4479,6 +4668,398 @@ def _audit_recurrence_execution(
     return row_groups
 
 
+def _native_on_the_fly_process_seed_identity(payload: bytes) -> Mapping[str, object]:
+    """Decode one process seed with the production Rust authority."""
+
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+        binding = getattr(module, "_inspect_on_the_fly_process_seed_v1", None)
+        if not callable(binding):
+            raise TypeError("native seed inspector is unavailable")
+        encoded = binding(payload)
+        if not isinstance(encoded, str):
+            raise TypeError("native seed inspector did not return JSON text")
+        decoded = json.loads(encoded)
+    except Exception as error:
+        raise FinalAuditError(
+            "on-the-fly compact seed cannot be decoded by the native authority"
+        ) from error
+    return _mapping(decoded, "native on-the-fly process-seed identity")
+
+
+def _audit_on_the_fly_process_seed_identity(
+    identity: Mapping[str, object],
+    runtime_metadata: Mapping[str, object],
+    pack: Mapping[str, object],
+) -> None:
+    """Bind decoded source identity to compact execution and prepared catalogs."""
+
+    if (
+        set(identity) != _ON_THE_FLY_PROCESS_SEED_IDENTITY_FIELDS
+        or identity.get("abi") != _ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI
+    ):
+        raise FinalAuditError("on-the-fly process-seed identity contract differs")
+    for field in (
+        "process_digest",
+        "compiled_model_digest",
+        "recurrence_template_catalog_digest",
+        "prepared_kernel_pack_digest",
+        "recurrence_direct_template_catalog_digest",
+        "semantic_digest",
+    ):
+        if _SHA256_RE.fullmatch(str(identity.get(field))) is None:
+            raise FinalAuditError(
+                f"on-the-fly process-seed identity {field} is invalid"
+            )
+
+    template = _mapping(
+        pack.get("recurrence_template"),
+        "on-the-fly prepared recurrence template",
+    )
+    header = _mapping(
+        template.get("header"),
+        "on-the-fly prepared recurrence template header",
+    )
+    direct = _mapping(
+        pack.get("recurrence_direct_template"),
+        "on-the-fly prepared direct-template catalog",
+    )
+    expected_catalog_identities = {
+        "compiled_model_digest": header.get("compiled_model_digest"),
+        "recurrence_template_catalog_digest": header.get("catalog_digest"),
+        "prepared_kernel_pack_digest": header.get("prepared_kernel_pack_digest"),
+        "recurrence_direct_template_catalog_digest": direct.get("catalog_digest"),
+    }
+    if any(
+        identity.get(field) != expected
+        for field, expected in expected_catalog_identities.items()
+    ) or (
+        direct.get("compiled_model_digest") != header.get("compiled_model_digest")
+        or direct.get("recurrence_template_catalog_digest")
+        != header.get("catalog_digest")
+        or direct.get("prepared_kernel_pack_digest")
+        != header.get("prepared_kernel_pack_digest")
+    ):
+        raise FinalAuditError(
+            "on-the-fly process seed disagrees with its prepared catalogs"
+        )
+
+    external_legs = _sequence(
+        runtime_metadata.get("external_legs"),
+        "on-the-fly runtime metadata external_legs",
+    )
+    parameter_projection = _sequence(
+        runtime_metadata.get("parameter_projection"),
+        "on-the-fly runtime metadata parameter_projection",
+    )
+    permutation = _sequence(
+        identity.get("external_permutation"),
+        "on-the-fly process-seed external_permutation",
+    )
+    sources = _sequence(
+        identity.get("external_sources"),
+        "on-the-fly process-seed external_sources",
+    )
+    if (
+        len(permutation) != len(external_legs)
+        or len(sources) != len(external_legs)
+        or any(
+            isinstance(slot, bool) or not isinstance(slot, int) for slot in permutation
+        )
+        or sorted(permutation) != list(range(len(permutation)))
+    ):
+        raise FinalAuditError(
+            "on-the-fly process-seed external domain is not canonical"
+        )
+    mass_slots: dict[str, int | None] = {}
+    for index, raw_projection in enumerate(parameter_projection):
+        projection = _mapping(
+            raw_projection,
+            f"on-the-fly parameter_projection[{index}]",
+        )
+        runtime_name = projection.get("runtime_name")
+        component = projection.get("component")
+        prepared_id = projection.get("prepared_parameter_id")
+        if (
+            isinstance(runtime_name, str)
+            and runtime_name.startswith("particle.")
+            and runtime_name.endswith(".mass")
+            and component == 0
+            and (
+                prepared_id is None
+                or (not isinstance(prepared_id, bool) and isinstance(prepared_id, int))
+            )
+        ):
+            mass_slots[runtime_name] = prepared_id
+    for source_slot, (raw_source, raw_leg) in enumerate(
+        zip(sources, external_legs, strict=True)
+    ):
+        source = _mapping(
+            raw_source,
+            f"on-the-fly process-seed external_sources[{source_slot}]",
+        )
+        leg = _mapping(
+            raw_leg,
+            f"on-the-fly runtime metadata external_legs[{source_slot}]",
+        )
+        if set(source) != {"source_slot", "public_label", "is_initial", "states"}:
+            raise FinalAuditError("on-the-fly process-seed source contract differs")
+        outgoing_pdg = leg.get("outgoing_pdg")
+        if isinstance(outgoing_pdg, bool) or not isinstance(outgoing_pdg, int):
+            raise FinalAuditError("on-the-fly external source PDG is invalid")
+        expected_mass_slot = mass_slots.get(f"particle.{abs(outgoing_pdg)}.mass")
+        states = _sequence(
+            source.get("states"),
+            f"on-the-fly process-seed external_sources[{source_slot}].states",
+        )
+        if (
+            source.get("source_slot") != source_slot
+            or source.get("public_label") != leg.get("public_label")
+            or source.get("is_initial") != leg.get("is_initial")
+            or not states
+        ):
+            raise FinalAuditError(
+                "on-the-fly process-seed source identity disagrees with "
+                "runtime metadata"
+            )
+        previous_state_index = -1
+        for raw_state in states:
+            state = _mapping(raw_state, "on-the-fly process-seed source state")
+            state_index = state.get("state_index")
+            if (
+                set(state)
+                != {
+                    "state_index",
+                    "public_helicity",
+                    "prepared_mass_parameter_slot",
+                }
+                or isinstance(state_index, bool)
+                or not isinstance(state_index, int)
+                or state_index <= previous_state_index
+                or isinstance(state.get("public_helicity"), bool)
+                or not isinstance(state.get("public_helicity"), int)
+                or state.get("prepared_mass_parameter_slot") != expected_mass_slot
+            ):
+                raise FinalAuditError(
+                    "on-the-fly process-seed source state or mass slot differs"
+                )
+            previous_state_index = state_index
+
+
+def _audit_on_the_fly_execution(
+    artifact: Path,
+    manifest: object,
+    execution: Mapping[str, object],
+    cell: CellSpec,
+    *,
+    process_id: str,
+    execution_manifest_path: str,
+) -> int:
+    """Authenticate the compact OTF seed and its prepared JIT source pack."""
+
+    expected_fields = {
+        "schema_version",
+        "kind",
+        "required_runtime_capabilities",
+        "process",
+        "key",
+        "color_accuracy",
+        "external_pdg_order",
+        "kernel_pack",
+        "runtime_options",
+        "selector_policy",
+        "runtime_metadata",
+        "runtime_container",
+    }
+    capabilities = tuple(
+        str(value)
+        for value in _sequence(
+            execution.get("required_runtime_capabilities"),
+            "on-the-fly execution capabilities",
+        )
+    )
+    if (
+        set(execution) != expected_fields
+        or execution.get("schema_version") != 3
+        or execution.get("kind") != _ON_THE_FLY_EXECUTION_KIND
+        or execution.get("process") != cell.process
+        or execution.get("key") != process_id
+        or execution.get("color_accuracy") != Accuracy.LC.value
+        or len(capabilities) != 2
+        or set(capabilities)
+        != {
+            _ARENA_CAPABILITY[ExecutionMode.ON_THE_FLY],
+            _ON_THE_FLY_LC_COLOR_CAPABILITY,
+        }
+        or cell.measurement.accuracy is not Accuracy.LC
+        or cell.measurement.backend != "jit"
+        or cell.measurement.jit_optimization_level != 2
+    ):
+        raise FinalAuditError("on-the-fly execution compact contract differs")
+    external_pdgs = _sequence(
+        execution.get("external_pdg_order"),
+        "on-the-fly execution external_pdg_order",
+    )
+    if len(external_pdgs) != cell.n_final + 2 or any(
+        isinstance(value, bool) or not isinstance(value, int) for value in external_pdgs
+    ):
+        raise FinalAuditError("on-the-fly execution external PDG order is invalid")
+    runtime_options = _mapping(
+        execution.get("runtime_options"),
+        "on-the-fly execution runtime_options",
+    )
+    point_tile_size = runtime_options.get("point_tile_size")
+    if (
+        set(runtime_options) != {"point_tile_size"}
+        or isinstance(point_tile_size, bool)
+        or not isinstance(point_tile_size, int)
+        or point_tile_size < 1
+    ):
+        raise FinalAuditError("on-the-fly execution point tile is invalid")
+    _mapping(execution.get("selector_policy"), "on-the-fly selector_policy")
+    runtime_metadata = _mapping(
+        execution.get("runtime_metadata"),
+        "on-the-fly runtime_metadata",
+    )
+
+    kernel_pack = _mapping(
+        execution.get("kernel_pack"),
+        "on-the-fly execution kernel_pack",
+    )
+    if kernel_pack != {
+        "manifest_path": "model/eager-kernel-pack.json",
+        "payload_root": "model/eager-kernels",
+    }:
+        raise FinalAuditError("on-the-fly prepared-kernel paths are not canonical")
+    pack, _pack_path, _pack_sha256 = _authenticated_json_payload(
+        artifact,
+        manifest,
+        kernel_pack["manifest_path"],
+        process_id=None,
+        context="on-the-fly prepared kernel pack",
+    )
+    dependencies = _mapping(
+        pack.get("dependency_abis"),
+        "on-the-fly prepared kernel pack dependency_abis",
+    )
+    optimization = _mapping(
+        pack.get("optimization_settings"),
+        "on-the-fly prepared kernel pack optimization_settings",
+    )
+    if (
+        pack.get("backend") != "jit"
+        or pack.get("eager_kernel_abi") != "pyamplicol-eager-kernel-v1"
+        or dependencies.get("symjit_application") != _SYMJIT_APPLICATION_ABI
+        or dependencies.get("symjit_plane_application") != _SYMJIT_PLANE_APPLICATION_ABI
+        or optimization.get("backend") != "jit"
+        or optimization.get("jit_optimization_level") != 2
+    ):
+        raise FinalAuditError("on-the-fly prepared kernel pack does not prove JIT O2")
+    kernels = _sequence(pack.get("kernels"), "on-the-fly prepared kernels")
+    variants = _sequence(
+        pack.get("kernel_variants"),
+        "on-the-fly prepared kernel variants",
+    )
+    source_leaf_count = 0
+    for label, records in (("kernels", kernels), ("kernel_variants", variants)):
+        for index, raw_record in enumerate(records):
+            record = _mapping(raw_record, f"on-the-fly {label}[{index}]")
+            if record.get("contract_kind") == "model-parameter":
+                continue
+            source_leaf_count += _audit_source_evaluator(
+                record.get("f64_evaluator_manifest"),
+                cell,
+                context=f"on-the-fly {label}[{index}].f64_evaluator_manifest",
+            )
+    extensions = _mapping(getattr(manifest, "extensions", None), "artifact.extensions")
+    prepared = _mapping(
+        extensions.get("eager_prepared_pack"),
+        "artifact.extensions.eager_prepared_pack",
+    )
+    expected_prepared = _expected_eager_prepared_pack_identity(cell)
+    if (
+        not kernels
+        or source_leaf_count < 1
+        or set(prepared) != set(expected_prepared)
+        or any(
+            prepared.get(field) != value for field, value in expected_prepared.items()
+        )
+        or prepared.get("kernel_count") != len(kernels)
+    ):
+        raise FinalAuditError("on-the-fly prepared-pack identity is incompatible")
+
+    container = _mapping(
+        execution.get("runtime_container"),
+        "on-the-fly runtime container",
+    )
+    if container != {
+        "kind": _ON_THE_FLY_RUNTIME_CONTAINER_KIND,
+        "schema_version": 1,
+        "storage_abi": _ON_THE_FLY_RUNTIME_STORAGE_ABI,
+        "path": "on-the-fly-runtime.pacbin",
+        "seed_member_path": _ON_THE_FLY_SEED_MEMBER_PATH,
+    }:
+        raise FinalAuditError("on-the-fly runtime container contract differs")
+    execution_parent = PurePosixPath(execution_manifest_path).parent
+    runtime_relative = (
+        execution_parent
+        / _canonical_relative_path(
+            container["path"],
+            "on-the-fly runtime container",
+        )
+    ).as_posix()
+    data, _runtime_path, _runtime_sha256 = _authenticated_payload_bytes(
+        artifact,
+        manifest,
+        runtime_relative,
+        role="evaluator-state",
+        media_type="application/octet-stream",
+        process_id=process_id,
+        context="on-the-fly runtime container",
+    )
+    try:
+        from pyamplicol.generation.evaluator_container import (
+            PacbinMemberKind,
+            PacbinReader,
+        )
+
+        with PacbinReader.open(io.BytesIO(data), verify_payloads=True) as reader:
+            members = tuple(reader.members)
+            if (
+                len(members) != 1
+                or members[0].logical_path != _ON_THE_FLY_SEED_MEMBER_PATH
+                or members[0].kind is not PacbinMemberKind.ON_THE_FLY_PROCESS_SEED
+                or members[0].length < 1
+            ):
+                raise FinalAuditError(
+                    "on-the-fly runtime container does not contain exactly its "
+                    "compact seed"
+                )
+            seed_payload = reader.read_member(
+                _ON_THE_FLY_SEED_MEMBER_PATH,
+                length=members[0].length,
+            )
+    except FinalAuditError:
+        raise
+    except (OSError, TypeError, ValueError) as error:
+        raise FinalAuditError("on-the-fly runtime container is invalid") from error
+    native_identity = _native_on_the_fly_process_seed_identity(seed_payload)
+    recorded_identity = _mapping(
+        runtime_metadata.get("process_seed_identity"),
+        "on-the-fly runtime metadata process_seed_identity",
+    )
+    if native_identity != recorded_identity:
+        raise FinalAuditError(
+            "on-the-fly runtime metadata does not identify its native compact seed"
+        )
+    _audit_on_the_fly_process_seed_identity(
+        native_identity,
+        runtime_metadata,
+        pack,
+    )
+    return source_leaf_count
+
+
 def audit_artifact(
     cell: CellSpec,
     artifact: Path,
@@ -4516,7 +5097,13 @@ def audit_artifact(
     process = process_matches[0]
     inspected = inspected_matches[0]
     expected_layout = (
-        "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
+        "topology-replay"
+        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        else (
+            "all-flow-union"
+            if cell.workload is Workload.ALL_FLOW
+            else "topology-replay"
+        )
     )
     if (
         process.get("expression") != cell.process
@@ -4556,7 +5143,7 @@ def audit_artifact(
         arena_count = _audit_eager_execution(artifact, manifest, execution, cell)
         direct_leaf_count = arena_count
         source_jit_identity = None
-    else:
+    elif cell.measurement.execution_mode is ExecutionMode.RECURRENCE:
         source_jit_identity = _audit_recurrence_source_pack(
             artifact,
             manifest,
@@ -4567,6 +5154,22 @@ def audit_artifact(
         )
         arena_count = _audit_recurrence_execution(execution, cell)
         direct_leaf_count = 0
+    elif cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+        arena_count = _audit_on_the_fly_execution(
+            artifact,
+            manifest,
+            execution,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=execution_path,
+        )
+        direct_leaf_count = 0
+        source_jit_identity = None
+    else:
+        raise FinalAuditError(
+            "unsupported artifact execution mode "
+            f"{cell.measurement.execution_mode.value}"
+        )
     return ArtifactEvidence(
         artifact_id=manifest.artifact_id,
         process_id=process_id,
@@ -5571,9 +6174,7 @@ def _audit_final_report_locked(
                 measurement_states,
                 catalog=catalog,
             )
-            baseline_cell = (
-                None if baseline_endpoint is None else baseline_endpoint[0]
-            )
+            baseline_cell = None if baseline_endpoint is None else baseline_endpoint[0]
             baseline = None if baseline_endpoint is None else baseline_endpoint[1]
             reference = _audit_measurement(
                 cell,

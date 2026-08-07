@@ -42,6 +42,8 @@ from tools.performance_report.catalog import (
     REPORT_CATALOG,
     STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6,
     STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION,
+    STATIC_NA_ON_THE_FLY_COLOR_ACCURACY,
+    STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION,
     STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
 )
 from tools.performance_report.models import (
@@ -58,23 +60,25 @@ from tools.performance_report.runner import pointwise_validation
 from tools.performance_report.service import ReportPaths, ReportService
 
 
-def test_matrix_catalog_has_requested_twelve_datasets() -> None:
+def test_matrix_catalog_has_requested_fifteen_datasets() -> None:
     datasets = REPORT_CATALOG.matrix_datasets
 
-    assert len(datasets) == 12
+    assert len(datasets) == 15
     assert Counter(item.candidate.execution_mode for item in datasets) == {
         ExecutionMode.RECURRENCE: 6,
         ExecutionMode.COMPILED: 3,
         ExecutionMode.EAGER: 3,
+        ExecutionMode.ON_THE_FLY: 3,
     }
     assert Counter(item.candidate.model for item in datasets) == {
-        ModelKey.BUILTIN_SM: 9,
+        ModelKey.BUILTIN_SM: 12,
         ModelKey.UFO_SM: 3,
     }
     assert all(
         item.baseline.execution_mode is ExecutionMode.AMPLICOL
         for item in datasets
-        if item.candidate.execution_mode is ExecutionMode.RECURRENCE
+        if item.candidate.execution_mode
+        in {ExecutionMode.RECURRENCE, ExecutionMode.ON_THE_FLY}
     )
     assert all(
         item.baseline.execution_mode is ExecutionMode.RECURRENCE
@@ -108,6 +112,7 @@ def test_prepared_modes_are_portable_o2_and_compiled_is_o3() -> None:
             ExecutionMode.RECURRENCE,
             ExecutionMode.COMPILED,
             ExecutionMode.EAGER,
+            ExecutionMode.ON_THE_FLY,
         )
     }
 
@@ -115,6 +120,7 @@ def test_prepared_modes_are_portable_o2_and_compiled_is_o3() -> None:
         ExecutionMode.RECURRENCE: {2},
         ExecutionMode.COMPILED: {3},
         ExecutionMode.EAGER: {2},
+        ExecutionMode.ON_THE_FLY: {2},
     }
 
 
@@ -124,10 +130,10 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
         for cell in REPORT_CATALOG.matrix_cells()
     )
 
-    assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 428
-    assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 428
-    assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 200
-    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 200
+    assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 461
+    assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 461
+    assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 250
+    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 250
     assert all(
         cell.workload is Workload.CONTRACTED
         for cell in REPORT_CATALOG.matrix_cells()
@@ -179,12 +185,12 @@ def test_extended_lc_families_are_declared_through_n9() -> None:
     } == {"dd_4q_lines"}
 
 
-def test_n_le_four_new_matrix_smoke_has_396_logical_process_cells() -> None:
+def test_n_le_four_matrix_smoke_has_495_logical_process_cells() -> None:
     cells = [cell for cell in REPORT_CATALOG.matrix_cells() if cell.n_final <= 4]
     logical = {(cell.dataset_id, cell.process_key, cell.n_final) for cell in cells}
 
-    assert len(logical) == 396
-    assert len(cells) == 528
+    assert len(logical) == 495
+    assert len(cells) == 660
 
 
 def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> None:
@@ -210,8 +216,11 @@ def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> 
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.process_key == family.key
     )
-    assert len(cells) == 90
-    assert not any(REPORT_CATALOG.static_na_reason(cell) for cell in cells)
+    assert len(cells) == 98
+    assert Counter(REPORT_CATALOG.static_na_reason(cell) for cell in cells) == {
+        None: 92,
+        STATIC_NA_ON_THE_FLY_COLOR_ACCURACY: 6,
+    }
     assert REPORT_CATALOG.cell(
         "matrix-recurrence-builtin-sm-full-n6-"
         "dd-3q-identical-lines-contracted"
@@ -350,9 +359,24 @@ def test_canonical_static_na_census_is_exact() -> None:
             for workload in ("selected-flow", "all-flow")
         }
     )
+    expected.update(
+        {
+            cell.cell_id: STATIC_NA_ON_THE_FLY_COLOR_ACCURACY
+            for cell in REPORT_CATALOG.matrix_cells()
+            if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+            and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
+        }
+    )
 
     assert static_na == expected
     for cell_id, reason in expected.items():
+        if reason == STATIC_NA_ON_THE_FLY_COLOR_ACCURACY:
+            cell = REPORT_CATALOG.cell(cell_id)
+            assert (
+                REPORT_CATALOG.static_na_description(cell)
+                == STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION
+            )
+            continue
         if reason != STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6:
             continue
         cell = REPORT_CATALOG.cell(cell_id)
@@ -404,7 +428,7 @@ def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
         and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
     )
 
-    assert len(cells) == 30
+    assert len(cells) == 36
     assert {
         (
             cell.process_key,
@@ -423,6 +447,7 @@ def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
             (ExecutionMode.RECURRENCE, ModelKey.UFO_SM),
             (ExecutionMode.COMPILED, ModelKey.BUILTIN_SM),
             (ExecutionMode.EAGER, ModelKey.BUILTIN_SM),
+            (ExecutionMode.ON_THE_FLY, ModelKey.BUILTIN_SM),
         }
     }
     assert (
@@ -447,10 +472,10 @@ def test_contracted_n6_catalog_impact_is_scoped_to_multi_quark_families() -> Non
         and cell.measurement.accuracy is not Accuracy.LC
     )
 
-    assert len(REPORT_CATALOG.measurement_cells()) == 1796
-    assert len(REPORT_CATALOG.matrix_cells()) == 1256
+    assert len(REPORT_CATALOG.measurement_cells()) == 1962
+    assert len(REPORT_CATALOG.matrix_cells()) == 1422
     assert len(REPORT_CATALOG.reference_cells()) == 314
-    assert len(cells) == 30
+    assert len(cells) == 36
     assert {cell.process_key for cell in cells} == process_keys
 
 

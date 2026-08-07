@@ -727,6 +727,97 @@ def _benchmark_summary(
         and profile_points_value > 0
         else profile_repetitions * result.effective_config.batch_size
     )
+    warmup_elapsed_value = environment.get("warmup_elapsed_seconds")
+    warmup_elapsed = (
+        float(warmup_elapsed_value)
+        if isinstance(warmup_elapsed_value, (float, int))
+        and not isinstance(warmup_elapsed_value, bool)
+        and math.isfinite(float(warmup_elapsed_value))
+        and float(warmup_elapsed_value) >= 0.0
+        else None
+    )
+    first_warmup_value = environment.get("first_warmup_run_outer_wall_seconds")
+    first_warmup = (
+        float(first_warmup_value)
+        if isinstance(first_warmup_value, (float, int))
+        and not isinstance(first_warmup_value, bool)
+        and math.isfinite(float(first_warmup_value))
+        and float(first_warmup_value) >= 0.0
+        else None
+    )
+    cold_warmup_value = environment.get("cold_warmup_elapsed_seconds")
+    cold_warmup = (
+        float(cold_warmup_value)
+        if isinstance(cold_warmup_value, (float, int))
+        and not isinstance(cold_warmup_value, bool)
+        and math.isfinite(float(cold_warmup_value))
+        and float(cold_warmup_value) >= 0.0
+        else None
+    )
+    warmup_runs_value = environment.get("warmup_configured_run_count")
+    warmup_runs = (
+        int(warmup_runs_value)
+        if isinstance(warmup_runs_value, int)
+        and not isinstance(warmup_runs_value, bool)
+        and warmup_runs_value >= 0
+        else result.effective_config.warmup_runs
+    )
+    warmup_batch_value = environment.get("warmup_batch_size")
+    warmup_batch = (
+        int(warmup_batch_value)
+        if isinstance(warmup_batch_value, int)
+        and not isinstance(warmup_batch_value, bool)
+        and warmup_batch_value > 0
+        else result.effective_config.batch_size
+    )
+    warmup_point_value = environment.get("warmup_point_count")
+    warmup_points = (
+        int(warmup_point_value)
+        if isinstance(warmup_point_value, int)
+        and not isinstance(warmup_point_value, bool)
+        and warmup_point_value >= 0
+        else warmup_runs * warmup_batch
+    )
+    cold_warmup_batch_value = environment.get("cold_warmup_batch_size")
+    cold_warmup_batch = (
+        int(cold_warmup_batch_value)
+        if isinstance(cold_warmup_batch_value, int)
+        and not isinstance(cold_warmup_batch_value, bool)
+        and cold_warmup_batch_value > 0
+        else warmup_batch
+    )
+    warmup_rows: list[tuple[str, str, str | None]] = []
+    if cold_warmup is not None:
+        warmup_rows.append(
+            (
+                "OTF initial preparation",
+                (
+                    f"{_seconds_text(cold_warmup)} outer wall for 1 requested-selector "
+                    f"evaluation x {cold_warmup_batch} points; Runtime/artifact load "
+                    "excluded; runtime freshness not authenticated here"
+                ),
+                "YELLOW",
+            )
+        )
+    if warmup_elapsed is not None:
+        warmup_rows.append(
+            (
+                "warm-up wall (total)",
+                (
+                    f"{_seconds_text(warmup_elapsed)} across {warmup_runs} configured "
+                    f"runs x {warmup_batch} points ({warmup_points} primary points)"
+                ),
+                "YELLOW",
+            )
+        )
+    if first_warmup is not None:
+        warmup_rows.append(
+            (
+                "first warm-up run",
+                f"{_seconds_text(first_warmup)} outer wall",
+                "YELLOW",
+            )
+        )
     wall_pass = _value_text(environment.get("wall_time_sample_pass"))
     evaluator_pass = _value_text(environment.get("evaluator_time_sample_pass"))
     rows: list[tuple[str, str, str | None]] = [
@@ -740,6 +831,7 @@ def _benchmark_summary(
             None,
         ),
         ("status", status, "YELLOW" if result.interrupted else "GREEN"),
+        *warmup_rows,
         (
             "outer wall",
             _benchmark_timing_text(

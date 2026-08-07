@@ -577,8 +577,8 @@ def _verify_baseline(arguments: argparse.Namespace) -> dict[str, object]:
         for line in info.splitlines()
         if line.startswith("Pages:") and ":" in line
     ]
-    if page_values != ["59"]:
-        raise CampaignResetError("baseline PDF does not contain exactly 59 pages")
+    if page_values != ["65"]:
+        raise CampaignResetError("baseline PDF does not contain exactly 65 pages")
     reused = len(seed.pins_by_cell)
     gate: dict[str, object] = {
         "schema": "pyamplicol-performance-baseline-gate-v1",
@@ -597,7 +597,7 @@ def _verify_baseline(arguments: argparse.Namespace) -> dict[str, object]:
         "remaining": len(cells) - reused,
         "pdf_sha256": sha256_path(pdf),
         "pdf_mtime_ns": pdf.stat().st_mtime_ns,
-        "pdf_pages": 59,
+        "pdf_pages": 65,
         "publisher_log_sha256": sha256_path(publication_log),
         "snapshot": snapshot,
     }

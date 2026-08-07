@@ -140,7 +140,7 @@ _PROFILING_CAMPAIGN_GLOBS = (
     "section_*.tex",
     "results/*.json",
 )
-_PROFILING_CAMPAIGN_FILE_COUNT = 55
+_PROFILING_CAMPAIGN_FILE_COUNT = 61
 _RELEASE_BUILD_INFO_FIELDS = {
     "publishable",
     "schema_version",

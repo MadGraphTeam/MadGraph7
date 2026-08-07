@@ -635,9 +635,14 @@ def _evaluate(
     selector: Selector,
     *,
     resolved: bool,
+    _precomputed_total: tuple[object, ...] | None = None,
 ) -> Evaluation:
     kwargs = _selector_kwargs(workload, selector)
-    total = tuple(runtime.evaluate(points, **kwargs))
+    total = (
+        tuple(runtime.evaluate(points, **kwargs))
+        if _precomputed_total is None
+        else _precomputed_total
+    )
     detail = runtime.evaluate_resolved(points, **kwargs) if resolved else None
     total_vs_resolved = None
     if len(total) != len(points):
@@ -669,6 +674,61 @@ def _evaluate(
     return Evaluation(total, detail, total_vs_resolved)
 
 
+def _cold_first_evaluation(
+    runtime: object,
+    points: Points,
+    selector: Selector,
+    requested_workload: str,
+    *,
+    resolved: bool,
+) -> tuple[Evaluation, dict[str, object]]:
+    """Time only the first public evaluation on a census-proven cold runtime."""
+    point_count = len(points)
+    if point_count < 1:
+        raise StudyError("cold first evaluation requires at least one point")
+    kwargs = _selector_kwargs("selected", selector)
+    started_ns = time.perf_counter_ns()
+    total = tuple(runtime.evaluate(points, **kwargs))
+    elapsed_ns = time.perf_counter_ns() - started_ns
+    if elapsed_ns < 0:
+        raise StudyError("cold first-evaluation clock moved backwards")
+    evaluation = _evaluate(
+        runtime,
+        points,
+        "selected",
+        selector,
+        resolved=resolved and requested_workload == "selected",
+        _precomputed_total=total,
+    )
+    elapsed_seconds = elapsed_ns / 1_000_000_000.0
+    return evaluation, {
+        "kind": "on-the-fly-cold-first-evaluation-timing-v1",
+        "timer": "time.perf_counter_ns",
+        "runtime_state": "census-proven-cold",
+        "family": "selected-A",
+        "workload": "selected",
+        "requested_study_workload": requested_workload,
+        "requested_study_workload_cold_timed": requested_workload == "selected",
+        "requested_all_flow_family_preparation": (
+            "not-applicable"
+            if requested_workload == "selected"
+            else "not-independently-cold-timed"
+        ),
+        "elapsed_nanoseconds": elapsed_ns,
+        "seconds": elapsed_seconds,
+        "point_count": point_count,
+        "seconds_per_point": elapsed_seconds / point_count,
+        "excluded_from_elapsed": [
+            "Runtime.load",
+            "artifact generation",
+            "resolved-output follow-up",
+            "warmed BenchmarkRunner",
+        ],
+        "ratio_eligible": False,
+        "acceptance_eligible": False,
+    }
+
+
 def _compare(left: Evaluation, right: Evaluation, label: str) -> dict[str, object]:
     try:
         return {
@@ -695,12 +755,12 @@ def _lifecycle(
 ) -> tuple[Evaluation, Evaluation, dict[str, object]]:
     cold = _census(runtime, case.process_id)
     _assert_cold(cold, "cold runtime")
-    selected_a = _evaluate(
+    selected_a, cold_first_evaluation_timing = _cold_first_evaluation(
         runtime,
         points,
-        "selected",
         selector,
-        resolved=resolved and workload == "selected",
+        workload,
+        resolved=resolved,
     )
     census_a = _census(runtime, case.process_id)
     active_a = _assert_family_state(
@@ -770,6 +830,7 @@ def _lifecycle(
             rebuilt,
             {
                 "cold": cold,
+                "cold_first_evaluation_timing": cold_first_evaluation_timing,
                 "selected_a": census_a,
                 "requested_family": census_c,
                 "requested_repeat": repeated_census,
@@ -827,6 +888,7 @@ def _lifecycle(
         rebuilt,
         {
             "cold": cold,
+            "cold_first_evaluation_timing": cold_first_evaluation_timing,
             "selected_a": census_a,
             "requested_family": target_census,
             "requested_repeat": repeated_census,

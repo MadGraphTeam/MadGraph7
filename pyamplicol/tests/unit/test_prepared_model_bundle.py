@@ -14,6 +14,7 @@ import pytest
 from pyamplicol.models import prepared as prepared_module
 from pyamplicol.models.prepared import (
     EAGER_KERNEL_ABI,
+    PREPARED_KERNEL_PACK_IDENTITY_ABI,
     PREPARED_KERNEL_VARIANT_ABI,
     PREPARED_MODEL_BUNDLE_KIND,
     PREPARED_MODEL_BUNDLE_SCHEMA_VERSION,
@@ -29,6 +30,7 @@ from pyamplicol.models.prepared import (
     prepared_expression_digest,
     prepared_input_contract_digest,
     prepared_kernel_pack_identity,
+    prepared_kernel_pack_manifest_identity_sha256,
     prepared_optimization_settings_digest,
     prepared_output_contract_digest,
     prepared_payload_identity_records,
@@ -776,6 +778,28 @@ def test_prepared_pack_identity_rejects_predecessor_abi() -> None:
             pack_digest="c" * 64,
             abi="pyamplicol-prepared-kernel-pack-" + "identity-v1",
         )
+
+
+def test_prepared_bundle_manifest_identity_uses_the_published_abi_domain() -> None:
+    manifest = {
+        "kind": "pyamplicol-prepared-model",
+        "schema_version": 1,
+        "kernel_pack": {"backend": "jit", "kernels": []},
+    }
+    canonical = json.dumps(
+        manifest,
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    expected = hashlib.sha256(
+        PREPARED_KERNEL_PACK_IDENTITY_ABI.encode("ascii")
+        + b"\x00"
+        + canonical
+    ).hexdigest()
+
+    assert prepared_kernel_pack_manifest_identity_sha256(manifest) == expected
 
 
 def test_reader_rejects_pack_without_kernel_variants(tmp_path: Path) -> None:

@@ -48,7 +48,7 @@ _PROFILING_CAMPAIGN_GLOBS = (
     "section_*.tex",
     "results/*.json",
 )
-_PROFILING_CAMPAIGN_FILE_COUNT = 55
+_PROFILING_CAMPAIGN_FILE_COUNT = 61
 _PROFILING_CAMPAIGN_LOCAL_AMPLICOL = ".pyamplicol-original-amplicol"
 _PROFILING_CAMPAIGN_STATE = "campaign_artifacts"
 _PROFILING_CAMPAIGN_SUMMARY = "campaign_summary_ids"

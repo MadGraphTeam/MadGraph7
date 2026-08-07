@@ -303,6 +303,21 @@ mod tests {
                     "couplings_in_stage_evaluators": true,
                     "coupling_policy": "local",
                 },
+                "process_seed_identity": {
+                    "abi": crate::recurrence::on_the_fly::ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI,
+                    "process_digest": "11".repeat(32),
+                    "compiled_model_digest": "22".repeat(32),
+                    "recurrence_template_catalog_digest": "33".repeat(32),
+                    "prepared_kernel_pack_digest": "44".repeat(32),
+                    "recurrence_direct_template_catalog_digest": "55".repeat(32),
+                    "semantic_digest": "66".repeat(32),
+                    "external_permutation": [0, 1, 2],
+                    "external_sources": [
+                        {"source_slot": 0, "public_label": 1, "is_initial": true, "states": [{"state_index": 0, "public_helicity": -1, "prepared_mass_parameter_slot": null}]},
+                        {"source_slot": 1, "public_label": 2, "is_initial": true, "states": [{"state_index": 0, "public_helicity": 1, "prepared_mass_parameter_slot": null}]},
+                        {"source_slot": 2, "public_label": 3, "is_initial": false, "states": [{"state_index": 0, "public_helicity": 0, "prepared_mass_parameter_slot": null}]}
+                    ]
+                },
             },
             "runtime_container": {
                 "kind": ON_THE_FLY_RUNTIME_CONTAINER_KIND,

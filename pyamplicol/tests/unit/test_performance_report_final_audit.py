@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import sys
+from collections import Counter
 from collections.abc import Mapping
 from contextlib import contextmanager
 from copy import deepcopy
@@ -14,6 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 import tools.performance_report.final_audit as final_audit_module
+import tools.performance_report.runner as report_runner
 from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_FIELD,
     INDEPENDENT_AUTHORITY_ABI,
@@ -21,6 +24,7 @@ from tools.performance_report.agreements import (
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
+    OTF_COMPILED_CROSS_MODE,
     Z_RECURRENCE_CROSS_MODE,
     agreement_edges,
     attach_direct_agreements,
@@ -52,14 +56,17 @@ from tools.performance_report.final_audit import (
     _audit_compiled_execution,
     _audit_direct_agreements,
     _audit_eager_execution,
+    _audit_effective_config_mapping,
     _audit_measurement,
     _audit_model_source,
+    _audit_on_the_fly_execution,
     _audit_pdf,
     _audit_pointwise,
     _audit_recurrence_execution,
     _audit_recurrence_source_pack,
     _audit_replayed_direct_agreements,
     _audit_runtime_identity,
+    _audit_runtime_profile_warmup_evidence,
     _audit_tex_table_reachability,
     _audit_unavailable_execution_timing,
     _authenticated_effective_config,
@@ -119,15 +126,54 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
         and edge.baseline.cell_id in measurable_ids
     )
 
-    assert len(declared_edges) == 1671
+    assert len(declared_edges) == 1803
     assert (
-        len(declared_edges)
-        == final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
+        len(declared_edges) == final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
     )
-    assert len(measurable_edges) == 1623
-    assert (
-        sum(final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS.values())
-        == len(measurable_edges)
+    assert len(measurable_edges) == 1755
+    assert sum(
+        final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS.values()
+    ) == len(measurable_edges)
+    assert Counter(edge.kind for edge in measurable_edges) == (
+        final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS
+    )
+    static_reasons = Counter(
+        REPORT_CATALOG.static_na_reason(cell)
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is not None
+    )
+    assert static_reasons == {
+        "on-the-fly-color-accuracy-not-supported-v1": 100,
+        "native-backend-generation-cap-n6-v1": 24,
+        "original-amplicol-open-quark-line-limit": 10,
+    }
+
+    n4_cells = tuple(
+        cell for cell in REPORT_CATALOG.measurement_cells() if cell.n_final <= 4
+    )
+    n4_ids = {cell.cell_id for cell in n4_cells}
+    n4_measurable_ids = {
+        cell.cell_id
+        for cell in n4_cells
+        if REPORT_CATALOG.static_na_reason(cell) is None
+    }
+    n4_edges = tuple(
+        edge
+        for edge in agreement_edges()
+        if edge.candidate.cell_id in n4_measurable_ids
+        and edge.baseline.cell_id in n4_measurable_ids
+    )
+    assert len(n4_ids) == final_audit_module._EXPECTED_N4_CELL_COUNT == 894
+    assert Counter(edge.kind for edge in n4_edges) == (
+        final_audit_module._EXPECTED_N4_DIRECT_AGREEMENT_COUNTS
+    )
+    _empty_edges, empty_counts = _audit_direct_agreements(
+        (),
+        {},
+        catalog=REPORT_CATALOG,
+    )
+    assert set(empty_counts) == set(
+        final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS
     )
 
 
@@ -185,6 +231,8 @@ def test_final_audit_count_contract_bounds_only_optional_authority_edges(
             optional_categories=optional_categories,
         )
 
+    assert expected_edges[OTF_COMPILED_CROSS_MODE] == 66
+
     for optional_category in optional_categories:
         too_many_optional = dict(expected_edges)
         too_many_optional[optional_category] += 1
@@ -195,9 +243,7 @@ def test_final_audit_count_contract_bounds_only_optional_authority_edges(
         )
 
     missing_required_replay = dict(expected_without_optional_replays)
-    missing_required_replay[
-        final_audit_module._FULLY_REPLAYED_PYAMPLICOL
-    ] -= 1
+    missing_required_replay[final_audit_module._FULLY_REPLAYED_PYAMPLICOL] -= 1
     assert not _replay_count_contract_matches_direct_edges(
         missing_required_replay,
         without_optional,
@@ -205,9 +251,7 @@ def test_final_audit_count_contract_bounds_only_optional_authority_edges(
     )
 
     missing_available_z_replay = dict(expected_replays)
-    missing_available_z_replay[
-        final_audit_module._FULLY_REPLAYED_PYAMPLICOL
-    ] -= 1
+    missing_available_z_replay[final_audit_module._FULLY_REPLAYED_PYAMPLICOL] -= 1
     assert not _replay_count_contract_matches_direct_edges(
         missing_available_z_replay,
         expected_edges,
@@ -284,9 +328,7 @@ def test_final_pdf_audit_rejects_successful_latex_with_overfull_box(
         "bad\n",
         encoding="ascii",
     )
-    (service.paths.docs_dir / "pyAmpliCol.pdf").write_bytes(
-        b"%PDF-1.4\n%%EOF\n"
-    )
+    (service.paths.docs_dir / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
     executable = _fake_latexmk(
         tmp_path,
         "Overfull \\vbox (1.0pt too high)\n",
@@ -591,9 +633,7 @@ def test_catalog_static_na_projection_requires_reset_cache_and_no_current() -> N
         (cell,),
         {cell.cell_id: canonical},
         load_current=lambda _cell_id: object(),
-    ) == (
-        f"{cell.cell_id}: catalog static N/A cell has a published current",
-    )
+    ) == (f"{cell.cell_id}: catalog static N/A cell has a published current",)
 
 
 def _compiled_stage(
@@ -933,6 +973,466 @@ def test_shared_artifact_contract_binds_the_exact_physics_cell() -> None:
         cell
     )
 
+    on_the_fly = _cell(ExecutionMode.ON_THE_FLY, optimization_level=2)
+    all_flow = replace(on_the_fly, workload=Workload.ALL_FLOW)
+    assert _shared_artifact_contract(on_the_fly) == _shared_artifact_contract(all_flow)
+
+
+def test_native_otf_seed_inspector_wraps_native_decode_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NativeDecodeError(Exception):
+        pass
+
+    module = SimpleNamespace(
+        _inspect_on_the_fly_process_seed_v1=lambda _payload: (_ for _ in ()).throw(
+            NativeDecodeError("malformed native seed")
+        )
+    )
+    monkeypatch.setattr(
+        final_audit_module.importlib,
+        "import_module",
+        lambda _name: module,
+    )
+
+    with pytest.raises(FinalAuditError, match="cannot be decoded") as error:
+        final_audit_module._native_on_the_fly_process_seed_identity(b"bad-seed")
+    assert isinstance(error.value.__cause__, NativeDecodeError)
+
+
+def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib.util
+    from types import ModuleType
+
+    # Load the pure-Python PACBIN codec without importing the intentionally
+    # stale shared-tree native runtime used by this publication-only test.
+    package = ModuleType("pyamplicol")
+    package.__path__ = []  # type: ignore[attr-defined]
+    generation = ModuleType("pyamplicol.generation")
+    generation.__path__ = []  # type: ignore[attr-defined]
+    codec_name = "pyamplicol.generation.evaluator_container"
+    codec_path = (
+        Path(__file__).resolve().parents[2]
+        / "src/pyamplicol/generation/evaluator_container.py"
+    )
+    spec = importlib.util.spec_from_file_location(codec_name, codec_path)
+    assert spec is not None and spec.loader is not None
+    codec = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "pyamplicol", package)
+    monkeypatch.setitem(sys.modules, "pyamplicol.generation", generation)
+    monkeypatch.setitem(sys.modules, codec_name, codec)
+    spec.loader.exec_module(codec)
+    PacbinMemberKind = codec.PacbinMemberKind
+    PacbinMemberSource = codec.PacbinMemberSource
+    write_pacbin_atomic = codec.write_pacbin_atomic
+
+    process_id = "otf_dd_z"
+    pack_relative = "model/eager-kernel-pack.json"
+    runtime_relative = f"processes/{process_id}/on-the-fly-runtime.pacbin"
+    seed_identity = {
+        "abi": "pyamplicol-on-the-fly-process-seed-identity-v1",
+        "process_digest": "1" * 64,
+        "compiled_model_digest": "2" * 64,
+        "recurrence_template_catalog_digest": "3" * 64,
+        "prepared_kernel_pack_digest": "4" * 64,
+        "recurrence_direct_template_catalog_digest": "5" * 64,
+        "semantic_digest": "6" * 64,
+        "external_permutation": [0, 1, 2],
+        "external_sources": [
+            {
+                "source_slot": 0,
+                "public_label": 1,
+                "is_initial": True,
+                "states": [
+                    {
+                        "state_index": 0,
+                        "public_helicity": -1,
+                        "prepared_mass_parameter_slot": None,
+                    }
+                ],
+            },
+            {
+                "source_slot": 1,
+                "public_label": 2,
+                "is_initial": True,
+                "states": [
+                    {
+                        "state_index": 0,
+                        "public_helicity": 1,
+                        "prepared_mass_parameter_slot": None,
+                    }
+                ],
+            },
+            {
+                "source_slot": 2,
+                "public_label": 3,
+                "is_initial": False,
+                "states": [
+                    {
+                        "state_index": 0,
+                        "public_helicity": 0,
+                        "prepared_mass_parameter_slot": 6,
+                    }
+                ],
+            },
+        ],
+    }
+    pack = {
+        "backend": "jit",
+        "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
+        "dependency_abis": {
+            "symjit_application": "symjit-application-storage-v3",
+            "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
+        },
+        "recurrence_template": {
+            "header": {
+                "compiled_model_digest": "2" * 64,
+                "catalog_digest": "3" * 64,
+                "prepared_kernel_pack_digest": "4" * 64,
+            }
+        },
+        "recurrence_direct_template": {
+            "catalog_digest": "5" * 64,
+            "compiled_model_digest": "2" * 64,
+            "recurrence_template_catalog_digest": "3" * 64,
+            "prepared_kernel_pack_digest": "4" * 64,
+        },
+        "optimization_settings": {
+            "backend": "jit",
+            "jit_optimization_level": 2,
+        },
+        "kernels": [
+            {
+                "contract_kind": "vertex",
+                "f64_evaluator_manifest": _canonical_symjit_evaluator(
+                    "kernels/000000/application.symjit",
+                    "kernels/000000/application.plane.symjit",
+                    optimization_level=2,
+                ),
+            }
+        ],
+        "kernel_variants": [],
+    }
+    pack_path = tmp_path / pack_relative
+    pack_path.parent.mkdir(parents=True)
+    pack_data = json.dumps(pack, sort_keys=True).encode("ascii")
+    pack_path.write_bytes(pack_data)
+    runtime_path = tmp_path / runtime_relative
+    runtime_path.parent.mkdir(parents=True)
+    write_pacbin_atomic(
+        runtime_path,
+        (
+            PacbinMemberSource(
+                "on-the-fly/process-seed-v1.bin",
+                PacbinMemberKind.ON_THE_FLY_PROCESS_SEED,
+                io.BytesIO(b"compact-process-seed"),
+            ),
+        ),
+    )
+    runtime_data = runtime_path.read_bytes()
+    prepared_identity = {
+        "kind": "pyamplicol-prepared-kernel-pack-identity",
+        "schema_version": 1,
+        "abi": "pyamplicol-prepared-kernel-pack-identity-v2",
+        "backend": "jit",
+        "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
+        "identity_sha256": "7" * 64,
+        "kernel_count": 1,
+    }
+
+    def payload(
+        relative: str,
+        data: bytes,
+        *,
+        role: str,
+        media_type: str,
+        owner: str | None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            path=relative,
+            size_bytes=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+            role=role,
+            media_type=media_type,
+            process_id=owner,
+            executable=False,
+        )
+
+    manifest = SimpleNamespace(
+        payloads=(
+            payload(
+                pack_relative,
+                pack_data,
+                role="evaluator-manifest",
+                media_type="application/json",
+                owner=None,
+            ),
+            payload(
+                runtime_relative,
+                runtime_data,
+                role="evaluator-state",
+                media_type="application/octet-stream",
+                owner=process_id,
+            ),
+        ),
+        extensions={"eager_prepared_pack": prepared_identity},
+    )
+    execution = {
+        "schema_version": 3,
+        "kind": "pyamplicol-runtime-on-the-fly-execution",
+        "required_runtime_capabilities": [
+            "rusticol.on-the-fly.complex-f64.v1",
+            "rusticol.on-the-fly.lc-color.v1",
+        ],
+        "process": "d d~ > z",
+        "key": process_id,
+        "color_accuracy": "lc",
+        "external_pdg_order": [1, -1, 23],
+        "kernel_pack": {
+            "manifest_path": pack_relative,
+            "payload_root": "model/eager-kernels",
+        },
+        "runtime_options": {"point_tile_size": 128},
+        "selector_policy": {"color_coverage": "complete"},
+        "runtime_metadata": {
+            "runtime_parameters": [],
+            "parameter_projection": [
+                {
+                    "runtime_name": "particle.23.mass",
+                    "component": 0,
+                    "prepared_parameter_id": 6,
+                }
+            ],
+            "external_legs": [
+                {
+                    "source_slot": 0,
+                    "public_label": 1,
+                    "outgoing_pdg": -1,
+                    "is_initial": True,
+                },
+                {
+                    "source_slot": 1,
+                    "public_label": 2,
+                    "outgoing_pdg": 1,
+                    "is_initial": True,
+                },
+                {
+                    "source_slot": 2,
+                    "public_label": 3,
+                    "outgoing_pdg": 23,
+                    "is_initial": False,
+                },
+            ],
+            "process_seed_identity": deepcopy(seed_identity),
+        },
+        "runtime_container": {
+            "kind": "pyamplicol-on-the-fly-runtime-container",
+            "schema_version": 1,
+            "storage_abi": "pacbin-v1",
+            "path": "on-the-fly-runtime.pacbin",
+            "seed_member_path": "on-the-fly/process-seed-v1.bin",
+        },
+    }
+    cell = _cell(ExecutionMode.ON_THE_FLY, optimization_level=2)
+    monkeypatch.setattr(
+        final_audit_module,
+        "_expected_eager_prepared_pack_identity",
+        lambda _cell: dict(prepared_identity),
+    )
+    monkeypatch.setattr(
+        final_audit_module,
+        "_native_on_the_fly_process_seed_identity",
+        lambda payload: (
+            deepcopy(seed_identity)
+            if payload == b"compact-process-seed"
+            else (_ for _ in ()).throw(FinalAuditError("undecodable compact seed"))
+        ),
+    )
+
+    assert (
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            execution,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+        == 1
+    )
+
+    for mutation in ("digest", "missing-abi", "wrong-abi", "extra-field"):
+        changed = dict(prepared_identity)
+        if mutation == "digest":
+            changed["identity_sha256"] = "8" * 64
+        elif mutation == "missing-abi":
+            del changed["abi"]
+        elif mutation == "wrong-abi":
+            changed["abi"] = "pyamplicol-prepared-kernel-pack-identity-v1"
+        else:
+            changed["invented"] = True
+        changed_manifest = SimpleNamespace(
+            payloads=manifest.payloads,
+            extensions={"eager_prepared_pack": changed},
+        )
+        with pytest.raises(FinalAuditError, match="prepared-pack identity"):
+            _audit_on_the_fly_execution(
+                tmp_path,
+                changed_manifest,
+                execution,
+                cell,
+                process_id=process_id,
+                execution_manifest_path=f"processes/{process_id}/execution.json",
+            )
+
+    for field, replacement in (
+        ("process_digest", "7" * 64),
+        ("semantic_digest", "8" * 64),
+        ("prepared_kernel_pack_digest", "9" * 64),
+    ):
+        changed_native = deepcopy(seed_identity)
+        changed_native[field] = replacement
+        monkeypatch.setattr(
+            final_audit_module,
+            "_native_on_the_fly_process_seed_identity",
+            lambda _payload, identity=changed_native: deepcopy(identity),
+        )
+        with pytest.raises(FinalAuditError, match="does not identify"):
+            _audit_on_the_fly_execution(
+                tmp_path,
+                manifest,
+                execution,
+                cell,
+                process_id=process_id,
+                execution_manifest_path=f"processes/{process_id}/execution.json",
+            )
+
+    monkeypatch.setattr(
+        final_audit_module,
+        "_native_on_the_fly_process_seed_identity",
+        lambda _payload: deepcopy(seed_identity),
+    )
+    changed_state = deepcopy(execution)
+    changed_state["runtime_metadata"]["process_seed_identity"][  # type: ignore[index]
+        "external_sources"
+    ][2]["states"][0]["public_helicity"] = 1
+    with pytest.raises(FinalAuditError, match="does not identify"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            changed_state,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
+    changed_anchor = deepcopy(execution)
+    changed_anchor["runtime_metadata"]["external_legs"][2][  # type: ignore[index]
+        "public_label"
+    ] = 9
+    with pytest.raises(FinalAuditError, match="source identity disagrees"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            changed_anchor,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
+    changed_mass_slot = deepcopy(execution)
+    changed_mass_slot["runtime_metadata"]["parameter_projection"][0][  # type: ignore[index]
+        "prepared_parameter_id"
+    ] = 7
+    with pytest.raises(FinalAuditError, match="mass slot differs"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            changed_mass_slot,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
+    monkeypatch.setattr(
+        final_audit_module,
+        "_native_on_the_fly_process_seed_identity",
+        lambda _payload: (_ for _ in ()).throw(
+            FinalAuditError("undecodable compact seed")
+        ),
+    )
+    with pytest.raises(FinalAuditError, match="undecodable compact seed"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            execution,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
+    invented_seed_contract = deepcopy(execution)
+    invented_seed_contract["runtime_container"]["seed_member_path"] = (  # type: ignore[index]
+        "pyamplicol-on-the-fly-process-seed-v1"
+    )
+    with pytest.raises(FinalAuditError, match="runtime container contract"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            invented_seed_contract,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
+    recurrence_plan = deepcopy(execution)
+    recurrence_plan["plan"] = {"materialized": True}
+    with pytest.raises(FinalAuditError, match="compact contract"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            recurrence_plan,
+            cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
+
+def test_otf_effective_config_contract() -> None:
+    cell = replace(
+        _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+        workload=Workload.ALL_FLOW,
+    )
+    effective = {
+        "evaluator": {
+            "execution_mode": "on-the-fly",
+            "backend": "jit",
+            "jit": {"optimization_level": 2},
+        },
+        "color": {"accuracy": "lc", "lc_flow_layout": "topology-replay"},
+        "generation": {
+            "relation_discovery": {"mode": "off"},
+            "validation": {
+                "enabled": False,
+                "samples": 10,
+                "seed": 12345,
+                "relative_tolerance": 1.0e-12,
+                "absolute_tolerance": 1.0e-300,
+                "post_build_validation": False,
+            },
+        },
+    }
+
+    _audit_effective_config_mapping(cell, effective, context="otf")
+
+    wrong_layout = deepcopy(effective)
+    wrong_layout["color"]["lc_flow_layout"] = "all-flow-union"  # type: ignore[index]
+    with pytest.raises(FinalAuditError, match=r"color\.lc_flow_layout"):
+        _audit_effective_config_mapping(cell, wrong_layout, context="otf")
+
 
 def test_effective_toml_is_payload_authenticated_and_model_bound(
     tmp_path: Path,
@@ -1104,9 +1604,7 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
             eager,
             _cell(ExecutionMode.EAGER, optimization_level=2),
         )
-    source_relative = (
-        "model/eager-kernels/kernels/000000/application-0.plane.symjit"
-    )
+    source_relative = "model/eager-kernels/kernels/000000/application-0.plane.symjit"
     source_data = b"authenticated-symjit-application"
     source_sha256 = hashlib.sha256(source_data).hexdigest()
     recurrence, recurrence_pack = _recurrence_source_fixture(source_sha256)
@@ -1216,9 +1714,7 @@ def test_final_audit_recurrence_source_pack_rejects_every_broken_link(
     message: str,
 ) -> None:
     pack_relative = "model/eager-kernel-pack.json"
-    source_relative = (
-        "model/eager-kernels/kernels/000000/application-0.plane.symjit"
-    )
+    source_relative = "model/eager-kernels/kernels/000000/application-0.plane.symjit"
     source_data = b"authenticated-symjit-application"
     source_sha256 = hashlib.sha256(source_data).hexdigest()
     execution, pack = _recurrence_source_fixture(source_sha256)
@@ -1297,9 +1793,9 @@ def test_final_audit_recurrence_source_pack_rejects_every_broken_link(
     elif corruption == "source_leaf_plane_optimization":
         source_leaf["plane_application"]["optimization_level"] = 1
     elif corruption == "source_leaf_path":
-        source_leaf["plane_application"][
-            "application_path"
-        ] = "kernels/000000/missing.plane.symjit"
+        source_leaf["plane_application"]["application_path"] = (
+            "kernels/000000/missing.plane.symjit"
+        )
     elif corruption == "source_payload_digest_link":
         binding["source_application_sha256"] = "0" * 64
         refresh_catalog = True
@@ -1532,9 +2028,7 @@ def test_direct_final_audit_cli_fails_closed_when_not_already_isolated(
     raw = ("--repo-root", str(checkout), "--expected-source-revision", _REVISION)
     with pytest.raises(
         FinalAuditError,
-        match=(
-            r"src/pyamplicol/_profiling_campaign/result_tables\.py final-audit"
-        ),
+        match=(r"src/pyamplicol/_profiling_campaign/result_tables\.py final-audit"),
     ):
         _ensure_exact_cli_python(checkout, raw)
 
@@ -1954,9 +2448,7 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
         "backend": "jit",
         "required_arena_capability": _CAPABILITY,
         "expected_evaluator_abi": "pyamplicol-recurrence-runtime-layout-v2",
-        "expected_source_evaluator_abi": (
-            "pyamplicol-symjit-plane-application-v2"
-        ),
+        "expected_source_evaluator_abi": ("pyamplicol-symjit-plane-application-v2"),
         "expected_source_evaluator_runtime_capability": (
             "symjit.application.complex-f64.v1"
         ),
@@ -1967,9 +2459,7 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
             "direct_template_count": 4,
             "prepared_direct_template_count": 3,
             "source_evaluator_leaf_count": 5,
-            "source_application_abi": (
-                "pyamplicol-symjit-plane-application-v2"
-            ),
+            "source_application_abi": ("pyamplicol-symjit-plane-application-v2"),
             "direct_application_abi": "pyamplicol-symjit-plane-application-v2",
             "prepared_kernel_pack_digest": "7" * 64,
             "direct_template_catalog_digest": "8" * 64,
@@ -2162,9 +2652,7 @@ def test_class_c_runtime_projection_allows_only_pinned_summary_native_transition
 ) -> None:
     ancestor_revision = "be11d8304fdc04893dc0e23e9619be848126e3bc"
     descendant_revision = "2594d8b520b802f71d60bd646f73ebaa5547927a"
-    ancestor_digest = (
-        "23b9637d5d3fba0947d78cf688df18799b0c9ee5b3bcbfa6a2963a1f1a21f870"
-    )
+    ancestor_digest = "23b9637d5d3fba0947d78cf688df18799b0c9ee5b3bcbfa6a2963a1f1a21f870"
     descendant_digest = (
         "96e1ff79a007aaf67a0900dd6d67327ee00f6bd2cca002589b879aa3a734de08"
     )
@@ -2270,6 +2758,178 @@ def test_portable_artifact_locator_resolves_only_within_profile_root(
             _cell(ExecutionMode.RECURRENCE, optimization_level=2),
             escaped,
             report_paths=paths,
+        )
+
+
+def _otf_warmup_profile() -> dict[str, object]:
+    return {
+        "cold_warmup_elapsed_seconds": 4.767252833,
+        "cold_warmup_run_count": 1,
+        "cold_warmup_batch_size": 128,
+        "cold_warmup_point_count": 128,
+        "cold_warmup_timer_source": report_runner.WARMUP_TIMER_SOURCE,
+        "cold_warmup_timing_scope": report_runner.OTF_COLD_WARMUP_TIMING_SCOPE,
+        "cold_warmup_runtime_freshness": (
+            report_runner.OTF_COLD_WARMUP_RUNTIME_FRESHNESS
+        ),
+        "cold_warmup_ratio_eligible": False,
+        "cold_warmup_acceptance_eligible": False,
+        "warmup_elapsed_seconds": 0.021,
+        "warmup_configured_run_count": 2,
+        "warmup_batch_size": 128,
+        "warmup_point_count": 256,
+        "warmup_run_outer_wall_seconds": [0.010, 0.011],
+        "first_warmup_run_outer_wall_seconds": 0.010,
+        "warmup_timer_source": report_runner.WARMUP_TIMER_SOURCE,
+        "warmup_timing_scope": report_runner.CONVENTIONAL_WARMUP_TIMING_SCOPE,
+    }
+
+
+def _otf_warmup_provenance(
+    profile: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "runtime_profile": _otf_warmup_profile() if profile is None else profile,
+        "runtime_load_included_in_cold_warmup": False,
+        "generation_timer_excludes_model_preparation": True,
+        "effective_config": {"benchmark": {"batch_size": 128, "warmup_runs": 2}},
+    }
+
+
+def test_final_audit_accepts_bounded_otf_warmup_evidence() -> None:
+    _audit_runtime_profile_warmup_evidence(
+        _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+        _otf_warmup_provenance(),
+        context="otf.measurement",
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "message"),
+    (
+        ("cold_warmup_run_count", 2, "exactly one run"),
+        ("cold_warmup_batch_size", 64, "full benchmark batch"),
+        ("cold_warmup_runtime_freshness", "fresh", "unauthenticated"),
+        ("cold_warmup_acceptance_eligible", True, "ineligible"),
+        ("warmup_configured_run_count", 1, "effective benchmark configuration"),
+    ),
+)
+def test_final_audit_rejects_invalid_otf_warmup_evidence(
+    field: str,
+    replacement: object,
+    message: str,
+) -> None:
+    profile = _otf_warmup_profile()
+    profile[field] = replacement
+
+    with pytest.raises(FinalAuditError, match=message):
+        _audit_runtime_profile_warmup_evidence(
+            _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+            _otf_warmup_provenance(profile),
+            context="otf.measurement",
+        )
+
+
+def test_final_audit_rejects_missing_conventional_warmup_evidence() -> None:
+    profile = _otf_warmup_profile()
+    del profile["warmup_run_outer_wall_seconds"]
+
+    with pytest.raises(FinalAuditError, match="incomplete conventional warm-up"):
+        _audit_runtime_profile_warmup_evidence(
+            _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+            _otf_warmup_provenance(profile),
+            context="otf.measurement",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "message"),
+    (
+        ("runtime_load_included_in_cold_warmup", True, "must be false"),
+        (
+            "generation_timer_excludes_model_preparation",
+            False,
+            "must be true",
+        ),
+    ),
+)
+def test_final_audit_rejects_contradictory_otf_phase_scope_flags(
+    field: str,
+    invalid: bool,
+    message: str,
+) -> None:
+    provenance = _otf_warmup_provenance()
+    provenance[field] = invalid
+
+    with pytest.raises(FinalAuditError, match=message):
+        _audit_runtime_profile_warmup_evidence(
+            _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+            provenance,
+            context="otf.measurement",
+        )
+
+
+def test_final_audit_binds_otf_warmups_to_effective_benchmark_config() -> None:
+    coordinated_batch = _otf_warmup_profile()
+    coordinated_batch["cold_warmup_batch_size"] = 64
+    coordinated_batch["cold_warmup_point_count"] = 64
+    coordinated_batch["warmup_batch_size"] = 64
+    coordinated_batch["warmup_point_count"] = 128
+    with pytest.raises(FinalAuditError, match="effective benchmark configuration"):
+        _audit_runtime_profile_warmup_evidence(
+            _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+            _otf_warmup_provenance(coordinated_batch),
+            context="otf.measurement",
+        )
+
+    coordinated_runs = _otf_warmup_profile()
+    coordinated_runs["warmup_configured_run_count"] = 1
+    coordinated_runs["warmup_point_count"] = 128
+    coordinated_runs["warmup_run_outer_wall_seconds"] = [0.010]
+    coordinated_runs["first_warmup_run_outer_wall_seconds"] = 0.010
+    coordinated_runs["warmup_elapsed_seconds"] = 0.010
+    with pytest.raises(FinalAuditError, match="effective benchmark configuration"):
+        _audit_runtime_profile_warmup_evidence(
+            _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+            _otf_warmup_provenance(coordinated_runs),
+            context="otf.measurement",
+        )
+
+
+def test_final_audit_rejects_coordinated_nonpublication_otf_benchmark() -> None:
+    coordinated_batch = _otf_warmup_profile()
+    coordinated_batch["cold_warmup_batch_size"] = 64
+    coordinated_batch["cold_warmup_point_count"] = 64
+    coordinated_batch["warmup_batch_size"] = 64
+    coordinated_batch["warmup_point_count"] = 128
+    batch_provenance = _otf_warmup_provenance(coordinated_batch)
+    batch_provenance["effective_config"]["benchmark"]["batch_size"] = 64
+    with pytest.raises(
+        FinalAuditError,
+        match=r"batch_size must equal the final report contract 128",
+    ):
+        _audit_runtime_profile_warmup_evidence(
+            _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+            batch_provenance,
+            context="otf.measurement",
+        )
+
+    coordinated_runs = _otf_warmup_profile()
+    coordinated_runs["warmup_configured_run_count"] = 1
+    coordinated_runs["warmup_point_count"] = 128
+    coordinated_runs["warmup_run_outer_wall_seconds"] = [0.010]
+    coordinated_runs["first_warmup_run_outer_wall_seconds"] = 0.010
+    coordinated_runs["warmup_elapsed_seconds"] = 0.010
+    run_provenance = _otf_warmup_provenance(coordinated_runs)
+    run_provenance["effective_config"]["benchmark"]["warmup_runs"] = 1
+    with pytest.raises(
+        FinalAuditError,
+        match=r"warmup_runs must equal the final report contract 2",
+    ):
+        _audit_runtime_profile_warmup_evidence(
+            _cell(ExecutionMode.ON_THE_FLY, optimization_level=2),
+            run_provenance,
+            context="otf.measurement",
         )
 
 
@@ -2570,9 +3230,7 @@ def test_stored_optional_legacy_agreement_survives_missing_current_endpoint(
     candidate_measurement = _candidate_measurement(tmp_path)
     validation = candidate_measurement["validation"]
     assert isinstance(validation, dict)
-    validation[LC_COMMON_COMPONENT_FIELD] = _lc_common_component(
-        candidate.cell_id
-    )
+    validation[LC_COMMON_COMPONENT_FIELD] = _lc_common_component(candidate.cell_id)
     attach_direct_agreements(
         candidate,
         candidate_measurement,
@@ -2612,12 +3270,12 @@ def test_stored_optional_legacy_agreement_survives_missing_current_endpoint(
                 resolved_maximum_absolute=0.0,
                 resolved_maximum_relative=0.0,
                 lc_common_component=1.0,
-            )
+            ),
         },
     )
-    assert replay_counts[
-        final_audit_module._REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY
-    ] == 1
+    assert (
+        replay_counts[final_audit_module._REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY] == 1
+    )
 
 
 @pytest.mark.parametrize(
@@ -2698,9 +3356,7 @@ def test_final_audit_consumes_durable_selected_independent_authority(
             candidate,
             {
                 candidate.cell_id: candidate_measurement,
-                recurrence.cell_id: _candidate_measurement(
-                    tmp_path / "recurrence"
-                ),
+                recurrence.cell_id: _candidate_measurement(tmp_path / "recurrence"),
                 legacy.cell_id: legacy_measurement,
             },
             {
@@ -2728,10 +3384,7 @@ def _arena_profile_evidence(
         **{field: 0 for field in ZERO_ARENA_COUNTER_FIELDS},
         **{field: 0.0 for field in ZERO_ARENA_PHASE_TIME_FIELDS},
         **{field: [] for field in EMPTY_ARENA_PHASE_VECTOR_FIELDS},
-        **{
-            field: 0
-            for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS
-        },
+        **{field: 0 for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS},
     }
     if execution_mode is ExecutionMode.COMPILED:
         raw_profile.update(
@@ -2981,9 +3634,7 @@ def test_runtime_identity_audit_distinguishes_source_and_direct_codegen_levels(
             "loaded_execution_mode": "compiled",
             "required_arena_capability": "compiled-plane-arena-v1",
             "expected_evaluator_abi": "pyamplicol-compiled-plane-kernel-v2",
-            "expected_source_evaluator_abi": (
-                "pyamplicol-symjit-plane-application-v2"
-            ),
+            "expected_source_evaluator_abi": ("pyamplicol-symjit-plane-application-v2"),
             "source_jit_optimization_level": 1,
             "direct_codegen_optimization_level": 1,
             "direct_codegen_identity": {
@@ -3078,6 +3729,57 @@ def test_runtime_identity_audit_distinguishes_source_and_direct_codegen_levels(
         _audit_runtime_identity(
             compiled,
             provenance(missing_direct_codegen),
+            expected_source_revision=_REVISION,
+            active_runtime=_active_runtime(),
+            artifact=None,
+        )
+
+
+def test_runtime_identity_audit_accepts_real_otf_contract_and_rejects_seed_alias(
+    tmp_path: Path,
+) -> None:
+    measurement = _candidate_measurement(tmp_path)
+    raw_provenance = measurement["provenance"]
+    assert isinstance(raw_provenance, dict)
+    raw_identity = raw_provenance["runtime_identity"]
+    assert isinstance(raw_identity, dict)
+    identity = deepcopy(raw_identity)
+    identity.pop("source_jit_identity")
+    identity.update(
+        {
+            "execution_mode": "on-the-fly",
+            "loaded_execution_mode": "on-the-fly",
+            "required_arena_capability": "rusticol.on-the-fly.complex-f64.v1",
+            "expected_evaluator_abi": "pyamplicol-runtime-on-the-fly-execution",
+            "expected_source_evaluator_abi": ("pyamplicol-symjit-plane-application-v2"),
+            "expected_source_evaluator_runtime_capability": (
+                "symjit.application.complex-f64.v1"
+            ),
+            "source_jit_optimization_level": 2,
+            "process_required_runtime_capabilities": [
+                "rusticol.on-the-fly.complex-f64.v1",
+                "rusticol.on-the-fly.lc-color.v1",
+            ],
+        }
+    )
+    cell = _cell(ExecutionMode.ON_THE_FLY, optimization_level=2)
+
+    _audit_runtime_identity(
+        cell,
+        _runtime_identity_provenance(identity),
+        expected_source_revision=_REVISION,
+        active_runtime=_active_runtime(),
+        artifact=None,
+    )
+
+    invented_seed_alias = deepcopy(identity)
+    invented_seed_alias["expected_source_evaluator_abi"] = (
+        "pyamplicol-on-the-fly-process-seed-v1"
+    )
+    with pytest.raises(FinalAuditError, match="expected_source_evaluator_abi"):
+        _audit_runtime_identity(
+            cell,
+            _runtime_identity_provenance(invented_seed_alias),
             expected_source_revision=_REVISION,
             active_runtime=_active_runtime(),
             artifact=None,
@@ -3362,11 +4064,12 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert result["legacy_pointwise_agreement_edge_count"] == 1
     assert result["direct_agreement_edge_count"] == 0
     assert result["direct_agreement_edge_counts"] == {
-            "builtin-ufo-recurrence": 0,
-            "z-recurrence-cross-mode": 0,
-            "lc-cross-layout-component": 0,
-            "lc-legacy-pyamplicol-component": 0,
-        }
+        "builtin-ufo-recurrence": 0,
+        "z-recurrence-cross-mode": 0,
+        "otf-compiled-cross-mode": 0,
+        "lc-cross-layout-component": 0,
+        "lc-legacy-pyamplicol-component": 0,
+    }
     assert result["replayed_direct_agreement_edge_count"] == 0
     assert set(result["direct_agreement_replay_category_counts"].values()) == {0}
     assert result["unique_artifact_count"] == 1

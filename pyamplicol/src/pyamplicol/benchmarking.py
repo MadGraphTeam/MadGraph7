@@ -387,7 +387,9 @@ class BenchmarkBackend:
         task_id = "runtime-benchmark"
         calibration_task_id = "runtime-profile-calibration"
         active_task_id = calibration_task_id
+        cold_warmup_elapsed: float | None = None
         warmup_elapsed = 0.0
+        warmup_run_outer_wall_seconds: list[float] = []
         calibration: _Calibration | None = None
         samples: list[float] = []
         evaluator_samples: list[float] | None = (
@@ -409,13 +411,19 @@ class BenchmarkBackend:
                 )
             )
         try:
+            if compact_context is not None:
+                cold_warmup_started = time.perf_counter()
+                measure_repetitions(1)
+                cold_warmup_elapsed = time.perf_counter() - cold_warmup_started
             last_warmup_seconds: float | None = None
             for warmup_index in range(self._config.warmup_runs):
                 warmup_started = time.perf_counter()
                 last_warmup_seconds = measure_repetitions(1)
                 if repeated_profiler is not None or profiler is not None:
                     profile_repetitions(1, measure_elapsed=False)
-                warmup_elapsed += time.perf_counter() - warmup_started
+                warmup_run_elapsed = time.perf_counter() - warmup_started
+                warmup_run_outer_wall_seconds.append(warmup_run_elapsed)
+                warmup_elapsed += warmup_run_elapsed
                 if self._progress is not None:
                     self._progress.emit(
                         ProgressUpdate(
@@ -786,6 +794,23 @@ class BenchmarkBackend:
                 "lc_flow_layout": lc_flow_layout,
                 "lc_flow_layout_recommendation": lc_flow_layout_recommendation,
             }
+        cold_warmup_environment: dict[str, object] = {}
+        if cold_warmup_elapsed is not None:
+            cold_warmup_environment = {
+                "cold_warmup_elapsed_seconds": cold_warmup_elapsed,
+                "cold_warmup_run_count": 1,
+                "cold_warmup_batch_size": len(batch),
+                "cold_warmup_point_count": len(batch),
+                "cold_warmup_timer_source": "python_outer_time.perf_counter",
+                "cold_warmup_timing_scope": (
+                    "one initial requested-selector Runtime evaluation on the full "
+                    "benchmark batch; artifact generation and Runtime/artifact load "
+                    "are excluded"
+                ),
+                "cold_warmup_runtime_freshness": "not-authenticated-by-benchmark",
+                "cold_warmup_ratio_eligible": False,
+                "cold_warmup_acceptance_eligible": False,
+            }
         return BenchmarkResult(
             requested_config=self._config,
             effective_config=self._config,
@@ -828,6 +853,23 @@ class BenchmarkBackend:
                 "completed_sample_count": len(samples),
                 "completion_fraction": len(samples) / planned_sample_count,
                 "warmup_elapsed_seconds": warmup_elapsed,
+                "warmup_configured_run_count": self._config.warmup_runs,
+                "warmup_batch_size": len(batch),
+                "warmup_point_count": self._config.warmup_runs * len(batch),
+                "warmup_run_outer_wall_seconds": tuple(
+                    warmup_run_outer_wall_seconds
+                ),
+                "first_warmup_run_outer_wall_seconds": (
+                    warmup_run_outer_wall_seconds[0]
+                    if warmup_run_outer_wall_seconds
+                    else None
+                ),
+                "warmup_timer_source": "python_outer_time.perf_counter",
+                "warmup_timing_scope": (
+                    "configured benchmark warm-up iteration outer wall; includes "
+                    "the headline evaluation and optional native-profile warm-up; "
+                    "artifact generation and Runtime/artifact load are excluded"
+                ),
                 "planned_sample_count": planned_sample_count,
                 "initial_planned_sample_count": initial_planned_sample_count,
                 "adaptive_extension_sample_count": (
@@ -854,6 +896,7 @@ class BenchmarkBackend:
                 "calibration_evaluation_count": calibration.evaluation_count,
                 "calibration_elapsed_seconds": calibration.elapsed_seconds,
                 "calibration_outer_elapsed_seconds": calibration_outer_elapsed,
+                **cold_warmup_environment,
                 **layout_environment,
                 **evaluator_environment,
             },

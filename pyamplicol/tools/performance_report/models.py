@@ -40,6 +40,7 @@ class ExecutionMode(StrEnum):
     RECURRENCE = "recurrence"
     COMPILED = "compiled"
     EAGER = "eager"
+    ON_THE_FLY = "on-the-fly"
 
 
 class ModelKey(StrEnum):
@@ -132,6 +133,7 @@ class MatrixDataset:
     candidate: MeasurementSpec
     baseline: MeasurementSpec
     multiplicities: tuple[int, ...]
+    static_na_reason_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

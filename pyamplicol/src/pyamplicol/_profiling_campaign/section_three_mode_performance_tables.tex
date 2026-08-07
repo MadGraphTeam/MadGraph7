@@ -6,14 +6,18 @@ The process matrices use recurrence as the primary \PAC{} execution mode.
 Built-in-SM and UFO-SM recurrence JIT O2 are compared with independent
 original-\AC{} results.  Separate built-in-SM matrices compare compiled JIT O3
 and eager JIT O2 with recurrence JIT O2 for the same process, colour treatment,
-and observable.
+and observable. A built-in-SM on-the-fly JIT O2 matrix compares directly with
+original-\AC{} for LC at \(n_{\mathrm{final}}\leq4\).
 
 The canonical matrix spans electroweak vector production, charged-current and
 leptonic channels, heavy-quark production, pure gluons, multi-boson final
 states, Higgs-associated final states, and three- and four-quark-line cases.
 Here \(n\) is the number of final-state particles.  LC coverage retains every
-declared family through \(n=9\).  NLC and full-colour grids display
-\(n=1,\ldots,6\).  A multiplicity for which a process family does not yet exist
+declared family through \(n=9\), except that on-the-fly coverage currently ends
+at \(n_{\mathrm{final}}=4\). NLC and full-colour grids display
+\(n=1,\ldots,6\). Their
+on-the-fly tables are explicit future placeholders and contain no runnable
+on-the-fly cells. A multiplicity for which a process family does not yet exist
 is marked \textsc{not applicable}; an otherwise defined process intentionally
 excluded from the declared measurement scope is marked \textsc{not run}.
 These are table structure, not unfilled measurements.  A complete edition
@@ -21,16 +25,18 @@ accounts for every scheduled cell across the full declared range.
 Resource-limited cells carry a documented status; every successful cell is
 numerical and validated.  An in-scope result that does not pass numerical
 validation is identified by a status and does not carry a timing ratio.
-Best-mode cells select the fastest successful candidate.  If none succeeds,
-the recurrence attempt is shown with \texttt{(r)} and its terminal status.
+Best-mode cells select the fastest successful candidate, including on-the-fly
+where it is in scope and marking that winner with \texttt{(o)}. If none
+succeeds, the recurrence attempt is shown with \texttt{(r)} and its terminal
+status.
 
 The UFO-SM recurrence matrices use the same process definitions, colour
 contracts, numerical parameters, selectors, and validation points as the
 built-in-SM recurrence matrices. Their source is the packaged Standard Model
 loaded through the serialized-JSON interface. This comparison verifies that the
 imported and built-in model routes implement the same requested physics.
-Compiled and eager process matrices are built-in-only, isolating differences
-between execution modes from differences in model loading.
+Compiled, eager, and on-the-fly process matrices are built-in-only, isolating
+differences between execution modes from differences in model loading.
 
 \input{result_validation_summary.tex}
 
@@ -45,8 +51,8 @@ For a reported timing quantity \(T\), each multiplier is
 Green, orange, and red denote respectively \(r<1\), \(1\leq r<2\), and
 \(r\geq2\).  Green therefore means that the candidate is faster than the
 baseline named in the table heading.  The recurrence matrices use original
-\AC{} as the baseline.  The compiled and eager matrices use built-in-SM
-recurrence JIT O2 as the baseline.
+\AC{} as the baseline, as does the detailed on-the-fly LC matrix. The compiled
+and eager matrices use built-in-SM recurrence JIT O2 as the baseline.
 
 Every LC comparison contains two complete-coverage layouts:
 \begin{itemize}
@@ -68,17 +74,31 @@ execution/execution remains the compatible supplementary attribution. If no
 compatible supplementary clock exists, only the wall ratio is shown. Compiled
 and eager generation are compared with recurrence using the same layout.
 
+On-the-fly is the scoped LC exception to the two-artifact layout. One compact
+topology-replay artifact serves both the selected-flow, helicity-summed
+workload and the all-flow, single-helicity workload. Its process-generation
+time is \(G\). For selected flow, \texttt{([xG] x(G+W))} shows the muted
+generation-only multiplier and the normally coloured multiplier after adding
+the first full-batch evaluation \(W\), both relative to the matching \AC{}
+library-generation time. For all flow, \texttt{[G] G+W} shows the two absolute
+times, with \(G\) muted and \(G+W\) in normal black. In this generation-only
+notation, \(W\) excludes artifact loading and the conventional benchmark
+warmup calls.
+
 The two original-\AC{} reference workloads have different setup boundaries.
 For the selected-flow workload, the reported generation quantity is creation
 of the process library. For the all-flow workload, it is preparation of direct
 all-flow evaluation. Runtime ratios compare the same physical observable. The
 all-flow setup quantities are not like-for-like, so the table shows the
 candidate process-generation time as an absolute value and forms no ratio.
+For on-the-fly this is the absolute \texttt{[G] G+W} pair above.
 
 NLC and full colour use one helicity-summed, colour-contracted calculation per
 mode. Their cells report the absolute baseline generation and wall time,
 followed by the candidate generation and runtime ratios. No per-flow scalar is
-defined for these contracted colour accuracies.
+defined for these contracted colour accuracies. On-the-fly does not yet expose
+these colour treatments, so its NLC and full-colour tables are static future
+placeholders rather than missing measurements.
 
 The wall quantity is the repeated native evaluation time after caller-language
 input conversion and is the primary runtime observable. Independent accumulated
@@ -92,7 +112,9 @@ If no supplementary ratio is eligible, the cell shows only \texttt{(xW)}.
 
 Preparation of reusable model-level kernels is excluded from
 process-generation time. Compiled generation still includes process-specific
-evaluator construction and backend compilation.
+evaluator construction and backend compilation. On-the-fly \(W\) starts only
+after the compact artifact has been loaded and stops after its first complete
+batch evaluation; later benchmark warmups are separate.
 
 A timing is shown only after recurrence agrees with original \AC{} at the
 independent-reference tolerance and compiled and eager results agree with
@@ -102,7 +124,11 @@ relying on their separate agreement with \AC{}. Each result must reproduce its
 resolved sum. For LC, the common flow--helicity component is compared directly
 between topology replay and all-flow union, and every \PAC{} all-flow result is
 also compared with the matching independently generated \AC{} component. A
-failed validation has no timing ratio.
+failed validation has no timing ratio. On-the-fly adds a dual-authority gate:
+for both workloads, its complete resolved-component array must agree with
+separately generated recurrence and compiled results before timing. After
+\texttt{Runtime.clear()}, both full component comparisons and the
+resolved-sum identity are repeated before the cell is accepted.
 
 \subsection*{Cell and summary layout}
 
@@ -115,7 +141,8 @@ failed validation has no timing ratio.
 LC, upper
   & topology replay \texttt{|} all-flow generation quantities in seconds
   & layout-matched ratios, except that the all-flow candidate against original
-    \AC{} is shown absolutely without a ratio \\
+    \AC{} is shown absolutely without a ratio; on-the-fly uses selected
+    \texttt{([xG] x(G+W))} \texttt{|} all-flow \texttt{[G] G+W} \\
 LC, lower
   & selected-flow \texttt{|} all-flow wall times in
     \(\mu\mathrm{s}/\mathrm{pt}\)
@@ -139,8 +166,9 @@ sums
 \(\sum_i T_{\mathrm{candidate},i}/\sum_i T_{\mathrm{baseline},i}\).
 Generation summaries use topology replay for LC and the contracted workload
 for NLC and full colour; the non-comparable LC all-flow generation quantity is
-omitted.  Runtime summaries use wall time only, with separate aligned LC
-topology-replay and all-flow lines.  Structurally inapplicable,
+omitted. On-the-fly generation summaries use \(G\); \(W\) remains visible in
+the per-cell cold-start pair. Runtime summaries use wall time only, with
+separate aligned LC topology-replay and all-flow lines. Structurally inapplicable,
 resource-limited, unsupported, and validation-failed cells do not contribute.
 
 The first three matrices provide a built-in-SM overview against original
@@ -151,7 +179,9 @@ winner rather than prescribing one mode for all processes.  Its upper row
 reports generation and its lower row reports runtime.  LC pairs use
 non-union-flow \texttt{|} union-flow ordering.  Since original-\AC{} all-flow
 setup and \PAC{} process generation have different boundaries, the latter is
-shown absolutely rather than as a misleading ratio.
+shown absolutely rather than as a misleading ratio. When on-the-fly is the
+winner, the same \texttt{([xG] x(G+W))} and \texttt{[G] G+W} generation
+notation applies beside its \texttt{(o)} marker.
 
 \input{result_matrix_best_builtin_sm_lc_table.tex}
 \input{result_matrix_best_builtin_sm_nlc_table.tex}
@@ -172,3 +202,6 @@ treatment.
 \input{result_matrix_eager_builtin_sm_lc_table.tex}
 \input{result_matrix_eager_builtin_sm_nlc_table.tex}
 \input{result_matrix_eager_builtin_sm_full_table.tex}
+\input{result_matrix_on_the_fly_builtin_sm_lc_table.tex}
+\input{result_matrix_on_the_fly_builtin_sm_nlc_table.tex}
+\input{result_matrix_on_the_fly_builtin_sm_full_table.tex}

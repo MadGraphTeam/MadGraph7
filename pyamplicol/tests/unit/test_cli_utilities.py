@@ -88,7 +88,7 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
 
     assert run_cli(("profiling-campaign", "copy", str(destination))) == 0
     copied = tuple(path for path in destination.rglob("*") if path.is_file())
-    assert len(copied) == 55
+    assert len(copied) == 61
     assert (destination / "steer_performance_campaign.py").is_file()
     assert os.access(destination / "steer_performance_campaign.py", os.X_OK)
     launcher = destination / "steer_performance_campaign.py"

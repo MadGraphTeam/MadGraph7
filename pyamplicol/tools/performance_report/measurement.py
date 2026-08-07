@@ -21,7 +21,9 @@ from .agreements import (
     INDEPENDENT_AUTHORITY_ABI,
     INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
+    OTF_COMPILED_CROSS_MODE,
     evaluate_lc_common_component,
+    incoming_agreement_edges,
     independent_numerical_authorities,
     requires_independent_numerical_authority,
     validate_lc_common_component,
@@ -39,6 +41,7 @@ from .models import (
 from .phase_state import WorkerPhaseReporter
 from .runner import (
     INDEPENDENT_RELATIVE_TOLERANCE,
+    OTF_DUAL_AUTHORITY_VALIDATION_FIELD,
     RELATIVE_TOLERANCE,
     GeneratedArtifact,
     RunnerError,
@@ -47,6 +50,7 @@ from .runner import (
     _real_nonnegative,
     _selector_kwargs,
     generate_artifact,
+    on_the_fly_dual_authority_validation,
     point_digest,
     pointwise_validation,
     profile_runtime,
@@ -583,13 +587,11 @@ def reconcile_independent_authority(
     try:
         comparison = conditioned_measurement_comparison(cell, updated, authority)
     except Exception as error:
-        mutable_validation[INDEPENDENT_AUTHORITY_FIELD] = (
-            _independent_authority_record(
-                canonical_ids,
-                selected_cell_id=authority_cell_id,
-                status="incompatible",
-                reason="successful-independent-authority-contract-incompatible",
-            )
+        mutable_validation[INDEPENDENT_AUTHORITY_FIELD] = _independent_authority_record(
+            canonical_ids,
+            selected_cell_id=authority_cell_id,
+            status="incompatible",
+            reason="successful-independent-authority-contract-incompatible",
         )
         mutable_validation["status"] = ResultStatus.VALIDATION_FAILED.value
         updated["status"] = ResultStatus.VALIDATION_FAILED.value
@@ -946,8 +948,7 @@ def _validation_failure_precision_diagnostic(
             internal = candidate["internal_agreement"]
             if (
                 not complete_ladder
-                and
-                precision == 32
+                and precision == 32
                 and isinstance(internal, Mapping)
                 and internal.get("status") == ResultStatus.OK.value
                 and comparisons
@@ -1260,6 +1261,59 @@ def _load_runtime(artifact_path: Path, process_id: str) -> object:
     return Runtime.load(artifact_path, process=process_id)
 
 
+def _load_on_the_fly_authority_runtimes(
+    cell: CellSpec,
+    *,
+    baseline: Mapping[str, object] | None,
+    validation_peers: Mapping[str, Mapping[str, object]] | None,
+    catalog: ReportCatalog,
+) -> tuple[tuple[str, CellSpec, object], ...]:
+    """Load the two already measured OTF authorities without generating work."""
+
+    if (
+        cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY
+        or cell.measurement.accuracy is not Accuracy.LC
+    ):
+        return ()
+    recurrence_cell = catalog.validation_baseline_cell(cell)
+    if (
+        recurrence_cell is None
+        or recurrence_cell.measurement.execution_mode is not ExecutionMode.RECURRENCE
+        or baseline is None
+    ):
+        raise RunnerError("on-the-fly measurement requires its recurrence baseline")
+    compiled_edges = tuple(
+        edge
+        for edge in incoming_agreement_edges(cell, catalog=catalog)
+        if edge.kind == OTF_COMPILED_CROSS_MODE
+    )
+    if len(compiled_edges) != 1:
+        raise RunnerError("on-the-fly measurement requires one compiled hard peer")
+    compiled_cell = compiled_edges[0].baseline
+    peers = {} if validation_peers is None else validation_peers
+    compiled_measurement = peers.get(compiled_cell.cell_id)
+    if compiled_measurement is None:
+        raise RunnerError(
+            "on-the-fly measurement compiled authority artifact is unavailable"
+        )
+
+    loaded: list[tuple[str, CellSpec, object]] = []
+    for role, authority_cell, authority_measurement in (
+        ("recurrence", recurrence_cell, baseline),
+        ("compiled", compiled_cell, compiled_measurement),
+    ):
+        artifact = generated_artifact_from_measurement(authority_measurement)
+        validate_artifact_contract(authority_cell, artifact.path)
+        loaded.append(
+            (
+                role,
+                authority_cell,
+                _load_runtime(artifact.path, artifact.process_id),
+            )
+        )
+    return tuple(loaded)
+
+
 def _resolution_benchmark_config(effective_config: Mapping[str, object]) -> object:
     from pyamplicol.config import Action
     from pyamplicol.config.resolver import resolve_config
@@ -1311,6 +1365,10 @@ def measure_pyamplicol_cell(
 
     _require_nonzero_lc_all_flow_baseline(cell, baseline)
     contract = _measurement_selector_contract(cell, baseline, selector_provider)
+    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and contract is None:
+        raise RunnerError(
+            "on-the-fly measurement requires an inherited recurrence selector contract"
+        )
     generated = (
         generate_artifact(
             cell,
@@ -1327,7 +1385,9 @@ def measure_pyamplicol_cell(
         )
     )
     validate_artifact_contract(cell, generated.path)
+    runtime_load_started = time.perf_counter()
     runtime = _load_runtime(generated.path, generated.process_id)
+    runtime_load_seconds = time.perf_counter() - runtime_load_started
     revision = settings.source_revision_override or source_revision(
         repo_root,
         require_clean=True,
@@ -1349,6 +1409,26 @@ def measure_pyamplicol_cell(
         from .runner import derive_selector_contract
 
         contract = derive_selector_contract(runtime, points)
+    otf_dual_authority: dict[str, object] | None = None
+    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+        assert contract is not None
+        authority_runtimes = _load_on_the_fly_authority_runtimes(
+            cell,
+            baseline=baseline,
+            validation_peers=validation_peers,
+            catalog=catalog,
+        )
+        try:
+            otf_dual_authority = on_the_fly_dual_authority_validation(
+                runtime,
+                points,
+                cell=cell,
+                selector_contract=contract,
+                authorities=authority_runtimes,
+            )
+        finally:
+            # Keep public candidate timing free of two loaded hard peers.
+            del authority_runtimes
     if phase_reporter is not None:
         phase_reporter.profiling_started()
     profiling_deadlines = tuple(
@@ -1384,6 +1464,11 @@ def measure_pyamplicol_cell(
     validation: dict[str, object] = {
         "resolved_sum": resolved_sum,
         DIRECT_AGREEMENT_FIELD: [],
+        **(
+            {OTF_DUAL_AUTHORITY_VALIDATION_FIELD: otf_dual_authority}
+            if otf_dual_authority is not None
+            else {}
+        ),
     }
     if cell.measurement.accuracy is Accuracy.LC:
         assert contract is not None
@@ -1469,13 +1554,11 @@ def measure_pyamplicol_cell(
     authority_failure: dict[str, str] | None = None
     if authority_expected:
         if selected_authority_cell_id is None:
-            validation[INDEPENDENT_AUTHORITY_FIELD] = (
-                _independent_authority_record(
-                    authority_ids,
-                    selected_cell_id=None,
-                    status="unavailable",
-                    reason="no-successful-independent-authority",
-                )
+            validation[INDEPENDENT_AUTHORITY_FIELD] = _independent_authority_record(
+                authority_ids,
+                selected_cell_id=None,
+                status="unavailable",
+                reason="no-successful-independent-authority",
             )
         else:
             assert baseline is not None
@@ -1491,15 +1574,11 @@ def measure_pyamplicol_cell(
                     baseline,
                 )
             except Exception as error:
-                validation[INDEPENDENT_AUTHORITY_FIELD] = (
-                    _independent_authority_record(
-                        authority_ids,
-                        selected_cell_id=selected_authority_cell_id,
-                        status="incompatible",
-                        reason=(
-                            "successful-independent-authority-contract-incompatible"
-                        ),
-                    )
+                validation[INDEPENDENT_AUTHORITY_FIELD] = _independent_authority_record(
+                    authority_ids,
+                    selected_cell_id=selected_authority_cell_id,
+                    status="incompatible",
+                    reason=("successful-independent-authority-contract-incompatible"),
                 )
                 validation["authority_contract_error"] = {
                     "kind": type(error).__name__,
@@ -1512,17 +1591,15 @@ def measure_pyamplicol_cell(
             else:
                 validation["pointwise"] = comparison
                 passed = comparison.get("status") == ResultStatus.OK.value
-                validation[INDEPENDENT_AUTHORITY_FIELD] = (
-                    _independent_authority_record(
-                        authority_ids,
-                        selected_cell_id=selected_authority_cell_id,
-                        status="verified" if passed else "mismatch",
-                        reason=(
-                            "independent-authority-agreement"
-                            if passed
-                            else "independent-authority-mismatch"
-                        ),
-                    )
+                validation[INDEPENDENT_AUTHORITY_FIELD] = _independent_authority_record(
+                    authority_ids,
+                    selected_cell_id=selected_authority_cell_id,
+                    status="verified" if passed else "mismatch",
+                    reason=(
+                        "independent-authority-agreement"
+                        if passed
+                        else "independent-authority-mismatch"
+                    ),
                 )
                 if not passed:
                     authority_failure = {
@@ -1564,9 +1641,7 @@ def measure_pyamplicol_cell(
                     "evaluator_total_timing": evaluator_total_timing,
                 },
             },
-            complete_ladder=(
-                validation["status"] == ResultStatus.UNVERIFIED.value
-            ),
+            complete_ladder=(validation["status"] == ResultStatus.UNVERIFIED.value),
         )
     status = str(profile["status"])
     if validation["status"] == ResultStatus.VALIDATION_FAILED.value:
@@ -1621,6 +1696,8 @@ def measure_pyamplicol_cell(
                 "model_preparation_reused": generated.model_preparation_reused,
                 "generation_timer_excludes_model_preparation": True,
                 "generation_command_path": generated.generation_command_path,
+                "runtime_load_seconds": runtime_load_seconds,
+                "runtime_load_included_in_cold_warmup": False,
                 **(
                     {
                         "numerical_relation_correctness": dict(

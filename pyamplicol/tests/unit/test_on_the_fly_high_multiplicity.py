@@ -165,7 +165,14 @@ def test_a_b_repeat_revisit_clear_rebuild_and_census_invariants(
         study, "_evaluate", lambda *_, **__: study.Evaluation((1.0 + 0.0j,), None)
     )
     monkeypatch.setattr(study, "_compare", lambda *_: {})
-    runtime = SimpleNamespace(clear=mock.Mock())
+    monkeypatch.setattr(
+        study.time,
+        "perf_counter_ns",
+        mock.Mock(side_effect=(10_000_000, 14_000_000)),
+    )
+    runtime = SimpleNamespace(
+        clear=mock.Mock(), evaluate=mock.Mock(return_value=(1.0 + 0.0j,))
+    )
     lifecycle = study._lifecycle(
         runtime,
         study._case(5),
@@ -176,6 +183,32 @@ def test_a_b_repeat_revisit_clear_rebuild_and_census_invariants(
     )[2]
     assert lifecycle["sequence"] == "A,B,B,A; clear; A,B"
     assert lifecycle["after_rebuild"] == state_b
+    cold_timing = lifecycle["cold_first_evaluation_timing"]
+    assert cold_timing == {
+        "kind": "on-the-fly-cold-first-evaluation-timing-v1",
+        "timer": "time.perf_counter_ns",
+        "runtime_state": "census-proven-cold",
+        "family": "selected-A",
+        "workload": "selected",
+        "requested_study_workload": "all-flow",
+        "requested_study_workload_cold_timed": False,
+        "requested_all_flow_family_preparation": "not-independently-cold-timed",
+        "elapsed_nanoseconds": 4_000_000,
+        "seconds": 0.004,
+        "point_count": 1,
+        "seconds_per_point": 0.004,
+        "excluded_from_elapsed": [
+            "Runtime.load",
+            "artifact generation",
+            "resolved-output follow-up",
+            "warmed BenchmarkRunner",
+        ],
+        "ratio_eligible": False,
+        "acceptance_eligible": False,
+    }
+    runtime.evaluate.assert_called_once_with(
+        ((((1.0, 0.0, 0.0, 1.0),),)), color_flows=("flow:1",)
+    )
     runtime.clear.assert_called_once_with()
     for field, value in (
         ("retained_amplitude_destination_count", 0),
@@ -215,14 +248,24 @@ def test_selected_a_c_repeat_revisit_and_rebuild(
         _selector: object,
         *,
         resolved: bool,
+        _precomputed_total: tuple[object, ...] | None = None,
     ) -> study.Evaluation:
         assert resolved is False
+        if not calls:
+            assert _precomputed_total == (1.0 + 0.0j,)
         calls.append(workload)
         return study.Evaluation((1.0 + 0.0j,), None)
 
     monkeypatch.setattr(study, "_evaluate", evaluate)
     monkeypatch.setattr(study, "_compare", lambda *_: {})
-    runtime = SimpleNamespace(clear=mock.Mock())
+    monkeypatch.setattr(
+        study.time,
+        "perf_counter_ns",
+        mock.Mock(side_effect=(20_000_000, 25_000_000)),
+    )
+    runtime = SimpleNamespace(
+        clear=mock.Mock(), evaluate=mock.Mock(return_value=(1.0 + 0.0j,))
+    )
     lifecycle = study._lifecycle(
         runtime,
         study._case(8),
@@ -244,6 +287,12 @@ def test_selected_a_c_repeat_revisit_and_rebuild(
     assert lifecycle["sequence"] == "A,C,C,A; clear; A,C,A"
     assert lifecycle["requested_family"] == state_c
     assert lifecycle["after_rebuild"] == revisit
+    cold_timing = lifecycle["cold_first_evaluation_timing"]
+    assert cold_timing["requested_study_workload"] == "selected"
+    assert cold_timing["requested_study_workload_cold_timed"] is True
+    assert cold_timing["requested_all_flow_family_preparation"] == "not-applicable"
+    assert cold_timing["seconds"] == 0.005
+    assert cold_timing["point_count"] == 1
     runtime.clear.assert_called_once_with()
 
 

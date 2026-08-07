@@ -46,6 +46,7 @@ from pyamplicol.models.prepared import (
     PreparedKernelVariantRecord,
     prepared_expression_digest,
     prepared_input_contract_digest,
+    prepared_kernel_pack_manifest_identity_sha256,
     prepared_optimization_settings_digest,
     prepared_output_contract_digest,
     write_prepared_model_bundle,
@@ -438,7 +439,11 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
     assert pack_identity["kind"] == "pyamplicol-prepared-kernel-pack-identity"
     assert pack_identity["abi"] == "pyamplicol-prepared-kernel-pack-identity-v2"
     assert pack_identity["kernel_count"] == 3
-    assert len(pack_identity["identity_sha256"]) == 64
+    assert pack_identity["identity_sha256"] == (
+        prepared_kernel_pack_manifest_identity_sha256(
+            compiled_model.prepared_bundle.manifest  # type: ignore[union-attr]
+        )
+    )
     pack = json.loads(
         (output / "model/eager-kernel-pack.json").read_text(encoding="utf-8")
     )

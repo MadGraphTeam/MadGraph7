@@ -13,6 +13,9 @@ use super::recurrence_manifest::{
 use super::{
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY, ON_THE_FLY_RUNTIME_CAPABILITY, confined_internal_path,
 };
+use crate::recurrence::on_the_fly::{
+    ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI, OnTheFlyProcessSeedIdentityV1,
+};
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -57,6 +60,7 @@ pub(super) struct OnTheFlyRuntimeMetadata {
     pub(super) external_legs: Vec<RecurrenceExternalLeg>,
     pub(super) particle_masses: Vec<RecurrenceParticleMass>,
     pub(super) normalization: RecurrenceNormalization,
+    pub(super) process_seed_identity: OnTheFlyProcessSeedIdentityV1,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -365,6 +369,88 @@ impl OnTheFlyRuntimeMetadata {
                 "on-the-fly normalization metadata is invalid",
             ));
         }
+        self.validate_process_seed_identity()?;
+        Ok(())
+    }
+
+    fn validate_process_seed_identity(&self) -> RusticolResult<()> {
+        let identity = &self.process_seed_identity;
+        if identity.abi != ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI {
+            return Err(RusticolError::compatibility(
+                "unsupported on-the-fly process-seed identity ABI; regenerate the artifact",
+            ));
+        }
+        for digest in [
+            &identity.process_digest,
+            &identity.compiled_model_digest,
+            &identity.recurrence_template_catalog_digest,
+            &identity.prepared_kernel_pack_digest,
+            &identity.recurrence_direct_template_catalog_digest,
+            &identity.semantic_digest,
+        ] {
+            if digest.len() != 64
+                || !digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly process-seed identity contains an invalid SHA-256",
+                ));
+            }
+        }
+        if identity.external_permutation.len() != self.external_legs.len()
+            || identity.external_sources.len() != self.external_legs.len()
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly process-seed identity has the wrong external domain",
+            ));
+        }
+        let mut permutation = identity.external_permutation.clone();
+        permutation.sort_unstable();
+        if permutation
+            .iter()
+            .enumerate()
+            .any(|(index, slot)| *slot as usize != index)
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly process-seed identity permutation is not dense",
+            ));
+        }
+        for (source_slot, (source, leg)) in identity
+            .external_sources
+            .iter()
+            .zip(&self.external_legs)
+            .enumerate()
+        {
+            if source.source_slot as usize != source_slot
+                || source.public_label != leg.public_label
+                || source.is_initial != leg.is_initial
+                || source.states.is_empty()
+                || source
+                    .states
+                    .windows(2)
+                    .any(|pair| pair[0].state_index >= pair[1].state_index)
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly process-seed source identity disagrees with external legs",
+                ));
+            }
+            let mass_runtime_name = format!("particle.{}.mass", leg.outgoing_pdg.unsigned_abs());
+            let expected_mass_slot = self
+                .parameter_projection
+                .iter()
+                .find(|row| row.runtime_name == mass_runtime_name && row.component == 0)
+                .and_then(|row| row.prepared_parameter_id);
+            if source
+                .states
+                .iter()
+                .any(|state| state.prepared_mass_parameter_slot != expected_mass_slot)
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly process-seed source mass slot disagrees with parameter projection",
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -471,6 +557,24 @@ mod tests {
                     "electroweak_coupling_power": 0,
                     "couplings_in_stage_evaluators": true,
                     "coupling_policy": "local"
+                },
+                "process_seed_identity": {
+                    "abi": ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI,
+                    "process_digest": "11".repeat(32),
+                    "compiled_model_digest": "22".repeat(32),
+                    "recurrence_template_catalog_digest": "33".repeat(32),
+                    "prepared_kernel_pack_digest": "44".repeat(32),
+                    "recurrence_direct_template_catalog_digest": "55".repeat(32),
+                    "semantic_digest": "66".repeat(32),
+                    "external_permutation": [0, 1, 2, 3, 4, 5],
+                    "external_sources": [
+                        {"source_slot": 0, "public_label": 1, "is_initial": true, "states": [{"state_index": 0, "public_helicity": -1, "prepared_mass_parameter_slot": null}]},
+                        {"source_slot": 1, "public_label": 2, "is_initial": true, "states": [{"state_index": 0, "public_helicity": 1, "prepared_mass_parameter_slot": null}]},
+                        {"source_slot": 2, "public_label": 3, "is_initial": false, "states": [{"state_index": 0, "public_helicity": -1, "prepared_mass_parameter_slot": null}]},
+                        {"source_slot": 3, "public_label": 4, "is_initial": false, "states": [{"state_index": 0, "public_helicity": 1, "prepared_mass_parameter_slot": null}]},
+                        {"source_slot": 4, "public_label": 5, "is_initial": false, "states": [{"state_index": 0, "public_helicity": -1, "prepared_mass_parameter_slot": null}]},
+                        {"source_slot": 5, "public_label": 6, "is_initial": false, "states": [{"state_index": 0, "public_helicity": 1, "prepared_mass_parameter_slot": null}]}
+                    ]
                 }
             },
             "runtime_container": {
@@ -517,5 +621,26 @@ mod tests {
         let mut kernel_alias = manifest();
         kernel_alias["kernel_pack"]["manifest_path"] = json!("model/other.json");
         assert!(parse(&kernel_alias).is_err());
+    }
+
+    #[test]
+    fn rejects_unbound_process_seed_identity_metadata() {
+        let mut stale_abi = manifest();
+        stale_abi["runtime_metadata"]["process_seed_identity"]["abi"] = json!("stale-v0");
+        assert!(parse(&stale_abi).is_err());
+
+        let mut changed_anchor = manifest();
+        changed_anchor["runtime_metadata"]["process_seed_identity"]["external_sources"][0]["public_label"] =
+            json!(9);
+        assert!(parse(&changed_anchor).is_err());
+
+        let mut changed_mass_slot = manifest();
+        changed_mass_slot["runtime_metadata"]["process_seed_identity"]["external_sources"][2]["states"]
+            [0]["prepared_mass_parameter_slot"] = json!(6);
+        assert!(parse(&changed_mass_slot).is_err());
+
+        let mut unknown_field = manifest();
+        unknown_field["runtime_metadata"]["process_seed_identity"]["opaque"] = json!(true);
+        assert!(parse(&unknown_field).is_err());
     }
 }

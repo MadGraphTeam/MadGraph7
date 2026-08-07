@@ -688,7 +688,10 @@ pub(crate) fn decode_on_the_fly_process_seed_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recurrence::on_the_fly::scalar_adapter_test_seed;
+    use crate::recurrence::on_the_fly::{
+        ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI, OnTheFlyProcessSeedIdentityV1,
+        scalar_adapter_test_seed,
+    };
 
     #[derive(Default)]
     struct CountingWriter {
@@ -873,10 +876,22 @@ mod tests {
         let first = encode_on_the_fly_process_seed_v1(&canonical).unwrap();
         let second = encode_on_the_fly_process_seed_v1(&reordered_inputs).unwrap();
         assert_eq!(first, second);
+        let decoded = decode_on_the_fly_process_seed_v1(&first).unwrap();
+        assert_eq!(decoded, canonical);
+        let identity = decoded.identity();
+        assert_eq!(identity.abi, ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI);
+        assert_eq!(identity.process_digest, digest(1).to_string());
+        assert_eq!(identity.external_permutation, [2, 0, 3, 1]);
+        assert_eq!(identity.external_sources.len(), 4);
+        assert_eq!(identity.external_sources[0].states.len(), 2);
         assert_eq!(
-            decode_on_the_fly_process_seed_v1(&first).unwrap(),
-            canonical
+            identity.external_sources[0].states[0].prepared_mass_parameter_slot,
+            Some(400)
         );
+        let encoded_identity = serde_json::to_string(&identity).unwrap();
+        let decoded_identity: OnTheFlyProcessSeedIdentityV1 =
+            serde_json::from_str(&encoded_identity).unwrap();
+        assert_eq!(decoded_identity, identity);
     }
 
     #[test]

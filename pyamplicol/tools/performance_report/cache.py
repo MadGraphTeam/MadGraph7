@@ -16,6 +16,7 @@ from .agreements import (
     INDEPENDENT_AUTHORITY_ABI,
     INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
+    OTF_COMPILED_CROSS_MODE,
     incoming_agreement_edges,
     independent_numerical_authorities,
     requires_independent_numerical_authority,
@@ -26,7 +27,17 @@ from .catalog import REPORT_CATALOG, ReportCatalog
 from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus
 from .runner import (
     CONDITIONED_COMPARISON_ABI,
+    CONVENTIONAL_WARMUP_FIELDS,
+    CONVENTIONAL_WARMUP_TIMING_SCOPE,
+    OTF_COLD_WARMUP_FIELDS,
+    OTF_COLD_WARMUP_RUNTIME_FRESHNESS,
+    OTF_COLD_WARMUP_TIMING_SCOPE,
+    OTF_DUAL_AUTHORITY_VALIDATION_ABI,
+    OTF_DUAL_AUTHORITY_VALIDATION_FIELD,
+    WARMUP_TIMER_SOURCE,
     validate_conditioned_comparison_record,
+    validate_on_the_fly_dual_authority_validation_record,
+    validate_profile_warmup_evidence,
     validate_resolved_sum_validation_record,
 )
 from .timing import (
@@ -411,9 +422,7 @@ def _validate_conditioned_measurement_bindings(
                     )
         if value_kind == LC_COMMON_COMPONENT_FIELD:
             if not isinstance(component, Mapping):
-                raise ValueError(
-                    f"validation.{field} has no LC component scale source"
-                )
+                raise ValueError(f"validation.{field} has no LC component scale source")
             component_identity = identity.get("component_identity")
             if not isinstance(component_identity, Mapping):
                 raise ValueError(
@@ -515,9 +524,7 @@ def _validate_unverified_precision_diagnostic(value: object) -> None:
         raise ValueError("unverified precision diagnostic status is invalid")
     attempts = record.get("attempts")
     if not isinstance(attempts, list) or [
-        attempt.get("precision_digits")
-        if isinstance(attempt, Mapping)
-        else None
+        attempt.get("precision_digits") if isinstance(attempt, Mapping) else None
         for attempt in attempts
     ] != [32, 200]:
         raise ValueError("unverified precision diagnostic must retain p32 and p200")
@@ -583,8 +590,7 @@ def _validate_standalone_internal_validation(
         "resolved_ordering_sha256",
     )
     if any(
-        resolved.get(field) != high_resolved.get(field)
-        for field in identity_fields
+        resolved.get(field) != high_resolved.get(field) for field in identity_fields
     ):
         raise ValueError(
             "standalone p16 and p32 resolved evidence has different identity"
@@ -619,10 +625,8 @@ def _validate_standalone_internal_validation(
             "standalone matrix element and p16/p32 evidence are not exactly linked"
         )
     if (
-        high_precision.get("candidate_scale_source")
-        != "resolved-component-l1-binary64"
-        or high_precision.get("baseline_scale_source")
-        != "resolved-component-l1-p32"
+        high_precision.get("candidate_scale_source") != "resolved-component-l1-binary64"
+        or high_precision.get("baseline_scale_source") != "resolved-component-l1-p32"
     ):
         raise ValueError("standalone p16/p32 scale-source labels are invalid")
 
@@ -665,6 +669,100 @@ def _validate_unverified_direct_agreement_coverage(
         observed_edges <= allowed_edges
     ):
         raise ValueError("unverified result direct-agreement coverage is incomplete")
+
+
+def _validate_successful_otf_dual_authority(
+    measurement: Mapping[str, object],
+    validation: Mapping[str, object],
+    *,
+    expected_cell: CellSpec,
+    catalog: ReportCatalog,
+) -> None:
+    if (
+        expected_cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY
+        or expected_cell.measurement.accuracy is not Accuracy.LC
+    ):
+        return
+    recurrence = catalog.validation_baseline_cell(expected_cell)
+    compiled_edges = tuple(
+        edge
+        for edge in incoming_agreement_edges(expected_cell, catalog=catalog)
+        if edge.kind == OTF_COMPILED_CROSS_MODE
+    )
+    if (
+        recurrence is None
+        or recurrence.measurement.execution_mode is not ExecutionMode.RECURRENCE
+        or len(compiled_edges) != 1
+    ):
+        raise ValueError("on-the-fly catalog authority chain is invalid")
+    provenance = _required_mapping(
+        measurement.get("provenance"), "measurement.provenance"
+    )
+    runtime_identity = _required_mapping(
+        provenance.get("runtime_identity"),
+        "measurement.provenance.runtime_identity",
+    )
+    candidate_artifact_id = runtime_identity.get("artifact_id")
+    if not isinstance(candidate_artifact_id, str):
+        raise ValueError("on-the-fly runtime identity has no artifact ID")
+    validate_on_the_fly_dual_authority_validation_record(
+        validation.get(OTF_DUAL_AUTHORITY_VALIDATION_FIELD),
+        expected_cell=expected_cell,
+        selector_contract=measurement.get("selector_contract"),
+        candidate_artifact_id=candidate_artifact_id,
+        expected_authorities=(
+            ("recurrence", recurrence.cell_id),
+            ("compiled", compiled_edges[0].baseline.cell_id),
+        ),
+    )
+
+
+def _validate_successful_otf_warmup_evidence(
+    measurement: Mapping[str, object],
+    *,
+    expected_cell: CellSpec,
+) -> None:
+    if expected_cell.measurement.execution_mode is not ExecutionMode.ON_THE_FLY:
+        return
+    provenance = _required_mapping(
+        measurement.get("provenance"), "measurement.provenance"
+    )
+    if provenance.get("runtime_load_included_in_cold_warmup") is not False:
+        raise ValueError(
+            "on-the-fly runtime load must be excluded from cold warm-up timing"
+        )
+    if provenance.get("generation_timer_excludes_model_preparation") is not True:
+        raise ValueError("on-the-fly generation timing must exclude model preparation")
+    effective = _required_mapping(
+        provenance.get("effective_config"),
+        "measurement.provenance.effective_config",
+    )
+    benchmark = _required_mapping(
+        effective.get("benchmark"),
+        "measurement.provenance.effective_config.benchmark",
+    )
+    expected_batch_size = benchmark.get("batch_size")
+    expected_warmup_runs = benchmark.get("warmup_runs")
+    if (
+        isinstance(expected_batch_size, bool)
+        or not isinstance(expected_batch_size, int)
+        or expected_batch_size < 1
+    ):
+        raise ValueError("on-the-fly effective benchmark batch_size must be positive")
+    if (
+        isinstance(expected_warmup_runs, bool)
+        or not isinstance(expected_warmup_runs, int)
+        or expected_warmup_runs < 0
+    ):
+        raise ValueError(
+            "on-the-fly effective benchmark warmup_runs must be non-negative"
+        )
+    validate_profile_warmup_evidence(
+        provenance.get("runtime_profile"),
+        execution_mode=expected_cell.measurement.execution_mode,
+        expected_batch_size=expected_batch_size,
+        expected_warmup_run_count=expected_warmup_runs,
+    )
 
 
 def validate_measurement(
@@ -773,6 +871,13 @@ def validate_measurement(
             )
         elif validation.get(LC_COMMON_COMPONENT_FIELD) is not None:
             raise ValueError("non-LC measurement cannot contain lc_common_component")
+        if expected_cell is not None and not retained_diagnostic:
+            _validate_successful_otf_dual_authority(
+                measurement,
+                validation,
+                expected_cell=expected_cell,
+                catalog=catalog,
+            )
         if retained_diagnostic:
             if (
                 expected_cell is None
@@ -851,6 +956,11 @@ def validate_measurement(
         provenance = _required_mapping(
             measurement["provenance"], "measurement.provenance"
         )
+        if expected_cell is not None:
+            _validate_successful_otf_warmup_evidence(
+                measurement,
+                expected_cell=expected_cell,
+            )
         execution_seconds = _required_number_or_none(
             measurement["execution_seconds_per_point"],
             "measurement.execution_seconds_per_point",
@@ -882,11 +992,12 @@ def validate_measurement(
                 measurement["failure"],
                 "measurement.failure",
             )
-            if set(failure) != {"kind", "message"} or failure.get(
-                "kind"
-            ) != "IndependentAuthorityUnavailable" or not isinstance(
-                failure.get("message"), str
-            ) or not failure.get("message"):
+            if (
+                set(failure) != {"kind", "message"}
+                or failure.get("kind") != "IndependentAuthorityUnavailable"
+                or not isinstance(failure.get("message"), str)
+                or not failure.get("message")
+            ):
                 raise ValueError("unverified result failure metadata is invalid")
         elif measurement["failure"] is not None:
             raise ValueError("successful measurement cannot contain failure metadata")
@@ -954,11 +1065,66 @@ def validate_cache(
 def schema_document() -> dict[str, object]:
     statuses = [status.value for status in ResultStatus]
     nullable_number: dict[str, Any] = {"type": ["number", "null"], "minimum": 0}
+    cold_warmup_required = sorted(OTF_COLD_WARMUP_FIELDS)
+    otf_warmup_required = sorted(CONVENTIONAL_WARMUP_FIELDS | OTF_COLD_WARMUP_FIELDS)
+    runtime_profile: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "cold_warmup_elapsed_seconds": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+            },
+            "cold_warmup_run_count": {"const": 1},
+            "cold_warmup_batch_size": {"type": "integer", "minimum": 1},
+            "cold_warmup_point_count": {"type": "integer", "minimum": 1},
+            "cold_warmup_timer_source": {"const": WARMUP_TIMER_SOURCE},
+            "cold_warmup_timing_scope": {"const": OTF_COLD_WARMUP_TIMING_SCOPE},
+            "cold_warmup_runtime_freshness": {
+                "const": OTF_COLD_WARMUP_RUNTIME_FRESHNESS
+            },
+            "cold_warmup_ratio_eligible": {"const": False},
+            "cold_warmup_acceptance_eligible": {"const": False},
+            "warmup_elapsed_seconds": {"type": "number", "minimum": 0},
+            "warmup_configured_run_count": {
+                "type": "integer",
+                "minimum": 0,
+            },
+            "warmup_batch_size": {"type": "integer", "minimum": 1},
+            "warmup_point_count": {"type": "integer", "minimum": 0},
+            "warmup_run_outer_wall_seconds": {
+                "type": "array",
+                "items": {"type": "number", "minimum": 0},
+            },
+            "first_warmup_run_outer_wall_seconds": {
+                "type": ["number", "null"],
+                "minimum": 0,
+            },
+            "warmup_timer_source": {"const": WARMUP_TIMER_SOURCE},
+            "warmup_timing_scope": {"const": CONVENTIONAL_WARMUP_TIMING_SCOPE},
+        },
+        "dependentRequired": {
+            field: otf_warmup_required for field in cold_warmup_required
+        },
+    }
+    provenance_record: dict[str, Any] = {
+        "oneOf": [
+            {"type": "null"},
+            {
+                "type": "object",
+                "properties": {
+                    "runtime_profile": runtime_profile,
+                    "runtime_load_included_in_cold_warmup": {"const": False},
+                    "generation_timer_excludes_model_preparation": {"const": True},
+                },
+            },
+        ]
+    }
     direct_identity_properties: dict[str, Any] = {
         "edge_kind": {
             "enum": [
                 "builtin-ufo-recurrence",
                 "z-recurrence-cross-mode",
+                "otf-compiled-cross-mode",
                 "lc-cross-layout-component",
                 "lc-legacy-pyamplicol-component",
             ]
@@ -1068,6 +1234,180 @@ def schema_document() -> dict[str, object]:
         },
         "additionalProperties": False,
     }
+    otf_total_summary: dict[str, Any] = {
+        "type": "object",
+        "required": [
+            "check_count",
+            "maximum_conditioned_residual",
+            "maximum_absolute_delta",
+        ],
+        "properties": {
+            "check_count": {"type": "integer", "minimum": 1},
+            "maximum_conditioned_residual": {"type": "number", "minimum": 0},
+            "maximum_absolute_delta": {"type": "number", "minimum": 0},
+        },
+        "additionalProperties": False,
+    }
+    otf_component_summary: dict[str, Any] = {
+        "type": "object",
+        "required": [
+            "check_count",
+            "component_count",
+            "maximum_conditioned_residual",
+            "maximum_absolute_delta",
+        ],
+        "properties": {
+            **otf_total_summary["properties"],
+            "component_count": {"type": "integer", "minimum": 1},
+        },
+        "additionalProperties": False,
+    }
+    otf_comparison: dict[str, Any] = {
+        "type": "object",
+        "required": ["authority_cell_id", "total", "resolved_components"],
+        "properties": {
+            "authority_cell_id": {"type": "string", "minLength": 1},
+            "total": otf_total_summary,
+            "resolved_components": otf_component_summary,
+        },
+        "additionalProperties": False,
+    }
+    otf_stage: dict[str, Any] = {
+        "type": "object",
+        "required": [
+            "candidate_total_source_sha256",
+            "candidate_resolved_total_source_sha256",
+            "candidate_resolved_ordering_sha256",
+            "candidate_resolved_source_sha256",
+            "candidate_resolved_sum",
+            "comparisons",
+        ],
+        "properties": {
+            "candidate_total_source_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "candidate_resolved_total_source_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "candidate_resolved_ordering_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "candidate_resolved_source_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "candidate_resolved_sum": otf_total_summary,
+            "comparisons": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": otf_comparison,
+            },
+        },
+        "additionalProperties": False,
+    }
+    otf_authority: dict[str, Any] = {
+        "type": "object",
+        "required": [
+            "role",
+            "cell_id",
+            "artifact_id",
+            "total_source_sha256",
+            "resolved_total_source_sha256",
+            "resolved_ordering_sha256",
+            "resolved_source_sha256",
+            "resolved_sum",
+        ],
+        "properties": {
+            "role": {"enum": ["recurrence", "compiled"]},
+            "cell_id": {"type": "string", "minLength": 1},
+            **{
+                field: {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+                for field in (
+                    "artifact_id",
+                    "total_source_sha256",
+                    "resolved_total_source_sha256",
+                    "resolved_ordering_sha256",
+                    "resolved_source_sha256",
+                )
+            },
+            "resolved_sum": otf_total_summary,
+        },
+        "additionalProperties": False,
+    }
+    otf_dual_authority: dict[str, Any] = {
+        "type": "object",
+        "required": [
+            "abi",
+            "status",
+            "candidate_cell_id",
+            "candidate_artifact_id",
+            "workload",
+            "precision_digits",
+            "relative_tolerance",
+            "point_digest",
+            "selector_sha256",
+            "point_count",
+            "resolved_component_count",
+            "resolved_check_count",
+            "authorities",
+            "before_clear",
+            "after_clear",
+            "lifecycle",
+        ],
+        "properties": {
+            "abi": {"const": OTF_DUAL_AUTHORITY_VALIDATION_ABI},
+            "status": {"const": ResultStatus.OK.value},
+            "candidate_cell_id": {"type": "string", "minLength": 1},
+            "candidate_artifact_id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "workload": {"enum": ["selected-flow", "all-flow"]},
+            "precision_digits": {"const": 16},
+            "relative_tolerance": {"const": 1.0e-12},
+            "point_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "selector_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+            },
+            "point_count": {"type": "integer", "minimum": 1},
+            "resolved_component_count": {"type": "integer", "minimum": 1},
+            "resolved_check_count": {"type": "integer", "minimum": 1},
+            "authorities": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": otf_authority,
+            },
+            "before_clear": otf_stage,
+            "after_clear": otf_stage,
+            "lifecycle": {
+                "type": "object",
+                "required": [
+                    "authority_artifacts_loaded_only",
+                    "candidate_loaded_before_validation",
+                    "validated_before_clear",
+                    "validated_after_clear",
+                    "clear_call_count",
+                    "final_clear_before_profile",
+                ],
+                "properties": {
+                    "authority_artifacts_loaded_only": {"const": True},
+                    "candidate_loaded_before_validation": {"const": True},
+                    "validated_before_clear": {"const": True},
+                    "validated_after_clear": {"const": True},
+                    "clear_call_count": {"const": 2},
+                    "final_clear_before_profile": {"const": True},
+                },
+                "additionalProperties": False,
+            },
+        },
+        "additionalProperties": False,
+    }
     validation_properties = {
         "status": {"enum": statuses},
         DIRECT_AGREEMENT_FIELD: {
@@ -1101,6 +1441,7 @@ def schema_document() -> dict[str, object]:
             "additionalProperties": False,
         },
         LC_COMMON_COMPONENT_FIELD: lc_common_component,
+        OTF_DUAL_AUTHORITY_VALIDATION_FIELD: otf_dual_authority,
     }
     validation_record: dict[str, Any] = {
         "oneOf": [
@@ -1182,7 +1523,7 @@ def schema_document() -> dict[str, object]:
                                 "selector_contract": {"type": ["object", "null"]},
                                 "validation": validation_record,
                                 "resources": {"type": ["object", "null"]},
-                                "provenance": {"type": ["object", "null"]},
+                                "provenance": provenance_record,
                                 "failure": {"type": ["object", "null"]},
                             },
                             "allOf": [

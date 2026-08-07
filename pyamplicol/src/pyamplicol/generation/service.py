@@ -141,6 +141,7 @@ from .numerical_current_warmup import (
 )
 from .on_the_fly_seed import (
     OnTheFlyGenerationProjectionV1,
+    OnTheFlyProcessSeedProjectionV1,
     project_on_the_fly_process_seed_v1,
 )
 from .physics_metadata import build_resolved_physics_from_dag
@@ -476,6 +477,10 @@ class _RustOnTheFlySeedsBinding(Protocol):
         prepared_kernel_pack_digest: str,
         /,
     ) -> object: ...
+
+
+class _RustOnTheFlySeedInspectorBinding(Protocol):
+    def __call__(self, payload: bytes, /) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -1058,6 +1063,218 @@ def _invoke_rust_on_the_fly_seed_builder_v1(
         direct_template_catalog_json,
         prepared_kernel_pack_digest,
     )[0]
+
+
+_ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI = "pyamplicol-on-the-fly-process-seed-identity-v1"
+_ON_THE_FLY_PROCESS_SEED_IDENTITY_FIELDS = frozenset(
+    {
+        "abi",
+        "process_digest",
+        "compiled_model_digest",
+        "recurrence_template_catalog_digest",
+        "prepared_kernel_pack_digest",
+        "recurrence_direct_template_catalog_digest",
+        "semantic_digest",
+        "external_permutation",
+        "external_sources",
+    }
+)
+
+
+def _validate_on_the_fly_process_seed_identity_v1(
+    value: object,
+) -> dict[str, object]:
+    if not isinstance(value, Mapping) or set(value) != (
+        _ON_THE_FLY_PROCESS_SEED_IDENTITY_FIELDS
+    ):
+        raise GenerationError(
+            "native on-the-fly process-seed identity has the wrong fields"
+        )
+    result = {str(key): item for key, item in value.items()}
+    if result["abi"] != _ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI:
+        raise GenerationError(
+            "native on-the-fly process-seed identity has an unsupported ABI"
+        )
+    for field in (
+        "process_digest",
+        "compiled_model_digest",
+        "recurrence_template_catalog_digest",
+        "prepared_kernel_pack_digest",
+        "recurrence_direct_template_catalog_digest",
+        "semantic_digest",
+    ):
+        digest = result[field]
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise GenerationError(
+                f"native on-the-fly process-seed identity {field} is not SHA-256"
+            )
+    permutation = result["external_permutation"]
+    sources = result["external_sources"]
+    if (
+        not isinstance(permutation, list)
+        or not isinstance(sources, list)
+        or not sources
+        or len(permutation) != len(sources)
+        or any(
+            isinstance(slot, bool) or not isinstance(slot, int) for slot in permutation
+        )
+        or sorted(permutation) != list(range(len(permutation)))
+    ):
+        raise GenerationError(
+            "native on-the-fly process-seed identity has an invalid external domain"
+        )
+    labels: set[int] = set()
+    for source_index, raw_source in enumerate(sources):
+        if not isinstance(raw_source, Mapping) or set(raw_source) != {
+            "source_slot",
+            "public_label",
+            "is_initial",
+            "states",
+        }:
+            raise GenerationError(
+                "native on-the-fly process-seed identity has an invalid source row"
+            )
+        source_slot = raw_source["source_slot"]
+        public_label = raw_source["public_label"]
+        states = raw_source["states"]
+        if (
+            isinstance(source_slot, bool)
+            or source_slot != source_index
+            or isinstance(public_label, bool)
+            or not isinstance(public_label, int)
+            or public_label < 1
+            or public_label in labels
+            or not isinstance(raw_source["is_initial"], bool)
+            or not isinstance(states, list)
+            or not states
+        ):
+            raise GenerationError(
+                "native on-the-fly process-seed identity has a noncanonical "
+                "source domain"
+            )
+        labels.add(public_label)
+        previous_state_index = -1
+        for raw_state in states:
+            if not isinstance(raw_state, Mapping) or set(raw_state) != {
+                "state_index",
+                "public_helicity",
+                "prepared_mass_parameter_slot",
+            }:
+                raise GenerationError(
+                    "native on-the-fly process-seed identity has an invalid "
+                    "source state"
+                )
+            state_index = raw_state["state_index"]
+            helicity = raw_state["public_helicity"]
+            mass_slot = raw_state["prepared_mass_parameter_slot"]
+            if (
+                isinstance(state_index, bool)
+                or not isinstance(state_index, int)
+                or state_index <= previous_state_index
+                or isinstance(helicity, bool)
+                or not isinstance(helicity, int)
+                or (
+                    mass_slot is not None
+                    and (
+                        isinstance(mass_slot, bool)
+                        or not isinstance(mass_slot, int)
+                        or mass_slot < 0
+                    )
+                )
+            ):
+                raise GenerationError(
+                    "native on-the-fly process-seed identity has a noncanonical "
+                    "source state"
+                )
+            previous_state_index = state_index
+    return result
+
+
+def _bind_on_the_fly_process_seed_identity_v1(
+    identity: Mapping[str, object],
+    projection: OnTheFlyProcessSeedProjectionV1,
+) -> None:
+    """Bind the native seed identity to its authoritative Python projection."""
+
+    if identity["process_digest"] != projection.process_digest:
+        raise GenerationError(
+            "native on-the-fly process-seed process digest disagrees with "
+            "the source projection"
+        )
+    if identity["external_permutation"] != list(projection.external_permutation):
+        raise GenerationError(
+            "native on-the-fly process-seed external permutation disagrees "
+            "with the source projection"
+        )
+
+    native_sources = cast(list[Mapping[str, object]], identity["external_sources"])
+    native_domain = tuple(
+        (
+            source["source_slot"],
+            source["public_label"],
+            source["is_initial"],
+            tuple(
+                (state["state_index"], state["public_helicity"])
+                for state in cast(list[Mapping[str, object]], source["states"])
+            ),
+        )
+        for source in native_sources
+    )
+    projected_domain = tuple(
+        (
+            source.source_slot,
+            source.public_label,
+            source.is_initial,
+            tuple(
+                (state.state_index, state.public_helicity)
+                for state in source.source_states
+            ),
+        )
+        for source in projection.external_sources
+    )
+    if native_domain != projected_domain:
+        raise GenerationError(
+            "native on-the-fly process-seed external source domain "
+            "disagrees with the source projection"
+        )
+
+
+def _invoke_rust_on_the_fly_seed_inspector_v1(
+    seed_payload: bytes,
+) -> dict[str, object]:
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
+    except (ImportError, OSError, RuntimeError) as exc:
+        raise GenerationError(
+            "on-the-fly generation requires the current native "
+            "_inspect_on_the_fly_process_seed_v1 binding"
+        ) from exc
+    candidate = getattr(module, "_inspect_on_the_fly_process_seed_v1", None)
+    if not callable(candidate):
+        raise GenerationError(
+            "pyamplicol._rusticol does not provide the private "
+            "_inspect_on_the_fly_process_seed_v1 binding"
+        )
+    binding = cast(_RustOnTheFlySeedInspectorBinding, candidate)
+    try:
+        encoded = binding(seed_payload)
+        if not isinstance(encoded, str):
+            raise TypeError("native inspector did not return JSON text")
+        decoded = json.loads(encoded)
+    except (TypeError, ValueError) as exc:
+        raise GenerationError(
+            f"native on-the-fly process-seed inspection failed: {exc}"
+        ) from exc
+    except Exception as exc:
+        raise GenerationError(
+            f"native on-the-fly process-seed inspection failed: {exc}"
+        ) from exc
+    return _validate_on_the_fly_process_seed_identity_v1(decoded)
 
 
 def _invoke_rust_recurrence_lowering_v2(
@@ -1848,7 +2065,9 @@ def _partition_model_supported_processes(
             details.append(f"{source.expression!r}: {reasons}")
         raise GenerationError(
             "process expansion produced no model-supported tree-level amplitudes "
-            "for requested process" + ("es" if len(details) != 1 else "") + ": "
+            "for requested process"
+            + ("es" if len(details) != 1 else "")
+            + ": "
             + "; ".join(details)
         )
     return supported, unsupported
@@ -2789,9 +3008,7 @@ class GenerationBackend:
                     phase.update(
                         int(event.get("completed", phase.completed)),
                         total=(
-                            None
-                            if event.get("total") is None
-                            else int(event["total"])
+                            None if event.get("total") is None else int(event["total"])
                         ),
                         message=str(event.get("step", "writing artifact")),
                         details=details,
@@ -2922,6 +3139,11 @@ class GenerationBackend:
         selection = self._process_selection
         coupling_policy = str(run.process.coupling_order_policy)
         explicit_limits = self._coupling_order_limits
+        process_seed_identity = _invoke_rust_on_the_fly_seed_inspector_v1(seed_payload)
+        _bind_on_the_fly_process_seed_identity_v1(
+            process_seed_identity,
+            projection.seed,
+        )
         runtime_path = (
             temporary_root
             / "on-the-fly-runtimes"
@@ -2939,13 +3161,16 @@ class GenerationBackend:
                 ),
             ),
         )
-        runtime_metadata = build_on_the_fly_runtime_metadata(
-            projection.seed.external_sources,
-            projection.seed.parameter_projection,
-            model_inputs.catalog,
-            model,
-            projection.runtime_normalization,
-        )
+        runtime_metadata = {
+            **build_on_the_fly_runtime_metadata(
+                projection.seed.external_sources,
+                projection.seed.parameter_projection,
+                model_inputs.catalog,
+                model,
+                projection.runtime_normalization,
+            ),
+            "process_seed_identity": process_seed_identity,
+        }
         public_metadata = build_on_the_fly_public_metadata(
             expanded.process_ir,
             model_inputs.catalog,
@@ -3001,9 +3226,7 @@ class GenerationBackend:
                     else list(selection.reference_color_order)
                 ),
                 "trace_reflections_folded": bool(
-                    model.lc_trace_reflection_equivalence_is_proven(
-                        expanded.process_ir
-                    )
+                    model.lc_trace_reflection_equivalence_is_proven(expanded.process_ir)
                 ),
             },
             point_tile_size=run.evaluator.recurrence.point_tile_size,
@@ -3228,9 +3451,9 @@ class GenerationBackend:
                     f"process aliases for {request.name!r} are ambiguous after "
                     f"expansion into {len(expanded)} concrete processes"
                 )
-            side_permutation_classes: set[
-                tuple[tuple[str, ...], tuple[str, ...]]
-            ] = set()
+            side_permutation_classes: set[tuple[tuple[str, ...], tuple[str, ...]]] = (
+                set()
+            )
             for concrete_index, process_ir in enumerate(expanded, start=1):
                 permutation_class = _process_side_permutation_class(process_ir)
                 if permutation_class in side_permutation_classes:

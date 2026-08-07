@@ -106,12 +106,13 @@
 
 \begin{abstract}
 This report presents the physics coverage, numerical validation, and
-performance of \PAC{} 0.1.0. We compare compiled, eager, and recurrence
-evaluation for the built-in Standard Model and for the same model imported from
-UFO or serialized JSON, together with scalar-contact and scalar-gravity
-benchmarks. Every reported timing is associated with a documented software
-revision, hardware profile, numerical configuration, and validation reference
-appropriate to the corresponding data set.
+performance of \PAC{} 0.1.0. We compare compiled, eager, recurrence, and
+leading-colour on-the-fly evaluation for the built-in Standard Model, and the
+first three modes for the same model imported from UFO or serialized JSON,
+together with scalar-contact and scalar-gravity benchmarks. Every reported
+timing is associated with a documented software revision, hardware profile,
+numerical configuration, and validation reference appropriate to the
+corresponding data set.
 \end{abstract}
 
 \begingroup
@@ -127,7 +128,10 @@ appropriate to the corresponding data set.
 \PAC{} generates and evaluates tree-level scattering amplitudes. Compiled mode
 specializes a shared-current directed acyclic graph (DAG) to a process. Eager
 mode evaluates the same graph with reusable model kernels. Recurrence mode
-constructs a compact current schedule directly. The three modes implement the
+constructs a compact current schedule directly. On-the-fly mode stores a
+compact source-oriented process seed and constructs selector-family schedules
+lazily; this report limits it to built-in-SM leading colour through four
+final-state particles. Within their declared scopes, the modes implement the
 same physics normalization, colour treatment, helicity sums, and resolved
 observables. The original \AC{} program and its use in event generation are
 described in Ref.~\cite{FrederixVitos2026}.
@@ -285,9 +289,10 @@ Each measurement begins from an immutable resolved configuration. Unless a
 table states otherwise, measurements use a batch size of 128, two warmup runs,
 at least five timed samples, a five-second sampling target, and one CPU core.
 Compiled process matrices use JIT O3; eager and recurrence matrices use
-portable JIT O2 prepared models. Explicitly labelled rows in the dedicated
-\(Z\) ladder use JIT O1, JIT O3, ASM O3, or C++ O3. Backend-specific
-optimization settings are retained with the measurement record.
+portable JIT O2 prepared models, and on-the-fly matrices use their prepared
+JIT O2 model kernels. Explicitly labelled rows in the dedicated \(Z\) ladder
+use JIT O1, JIT O3, ASM O3, or C++ O3. Backend-specific optimization settings
+are retained with the measurement record.
 
 Generation time begins with the resolved model input required by an execution
 mode and ends with a validated, loadable process representation. Compiled mode
@@ -295,7 +300,9 @@ includes process-specific evaluator construction and backend compilation.
 Eager and recurrence modes include construction and serialization of their
 respective numerical schedules. Preparation of a reusable built-in or UFO/JSON
 model bundle occurs before this timer and is therefore excluded from the
-process-generation values in the tables.
+process-generation values in the tables. On-the-fly generation serializes one
+compact topology-replay artifact; the separately reported first cold
+evaluation is not part of that generation timer.
 
 Runtime measurements use the summed matrix element. The reported native wall
 time starts after caller-language array conversion and includes source
@@ -326,6 +333,12 @@ independent \AC{} result use relative tolerance $10^{-8}$. Scalar-model
 ladders instead compare binary64 evaluation with higher precision and, where
 applicable, direct contact-tensor contraction. Every result must reproduce its
 resolved sum and preserve expected structural zeros.
+
+For each on-the-fly LC cell, both measured workloads must agree component by
+component with independently generated recurrence and compiled results. The
+complete resolved-component checks are performed before and after
+\texttt{Runtime.clear()}, and the resolved components must reproduce the total
+on both passes.
 
 Timing and numerical validation are separate requirements: a timing is
 reported only when the corresponding matrix element passes all validation

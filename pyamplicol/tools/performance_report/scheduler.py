@@ -299,19 +299,48 @@ class _PreparationFailed(RuntimeError):
         self.supervised = supervised
 
 
+def _directional_otf_artifact_owner(
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog,
+) -> CellSpec | None:
+    """Return the sole selected-flow owner for one OTF all-flow artifact."""
+
+    if not (
+        cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy is Accuracy.LC
+        and cell.workload is Workload.ALL_FLOW
+    ):
+        return None
+    owners = catalog.equivalent_cells(cell)
+    if len(owners) != 1 or owners[0].workload is not Workload.SELECTED_FLOW:
+        raise ValueError(
+            f"OTF all-flow cell {cell.cell_id!r} must have one selected-flow "
+            "artifact owner"
+        )
+    return owners[0]
+
+
 def _artifact_consumer_cell_ids(
     cell: CellSpec,
     *,
     catalog: ReportCatalog,
 ) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            {
-                cell.cell_id,
-                *(candidate.cell_id for candidate in catalog.equivalent_cells(cell)),
-            }
+    consumers = {
+        cell.cell_id,
+        *(candidate.cell_id for candidate in catalog.equivalent_cells(cell)),
+    }
+    if (
+        cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy is Accuracy.LC
+        and cell.workload is Workload.SELECTED_FLOW
+    ):
+        consumers.update(
+            candidate.cell_id
+            for candidate in catalog.measurement_cells()
+            if _directional_otf_artifact_owner(candidate, catalog=catalog) == cell
         )
-    )
+    return tuple(sorted(consumers))
 
 
 def archive_cell_attempt_history(
@@ -433,7 +462,8 @@ _READY_MODE_ORDER = {
     ExecutionMode.AMPLICOL: 0,
     ExecutionMode.RECURRENCE: 1,
     ExecutionMode.COMPILED: 2,
-    ExecutionMode.EAGER: 3,
+    ExecutionMode.ON_THE_FLY: 3,
+    ExecutionMode.EAGER: 4,
 }
 
 
@@ -1122,7 +1152,17 @@ def plan_campaign(
             )
         visiting.add(cell.cell_id)
         if frontier_source is None:
-            for dependency in missing_dependencies:
+            owner = _directional_otf_artifact_owner(cell, catalog=catalog)
+            refresh_owner = owner is not None and (
+                settings.artifact_policy is ArtifactPolicy.REGENERATE
+                or settings.rerun
+            )
+            required_generation_dependencies = {
+                dependency.cell_id: dependency for dependency in missing_dependencies
+            }
+            if refresh_owner:
+                required_generation_dependencies[owner.cell_id] = owner
+            for dependency in required_generation_dependencies.values():
                 include(dependency, explicitly_requested=False)
             for authority in automatically_added_authorities(cell):
                 if (
@@ -1891,7 +1931,11 @@ class CampaignScheduler:
             item.cell.measurement.model
             for item in planned
             if item.cell.measurement.execution_mode
-            in {ExecutionMode.EAGER, ExecutionMode.RECURRENCE}
+            in {
+                ExecutionMode.EAGER,
+                ExecutionMode.RECURRENCE,
+                ExecutionMode.ON_THE_FLY,
+            }
             and item.cell.measurement.model in {ModelKey.BUILTIN_SM, ModelKey.UFO_SM}
         }
         for model in sorted(models, key=lambda item: item.value):  # type: ignore[union-attr]
@@ -1902,7 +1946,11 @@ class CampaignScheduler:
                 for item in planned
                 if item.cell.measurement.model is model
                 and item.cell.measurement.execution_mode
-                in {ExecutionMode.EAGER, ExecutionMode.RECURRENCE}
+                in {
+                    ExecutionMode.EAGER,
+                    ExecutionMode.RECURRENCE,
+                    ExecutionMode.ON_THE_FLY,
+                }
             )
             result_path = (
                 self.service.paths.artifact_root
@@ -2075,6 +2123,7 @@ class CampaignScheduler:
         if cell.measurement.execution_mode not in {
             ExecutionMode.EAGER,
             ExecutionMode.RECURRENCE,
+            ExecutionMode.ON_THE_FLY,
         } or model not in {ModelKey.BUILTIN_SM, ModelKey.UFO_SM}:
             return
         assert model is not None
@@ -2314,9 +2363,24 @@ class CampaignScheduler:
             while futures or queued_ids:
                 cancelled = self._cancelled()
                 now = time.monotonic()
-                while not cancelled and len(futures) < self.settings.workers:
+                while len(futures) < self.settings.workers:
+                    # A fast worker can publish its terminal observer event while
+                    # this loop is still filling slots.  Re-read cancellation
+                    # before every submission instead of relying on the outer
+                    # loop's snapshot.
+                    cancelled = self._cancelled()
+                    if cancelled:
+                        break
                     item = pop_lockable_candidate(now)
                     if item is None:
+                        break
+                    if self._cancelled():
+                        cancelled = True
+                        queued_ids.add(item.cell.cell_id)
+                        heapq.heappush(
+                            ready,
+                            (_ready_priority(item.cell), item.cell.cell_id),
+                        )
                         break
                     futures[executor.submit(self._run_cell, item)] = item
                 observe_schedule()
@@ -2562,6 +2626,10 @@ class CampaignScheduler:
             ):
                 return CellOutcome(cell.cell_id, "reused", decision.current.attempt_id)
 
+            artifact_owner = _directional_otf_artifact_owner(
+                cell,
+                catalog=self.catalog,
+            )
             equivalent_record = (
                 _fresh_equivalent_current(
                     self.service.store,
@@ -2576,9 +2644,12 @@ class CampaignScheduler:
                     expected_worker_harness=self.worker_harness_identity,
                 )
                 if (
-                    not self.settings.rerun
-                    and self.settings.artifact_policy
-                    in {ArtifactPolicy.REUSE, ArtifactPolicy.RETIME}
+                    artifact_owner is not None
+                    or (
+                        not self.settings.rerun
+                        and self.settings.artifact_policy
+                        in {ArtifactPolicy.REUSE, ArtifactPolicy.RETIME}
+                    )
                 )
                 else None
             )
@@ -2688,14 +2759,18 @@ class CampaignScheduler:
                 )
 
             reusable_record = (
-                decision.current
-                if (
-                    decision.action is ArtifactAction.RETIME_CURRENT
-                    and decision.current is not None
-                    and current_is_fresh
-                    and not self.settings.rerun
+                equivalent_record
+                if artifact_owner is not None
+                else (
+                    decision.current
+                    if (
+                        decision.action is ArtifactAction.RETIME_CURRENT
+                        and decision.current is not None
+                        and current_is_fresh
+                        and not self.settings.rerun
+                    )
+                    else equivalent_record
                 )
-                else equivalent_record
             )
             if reusable_record is not None:
                 artifact_use_lock = (
@@ -2721,6 +2796,11 @@ class CampaignScheduler:
                 )
                 if isinstance(artifact_path, str) and not Path(artifact_path).is_dir():
                     reusable_record = None
+            if artifact_owner is not None and reusable_record is None:
+                raise RuntimeError(
+                    f"OTF all-flow cell {cell.cell_id!r} has no fresh artifact "
+                    f"from selected-flow owner {artifact_owner.cell_id!r}"
+                )
             if reusable_record is None:
                 self._prepare_model_for(planned)
             self._observe("started", cell, dependency=planned.dependency)
