@@ -12195,8 +12195,13 @@ c           This is dummy particle used in multiparticle vertices
         repr_dict = {l.get('number'):
                      proc.get('model').get_particle(l.get('id')).get_color()
                      * (-1) ** (1 + l.get('state')) for l in legs}
-        flows = matrix_element.get('color_basis').color_flow_decomposition(
-            repr_dict, ninitial)
+        # get_flow_basis(): with the DDM color basis the basis elements are
+        # products of f's and have no single flow each, so the flows -- and the
+        # ICOLUP rows built from them -- come from the trace basis carried
+        # alongside, which is also what the JAMP array is indexed by. Without
+        # DDM it returns the basis itself.
+        flows = matrix_element.get('color_basis').get_flow_basis().\
+            color_flow_decomposition(repr_dict, ninitial)
         return [[tuple(cf[l.get('number')]) for l in legs] for cf in flows]
 
     @staticmethod
