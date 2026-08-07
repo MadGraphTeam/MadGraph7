@@ -18,6 +18,7 @@ _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
 
 from madgraph.iolibs import export_cpp, export_mg7
 from madgraph.iolibs import file_writers as writers
+from madgraph.iolibs import jamp_optimiser
 
 import aloha
 from aloha import aloha_writers
@@ -1924,8 +1925,16 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
             ret_lines.append("""
     // Local variables for the given CUDA event (ievt) or C++ event page (ipagV)
     // [jamp: sum (for one event or event page) of the invariant amplitudes for all Feynman diagrams in a given color combination]
-    cxtype_sv jamp_sv[ncolor] = {}; // all zeros (NB: vector cxtype_v IS initialized to 0, but scalar cxtype is NOT, if "= {}" is missing!)
-
+    cxtype_sv jamp_sv[ncolor] = {}; // all zeros (NB: vector cxtype_v IS initialized to 0, but scalar cxtype is NOT, if "= {}" is missing!)""")
+            # Shared sub-expressions of the color flows, filled in while the
+            # amplitudes go by (see MadMatrixUFOHelasCallWriter.build_jamp_plan).
+            # No "= {}": each one is assigned before it is ever read.
+            nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
+            if nb_tmp_jamp:
+                ret_lines.append("""
+    // [jampTmp: partial sums of amplitudes that several color flows share, so that they are computed only once]
+    cxtype_sv jampTmp_sv[%i];""" % nb_tmp_jamp)
+            ret_lines.append("""
     // === Calculate wavefunctions and amplitudes for all diagrams in all processes         ===
     // === (for one event in CUDA, for one - or two in mixed mode - SIMD event pages in C++ ===
 
@@ -2384,13 +2393,18 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 
 # AV - define a custom HelasCallWriter
 # (NB: enable this via ProcessExporterMadMatrix.helas_exporter in output.py - this fixes #341)
-class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
+class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
+                                  jamp_optimiser.JampOptimiser):
     """ A Custom HelasCallWriter """
 
     # Flavor-mask optimization: skip wavefunction/amplitude calls that vanish
     # for the selected flavor (see super_get_matrix_element_calls). Toggled by
     # the output command's --mask=True|False; default on.
     use_flavor_mask = True
+    # Write the color flows through the shared sub-expressions the color-flow
+    # optimisation finds, instead of one line per (color flow, amplitude) pair
+    # (see build_jamp_plan). Toggled by --jamp_optim=True|False.
+    jamp_optim = True
     # Class structure information
     #  - object
     #  - dict(object) [built-in]
@@ -2399,8 +2413,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
     #  - UFOHelasCallWriter(HelasCallWriter) [in madgraph/iolibs/helas_call_writers.py]
     #  - CPPUFOHelasCallWriter(UFOHelasCallWriter) [in madgraph/iolibs/helas_call_writers.py]
     #  - GPUFOHelasCallWriter(CPPUFOHelasCallWriter) [in madgraph/iolibs/helas_call_writers.py]
-    #  - MadMatrixUFOHelasCallWriter(GPUFOHelasCallWriter)
-    #      This class
+    #  - MadMatrixUFOHelasCallWriter(GPUFOHelasCallWriter, JampOptimiser)
+    #      This class (JampOptimiser is in madgraph/iolibs/jamp_optimiser.py and
+    #      brings the color-flow optimisation shared with the fortran exporter)
 
 
     def __init__(self, *args, **opts):
@@ -2554,6 +2569,165 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
     def format_call(call):
         return call.replace('(','( ').replace(')',' )').replace(',',', ')
 
+    # --- Color flows through shared sub-expressions --------------------------
+    #
+    # Written out as it stands, a color flow is one 'jamp_sv[i] += c*amp_sv[0]'
+    # per (color flow, amplitude) pair: eight thousand of them for g g > g g g
+    # g. The optimisation in jamp_optimiser finds the partial sums that several
+    # flows have in common and returns them as definitions
+    #
+    #     TMP(i) = <operand> + frac * <operand>
+    #
+    # where an operand is either an amplitude or an earlier definition, leaving
+    # the color flows as a much shorter combination of those definitions.
+    #
+    # The fortran output has AMP(NGRAPHS) to read the amplitudes back from, so
+    # it prints the definitions as they come. Here every amplitude passes
+    # through the single slot amp_sv[0] and is gone by the next diagram, so the
+    # definitions are accumulated instead: each amplitude is added into the one
+    # definition that uses it while it is still there, and the definitions of
+    # definitions follow as soon as everything they need has been seen (see
+    # jamp_definition_order).
+
+    @staticmethod
+    def jamp_number(value):
+        """A C++ literal for a real coefficient, kept exact where it can be
+        (an integer, or a ratio the compiler divides out itself)."""
+
+        frac = Fraction(value).limit_denominator(10**9)
+        if float(frac) == float(value):
+            if frac.denominator == 1:
+                return '%d.' % frac.numerator
+            return '%d. / %d.' % (frac.numerator, frac.denominator)
+        text = '%.17g' % value
+        if '.' not in text and 'e' not in text and 'n' not in text:
+            text += '.'
+        return text
+
+    @classmethod
+    def jamp_factor(cls, value):
+        """(sign, factor) of a JAMP coefficient, the factor being the C++ text
+        multiplying the operand (empty when the coefficient is +-1)."""
+
+        number = complex(value)
+        if number.imag == 0:
+            magnitude, imaginary = number.real, False
+        elif number.real == 0:
+            magnitude, imaginary = number.imag, True
+        else:
+            # never seen in practice: a color coefficient is real or imaginary
+            return 1, 'cxtype( %s, %s ) * ' % (cls.jamp_number(number.real),
+                                               cls.jamp_number(number.imag))
+        sign = -1 if magnitude < 0 else 1
+        magnitude = abs(magnitude)
+        if magnitude == 1:
+            return sign, ('cxtype( 0, 1 ) * ' if imaginary else '')
+        if imaginary:
+            return sign, '%s * cxtype( 0, 1 ) * ' % cls.jamp_number(magnitude)
+        return sign, '%s * ' % cls.jamp_number(magnitude)
+
+    @classmethod
+    def jamp_statement(cls, target, terms, assign):
+        """'target = t1 - t2;' (assign) or 'target += t1 - t2;', from a list of
+        (coefficient, operand) terms."""
+
+        pieces = []
+        for pos, (value, name) in enumerate(terms):
+            sign, factor = cls.jamp_factor(value)
+            if pos == 0 and not assign and len(terms) == 1:
+                # the common case: keep the sign on the operator, as the
+                # expanded output does
+                return '%s %s= %s%s;' % (target, '-' if sign < 0 else '+',
+                                         factor, name)
+            if pos == 0:
+                pieces.append('%s%s%s' % ('-' if sign < 0 else '', factor, name))
+            else:
+                pieces.append('%s %s%s' % ('-' if sign < 0 else '+', factor, name))
+        return '%s %s %s;' % (target, '=' if assign else '+=', ' '.join(pieces))
+
+    def build_jamp_plan(self, color_amplitudes):
+        """Work out how the color flows are built from shared sub-expressions,
+        and return (ntmp, captures, combines, final):
+          - captures[n] are the lines to write while amplitude n sits in
+            amp_sv[0], as (line, target, is_first_write) so that a masked
+            amplitude can be told to zero its target first;
+          - combines[n] are the definitions ready once amplitude n has been
+            added, to write just after it;
+          - final are the lines assembling jamp_sv out of the definitions.
+        Returns None when there is nothing to share, so that the caller keeps
+        the expanded output."""
+
+        if not self.jamp_optim_enabled():
+            return None
+        all_element = self.jamp_matrix(color_amplitudes)
+        if not all_element:
+            return None
+        new_mat, defs = self.optimise_jamp_matrix(all_element)
+        if not defs:
+            return None
+        order, ready = self.jamp_definition_order(defs)
+        definition = {i: (amp1, amp2, frac) for i, amp1, amp2, frac, _nb in defs}
+
+        # what each amplitude has to be added into while it is still in amp_sv
+        captures = defaultdict(list)      # amplitude -> [(target, coefficient)]
+        for i, amp1, amp2, frac, _nb in defs:
+            for amp, coefficient in ((amp1, 1), (amp2, frac)):
+                if amp > 0:
+                    captures[amp].append(('jampTmp_sv[%d]' % (i - 1), coefficient))
+        for (jamp, var), factor in sorted(new_mat.items()):
+            if var > 0 and factor:
+                captures[var].append(('jamp_sv[%d]' % (jamp - 1), factor))
+
+        # the definitions in the order they become available, grouped by the
+        # amplitude they are ready after
+        ready_after = defaultdict(list)
+        for i in order:
+            ready_after[ready[i]].append(i)
+
+        started = set()                   # definitions already assigned to
+        done = set()                      # definitions holding their full value
+        capture_lines = defaultdict(list)
+        combine_lines = defaultdict(list)
+        for amp in sorted(set(list(captures) + list(ready_after))):
+            for target, coefficient in captures.get(amp, []):
+                # jamp_sv is zeroed at the top of the event page, so it is only
+                # the definitions that have to start with an assignment
+                first = target.startswith('jampTmp_sv') and target not in started
+                if first:
+                    started.add(target)
+                capture_lines[amp].append(
+                    (self.jamp_statement(target, [(coefficient, 'amp_sv[0]')],
+                                         first), target, first))
+            for i in ready_after.get(amp, []):
+                amp1, amp2, frac = definition[i]
+                operands = [operand for operand in (amp1, amp2) if operand < 0]
+                assert all(-operand in done for operand in operands), \
+                       'a color-flow definition is used before it is complete'
+                done.add(i)
+                if not operands:
+                    continue      # both operands were amplitudes, already added
+                terms = [(coefficient, 'jampTmp_sv[%d]' % (-operand - 1))
+                         for operand, coefficient in ((amp1, 1), (amp2, frac))
+                         if operand < 0]
+                target = 'jampTmp_sv[%d]' % (i - 1)
+                first = target not in started
+                started.add(target)
+                combine_lines[amp].append(
+                                self.jamp_statement(target, terms, first))
+        assert len(started) == len(defs) == len(done), \
+               'a color-flow definition is never written'
+
+        # what is left of the color flows: a combination of the definitions
+        final = []
+        by_jamp = defaultdict(list)
+        for (jamp, var), factor in sorted(new_mat.items()):
+            if var < 0 and factor:
+                by_jamp[jamp].append((factor, 'jampTmp_sv[%d]' % (-var - 1)))
+        for jamp in sorted(by_jamp):
+            final.append(self.jamp_statement('jamp_sv[%d]' % (jamp - 1),
+                                             by_jamp[jamp], False))
+        return len(defs), capture_lines, combine_lines, final
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     def super_get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):
         """Return a list of strings, corresponding to the Helas calls for the matrix element"""
@@ -2562,6 +2736,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         assert isinstance(matrix_element, helas_objects.HelasMatrixElement), \
                '%s not valid argument for get_matrix_element_calls' % \
                type(matrix_element)
+        self.nb_tmp_jamp = 0
         # Do not reuse the wavefunctions for loop matrix elements
         if isinstance(matrix_element, loop_helas_objects.LoopHelasMatrixElement):
             return self.get_loop_matrix_element_calls(matrix_element)
@@ -2572,6 +2747,12 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 if namp not in color:
                     color[namp] = {}
                 color[namp][njamp] = coeff
+        # Color flows through shared sub-expressions (None to write them out
+        # one (color flow, amplitude) pair at a time, as before)
+        jamp_plan = self.build_jamp_plan(color_amplitudes)
+        self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
+        if jamp_plan is not None:
+            _ntmp, jamp_captures, jamp_combines, jamp_final = jamp_plan
         me = matrix_element.get('diagrams')
         matrix_element.reuse_outdated_wavefunctions(me)
         ###misc.sprint(multi_channel_map)
@@ -2713,27 +2894,45 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     amp_block.append("  numerators_sv[%i] += cxabs2( amp_sv[0] );" % (diagnum-1))
                     amp_block.append("  denominators_sv += cxabs2( amp_sv[0] );")
                     amp_block.append("}")
-                for njamp, coeff in color[namp].items():
-                    scoeff = OneProcessExporterMadMatrix.coeff(*coeff) # AV
-                    if scoeff[0] == '+' : scoeff = scoeff[1:]
-                    scoeff = scoeff.replace('(','( ')
-                    scoeff = scoeff.replace(')',' )')
-                    scoeff = scoeff.replace(',',', ')
-                    scoeff = scoeff.replace('*',' * ')
-                    scoeff = scoeff.replace('/',' / ')
-                    if scoeff.startswith('-'): amp_block.append('jamp_sv[%s] -= %samp_sv[0];' % (njamp, scoeff[1:])) # AV
-                    else: amp_block.append('jamp_sv[%s] += %samp_sv[0];' % (njamp, scoeff)) # AV
                 # The amplitude (and the jamp/channel contributions that read its
                 # amp_sv[0]) only contributes for the flavors in the diagram's
                 # mask, so guard the whole block as a unit.
                 gmask = diag_group_mask.get(id(diagram))
+                before_guard = []
+                if jamp_plan is None:
+                    for njamp, coeff in color[namp].items():
+                        scoeff = OneProcessExporterMadMatrix.coeff(*coeff) # AV
+                        if scoeff[0] == '+' : scoeff = scoeff[1:]
+                        scoeff = scoeff.replace('(','( ')
+                        scoeff = scoeff.replace(')',' )')
+                        scoeff = scoeff.replace(',',', ')
+                        scoeff = scoeff.replace('*',' * ')
+                        scoeff = scoeff.replace('/',' / ')
+                        if scoeff.startswith('-'): amp_block.append('jamp_sv[%s] -= %samp_sv[0];' % (njamp, scoeff[1:])) # AV
+                        else: amp_block.append('jamp_sv[%s] += %samp_sv[0];' % (njamp, scoeff)) # AV
+                else:
+                    for line, target, first in jamp_captures.get(namp, []):
+                        if first and gmask is not None:
+                            # the guard can skip the line that opens this
+                            # sub-expression, so it has to start from zero
+                            before_guard.append('%s = cxzero_sv();' % target)
+                            line = line.replace(' = ', ' += ', 1)
+                        amp_block.append(line)
+                res.extend(before_guard)
                 if gmask is not None:
                     res.append(_guard_open(gmask))
                     res.extend(amp_block)
                     res.append('}')
                 else:
                     res.extend(amp_block)
+                if jamp_plan is not None:
+                    # sub-expressions that have now seen every amplitude they
+                    # need: they always run, whatever the flavor
+                    res.extend(jamp_combines.get(namp, []))
             if len(diagram.get('amplitudes')) == 0 : res.append('// (none)') # AV
+        if jamp_plan is not None:
+            res.append('\n      // *** COLOR FLOWS FROM THE SHARED SUB-EXPRESSIONS ***')
+            res.extend(jamp_final)
         ###res.append('\n    // *** END OF DIAGRAMS ***' ) # AV - no longer needed ('COLOR MATRIX BELOW')
         return res
 

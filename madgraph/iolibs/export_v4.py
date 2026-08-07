@@ -49,6 +49,7 @@ import madgraph.iolibs.files as files
 import madgraph.iolibs.group_subprocs as group_subprocs
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.gen_infohtml as gen_infohtml
+import madgraph.iolibs.jamp_optimiser as jamp_optimiser
 import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
 import madgraph.iolibs.helas_call_writers as helas_call_writers
@@ -392,7 +393,8 @@ class ColorReflectionFolding(object):
 #===============================================================================
 # ProcessExporterFortran
 #===============================================================================
-class ProcessExporterFortran(ColorReflectionFolding, VirtualExporter):
+class ProcessExporterFortran(ColorReflectionFolding, VirtualExporter,
+                             jamp_optimiser.JampOptimiser):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
@@ -402,13 +404,10 @@ class ProcessExporterFortran(ColorReflectionFolding, VirtualExporter):
                         'output_options':{}
                         }
     grouped_mode = False
-    jamp_optim = False
-    # how many times the JAMP optimisation called itself, for the record
-    myjamp_count = 0
     # jamp_fold (sum |M|^2 over one color flow per reversal pair) comes from
     # ColorReflectionFolding and stays off unless the template sums over
     # NCOLORFOLD: get_color_data_lines is shared by every fortran exporter.
-    jamp_integer_walk = True
+    # jamp_optim, myjamp_count and jamp_integer_walk come from JampOptimiser.
     # BLAS-3 for the color sum: all helicities at once as one right hand side.
     # None means take it when the library is there and the process is big
     # enough for it to pay.
@@ -2987,12 +2986,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         else:
             raise MadGraph5Error("Incorrect col_amps argument passed to get_JAMP_lines")
 
-        all_element = {}
+        # the coefficient matrix the optimisation below works on, built once
+        # from the same color amplitudes the expanded lines are written from
+        all_element = self.jamp_matrix(color_amplitudes)
         res_list = []
-        # Every single amplitude carries a power of the number of colors in its
-        # coefficient, but a process only uses a handful of distinct powers, so
-        # build the corresponding fractions once instead of once per amplitude.
-        nc_powers = {}
         for i, coeff_list in enumerate(color_amplitudes):
             # It might happen that coeff_list is empty if this function was
             # called from get_JAMP_lines_split_order (i.e. if some color flow
@@ -3026,16 +3023,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 for (coefficient, amp_number) in coefs:
                     if not coefficient:
                         continue
-                    try:
-                        nc_power = nc_powers[coefficient[3]]
-                    except KeyError:
-                        nc_power = fractions.Fraction(3)**coefficient[3]
-                        nc_powers[coefficient[3]] = nc_power
-                    value = (1j if coefficient[2] else 1)* coefficient[0] * coefficient[1] * nc_power
-                    if (i+1, amp_number) not in all_element:
-                        all_element[(i+1, amp_number)] = value
-                    else:
-                        all_element[(i+1, amp_number)] += value
                     if common_factor:
                         res = (res + "%s" + AMP_format) % \
                                                    (self.coeff(coefficient[0],
@@ -3054,51 +3041,25 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     res = res + ')'
                 res_list.append(res)
         
-        if 'jamp_optim' in self.cmd_options:
-            jamp_optim = banner_mod.ConfigFile.format_variable(self.cmd_options['jamp_optim'], bool, 'jamp_optim')
-        else:
-            # class default
-            jamp_optim = self.jamp_optim
-                
-        if not jamp_optim:
+        if not self.jamp_optim_enabled():
             return res_list, 0
         else:
             saved = list(res_list)
-        
+
         if len(all_element) > 1000:
             logger.info("Computing Color-Flow optimization [%s term]", len(all_element))
             start_time = time.time()
-        else: 
+        else:
             start_time = 0
-        
+
         res_list = []
 
         self.myjamp_count = 0
-        # With one power of i shared by every coefficient, dividing it out
-        # leaves whole numbers to walk over -- they compare and hash exactly,
-        # and nothing has to be widened to complex. The phase goes back onto
-        # the JAMP coefficients afterwards, so the lines written are the same.
-        phase = self.jamp_global_phase(all_element) \
-                                        if self.jamp_integer_walk else None
-        integral = False
-        if phase is not None:
-            whole = {}
-            for key, value in all_element.items():
-                number = value / phase if phase != 1 else value
-                if isinstance(number, complex):
-                    number = number.real
-                number = fractions.Fraction(number).limit_denominator(10**9)
-                if number.denominator != 1:
-                    break
-                whole[key] = int(number)
-            else:
-                all_element.clear()
-                all_element.update(whole)
-                integral = True
-        if not integral:
-            phase = None
-            for key in all_element:
-                all_element[key] = complex(all_element[key])
+        # The optimisation itself is language neutral (see jamp_optimiser); it
+        # is run one step at a time here rather than through
+        # optimise_jamp_matrix because the color basis symmetry has to be read
+        # off the matrix once the phase has been taken out of it.
+        phase = self.jamp_walk_integers(all_element)
         self.jamp_orbits = None
         # the color basis is read from the matrix element, which is not always
         # what is passed here: the split order version hands over one list of
@@ -3107,14 +3068,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                         col_amps if symmetry_source is None else symmetry_source,
                         all_element) if orbit and self.jamp_orbit else None
         new_mat, defs = self.optimise_jamp(all_element, symmetry=symmetry)
-        if phase is not None and phase != 1:
-            # the definitions hold ratios, which the phase cancels out of; only
-            # the coefficients on the JAMP lines carry it
-            for key in new_mat:
-                new_mat[key] = new_mat[key] * phase
+        self.jamp_apply_phase(new_mat, phase)
         if start_time:
             logger.info("Color-Flow passed to %s term in %ss. Introduce %i contraction", len(new_mat), int(time.time()-start_time), len(defs))
-        
+
         
         #misc.sprint("number of iteration", self.myjamp_count)
         def format(frac):
@@ -3247,172 +3204,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         return res_list, len(defs)
 
-    @staticmethod
-    def index_jamp_matrix(all_element, nb_col):
-        """Sorted lists of the positions of the non zero entries of the matrix,
-        by line and by column. An entry which is present but zero does not
-        count, and neither does a column outside the 0..nb_col range, so that
-        these indices list exactly the entries the plain scan would look at."""
-
-        lines = collections.defaultdict(list)
-        columns = collections.defaultdict(list)
-        for (i, j), value in all_element.items():
-            if value and j < nb_col:
-                lines[i].append(j)
-                columns[j].append(i)
-        for line in lines.values():
-            line.sort()
-        for column in columns.values():
-            column.sort()
-        return lines, columns
-
-    @staticmethod
-    def common_jamp_lines(columns, nb_line, j1, j2):
-        """Lines, in increasing order, where both columns j1 and j2 are non
-        zero. Both column lists are sorted, so this is a plain merge."""
-
-        left, right = columns.get(j1, []), columns.get(j2, [])
-        res = []
-        pos1 = pos2 = 0
-        while pos1 < len(left) and pos2 < len(right):
-            if left[pos1] == right[pos2]:
-                if left[pos1] < nb_line:
-                    res.append(left[pos1])
-                pos1 += 1
-                pos2 += 1
-            elif left[pos1] < right[pos2]:
-                pos1 += 1
-            else:
-                pos2 += 1
-        return res
-
-    def optimise_jamp(self, all_element, nb_line=0, nb_col=0, added=0,
-                      symmetry=None):
-        """ optimise problem of type Y = A X
-                A is a matrix (all_element)
-                X is the fortran name of the input.
-            The code iteratively add sub-expression jtemp[sub_add]
-            and recall itself (this is add to the X size)
-
-            With a symmetry (see get_jamp_symmetry) the sub-expressions are
-            introduced by whole orbits of that symmetry instead of one at a
-            time, so that the result can be written as one recipe per orbit.
-            The orbits are then left in self.jamp_orbits.
-        """
-        if symmetry:
-            return self.optimise_jamp_best(all_element, symmetry)
-
-        self.myjamp_count +=1
-
-        if not nb_line:
-            for i,j in all_element:
-                if i+1 > nb_line:
-                    nb_line = i+1
-                if j+1> nb_col:
-                    nb_col = j+1  
-            if nb_col > 600 and added==0:
-                all_element1, all_element2 = {}, {}
-                for (k1,k2) in all_element:
-                    if k2 >= nb_col//2:
-                        all_element2[(k1,1+k2-(nb_col//2))] = all_element[(k1,k2)]
-                    else:
-                        all_element1[(k1,k2)] = all_element[(k1,k2)]
-
-                all_element1, newdef1 = self.optimise_jamp(all_element1)
-                nb_added1 = len(newdef1)
-
-                all_element2, newdef2 = self.optimise_jamp(all_element2)
-
-                for (k1,k2) in all_element2:
-                    if k2 >= 0:
-                        all_element1[(k1,k2+(nb_col//2)-1)] = all_element2[(k1,k2)]
-                    if k2 < 0: 
-                        all_element1[(k1,k2-nb_added1)] = all_element2[(k1,k2)]
-                # new_def format: added,j1,j2,R, max_count
-                for k, j1,j2, R, c in newdef2:
-                    if j2 > 0:
-                        k2 = j2+nb_col//2 -1
-                    else:
-                        k2 = j2-nb_added1 
-                    if j1 > 0:
-                        k1 = j1+nb_col//2 -1
-                    else:
-                        k1 = j1-nb_added1
-                    newdef1.append((k+nb_added1, k1, k2, R, c))
-                if newdef1:
-                    all_element, new_def = self.optimise_jamp(all_element1, nb_line=0, nb_col=0, added=len(newdef1))
-                    newdef1 = newdef1 + new_def
-                return all_element, newdef1
-
-        # Index of the non zero entries, by line and by column. The matrix is
-        # very sparse (a color flow only gets a small share of the amplitudes)
-        # so walking the whole 0..nb_col range for every entry, as looking the
-        # columns up one by one in the matrix amounts to, spends nearly all of
-        # its time discovering zeros.
-        lines, columns = self.index_jamp_matrix(all_element, nb_col)
-
-        max_count = 0
-        all_index = []
-        # how many lines have the same ratio between two given columns, keyed
-        # by the two columns and the ratio at once rather than by nested
-        # dictionaries: this is the innermost loop of the whole optimisation
-        operation = collections.defaultdict(int)
-        for (i,j1), v1 in all_element.items():
-            line = lines.get(i)
-            if not line:
-                continue
-            for j2 in line[bisect.bisect_right(line, j1):]:
-                key = (j1, j2, all_element[(i,j2)]/v1)
-                operation[key] += 1
-                count = operation[key]
-                if count > max_count:
-                    max_count = count
-                    all_index = [key]
-                elif count == max_count:
-                    all_index.append(key)
-
-        if max_count <= 1:
-            return all_element, []
-
-        to_add = []
-        for index in all_index:
-            j1,j2,R = index
-            first = True
-            # only the lines where both columns are filled can contribute; the
-            # substitutions done here can empty some of them, so the values
-            # still have to be read back from the matrix
-            for i in self.common_jamp_lines(columns, nb_line, j1, j2):
-                v1 = all_element.get((i,j1), 0)
-                v2 = all_element.get((i,j2), 0)
-                if not v1 or not v2:
-                    continue
-                if v2/v1 == R:
-                    if first:
-                        first = False
-                        added +=1
-                        to_add.append((added,j1,j2,R, max_count))
-
-                    all_element[(i,-added)] = v1
-                    del all_element[(i,j1)] #= 0
-                    del all_element[(i,j2)] #= 0
-
-        logger.log(5,"Define %d new shortcut reused %d times", len(to_add), max_count)
-        new_element, new_def =  self.optimise_jamp(all_element, nb_line=nb_line, nb_col=nb_col, added=added)
-        for one_def in to_add:
-            new_def.insert(0, one_def)
-        return new_element, new_def
-
-
-    @staticmethod
-    def jamp_operation_count(new_mat, defs):
-        """Additions the result asks for: one per definition, plus what is left
-        in each line of the matrix."""
-
-        terms = collections.Counter()
-        for jamp, _var in new_mat:
-            terms[jamp] += 1
-        return len(defs) + sum(max(0, count - 1) for count in terms.values())
-
     def optimise_jamp_best(self, all_element, symmetry):
         """Taking whole orbits only pays once there is enough of them to share:
         on a small matrix it can end up asking for more additions than the plain
@@ -3515,30 +3306,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         if self.blas is True:
             return True
         return nfold >= self.blas_min_ncolor
-
-    @staticmethod
-    def jamp_global_phase(all_element):
-        """The power of i every coefficient carries, when they all carry the
-        same one. A pure gluon process picks up one factor of i per f^abc, the
-        same for every term, so the whole matrix is real or wholly imaginary;
-        a quark line mixes the two and there is nothing to take out."""
-
-        phase = None
-        for value in all_element.values():
-            if not value:
-                continue
-            number = complex(value)
-            if number.imag == 0:
-                here = 1
-            elif number.real == 0:
-                here = 1j
-            else:
-                return None
-            if phase is None:
-                phase = here
-            elif phase != here:
-                return None
-        return phase
 
     @staticmethod
     def get_blas_routine(prefix, nfold, ncomb):

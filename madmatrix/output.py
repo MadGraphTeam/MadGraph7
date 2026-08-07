@@ -198,9 +198,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         misc.sprint('  type(proc_number)=%s me=%s'%(type(proc_number) if proc_number is not None else None, proc_number)) # e.g. int
         misc.sprint("need to link", self.to_link_in_P)
         # Propagate the --mask toggle to the helas call writer that emits the
-        # guarded wavefunction/amplitude calls.
+        # guarded wavefunction/amplitude calls, and the output command line as
+        # a whole for the --jamp_optim toggle of the color-flow optimisation.
         if cpp_helas_call_writer is not None:
             cpp_helas_call_writer.use_flavor_mask = self.use_flavor_mask
+            cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
         out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
         return out
 
