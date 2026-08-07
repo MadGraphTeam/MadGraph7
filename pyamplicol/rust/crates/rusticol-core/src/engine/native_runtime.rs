@@ -221,7 +221,7 @@ impl OnTheFlyExecutionRuntime {
         )
     }
 
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    /// Private read-only production introspection of retained compact state.
     fn state_census(&self, process_id: &str) -> RusticolResult<Value> {
         let retained = self.lane.retained_state_census();
         let active_family_union_census = self.lane.prepared_census().map(|census| {
@@ -1681,12 +1681,11 @@ impl NativeRuntime {
         Ok(None)
     }
 
-    /// Return feature-only structural state for the loaded production OTF lane.
+    /// Return private read-only production introspection for the loaded OTF lane.
     ///
     /// This observes the same retained selector/family caches used by public
     /// evaluation. It does not construct selectors or open dense physics
     /// metadata. Non-OTF lanes return `None`.
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub fn on_the_fly_runtime_state_census_json(&self) -> RusticolResult<Option<String>> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane {

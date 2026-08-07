@@ -3992,6 +3992,50 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
+fn on_the_fly_runtime_state_census_is_observational() {
+    let retained_state = |runtime: &NativeRuntime| {
+        let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
+            panic!("test runtime changed execution lane");
+        };
+        (
+            lane.retained_family_count(),
+            lane.retained_selection_count(),
+            lane.semantic_executor_binding_count().unwrap(),
+        )
+    };
+    let census = |runtime: &NativeRuntime| {
+        runtime
+            .on_the_fly_runtime_state_census_json()
+            .unwrap()
+            .expect("on-the-fly runtime census is absent")
+    };
+
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let cold_state = retained_state(&runtime);
+    let cold_census = census(&runtime);
+    assert_eq!(census(&runtime), cold_census);
+    assert_eq!(retained_state(&runtime), cold_state);
+
+    let point_count = 2;
+    let momenta = vec![0.0; point_count * 2 * 4];
+    let first = runtime
+        .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
+        .unwrap();
+    let warm_state = retained_state(&runtime);
+    let warm_census = census(&runtime);
+    assert_eq!(census(&runtime), warm_census);
+    assert_eq!(retained_state(&runtime), warm_state);
+
+    let repeated = runtime
+        .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
+        .unwrap();
+    assert_eq!(repeated, first);
+    assert_eq!(census(&runtime), warm_census);
+    assert_eq!(retained_state(&runtime), warm_state);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
 fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
     let retained = |runtime: &NativeRuntime| {
         let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {

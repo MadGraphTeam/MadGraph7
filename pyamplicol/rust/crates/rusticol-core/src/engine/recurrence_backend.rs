@@ -118,14 +118,16 @@ pub(super) struct NativeOnTheFlyPreparedExecutorResolver {
     pool: NativeRecurrencePreparedExecutorPool,
 }
 
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
 impl NativeOnTheFlyPreparedExecutorResolver {
     pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
         u32::try_from(self.resolved.len()).map_err(|_| {
             RusticolError::integrity("on-the-fly semantic executor binding count exceeds u32")
         })
     }
+}
 
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+impl NativeOnTheFlyPreparedExecutorResolver {
     pub(super) fn distinct_prepared_executor_count(&self) -> RusticolResult<u32> {
         let direct_executor_ids = self
             .resolved

@@ -166,7 +166,6 @@ struct OnTheFlyLcFamilyLookupKeyV1 {
     >,
 }
 
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct OnTheFlyRetainedStateCensusV1 {
     pub(super) family_count: usize,
@@ -386,7 +385,7 @@ impl OnTheFlyNativeRuntime {
         self.coupling_policy_resolution
     }
 
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    /// Private read-only production introspection of the existing preparation count.
     pub(super) const fn process_preparation_count(&self) -> u64 {
         self.process_preparation_count
     }
@@ -692,17 +691,15 @@ impl OnTheFlyNativeRuntime {
         self.families.len()
     }
 
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) fn pending_family_count(&self) -> usize {
         usize::from(self.pending_family.is_some())
     }
 
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
         self.executor.resolver().semantic_executor_binding_count()
     }
 
-    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    /// Count retained production state without constructing or mutating it.
     pub(super) fn retained_state_census(&self) -> OnTheFlyRetainedStateCensusV1 {
         let mut census = OnTheFlyRetainedStateCensusV1::default();
         for family in &self.families {

@@ -498,7 +498,7 @@ impl Runtime {
             .map_err(python_error)
     }
 
-    #[cfg(feature = "on-the-fly-test-support")]
+    /// Private read-only production introspection of retained compact OTF state.
     fn _on_the_fly_runtime_state_census_json(&self) -> PyResult<Option<String>> {
         self.runtime
             .on_the_fly_runtime_state_census_json()
@@ -2109,9 +2109,9 @@ mod tests {
         SelectorCapabilities,
     };
 
-    #[cfg(feature = "on-the-fly-test-support")]
+    #[cfg(not(feature = "on-the-fly-test-support"))]
     #[test]
-    fn feature_build_exposes_loaded_on_the_fly_state_census_binding() {
+    fn default_build_exposes_loaded_on_the_fly_state_census_binding() {
         let binding: fn(&Runtime) -> PyResult<Option<String>> =
             Runtime::_on_the_fly_runtime_state_census_json;
         let _ = binding;
