@@ -1999,7 +1999,7 @@ def _run_worker(args: argparse.Namespace) -> dict[str, object]:
         selector,
         points,
         args.workload,
-        ratio_eligible=reference is not None,
+        ratio_eligible=reference is not None or recurrence is not None,
     )
     before, after, lifecycle = _lifecycle(
         candidate,

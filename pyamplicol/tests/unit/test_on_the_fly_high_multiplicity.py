@@ -1112,6 +1112,8 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
     source, identity = _patch_selected_worker_basics(
         monkeypatch, tmp_path, case, points, candidate
     )
+    cold_warmup = mock.Mock(return_value={"seconds": 0.5})
+    monkeypatch.setattr(study, "_requested_workload_cold_warmup", cold_warmup)
     recurrence = SimpleNamespace(execution_mode="recurrence")
     monkeypatch.setattr(
         study.Runtime,
@@ -1205,6 +1207,7 @@ def test_id14_uses_recurrence_only_and_derives_its_selector(
     derive.assert_called_once_with(recurrence, points)
     validate.assert_called_once_with(recurrence, contract, points)
     compact.assert_called_once_with(candidate, case, selector, require_ordinal_one=True)
+    assert cold_warmup.call_args.kwargs["ratio_eligible"] is True
     evaluate.assert_called_once_with(
         recurrence, points, "selected", selector, resolved=True
     )
