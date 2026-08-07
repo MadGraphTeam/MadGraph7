@@ -1054,9 +1054,9 @@ def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
     monkeypatch.setattr(study, "_generate_recurrence", forbidden_recurrence)
     compact = mock.Mock(
         return_value={
-            "selected_color_ids": [selector.flow_id, selector.flow_id],
-            "ordinal_one_required": True,
-            "ordinal_one_matches_authority": True,
+            "selected_color_ids": [selector.flow_id],
+            "ordinal_one_required": False,
+            "ordinal_one_matches_authority": None,
         }
     )
     monkeypatch.setattr(study, "_cross_check_compact_selector", compact)
@@ -1093,7 +1093,9 @@ def test_amplicol_cells_forbid_recurrence_and_compiled_and_replay_eight_points(
     assert result["correctness"]["claim_scope"]["external_amplicol_point_count"] == 8
     assert result["forbidden_paths"]["compiled_generation"] == "not-called"
     assert result["forbidden_paths"]["recurrence_generation"] == "not-called"
-    compact.assert_called_once_with(candidate, case, selector, require_ordinal_one=True)
+    compact.assert_called_once_with(
+        candidate, case, selector, require_ordinal_one=False
+    )
     replay.assert_called_once_with(reference, case, points)
     assert lifecycle.call_args.args[-1] is True
     forbidden_recurrence.assert_not_called()
