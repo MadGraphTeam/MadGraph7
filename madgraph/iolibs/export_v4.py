@@ -234,6 +234,7 @@ class ProcessExporterFortran(VirtualExporter):
     # where the template sums over NCOLORFOLD. get_color_data_lines is shared
     # by every fortran exporter, so this stays off unless the template agrees.
     jamp_fold = False
+    jamp_integer_walk = True
     # write the JAMP definitions as one recipe per orbit of the permutations
     # leaving the color basis invariant, instead of one line per definition
     jamp_orbit = False
@@ -2780,8 +2781,31 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         res_list = []
 
         self.myjamp_count = 0
-        for key in all_element:
-            all_element[key] = complex(all_element[key])
+        # With one power of i shared by every coefficient, dividing it out
+        # leaves whole numbers to walk over -- they compare and hash exactly,
+        # and nothing has to be widened to complex. The phase goes back onto
+        # the JAMP coefficients afterwards, so the lines written are the same.
+        phase = self.jamp_global_phase(all_element) \
+                                        if self.jamp_integer_walk else None
+        integral = False
+        if phase is not None:
+            whole = {}
+            for key, value in all_element.items():
+                number = value / phase if phase != 1 else value
+                if isinstance(number, complex):
+                    number = number.real
+                number = fractions.Fraction(number).limit_denominator(10**9)
+                if number.denominator != 1:
+                    break
+                whole[key] = int(number)
+            else:
+                all_element.clear()
+                all_element.update(whole)
+                integral = True
+        if not integral:
+            phase = None
+            for key in all_element:
+                all_element[key] = complex(all_element[key])
         self.jamp_orbits = None
         # the color basis is read from the matrix element, which is not always
         # what is passed here: the split order version hands over one list of
@@ -2790,6 +2814,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                         col_amps if symmetry_source is None else symmetry_source,
                         all_element) if orbit and self.jamp_orbit else None
         new_mat, defs = self.optimise_jamp(all_element, symmetry=symmetry)
+        if phase is not None and phase != 1:
+            # the definitions hold ratios, which the phase cancels out of; only
+            # the coefficients on the JAMP lines carry it
+            for key in new_mat:
+                new_mat[key] = new_mat[key] * phase
         if start_time:
             logger.info("Color-Flow passed to %s term in %ss. Introduce %i contraction", len(new_mat), int(time.time()-start_time), len(defs))
         
@@ -3204,6 +3233,30 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
     # rebuilt at run time, which only the sign +1 case can do (see
     # get_jamp_folding).
     color_fold_max_written = 300000
+
+    @staticmethod
+    def jamp_global_phase(all_element):
+        """The power of i every coefficient carries, when they all carry the
+        same one. A pure gluon process picks up one factor of i per f^abc, the
+        same for every term, so the whole matrix is real or wholly imaginary;
+        a quark line mixes the two and there is nothing to take out."""
+
+        phase = None
+        for value in all_element.values():
+            if not value:
+                continue
+            number = complex(value)
+            if number.imag == 0:
+                here = 1
+            elif number.real == 0:
+                here = 1j
+            else:
+                return None
+            if phase is None:
+                phase = here
+            elif phase != here:
+                return None
+        return phase
 
     def get_jamp_folding(self, matrix_element):
         """Whether to sum |M|^2 over one line per reversal pair, and the
