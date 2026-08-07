@@ -161,7 +161,7 @@ C     For this reason, we simply remove the filterin when there is only three ex
       ANS = 0D0
 %(blas_branch)s
           DO IHEL=1,NCOMB
-             IF ((USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL)%(blas_guard)s) THEN
+             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.IHEL%(blas_guard)s) THEN
                 IF (GOODHEL(IHEL,FLAV_IDX) .OR. NTRY(FLAV_IDX) .LT. 20.OR.USERHEL.NE.-1) THEN
                     IF(NTRY(FLAV_IDX).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE

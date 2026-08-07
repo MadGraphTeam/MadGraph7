@@ -6109,7 +6109,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         reps = ([line + 1 for line in folding['representatives']] if folding
                 else list(range(1, ncolor + 1)))
         if self.blas_wanted(nfold):
-            replace_dict['blas_guard'] = " .AND. .NOT.BLASDONE"
+            replace_dict['blas_guard_open'] = "("
+            replace_dict['blas_guard'] = ") .AND. .NOT.BLASDONE"
             replace_dict['blas_decl'] = "\n".join([
                 "      LOGICAL BLASDONE",
                 "      INTEGER NBHEL, IBH",
@@ -6150,6 +6151,9 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             replace_dict['blas_routine'] = self.get_blas_routine(
                                                     prefix, nfold, ncomb)
         else:
+            # nothing added when BLAS is off, so what is written is exactly
+            # what was written before any of this existed
+            replace_dict['blas_guard_open'] = ""
             replace_dict['blas_guard'] = ""
             replace_dict['blas_decl'] = ""
             replace_dict['blas_branch'] = ""
