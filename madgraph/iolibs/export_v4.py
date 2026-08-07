@@ -5827,12 +5827,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                                     var='ICF')) if folding else ''
         replace_dict['color_fold_gather'] = (
             "      DO ICF = 1, NCOLORFOLD\n"
-            "        JFR(ICF) = DBLE(JAMP(COLREP(ICF)))\n"
-            "        JFI(ICF) = DIMAG(JAMP(COLREP(ICF)))\n"
+            "        JFOLD(ICF) = JAMP(COLREP(ICF))\n"
             "      ENDDO" if folding else
             "      DO ICF = 1, NCOLOR\n"
-            "        JFR(ICF) = DBLE(JAMP(ICF))\n"
-            "        JFI(ICF) = DIMAG(JAMP(ICF))\n"
+            "        JFOLD(ICF) = JAMP(ICF)\n"
             "      ENDDO")
         if not folding:
             replace_dict['color_fold_decl'] = "      INTEGER ICF"

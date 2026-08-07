@@ -374,16 +374,14 @@ C
 C LOCAL VARIABLES
 C
       INTEGER I,J,NJ,NB
-      REAL*8 ZR,ZI,ZR1,ZR2,ZR3,ZR4,ZI1,ZI2,ZI3,ZI4
+      COMPLEX*16 ZTEMP,Z1,Z2,Z3,Z4
 
       INTEGER CF_INDEX
       INTEGER %(proc_prefix)sCF(NCOLORFOLD*(NCOLORFOLD+1)/2)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
       COMPLEX*16 JAMP(NCOLOR)
-C     The color matrix is real and symmetric and MATRIX is real, so the
-C     sum splits into two real quadratic forms, one on each part of JAMP.
-      REAL*8 JFR(NCOLORFOLD), JFI(NCOLORFOLD)
+      COMPLEX*16 JFOLD(NCOLORFOLD)
 %(color_fold_decl)s
 %(color_fold_index)s
 %(jamp_tmp_decl)s
@@ -407,34 +405,24 @@ C     adder, and that latency is what the loop spends its
 C     time on. No compiler does this by itself, since it
 C     changes the order the terms are summed in.
       DO I = 1, NCOLORFOLD
-        ZR1 = 0.D0
-        ZR2 = 0.D0
-        ZR3 = 0.D0
-        ZR4 = 0.D0
-        ZI1 = 0.D0
-        ZI2 = 0.D0
-        ZI3 = 0.D0
-        ZI4 = 0.D0
+        Z1 = (0.D0,0.D0)
+        Z2 = (0.D0,0.D0)
+        Z3 = (0.D0,0.D0)
+        Z4 = (0.D0,0.D0)
         NJ = NCOLORFOLD - I + 1
         NB = (NJ/4)*4
         DO J = 0, NB-4, 4
-          ZR1 = ZR1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JFR(I+J)
-          ZR2 = ZR2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JFR(I+J+1)
-          ZR3 = ZR3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JFR(I+J+2)
-          ZR4 = ZR4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JFR(I+J+3)
-          ZI1 = ZI1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JFI(I+J)
-          ZI2 = ZI2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JFI(I+J+1)
-          ZI3 = ZI3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JFI(I+J+2)
-          ZI4 = ZI4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JFI(I+J+3)
+          Z1 = Z1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JFOLD(I+J)
+          Z2 = Z2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JFOLD(I+J+1)
+          Z3 = Z3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JFOLD(I+J+2)
+          Z4 = Z4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JFOLD(I+J+3)
         ENDDO
-        ZR = (ZR1+ZR2)+(ZR3+ZR4)
-        ZI = (ZI1+ZI2)+(ZI3+ZI4)
+        ZTEMP = (Z1+Z2)+(Z3+Z4)
         DO J = NB, NJ-1
-          ZR = ZR + %(proc_prefix)sCF(CF_INDEX+J+1)*JFR(I+J)
-          ZI = ZI + %(proc_prefix)sCF(CF_INDEX+J+1)*JFI(I+J)
+          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX+J+1)*JFOLD(I+J)
         ENDDO
         CF_INDEX = CF_INDEX + NJ
-        MATRIX = MATRIX+(ZR*JFR(I)+ZI*JFI(I))/%(proc_prefix)sDENOM
+        MATRIX = MATRIX+ZTEMP*DCONJG(JFOLD(I))/%(proc_prefix)sDENOM
       ENDDO
       END
 
