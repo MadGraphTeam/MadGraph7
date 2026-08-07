@@ -1135,23 +1135,59 @@ fn include_transition(
 #[derive(Debug)]
 struct QuerySupportSizeIndex {
     support_size_by_current: Vec<usize>,
+    composite_parent_eligible_by_current: Vec<bool>,
     current_ids_by_size: Vec<Vec<usize>>,
 }
 
 impl QuerySupportSizeIndex {
-    fn new(currents: &[PendingCurrent], source_count: usize) -> RusticolResult<Self> {
+    fn new(
+        currents: &[PendingCurrent],
+        source_count: usize,
+        closure_anchor_slot: Option<u32>,
+    ) -> RusticolResult<Self> {
+        if closure_anchor_slot.is_some_and(|slot| slot as usize >= source_count) {
+            return Err(invalid(
+                "query closure anchor is outside the forward source domain",
+            ));
+        }
         let mut index = Self {
             support_size_by_current: Vec::with_capacity(currents.len()),
+            composite_parent_eligible_by_current: Vec::with_capacity(currents.len()),
             current_ids_by_size: (0..source_count).map(|_| Vec::new()).collect(),
         };
+        let mut anchor_source_count = 0usize;
         for (current_id, current) in currents.iter().enumerate() {
-            index.append(current_id, current.key.support_source_slots().len())?;
+            let support = current.key.support_source_slots();
+            let contains_anchor =
+                closure_anchor_slot.is_some_and(|anchor| support.binary_search(&anchor).is_ok());
+            if contains_anchor {
+                let anchor = closure_anchor_slot.expect("tested present closure anchor");
+                if current.key.node_kind() != RecurrenceNodeKind::Source || support != [anchor] {
+                    return Err(integrity(
+                        "initial forward domain contains a non-singleton closure-anchor current",
+                    ));
+                }
+                anchor_source_count += 1;
+            }
+            index.append(current_id, support.len(), !contains_anchor)?;
+        }
+        if closure_anchor_slot.is_some() && anchor_source_count != 1 {
+            return Err(integrity(
+                "initial forward domain must contain exactly one singleton closure-anchor source",
+            ));
         }
         Ok(index)
     }
 
-    fn append(&mut self, current_id: usize, support_size: usize) -> RusticolResult<()> {
-        if current_id != self.support_size_by_current.len() {
+    fn append(
+        &mut self,
+        current_id: usize,
+        support_size: usize,
+        composite_parent_eligible: bool,
+    ) -> RusticolResult<()> {
+        if current_id != self.support_size_by_current.len()
+            || current_id != self.composite_parent_eligible_by_current.len()
+        {
             return Err(integrity(
                 "query-local support-size index lost current-ID order",
             ));
@@ -1162,7 +1198,11 @@ impl QuerySupportSizeIndex {
             .filter(|_| support_size > 0)
             .ok_or_else(|| integrity("query-local current has invalid forward support size"))?;
         self.support_size_by_current.push(support_size);
-        bucket.push(current_id);
+        self.composite_parent_eligible_by_current
+            .push(composite_parent_eligible);
+        if composite_parent_eligible {
+            bucket.push(current_id);
+        }
         Ok(())
     }
 
@@ -1171,8 +1211,10 @@ impl QuerySupportSizeIndex {
         currents: &[PendingCurrent],
         stage_current_start: usize,
         target_size: usize,
+        closure_anchor_slot: Option<u32>,
     ) -> RusticolResult<()> {
         if stage_current_start != self.support_size_by_current.len()
+            || stage_current_start != self.composite_parent_eligible_by_current.len()
             || stage_current_start > currents.len()
         {
             return Err(integrity(
@@ -1180,13 +1222,19 @@ impl QuerySupportSizeIndex {
             ));
         }
         for (current_id, current) in currents.iter().enumerate().skip(stage_current_start) {
-            let support_size = current.key.support_source_slots().len();
+            let support = current.key.support_source_slots();
+            let support_size = support.len();
             if support_size != target_size {
                 return Err(integrity(
                     "query-local sweep produced a current in the wrong support-size stage",
                 ));
             }
-            self.append(current_id, support_size)?;
+            if closure_anchor_slot.is_some_and(|anchor| support.binary_search(&anchor).is_ok()) {
+                return Err(integrity(
+                    "query-local sweep produced a composite containing the closure anchor",
+                ));
+            }
+            self.append(current_id, support_size, true)?;
         }
         Ok(())
     }
@@ -1197,12 +1245,17 @@ impl QuerySupportSizeIndex {
         stage_current_end: usize,
         mut visit: impl FnMut([usize; 2]) -> RusticolResult<()>,
     ) -> RusticolResult<()> {
-        if stage_current_end != self.support_size_by_current.len() {
+        if stage_current_end != self.support_size_by_current.len()
+            || stage_current_end != self.composite_parent_eligible_by_current.len()
+        {
             return Err(integrity(
                 "query-local support-size schedule differs from its current prefix",
             ));
         }
         for left_id in 0..stage_current_end {
+            if !self.composite_parent_eligible_by_current[left_id] {
+                continue;
+            }
             let left_size = self.support_size_by_current[left_id];
             if left_size >= target_size {
                 continue;
@@ -1225,6 +1278,32 @@ pub(super) fn build_forward_currents(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
     seed: &OnTheFlyProcessSeedV1,
+    closure_anchor_slot: u32,
+    coupling_limits: &[Option<u32>],
+    propagators: &BTreeMap<u32, Option<u32>>,
+    colors: &mut DynamicLCColorStateInterner,
+    currents: &mut Vec<PendingCurrent>,
+    current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
+) -> RusticolResult<()> {
+    build_forward_currents_with_anchor_exclusion(
+        templates,
+        transitions,
+        seed,
+        Some(closure_anchor_slot),
+        coupling_limits,
+        propagators,
+        colors,
+        currents,
+        current_ids,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_forward_currents_with_anchor_exclusion(
+    templates: &ValidatedRecurrenceTemplateInput,
+    transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    seed: &OnTheFlyProcessSeedV1,
+    closure_anchor_slot: Option<u32>,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
     colors: &mut DynamicLCColorStateInterner,
@@ -1233,7 +1312,13 @@ pub(super) fn build_forward_currents(
 ) -> RusticolResult<()> {
     let source_count = seed.source_anchors.len();
     let contact_orbits = PreparedContactOrbitIndex::new(transitions)?;
-    let mut support_size_index = QuerySupportSizeIndex::new(currents, source_count)?;
+    // The selected closure always combines its singleton anchor source with
+    // the exact complementary support. Supports only grow by disjoint union,
+    // so a composite containing the anchor can never feed that complement.
+    // Keep the source current itself for closure, but exclude it from the
+    // ordered composite-parent schedule before any transition is considered.
+    let mut support_size_index =
+        QuerySupportSizeIndex::new(currents, source_count, closure_anchor_slot)?;
     for target_size in 2..source_count {
         let stage_current_start = currents.len();
         support_size_index.for_each_parent_pair(
@@ -1289,7 +1374,12 @@ pub(super) fn build_forward_currents(
         {
             plan.commit(currents);
         }
-        support_size_index.append_stage(currents, stage_current_start, target_size)?;
+        support_size_index.append_stage(
+            currents,
+            stage_current_start,
+            target_size,
+            closure_anchor_slot,
+        )?;
     }
     Ok(())
 }
@@ -1659,6 +1749,23 @@ mod tests {
         pairs
     }
 
+    fn legacy_anchor_filtered_pairs(
+        supports: &[Vec<u32>],
+        target_size: usize,
+        closure_anchor_slot: u32,
+    ) -> Vec<[usize; 2]> {
+        legacy_support_size_pairs(
+            &supports.iter().map(Vec::len).collect::<Vec<_>>(),
+            target_size,
+        )
+        .into_iter()
+        .filter(|[left, right]| {
+            !supports[*left].contains(&closure_anchor_slot)
+                && !supports[*right].contains(&closure_anchor_slot)
+        })
+        .collect()
+    }
+
     #[test]
     fn query_support_size_index_preserves_legacy_pair_order() {
         let mut random_state = 0x6a09_e667_f3bc_c909_u64;
@@ -1677,10 +1784,11 @@ mod tests {
 
                 let mut index = QuerySupportSizeIndex {
                     support_size_by_current: Vec::new(),
+                    composite_parent_eligible_by_current: Vec::new(),
                     current_ids_by_size: (0..source_count).map(|_| Vec::new()).collect(),
                 };
                 for (current_id, support_size) in support_sizes.iter().copied().enumerate() {
-                    index.append(current_id, support_size).unwrap();
+                    index.append(current_id, support_size, true).unwrap();
                 }
 
                 for target_size in 2..source_count {
@@ -1702,14 +1810,102 @@ mod tests {
     }
 
     #[test]
+    fn all_flow_queries_use_distinct_anchor_filters_without_reordering_pairs() {
+        // An all-flow family constructs each decoded query independently.
+        // Rebuild the same support domain for every possible query anchor to
+        // prove that no anchor eligibility leaks from one query to the next.
+        for source_count in 2_u32..=8 {
+            let mut supports = (1_u32..(1_u32 << source_count))
+                .filter(|mask| mask.count_ones() < source_count)
+                .map(|mask| {
+                    (0..source_count)
+                        .filter(|slot| mask & (1 << slot) != 0)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            supports.sort_by_key(|support| (support.len(), support.clone()));
+
+            for closure_anchor_slot in 0..source_count {
+                let mut index = QuerySupportSizeIndex {
+                    support_size_by_current: Vec::new(),
+                    composite_parent_eligible_by_current: Vec::new(),
+                    current_ids_by_size: (0..source_count as usize).map(|_| Vec::new()).collect(),
+                };
+                for (current_id, support) in supports.iter().enumerate() {
+                    index
+                        .append(
+                            current_id,
+                            support.len(),
+                            !support.contains(&closure_anchor_slot),
+                        )
+                        .unwrap();
+                }
+
+                for target_size in 2..source_count as usize {
+                    let mut filtered_pairs = Vec::new();
+                    index
+                        .for_each_parent_pair(target_size, supports.len(), |pair| {
+                            filtered_pairs.push(pair);
+                            Ok(())
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        filtered_pairs,
+                        legacy_anchor_filtered_pairs(&supports, target_size, closure_anchor_slot,),
+                        "source_count={source_count}, closure_anchor_slot={closure_anchor_slot}, target_size={target_size}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn two_source_anchor_is_retained_but_cannot_enter_composite_schedule() {
+        let currents = vec![
+            contact_current(RecurrenceNodeKind::Source, 0, 0, &[0]),
+            contact_current(RecurrenceNodeKind::Source, 0, 0, &[1]),
+        ];
+        let index = QuerySupportSizeIndex::new(&currents, 2, Some(1)).unwrap();
+        assert_eq!(index.support_size_by_current, [1, 1]);
+        assert_eq!(index.composite_parent_eligible_by_current, [true, false]);
+        let mut pairs = Vec::new();
+        index
+            .for_each_parent_pair(2, currents.len(), |pair| {
+                pairs.push(pair);
+                Ok(())
+            })
+            .unwrap();
+        assert!(pairs.is_empty());
+
+        let error = QuerySupportSizeIndex::new(&currents, 2, Some(2)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("outside the forward source domain")
+        );
+
+        let missing_anchor = vec![contact_current(RecurrenceNodeKind::Source, 0, 0, &[0])];
+        let error = QuerySupportSizeIndex::new(&missing_anchor, 2, Some(1)).unwrap_err();
+        assert!(error.to_string().contains("exactly one singleton"));
+
+        let malformed_anchor = vec![
+            contact_current(RecurrenceNodeKind::Source, 0, 0, &[0]),
+            contact_current(RecurrenceNodeKind::Current, 0, 0, &[0, 1]),
+        ];
+        let error = QuerySupportSizeIndex::new(&malformed_anchor, 2, Some(1)).unwrap_err();
+        assert!(error.to_string().contains("non-singleton closure-anchor"));
+    }
+
+    #[test]
     fn query_support_size_index_enforces_stage_prefix() {
         let mut index = QuerySupportSizeIndex {
             support_size_by_current: Vec::new(),
+            composite_parent_eligible_by_current: Vec::new(),
             current_ids_by_size: (0..4).map(|_| Vec::new()).collect(),
         };
-        index.append(0, 1).unwrap();
-        index.append(1, 1).unwrap();
-        index.append(2, 1).unwrap();
+        index.append(0, 1, true).unwrap();
+        index.append(1, 1, true).unwrap();
+        index.append(2, 1, true).unwrap();
 
         let error = index
             .for_each_parent_pair(2, 2, |_| Ok(()))
@@ -1862,10 +2058,11 @@ mod tests {
         .unwrap()
     }
 
-    fn production_contact_barrier_case(
+    fn production_contact_barrier_currents(
         reverse_transition_order: bool,
         include_ordinary_scalar_transition: bool,
-    ) -> (Vec<(Vec<u32>, u32, Vec<u32>)>, (usize, usize), bool) {
+        closure_anchor_slot: Option<u32>,
+    ) -> Vec<PendingCurrent> {
         let mut template_input = contact_orbit_test_template(ContactOrbitTestBinding::One);
         let mut intermediate_state = template_input.current_states[0];
         intermediate_state.id = 1;
@@ -2027,10 +2224,11 @@ mod tests {
             .map(|(id, current)| (current.key.clone(), u32::try_from(id).unwrap()))
             .collect::<BTreeMap<_, _>>();
 
-        build_forward_currents(
+        build_forward_currents_with_anchor_exclusion(
             &templates,
             &transitions,
             &seed,
+            closure_anchor_slot,
             seed.explicit_coupling_limits(),
             &propagators,
             &mut colors,
@@ -2038,6 +2236,19 @@ mod tests {
             &mut current_ids,
         )
         .unwrap();
+
+        currents
+    }
+
+    fn production_contact_barrier_case(
+        reverse_transition_order: bool,
+        include_ordinary_scalar_transition: bool,
+    ) -> (Vec<(Vec<u32>, u32, Vec<u32>)>, (usize, usize), bool) {
+        let currents = production_contact_barrier_currents(
+            reverse_transition_order,
+            include_ordinary_scalar_transition,
+            None,
+        );
 
         assert!(
             currents[4..].iter().all(
@@ -2097,6 +2308,44 @@ mod tests {
             pending_contact_counts(&currents),
             retained_partial_is_consumed,
         )
+    }
+
+    type OrderedExactForwardSignature = Vec<(
+        Vec<u32>,
+        RecurrenceNodeKind,
+        u32,
+        Vec<(u32, [Vec<u32>; 2], ExactComplexRational)>,
+    )>;
+
+    fn ordered_exact_forward_signature(
+        currents: &[PendingCurrent],
+    ) -> OrderedExactForwardSignature {
+        currents
+            .iter()
+            .map(|current| {
+                (
+                    current.key.support_source_slots().to_vec(),
+                    current.key.node_kind(),
+                    current.stage,
+                    current
+                        .contributions
+                        .iter()
+                        .map(|(pending, factor)| {
+                            (
+                                pending.key.transition_template_id(),
+                                pending.parent_current_ids.map(|parent_id| {
+                                    currents[parent_id as usize]
+                                        .key
+                                        .support_source_slots()
+                                        .to_vec()
+                                }),
+                                *factor,
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
     }
 
     fn commit_contact_plan(
@@ -2258,6 +2507,147 @@ mod tests {
         }));
         assert_eq!(counts, (14, 18));
         assert!(retained_partial_is_consumed);
+    }
+
+    #[test]
+    fn anchor_exclusion_preserves_order_exact_factors_and_contact_owners() {
+        let baseline = production_contact_barrier_currents(false, false, None);
+        let baseline_signature = ordered_exact_forward_signature(&baseline);
+
+        for closure_anchor_slot in 0_u32..4 {
+            let pruned =
+                production_contact_barrier_currents(false, false, Some(closure_anchor_slot));
+            assert_eq!(
+                pruned
+                    .iter()
+                    .filter(|current| {
+                        current.key.node_kind() == RecurrenceNodeKind::Source
+                            && current.key.support_source_slots() == [closure_anchor_slot]
+                    })
+                    .count(),
+                1,
+                "the singleton closure anchor must remain materialized",
+            );
+            assert!(pruned.iter().all(|current| {
+                current.key.node_kind() == RecurrenceNodeKind::Source
+                    || !current
+                        .key
+                        .support_source_slots()
+                        .contains(&closure_anchor_slot)
+            }));
+
+            let expected = baseline_signature
+                .iter()
+                .filter(|(support, node_kind, _, _)| {
+                    *node_kind == RecurrenceNodeKind::Source
+                        || !support.contains(&closure_anchor_slot)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(
+                ordered_exact_forward_signature(&pruned),
+                expected,
+                "anchor filtering must preserve surviving current order, exact factors, ordered parent supports, and contact-orbit owners",
+            );
+
+            let anchor_id = pruned
+                .iter()
+                .position(|current| {
+                    current.key.node_kind() == RecurrenceNodeKind::Source
+                        && current.key.support_source_slots() == [closure_anchor_slot]
+                })
+                .unwrap() as u32;
+            let complement = (0_u32..4)
+                .filter(|slot| *slot != closure_anchor_slot)
+                .collect::<Vec<_>>();
+            let complement_id = pruned
+                .iter()
+                .position(|current| current.key.support_source_slots() == complement)
+                .unwrap() as u32;
+            let closure = PendingClosure {
+                key: PendingClosureKey {
+                    closure_template_id: 0,
+                    quantum_flow_template_id: None,
+                    parent_current_ids: [anchor_id, complement_id],
+                    color_witness_term_id: LCColorWitnessTermId::new(0, 0),
+                },
+                factor: ExactComplexRational::ONE,
+                component_coefficients: vec![ExactComplexRational::ONE].into_boxed_slice(),
+                pairing_lineages: vec![PendingPairingLineage {
+                    completed_pairs: Vec::new(),
+                    unmatched_endpoint: None,
+                }],
+            };
+            let live = live_current_ids(&pruned, &[closure]).unwrap();
+            assert!(live.contains(&anchor_id));
+            assert!(live.iter().all(|current_id| {
+                let current = &pruned[*current_id as usize];
+                current.key.node_kind() == RecurrenceNodeKind::Source
+                    || !current
+                        .key
+                        .support_source_slots()
+                        .contains(&closure_anchor_slot)
+            }));
+        }
+    }
+
+    #[test]
+    fn anchor_exclusion_preserves_structural_zero_when_no_complement_can_be_built() {
+        let templates = contact_orbit_test_template(ContactOrbitTestBinding::None)
+            .validate()
+            .unwrap();
+        let propagators = propagator_by_state(&templates).unwrap();
+        let seed = scalar_contact_seed(3);
+        let query = DecodedLcQueryV1::new(
+            &seed,
+            vec![0, 1, 2],
+            &[0, 0, 0],
+            OnTheFlyLcSelectorV1::Singlet,
+        )
+        .unwrap();
+        let build = |closure_anchor_slot| {
+            let mut colors = DynamicLCColorStateInterner::default();
+            let mut currents = (0_u32..3)
+                .map(|slot| {
+                    contact_current_with_source_template(
+                        RecurrenceNodeKind::Source,
+                        0,
+                        0,
+                        &[slot],
+                        0,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let mut current_ids = currents
+                .iter()
+                .enumerate()
+                .map(|(id, current)| (current.key.clone(), id as u32))
+                .collect::<BTreeMap<_, _>>();
+            build_forward_currents_with_anchor_exclusion(
+                &templates,
+                &BTreeMap::new(),
+                &seed,
+                closure_anchor_slot,
+                seed.explicit_coupling_limits(),
+                &propagators,
+                &mut colors,
+                &mut currents,
+                &mut current_ids,
+            )
+            .unwrap();
+            assert!(
+                build_selected_closures(&BTreeMap::new(), &seed, &query, &colors, &currents,)
+                    .unwrap()
+                    .is_none()
+            );
+            currents
+        };
+        let baseline = build(None);
+        let pruned = build(Some(query.closure_anchor_slot));
+        assert_eq!(
+            ordered_exact_forward_signature(&pruned),
+            ordered_exact_forward_signature(&baseline),
+        );
     }
 
     #[test]

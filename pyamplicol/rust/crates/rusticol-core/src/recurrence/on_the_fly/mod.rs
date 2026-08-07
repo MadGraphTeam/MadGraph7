@@ -480,6 +480,7 @@ fn build_selected_lc_trace_impl(
         templates,
         &grammar.transitions,
         seed,
+        query.closure_anchor_slot,
         coupling_limits,
         &grammar.propagators,
         &mut colors,
