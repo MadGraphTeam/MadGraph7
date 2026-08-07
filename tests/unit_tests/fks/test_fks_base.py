@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(root_path,'..','..'))
 
 import tests.unit_tests as unittest
 import madgraph.various.misc as misc
+import madgraph
 import madgraph.fks.fks_base as fks_base
 import madgraph.fks.fks_common as fks_common
 import madgraph.core.base_objects as MG
@@ -34,6 +35,15 @@ import copy
 import array
 class TestFKSProcess(unittest.TestCase):
     """a class to test FKS Processes"""
+
+    def setUp(self):
+        # these build the fks amplitudes by hand, so they have to turn the
+        # four gluon merging off themselves, as FKSMultiProcess does
+        self.merge_quartic = madgraph.merge_quartic_vertices
+        madgraph.merge_quartic_vertices = False
+
+    def tearDown(self):
+        madgraph.merge_quartic_vertices = self.merge_quartic
 
     # the model, import the SM but remove 2nd and 3rd gen quarks
     remove_list = [3,4,5,6,-3,-4,-5,-6]

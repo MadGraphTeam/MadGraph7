@@ -21,6 +21,8 @@ import collections
 import copy
 import fractions
 
+import madgraph
+import madgraph.various.misc as misc
 import madgraph.core.base_objects as base_objects
 import madgraph.core.diagram_generation as diagram_generation
 
@@ -256,7 +258,11 @@ class ColorAmpTest(unittest.TestCase):
 
         myamplitude.set('process', myprocess)
 
-        myamplitude.generate_diagrams()
+        # What is checked below is colorize, against diagrams picked by their
+        # position, so it wants the plain generation order -- the four gluon
+        # merging reorders them
+        with misc.TMP_variable(madgraph, 'merge_quartic_vertices', False):
+            myamplitude.generate_diagrams()
 
         my_col_basis = color_amp.ColorBasis()
 
