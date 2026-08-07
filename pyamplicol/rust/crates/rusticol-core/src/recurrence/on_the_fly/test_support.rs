@@ -45,8 +45,8 @@ pub struct OnTheFlyTestSupportReportV1 {
     pub established_negative_contribution_factor_count: u32,
     pub source_domain_equal: bool,
     pub pairing_oracle_equal: bool,
-    pub pairing_fermion_parity: i32,
-    pub established_pairing_fermion_parity: i32,
+    pub pairing_fermion_parities: Vec<i32>,
+    pub established_pairing_fermion_parities: Vec<i32>,
     pub workspace_capacity_independent: bool,
     pub compact_transition_candidates: Vec<ConstructionTransitionDiagnosticRowV1>,
     pub established_transition_candidates: Vec<ConstructionTransitionDiagnosticRowV1>,
@@ -907,47 +907,74 @@ fn is_negative_one(value: ExactComplexRational) -> RusticolResult<bool> {
     Ok(value == ExactComplexRational::ONE.checked_neg()?)
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct PairingOracleRow {
+    endpoint_pairs: Vec<[u32; 2]>,
+    source_slot_permutation: Vec<u32>,
+    source_lineage: Vec<u32>,
+    fermion_parity: i32,
+}
+
 fn pairing_oracle_equal(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
-    owner: &ResolvedPairingOwnerV1,
-    rule: Option<crate::recurrence::process::FermionPairingRuleRow>,
-) -> RusticolResult<(bool, i32)> {
-    let Some(rule) = rule else {
-        let identity = (0..owner.source_slot_permutation.len())
-            .map(|value| checked_u32(value, "identity source slot"))
-            .collect::<RusticolResult<Vec<_>>>()?;
-        return Ok((
-            owner.endpoint_pairs.is_empty()
-                && owner.source_slot_permutation.as_slice() == identity
-                && owner
-                    .source_lineage
-                    .iter()
-                    .all(|value| *value == MISSING_U32)
-                && owner.fermion_parity == 1,
-            1,
-        ));
-    };
-    let catalog = authenticated
-        .process()
-        .fermion_pairing_catalog()
-        .ok_or_else(|| integrity("established pairing rule has no catalog"))?;
-    let mut endpoint_pairs = catalog
-        .endpoint_pairings(rule)?
+    owners: &[ResolvedPairingOwnerV1],
+    rules: &[Option<crate::recurrence::process::FermionPairingRuleRow>],
+) -> RusticolResult<(bool, Vec<i32>, Vec<i32>)> {
+    let mut compact = owners
         .iter()
-        .map(|pair| {
-            [
-                pair.fundamental_source_slot,
-                pair.antifundamental_source_slot,
-            ]
+        .map(|owner| PairingOracleRow {
+            endpoint_pairs: owner.endpoint_pairs.clone(),
+            source_slot_permutation: owner.source_slot_permutation.clone(),
+            source_lineage: owner.source_lineage.clone(),
+            fermion_parity: owner.fermion_parity,
         })
         .collect::<Vec<_>>();
-    endpoint_pairs.sort_unstable();
+    let source_count = authenticated.process().input().external_legs.len();
+    let identity = (0..source_count)
+        .map(|value| checked_u32(value, "identity source slot"))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let catalog = authenticated.process().fermion_pairing_catalog();
+    let mut established = rules
+        .iter()
+        .copied()
+        .map(|rule| {
+            let Some(rule) = rule else {
+                return Ok(PairingOracleRow {
+                    endpoint_pairs: Vec::new(),
+                    source_slot_permutation: identity.clone(),
+                    source_lineage: vec![MISSING_U32; source_count],
+                    fermion_parity: 1,
+                });
+            };
+            let catalog =
+                catalog.ok_or_else(|| integrity("established pairing rule has no catalog"))?;
+            let mut endpoint_pairs = catalog
+                .endpoint_pairings(rule)?
+                .iter()
+                .map(|pair| {
+                    [
+                        pair.fundamental_source_slot,
+                        pair.antifundamental_source_slot,
+                    ]
+                })
+                .collect::<Vec<_>>();
+            endpoint_pairs.sort_unstable();
+            Ok(PairingOracleRow {
+                endpoint_pairs,
+                source_slot_permutation: catalog.source_slot_permutation(rule)?.to_vec(),
+                source_lineage: catalog.lineage(rule)?.to_vec(),
+                fermion_parity: rule.fermion_parity,
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    compact.sort_unstable();
+    established.sort_unstable();
+    let compact_parities = compact.iter().map(|row| row.fermion_parity).collect();
+    let established_parities = established.iter().map(|row| row.fermion_parity).collect();
     Ok((
-        owner.endpoint_pairs.as_slice() == endpoint_pairs
-            && owner.source_slot_permutation.as_slice() == catalog.source_slot_permutation(rule)?
-            && owner.source_lineage.as_slice() == catalog.lineage(rule)?
-            && owner.fermion_parity == rule.fermion_parity,
-        rule.fermion_parity,
+        compact == established,
+        compact_parities,
+        established_parities,
     ))
 }
 
@@ -1169,10 +1196,11 @@ pub fn on_the_fly_test_support_probe_v1(
                     .all(|digest| established_live.contains(digest))
         })
         .collect::<Vec<_>>();
-    let established_pairing_rule = established_pairing_rule_by_id(
-        authenticated,
-        crate::recurrence::construct::take_established_pairing_owner_observation()?,
-    )?;
+    let established_pairing_rules =
+        crate::recurrence::construct::take_established_pairing_owner_observation()?
+            .into_iter()
+            .map(|rule_id| established_pairing_rule_by_id(authenticated, rule_id))
+            .collect::<RusticolResult<Vec<_>>>()?;
     let established_current_rows = established_current_digests(&established)?;
     let established_current_multiset_digest = multiset_digest(
         b"pyamplicol-on-the-fly-current-multiset-v1\0",
@@ -1212,11 +1240,12 @@ pub fn on_the_fly_test_support_probe_v1(
             .count(),
         "established negative contribution count",
     )?;
-    let (pairing_oracle_equal, established_pairing_fermion_parity) = pairing_oracle_equal(
-        authenticated,
-        &trace.pairing_owner,
-        established_pairing_rule,
-    )?;
+    let (pairing_oracle_equal, pairing_fermion_parities, established_pairing_fermion_parities) =
+        pairing_oracle_equal(
+            authenticated,
+            &trace.pairing_owners,
+            &established_pairing_rules,
+        )?;
     let one = OnTheFlyWorkspaceV1::new(&trace, 1)?;
     let many = OnTheFlyWorkspaceV1::new(&trace, 17)?;
     let workspace_capacity_independent = one.point_stride() != many.point_stride();
@@ -1253,8 +1282,8 @@ pub fn on_the_fly_test_support_probe_v1(
         source_domain_equal: compact_source_domain(&seed)
             == established_source_domain(authenticated, &established)?,
         pairing_oracle_equal,
-        pairing_fermion_parity: trace.pairing_owner.fermion_parity,
-        established_pairing_fermion_parity,
+        pairing_fermion_parities,
+        established_pairing_fermion_parities,
         workspace_capacity_independent,
         compact_transition_candidates,
         established_transition_candidates,

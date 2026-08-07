@@ -1971,10 +1971,10 @@ fn on_the_fly_test_support_mapping(
     )?;
     result.set_item("source_domain_equal", native.source_domain_equal)?;
     result.set_item("pairing_oracle_equal", native.pairing_oracle_equal)?;
-    result.set_item("pairing_fermion_parity", native.pairing_fermion_parity)?;
+    result.set_item("pairing_fermion_parities", native.pairing_fermion_parities)?;
     result.set_item(
-        "established_pairing_fermion_parity",
-        native.established_pairing_fermion_parity,
+        "established_pairing_fermion_parities",
+        native.established_pairing_fermion_parities,
     )?;
     result.set_item(
         "workspace_capacity_independent",

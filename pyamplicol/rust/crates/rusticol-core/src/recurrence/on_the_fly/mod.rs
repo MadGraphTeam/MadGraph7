@@ -150,7 +150,7 @@ pub(crate) use test_support::{
 };
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(crate) use trace::ON_THE_FLY_WORK_CENSUS_BASIS_V1;
-#[cfg(feature = "on-the-fly-test-support")]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(crate) use trace::hash_current_key;
 #[cfg(test)]
 pub(crate) use trace::scalar_adapter_test_trace;
@@ -451,7 +451,7 @@ fn build_selected_lc_trace_impl(
     let post_counts = collect_projection_probe
         .then(|| selected_graph_counts(&currents, &selected_closures, &live))
         .transpose()?;
-    let pairing_owner = resolve_projected_pairing_owner(seed, &selected_closures)?;
+    let pairing_owners = resolve_projected_pairing_owners(seed, &selected_closures)?;
     let trace = lower_trace(
         templates,
         grammar,
@@ -460,7 +460,7 @@ fn build_selected_lc_trace_impl(
         &colors,
         &currents,
         &selected_closures,
-        pairing_owner,
+        pairing_owners,
         &live,
         constructed_contribution_count,
     )?;

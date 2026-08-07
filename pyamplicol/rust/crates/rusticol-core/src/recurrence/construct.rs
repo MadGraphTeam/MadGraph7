@@ -55,7 +55,7 @@ const THREE_LINE_PARTNER_CERTIFICATE_ID: u32 = 1;
 thread_local! {
     static ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE: Cell<bool> = const { Cell::new(false) };
     static ESTABLISHED_PAIRING_OWNER_OBSERVATION:
-        RefCell<Option<RusticolResult<Option<u32>>>> = const { RefCell::new(None) };
+        RefCell<Option<RusticolResult<Vec<Option<u32>>>>> = const { RefCell::new(None) };
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -67,7 +67,7 @@ pub(crate) fn begin_established_pairing_owner_observation() {
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
-pub(crate) fn take_established_pairing_owner_observation() -> RusticolResult<Option<u32>> {
+pub(crate) fn take_established_pairing_owner_observation() -> RusticolResult<Vec<Option<u32>>> {
     ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(|active| active.set(false));
     ESTABLISHED_PAIRING_OWNER_OBSERVATION.with(|observation| {
         observation.borrow_mut().take().ok_or_else(|| {
@@ -78,37 +78,61 @@ pub(crate) fn take_established_pairing_owner_observation() -> RusticolResult<Opt
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 fn observe_established_pairing_owner(
+    selected_domain: Option<&(u32, Box<[SourceStateAssignment]>)>,
     projection: Option<&PendingColorProjection>,
     pending_closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
 ) {
     if !ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(Cell::get) {
         return;
     }
-    let mut rule_ids = BTreeSet::new();
-    if let Some(projection) = projection {
-        for projected in projection.closures.values() {
-            for contribution in &projected.representative_group.contributions {
-                rule_ids.extend(contribution.pairing_certificate_ids.iter().copied());
+    let result = (|| {
+        let (selected_sector, selected_source_states) = selected_domain.ok_or_else(|| {
+            invalid("established pairing-owner observation has no selected closure domain")
+        })?;
+        let owner_for_group = |group: &PendingClosureGroup| -> RusticolResult<Option<u32>> {
+            let rule_ids = group
+                .contributions
+                .iter()
+                .flat_map(|contribution| contribution.pairing_certificate_ids.iter().copied())
+                .collect::<BTreeSet<_>>();
+            match rule_ids.len() {
+                0 => Ok(None),
+                1 => Ok(rule_ids.iter().next().copied()),
+                _ => Err(invalid(format!(
+                    "established retained closure has {} pairing owners, expected exactly one",
+                    rule_ids.len(),
+                ))),
+            }
+        };
+        let mut owners = Vec::new();
+        if let Some(projection) = projection {
+            for projected in projection.closures.values().filter(|projected| {
+                projected.identity.target_sector_id == *selected_sector
+                    && projected.identity.complete_source_states.as_ref()
+                        == selected_source_states.as_ref()
+            }) {
+                owners.push(owner_for_group(&projected.representative_group)?);
+            }
+        } else {
+            for group in pending_closures
+                .iter()
+                .filter(|(key, group)| {
+                    key.target_sector_id == *selected_sector
+                        && key.complete_source_states.as_ref() == selected_source_states.as_ref()
+                        && !group.exact_factor.is_zero()
+                })
+                .map(|(_, group)| group)
+            {
+                owners.push(owner_for_group(group)?);
             }
         }
-    } else {
-        for group in pending_closures
-            .values()
-            .filter(|group| !group.exact_factor.is_zero())
-        {
-            for contribution in &group.contributions {
-                rule_ids.extend(contribution.pairing_certificate_ids.iter().copied());
-            }
+        if owners.is_empty() {
+            return Err(invalid(
+                "established selected closure domain has no retained pairing owners",
+            ));
         }
-    }
-    let result = match rule_ids.len() {
-        0 => Ok(None),
-        1 => Ok(rule_ids.iter().next().copied()),
-        _ => Err(invalid(format!(
-            "established retained closures disagree across {} pairing owners",
-            rule_ids.len(),
-        ))),
-    };
+        Ok(owners)
+    })();
     ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(|active| active.set(false));
     ESTABLISHED_PAIRING_OWNER_OBSERVATION.with(|observation| {
         *observation.borrow_mut() = Some(result);
@@ -8483,16 +8507,16 @@ fn append_closure_proof_group(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[cfg(feature = "on-the-fly-test-support")]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 fn observe_established_selected_transition_slice(
     process_catalog: &ProcessCatalog<'_>,
     pending: &[PendingCurrent],
     pending_closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
     replay_targets: &[RecurrenceReplayTarget],
     dynamic_color_states: &[DynamicLCColorState],
-) -> RusticolResult<()> {
+) -> RusticolResult<Option<(u32, Box<[SourceStateAssignment]>)>> {
     let Some(selection) = super::diagnostic::transition_diagnostic_selection() else {
-        return Ok(());
+        return Ok(None);
     };
     let replay_target = replay_targets
         .iter()
@@ -8585,7 +8609,8 @@ fn observe_established_selected_transition_slice(
             super::on_the_fly::hash_current_key(&current.key, color)
         })
         .collect::<RusticolResult<BTreeSet<_>>>()?;
-    super::diagnostic::observe_transition_live_current_digests(digests)
+    super::diagnostic::observe_transition_live_current_digests(digests)?;
+    Ok(Some((materialized_sector_id, source_states)))
 }
 
 fn finish_program(
@@ -8642,8 +8667,8 @@ fn finish_program(
             RecurrenceResolvedHelicity::new(id as u32, source_states.into(), public_helicities)
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    #[cfg(feature = "on-the-fly-test-support")]
-    observe_established_selected_transition_slice(
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    let diagnostic_selected_closure_domain = observe_established_selected_transition_slice(
         process_catalog,
         &pending,
         &pending_closures,
@@ -8680,7 +8705,11 @@ fn finish_program(
         None
     };
     #[cfg(any(test, feature = "on-the-fly-test-support"))]
-    observe_established_pairing_owner(color_projection.as_ref(), &pending_closures);
+    observe_established_pairing_owner(
+        diagnostic_selected_closure_domain.as_ref(),
+        color_projection.as_ref(),
+        &pending_closures,
+    );
     let materialized = if let Some(projection) = color_projection.as_ref() {
         materialize_projected_pending_rows(&pending, projection)?
     } else {

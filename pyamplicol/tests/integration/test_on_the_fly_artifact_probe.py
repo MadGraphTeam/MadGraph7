@@ -40,6 +40,12 @@ _MODEL = (
 )
 _HELICITIES = (0, 0, 0, 0)
 _SM_SEEDS = (101, 211)
+_IDENTICAL_SIX_FERMION_HELICITIES = (
+    "h:-1,+1,-1,+1,-1,+1",
+    "h:-1,+1,+1,-1,+1,-1",
+    "h:+1,-1,-1,+1,-1,+1",
+    "h:+1,-1,+1,-1,+1,-1",
+)
 _S = 1_000_000.0
 _FINAL_ONE_ENERGY = (_S + 1.0 - 4.0) / 2_000.0
 _FINAL_TWO_ENERGY = (_S + 4.0 - 1.0) / 2_000.0
@@ -257,11 +263,15 @@ def _assert_hidden_probe_matches_sm_process(
     monkeypatch: pytest.MonkeyPatch,
     process: str,
     process_id: str,
+    *,
+    selected_helicity_ids: tuple[str, ...] | None = None,
+    expected_flow_count: int | None = None,
+    expected_query_count: int | None = None,
 ) -> None:
     monkeypatch.setattr(lc_gate, "PROCESS", process)
     monkeypatch.setattr(lc_gate, "PROCESS_ID", process_id)
     monkeypatch.setattr(lc_gate, "SEEDS", _SM_SEEDS)
-    config = lc_gate._config()
+    config = lc_gate._on_the_fly_config()
     prepared = ModelSource.built_in_sm().compile(
         cache_dir=tmp_path / "fresh-built-in-sm-cache",
         use_cache=False,
@@ -270,12 +280,24 @@ def _assert_hidden_probe_matches_sm_process(
         ),
         evaluator=config.evaluator,
     )
-    artifact = tmp_path / f"fresh-{process_id}-artifact"
-    _, retained = lc_gate._generate(artifact, prepared)
-    runtime = Runtime.load(artifact, process=process_id)
+    on_the_fly_artifact = tmp_path / f"fresh-{process_id}-on-the-fly-artifact"
+    lc_gate._generate_on_the_fly(on_the_fly_artifact, prepared)
+    recurrence_artifact = tmp_path / f"fresh-{process_id}-recurrence-probe"
+    retained = lc_gate._generate_probe_carrier(
+        recurrence_artifact,
+        prepared,
+    )
+    runtime = Runtime.load(recurrence_artifact, process=process_id)
+    on_the_fly_runtime = Runtime.load(on_the_fly_artifact, process=process_id)
     points = lc_gate._points()
     resolved = runtime.evaluate_resolved(points)
+    on_the_fly_resolved = on_the_fly_runtime.evaluate_resolved(points)
     helicity_axis, color_axis = lc_gate._axes(resolved)
+    on_the_fly_helicity_axis, on_the_fly_color_axis = lc_gate._axes(
+        on_the_fly_resolved
+    )
+    assert on_the_fly_helicity_axis == helicity_axis
+    assert on_the_fly_color_axis == color_axis
     flows = tuple(runtime.physics.color_flows)
     helicities = tuple(
         helicity
@@ -284,6 +306,15 @@ def _assert_hidden_probe_matches_sm_process(
     )
     assert flows
     assert helicities
+    if expected_flow_count is not None:
+        assert len(flows) == expected_flow_count
+    if selected_helicity_ids is not None:
+        selected = frozenset(selected_helicity_ids)
+        helicities = tuple(
+            helicity for helicity in helicities if helicity.id in selected
+        )
+        assert len(helicities) == len(selected_helicity_ids)
+        assert {helicity.id for helicity in helicities} == selected
     probe = lc_gate._probe()
     census: list[tuple[str, dict[str, object], bool]] = []
     for flow in flows:
@@ -293,10 +324,17 @@ def _assert_hidden_probe_matches_sm_process(
                 point[helicity_axis[helicity.id]][color_axis[flow.id]]
                 for point in resolved.values
             )
+            public_on_the_fly = tuple(
+                point[on_the_fly_helicity_axis[helicity.id]][
+                    on_the_fly_color_axis[flow.id]
+                ]
+                for point in on_the_fly_resolved.values
+            )
+            lc_gate._series(public_on_the_fly, expected, f"{selector} public")
             query = lc_gate._query(flow, helicity)
             projected_report = lc_gate._invoke(
                 probe,
-                artifact,
+                recurrence_artifact,
                 retained,
                 query,
                 points,
@@ -304,7 +342,7 @@ def _assert_hidden_probe_matches_sm_process(
             )
             bypass_report = lc_gate._invoke(
                 probe,
-                artifact,
+                recurrence_artifact,
                 retained,
                 query,
                 points,
@@ -335,6 +373,9 @@ def _assert_hidden_probe_matches_sm_process(
                     bypass_matches,
                 )
             )
+
+    if expected_query_count is not None:
+        assert len(census) == expected_query_count
 
     print(
         f"genuine on-the-fly {process} component census:",
@@ -377,6 +418,21 @@ def test_hidden_on_the_fly_probe_matches_every_physical_sm_n3_z_component(
         monkeypatch,
         "d d~ > t t~ z",
         "otf_dd_tt_z",
+    )
+
+
+def test_hidden_on_the_fly_probe_matches_identical_six_fermion_wick_lineages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_hidden_probe_matches_sm_process(
+        tmp_path,
+        monkeypatch,
+        "d d~ > u u~ u u~",
+        "otf_dd_uu_uu",
+        selected_helicity_ids=_IDENTICAL_SIX_FERMION_HELICITIES,
+        expected_flow_count=6,
+        expected_query_count=24,
     )
 
 

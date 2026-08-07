@@ -296,7 +296,7 @@ pub(crate) struct OnTheFlyStructuralTraceV1 {
     pub(super) operations: Box<[OnTheFlyTraceOperationV1]>,
     pub(super) momentum_forms: Box<[CanonicalMomentumLinearForm]>,
     pub(super) exact_factors: Box<[ExactComplexRational]>,
-    pub(super) pairing_owner: ResolvedPairingOwnerV1,
+    pub(super) pairing_owners: Box<[ResolvedPairingOwnerV1]>,
     pub(super) layout: OnTheFlyWorkspaceLayoutV1,
     pub(super) proof: OnTheFlyStructuralProofV1,
     pub(super) semantic_digest: SemanticDigest,
@@ -792,13 +792,14 @@ pub(crate) fn scalar_adapter_test_trace(
             ),
         ]
         .into_boxed_slice(),
-        pairing_owner: ResolvedPairingOwnerV1 {
+        pairing_owners: vec![ResolvedPairingOwnerV1 {
             endpoint_pairs: Vec::new(),
             proof_digest: None,
             source_slot_permutation: vec![0, 1],
             source_lineage: vec![0, 1],
             fermion_parity: 1,
-        },
+        }]
+        .into_boxed_slice(),
         layout: OnTheFlyWorkspaceLayoutV1 {
             source_count: 2,
             lorentz_component_count: 4,
@@ -924,13 +925,7 @@ impl OnTheFlyStructuralTraceV1 {
             .into_boxed_slice(),
             momentum_forms,
             exact_factors: vec![ExactComplexRational::ONE].into_boxed_slice(),
-            pairing_owner: ResolvedPairingOwnerV1 {
-                endpoint_pairs: Vec::new(),
-                proof_digest: None,
-                source_slot_permutation: vec![0, 1, 2, 3],
-                source_lineage: vec![0, 1, 2, 3],
-                fermion_parity: 1,
-            },
+            pairing_owners: Box::new([]),
             layout: OnTheFlyWorkspaceLayoutV1 {
                 source_count: 4,
                 lorentz_component_count: 4,
@@ -1181,13 +1176,14 @@ impl OnTheFlyStructuralTraceV1 {
                 ExactComplexRational::ONE,
             ]
             .into_boxed_slice(),
-            pairing_owner: ResolvedPairingOwnerV1 {
+            pairing_owners: vec![ResolvedPairingOwnerV1 {
                 endpoint_pairs: Vec::new(),
                 proof_digest: None,
                 source_slot_permutation: vec![0, 1],
                 source_lineage: vec![0, 1],
                 fermion_parity: 1,
-            },
+            }]
+            .into_boxed_slice(),
             layout: OnTheFlyWorkspaceLayoutV1 {
                 source_count: 2,
                 lorentz_component_count: 4,
@@ -1544,6 +1540,37 @@ fn closure_proof_digest(
     final_digest(hash)
 }
 
+fn pairing_owner_association_multiset_digest(
+    closure_proof_rows: &[SemanticDigest],
+    pairing_owners: &[ResolvedPairingOwnerV1],
+) -> RusticolResult<SemanticDigest> {
+    if closure_proof_rows.len() != pairing_owners.len() {
+        return Err(integrity(
+            "closure proof and pairing-owner domains have different sizes",
+        ));
+    }
+    let mut rows = Vec::new();
+    rows.try_reserve_exact(pairing_owners.len())
+        .map_err(|error| invalid(format!("pairing-owner proof allocation failed: {error}")))?;
+    for (closure_proof, owner) in closure_proof_rows.iter().zip(pairing_owners) {
+        let mut hash = Sha256::new();
+        hash.update(b"pyamplicol-on-the-fly-closure-pairing-owner-row-v1\0");
+        hash_digest(&mut hash, *closure_proof);
+        match owner.proof_digest {
+            None => hash.update([0]),
+            Some(digest) => {
+                hash.update([1]);
+                hash_digest(&mut hash, digest);
+            }
+        }
+        rows.push(final_digest(hash)?);
+    }
+    multiset_digest(
+        b"pyamplicol-on-the-fly-closure-pairing-owner-multiset-v1\0",
+        rows,
+    )
+}
+
 fn intern_factor(
     factor: ExactComplexRational,
     factors: &mut Vec<ExactComplexRational>,
@@ -1673,10 +1700,15 @@ pub(super) fn lower_trace(
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
     closures: &[PendingClosure],
-    pairing_owner: ResolvedPairingOwnerV1,
+    pairing_owners: Vec<ResolvedPairingOwnerV1>,
     live: &BTreeSet<u32>,
     constructed_contribution_count: usize,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
+    if pairing_owners.len() != closures.len() {
+        return Err(integrity(
+            "selected closures and resolved pairing owners have different sizes",
+        ));
+    }
     let input = templates.input();
     let mut old_to_new = BTreeMap::new();
     let mut current_keys = Vec::with_capacity(live.len());
@@ -1943,23 +1975,19 @@ pub(super) fn lower_trace(
         b"pyamplicol-on-the-fly-contribution-multiset-v1\0",
         contribution_proof_rows,
     )?;
+    let pairing_owner_multiset_digest =
+        pairing_owner_association_multiset_digest(&closure_proof_rows, &pairing_owners)?;
     let closure_multiset_digest = multiset_digest(
         b"pyamplicol-on-the-fly-closure-multiset-v1\0",
         closure_proof_rows,
     )?;
     let mut owner_hash = Sha256::new();
-    owner_hash.update(b"pyamplicol-on-the-fly-owner-v1\0");
+    owner_hash.update(b"pyamplicol-on-the-fly-owner-v2\0");
     hash_digest(&mut owner_hash, seed.semantic_digest());
     hash_digest(&mut owner_hash, query.semantic_digest());
     owner_hash.update(query.closure_anchor_slot.to_le_bytes());
     hash_digest(&mut owner_hash, query.selector_digest);
-    match pairing_owner.proof_digest {
-        None => owner_hash.update([0]),
-        Some(digest) => {
-            owner_hash.update([1]);
-            hash_digest(&mut owner_hash, digest);
-        }
-    }
+    hash_digest(&mut owner_hash, pairing_owner_multiset_digest);
     let owner_digest = final_digest(owner_hash)?;
     let mut proof_hash = Sha256::new();
     proof_hash.update(ON_THE_FLY_PROOF_DOMAIN);
@@ -2051,7 +2079,7 @@ pub(super) fn lower_trace(
         operations: operations.into_boxed_slice(),
         momentum_forms: momentum_forms.into_boxed_slice(),
         exact_factors: exact_factors.into_boxed_slice(),
-        pairing_owner,
+        pairing_owners: pairing_owners.into_boxed_slice(),
         layout,
         proof,
         semantic_digest,
@@ -2068,6 +2096,49 @@ mod tests {
 
     fn digest(byte: u8) -> SemanticDigest {
         SemanticDigest::new([byte; 32]).unwrap()
+    }
+
+    fn pairing_owner(byte: u8) -> ResolvedPairingOwnerV1 {
+        ResolvedPairingOwnerV1 {
+            endpoint_pairs: Vec::new(),
+            proof_digest: Some(digest(byte)),
+            source_slot_permutation: Vec::new(),
+            source_lineage: Vec::new(),
+            fermion_parity: 1,
+        }
+    }
+
+    #[test]
+    fn pairing_owner_proof_binds_closure_associations_order_independently() {
+        let closures = [digest(1), digest(2)];
+        let owners = [pairing_owner(3), pairing_owner(4)];
+        let expected = pairing_owner_association_multiset_digest(&closures, &owners).unwrap();
+        assert_eq!(
+            expected,
+            pairing_owner_association_multiset_digest(
+                &[closures[1], closures[0]],
+                &[pairing_owner(4), pairing_owner(3)],
+            )
+            .unwrap(),
+        );
+        assert_ne!(
+            expected,
+            pairing_owner_association_multiset_digest(
+                &closures,
+                &[pairing_owner(4), pairing_owner(3)],
+            )
+            .unwrap(),
+        );
+        assert_ne!(
+            pairing_owner_association_multiset_digest(&[closures[0]], &[pairing_owner(3)],)
+                .unwrap(),
+            pairing_owner_association_multiset_digest(
+                &[closures[0], closures[0]],
+                &[pairing_owner(3), pairing_owner(3)],
+            )
+            .unwrap(),
+        );
+        assert!(pairing_owner_association_multiset_digest(&closures, &owners[..1]).is_err());
     }
 
     #[test]
@@ -2087,13 +2158,7 @@ mod tests {
             ]
             .into_boxed_slice(),
             exact_factors: vec![ExactComplexRational::ONE].into_boxed_slice(),
-            pairing_owner: ResolvedPairingOwnerV1 {
-                endpoint_pairs: Vec::new(),
-                proof_digest: None,
-                source_slot_permutation: Vec::new(),
-                source_lineage: Vec::new(),
-                fermion_parity: 1,
-            },
+            pairing_owners: Box::new([]),
             layout: OnTheFlyWorkspaceLayoutV1 {
                 source_count: 1,
                 lorentz_component_count: 4,

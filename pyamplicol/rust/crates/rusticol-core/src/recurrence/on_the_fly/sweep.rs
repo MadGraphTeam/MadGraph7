@@ -550,9 +550,9 @@ fn lehmer_digits(reference: &[u32], selected: &[u32]) -> RusticolResult<Vec<u32>
     Ok(digits)
 }
 
-pub(super) fn resolve_projected_pairing_owner(
+fn resolve_pairing_owner(
     seed: &OnTheFlyProcessSeedV1,
-    closures: &[PendingClosure],
+    owner: &PendingPairingLineage,
 ) -> RusticolResult<ResolvedPairingOwnerV1> {
     let mut source_slot_permutation = identity_source_permutation(seed.source_anchors.len())?;
     let mut source_lineage = Vec::new();
@@ -561,13 +561,12 @@ pub(super) fn resolve_projected_pairing_owner(
         .map_err(|error| invalid(format!("pairing source-lineage allocation failed: {error}")))?;
     source_lineage.resize(seed.source_anchors.len(), MISSING_U32);
     if seed.pairing_classes.is_empty() {
-        if closures.iter().any(|closure| {
-            closure.pairing_lineages.as_slice()
-                != [PendingPairingLineage {
-                    completed_pairs: Vec::new(),
-                    unmatched_endpoint: None,
-                }]
-        }) {
+        if owner
+            != &(PendingPairingLineage {
+                completed_pairs: Vec::new(),
+                unmatched_endpoint: None,
+            })
+        {
             return Err(integrity(
                 "pairing-free query retained a nontrivial closure lineage",
             ));
@@ -580,7 +579,6 @@ pub(super) fn resolve_projected_pairing_owner(
             fermion_parity: 1,
         });
     }
-    let owner = unique_projected_pairing_owner(closures)?;
     if !complete_pairing_lineage(seed, owner)? {
         return Err(integrity(
             "canonical projected closure has an incomplete Wick lineage",
@@ -670,10 +668,20 @@ pub(super) fn resolve_projected_pairing_owner(
     })
 }
 
-fn unique_projected_pairing_owner(
+fn projected_pairing_lineages(
     closures: &[PendingClosure],
-) -> RusticolResult<&PendingPairingLineage> {
-    let mut owner = None;
+) -> RusticolResult<Vec<&PendingPairingLineage>> {
+    if closures.is_empty() {
+        return Err(integrity("canonical projected closure has no Wick lineage"));
+    }
+    let mut lineages = Vec::new();
+    lineages
+        .try_reserve_exact(closures.len())
+        .map_err(|error| {
+            invalid(format!(
+                "projected pairing-owner allocation failed: {error}"
+            ))
+        })?;
     for closure in closures {
         let [lineage] = closure.pairing_lineages.as_slice() else {
             return Err(integrity(format!(
@@ -681,14 +689,19 @@ fn unique_projected_pairing_owner(
                 closure.pairing_lineages.len(),
             )));
         };
-        if owner.is_some_and(|previous| previous != lineage) {
-            return Err(integrity(
-                "canonical projected closures disagree across Wick lineages",
-            ));
-        }
-        owner = Some(lineage);
+        lineages.push(lineage);
     }
-    owner.ok_or_else(|| integrity("canonical projected closure has no Wick lineage"))
+    Ok(lineages)
+}
+
+pub(super) fn resolve_projected_pairing_owners(
+    seed: &OnTheFlyProcessSeedV1,
+    closures: &[PendingClosure],
+) -> RusticolResult<Vec<ResolvedPairingOwnerV1>> {
+    projected_pairing_lineages(closures)?
+        .into_iter()
+        .map(|lineage| resolve_pairing_owner(seed, lineage))
+        .collect()
 }
 
 pub(super) fn supports_are_disjoint(left: &[u32], right: &[u32]) -> bool {
@@ -2326,17 +2339,16 @@ mod tests {
     }
 
     #[test]
-    fn canonical_projected_pairing_owner_fails_closed_on_ambiguous_lineage() {
+    fn projected_pairing_owners_are_exactly_one_per_closure_not_global() {
         assert!(
-            unique_projected_pairing_owner(&[closure(vec![lineage([0, 1]), lineage([0, 3])])])
-                .is_err()
+            projected_pairing_lineages(&[closure(vec![lineage([0, 1]), lineage([0, 3])])]).is_err()
         );
-        assert!(
-            unique_projected_pairing_owner(&[
-                closure(vec![lineage([0, 1])]),
-                closure(vec![lineage([0, 3])]),
-            ])
-            .is_err()
-        );
+        let closures = [
+            closure(vec![lineage([0, 1])]),
+            closure(vec![lineage([0, 3])]),
+        ];
+        let owners = projected_pairing_lineages(&closures).unwrap();
+        assert_eq!(owners, [&lineage([0, 1]), &lineage([0, 3])]);
+        assert!(projected_pairing_lineages(&[]).is_err());
     }
 }
