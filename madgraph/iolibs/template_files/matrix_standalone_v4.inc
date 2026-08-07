@@ -113,6 +113,7 @@ C     FUNCTIONS
 C
       LOGICAL %(proc_prefix)sIS_BORN_HEL_SELECTED
       INTEGER %(proc_prefix)sBROKEN_SYM
+%(blas_decl)s
 c----------
 c   Check if helreset mode is on
 c---------
@@ -158,8 +159,9 @@ C     For this reason, we simply remove the filterin when there is only three ex
         ENDDO
       ENDIF
       ANS = 0D0
+%(blas_branch)s
           DO IHEL=1,NCOMB
-             IF (USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL) THEN
+             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.IHEL%(blas_guard)s) THEN
                 IF (GOODHEL(IHEL,FLAV_IDX) .OR. NTRY(FLAV_IDX) .LT. 20.OR.USERHEL.NE.-1) THEN
                     IF(NTRY(FLAV_IDX).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
@@ -228,7 +230,8 @@ C
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
@@ -344,7 +347,9 @@ C
       PARAMETER ( NCOLOR=%(ncolor)d)
       COMPLEX*16 IMAG1
       PARAMETER (IMAG1=(0D0,1D0))
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
+%(jamp_decl)s
 
 %(jamp_lines)s
       END
@@ -361,43 +366,75 @@ CF2PY INTENT(OUT) :: MATRIX
 CF2PY INTENT(IN) :: JAMP
 
 
-      INTEGER    NCOLOR
+      INTEGER    NCOLOR, NCOLORFOLD
       PARAMETER (NCOLOR=%(ncolor)d)
+      PARAMETER (NCOLORFOLD=%(ncolorfold)d)
       REAL*8     ZERO,MATRIX
       PARAMETER (ZERO=0D0)
 C
 
 C LOCAL VARIABLES
 C
-      INTEGER I,J
-      COMPLEX*16 ZTEMP
+      INTEGER I,J,NJ,NB
+      COMPLEX*16 ZTEMP,Z1,Z2,Z3,Z4
 
       INTEGER CF_INDEX
-      INTEGER %(proc_prefix)sCF(NCOLOR*(NCOLOR+1)/2)
+      INTEGER %(proc_prefix)sCF(NCOLORFOLD*(NCOLORFOLD+1)/2)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
-      COMPLEX*16 JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 JAMP(NCOLOR)
+      COMPLEX*16 JFOLD(NCOLORFOLD)
+%(color_fold_decl)s
+%(color_fold_index)s
+%(jamp_tmp_decl)s
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
 C
 
 C COLOR DATA
 C
+      CALL %(proc_prefix)sINIT_CF()
 
+C     Reversing a color flow gives the same one back up to an overall
+C     sign, so only one of each pair carries anything: the sum below runs
+C     over those, against a color matrix folded onto them.
+%(color_fold_gather)s
       MATRIX = 0.D0
       CF_INDEX = 0
-      DO I = 1, NCOLOR
-        ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLOR
-          CF_INDEX = CF_INDEX + 1
-          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX)*JAMP(J)
+C     Four accumulators, not one: with a single one every
+C     term waits for the one before it to come out of the
+C     adder, and that latency is what the loop spends its
+C     time on. No compiler does this by itself, since it
+C     changes the order the terms are summed in.
+      DO I = 1, NCOLORFOLD
+        Z1 = (0.D0,0.D0)
+        Z2 = (0.D0,0.D0)
+        Z3 = (0.D0,0.D0)
+        Z4 = (0.D0,0.D0)
+        NJ = NCOLORFOLD - I + 1
+        NB = (NJ/4)*4
+        DO J = 0, NB-4, 4
+          Z1 = Z1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JFOLD(I+J)
+          Z2 = Z2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JFOLD(I+J+1)
+          Z3 = Z3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JFOLD(I+J+2)
+          Z4 = Z4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JFOLD(I+J+3)
         ENDDO
-        MATRIX = MATRIX+ZTEMP*DCONJG(JAMP(I))/%(proc_prefix)sDENOM
+        ZTEMP = (Z1+Z2)+(Z3+Z4)
+        DO J = NB, NJ-1
+          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX+J+1)*JFOLD(I+J)
+        ENDDO
+        CF_INDEX = CF_INDEX + NJ
+        MATRIX = MATRIX+ZTEMP*DCONJG(JFOLD(I))/%(proc_prefix)sDENOM
       ENDDO
       END
 
+%(color_init_routine)s
+
+%(jamp_init_routine)s
 
 
+
+%(blas_routine)s
       SUBROUTINE %(proc_prefix)sGET_INTER(JAMP_1,JAMP_2, INTER)
 
 CF2PY INTENT(OUT) :: INTER
@@ -416,6 +453,7 @@ CF2PY INTENT(IN) :: JAMP_2
 
 C COLOR DATA
 C
+      CALL %(proc_prefix)sINIT_CF()
 
       INTER = (0.D0,0.D0)
       CF_INDEX = 0
@@ -547,7 +585,7 @@ c
       PARAMETER (NCOLOR=%(ncolor)d)
       INTEGER IC(NEXTERNAL)
 
-      DOUBLE COMPLEX AMP(NGRAPHS)
+      DOUBLE COMPLEX AMP(%(namp_dim)s)
       DOUBLE COMPLEX, ALLOCATABLE, SAVE :: JAMP(:,:)
       INTEGER, SAVE :: S_NCOMB = 0
 

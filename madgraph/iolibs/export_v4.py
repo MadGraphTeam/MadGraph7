@@ -17,6 +17,7 @@ from madgraph.iolibs.helas_call_writers import HelasCallWriter
 from madgraph.core import base_objects
 """Methods and classes to export matrix elements to v4 format."""
 
+import bisect
 import copy
 import math, cmath
 from io import StringIO
@@ -41,6 +42,7 @@ import madgraph
 import models
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
+import madgraph.core.color_amp as color_amp
 import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.files as files
@@ -225,6 +227,48 @@ class ProcessExporterFortran(VirtualExporter):
                         }
     grouped_mode = False
     jamp_optim = False
+    # how many times the JAMP optimisation called itself, for the record
+    myjamp_count = 0
+    # sum |M|^2 over one color flow per reversal pair instead of over every one
+    # Folding the color matrix onto one line per reversal pair only works
+    # where the template sums over NCOLORFOLD. get_color_data_lines is shared
+    # by every fortran exporter, so this stays off unless the template agrees.
+    jamp_fold = False
+    jamp_integer_walk = True
+    # BLAS-3 for the color sum: all helicities at once as one right hand side.
+    # None means take it when the library is there and the process is big
+    # enough for it to pay.
+    blas = None
+    blas_min_ncolor = 100
+    # write the JAMP definitions as one recipe per orbit of the permutations
+    # leaving the color basis invariant, instead of one line per definition
+    jamp_orbit = False
+    # How the definitions reach memory: 'recipes' rebuilds them at the first
+    # call from one recipe per orbit, 'tables' writes the operand indices out
+    # as DATA. Both run the very same loop, and both start from the orbit
+    # equivariant optimisation, so they only differ in the source they need.
+    jamp_emit = 'tables'
+    # finish with the plain scan once the orbit rounds have nothing left to
+    # take as a whole (only used by the table emission, see below)
+    jamp_greedy_tail = True
+    # Read the amplitudes of the current helicity into a buffer before running
+    # the definitions over it, instead of holding the definitions at the end of
+    # AMP. Needed where AMP is indexed by helicity, which is what madevent does
+    # once it rewrites the matrix element for helicity recycling.
+    jamp_gather = False
+    # up to this many entries in the matrix, both optimisations are run and the
+    # shorter result kept (see optimise_jamp_best)
+    jamp_compare_max_size = 20000
+    # Below this many definitions writing them out is both smaller and faster:
+    # the lines still fit in the instruction cache, while the loop reading the
+    # operands from a table pays for the two indirections whatever the size.
+    # Measured on g g > n g, the two cost the same at about five thousand
+    # definitions (795 definitions: 0.47 us written out against 1.40 us;
+    # 9990 definitions: 39.4 us against 26.4 us).
+    jamp_orbit_min_def = 5000
+    # how much smaller the compressed color matrix has to be before it is used
+    # instead of writing every entry out (see get_color_matrix_encoding)
+    color_encoding_margin = 4
     run_card_class = None
     use_flavor_mask = True
 
@@ -2061,12 +2105,160 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
 
+    @staticmethod
+    def jamp_fold_spanning_tree(permutations, size):
+        """Same walk as ColorBasisSymmetry.spanning_tree, over an index set
+        given directly as permutations rather than as color basis keys."""
+
+        keep = []
+        parent_uf = list(range(size))
+
+        def find(x):
+            while parent_uf[x] != x:
+                parent_uf[x] = parent_uf[parent_uf[x]]
+                x = parent_uf[x]
+            return x
+
+        for perm in permutations:
+            used = False
+            for i, j in enumerate(perm):
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent_uf[ri] = rj
+                    used = True
+            if used:
+                keep.append(perm)
+
+        representative = [-1] * size
+        parent = [None] * size
+        representatives = []
+        for start in range(size):
+            if representative[start] != -1:
+                continue
+            representatives.append(start)
+            representative[start] = start
+            queue = collections.deque([start])
+            while queue:
+                current = queue.popleft()
+                for local, perm in enumerate(keep):
+                    image = perm[current]
+                    if representative[image] == -1:
+                        representative[image] = start
+                        parent[image] = (current, local)
+                        queue.append(image)
+        return representatives, representative, parent, keep
+
+    def get_color_matrix_encoding(self, matrix_element):
+        """Describe the color matrix by one line per orbit of the index
+        permutations leaving the color basis invariant, plus the permutations
+        needed to reach every other line from it (see ColorBasisSymmetry).
+
+        Every line of the matrix is one of those lines with its columns
+        permuted, so this replaces the N*(N+1)/2 entries by (nrep+ngen+3)*N
+        numbers. That is only a gain once the basis is large enough, and None
+        is returned otherwise so that the entries are written out as before."""
+
+        color_matrix = matrix_element.get('color_matrix')
+        if not color_matrix:
+            return None
+        # an asymmetric matrix does not have the line structure exploited here
+        if color_matrix._col_basis1 is not color_matrix._col_basis2:
+            return None
+
+        keys = color_matrix._sorted_keys1
+        nb_color = len(keys)
+        symmetry = color_amp.ColorBasisSymmetry(keys)
+        if not symmetry.has_symmetry():
+            return None
+
+        folding = self.get_jamp_folding(matrix_element)
+        if folding and folding['sign'] < 0:
+            # The rebuilt form cannot carry the weight a permutation picks up
+            # when it sends a line onto its own partner. The sum runs over the
+            # folded matrix either way, so there is no falling back to the
+            # unfolded encoding here: it has to be written out instead.
+            return None
+        if folding:
+            # reversing commutes with permuting the indices, so a permutation
+            # of the lines is also a permutation of the pairs
+            slot = folding['slot']
+            nb_color = len(folding['representatives'])
+            induced = [[slot[perm[line]]
+                        for line in folding['representatives']]
+                       for perm in symmetry.generators1]
+            representatives, representative, parent, gens = \
+                    self.jamp_fold_spanning_tree(induced, nb_color)
+        else:
+            representatives, representative, parent, gens = \
+                                                    symmetry.spanning_tree()
+
+        # Writing the entries out is well trodden and the compressed form
+        # carries a routine of its own, so only take it when it pays clearly.
+        # In practice this leaves everything below about a hundred color
+        # structures alone, which is where the matrix is not the bulk of the
+        # generated file anyway.
+        size = (len(representatives) + len(gens) + 3) * nb_color
+        if size * self.color_encoding_margin > nb_color * (nb_color + 1) // 2:
+            return None
+
+        place = dict((line, index) for index, line in enumerate(representatives))
+        if folding:
+            denominator, folded = self.jamp_folded_color_matrix(
+                        matrix_element, folding['reverse'], folding['sign'])
+            rows = [folded[line] for line in representatives]
+        else:
+            denominator = max(color_matrix.get_line_denominators())
+            rows = []
+            for line in representatives:
+                num_list = color_matrix.get_line_numerators(line, denominator)
+                assert all(int(i) == i for i in num_list)
+                rows.append([int(i) for i in num_list])
+
+        return {'denom': denominator,
+                'nb_color': nb_color,
+                'rows': rows,
+                'gens': gens,
+                # for each line, the line it comes from and the generator
+                # reaching it, or (0,0) when the line is a representative
+                'parent': [(0, 0) if p is None else (p[0] + 1, p[1] + 1)
+                           for p in parent],
+                'slot': [place[representative[i]] + 1
+                         for i in range(nb_color)]}
+
     def get_color_data_lines(self, matrix_element, n=128):
         """Return the color matrix definition lines for this matrix element. Split
         rows in chunks of size n."""
 
         if not matrix_element.get('color_matrix'):
             return ["DATA %(proc_prefix)sDenom/1/", "DATA %(proc_prefix)sCF/1/"]
+
+        if self.get_color_matrix_encoding(matrix_element):
+            # the entries are rebuilt at run time by INIT_CF, only the overall
+            # denominator is still needed here
+            denominator = max(matrix_element.get('color_matrix').\
+                                                    get_line_denominators())
+            return ["DATA %%(proc_prefix)sDenom/%(denom)i/" % \
+                                                       {'denom': denominator}]
+
+        folding = self.get_jamp_folding(matrix_element)
+        if folding:
+            denominator, folded = self.jamp_folded_color_matrix(
+                        matrix_element, folding['reverse'], folding['sign'])
+            ret_list = ["DATA %%(proc_prefix)sDenom/%(denom)i/" %
+                        {'denom': denominator}]
+            cf_index = 0
+            for index in range(len(folded)):
+                row = folded[index]
+                for k in range(index, len(row), n):
+                    chunk = row[k:k + n]
+                    ret_list.append(
+                        "DATA (%%(proc_prefix)sCF(i),i=%3r,%3r) /%s/" %
+                        (cf_index + 1, cf_index + len(chunk),
+                         ','.join("%i" % ((1 if (k == index and pos == 0)
+                                           else 2) * int(v))
+                                  for pos, v in enumerate(chunk))))
+                    cf_index += len(chunk)
+            return ret_list
 
         ret_list = []
         my_cs = color.ColorString()
@@ -2099,6 +2291,94 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             ret_list.append("C %s" % repr(my_cs))
 
         return ret_list
+
+    @staticmethod
+    def get_int_data_lines(name, values, n=128, var='i'):
+        """DATA statements filling the one dimensional integer array name."""
+
+        lines = []
+        for start in range(0, len(values), n):
+            chunk = values[start:start + n]
+            lines.append("      DATA (%s(%s),%s=%d,%d) /%s/" % \
+                         (name, var, var, start + 1, start + len(chunk),
+                          ','.join(str(int(v)) for v in chunk)))
+        return lines
+
+    def get_color_init_routine(self, matrix_element, proc_prefix):
+        """Fortran source rebuilding the color matrix from its compressed
+        description, or an empty routine when the entries are written out."""
+
+        encoding = self.get_color_matrix_encoding(matrix_element)
+        nb_color = encoding['nb_color'] if encoding else \
+                   (len(matrix_element.get('color_matrix')._sorted_keys1)
+                    if matrix_element.get('color_matrix') else 0)
+        header = ["      SUBROUTINE %sINIT_CF()" % proc_prefix]
+        if not encoding:
+            return header + ["      RETURN", "      END"]
+
+        nb_rep = len(encoding['rows'])
+        nb_gen = len(encoding['gens'])
+        body = header + [
+            "C     Rebuild the color matrix from one line per",
+            "C     orbit of the index permutations leaving the",
+            "C     color basis invariant. Every other line is one",
+            "C     of those with its columns permuted, which is",
+            "C     what following CFPAR back to the representative",
+            "C     line gives. Done once, on the first call.",
+            "      IMPLICIT NONE",
+            "      INTEGER NCOLOR, NCFREP, NCFGEN",
+            "      PARAMETER (NCOLOR=%d)" % nb_color,
+            "      PARAMETER (NCFREP=%d)" % nb_rep,
+            "      PARAMETER (NCFGEN=%d)" % nb_gen,
+            "      INTEGER %sCF(NCOLOR*(NCOLOR+1)/2)" % proc_prefix,
+            "      INTEGER %sDENOM" % proc_prefix,
+            "      COMMON /%scolor_matrix/ %sCF,%sDENOM" % \
+                                    (proc_prefix, proc_prefix, proc_prefix),
+            "      INTEGER CFROW(NCOLOR*NCFREP)",
+            "      INTEGER CFGEN(NCOLOR*NCFGEN)",
+            "      INTEGER CFPAR(2*NCOLOR)",
+            "      INTEGER CFSLOT(NCOLOR)",
+            "      INTEGER PERM(NCOLOR)",
+            "      INTEGER I,J,NODE,G,CF_INDEX,BASE",
+            "      LOGICAL CF_DONE",
+            "      DATA CF_DONE/.FALSE./",
+            "      SAVE CF_DONE",
+        ]
+        body += self.get_int_data_lines("CFROW",
+                            sum(encoding['rows'], []))
+        body += self.get_int_data_lines("CFGEN",
+                            sum(([x + 1 for x in g] for g in encoding['gens']),
+                                []))
+        body += self.get_int_data_lines("CFPAR",
+                            sum(([p[0], p[1]] for p in encoding['parent']), []))
+        body += self.get_int_data_lines("CFSLOT", encoding['slot'])
+        body += [
+            "      IF (CF_DONE) RETURN",
+            "      CF_DONE = .TRUE.",
+            "      CF_INDEX = 0",
+            "      DO I = 1, NCOLOR",
+            "        DO J = 1, NCOLOR",
+            "          PERM(J) = J",
+            "        ENDDO",
+            "        NODE = I",
+            "        DO WHILE (CFPAR(2*NODE-1) .NE. 0)",
+            "          G = (CFPAR(2*NODE)-1)*NCOLOR",
+            "          DO J = 1, NCOLOR",
+            "            PERM(J) = CFGEN(G+PERM(J))",
+            "          ENDDO",
+            "          NODE = CFPAR(2*NODE-1)",
+            "        ENDDO",
+            "        BASE = (CFSLOT(NODE)-1)*NCOLOR",
+            "        CF_INDEX = CF_INDEX + 1",
+            "        %sCF(CF_INDEX) = CFROW(BASE+PERM(I))" % proc_prefix,
+            "        DO J = I+1, NCOLOR",
+            "          CF_INDEX = CF_INDEX + 1",
+            "          %sCF(CF_INDEX) = 2*CFROW(BASE+PERM(J))" % proc_prefix,
+            "        ENDDO",
+            "      ENDDO",
+            "      END",
+        ]
+        return body
 
     def get_den_factor_line(self, matrix_element):
         """Return the denominator factor line for this matrix element"""
@@ -2308,7 +2588,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
     def get_JAMP_lines_split_order(self, col_amps, split_order_amps, 
-          split_order_names=None, JAMP_format="JAMP(%s,{0})", AMP_format="AMP(%s)"):
+          split_order_names=None, JAMP_format="JAMP(%s,{0})", AMP_format="AMP(%s)",
+          orbit=False, proc_prefix=''):
         """Return the JAMP = sum(fermionfactor * AMP(i)) lines from col_amps 
         defined as a matrix element or directly as a color_amplitudes dictionary.
         The split_order_amps specifies the group of amplitudes sharing the same
@@ -2377,22 +2658,34 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                    JAMP_format=JAMP_format.format(str(i+1)),
                                    JAMP_formatLC="LN"+JAMP_format.format(str(i+1)))[0])
             else:
+                # Only one set of definitions fits in the arrays the
+                # template declares, so the orbit version is only used when
+                # there is a single order to compute.
                 toadd, nb_tmp = self.get_JAMP_lines(col_amps_order,
-                                   JAMP_format=JAMP_format.format(str(i+1)))
+                                   JAMP_format=JAMP_format.format(str(i+1)),
+                                   orbit=orbit and len(split_order_amps) == 1,
+                                   proc_prefix=proc_prefix,
+                                   symmetry_source=col_amps if isinstance(
+                                       col_amps,
+                                       helas_objects.HelasMatrixElement) else None)
                 res_list.extend(toadd)
                 max_tmp = max(max_tmp, nb_tmp)         
 
         return res_list, max_tmp
 
 
-    def get_JAMP_lines(self, col_amps, JAMP_format="JAMP(%s)", AMP_format="AMP(%s)", 
-                       split=-1):
-        """Return the JAMP = sum(fermionfactor * AMP(i)) lines from col_amps 
+    def get_JAMP_lines(self, col_amps, JAMP_format="JAMP(%s)", AMP_format="AMP(%s)",
+                       split=-1, orbit=False, proc_prefix='',
+                       symmetry_source=None):
+        """Return the JAMP = sum(fermionfactor * AMP(i)) lines from col_amps
         defined as a matrix element or directly as a color_amplitudes dictionary,
-        Jamp_formatLC should be define to allow to add LeadingColor computation 
+        Jamp_formatLC should be define to allow to add LeadingColor computation
         (usefull for MatchBox)
         The split argument defines how the JAMP lines should be split in order
-        not to be too long."""
+        not to be too long.
+        With orbit on, the common sub-expressions are looked for in a way which
+        respects the permutations leaving the color basis invariant, so that
+        they can be written as one recipe per orbit (see optimise_jamp)."""
 
         # Let the user call get_JAMP_lines directly from a MatrixElement or from
         # the color amplitudes lists.
@@ -2408,6 +2701,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         all_element = {}
         res_list = []
+        # Every single amplitude carries a power of the number of colors in its
+        # coefficient, but a process only uses a handful of distinct powers, so
+        # build the corresponding fractions once instead of once per amplitude.
+        nc_powers = {}
         for i, coeff_list in enumerate(color_amplitudes):
             # It might happen that coeff_list is empty if this function was
             # called from get_JAMP_lines_split_order (i.e. if some color flow
@@ -2441,7 +2738,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 for (coefficient, amp_number) in coefs:
                     if not coefficient:
                         continue
-                    value = (1j if coefficient[2] else 1)* coefficient[0] * coefficient[1] * fractions.Fraction(3)**coefficient[3]
+                    try:
+                        nc_power = nc_powers[coefficient[3]]
+                    except KeyError:
+                        nc_power = fractions.Fraction(3)**coefficient[3]
+                        nc_powers[coefficient[3]] = nc_power
+                    value = (1j if coefficient[2] else 1)* coefficient[0] * coefficient[1] * nc_power
                     if (i+1, amp_number) not in all_element:
                         all_element[(i+1, amp_number)] = value
                     else:
@@ -2482,11 +2784,46 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             start_time = 0
         
         res_list = []
-        
+
         self.myjamp_count = 0
-        for key in all_element:
-            all_element[key] = complex(all_element[key])
-        new_mat, defs = self.optimise_jamp(all_element)
+        # With one power of i shared by every coefficient, dividing it out
+        # leaves whole numbers to walk over -- they compare and hash exactly,
+        # and nothing has to be widened to complex. The phase goes back onto
+        # the JAMP coefficients afterwards, so the lines written are the same.
+        phase = self.jamp_global_phase(all_element) \
+                                        if self.jamp_integer_walk else None
+        integral = False
+        if phase is not None:
+            whole = {}
+            for key, value in all_element.items():
+                number = value / phase if phase != 1 else value
+                if isinstance(number, complex):
+                    number = number.real
+                number = fractions.Fraction(number).limit_denominator(10**9)
+                if number.denominator != 1:
+                    break
+                whole[key] = int(number)
+            else:
+                all_element.clear()
+                all_element.update(whole)
+                integral = True
+        if not integral:
+            phase = None
+            for key in all_element:
+                all_element[key] = complex(all_element[key])
+        self.jamp_orbits = None
+        # the color basis is read from the matrix element, which is not always
+        # what is passed here: the split order version hands over one list of
+        # color amplitudes per order and says where they came from
+        symmetry = self.get_jamp_symmetry(
+                        col_amps if symmetry_source is None else symmetry_source,
+                        all_element) if orbit and self.jamp_orbit else None
+        new_mat, defs = self.optimise_jamp(all_element, symmetry=symmetry)
+        if phase is not None and phase != 1:
+            # the definitions hold ratios, which the phase cancels out of; only
+            # the coefficients on the JAMP lines carry it
+            for key in new_mat:
+                new_mat[key] = new_mat[key] * phase
         if start_time:
             logger.info("Color-Flow passed to %s term in %ss. Introduce %i contraction", len(new_mat), int(time.time()-start_time), len(defs))
         
@@ -2508,30 +2845,104 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 
         
         
-        for i, amp1, amp2, frac, nb in defs:
-            if amp1 > 0:
-                amp1 = AMP_format % amp1
+        # One recipe per orbit rather than one line per definition, when the
+        # symmetry allows it and there are enough definitions for the routine
+        # rebuilding them to be worth its own code.
+        recipes = None
+        if symmetry and len(defs) >= self.jamp_orbit_min_def \
+                    and self.jamp_tables_allowed():
+            nb_amp = (col_amps if symmetry_source is None
+                      else symmetry_source).get_number_of_amplitudes()
+            if self.jamp_emit == 'tables':
+                recipes = self.jamp_orbit_tables(defs, nb_amp)
             else:
-                amp1 = "TMP_JAMP(%d)" % -amp1
-            if amp2 > 0:
-                amp2 = AMP_format % amp2
+                recipes = self.jamp_orbit_recipes(defs, nb_amp)
+        self.jamp_recipes = recipes
+
+        if recipes:
+            buffer = self.jamp_buffer()
+            tmp_name = lambda k: "%s(NGRAPHS+%d)" % (buffer, k)
+            defs = recipes['defs']
+            res_list.append("C     The definitions below come in orbits of the")
+            res_list.append("C     permutations leaving the color basis")
+            res_list.append("C     invariant: all of an orbit are the same")
+            res_list.append("C     recipe with the amplitudes permuted, so")
+            res_list.append("C     only their operands differ. INIT_JAMP works")
+            res_list.append("C     those out once, from one recipe per orbit.")
+            if recipes.get('recipes'):
+                res_list.append(" CALL %sINIT_JAMP()" % proc_prefix)
+                res_list.append(" DO ITMP = 1, NB_TMP_JAMP")
+                res_list.append("   AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
+                                " + TMP_JAMP_F(ITMP)*AMP(TMP_JAMP_B(ITMP))")
+                res_list.append(" ENDDO")
             else:
-                amp2 = "TMP_JAMP(%d)" % -amp2
-            
-            if frac not in  [1., -1]:
-                res_list.append(' TMP_JAMP(%d) = %s + (%s) * %s ! used %d times' % (i,amp1, format(frac), amp2, nb))                
-            elif frac == 1.:
-                res_list.append(' TMP_JAMP(%d) = %s +  %s ! used %d times' % (i,amp1, amp2, nb))  
-            else:
-                res_list.append(' TMP_JAMP(%d) = %s - %s ! used %d times' % (i,amp1, amp2, nb))  
+                if self.jamp_gather:
+                    res_list.append("C     the amplitudes of this helicity are")
+                    res_list.append("C     read into one array first, so that")
+                    res_list.append("C     the definitions below take both")
+                    res_list.append("C     their operands from the same place")
+                    res_list.append(" DO ITMP = 1, NGRAPHS")
+                    res_list.append("   %s(ITMP) = AMP(ITMP)" % buffer)
+                    res_list.append(" ENDDO")
+                res_list.append("C     the definitions of one level use none")
+                res_list.append("C     of each other, so they are sorted by")
+                res_list.append("C     the factor in front of the second")
+                res_list.append("C     operand and only the last group of")
+                res_list.append("C     each level has to multiply")
+                res_list.append(" DO ILEV = 1, NB_LEVEL")
+                res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-4),"
+                                " TMP_JAMP_L(5*ILEV-3)")
+                res_list.append("     %s(NGRAPHS+ITMP) = %s(TMP_JAMP_A(ITMP))"
+                                " + %s(TMP_JAMP_B(ITMP))"
+                                % (buffer, buffer, buffer))
+                res_list.append("   ENDDO")
+                res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-3)+1,"
+                                " TMP_JAMP_L(5*ILEV-2)")
+                res_list.append("     %s(NGRAPHS+ITMP) = %s(TMP_JAMP_A(ITMP))"
+                                " - %s(TMP_JAMP_B(ITMP))"
+                                % (buffer, buffer, buffer))
+                res_list.append("   ENDDO")
+                res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-2)+1,"
+                                " TMP_JAMP_L(5*ILEV-1)")
+                res_list.append("     %s(NGRAPHS+ITMP) = %s(TMP_JAMP_A(ITMP))"
+                                " + TMP_JAMP_F(TMP_JAMP_L(5*ILEV)+ITMP"
+                                "-TMP_JAMP_L(5*ILEV-2))"
+                                "*%s(TMP_JAMP_B(ITMP))"
+                                % (buffer, buffer, buffer))
+                res_list.append("   ENDDO")
+                res_list.append(" ENDDO")
+        else:
+            tmp_name = lambda k: "TMP_JAMP(%d)" % k
+            for i, amp1, amp2, frac, nb in defs:
+                if amp1 > 0:
+                    amp1 = AMP_format % amp1
+                else:
+                    amp1 = tmp_name(-amp1)
+                if amp2 > 0:
+                    amp2 = AMP_format % amp2
+                else:
+                    amp2 = tmp_name(-amp2)
+
+                if frac not in  [1., -1]:
+                    res_list.append(' TMP_JAMP(%d) = %s + (%s) * %s ! used %d times' % (i,amp1, format(frac), amp2, nb))
+                elif frac == 1.:
+                    res_list.append(' TMP_JAMP(%d) = %s +  %s ! used %d times' % (i,amp1, amp2, nb))
+                else:
+                    res_list.append(' TMP_JAMP(%d) = %s - %s ! used %d times' % (i,amp1, amp2, nb))
 
         jamp_res = collections.defaultdict(list)
         max_jamp=0
         for (jamp, var), factor in new_mat.items():
             if var > 0:
-                name = AMP_format % var
+                name = ("%s(%%s)" % self.jamp_buffer()) % var \
+                       if (recipes and self.jamp_gather) else AMP_format % var
             else:
-                name = "TMP_JAMP(%d)" % -var
+                if recipes and recipes.get('factor_of'):
+                    # the definitions were renumbered, and one of them can be
+                    # the opposite of the one the optimisation had
+                    where, scale = recipes['factor_of'][-var]
+                    factor, var = factor * scale, -where
+                name = tmp_name(-var)
             if factor not in [1.]:
                 jamp_res[jamp].append("(%s)*%s" % (format(factor), name))
             elif factor ==1:
@@ -2548,13 +2959,61 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         return res_list, len(defs)
 
-    def optimise_jamp(self, all_element, nb_line=0, nb_col=0, added=0):
+    @staticmethod
+    def index_jamp_matrix(all_element, nb_col):
+        """Sorted lists of the positions of the non zero entries of the matrix,
+        by line and by column. An entry which is present but zero does not
+        count, and neither does a column outside the 0..nb_col range, so that
+        these indices list exactly the entries the plain scan would look at."""
+
+        lines = collections.defaultdict(list)
+        columns = collections.defaultdict(list)
+        for (i, j), value in all_element.items():
+            if value and j < nb_col:
+                lines[i].append(j)
+                columns[j].append(i)
+        for line in lines.values():
+            line.sort()
+        for column in columns.values():
+            column.sort()
+        return lines, columns
+
+    @staticmethod
+    def common_jamp_lines(columns, nb_line, j1, j2):
+        """Lines, in increasing order, where both columns j1 and j2 are non
+        zero. Both column lists are sorted, so this is a plain merge."""
+
+        left, right = columns.get(j1, []), columns.get(j2, [])
+        res = []
+        pos1 = pos2 = 0
+        while pos1 < len(left) and pos2 < len(right):
+            if left[pos1] == right[pos2]:
+                if left[pos1] < nb_line:
+                    res.append(left[pos1])
+                pos1 += 1
+                pos2 += 1
+            elif left[pos1] < right[pos2]:
+                pos1 += 1
+            else:
+                pos2 += 1
+        return res
+
+    def optimise_jamp(self, all_element, nb_line=0, nb_col=0, added=0,
+                      symmetry=None):
         """ optimise problem of type Y = A X
                 A is a matrix (all_element)
                 X is the fortran name of the input.
             The code iteratively add sub-expression jtemp[sub_add]
             and recall itself (this is add to the X size)
+
+            With a symmetry (see get_jamp_symmetry) the sub-expressions are
+            introduced by whole orbits of that symmetry instead of one at a
+            time, so that the result can be written as one recipe per orbit.
+            The orbits are then left in self.jamp_orbits.
         """
+        if symmetry:
+            return self.optimise_jamp_best(all_element, symmetry)
+
         self.myjamp_count +=1
 
         if not nb_line:
@@ -2597,18 +3056,32 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     newdef1 = newdef1 + new_def
                 return all_element, newdef1
 
+        # Index of the non zero entries, by line and by column. The matrix is
+        # very sparse (a color flow only gets a small share of the amplitudes)
+        # so walking the whole 0..nb_col range for every entry, as looking the
+        # columns up one by one in the matrix amounts to, spends nearly all of
+        # its time discovering zeros.
+        lines, columns = self.index_jamp_matrix(all_element, nb_col)
+
         max_count = 0
         all_index = []
-        operation = collections.defaultdict(lambda: collections.defaultdict(int))
+        # how many lines have the same ratio between two given columns, keyed
+        # by the two columns and the ratio at once rather than by nested
+        # dictionaries: this is the innermost loop of the whole optimisation
+        operation = collections.defaultdict(int)
         for (i,j1), v1 in all_element.items():
-            ratios = [(j2,all_element.get((i,j2), 0)/v1) for j2 in range(j1+1, nb_col) if all_element.get((i,j2), 0)]
-            for j2, R in ratios:                   
-                operation[(j1,j2)][R] +=1 
-                if operation[(j1,j2)][R] > max_count:
-                    max_count = operation[(j1,j2)][R]
-                    all_index = [(j1,j2, R)]
-                elif operation[(j1,j2)][R] == max_count:
-                    all_index.append((j1,j2, R))
+            line = lines.get(i)
+            if not line:
+                continue
+            for j2 in line[bisect.bisect_right(line, j1):]:
+                key = (j1, j2, all_element[(i,j2)]/v1)
+                operation[key] += 1
+                count = operation[key]
+                if count > max_count:
+                    max_count = count
+                    all_index = [key]
+                elif count == max_count:
+                    all_index.append(key)
 
         if max_count <= 1:
             return all_element, []
@@ -2617,30 +3090,1291 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         for index in all_index:
             j1,j2,R = index
             first = True
-            for i in range(nb_line):
+            # only the lines where both columns are filled can contribute; the
+            # substitutions done here can empty some of them, so the values
+            # still have to be read back from the matrix
+            for i in self.common_jamp_lines(columns, nb_line, j1, j2):
                 v1 = all_element.get((i,j1), 0)
                 v2 = all_element.get((i,j2), 0)
-                if not v1 or not v2: 
+                if not v1 or not v2:
                     continue
                 if v2/v1 == R:
                     if first:
                         first = False
                         added +=1
                         to_add.append((added,j1,j2,R, max_count))
-                        
+
                     all_element[(i,-added)] = v1
                     del all_element[(i,j1)] #= 0
-                    del all_element[(i,j2)] #= 0 
+                    del all_element[(i,j2)] #= 0
 
         logger.log(5,"Define %d new shortcut reused %d times", len(to_add), max_count)
         new_element, new_def =  self.optimise_jamp(all_element, nb_line=nb_line, nb_col=nb_col, added=added)
         for one_def in to_add:
             new_def.insert(0, one_def)
-        return new_element, new_def   
-           
-           
-            
-            
+        return new_element, new_def
+
+
+    @staticmethod
+    def jamp_operation_count(new_mat, defs):
+        """Additions the result asks for: one per definition, plus what is left
+        in each line of the matrix."""
+
+        terms = collections.Counter()
+        for jamp, _var in new_mat:
+            terms[jamp] += 1
+        return len(defs) + sum(max(0, count - 1) for count in terms.values())
+
+    def optimise_jamp_best(self, all_element, symmetry):
+        """Taking whole orbits only pays once there is enough of them to share:
+        on a small matrix it can end up asking for more additions than the plain
+        scan, which is free to take whatever it likes. g g > t t~ g is such a
+        case, 46 additions against 39.
+
+        Small matrices are cheap to optimise, so rather than guess where the
+        turn is, do both and keep the shorter. Above that size only the orbit
+        version is run: it wins by a wide margin on everything that big, and
+        the plain scan is the slow one there."""
+
+        orbit_element, orbit_defs = self.optimise_jamp_equivariant(
+                                            dict(all_element), symmetry)
+        if len(all_element) > self.jamp_compare_max_size:
+            return orbit_element, orbit_defs
+
+        orbits = self.jamp_orbits
+        plain_element, plain_defs = self.optimise_jamp(dict(all_element))
+        if self.jamp_operation_count(plain_element, plain_defs) < \
+                    self.jamp_operation_count(orbit_element, orbit_defs):
+            self.jamp_orbits = None
+            return plain_element, plain_defs
+        self.jamp_orbits = orbits
+        return orbit_element, orbit_defs
+
+    #===========================================================================
+    # Orbit equivariant version of the JAMP optimisation
+    #===========================================================================
+    # A permutation of the external color indices which maps the color basis
+    # onto itself (see color_amp.ColorBasisSymmetry) also permutes the columns
+    # of the JAMP matrix, up to a sign. The whole matrix is then invariant, so
+    # the sub-expressions the optimisation looks for come in orbits: every one
+    # of them is worth exactly as much as the others. Introducing a whole orbit
+    # at a time, rather than one sub-expression at a time as the plain scan
+    # does, leaves the matrix invariant at every step, and the definitions can
+    # be written as one recipe per orbit.
+
+    @staticmethod
+    def jamp_color_rows(matrix_element):
+        """The color coefficient of every amplitude, one dictionary per color
+        basis line. Same numbers get_JAMP_lines works from."""
+
+        rows = []
+        powers = {}
+        for coeff_list in matrix_element.get_color_amplitudes():
+            row = {}
+            for coefficient, amp in coeff_list:
+                if not coefficient:
+                    continue
+                try:
+                    power = powers[coefficient[3]]
+                except KeyError:
+                    power = fractions.Fraction(3) ** coefficient[3]
+                    powers[coefficient[3]] = power
+                value = (1j if coefficient[2] else 1) * coefficient[0] * \
+                        coefficient[1] * power
+                row[amp] = row.get(amp, 0) + value
+            rows.append(dict((amp, complex(v)) for amp, v in row.items() if v))
+        return rows
+
+    def get_jamp_reflection(self, matrix_element):
+        """Reversing every color basis element maps the basis onto itself, and
+        for a pure gluon process the color coefficients of a line and of its
+        reverse differ by one overall sign, so half the color flows carry no
+        information of their own:
+
+            JAMP[reverse(i)] = sign * JAMP[i]
+
+        Return (reverse, sign) or None. The relation is read off the color
+        coefficients themselves rather than assumed, so a process where it does
+        not hold -- a quark line, where reversing does not commute with the
+        fermion flow -- simply gets None."""
+
+        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
+            return None
+        color_basis = matrix_element.get('color_basis')
+        if not color_basis or len(color_basis) < 2:
+            return None
+        keys = sorted(color_basis.keys())
+        position = dict((key, i) for i, key in enumerate(keys))
+
+        reverse = []
+        for key in keys:
+            other = color_amp.reverse_immutable(key)
+            if other is None or other not in position:
+                return None
+            reverse.append(position[other])
+        if any(reverse[reverse[i]] != i for i in range(len(keys))):
+            return None
+
+        columns = self.jamp_color_rows(matrix_element)
+
+        sign = None
+        for i in range(len(keys)):
+            here, there = columns[i], columns[reverse[i]]
+            if set(here) != set(there):
+                return None
+            for amp, value in here.items():
+                ratio = there[amp] / value
+                if ratio not in (1, -1):
+                    return None
+                if sign is None:
+                    sign = int(ratio.real)
+                elif sign != int(ratio.real):
+                    return None
+        if sign is None:
+            return None
+        return reverse, sign
+
+    # Above this many entries the folded color matrix is not written out but
+    # rebuilt at run time, which only the sign +1 case can do (see
+    # get_jamp_folding).
+    color_fold_max_written = 300000
+
+    _blas_available = None
+
+    @classmethod
+    def blas_is_available(cls):
+        """Whether a BLAS carrying DSYMM can be linked, asked once."""
+
+        if cls._blas_available is None:
+            import subprocess, tempfile, shutil
+            probe = ("      PROGRAM P\n"
+                     "      DOUBLE PRECISION A(1,1),B(1,1),C(1,1)\n"
+                     "      A=1D0\n      B=1D0\n      C=0D0\n"
+                     "      CALL DSYMM('L','U',1,1,1D0,A,1,B,1,0D0,C,1)\n"
+                     "      END\n")
+            work = tempfile.mkdtemp()
+            cls._blas_available = False
+            cls._blas_flags = ''
+            try:
+                src = os.path.join(work, 'p.f')
+                open(src, 'w').write(probe)
+                for flags in ('-framework Accelerate', '-lblas'):
+                    try:
+                        out = subprocess.call(
+                            ['gfortran', src, '-o', os.path.join(work, 'p')]
+                            + flags.split(),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+                    except OSError:
+                        break
+                    if out == 0:
+                        cls._blas_available = True
+                        cls._blas_flags = flags
+                        break
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+        return cls._blas_available
+
+    def blas_link_flags(self):
+        """What to link the color sum against, empty when BLAS is not taken."""
+
+        if self.blas is False or not self.blas_is_available():
+            return ''
+        return self._blas_flags
+
+    def blas_wanted(self, nfold):
+        """Take BLAS when asked for it, or when it is there and the color
+        matrix is big enough that the call is worth setting up."""
+
+        if self.blas is False:
+            return False
+        if not self.blas_is_available():
+            return False
+        if self.blas is True:
+            return True
+        return nfold >= self.blas_min_ncolor
+
+    @staticmethod
+    def jamp_global_phase(all_element):
+        """The power of i every coefficient carries, when they all carry the
+        same one. A pure gluon process picks up one factor of i per f^abc, the
+        same for every term, so the whole matrix is real or wholly imaginary;
+        a quark line mixes the two and there is nothing to take out."""
+
+        phase = None
+        for value in all_element.values():
+            if not value:
+                continue
+            number = complex(value)
+            if number.imag == 0:
+                here = 1
+            elif number.real == 0:
+                here = 1j
+            else:
+                return None
+            if phase is None:
+                phase = here
+            elif phase != here:
+                return None
+        return phase
+
+    def get_jamp_folding(self, matrix_element):
+        """Whether to sum |M|^2 over one line per reversal pair, and the
+        (reverse, sign, representatives, slot) that goes with it.
+
+        With sign +1 every line of a pair enters with the same weight, so the
+        permutations leaving the color basis invariant carry over to the pairs
+        unchanged and the folded matrix can still be rebuilt at run time from
+        one line per orbit. With sign -1 a permutation may send a line onto its
+        own partner, which flips the weight, and the rebuilt form would need a
+        sign of its own; there the folded matrix is written out instead, which
+        is only affordable while it stays small."""
+
+        if not self.jamp_fold:
+            return None
+        found = self.get_jamp_reflection(matrix_element)
+        if not found:
+            return None
+        reverse, sign = found
+        representatives, slot = self.jamp_reflection_representatives(reverse)
+        nb = len(representatives)
+        if sign < 0 and nb * (nb + 1) // 2 > self.color_fold_max_written:
+            return None
+        return {'reverse': reverse, 'sign': sign,
+                'representatives': representatives, 'slot': slot}
+
+    @staticmethod
+    def get_blas_routine(prefix, nfold, ncomb):
+        """The color sum for every helicity at once. DSYMM is real, so the
+        two parts of JAMP go through separately; the color matrix is real and
+        symmetric so that is all it takes."""
+
+        return """
+      SUBROUTINE {p}GET_MATRIX_BATCH(JR,JI,NB,ANS)
+      IMPLICIT NONE
+      INTEGER NFOLD, NCOMB
+      PARAMETER (NFOLD={n})
+      PARAMETER (NCOMB={c})
+      DOUBLE PRECISION JR(NFOLD,NCOMB), JI(NFOLD,NCOMB)
+      INTEGER NB
+      DOUBLE PRECISION ANS
+      INTEGER I,J,K,CFI
+      DOUBLE PRECISION, ALLOCATABLE, SAVE :: CFULL(:,:)
+      DOUBLE PRECISION, ALLOCATABLE, SAVE :: TR(:,:), TI(:,:)
+      LOGICAL FIRST
+      DATA FIRST /.TRUE./
+      SAVE FIRST
+      INTEGER {p}CF(NFOLD*(NFOLD+1)/2)
+      INTEGER {p}DENOM
+      common /{p}color_matrix/ {p}CF,{p}DENOM
+      IF (FIRST) THEN
+        CALL {p}INIT_CF()
+        ALLOCATE(CFULL(NFOLD,NFOLD))
+        ALLOCATE(TR(NFOLD,NCOMB))
+        ALLOCATE(TI(NFOLD,NCOMB))
+C       What is written out is the upper triangle with its off diagonal
+C       doubled, since the scalar sum walks it once. BLAS wants the whole
+C       matrix with each entry counted once.
+        CFI = 0
+        DO I = 1, NFOLD
+          DO J = I, NFOLD
+            CFI = CFI + 1
+            IF (I.EQ.J) THEN
+              CFULL(I,J) = DBLE({p}CF(CFI))
+            ELSE
+              CFULL(I,J) = DBLE({p}CF(CFI))/2D0
+              CFULL(J,I) = CFULL(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+        FIRST = .FALSE.
+      ENDIF
+      CALL DSYMM('L','U',NFOLD,NB,1D0,CFULL,NFOLD,JR,NFOLD,0D0,TR,NFOLD)
+      CALL DSYMM('L','U',NFOLD,NB,1D0,CFULL,NFOLD,JI,NFOLD,0D0,TI,NFOLD)
+      ANS = 0D0
+      DO K = 1, NB
+        DO I = 1, NFOLD
+          ANS = ANS + TR(I,K)*JR(I,K) + TI(I,K)*JI(I,K)
+        ENDDO
+      ENDDO
+      ANS = ANS / DBLE({p}DENOM)
+      END
+""".format(p=prefix, n=nfold, c=ncomb)
+
+    def get_color_fold_ampso(self, folding, ncolor):
+        """Template replacements for a color sum over one line per reversal
+        pair, where JAMP carries a second index for the split orders. Without a
+        folding the sum is left on JAMP itself, so nothing is copied."""
+
+        if not folding:
+            return {'ncolorfold': ncolor,
+                    'color_fold_decl': '',
+                    'color_fold_index': '',
+                    'color_fold_gather': '',
+                    'color_fold_array': 'JAMP'}
+        lines = [line + 1 for line in folding['representatives']]
+        return {
+            'ncolorfold': len(lines),
+            'color_fold_decl': (
+                "    COMPLEX*16 JFOLD(NCOLORFOLD,NAMPSO)\n"
+                "    INTEGER COLREP(NCOLORFOLD)\n"
+                "    INTEGER ICF"),
+            'color_fold_index': "\n".join(
+                self.get_int_data_lines("COLREP", lines, var='ICF')),
+            'color_fold_gather': "    JFOLD(:,:) = JAMP(COLREP(:),:)",
+            'color_fold_array': 'JFOLD'}
+
+    def jamp_folded_color_matrix(self, matrix_element, reverse, sign):
+        """The color matrix over one line per reversal pair. Summing |M|^2 over
+        the pairs instead of over every line gives the same number, since the
+        two lines of a pair only differ by the overall sign:
+
+            C'[a][b] = sum over the two lines of a and the two of b, each
+                       weighted by its sign relative to the line kept
+
+        Returns (denominator, rows) with rows[a][b] integer, a and b indexing
+        the representatives."""
+
+        color_matrix = matrix_element.get('color_matrix')
+        representatives, _slot = self.jamp_reflection_representatives(reverse)
+        denominator = max(color_matrix.get_line_denominators())
+        full = [color_matrix.get_line_numerators(i, denominator)
+                for i in range(len(reverse))]
+
+        def pair(a):
+            return [(a, 1)] if reverse[a] == a else [(a, 1), (reverse[a], sign)]
+
+        rows = []
+        for a in representatives:
+            row = []
+            for b in representatives:
+                total = 0
+                for i, ci in pair(a):
+                    for j, cj in pair(b):
+                        total += ci * cj * full[i][j]
+                assert int(total) == total
+                row.append(int(total))
+            rows.append(row)
+        return denominator, rows
+
+    @staticmethod
+    def jamp_reflection_representatives(reverse):
+        """One line per pair, and for every line the pair it belongs to."""
+
+        representatives = [i for i in range(len(reverse)) if i <= reverse[i]]
+        slot = {}
+        for index, line in enumerate(representatives):
+            slot[line] = index
+            slot[reverse[line]] = index
+        return representatives, slot
+
+    @staticmethod
+    def jamp_column_form(column):
+        """Canonical form of one column of the JAMP matrix up to a global sign,
+        together with the sign which was taken out."""
+
+        entries = sorted(column.items())
+        first = entries[0][1]
+        sign = -1 if (first.real, first.imag) < (0., 0.) else 1
+        return tuple((i, sign * value) for i, value in entries), sign
+
+    @classmethod
+    def jamp_amp_permutation(cls, columns, induced):
+        """Permutation of the amplitudes induced by the permutation induced of
+        the color basis: return {amp: (amp, sign)} such that
+
+            M[induced[i], sigma(j)] = sign(j) * M[i, j]
+
+        or None if the columns are not mapped onto each other.
+
+        Several amplitudes often have the very same column, so the columns are
+        gathered by their canonical form and one target is taken out of each
+        group at a time: looking the image up would not give a bijection."""
+
+        groups = collections.defaultdict(collections.deque)
+        for j in sorted(columns):
+            form, sign = cls.jamp_column_form(columns[j])
+            groups[form].append((j, sign))
+
+        action = {}
+        for j in sorted(columns):
+            image = dict((induced[i - 1] + 1, value)
+                         for i, value in columns[j].items())
+            form, sign = cls.jamp_column_form(image)
+            group = groups.get(form)
+            if not group:
+                return None
+            target, target_sign = group.popleft()
+            factor = sign * target_sign
+            other = columns[target]
+            if len(other) != len(image) or \
+                 any(other.get(i) != factor * value
+                     for i, value in image.items()):
+                return None
+            action[j] = (target, factor)
+        return action
+
+    def get_jamp_symmetry(self, matrix_element, all_element):
+        """Permutations leaving the JAMP matrix invariant: for each of them the
+        permutation of the color basis lines, and the permutation of the
+        amplitude columns with the sign that goes with it. None when there is
+        none, or when the matrix element does not carry a color basis."""
+
+        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
+            return None
+        color_basis = matrix_element.get('color_basis')
+        if not color_basis or len(color_basis) < 2:
+            return None
+        symmetry = color_amp.ColorBasisSymmetry(sorted(color_basis.keys()))
+        if not symmetry.generators1:
+            return None
+
+        columns = collections.defaultdict(dict)
+        for (i, j), value in all_element.items():
+            if value:
+                columns[j][i] = value
+        if not columns:
+            return None
+
+        nb_line = len(symmetry.keys1)
+        rowperms, actions = [], []
+        for induced in symmetry.generators1:
+            action = self.jamp_amp_permutation(columns, induced)
+            if action is None:
+                continue
+            rowperms.append([0] + [induced[i] + 1 for i in range(nb_line)])
+            actions.append(action)
+        if not actions:
+            return None
+
+        # one line per orbit is enough to see every sub-expression: any other
+        # line is the image of one of them, and so are the sub-expressions it
+        # holds. This is what keeps the scan below from being quadratic in the
+        # number of terms of the whole matrix.
+        parent = list(range(nb_line + 1))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        for rowperm in rowperms:
+            for i in range(1, nb_line + 1):
+                ri, rj = find(i), find(rowperm[i])
+                if ri != rj:
+                    parent[ri] = rj
+        line_reps = [i for i in range(1, nb_line + 1) if find(i) == i]
+
+        return {'rowperms': rowperms, 'actions': actions,
+                'nb_line': nb_line, 'line_reps': line_reps}
+
+    @staticmethod
+    def jamp_operation_image(action, operation):
+        """Image of the sub-expression operation=(j1,j2,R) under one
+        permutation, and the factor relating the column the image defines to
+        the image of the column operation defines."""
+
+        j1, j2, ratio = operation
+        first, sign1 = action[j1]
+        second, sign2 = action[j2]
+        if first < second:
+            return (first, second, ratio * sign2 / sign1), sign1
+        return (second, first, sign1 / (sign2 * ratio)), sign2 * ratio
+
+    def optimise_jamp_equivariant(self, all_element, symmetry):
+        """Same optimisation as optimise_jamp, but introducing whole orbits of
+        sub-expressions at a time so that the result is closed under the
+        symmetry. Fills self.jamp_orbits with, for every definition, the orbit
+        it belongs to and the definition and permutation it comes from."""
+
+        actions = [dict(action) for action in symmetry['actions']]
+        line_reps = symmetry['line_reps']
+        added = 0
+        defs = []
+        # (orbit, parent definition, permutation) for every definition
+        tree = []
+        # the definitions introduced together: none of them uses another, so
+        # they can be reordered freely
+        levels = []
+        nb_orbit = 0
+
+        while True:
+            columns = collections.defaultdict(list)
+            lines = collections.defaultdict(list)
+            for (i, j), value in all_element.items():
+                if value:
+                    columns[j].append(i)
+                    lines[i].append(j)
+            for line in lines.values():
+                line.sort()
+
+            # every sub-expression is the image of one living on a
+            # representative line, so only those have to be looked at
+            candidates = set()
+            for i in line_reps:
+                line = lines.get(i, [])
+                for pos, j1 in enumerate(line):
+                    value = all_element[(i, j1)]
+                    for j2 in line[pos + 1:]:
+                        candidates.add((j1, j2, all_element[(i, j2)] / value))
+
+            max_count = 0
+            best = []
+            for operation in candidates:
+                count = len(self.jamp_operation_lines(all_element, columns,
+                                                      operation))
+                if count > max_count:
+                    max_count, best = count, [operation]
+                elif count == max_count:
+                    best.append(operation)
+            if max_count <= 1:
+                break
+
+            orbits = self.jamp_operation_orbits(actions, best)
+            first_of_level = added + 1
+            for orbit, parent in orbits:
+                rows = dict((operation,
+                             self.jamp_operation_lines(all_element, columns,
+                                                       operation))
+                            for operation in orbit)
+                if not self.jamp_orbit_usable(rows):
+                    continue
+                index = {}
+                for operation in orbit:
+                    added += 1
+                    index[operation] = added
+                    origin, permutation = parent[operation]
+                    tree.append((nb_orbit, index[origin] if origin else 0,
+                                 permutation))
+                    defs.append((added, operation[0], operation[1],
+                                 operation[2], len(rows[operation])))
+                nb_orbit += 1
+                for operation, new in index.items():
+                    j1, j2 = operation[0], operation[1]
+                    for i in rows[operation]:
+                        all_element[(i, -new)] = all_element[(i, j1)]
+                        del all_element[(i, j1)]
+                        del all_element[(i, j2)]
+                for action in actions:
+                    for operation, new in index.items():
+                        image, factor = self.jamp_operation_image(action,
+                                                                  operation)
+                        action[-new] = (-index[image], factor)
+            if added < first_of_level:
+                # nothing could be introduced as a whole orbit
+                break
+            levels.append((first_of_level, added))
+            logger.log(5, "Define %d new shortcut reused %d times",
+                       added - first_of_level + 1, max_count)
+
+        self.jamp_orbits = {'tree': tree, 'nb_orbit': nb_orbit,
+                            'levels': levels, 'actions': actions,
+                            'symmetry': symmetry}
+
+        if self.jamp_emit == 'tables' and self.jamp_greedy_tail:
+            # The orbit rounds stop while the JAMP lines still hold a good many
+            # terms, since an orbit can only be taken as a whole. The plain
+            # scan has no such scruple and can still shorten those lines. Its
+            # sub-expressions are not orbits of anything, which rules them out
+            # of the recipes, but the table emission does not care: there a
+            # definition costs three numbers of DATA and one indirect add,
+            # against a term of a line and a direct add.
+            all_element, tail = self.optimise_jamp(all_element, added=added)
+            defs.extend(tail)
+
+        return all_element, defs
+
+    @staticmethod
+    def jamp_operation_lines(all_element, columns, operation):
+        """Lines where both columns of the sub-expression are still there with
+        its ratio. The values are read from the matrix as it is now, so lines
+        already taken by an orbit introduced before are simply gone."""
+
+        j1, j2, ratio = operation
+        res = []
+        for i in columns.get(j1, ()):
+            value = all_element.get((i, j1), 0)
+            if not value:
+                continue
+            other = all_element.get((i, j2), 0)
+            if other and other / value == ratio:
+                res.append(i)
+        return res
+
+    def jamp_operation_orbits(self, actions, operations):
+        """Orbits of the sub-expressions, walked breadth first, with the
+        (sub-expression, permutation) each of them is reached from."""
+
+        seen = set()
+        orbits = []
+        for start in sorted(operations, key=lambda op: (op[0], op[1],
+                                                        op[2].real,
+                                                        op[2].imag)):
+            if start in seen:
+                continue
+            orbit, parent = [start], {start: (None, 0)}
+            seen.add(start)
+            queue = collections.deque([start])
+            while queue:
+                current = queue.popleft()
+                for position, action in enumerate(actions):
+                    image = self.jamp_operation_image(action, current)[0]
+                    if image in seen:
+                        continue
+                    seen.add(image)
+                    parent[image] = (current, position + 1)
+                    orbit.append(image)
+                    queue.append(image)
+            orbits.append((orbit, parent))
+        return orbits
+
+    @staticmethod
+    def jamp_i_power(factor):
+        """The exponent of i this factor is, or None when it is not one of the
+        four powers of i. The factors the optimisation produces are products of
+        signs and of the i the color coefficients carry, so this is what they
+        all are in practice."""
+
+        value = complex(factor)
+        for exponent, power in enumerate((1, 1j, -1, -1j)):
+            if value == power:
+                return exponent
+        return None
+
+    def jamp_orbit_recipes(self, defs, nb_amp):
+        """Describe the definitions by one recipe per orbit: the amplitude
+        permutations, the first definition of every orbit, and the definitions
+        renumbered so that walking each orbit breadth first from its recipe,
+        with those permutations in that order, hands them out in that very
+        order. The generated code walks them the same way, so it only needs
+        the recipes.
+
+        Returns None when the definitions cannot be described this way, and
+        the caller then writes them out one by one as before."""
+
+        orbits = self.jamp_orbits
+        if not orbits or not defs:
+            return None
+        actions = orbits['actions']
+        nb_orbit = orbits['nb_orbit']
+
+        # Every factor has to be a power of i. They then form a group of four
+        # elements, so the walk can carry them as an exponent modulo four and
+        # stays integer arithmetic whatever the process.
+        for one_def in defs:
+            if self.jamp_i_power(one_def[3]) is None:
+                return None
+        for action in actions:
+            for column, (_image, factor) in action.items():
+                if column < 0 and self.jamp_i_power(factor) is None:
+                    return None
+
+        # first definition of every orbit
+        first = [0] * nb_orbit
+        for (orbit, parent, _permutation), one_def in zip(orbits['tree'], defs):
+            if not parent:
+                first[orbit] = one_def[0]
+
+        # the permutations which are really needed to reach every definition
+        # of every orbit: each of them costs one table of amplitude indices
+        chosen = []
+        rest = list(range(len(actions)))
+        while self.jamp_orbit_reach(actions, chosen, first) < len(defs):
+            best, best_gain = None, -1
+            for position in rest:
+                gain = self.jamp_orbit_reach(actions, chosen + [position],
+                                             first)
+                if gain > best_gain:
+                    best, best_gain = position, gain
+            if best is None:
+                return None
+            chosen.append(best)
+            rest.remove(best)
+
+        replay = self.jamp_orbit_replay(defs, first, chosen)
+        while replay is None and rest:
+            # the permutations kept do not reach every definition after all
+            chosen.append(rest.pop(0))
+            replay = self.jamp_orbit_replay(defs, first, chosen)
+        if replay is None:
+            return None
+        new_defs, recipes, factor_of = replay
+
+        permutations = []
+        for permutation in chosen:
+            action = orbits['symmetry']['actions'][permutation]
+            row = [0] * nb_amp
+            for amp, (image, sign) in action.items():
+                row[amp - 1] = image if sign > 0 else -image
+            if any(value == 0 for value in row):
+                return None
+            permutations.append(row)
+
+        # an odd power of i anywhere means the factor in front of the second
+        # operand is not real, and the array holding it has to be complex
+        complex_factor = any(recipe[2] % 2 for recipe in recipes) or \
+                         any(self.jamp_i_power(one[3]) % 2 for one in new_defs)
+        return {'permutations': permutations, 'recipes': recipes,
+                'defs': new_defs, 'nb_amp': nb_amp, 'factor_of': factor_of,
+                'complex_factor': complex_factor}
+
+    @staticmethod
+    def jamp_hash_size(nb_def):
+        """A prime comfortably larger than twice the number of definitions:
+        the routine which rebuilds them looks the operand pairs up in a table
+        of that size with linear probing."""
+
+        candidate = 2 * nb_def + 101
+        while True:
+            candidate += 1
+            for divisor in range(2, int(candidate ** 0.5) + 1):
+                if candidate % divisor == 0:
+                    break
+            else:
+                return candidate
+
+    def jamp_orbit_tables(self, defs, nb_amp):
+        """Describe the definitions by the plain list of their operands, to be
+        written out as DATA. This is the same loop as the recipes drive, only
+        with the table read from the source instead of rebuilt, so no factor is
+        out of reach.
+
+        The definitions introduced together carry no dependency, so inside each
+        of those groups they are sorted by the factor in front of the second
+        operand: the ones adding it, then the ones subtracting it, then the
+        rest. The loop then runs over each group with the factor built in and
+        only the last one has to multiply."""
+
+        if not defs:
+            return None
+        by_index = dict((one[0], one) for one in defs)
+        levels = self.jamp_definition_levels(defs)
+        order, bounds, nb_general = [], [], 0
+        for level in levels:
+            group = [[], [], []]
+            for index in level:
+                ratio = complex(by_index[index][3])
+                group[0 if ratio == 1 else 1 if ratio == -1 else 2]\
+                                                             .append(index)
+            start = len(order)
+            order += group[0] + group[1] + group[2]
+            # first, last of the adding group, last of the subtracting group,
+            # last of the rest, and where the factors of that rest start
+            bounds.append((start + 1, start + len(group[0]),
+                           start + len(group[0]) + len(group[1]), len(order),
+                           nb_general))
+            nb_general += len(group[2])
+        renumber = dict((old, new + 1) for new, old in enumerate(order))
+
+        new_defs = []
+        for old in order:
+            _k, left, right, ratio, count = by_index[old]
+            left = -renumber[-left] if left < 0 else left
+            right = -renumber[-right] if right < 0 else right
+            new_defs.append((renumber[old], left, right, ratio, count))
+
+        # only the definitions of the third group ever read the factor array
+        general = [one for level in bounds
+                   for one in range(level[2] + 1, level[3] + 1)]
+        return {'defs': new_defs, 'nb_amp': nb_amp, 'recipes': [],
+                'bounds': bounds, 'general': general,
+                'factor_of': dict((old, (new, 1))
+                                  for old, new in renumber.items()),
+                'complex_factor': any(complex(new_defs[one - 1][3]).imag
+                                      for one in general)}
+
+    @staticmethod
+    def jamp_definition_levels(defs):
+        """Group the definitions by how deep they sit in their own operands:
+        one which uses no other is at the first level, and any other one comes
+        after both of the ones it uses. Nothing inside a level uses anything
+        else of that level, so they can be reordered freely.
+
+        Read off the operands rather than off the rounds of the optimisation,
+        so that whatever the plain scan adds at the end lands where it belongs.
+        The operands of a definition always come before it, so one pass is
+        enough."""
+
+        depth = {}
+        levels = collections.defaultdict(list)
+        for index, left, right, _ratio, _count in defs:
+            here = 0
+            if left < 0:
+                here = max(here, depth[-left])
+            if right < 0:
+                here = max(here, depth[-right])
+            depth[index] = here + 1
+            levels[here + 1].append(index)
+        return [levels[key] for key in sorted(levels)]
+
+    @staticmethod
+    def jamp_number_data_lines(name, values, per_line, var='IJMP'):
+        """DATA statements filling one array with the given constants."""
+
+        lines = []
+        for start in range(0, len(values), per_line):
+            chunk = values[start:start + per_line]
+            lines.append("      DATA (%s(%s),%s=%d,%d) /%s/" %
+                         (name, var, var, start + 1, start + len(chunk),
+                          ','.join(chunk)))
+        return lines
+
+    def get_jamp_table_lines(self, recipes, proc_prefix):
+        """Declarations and DATA for the operand tables."""
+
+        nb_def = len(recipes['defs'])
+        nb_amp = recipes['nb_amp']
+
+        def where(column):
+            return column if column > 0 else nb_amp - column
+
+        left = [where(one[1]) for one in recipes['defs']]
+        right = [where(one[2]) for one in recipes['defs']]
+        general = recipes['general']
+        if recipes['complex_factor']:
+            factor = ['(%s,%s)' %
+                      (self.jamp_number(complex(recipes['defs'][one-1][3]).real),
+                       self.jamp_number(complex(recipes['defs'][one-1][3]).imag))
+                      for one in general]
+        else:
+            factor = [self.jamp_number(complex(recipes['defs'][one-1][3]).real)
+                      for one in general]
+
+        bounds = recipes['bounds']
+        lines = [
+            "      INTEGER ITMP, ILEV",
+            "C     IJMP is the loop variable of the DATA statements below",
+            "      INTEGER IJMP",
+            "      INTEGER NB_TMP_JAMP, NB_LEVEL, NB_GENERAL",
+            "      PARAMETER (NB_TMP_JAMP=%d)" % nb_def,
+            "      PARAMETER (NB_LEVEL=%d)" % len(bounds),
+            "      PARAMETER (NB_GENERAL=%d)" % max(1, len(general)),
+            "      INTEGER TMP_JAMP_A(NB_TMP_JAMP), TMP_JAMP_B(NB_TMP_JAMP)",
+            "      INTEGER TMP_JAMP_L(5*NB_LEVEL)",
+            "      %s TMP_JAMP_F(NB_GENERAL)" % self.jamp_factor_type(recipes),
+        ]
+        if self.jamp_gather:
+            lines.append("      COMPLEX*16 AMPBUF(%d+NB_TMP_JAMP)" % nb_amp)
+        lines += self.get_int_data_lines("TMP_JAMP_A", left,
+                                         var="IJMP")
+        lines += self.get_int_data_lines("TMP_JAMP_B", right,
+                                         var="IJMP")
+        lines += self.get_int_data_lines("TMP_JAMP_L",
+                                         sum((list(b) for b in bounds), []),
+                                         var="IJMP")
+        assert len(bounds[0]) == 5
+        if general:
+            lines += self.jamp_number_data_lines("TMP_JAMP_F", factor,
+                                             32 if recipes['complex_factor']
+                                             else 64)
+        else:
+            lines.append("      DATA TMP_JAMP_F/%s/" %
+                         ("(0D0,0D0)" if recipes['complex_factor'] else "0D0"))
+        return lines
+
+    @staticmethod
+    def jamp_number(value):
+        """Shortest exact way of writing one of the factors."""
+
+        if value == int(value) and abs(value) < 1e15:
+            return "%dD0" % int(value)
+        return ("%.15e" % value).replace('e', 'd')
+
+    def jamp_buffer(self):
+        """Array the definitions and their operands are read from."""
+
+        return 'AMPBUF' if self.jamp_gather else 'AMP'
+
+    @staticmethod
+    def jamp_power_data(recipes):
+        """DATA statement for the four powers of i, real when none of them is
+        actually needed."""
+
+        if recipes['complex_factor']:
+            return "      DATA IPOW/(1D0,0D0),(0D0,1D0),(-1D0,0D0)," \
+                   "(0D0,-1D0)/"
+        return "      DATA IPOW/1D0,0D0,-1D0,0D0/"
+
+    @staticmethod
+    def jamp_factor_type(recipes):
+        """The factor in front of the second operand is a power of i, so it is
+        only complex when one of those powers is odd."""
+
+        return "COMPLEX*16" if recipes['complex_factor'] \
+                            else "DOUBLE PRECISION"
+
+    def get_jamp_decl_lines(self, recipes, proc_prefix):
+        """The declarations GET_JAMP needs to run the definitions."""
+
+        if not recipes:
+            return []
+        if not recipes.get('recipes'):
+            return self.get_jamp_table_lines(recipes, proc_prefix)
+        return [
+            "      INTEGER ITMP",
+            "      INTEGER NB_TMP_JAMP",
+            "      PARAMETER (NB_TMP_JAMP=%d)" % len(recipes['defs']),
+            "      INTEGER TMP_JAMP_A(NB_TMP_JAMP), TMP_JAMP_B(NB_TMP_JAMP)",
+            "      %s TMP_JAMP_F(NB_TMP_JAMP)" % self.jamp_factor_type(recipes),
+            "      COMMON /%sjamp_recipe/ TMP_JAMP_A,TMP_JAMP_B,TMP_JAMP_F" % \
+                                                                  proc_prefix,
+        ]
+
+    def get_jamp_init_routine(self, recipes, proc_prefix):
+        """Fortran source rebuilding the operands of every color flow
+        definition from one recipe per orbit, or nothing when the definitions
+        are written out."""
+
+        if not recipes or not recipes.get('recipes'):
+            return []
+        nb_def = len(recipes['defs'])
+        nb_amp = recipes['nb_amp']
+        nb_orbit = len(recipes['recipes'])
+        nb_perm = len(recipes['permutations'])
+        nb_hash = self.jamp_hash_size(nb_def)
+
+        common = [
+            "      INTEGER NGRAPHS, NB_TMP_JAMP, NB_HASH",
+            "      PARAMETER (NGRAPHS=%d)" % nb_amp,
+            "      PARAMETER (NB_TMP_JAMP=%d)" % nb_def,
+            "      PARAMETER (NB_HASH=%d)" % nb_hash,
+            "      INTEGER TMP_JAMP_A(NB_TMP_JAMP), TMP_JAMP_B(NB_TMP_JAMP)",
+            "      %s TMP_JAMP_F(NB_TMP_JAMP)" % self.jamp_factor_type(recipes),
+            "      COMMON /%sjamp_recipe/ TMP_JAMP_A,TMP_JAMP_B,TMP_JAMP_F" % \
+                                                                  proc_prefix,
+            "      INTEGER NUSED",
+            "      INTEGER TMP_JAMP_E(NB_TMP_JAMP)",
+            "      INTEGER HVAL(NB_HASH)",
+            "      INTEGER*8 HKEY(NB_HASH)",
+            "      COMMON /%sjamp_build/ NUSED,TMP_JAMP_E,HVAL,HKEY" % \
+                                                                  proc_prefix,
+        ]
+
+        add = [
+            "      SUBROUTINE %sJAMP_ADD(A,B,F,M,SWAP)" % proc_prefix,
+            "C     The definition A + i**F*B, added if it is not there yet.",
+            "C     Its two operands the other way round, with the inverse",
+            "C     factor, give the very same column times i**F, so that one",
+            "C     is looked for too; SWAP is the exponent relating what was",
+            "C     asked for to what was found.",
+            "      IMPLICIT NONE",
+            "      INTEGER A,B,F,M,SWAP",
+        ] + common + [
+            "      INTEGER H, FREE, SHIFT",
+            "      INTEGER*8 KEY, OTHER, BASE",
+            "      SHIFT = NB_TMP_JAMP + 1",
+            "      BASE = NGRAPHS + NB_TMP_JAMP + 2",
+            "      KEY = ((A+SHIFT)*BASE+(B+SHIFT))*4+F+1",
+            "      OTHER = ((B+SHIFT)*BASE+(A+SHIFT))*4+MOD(4-F,4)+1",
+            "      SWAP = 0",
+            "      H = INT(MOD(KEY,INT(NB_HASH,8)))+1",
+            "      DO WHILE (HKEY(H) .NE. 0)",
+            "        IF (HKEY(H) .EQ. KEY) THEN",
+            "          M = HVAL(H)",
+            "          RETURN",
+            "        ENDIF",
+            "        H = H+1",
+            "        IF (H .GT. NB_HASH) H = 1",
+            "      ENDDO",
+            "      FREE = H",
+            "      H = INT(MOD(OTHER,INT(NB_HASH,8)))+1",
+            "      DO WHILE (HKEY(H) .NE. 0)",
+            "        IF (HKEY(H) .EQ. OTHER) THEN",
+            "          M = HVAL(H)",
+            "          SWAP = F",
+            "          RETURN",
+            "        ENDIF",
+            "        H = H+1",
+            "        IF (H .GT. NB_HASH) H = 1",
+            "      ENDDO",
+            "      NUSED = NUSED+1",
+            "      M = NUSED",
+            "      TMP_JAMP_A(M) = A",
+            "      TMP_JAMP_B(M) = B",
+            "      TMP_JAMP_E(M) = F",
+            "      HKEY(FREE) = KEY",
+            "      HVAL(FREE) = M",
+            "      END",
+            "",
+        ]
+
+        body = [
+            "      SUBROUTINE %sINIT_JAMP()" % proc_prefix,
+            "C     Work out the operands of every color flow definition,",
+            "C     starting from one recipe per orbit of the permutations",
+            "C     leaving the color basis invariant and walking each orbit",
+            "C     with those permutations. Done once, on the first call.",
+            "      IMPLICIT NONE",
+            "      INTEGER NB_ORBIT, NB_PERM",
+            "      PARAMETER (NB_ORBIT=%d)" % nb_orbit,
+            "      PARAMETER (NB_PERM=%d)" % nb_perm,
+        ] + common + [
+            "      INTEGER JPERM(NGRAPHS*NB_PERM)",
+            "      INTEGER JREC(3*NB_ORBIT)",
+            "      INTEGER JIMG(NB_TMP_JAMP*NB_PERM)",
+            "      INTEGER JIMGE(NB_TMP_JAMP*NB_PERM)",
+            "      INTEGER I,J,P,A,B,T,EA,EB,M,SWAP,BEGIN",
+            "      %s IPOW(0:3)" % self.jamp_factor_type(recipes),
+            self.jamp_power_data(recipes),
+            "      LOGICAL JAMP_DONE",
+            "      DATA JAMP_DONE/.FALSE./",
+            "      SAVE JAMP_DONE, JIMG, JIMGE",
+        ]
+        body += self.get_int_data_lines("JPERM",
+                                        sum(recipes['permutations'], []))
+        body += self.get_int_data_lines("JREC",
+                                        sum((list(one)
+                                             for one in recipes['recipes']),
+                                            []))
+        body += [
+            "      IF (JAMP_DONE) RETURN",
+            "      JAMP_DONE = .TRUE.",
+            "      DO I = 1, NB_HASH",
+            "        HKEY(I) = 0",
+            "      ENDDO",
+            "      NUSED = 0",
+            "      DO I = 1, NB_ORBIT",
+            "        BEGIN = NUSED",
+            "        CALL %sJAMP_ADD(JREC(3*I-2),JREC(3*I-1),JREC(3*I),M,SWAP)"
+                                                              % proc_prefix,
+            "        J = BEGIN",
+            "        DO WHILE (J .LT. NUSED)",
+            "          J = J+1",
+            "          DO P = 1, NB_PERM",
+            "C           an amplitude is permuted with a sign, which is the",
+            "C           exponent 0 or 2; a definition brings its own exponent",
+            "            A = TMP_JAMP_A(J)",
+            "            IF (A .GT. 0) THEN",
+            "              T = JPERM((P-1)*NGRAPHS+A)",
+            "              A = ABS(T)",
+            "              EA = (1-ISIGN(1,T))",
+            "            ELSE",
+            "              A = -JIMG((-A-1)*NB_PERM+P)",
+            "              EA = JIMGE((-TMP_JAMP_A(J)-1)*NB_PERM+P)",
+            "            ENDIF",
+            "            B = TMP_JAMP_B(J)",
+            "            IF (B .GT. 0) THEN",
+            "              T = JPERM((P-1)*NGRAPHS+B)",
+            "              B = ABS(T)",
+            "              EB = (1-ISIGN(1,T))",
+            "            ELSE",
+            "              B = -JIMG((-B-1)*NB_PERM+P)",
+            "              EB = JIMGE((-TMP_JAMP_B(J)-1)*NB_PERM+P)",
+            "            ENDIF",
+            "C           the image is A' + i**(e+eb-ea)*B', and the column it",
+            "C           defines is i**ea times the image of this one",
+            "            T = MOD(TMP_JAMP_E(J)+EB-EA+8,4)",
+            "            CALL %sJAMP_ADD(A,B,T,M,SWAP)" % proc_prefix,
+            "            JIMG((J-1)*NB_PERM+P) = M",
+            "            JIMGE((J-1)*NB_PERM+P) = MOD(EA+SWAP,4)",
+            "          ENDDO",
+            "        ENDDO",
+            "      ENDDO",
+            "      IF (NUSED .NE. NB_TMP_JAMP) THEN",
+            "        WRITE(*,*) 'ERROR: color flow recipes gave',NUSED,",
+            "     $             ' definitions instead of',NB_TMP_JAMP",
+            "        STOP 1",
+            "      ENDIF",
+            "C     the operands are read from one array holding the",
+            "C     amplitudes first and the definitions after them",
+            "      DO I = 1, NB_TMP_JAMP",
+            "        IF (TMP_JAMP_A(I) .LT. 0) TMP_JAMP_A(I) = NGRAPHS"
+                                                     "-TMP_JAMP_A(I)",
+            "        IF (TMP_JAMP_B(I) .LT. 0) TMP_JAMP_B(I) = NGRAPHS"
+                                                     "-TMP_JAMP_B(I)",
+            "        TMP_JAMP_F(I) = IPOW(TMP_JAMP_E(I))",
+            "      ENDDO",
+            "      END",
+        ]
+        return add + body
+
+    def jamp_tables_allowed(self):
+        """Whether the definitions may be read from a table rather than written
+        out. Both the standalone and the madevent templates declare what that
+        needs; madevent reads the amplitudes of the current helicity into a
+        buffer first, see jamp_gather."""
+
+        return True
+
+    def jamp_orbit_allowed(self, matrix_element):
+        """Whether the orbit equivariant optimisation is used here."""
+
+        if not self.jamp_orbit:
+            return False
+
+        if isinstance(self, ProcessExporterFortranME):
+            return self.matrix_file in ('matrix_madevent_v4.inc',
+                                        'matrix_madevent_group_v4.inc')
+
+        # matchbox and the loop exporters derive from the standalone one but
+        # write their own templates
+        if type(self) is not ProcessExporterFortranSA:
+            return False
+        if self.matrix_template != 'matrix_standalone_v4.inc':
+            return False
+        if self.opt.get('export_format') in ('standalone_msP',
+                                             'standalone_msF', 'matchbox',
+                                             'madloop_matchbox'):
+            return False
+        return not matrix_element.get('processes')[0].get('split_orders')
+
+    def jamp_orbit_replay(self, defs, first, chosen):
+        """Walk every orbit from its first definition with the given
+        permutations, exactly as the generated routine does, and hand out the
+        definition numbers in that order. Returns the definitions in the new
+        numbering, the recipe of every orbit, and for each old definition the
+        new one it became with the factor between the two. None if the walk
+        does not reach every definition."""
+
+        amp_action = [self.jamp_orbits['symmetry']['actions'][position]
+                      for position in chosen]
+        nb_perm = len(chosen)
+        by_index = dict((one_def[0], one_def) for one_def in defs)
+        # old definition -> (new definition, factor between the two columns)
+        factor_of = {}
+        left_of, right_of, ratio_of = [], [], []
+        image_of, power_of = [], []
+        known = {}
+        recipes = []
+
+        def store(left, right, ratio):
+            """The definition with those operands, added if it is new. The two
+            operands can also be the other way round, and the column is then
+            the same one up to the ratio, hence the second look up."""
+
+            found = known.get((left, right, ratio))
+            if found is not None:
+                return found, 1
+            # the two operands the other way round with the inverse ratio give
+            # the same column times the ratio
+            found = known.get((right, left, 1 / ratio))
+            if found is not None:
+                return found, ratio
+            left_of.append(left)
+            right_of.append(right)
+            ratio_of.append(ratio)
+            image_of.extend([0] * nb_perm)
+            power_of.extend([0] * nb_perm)
+            known[(left, right, ratio)] = len(left_of)
+            return len(left_of), 1
+
+        def act(place, column):
+            """image of a column and the factor that goes with it"""
+
+            if column > 0:
+                return amp_action[place][column]
+            where = (-column - 1) * nb_perm + place
+            return (-image_of[where],
+                    (1, 1j, -1, -1j)[power_of[where]])
+
+        # the same walk is followed on the definitions of the optimisation, so
+        # that each of them is matched with the one the generated code builds
+        actions = self.jamp_orbits['actions']
+        origin_of = []
+
+        for start in first:
+            _k, left, right, ratio = by_index[start][:4]
+            scale = 1
+            if left < 0:
+                if -left not in factor_of:
+                    return None
+                new, factor = factor_of[-left]
+                left, scale = -new, factor
+            if right < 0:
+                if -right not in factor_of:
+                    return None
+                new, factor = factor_of[-right]
+                right, ratio = -new, ratio * factor
+            ratio = ratio / scale
+            if self.jamp_i_power(ratio) is None:
+                return None
+            begin = len(left_of)
+            new, factor = store(left, right, ratio)
+            if new != begin + 1:
+                # the first definition of an orbit has to be a new one
+                return None
+            origin_of.append(start)
+            factor_of[start] = (new, scale * factor)
+            recipes.append((left, right, self.jamp_i_power(ratio)))
+
+            current = begin
+            while current < len(left_of):
+                current += 1
+                previous = origin_of[current - 1]
+                for place in range(nb_perm):
+                    image_left, sign_left = act(place, left_of[current - 1])
+                    image_right, sign_right = act(place, right_of[current - 1])
+                    image_ratio = ratio_of[current - 1] * sign_right / sign_left
+                    if self.jamp_i_power(image_ratio) is None:
+                        return None
+                    where, swap = store(image_left, image_right, image_ratio)
+                    sign = sign_left * swap
+                    image_of[(current - 1) * nb_perm + place] = where
+                    power_of[(current - 1) * nb_perm + place] = \
+                        self.jamp_i_power(sign)
+                    if where > len(origin_of):
+                        origin_of.append(None)
+                    # follow the same step on the definitions of the
+                    # optimisation to know which one this is
+                    image, factor = actions[chosen[place]][-previous]
+                    image = -image
+                    if origin_of[where - 1] is None:
+                        origin_of[where - 1] = image
+                    if image not in factor_of:
+                        factor_of[image] = (where,
+                                            factor_of[previous][1] * sign
+                                            / factor)
+
+        if len(factor_of) != len(defs):
+            return None
+
+        new_defs = [(i + 1, left_of[i], right_of[i], ratio_of[i], 0)
+                    for i in range(len(left_of))]
+        return new_defs, recipes, factor_of
+
+    @staticmethod
+    def jamp_orbit_reach(actions, chosen, first):
+        """How many definitions the given permutations reach from the first
+        definition of every orbit."""
+
+        seen = set(first)
+        queue = collections.deque(first)
+        while queue:
+            current = queue.popleft()
+            for permutation in chosen:
+                image = -actions[permutation][-current][0]
+                if image not in seen:
+                    seen.add(image)
+                    queue.append(image)
+        return len(seen)
+
+    @staticmethod
+    def jamp_orbit_usable(rows):
+        """Restrict an orbit to the entries only one of its sub-expressions
+        wants, and say whether what is left can be introduced as a whole. Which
+        of two sub-expressions of the same orbit gets a shared entry cannot be
+        decided in a way that commutes with the symmetry, so those entries are
+        left in the matrix and get another chance in a later round."""
+
+        sizes = set(len(use) for use in rows.values())
+        if len(sizes) != 1 or sizes == set([0]):
+            return False
+        entry = collections.Counter()
+        for operation, use in rows.items():
+            for i in use:
+                entry[(i, operation[0])] += 1
+                entry[(i, operation[1])] += 1
+        if max(entry.values()) == 1:
+            return True
+        for operation in list(rows):
+            rows[operation] = [i for i in rows[operation]
+                               if entry[(i, operation[0])] == 1
+                               and entry[(i, operation[1])] == 1]
+        sizes = set(len(use) for use in rows.values())
+        return len(sizes) == 1 and sizes != set([0])
+
+
 
     def get_pdf_lines(self, matrix_element, ninitial, subproc_group = False, vector=False):
         """Generate the PDF lines for the auto_dsig.f file"""
@@ -3354,6 +5088,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     f2py_wrapper_all ="f2py_wrapper_all.inc"
     f2py_matrix_splitter = "f2py_splitter.py"
     jamp_optim = True
+    jamp_fold = True
+    jamp_orbit = True
     default_vector_size = 0
     # When True, emit per-call IAND(WF_FLAVOR_MASK/AMP_FLAVOR_MASK,
     # CURRENT_FLAV_BIT) guards in MATRIX so that wavefunctions and amplitudes
@@ -3415,14 +5151,17 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             text = fsock.read()
             fsock.close()
             fsock = open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'),'w')
+            text = text.replace('BLASLIBS =', 'BLASLIBS = %s' % self.blas_link_flags())
             text = text.replace('LINKLIBS =  -L../../lib/', 'LINKLIBS =  -L../../lib/ -lrunning')
             text = text.replace('LIBS =', 'LIBS = $(LIBDIR)/librunning.$(libext)')
             fsock.write(text)
             fsock.close()
         else:
             # Add file in SubProcesses
-            shutil.copy(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'), 
-                    pjoin(self.dir_path, 'SubProcesses', 'makefileP'))
+            mk = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs',
+                            'template_files', 'makefile_sa_f_sp')).read()
+            mk = mk.replace('BLASLIBS =', 'BLASLIBS = %s' % self.blas_link_flags())
+            open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'), 'w').write(mk)
         
 
                         
@@ -3919,6 +5658,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         text = template.read()
         template.close()
         fsock = open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'),'w')
+        text = text.replace('BLASLIBS =', 'BLASLIBS = %s' % self.blas_link_flags())
         fsock.write(text)
         fsock.close()
 
@@ -4249,7 +5989,30 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # Extract ncolor
         ncolor = max(1, len(matrix_element.get('color_basis')))
         replace_dict['ncolor'] = ncolor
-        replace_dict['ncolortriang'] = ncolor * (ncolor + 1) // 2
+        # |M|^2 is summed over one color flow per reversal pair when the basis
+        # allows it, so the color matrix is only over those
+        folding = self.get_jamp_folding(matrix_element)
+        self.jamp_folding = folding
+        nfold = len(folding['representatives']) if folding else ncolor
+        replace_dict['ncolorfold'] = nfold
+        replace_dict['ncolortriang'] = nfold * (nfold + 1) // 2
+        replace_dict['color_fold_index'] = '\n'.join(
+            self.get_int_data_lines("COLREP",
+                                    [i + 1 for i in folding['representatives']],
+                                    var='ICF')) if folding else ''
+        replace_dict['color_fold_gather'] = (
+            "      DO ICF = 1, NCOLORFOLD\n"
+            "        JFOLD(ICF) = JAMP(COLREP(ICF))\n"
+            "      ENDDO" if folding else
+            "      DO ICF = 1, NCOLOR\n"
+            "        JFOLD(ICF) = JAMP(ICF)\n"
+            "      ENDDO")
+        if not folding:
+            replace_dict['color_fold_decl'] = "      INTEGER ICF"
+        if folding:
+            replace_dict['color_fold_decl'] = \
+                "      INTEGER COLREP(NCOLORFOLD)\n      INTEGER ICF"
+
 
         replace_dict['hel_avg_factor'] = matrix_element.get_hel_avg_factor()
         replace_dict['beamone_helavgfactor'], replace_dict['beamtwo_helavgfactor'] =\
@@ -4258,6 +6021,9 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': replace_dict['proc_prefix']}
+        replace_dict['color_init_routine'] = "\n".join(
+                self.get_color_init_routine(matrix_element,
+                                            replace_dict['proc_prefix']))
 
         if self.opt['export_format']=='standalone_msP':
         # For MadSpin need to return the AMP2
@@ -4268,11 +6034,14 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         # JAMP definition, depends on the number of independent split orders
         split_orders=matrix_element.get('processes')[0].get('split_orders')
+        self.jamp_recipes = None
 
         if len(split_orders)==0:
             replace_dict['nSplitOrders']=''
             # Extract JAMP lines
-            jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
+            jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element,
+                        orbit=self.jamp_orbit_allowed(matrix_element),
+                        proc_prefix=replace_dict['proc_prefix'])
             # Consider the output of a dummy order 'ALL_ORDERS' for which we
             # set all amplitude order to weight 1 and only one squared order
             # contribution which is of course ALL_ORDERS=2.
@@ -4315,7 +6084,80 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                    PARAMETER (NSQSO_BORN=%d)"""%replace_dict['nSqAmpSplitOrders'])
             files.cp('nsqso_born.inc', '..')
 
-        replace_dict['jamp_lines'] = '\n'.join(jamp_lines)    
+        replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
+
+        # The definitions written as one recipe per orbit are held in one
+        # array together with the amplitudes, so that the loop running them
+        # reads its two operands from the same place.
+        recipes = getattr(self, 'jamp_recipes', None)
+        replace_dict['jamp_decl'] = '\n'.join(
+                self.get_jamp_decl_lines(recipes, replace_dict['proc_prefix']))
+        replace_dict['jamp_init_routine'] = '\n'.join(
+            self.get_jamp_init_routine(recipes, replace_dict['proc_prefix']))
+        if recipes:
+            replace_dict['namp_dim'] = 'NGRAPHS+%d' % replace_dict['nb_temp_jamp']
+            replace_dict['jamp_tmp_decl'] = ''
+        else:
+            replace_dict['namp_dim'] = 'NGRAPHS'
+            replace_dict['jamp_tmp_decl'] = \
+                "      COMPLEX*16 TMP_JAMP(%i)" % replace_dict['nb_temp_jamp']
+
+        # BLAS-3 color sum: every helicity is one column of a single right
+        # hand side, so the whole sum is two DSYMM calls instead of one
+        # triangular loop per helicity.
+        prefix = replace_dict['proc_prefix']
+        reps = ([line + 1 for line in folding['representatives']] if folding
+                else list(range(1, ncolor + 1)))
+        if self.blas_wanted(nfold):
+            replace_dict['blas_guard_open'] = "("
+            replace_dict['blas_guard'] = ") .AND. .NOT.BLASDONE"
+            replace_dict['blas_decl'] = "\n".join([
+                "      LOGICAL BLASDONE",
+                "      INTEGER NBHEL, IBH",
+                # NGRAPHS is not in scope here, so size the buffer outright
+                "      COMPLEX*16 AMPB(%d), JAMPB(%d)" % (
+                    replace_dict['ngraphs'] + (replace_dict['nb_temp_jamp']
+                                               if recipes else 0), ncolor),
+                "      DOUBLE PRECISION, ALLOCATABLE, SAVE :: JRB(:,:)",
+                "      DOUBLE PRECISION, ALLOCATABLE, SAVE :: JIB(:,:)",
+                "      INTEGER COLREPB(%d)" % nfold] +
+                self.get_int_data_lines("COLREPB", reps, var='IBH'))
+            replace_dict['blas_branch'] = "\n".join([
+                "      BLASDONE = .FALSE.",
+                "      IF (USERHEL.EQ.-1 .AND. NTRY(FLAV_IDX).GE.20",
+                "     $    .AND. POLARIZATIONS(0,0).EQ.-1) THEN",
+                "        IF (.NOT.ALLOCATED(JRB)) THEN",
+                "          ALLOCATE(JRB(%d,NCOMB))" % nfold,
+                "          ALLOCATE(JIB(%d,NCOMB))" % nfold,
+                "        ENDIF",
+                "        NBHEL = 0",
+                "        DO IHEL=1,NCOMB",
+                "          IF (GOODHEL(IHEL,FLAV_IDX)) THEN",
+                "            NBHEL = NBHEL + 1",
+                "            CALL %sGET_AMP(P,NHEL(1,IHEL),JC(1),FLAV_IDX,AMPB)"
+                                                                    % prefix,
+                "            CALL %sGET_JAMP(AMPB,JAMPB)" % prefix,
+                "            DO IBH = 1, %d" % nfold,
+                "              JRB(IBH,NBHEL) = DBLE(JAMPB(COLREPB(IBH)))",
+                "              JIB(IBH,NBHEL) = DIMAG(JAMPB(COLREPB(IBH)))",
+                "            ENDDO",
+                "          ENDIF",
+                "        ENDDO",
+                "        IF (NBHEL.GT.0) THEN",
+                "          CALL %sGET_MATRIX_BATCH(JRB,JIB,NBHEL,ANS)" % prefix,
+                "        ENDIF",
+                "        BLASDONE = .TRUE.",
+                "      ENDIF"])
+            replace_dict['blas_routine'] = self.get_blas_routine(
+                                                    prefix, nfold, ncomb)
+        else:
+            # nothing added when BLAS is off, so what is written is exactly
+            # what was written before any of this existed
+            replace_dict['blas_guard_open'] = ""
+            replace_dict['blas_guard'] = ""
+            replace_dict['blas_decl'] = ""
+            replace_dict['blas_branch'] = ""
+            replace_dict['blas_routine'] = ""
 
         matrix_template = self.matrix_template
         if self.opt['export_format']=='standalone_msP' :
@@ -4592,9 +6434,11 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
     
 
     def get_JAMP_lines(self, col_amps, JAMP_format="JAMP(%s)", AMP_format="AMP(%s)", split=-1,
-                       JAMP_formatLC=None):
-    
-        """Adding leading color part of the colorflow"""
+                       JAMP_formatLC=None, orbit=False):
+
+        """Adding leading color part of the colorflow. The leading color part
+        needs the definitions written out, so the orbit recipes are not used
+        here."""
         
         if not JAMP_formatLC:
             JAMP_formatLC= "LN%s" % JAMP_format
@@ -5477,6 +7321,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     MadEvent format."""
 
     matrix_file = "matrix_madevent_v4.inc"
+    jamp_fold = True
+    jamp_orbit = True
+    # AMP is indexed by helicity once the matrix element is rewritten for
+    # helicity recycling, so the definitions cannot sit at the end of it
+    jamp_gather = True
     done_warning_tchannel = False
     
     default_opt = {'clean': False, 'complex_mass':False,
@@ -6206,6 +8055,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Extract ncolor
         ncolor = max(1, len(matrix_element.get('color_basis')))
         replace_dict['ncolor'] = ncolor
+        # |M|^2 is summed over one color flow per reversal pair when the basis
+        # allows it. JAMP itself keeps every flow: jamp2 and the color flow
+        # selection below read all of them.
+        folding = self.get_jamp_folding(matrix_element)
+        replace_dict.update(self.get_color_fold_ampso(folding, ncolor))
 
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
@@ -6256,11 +8110,18 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         # Extract JAMP lines
         # If no split_orders then artificiall add one entry called 'ALL_ORDERS'
+        self.jamp_recipes = None
         jamp_lines, nb_temp = self.get_JAMP_lines_split_order(\
                              matrix_element,amp_orders,split_order_names=
-                        split_orders if len(split_orders)>0 else ['ALL_ORDERS'])
+                        split_orders if len(split_orders)>0 else ['ALL_ORDERS'],
+                        orbit=self.jamp_orbit_allowed(matrix_element))
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
         replace_dict['nb_temp_jamp'] = nb_temp
+        recipes = getattr(self, 'jamp_recipes', None)
+        replace_dict['jamp_decl'] = '\n'.join(
+                                self.get_jamp_decl_lines(recipes, ''))
+        replace_dict['jamp_tmp_decl'] = '' if recipes else \
+                            "    COMPLEX*16 TMP_JAMP(%i)" % nb_temp
 
         if self.beam_polarization == [True, True]:
             replace_dict['beam_polarization'] = """

@@ -275,7 +275,8 @@ C
       INTEGER CF(1)
       INTEGER DENOM
       COMMON /COLOR_MATRIX/ CF,DENOM
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(0)
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR)
+      COMPLEX*16 TMP_JAMP(0)
       TYPE(ALOHA) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0D0, 0D0), (1D0, 0D0)/
@@ -460,7 +461,9 @@ C
       PARAMETER ( NCOLOR=1)
       COMPLEX*16 IMAG1
       PARAMETER (IMAG1=(0D0,1D0))
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(0)
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR)
+      COMPLEX*16 TMP_JAMP(0)
+
 
       JAMP(1) = (-1.000000000000000D+00)*AMP(1)+(-1.000000000000000D
      $ +00)*AMP(2)+(-1.000000000000000D+00)*AMP(3)+(
@@ -480,40 +483,76 @@ CF2PY INTENT(OUT) :: MATRIX
 CF2PY INTENT(IN) :: JAMP
 
 
-      INTEGER    NCOLOR
+      INTEGER    NCOLOR, NCOLORFOLD
       PARAMETER (NCOLOR=1)
+      PARAMETER (NCOLORFOLD=1)
       REAL*8     ZERO,MATRIX
       PARAMETER (ZERO=0D0)
 C     
 
 C     LOCAL VARIABLES
 C     
-      INTEGER I,J
-      COMPLEX*16 ZTEMP
+      INTEGER I,J,NJ,NB
+      COMPLEX*16 ZTEMP,Z1,Z2,Z3,Z4
 
       INTEGER CF_INDEX
-      INTEGER CF(NCOLOR*(NCOLOR+1)/2)
+      INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1)/2)
       INTEGER DENOM
       COMMON /COLOR_MATRIX/ CF,DENOM
-      COMPLEX*16 JAMP(NCOLOR), TMP_JAMP(0)
+      COMPLEX*16 JAMP(NCOLOR)
+      COMPLEX*16 JFOLD(NCOLORFOLD)
+      INTEGER ICF
+
+      COMPLEX*16 TMP_JAMP(0)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0D0, 0D0), (1D0, 0D0)/
 C     
 
 C     COLOR DATA
 C     
+      CALL INIT_CF()
 
+C     Reversing a color flow gives the same one back up to an overall
+C     sign, so only one of each pair carries anything: the sum below
+C      runs
+C     over those, against a color matrix folded onto them.
+      DO ICF = 1, NCOLOR
+        JFOLD(ICF) = JAMP(ICF)
+      ENDDO
       MATRIX = 0.D0
       CF_INDEX = 0
-      DO I = 1, NCOLOR
-        ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLOR
-          CF_INDEX = CF_INDEX + 1
-          ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J)
+C     Four accumulators, not one: with a single one every
+C     term waits for the one before it to come out of the
+C     adder, and that latency is what the loop spends its
+C     time on. No compiler does this by itself, since it
+C     changes the order the terms are summed in.
+      DO I = 1, NCOLORFOLD
+        Z1 = (0.D0,0.D0)
+        Z2 = (0.D0,0.D0)
+        Z3 = (0.D0,0.D0)
+        Z4 = (0.D0,0.D0)
+        NJ = NCOLORFOLD - I + 1
+        NB = (NJ/4)*4
+        DO J = 0, NB-4, 4
+          Z1 = Z1 + CF(CF_INDEX+J+1)*JFOLD(I+J)
+          Z2 = Z2 + CF(CF_INDEX+J+2)*JFOLD(I+J+1)
+          Z3 = Z3 + CF(CF_INDEX+J+3)*JFOLD(I+J+2)
+          Z4 = Z4 + CF(CF_INDEX+J+4)*JFOLD(I+J+3)
         ENDDO
-        MATRIX = MATRIX+ZTEMP*DCONJG(JAMP(I))/DENOM
+        ZTEMP = (Z1+Z2)+(Z3+Z4)
+        DO J = NB, NJ-1
+          ZTEMP = ZTEMP + CF(CF_INDEX+J+1)*JFOLD(I+J)
+        ENDDO
+        CF_INDEX = CF_INDEX + NJ
+        MATRIX = MATRIX+ZTEMP*DCONJG(JFOLD(I))/DENOM
       ENDDO
       END
+
+      SUBROUTINE INIT_CF()
+      RETURN
+      END
+
+
 
 
 
@@ -535,6 +574,7 @@ CF2PY INTENT(IN) :: JAMP_2
 
 C     COLOR DATA
 C     
+      CALL INIT_CF()
 
       INTER = (0.D0,0.D0)
       CF_INDEX = 0
