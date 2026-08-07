@@ -241,6 +241,7 @@ C
     COMPLEX*16 TMP(%(wavefunctionsize)d)
     INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
     INTEGER DENOM, CF_INDEX
+    COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
 %(color_fold_decl)s
     type(aloha) W(NWAVEFUNCS)
@@ -282,6 +283,7 @@ C BEGIN CODE
 C ----------
 if (first) then
 	first=.false.
+    CALL %(proc_prefix)sINIT_CF%(proc_id)s()
 	%(fake_width_definitions)s
 endif
 C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
@@ -336,4 +338,6 @@ ${jamp_lines}
     end
 
 
-%(broken_sym_function)s
+%(color_init_routine)s
+
+    %(broken_sym_function)s

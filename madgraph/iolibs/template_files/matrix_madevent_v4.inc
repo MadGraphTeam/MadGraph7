@@ -277,6 +277,7 @@ C
 %(jamp_decl)s
     INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
     INTEGER CF_INDEX,DENOM
+    COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
 %(color_fold_decl)s
     type(aloha) W(NWAVEFUNCS)
@@ -312,6 +313,7 @@ C BEGIN CODE
 C ----------
 if (first) then
     first=.false.
+    CALL %(proc_prefix)sINIT_CF%(proc_id)s()
     %(fake_width_definitions)s
 endif
 
@@ -355,4 +357,6 @@ AMP(:) = (0d0,0d0)
     END
 
 
-%(broken_sym_function)s
+%(color_init_routine)s
+
+    %(broken_sym_function)s
