@@ -1522,6 +1522,7 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         replace_dict['nbhel'] = self.matrix_elements[0].get_helicity_combinations() # number of helicity combinations
         replace_dict['ndiagrams'] = len(self.matrix_elements[0].get('diagrams')) # AV FIXME #910: elsewhere matrix_element.get('diagrams') and max(config[0]...
         replace_dict['nmaxflavor'] = len(self.matrix_elements[0].get_external_flavors_with_iden()) # number of flavor combinations
+        replace_dict['ncolorfold'] = self.get_ncolorfold(self.matrix_elements[0], replace_dict['ncolor'])
         replace_dict['nwave'] = 4
         if (fd_gauge): replace_dict['nwave'] += 1
 
@@ -2185,6 +2186,29 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
     def jamp_fold_worthwhile(self, sign, nb_pairs):
         return True
 
+    # AV - cache the export_v4.ColorReflectionFolding method
+    def get_jamp_folding(self, matrix_element):
+        """Cache the folding: it is read once for CPPProcess.h (ncolorfold) and
+        once for color_sum.cc, and finding it walks the whole color basis."""
+        cache = self.__dict__.setdefault('_jamp_folding_cache', {})
+        key = id(matrix_element)
+        if key not in cache:
+            # keep the matrix element alive so that its id cannot be reused
+            cache[key] = (matrix_element,
+                          super().get_jamp_folding(matrix_element))
+        return cache[key][1]
+
+    def get_ncolorfold(self, matrix_element, ncolor):
+        """The number of color flows |M|^2 is summed over: one per reversal pair
+        where the color basis folds, every flow otherwise. Mirrors what
+        get_color_matrix_lines writes the folded color matrix over, and is
+        exported as CPPProcess::ncolorfold because the BLAS color sum sizes its
+        buffers on it outside color_sum.cc (see MatrixElementKernels.cc)."""
+        if not matrix_element.get('color_matrix'):
+            return 1
+        folding = self.get_jamp_folding(matrix_element)
+        return len(folding['representatives']) if folding else ncolor
+
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix fptype and improve formatting)
     def set_color_flow_lines_cpp(self, matrix_element, replace_dict):
         """Fill in replace_dict everything the process template needs to know
@@ -2278,8 +2302,9 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
 
     @staticmethod
     def get_color_fold_lines(folding, ncolor):
-        """The number of color flows the sum runs over and which flow it keeps
-        out of every reversal pair. Without a folding this is every flow."""
+        """Which color flow the sum keeps out of every reversal pair. Without a
+        folding this is every flow. How many there are is CPPProcess::ncolorfold
+        (see get_ncolorfold), which is where color_sum.cc reads it from."""
 
         if folding:
             representatives = folding['representatives']
@@ -2297,22 +2322,16 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         chunks = [', '.join('%i' % line for line in representatives[start:start + 20])
                   for start in range(0, len(representatives), 20)]
         values = '{\n    ' + ',\n    '.join(chunks) + ' }'
-        # colorFoldRep is indexed at run time inside the GPU kernel, so it has to
-        # live in device memory, and a host copy is needed next to it: same split
-        # as channel2iconfig/hostChannel2iconfig in coloramps.h
+        # colorFoldRep is indexed at run time inside the GPU kernels, so it has
+        # to live in device memory: same split as channel2iconfig in coloramps.h
+        # (nvcc cannot read a plain constexpr array from device code without
+        # --expt-relaxed-constexpr, which the makefile does not pass)
         return comment + \
-            '  constexpr int ncolorfold = %i; // the number of color flows |M|^2 is summed over\n' % len(representatives) + \
+            '  constexpr int ncolorfold = CPPProcess::ncolorfold; // the number of color flows |M|^2 is summed over (%i here)\n' % len(representatives) + \
             '  // Which color flow of each reversal pair is kept (C indexing, in [0, ncolor-1])\n' + \
             '  // (NB: this array is created on the host in C++ code and on the device in GPU code)\n' + \
             '  __device__ constexpr int colorFoldRep[ncolorfold] = %s; // 1-D array[%i]\n' \
-            % (values, len(representatives)) + \
-            '#ifdef MGONGPUCPP_GPUIMPL\n' + \
-            '  // Host copy of the colorFoldRep array (needed to fold the color matrix at compile time)\n' + \
-            '  constexpr int hostColorFoldRep[ncolorfold] = %s; // 1-D array[%i]\n' \
-            % (values, len(representatives)) + \
-            '#else\n' + \
-            '  constexpr const int* hostColorFoldRep = colorFoldRep;\n' + \
-            '#endif'
+            % (values, len(representatives))
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (improve formatting)
     def get_initProc_lines(self, matrix_element, color_amplitudes):
