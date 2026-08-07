@@ -101,13 +101,16 @@ audits, clean installation, cross-language runtime tests, and PyPI Trusted
 Publishing. Publication consumes already validated wheels and one source
 distribution and performs no build.
 
-## Independent Physics Reference
+## Legacy Physics Parity Reference
 
 The legacy Fortran reference is developer-only. It is prepared as an isolated,
 pinned checkout by developer tooling, is never imported by the installed
-package, and is excluded from release package files. It provides an independent
-numerical oracle; agreement among APIs that share Rusticol validates the ABI but
-is not an independent physics check.
+package, and is excluded from release package files. It provides a separately
+implemented legacy parity authority and performance baseline. Because it shares
+validation lineage and known defects with the current implementation, agreement
+does not establish independent physics correctness. Future full-colour,
+arbitrary-precision comparisons with MadGraph are required; agreement among
+APIs that share Rusticol validates the ABI only.
 
 ## Supported Platforms
 

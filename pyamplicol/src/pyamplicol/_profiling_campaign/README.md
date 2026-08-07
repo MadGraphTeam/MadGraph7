@@ -72,7 +72,7 @@ work unchanged after the PR is merged.
 
 For on-the-fly LC cells in the n<=4 matrix, the matching recurrence cell is the
 single numerical correctness authority. No compiled artifact is generated or
-loaded for that gate. Original AmpliCol remains the independent performance
+loaded for that gate. Original AmpliCol remains the legacy performance
 baseline used by the OTF-versus-AmpliCol tables. This contract is report-cache
 schema v5; v4 two-authority records are intentionally not migrated.
 
