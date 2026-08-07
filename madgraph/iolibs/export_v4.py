@@ -235,6 +235,11 @@ class ProcessExporterFortran(VirtualExporter):
     # by every fortran exporter, so this stays off unless the template agrees.
     jamp_fold = False
     jamp_integer_walk = True
+    # BLAS-3 for the color sum: all helicities at once as one right hand side.
+    # None means take it when the library is there and the process is big
+    # enough for it to pay.
+    blas = None
+    blas_min_ncolor = 100
     # write the JAMP definitions as one recipe per orbit of the permutations
     # leaving the color basis invariant, instead of one line per definition
     jamp_orbit = False
@@ -3234,6 +3239,61 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
     # get_jamp_folding).
     color_fold_max_written = 300000
 
+    _blas_available = None
+
+    @classmethod
+    def blas_is_available(cls):
+        """Whether a BLAS carrying DSYMM can be linked, asked once."""
+
+        if cls._blas_available is None:
+            import subprocess, tempfile, shutil
+            probe = ("      PROGRAM P\n"
+                     "      DOUBLE PRECISION A(1,1),B(1,1),C(1,1)\n"
+                     "      A=1D0\n      B=1D0\n      C=0D0\n"
+                     "      CALL DSYMM('L','U',1,1,1D0,A,1,B,1,0D0,C,1)\n"
+                     "      END\n")
+            work = tempfile.mkdtemp()
+            cls._blas_available = False
+            cls._blas_flags = ''
+            try:
+                src = os.path.join(work, 'p.f')
+                open(src, 'w').write(probe)
+                for flags in ('-framework Accelerate', '-lblas'):
+                    try:
+                        out = subprocess.call(
+                            ['gfortran', src, '-o', os.path.join(work, 'p')]
+                            + flags.split(),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+                    except OSError:
+                        break
+                    if out == 0:
+                        cls._blas_available = True
+                        cls._blas_flags = flags
+                        break
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+        return cls._blas_available
+
+    def blas_link_flags(self):
+        """What to link the color sum against, empty when BLAS is not taken."""
+
+        if self.blas is False or not self.blas_is_available():
+            return ''
+        return self._blas_flags
+
+    def blas_wanted(self, nfold):
+        """Take BLAS when asked for it, or when it is there and the color
+        matrix is big enough that the call is worth setting up."""
+
+        if self.blas is False:
+            return False
+        if not self.blas_is_available():
+            return False
+        if self.blas is True:
+            return True
+        return nfold >= self.blas_min_ncolor
+
     @staticmethod
     def jamp_global_phase(all_element):
         """The power of i every coefficient carries, when they all carry the
@@ -3282,6 +3342,64 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             return None
         return {'reverse': reverse, 'sign': sign,
                 'representatives': representatives, 'slot': slot}
+
+    @staticmethod
+    def get_blas_routine(prefix, nfold, ncomb):
+        """The color sum for every helicity at once. DSYMM is real, so the
+        two parts of JAMP go through separately; the color matrix is real and
+        symmetric so that is all it takes."""
+
+        return """
+      SUBROUTINE {p}GET_MATRIX_BATCH(JR,JI,NB,ANS)
+      IMPLICIT NONE
+      INTEGER NFOLD, NCOMB
+      PARAMETER (NFOLD={n})
+      PARAMETER (NCOMB={c})
+      DOUBLE PRECISION JR(NFOLD,NCOMB), JI(NFOLD,NCOMB)
+      INTEGER NB
+      DOUBLE PRECISION ANS
+      INTEGER I,J,K,CFI
+      DOUBLE PRECISION, ALLOCATABLE, SAVE :: CFULL(:,:)
+      DOUBLE PRECISION, ALLOCATABLE, SAVE :: TR(:,:), TI(:,:)
+      LOGICAL FIRST
+      DATA FIRST /.TRUE./
+      SAVE FIRST
+      INTEGER {p}CF(NFOLD*(NFOLD+1)/2)
+      INTEGER {p}DENOM
+      common /{p}color_matrix/ {p}CF,{p}DENOM
+      IF (FIRST) THEN
+        CALL {p}INIT_CF()
+        ALLOCATE(CFULL(NFOLD,NFOLD))
+        ALLOCATE(TR(NFOLD,NCOMB))
+        ALLOCATE(TI(NFOLD,NCOMB))
+C       What is written out is the upper triangle with its off diagonal
+C       doubled, since the scalar sum walks it once. BLAS wants the whole
+C       matrix with each entry counted once.
+        CFI = 0
+        DO I = 1, NFOLD
+          DO J = I, NFOLD
+            CFI = CFI + 1
+            IF (I.EQ.J) THEN
+              CFULL(I,J) = DBLE({p}CF(CFI))
+            ELSE
+              CFULL(I,J) = DBLE({p}CF(CFI))/2D0
+              CFULL(J,I) = CFULL(I,J)
+            ENDIF
+          ENDDO
+        ENDDO
+        FIRST = .FALSE.
+      ENDIF
+      CALL DSYMM('L','U',NFOLD,NB,1D0,CFULL,NFOLD,JR,NFOLD,0D0,TR,NFOLD)
+      CALL DSYMM('L','U',NFOLD,NB,1D0,CFULL,NFOLD,JI,NFOLD,0D0,TI,NFOLD)
+      ANS = 0D0
+      DO K = 1, NB
+        DO I = 1, NFOLD
+          ANS = ANS + TR(I,K)*JR(I,K) + TI(I,K)*JI(I,K)
+        ENDDO
+      ENDDO
+      ANS = ANS / DBLE({p}DENOM)
+      END
+""".format(p=prefix, n=nfold, c=ncomb)
 
     def get_color_fold_ampso(self, folding, ncolor):
         """Template replacements for a color sum over one line per reversal
@@ -5033,14 +5151,17 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             text = fsock.read()
             fsock.close()
             fsock = open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'),'w')
+            text = text.replace('BLASLIBS =', 'BLASLIBS = %s' % self.blas_link_flags())
             text = text.replace('LINKLIBS =  -L../../lib/', 'LINKLIBS =  -L../../lib/ -lrunning')
             text = text.replace('LIBS =', 'LIBS = $(LIBDIR)/librunning.$(libext)')
             fsock.write(text)
             fsock.close()
         else:
             # Add file in SubProcesses
-            shutil.copy(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'), 
-                    pjoin(self.dir_path, 'SubProcesses', 'makefileP'))
+            mk = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs',
+                            'template_files', 'makefile_sa_f_sp')).read()
+            mk = mk.replace('BLASLIBS =', 'BLASLIBS = %s' % self.blas_link_flags())
+            open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'), 'w').write(mk)
         
 
                         
@@ -5537,6 +5658,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         text = template.read()
         template.close()
         fsock = open(pjoin(self.dir_path, 'SubProcesses', 'makefileP'),'w')
+        text = text.replace('BLASLIBS =', 'BLASLIBS = %s' % self.blas_link_flags())
         fsock.write(text)
         fsock.close()
 
@@ -5891,6 +6013,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             replace_dict['color_fold_decl'] = \
                 "      INTEGER COLREP(NCOLORFOLD)\n      INTEGER ICF"
 
+
         replace_dict['hel_avg_factor'] = matrix_element.get_hel_avg_factor()
         replace_dict['beamone_helavgfactor'], replace_dict['beamtwo_helavgfactor'] =\
                                        matrix_element.get_beams_hel_avg_factor()
@@ -5978,6 +6101,59 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             replace_dict['namp_dim'] = 'NGRAPHS'
             replace_dict['jamp_tmp_decl'] = \
                 "      COMPLEX*16 TMP_JAMP(%i)" % replace_dict['nb_temp_jamp']
+
+        # BLAS-3 color sum: every helicity is one column of a single right
+        # hand side, so the whole sum is two DSYMM calls instead of one
+        # triangular loop per helicity.
+        prefix = replace_dict['proc_prefix']
+        reps = ([line + 1 for line in folding['representatives']] if folding
+                else list(range(1, ncolor + 1)))
+        if self.blas_wanted(nfold):
+            replace_dict['blas_guard'] = " .AND. .NOT.BLASDONE"
+            replace_dict['blas_decl'] = "\n".join([
+                "      LOGICAL BLASDONE",
+                "      INTEGER NBHEL, IBH",
+                # NGRAPHS is not in scope here, so size the buffer outright
+                "      COMPLEX*16 AMPB(%d), JAMPB(%d)" % (
+                    replace_dict['ngraphs'] + (replace_dict['nb_temp_jamp']
+                                               if recipes else 0), ncolor),
+                "      DOUBLE PRECISION, ALLOCATABLE, SAVE :: JRB(:,:)",
+                "      DOUBLE PRECISION, ALLOCATABLE, SAVE :: JIB(:,:)",
+                "      INTEGER COLREPB(%d)" % nfold] +
+                self.get_int_data_lines("COLREPB", reps, var='IBH'))
+            replace_dict['blas_branch'] = "\n".join([
+                "      BLASDONE = .FALSE.",
+                "      IF (USERHEL.EQ.-1 .AND. NTRY(FLAV_IDX).GE.20",
+                "     $    .AND. POLARIZATIONS(0,0).EQ.-1) THEN",
+                "        IF (.NOT.ALLOCATED(JRB)) THEN",
+                "          ALLOCATE(JRB(%d,NCOMB))" % nfold,
+                "          ALLOCATE(JIB(%d,NCOMB))" % nfold,
+                "        ENDIF",
+                "        NBHEL = 0",
+                "        DO IHEL=1,NCOMB",
+                "          IF (GOODHEL(IHEL,FLAV_IDX)) THEN",
+                "            NBHEL = NBHEL + 1",
+                "            CALL %sGET_AMP(P,NHEL(1,IHEL),JC(1),FLAV_IDX,AMPB)"
+                                                                    % prefix,
+                "            CALL %sGET_JAMP(AMPB,JAMPB)" % prefix,
+                "            DO IBH = 1, %d" % nfold,
+                "              JRB(IBH,NBHEL) = DBLE(JAMPB(COLREPB(IBH)))",
+                "              JIB(IBH,NBHEL) = DIMAG(JAMPB(COLREPB(IBH)))",
+                "            ENDDO",
+                "          ENDIF",
+                "        ENDDO",
+                "        IF (NBHEL.GT.0) THEN",
+                "          CALL %sGET_MATRIX_BATCH(JRB,JIB,NBHEL,ANS)" % prefix,
+                "        ENDIF",
+                "        BLASDONE = .TRUE.",
+                "      ENDIF"])
+            replace_dict['blas_routine'] = self.get_blas_routine(
+                                                    prefix, nfold, ncomb)
+        else:
+            replace_dict['blas_guard'] = ""
+            replace_dict['blas_decl'] = ""
+            replace_dict['blas_branch'] = ""
+            replace_dict['blas_routine'] = ""
 
         matrix_template = self.matrix_template
         if self.opt['export_format']=='standalone_msP' :
@@ -7884,6 +8060,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': replace_dict['proc_prefix']}
+        # When the matrix is handed over compressed, CF is filled at run time
+        # and this routine is what fills it.
+        replace_dict['color_init_routine'] = "\n".join(
+                self.get_color_init_routine(matrix_element,
+                                            replace_dict['proc_prefix']))
 
 
         # Set the size of Wavefunction

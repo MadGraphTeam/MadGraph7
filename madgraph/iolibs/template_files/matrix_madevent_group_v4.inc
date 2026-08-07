@@ -374,6 +374,7 @@ C BEGIN CODE
 C ----------
 if (first) then
 	first=.false.
+    CALL %(proc_prefix)sINIT_CF()
 	%(fake_width_definitions)s
 
 	if(init_mode) then
@@ -471,4 +472,6 @@ JAMP(:,:) = (0d0,0d0)
     end
     
 
-%(broken_sym_function)s
+%(color_init_routine)s
+
+    %(broken_sym_function)s

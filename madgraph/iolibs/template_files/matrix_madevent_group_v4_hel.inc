@@ -282,6 +282,7 @@ C BEGIN CODE
 C ----------
 if (first) then
 	first=.false.
+    CALL %(proc_prefix)sINIT_CF()
 	%(fake_width_definitions)s
 endif
 C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
@@ -336,4 +337,6 @@ ${jamp_lines}
     end
 
 
-%(broken_sym_function)s
+%(color_init_routine)s
+
+    %(broken_sym_function)s
