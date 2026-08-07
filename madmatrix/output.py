@@ -159,6 +159,19 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             return val.strip().lower() not in ('false', '0', 'no', 'off')
         return bool(val)
 
+    def get_makefile_replace_dict(self, model):
+        """Add what madmatrix.mk needs to know about a host BLAS for the C++
+        color sum. Whether a given process actually takes it is decided when
+        that process is written out (see cpp_blas_wanted); this only settles
+        whether one could be linked at all."""
+
+        from madgraph.iolibs.export_v4 import ProcessExporterFortran
+        replace_dict = super().get_makefile_replace_dict(model)
+        flags = ProcessExporterFortran.blas_available_flags()
+        replace_dict['cpp_blas_default'] = 'hasBlas' if flags else 'hasNoBlas'
+        replace_dict['cpp_blas_libflags'] = flags
+        return replace_dict
+
     # AV - overload the default version: create CMake directory, do not create lib directory
     def copy_template(self, model):
         misc.sprint('Entering ProcessExporterMadMatrix.copy_template (initialise the directory)')
@@ -230,10 +243,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     def copy_template(self, model):
         super().copy_template(model)
         madmatrix_mk = pjoin(self.madmatrix_templates, 'madmatrix.mk')
-        rendered = self.read_template_file(madmatrix_mk) % {
-            'model': self.get_model_name(model.get('name')),
-            'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++',
-        }
+        rendered = self.read_template_file(madmatrix_mk) % \
+                                        self.get_makefile_replace_dict(model)
         open(pjoin(self.dir_path, 'SubProcesses', 'madmatrix.mk'), 'w').write(rendered)
 
         # Write another custom bin/generate_events to orchestrate the standalone mode

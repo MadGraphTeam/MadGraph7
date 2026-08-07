@@ -151,7 +151,7 @@ namespace mg5amcCpu
 #endif
   }
 #endif
-
+%(cpp_blas_color_sum)s
   //--------------------------------------------------------------------------
 
 #ifdef MGONGPUCPP_GPUIMPL

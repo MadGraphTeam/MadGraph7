@@ -3396,6 +3396,17 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 shutil.rmtree(work, ignore_errors=True)
         return cls._blas_available
 
+    @classmethod
+    def blas_available_flags(cls):
+        """What a BLAS carrying DSYMM needs on the link line, empty when there
+        is none. Unlike blas_link_flags this does not ask whether BLAS was
+        wanted, only whether it is there, which is what a backend deciding for
+        itself (the C++ color sum) needs."""
+
+        if not cls.blas_is_available():
+            return ''
+        return cls._blas_flags
+
     def blas_link_flags(self):
         """What to link the color sum against, empty when BLAS is not taken."""
 
