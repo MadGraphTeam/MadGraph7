@@ -978,23 +978,36 @@ def do_multiline(line):
         comment = None
     char_limit = 72
     if len(line) > char_limit:
-        split_line = []
-        remaining = line
-        while len(remaining) > char_limit:
-            split_at = remaining.rfind(' ', 0, char_limit + 1)
-            if split_at <= 0:
-                split_line.append(remaining[:char_limit])
-                remaining = remaining[char_limit:]
-            else:
-                split_line.append(remaining[:split_at+1])
-                remaining = remaining[split_at+1:]
-        split_line.append(remaining)
         indent = ''
         for char in line[6:]:
             if char == ' ':
                 indent += char
             else:
                 break
+
+        # The split must leave at least one character of the statement on the
+        # first line. Searching from column 0 lets a statement with no internal
+        # blank before the limit -- JAMPF(2,1)=+2D0*(-IMAG1*JAMP(3,1)-...) is
+        # one, and so is any long JAMP -- split inside its own indent: the
+        # first line comes out blank and the continuation after it then
+        # attaches to the PREVIOUS statement, which fortran rejects.
+        first_split = 6 + len(indent)
+
+        split_line = []
+        remaining = line
+        floor = first_split
+        while len(remaining) > char_limit:
+            split_at = remaining.rfind(' ', floor + 1, char_limit + 1)
+            if split_at <= floor:
+                split_line.append(remaining[:char_limit])
+                remaining = remaining[char_limit:]
+            else:
+                split_line.append(remaining[:split_at+1])
+                remaining = remaining[split_at+1:]
+            # the continuations carry no indent of their own, it is prepended
+            # by the join below
+            floor = 0
+        split_line.append(remaining)
 
         line = f'\n     ${indent}'.join(split_line)
     if not comment:
