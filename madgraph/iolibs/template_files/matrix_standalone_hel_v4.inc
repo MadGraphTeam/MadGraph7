@@ -195,13 +195,19 @@ C
 C LOCAL VARIABLES
 C
       INTEGER I,J,K
-      COMPLEX*16 ZTEMP, TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 ZTEMP
 C     Raw storage handed to the P1N split-amplitude calls as a type(aloha)
 C     scratch wavefunction (see CombineAmp in the DHELAS library).
       COMPLEX*16 TMP(%(wavefunctionsize)d)
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       INTEGER %(proc_prefix)sDENOM, CF_INDEX
-      COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR)
+C     One row per helicity, and as wide as the standard GET_JAMP's AMP: when
+C     the color flow definitions are emitted as operand tables their
+C     temporaries are written at AMP(K,NGRAPHS+ITMP), past NGRAPHS, and
+C     jamp_decl declares the tables that index them.
+      COMPLEX*16 AMP(NCOMB,%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
+%(jamp_decl)s
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/

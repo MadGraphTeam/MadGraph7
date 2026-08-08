@@ -58,10 +58,19 @@ C
 C LOCAL VARIABLES
 C
       INTEGER I,J
-      COMPLEX*16 ZTEMP, TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 ZTEMP
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       INTEGER %(proc_prefix)sDENOM, CF_INDEX
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR)
+C     AMP is dimensioned exactly as in the standard GET_JAMP: when the color
+C     flow definitions are emitted as operand tables rather than written out,
+C     their temporaries live past NGRAPHS in this same array (NGRAPHS+154530
+C     against NGRAPHS 126630 for g g > 6g) and jamp_decl declares the tables
+C     that index them. Hard-coding AMP(NGRAPHS) and a TMP_JAMP here instead
+C     both overran the array and left ITMP/ILEV undeclared, which is what made
+C     the warm-up fail to compile.
+      COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
+%(jamp_decl)s
       TYPE(ALOHA) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
