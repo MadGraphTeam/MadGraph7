@@ -5848,6 +5848,51 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         else:
             return self['allowed_flavors_with_iden']
 
+    def get_flavor_pdg_combinations(self, model=None):
+        """Return every physical external-PDG combination this matrix element
+        covers, grouped per mapped process.
+
+        A matrix element carries flavor multiplicity in *two* independent
+        places, and both have to be walked to recover all the channels:
+
+          * several `processes` can be mapped onto one matrix element when
+            their matrix elements are identical. This is what happens with
+            apply_flavor_grouping=False: u u~ > e+ e-, u u~ > mu+ mu-,
+            c c~ > e+ e- and c c~ > mu+ mu- all share a single matrix element,
+            and only the first of them is reachable from its legs;
+          * a single process can carry *merged* legs (apply_flavor_grouping=
+            True, pdg 81/82/...), whose concrete flavors are enumerated by
+            get_external_flavors_with_iden.
+
+        Returns one (pdg_lists, has_merged_particles) pair per process, so that
+        callers which need the per-process split (madevent's IDUP numbering)
+        keep it while callers which just want every channel can flatten it.
+        """
+        if model is None:
+            model = self.get('processes')[0].get('model')
+        merged = {}
+        if model and 'merged_particles' in model:
+            merged = model['merged_particles']
+
+        combinations = []
+        for proc in self.get('processes'):
+            base_ids = [l.get('id') for l in proc.get_legs_with_decays()]
+            has_merged = any(abs(pdg) in merged for pdg in base_ids)
+            if has_merged:
+                pdg_lists = []
+                for flavor in sum(self.get_external_flavors_with_iden(), []):
+                    ids = list(base_ids)
+                    for i, pdg in enumerate(base_ids):
+                        if pdg in merged:
+                            ids[i] = flavor[i]
+                        if -pdg in merged:
+                            ids[i] = -flavor[i]
+                    pdg_lists.append(ids)
+            else:
+                pdg_lists = [list(base_ids)]
+            combinations.append((pdg_lists, has_merged))
+        return combinations
+
     def check_flavor_for_all_diagrams(self, real_pdgs, model, debug=False):
         """Populate every diagram's flavor store for the flavor `real_pdgs`.
 
