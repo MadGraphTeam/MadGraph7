@@ -208,8 +208,8 @@ class MathsObject:
         if diag_number and this_comb_good and cls.ext_deps:
 
             helicity = dict([(a.get_id(), a.hel) for a in cls.ext_deps])
-            this_hel = [helicity[i] for i in range(1, len(helicity)+1)] 
-            hel_number = 1 + all_hel.index(tuple(this_hel))
+            this_hel = [helicity[i] for i in range(1, len(helicity)+1)]
+            hel_number = 1 + External.all_hel_index[tuple(this_hel)]
             
             if (hel_number,diag_number) in bad_hel_amp:        
                 this_comb_good = False
@@ -262,7 +262,10 @@ class External(MathsObject):
     # Could get this from dag but I'm worried about preserving order
     wavs_same_leg = {}
     good_wav_combs = []
-    max_wav_num = 0 
+    max_wav_num = 0
+    # helicity tuple -> its row in the original NHEL table, filled by
+    # HelicityRecycler.get_good_hel once that table is complete
+    all_hel_index = {}
 
     def __init__(self, arguments, old_name):
         super().__init__(arguments, old_name, 'external')
@@ -452,6 +455,7 @@ class HelicityRecycler():
         External.num_externals = 0
         External.wavs_same_leg = {}
         External.good_wav_combs = []
+        External.all_hel_index = {}
 
         Internal.max_wav_num = 0
         Internal.num_internals = 0
@@ -739,6 +743,12 @@ class HelicityRecycler():
                 External.good_hel = dict([(v,i) for i,v in enumerate(self.all_hel)])
 
             External.map_hel=dict([(hel,i) for i,hel in  enumerate(External.good_hel)])
+            # good_helicity needs the position of a helicity tuple in the FULL
+            # table (not the filtered one map_hel indexes) once per amplitude it
+            # unfolds; that was all_hel.index, a scan of the 128 rows 811 000
+            # times over g g > g g g g g. The table is complete by now -- every
+            # DATA (NHEL line precedes the first HELAS call.
+            External.all_hel_index = dict([(hel,i) for i,hel in enumerate(self.all_hel)])
             External.hel_ranges = [set() for hel in next(iter(External.good_hel))]
             for comb in External.good_hel:
                 for i, hel in enumerate(comb):
@@ -844,10 +854,34 @@ class HelicityRecycler():
         pass
 
 
+# get_arguments walks its line character by character, and unfold_helicities
+# asks it again for every object it unfolds out of that line: 905 351 calls over
+# the 8 143 HELAS lines of g g > g g g g g, all but ~50 000 of them a repeat of
+# the line just parsed, and 3.7 s of a 16.8 s (profiled) recycling step. Keep the
+# last few answers -- the callers walk the file one line at a time, so a handful
+# of slots is all it takes -- and hand out a copy, since a shared mutable list is
+# not what a caller that goes on to substitute arguments into it expects.
+_ARGUMENT_CACHE = {}
+_ARGUMENT_CACHE_SIZE = 32
+
+
 def get_arguments(line):
     '''Find the substrings separated by commas between the first
-    closed set of parentheses in 'line'. 
+    closed set of parentheses in 'line'.
     '''
+    try:
+        return list(_ARGUMENT_CACHE[line])
+    except KeyError:
+        pass
+    arguments = parse_arguments(line)
+    if len(_ARGUMENT_CACHE) >= _ARGUMENT_CACHE_SIZE:
+        _ARGUMENT_CACHE.clear()
+    _ARGUMENT_CACHE[line] = arguments
+    return list(arguments)
+
+
+def parse_arguments(line):
+    '''The uncached get_arguments.'''
     start_idx = None
     call_idx = line.upper().find('CALL ')
     if call_idx != -1:
