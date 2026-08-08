@@ -1210,6 +1210,7 @@ def runtime_identity_payload(
         EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
         EAGER_DIRECT_TABLE_BINDING_ABI,
         NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+        ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
         ON_THE_FLY_RUNTIME_CAPABILITY,
         RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
@@ -1253,17 +1254,22 @@ def runtime_identity_payload(
     required_capabilities = tuple(
         str(value) for value in process["required_runtime_capabilities"]
     )
+    on_the_fly_color_capability = (
+        ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY
+        if cell.measurement.accuracy is Accuracy.LC
+        else ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+    )
     if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and (
         len(required_capabilities) != 2
         or set(required_capabilities)
         != {
             ON_THE_FLY_RUNTIME_CAPABILITY,
-            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            on_the_fly_color_capability,
         }
     ):
         raise RunnerError(
             "on-the-fly report runtime identity requires exactly its two "
-            "compact LC capabilities"
+            "accuracy-specific capabilities"
         )
     arena_capability, evaluator_abi, source_evaluator_abi = {
         ExecutionMode.EAGER: (

@@ -1085,14 +1085,25 @@ def test_otf_config_omits_api_bundle_and_materialized_generation_work(
     assert values["color"]["lc_flow_layout"] == "topology-replay"
 
 
+@pytest.mark.parametrize("accuracy", (Accuracy.LC, Accuracy.NLC, Accuracy.FULL))
 def test_otf_runtime_identity_uses_the_real_prepared_jit_source_contract(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    accuracy: Accuracy,
 ) -> None:
     import pyamplicol._internal.versions as versions
     import pyamplicol.artifacts
 
-    cell = _otf_cell(Workload.SELECTED_FLOW)
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy is accuracy
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final == 1
+        and cell.workload
+        is (Workload.SELECTED_FLOW if accuracy is Accuracy.LC else Workload.CONTRACTED)
+    )
     artifact_id = "a" * 64
     revision = "d" * 40
     native_path = tmp_path / "_rusticol.so"
@@ -1104,7 +1115,11 @@ def test_otf_runtime_identity_uses_the_real_prepared_jit_source_contract(
                 "id": "process",
                 "required_runtime_capabilities": [
                     "rusticol.on-the-fly.complex-f64.v1",
-                    "rusticol.on-the-fly.lc-color.v1",
+                    (
+                        "rusticol.on-the-fly.lc-color.v1"
+                        if accuracy is Accuracy.LC
+                        else "rusticol.on-the-fly.contracted-color.v1"
+                    ),
                 ],
             },
         ),
