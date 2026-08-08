@@ -1059,6 +1059,15 @@ class HelicityRecycler():
 
         atexit.register(self.clean_up)
         self.read_orig()
+        # Two chunkers live here, one per backend, and exactly one of them
+        # fires for any given matrix element. write_amp_chunks is madevent's:
+        # it cuts template_dict['helas_calls'] up BEFORE the output is written,
+        # and only for a matrix<i>_optim.f whose exporter left a matching
+        # matrix<i>_ampchunk.f template next to it. split_helas_block is
+        # standalone's: it re-reads the file just written and lifts the block
+        # out of it, and only when the exporter set chunk_spec/chunk_stmts/
+        # chunk_file. Neither backend configures the other's, so they never
+        # both cut the same file -- do not "unify" them without checking that.
         self.write_amp_chunks()
         self.read_template()
         self.split_helas_block()
