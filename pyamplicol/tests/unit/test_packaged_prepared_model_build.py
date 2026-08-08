@@ -298,20 +298,51 @@ def test_release_source_store_projects_over_candidate_package_assets(
     } == expected
 
 
-def test_release_staging_accepts_older_package_producer(tmp_path: Path) -> None:
+def test_release_staging_accepts_older_package_producer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     overlay = _release_overlay(tmp_path)
     store = overlay / "release_assets" / "prepared_models"
     shutil.copytree(ROOT / "release_assets" / "prepared_models", store)
-    producer_versions = {
-        json.loads(path.read_text(encoding="utf-8"))["producer"]["package_version"]
-        for path in store.glob("*.metadata.json")
-    }
-    assert producer_versions == {"0.1.0"}
     assert RELEASE_VERSION == "0.1.4"
 
     assert project_release_packaged_prepared_model_store(
         overlay,
         require_store=True,
+    )
+    asset_root = overlay / "src/pyamplicol/assets/prepared_models"
+    for metadata_path in asset_root.glob("*.metadata.json"):
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["producer"]["package_version"] = "0.1.0"
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    original_contract = prepared_models_module._load_prepared_contract(
+        overlay / "src/pyamplicol/models/prepared.py"
+    )
+
+    def load_with_older_producer(path: Path) -> object:
+        bundle = original_contract.load_prepared_model_bundle(path)
+        compiled_model = dict(bundle.compiled_model)
+        producer = dict(compiled_model["producer"])
+        producer["pyamplicol"] = "0.1.0"
+        compiled_model["producer"] = producer
+        kernel_pack_payload = bundle.kernel_pack.to_dict()
+        kernel_pack_payload["producer"]["version"] = "0.1.0"
+        kernel_pack = type(bundle.kernel_pack).from_dict(kernel_pack_payload)
+        return SimpleNamespace(
+            backend=bundle.backend,
+            compiled_model=compiled_model,
+            kernel_pack=kernel_pack,
+            manifest=bundle.manifest,
+        )
+
+    monkeypatch.setattr(
+        prepared_models_module,
+        "_load_prepared_contract",
+        lambda _path: SimpleNamespace(
+            load_prepared_model_bundle=load_with_older_producer
+        ),
     )
     stage_packaged_prepared_models(overlay, "release")
 
