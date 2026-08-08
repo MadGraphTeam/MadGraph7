@@ -1048,7 +1048,7 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
         ),
     )
     measurement = adapter.measure(
-        _cell(Accuracy.LC, Workload.SELECTED_FLOW),
+        _cell(Accuracy.LC, Workload.SELECTED_FLOW, n_final=2),
         artifact_path=tmp_path / "selected",
         settings=_settings(tmp_path / "repository"),
     )

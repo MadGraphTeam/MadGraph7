@@ -1402,6 +1402,7 @@ def test_legacy_generator_bootstrap_is_outside_generation_timing(
         context=SimpleNamespace(entries=(), process_file=process_file),
         repository=tmp_path / "legacy",
         raw_color=False,
+        n_final=2,
         settings=LegacySettings(jobs=1),
         commands=commands,
         log_path=tmp_path / "legacy.log",
@@ -1410,6 +1411,45 @@ def test_legacy_generator_bootstrap_is_outside_generation_timing(
     assert commands[0]["args"] == ["make", "-j1", "amplicol_generate"]
     assert len(commands) == 5
     assert elapsed == 4.0
+
+
+def test_legacy_n1_library_generation_bypasses_zero_ht_scale(
+    tmp_path: Path,
+) -> None:
+    adapter = LegacyMeasurementAdapter(
+        api=SimpleNamespace(),
+        executor=SimpleNamespace(),
+        snapshotter=SimpleNamespace(),
+        structural_proof=False,
+    )
+    commands: list[dict[str, object]] = []
+
+    def fake_run(args, **_kwargs):
+        commands.append({"args": list(args), "elapsed_seconds": 1.0})
+        return SimpleNamespace()
+
+    adapter._run = fake_run  # type: ignore[method-assign]
+    process_file = tmp_path / "input-processes.txt"
+    process_file.write_text("process fixture\n", encoding="ascii")
+
+    adapter._generate_library(
+        context=SimpleNamespace(entries=(), process_file=process_file),
+        repository=tmp_path / "legacy",
+        raw_color=False,
+        n_final=1,
+        settings=LegacySettings(jobs=1),
+        commands=commands,
+        log_path=tmp_path / "legacy.log",
+    )
+
+    generator = next(
+        command["args"]
+        for command in commands
+        if command["args"] and command["args"][0] == "./amplicol_generate"
+    )
+    assert "--amplicol_momenta_probe=10" in generator
+    assert "--amplicol_probe_quiet" in generator
+    assert "--seed=101" not in generator
 
 
 def test_scheduler_publishes_authenticated_generation_censor(

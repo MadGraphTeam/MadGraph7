@@ -510,6 +510,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     arguments = _parse("run", "--dry-run")
     assert arguments.workers == 1
     assert arguments.cores_per_worker == 1
+    assert arguments.amplicol_build_jobs == 1
     assert arguments.generation_time_limit == 3600.0
     assert arguments.ram_limit == 30_000_000_000
     assert arguments.worker_wall_limit == 3600.0
@@ -528,6 +529,23 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         source,
         original_amplicol_available=True,
     )
+    assert settings.amplicol_build_jobs == 1
+    parallel_native = _parse(
+        "run",
+        "--dry-run",
+        "--cores-per-worker",
+        "4",
+        "--amplicol-build-jobs",
+        "2",
+        "--allow-oversubscription",
+    )
+    parallel_settings = manual_campaign._campaign_settings(
+        parallel_native,
+        source,
+        original_amplicol_available=True,
+    )
+    assert parallel_settings.cell_cores == 4
+    assert parallel_settings.amplicol_build_jobs == 2
     assert settings.add_optional_dependencies is True
     assert settings.original_amplicol_available is True
     opt_out_settings = manual_campaign._campaign_settings(

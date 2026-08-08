@@ -7302,11 +7302,17 @@ def _campaign_settings(
 ) -> CampaignSettings:
     workers = int(arguments.workers)
     cores = int(arguments.cores_per_worker)
+    amplicol_build_jobs = int(getattr(arguments, "amplicol_build_jobs", 1))
     available = os.cpu_count() or 1
-    if workers * cores > available and not bool(arguments.allow_oversubscription):
+    effective_worker_cores = max(cores, amplicol_build_jobs)
+    if workers * effective_worker_cores > available and not bool(
+        arguments.allow_oversubscription
+    ):
         raise ManualCampaignError(
-            f"{workers} workers x {cores} cores exceeds {available} logical "
-            "CPUs; lower either value or pass --allow-oversubscription"
+            f"{workers} workers x {effective_worker_cores} maximum per-worker "
+            f"cores exceeds {available} logical CPUs; lower --workers, "
+            "--cores-per-worker, or --amplicol-build-jobs, or pass "
+            "--allow-oversubscription"
         )
     fresh_attempt = _fresh_attempt_requested(arguments)
     original_amplicol_revision = getattr(
@@ -7317,6 +7323,7 @@ def _campaign_settings(
     return CampaignSettings(
         workers=workers,
         cell_cores=cores,
+        amplicol_build_jobs=amplicol_build_jobs,
         target_runtime_seconds=float(arguments.target_measurement_duration),
         batch_size=int(arguments.batch_size),
         warmup_runs=int(arguments.warmups),
@@ -9310,6 +9317,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_CORES_PER_WORKER,
         help="Generation/engine cores assigned to each worker.",
+    )
+    resources.add_argument(
+        "--amplicol-build-jobs",
+        type=int,
+        default=1,
+        metavar="JOBS",
+        help=(
+            "Make jobs used only for original AmpliCol builds (default: 1). "
+            "Keep this at 1 for the maintained legacy checkout, whose "
+            "generator target is not parallel-safe."
+        ),
     )
     resources.add_argument(
         "--generation-time-limit",

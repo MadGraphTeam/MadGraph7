@@ -494,6 +494,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     worker.add_argument("--batch-size", type=int, default=128)
     worker.add_argument("--cell-cores", type=int, default=1)
+    worker.add_argument(
+        "--amplicol-build-jobs",
+        type=int,
+        default=1,
+        help=argparse.SUPPRESS,
+    )
     worker.add_argument("--memory-limit-bytes", type=int, help=argparse.SUPPRESS)
     worker.add_argument("--warmup-runs", type=int, default=2)
     worker.add_argument("--minimum-samples", type=int, default=5)
@@ -588,6 +594,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     populate.add_argument("--workers", type=int, default=1)
     populate.add_argument("--cell-cores", type=int, default=1)
+    populate.add_argument("--amplicol-build-jobs", type=int, default=1)
     populate.add_argument(
         "--target-runtime",
         type=float,
@@ -1376,6 +1383,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             settings = CampaignSettings(
                 workers=args.workers,
                 cell_cores=args.cell_cores,
+                amplicol_build_jobs=args.amplicol_build_jobs,
                 target_runtime_seconds=args.target_runtime,
                 batch_size=args.batch_size,
                 timeout_seconds=args.timeout_seconds,
@@ -1528,6 +1536,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             target_runtime_seconds=args.target_runtime,
             batch_size=args.batch_size,
             worker_cores=args.cell_cores,
+            amplicol_build_jobs=args.amplicol_build_jobs,
             memory_limit_bytes=args.memory_limit_bytes,
             warmup_runs=args.warmup_runs,
             minimum_samples=args.minimum_samples,

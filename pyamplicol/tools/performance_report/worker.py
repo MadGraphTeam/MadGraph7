@@ -356,6 +356,7 @@ def measure_cell(
     target_runtime_seconds: float,
     batch_size: int,
     worker_cores: int,
+    amplicol_build_jobs: int = 1,
     memory_limit_bytes: int | None = None,
     warmup_runs: int = 2,
     minimum_samples: int = 5,
@@ -381,6 +382,8 @@ def measure_cell(
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
     worker_started_monotonic = time.monotonic()
+    if amplicol_build_jobs < 1:
+        raise ValueError("amplicol_build_jobs must be positive")
     for name, value in (
         ("worker_wall_limit_seconds", worker_wall_limit_seconds),
         ("profiling_time_limit_seconds", profiling_time_limit_seconds),
@@ -477,7 +480,7 @@ def measure_cell(
                 artifact_path=attempt_root / "artifact",
                 settings=LegacySettings(
                     target_runtime_seconds=target_runtime_seconds,
-                    jobs=worker_cores,
+                    jobs=amplicol_build_jobs,
                     repository=prepared_legacy_repository,
                     validate_checkout=manual_source_revision is None,
                     source_revision=legacy_source_revision,

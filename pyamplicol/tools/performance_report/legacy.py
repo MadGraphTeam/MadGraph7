@@ -1624,6 +1624,7 @@ class LegacyMeasurementAdapter:
         context: _ProcessContext,
         repository: Path,
         raw_color: bool,
+        n_final: int,
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
@@ -1649,11 +1650,15 @@ class LegacyMeasurementAdapter:
             # rereads one point and repeats it ten times, which can permanently
             # prune a live helicity that is accidentally tiny at that point.
             # Use standard, reproducibly seeded integration so those ten events
-            # carry genuinely distinct kinematics.  Raw-color creation does not
-            # apply this filter, so preserve its existing single-point path.
+            # carry genuinely distinct kinematics.  For a 2-to-1 process,
+            # legacy gen23 leaves the sole final-state momentum at zero; that
+            # makes its H_T/2 scale invalid, so use the supplied canonical
+            # physical point instead.
+            # Raw-color creation does not apply this filter and likewise keeps
+            # its existing single-point path.
             generation_point_arguments = (
                 ("--amplicol_momenta_probe=10", "--amplicol_probe_quiet")
-                if raw_color
+                if raw_color or n_final == 1
                 else ("--seed=101",)
             )
             momenta_directory = repository / "Utilities" / "ME_checks"
@@ -1717,6 +1722,7 @@ class LegacyMeasurementAdapter:
             context=context,
             repository=repository,
             raw_color=False,
+            n_final=cell.n_final,
             settings=settings,
             commands=commands,
             log_path=log_path,
@@ -1969,6 +1975,7 @@ class LegacyMeasurementAdapter:
             context=context,
             repository=repository,
             raw_color=True,
+            n_final=cell.n_final,
             settings=settings,
             commands=commands,
             log_path=log_path,

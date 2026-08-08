@@ -158,6 +158,7 @@ generation/preparation limit, a one-hour whole-worker limit, and a decimal
 ```text
 --workers N
 --cores-per-worker N
+--amplicol-build-jobs N
 --generation-time-limit SECONDS
 --worker-wall-limit SECONDS
 --ram-limit BYTES
@@ -166,6 +167,12 @@ generation/preparation limit, a one-hour whole-worker limit, and a decimal
 --warmups N
 --batch-size N
 ```
+
+`--cores-per-worker` controls pyAmpliCol generation and runtime construction.
+Original AmpliCol compilation has the separate `--amplicol-build-jobs` control,
+which defaults to 1 even when pyAmpliCol receives more cores. Keep that serial
+default for the maintained legacy checkout: its generator Make target is not
+parallel-safe.
 
 Increase parallelism only when the machine has enough RAM for that many
 independent worker trees. `--fail-fast` changes validation scheduling into

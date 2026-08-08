@@ -138,6 +138,7 @@ class CellSelection:
 class CampaignSettings:
     workers: int = 1
     cell_cores: int = 1
+    amplicol_build_jobs: int = 1
     target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     batch_size: int = 128
     warmup_runs: int = 2
@@ -173,8 +174,14 @@ class CampaignSettings:
     multiplicity_wave_barrier: bool = False
 
     def __post_init__(self) -> None:
-        if self.workers < 1 or self.cell_cores < 1:
-            raise ValueError("workers and cell_cores must be positive")
+        if (
+            self.workers < 1
+            or self.cell_cores < 1
+            or self.amplicol_build_jobs < 1
+        ):
+            raise ValueError(
+                "workers, cell_cores, and amplicol_build_jobs must be positive"
+            )
         if (
             not math.isfinite(self.target_runtime_seconds)
             or self.target_runtime_seconds <= 0.0
@@ -1673,6 +1680,7 @@ class CampaignScheduler:
                 "memory_limit_bytes": self._effective_cell_rss_limit(),
                 "workers": self.settings.workers,
                 "cores_per_worker": self.settings.cell_cores,
+                "amplicol_build_jobs": self.settings.amplicol_build_jobs,
                 "target_runtime_seconds": self.settings.target_runtime_seconds,
                 "warmup_runs": self.settings.warmup_runs,
                 "minimum_samples": self.settings.minimum_samples,
@@ -2880,6 +2888,8 @@ class CampaignScheduler:
                     str(self.settings.batch_size),
                     "--cell-cores",
                     str(self.settings.cell_cores),
+                    "--amplicol-build-jobs",
+                    str(self.settings.amplicol_build_jobs),
                     "--warmup-runs",
                     str(self.settings.warmup_runs),
                     "--minimum-samples",

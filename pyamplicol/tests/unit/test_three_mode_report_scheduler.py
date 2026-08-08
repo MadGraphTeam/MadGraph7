@@ -676,7 +676,10 @@ def test_scheduler_launches_recurrence_with_only_successful_optional_amplicol(
             ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
         )
 
-    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(cell_cores=4, amplicol_build_jobs=1),
+    )
     scheduler.source_revision = "current-revision"
     monkeypatch.setattr(scheduler, "_current", current)
     monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
@@ -697,6 +700,8 @@ def test_scheduler_launches_recurrence_with_only_successful_optional_amplicol(
 
     assert outcome.status == ResultStatus.OK.value
     assert ("--baseline-json" in captured) is expects_baseline
+    assert captured[captured.index("--cell-cores") + 1] == "4"
+    assert captured[captured.index("--amplicol-build-jobs") + 1] == "1"
 
 
 @pytest.mark.parametrize(

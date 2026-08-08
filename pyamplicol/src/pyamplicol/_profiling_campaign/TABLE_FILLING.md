@@ -101,7 +101,10 @@ The same small installation campaign, when run from inside its directory, is:
 ```
 
 Broader selections may raise `--workers` and `--cores-per-worker` on a dedicated
-profiling host. Defaults are one worker, one core, a one-hour
+profiling host. Original AmpliCol builds use the independent
+`--amplicol-build-jobs` setting, which remains 1 by default because the
+maintained legacy generator target is not parallel-safe. Defaults are one
+worker, one pyAmpliCol core, one AmpliCol build job, a one-hour
 generation/preparation limit, and a decimal 30 GB process-tree RAM limit.
 Press `Ctrl-C` or `Esc` to stop dispatch, terminate supervised process trees,
 preserve completed currents, and restore the terminal.

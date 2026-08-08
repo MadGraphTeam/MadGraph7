@@ -468,7 +468,7 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
             events.append("complete")
 
     reporter = Reporter()
-    observed: list[tuple[object, object]] = []
+    observed: list[tuple[object, object, int]] = []
 
     class SourceIdentity:
         def provenance(self) -> dict[str, object]:
@@ -481,6 +481,7 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
                 (
                     kwargs.get("phase_reporter"),
                     kwargs.get("selector_provider"),
+                    kwargs["settings"].jobs,
                 )
             )
             return {
@@ -509,13 +510,14 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
         attempt_root=tmp_path / "attempt",
         target_runtime_seconds=1.0,
         batch_size=1,
-        worker_cores=1,
+        worker_cores=4,
+        amplicol_build_jobs=1,
         phase_reporter=reporter,  # type: ignore[arg-type]
         legacy_repository=tmp_path / "legacy",
     )
 
     assert result["status"] == "ok"
-    assert observed == [(reporter, None)]
+    assert observed == [(reporter, None, 1)]
     assert events == ["adapter", "agreements", "complete"]
 
 
