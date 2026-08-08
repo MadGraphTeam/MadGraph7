@@ -1039,13 +1039,22 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     adapter, api, executor = _adapter()
+    point = tuple(
+        (float(index), index + 0.25, index + 0.5, index + 0.75)
+        for index, _pdg in enumerate(api.pdgs, start=1)
+    )
     monkeypatch.setattr(
         "tools.performance_report.legacy._shared_point",
         lambda _process: (
             api.pdgs,
-            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
-            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+            point,
+            (point,),
         ),
+    )
+    monkeypatch.setattr(
+        api,
+        "ordered_momenta",
+        lambda _source_pdgs, _target_pdgs, momenta: tuple(reversed(momenta)),
     )
     measurement = adapter.measure(
         _cell(Accuracy.LC, Workload.SELECTED_FLOW, n_final=2),
@@ -1080,6 +1089,25 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     )
     assert momenta_file.is_file()
     assert len(momenta_file.read_text(encoding="utf-8").splitlines()) == 4
+    profiled = tuple(
+        command
+        for command in executor.commands
+        if command and command[0] == "./amplicol_library_benchmark"
+    )
+    assert profiled
+    assert all(command[4] == "profile-momenta.dat" for command in profiled)
+    retained_momenta = (
+        tmp_path
+        / "selected/selected-flow-generated-library/profile-momenta.dat"
+    )
+    assert retained_momenta.is_file()
+    assert retained_momenta.read_text(encoding="utf-8") == (
+        "\n".join(
+            " ".join(format(component, ".17g") for component in vector)
+            for vector in reversed(point)
+        )
+        + "\n"
+    )
 
 
 def test_selected_flow_excludes_cold_generator_bootstrap_from_generation(

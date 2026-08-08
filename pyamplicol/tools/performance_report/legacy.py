@@ -1752,6 +1752,24 @@ class LegacyMeasurementAdapter:
             executables=("amplicol_library_benchmark",),
             process_file=context.process_file,
         )
+        ordered = self.api.ordered_momenta(
+            context.source_pdgs,
+            context.entry.process_pdgs,
+            context.momenta,
+        )
+        # Time the campaign's authenticated point explicitly.  The legacy
+        # no-argument path instead replays an internal random generation point
+        # and applies a brittle componentwise check to cancellation residues;
+        # that self-check is not the selected-flow observable validated below.
+        momenta_path = generated / "profile-momenta.dat"
+        momenta_path.write_text(
+            "\n".join(
+                " ".join(format(component, ".17g") for component in vector)
+                for vector in ordered
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         environment = _library_environment(generated)
         profile = self._profile(
             lambda count: self._invoke_command(
@@ -1760,6 +1778,7 @@ class LegacyMeasurementAdapter:
                     str(count),
                     str(context.entry.group),
                     str(context.entry.integral),
+                    momenta_path.name,
                 ),
                 cwd=generated,
                 environment=environment,
