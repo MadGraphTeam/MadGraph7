@@ -57,6 +57,9 @@ RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY = (
 )
 ON_THE_FLY_RUNTIME_CAPABILITY = "rusticol.on-the-fly.complex-f64.v1"
 ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY = "rusticol.on-the-fly.lc-color.v1"
+ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY = (
+    "rusticol.on-the-fly.contracted-color.v1"
+)
 COMPILED_RUNTIME_SELECTORS_CAPABILITY = "rusticol.compiled.runtime-selectors.v1"
 COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY = "compiled-plane-arena-v1"
 COMPILED_HELICITY_DUAL_LANE_CAPABILITY = "rusticol.compiled.helicity-dual-lane.v1"
@@ -89,6 +92,7 @@ EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
         RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
         ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+        ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         ON_THE_FLY_RUNTIME_CAPABILITY,
         SYMJIT_F64_RUNTIME_CAPABILITY,
         SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
@@ -604,6 +608,40 @@ def _active_build_info() -> dict[str, Any] | None:
     return None
 
 
+def _native_build_inputs_from_build_info(build_info: Mapping[str, Any]) -> str:
+    native_digest = build_info.get("native_build_inputs_sha256")
+    if native_digest is None and build_info.get("publishable") is True:
+        try:
+            native = importlib.import_module("pyamplicol._rusticol")
+        except ImportError as error:
+            raise RuntimeError(
+                "active native build-input identity is unavailable; reinstall "
+                "pyAmpliCol"
+            ) from error
+        operation = getattr(native, "native_build_inputs_sha256", None)
+        native_digest = operation() if callable(operation) else None
+    if (
+        not isinstance(native_digest, str)
+        or len(native_digest) != 64
+        or any(character not in "0123456789abcdef" for character in native_digest)
+    ):
+        raise RuntimeError(
+            "active native build-input identity is incomplete; reinstall pyAmpliCol"
+        )
+    return native_digest
+
+
+def active_native_build_inputs_sha256() -> str:
+    """Return the authenticated native build-input digest, if installed."""
+
+    build_info = _active_build_info()
+    if build_info is None:
+        raise RuntimeError(
+            "active native build provenance is unavailable; reinstall pyAmpliCol"
+        )
+    return _native_build_inputs_from_build_info(build_info)
+
+
 def active_native_source_identity() -> tuple[str, str]:
     """Return the authenticated source revision and native-input digest."""
 
@@ -613,28 +651,15 @@ def active_native_source_identity() -> tuple[str, str]:
             "active native build provenance is unavailable; reinstall pyAmpliCol"
         )
     source_revision = build_info.get("source_revision")
-    native_digest = build_info.get("native_build_inputs_sha256")
-    if native_digest is None and build_info.get("publishable") is True:
-        try:
-            native = importlib.import_module("pyamplicol._rusticol")
-        except ImportError as error:
-            raise RuntimeError(
-                "active native source identity is unavailable; reinstall pyAmpliCol"
-            ) from error
-        operation = getattr(native, "native_build_inputs_sha256", None)
-        native_digest = operation() if callable(operation) else None
     if (
         not isinstance(source_revision, str)
         or len(source_revision) != 40
         or any(character not in "0123456789abcdef" for character in source_revision)
-        or not isinstance(native_digest, str)
-        or len(native_digest) != 64
-        or any(character not in "0123456789abcdef" for character in native_digest)
     ):
         raise RuntimeError(
             "active native source identity is incomplete; reinstall pyAmpliCol"
         )
-    return source_revision, native_digest
+    return source_revision, _native_build_inputs_from_build_info(build_info)
 
 
 def active_source_revision() -> str | None:
@@ -765,6 +790,7 @@ __all__ = [
     "EAGER_RUNTIME_LAYOUT_F64_CAPABILITY",
     "EVALUATOR_RUNTIME_CAPABILITIES",
     "KNOWN_EVALUATOR_RUNTIME_CAPABILITIES",
+    "ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY",
     "ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY",
     "ON_THE_FLY_RUNTIME_CAPABILITY",
     "PROCESS_ARTIFACT_SCHEMA_VERSION",
@@ -786,6 +812,7 @@ __all__ = [
     "SYMJIT_F64_RUNTIME_CAPABILITY",
     "SYMJIT_PLANE_APPLICATION_ABI",
     "TOML_SCHEMA_VERSION",
+    "active_native_build_inputs_sha256",
     "active_native_source_identity",
     "active_source_revision",
     "package_version",

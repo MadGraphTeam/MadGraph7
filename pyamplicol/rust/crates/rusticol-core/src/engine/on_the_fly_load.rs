@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Authenticated construction boundary for the private LC on-the-fly lane.
+//! Authenticated construction boundary for the private on-the-fly lane.
 //!
 //! Loading stops at the compact process seed and model-wide prepared catalogs.
 //! It never opens or constructs a process-wide [`crate::recurrence::DirectRecurrencePlan`]
-//! and it never materializes dense helicity/color axes. The existing runtime
-//! adapter owns public selector decoding after this boundary.
+//! and it never materializes dense helicity/color axes. NLC/full authenticate
+//! one recurrence-v3 color payload against the compact structural owner basis.
+//! The existing runtime adapter owns public selector decoding after this boundary.
 
 use super::eager_manifest::PreparedKernelPackManifest;
 use super::on_the_fly_lane::OnTheFlyNativeRuntime;
@@ -21,13 +22,25 @@ use super::on_the_fly_selectors::{
 use super::recurrence_backend::NativeRecurrencePreparedExecutorPool;
 use super::recurrence_lane::PreparedParameterProjectionEntry;
 use super::recurrence_load::{
-    build_on_the_fly_source_domains, decode_sha256, runtime_parameter_slots,
-    validate_recurrence_prepared_pack_outer_target,
+    build_on_the_fly_source_domains, decode_sha256, load_color_contraction_reference,
+    runtime_parameter_slots, validate_recurrence_prepared_pack_outer_target,
 };
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
-use crate::recurrence::on_the_fly::decode_on_the_fly_process_seed_v1;
+use crate::recurrence::on_the_fly::{
+    OnTheFlyExternalColorRoleV1, OnTheFlyProcessSeedV1, decode_on_the_fly_process_seed_v1,
+    validate_on_the_fly_source_mass_bindings_v1,
+};
 use crate::recurrence::template_json::project_recurrence_template_catalog_json_v1;
+use crate::recurrence::{
+    RecurrenceColorAccuracy, RecurrenceColorContraction, RecurrenceColorStorage,
+};
+
+pub(super) struct LoadedOnTheFlyColorContractionV1 {
+    pub(super) plan: RecurrenceColorContraction,
+    pub(super) destination_by_owner_ordinal: Box<[u32]>,
+    pub(super) point_tile_size: usize,
+}
 
 pub(super) struct LoadedOnTheFlyRuntime {
     pub(super) common: ExecutionRuntime,
@@ -35,6 +48,7 @@ pub(super) struct LoadedOnTheFlyRuntime {
     pub(super) selectors: OnTheFlyCompactSelectorAdapterV1,
     pub(super) metadata_selectors: OnTheFlyCompactSelectorAdapterV1,
     pub(super) public_metadata: OnTheFlyPublicMetadataV1,
+    pub(super) color_contraction: Option<LoadedOnTheFlyColorContractionV1>,
 }
 
 fn clamp_query_construction_threads(requested: usize, available: usize) -> usize {
@@ -70,6 +84,19 @@ pub(super) fn load_on_the_fly_native_runtime(
             "on-the-fly process seed disagrees with the authenticated recurrence template catalog",
         ));
     }
+    let parameter_projection = manifest
+        .runtime_metadata
+        .parameter_projection
+        .iter()
+        .map(|row| {
+            (
+                row.parameter_template_id,
+                row.prepared_parameter_id,
+                row.component,
+            )
+        })
+        .collect::<Vec<_>>();
+    validate_on_the_fly_source_mass_bindings_v1(&seed, &templates, &parameter_projection)?;
 
     let payloads = artifact.evaluator_payload_store(&payload_root)?;
     let pool = NativeRecurrencePreparedExecutorPool::load_from_store(
@@ -99,9 +126,21 @@ pub(super) fn load_on_the_fly_native_runtime(
 
     let metadata_selectors =
         OnTheFlyCompactSelectorAdapterV1::from_seed(&seed, selector_policy(manifest))?;
-    manifest.selector_policy.selector_census.validate_against(
-        metadata_selectors.helicity_count(),
-        metadata_selectors.color_count(),
+    let public_color_count = if manifest.uses_contracted_color() {
+        1
+    } else {
+        metadata_selectors.color_count()
+    };
+    manifest
+        .selector_policy
+        .selector_census
+        .validate_against(metadata_selectors.helicity_count(), public_color_count)?;
+    let color_contraction = load_on_the_fly_color_contraction(
+        artifact,
+        evaluator_root,
+        manifest,
+        &seed,
+        &metadata_selectors,
     )?;
     let selectors = metadata_selectors
         .clone()
@@ -134,6 +173,7 @@ pub(super) fn load_on_the_fly_native_runtime(
         selectors,
         metadata_selectors,
         public_metadata,
+        color_contraction,
     })
 }
 
@@ -170,7 +210,11 @@ fn load_public_metadata(
 
 fn selector_policy(manifest: &OnTheFlyExecutionManifest) -> OnTheFlyLcSelectorPolicyV1 {
     let color_coverage = match manifest.selector_policy.color_coverage {
-        OnTheFlyColorCoverage::Complete => OnTheFlyLcColorCoverageV1::Complete,
+        OnTheFlyColorCoverage::Complete | OnTheFlyColorCoverage::Contracted => {
+            // NLC/full still use the compact complete LC structural basis
+            // internally; only the public axis is contracted.
+            OnTheFlyLcColorCoverageV1::Complete
+        }
     };
     OnTheFlyLcSelectorPolicyV1 {
         color_coverage,
@@ -181,6 +225,155 @@ fn selector_policy(manifest: &OnTheFlyExecutionManifest) -> OnTheFlyLcSelectorPo
             .map(Vec::into_boxed_slice),
         trace_reflections_folded: manifest.selector_policy.trace_reflections_folded,
     }
+}
+
+fn load_on_the_fly_color_contraction(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &OnTheFlyExecutionManifest,
+    seed: &OnTheFlyProcessSeedV1,
+    selectors: &OnTheFlyCompactSelectorAdapterV1,
+) -> RusticolResult<Option<LoadedOnTheFlyColorContractionV1>> {
+    let Some(reference) = manifest.runtime_metadata.color_contraction.as_ref() else {
+        return Ok(None);
+    };
+    let plan =
+        load_color_contraction_reference(artifact, evaluator_root, &manifest.key, reference)?;
+    let expected_accuracy = match manifest.color_accuracy.as_str() {
+        "nlc" => RecurrenceColorAccuracy::Nlc,
+        "full" => RecurrenceColorAccuracy::Full,
+        _ => {
+            return Err(RusticolError::integrity(
+                "LC on-the-fly execution unexpectedly loaded contracted color",
+            ));
+        }
+    };
+    let owner_count = selectors.color_count();
+    let owner_count_u32 = u32::try_from(owner_count).map_err(|_| {
+        RusticolError::artifact("on-the-fly contracted structural owner count exceeds u32")
+    })?;
+    let fundamental_count = seed
+        .source_anchors()
+        .iter()
+        .filter(|anchor| anchor.color_role() == OnTheFlyExternalColorRoleV1::Fundamental)
+        .count();
+    let alias_multiplicity = (1..=fundamental_count).try_fold(1usize, |value, factor| {
+        value.checked_mul(factor).ok_or_else(|| {
+            RusticolError::artifact(
+                "on-the-fly contracted open-line alias multiplicity exceeds usize",
+            )
+        })
+    })?;
+    let expected_sector_count = owner_count.checked_mul(alias_multiplicity).ok_or_else(|| {
+        RusticolError::artifact("on-the-fly contracted structural sector count exceeds usize")
+    })?;
+    let plan_sector_count = usize::try_from(plan.sector_count()).map_err(|_| {
+        RusticolError::artifact("on-the-fly contracted payload sector count exceeds usize")
+    })?;
+    if plan.accuracy() != expected_accuracy
+        || plan.storage() != RecurrenceColorStorage::Expanded
+        || !plan.includes_color_factor()
+        || plan.factorization().is_some()
+        || plan.component_count() != 1
+        || plan.active_sector_count() != owner_count
+        || plan.group_count() != owner_count_u32
+        || plan.destination_count() != owner_count_u32
+        || plan_sector_count != expected_sector_count
+        || plan.owner_by_sector().contains(&u32::MAX)
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly contracted color payload disagrees with the compact structural owner basis",
+        ));
+    }
+
+    let fixed_owner_sectors = plan
+        .owner_by_sector()
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(sector, owner)| (owner as usize == sector).then_some(owner))
+        .collect::<Vec<_>>();
+    if fixed_owner_sectors.len() != owner_count {
+        return Err(RusticolError::integrity(
+            "on-the-fly contracted color owner fixed points are incomplete",
+        ));
+    }
+    let owner_class_sizes = plan.owner_by_sector().iter().copied().fold(
+        BTreeMap::<u32, usize>::new(),
+        |mut counts, owner| {
+            *counts.entry(owner).or_default() += 1;
+            counts
+        },
+    );
+    if owner_class_sizes.len() != owner_count
+        || owner_class_sizes
+            .values()
+            .any(|count| *count != alias_multiplicity)
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly contracted owner classes disagree with whole-open-line block aliases",
+        ));
+    }
+    let group_by_owner_sector = plan
+        .sector_by_group()
+        .iter()
+        .copied()
+        .zip(plan.component_by_group().iter().copied())
+        .enumerate()
+        .map(|(group_id, (sector, component))| {
+            if component != 0 {
+                return Err(RusticolError::integrity(
+                    "on-the-fly contracted group has a nonzero component",
+                ));
+            }
+            let group_id = u32::try_from(group_id).map_err(|_| {
+                RusticolError::artifact("on-the-fly contracted group ID exceeds u32")
+            })?;
+            Ok((sector, group_id))
+        })
+        .collect::<RusticolResult<BTreeMap<_, _>>>()?;
+    if group_by_owner_sector.len() != owner_count {
+        return Err(RusticolError::integrity(
+            "on-the-fly contracted groups do not cover every structural owner once",
+        ));
+    }
+    let mut destination_by_owner_ordinal = Vec::new();
+    destination_by_owner_ordinal
+        .try_reserve_exact(owner_count)
+        .map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not reserve on-the-fly contracted destination map: {error}"
+            ))
+        })?;
+    for (owner_ordinal, owner_sector) in fixed_owner_sectors.iter().copied().enumerate() {
+        let group_id = group_by_owner_sector
+            .get(&owner_sector)
+            .copied()
+            .ok_or_else(|| {
+                RusticolError::integrity("on-the-fly contracted owner has no component-zero group")
+            })?;
+        let destination = plan.destination_by_group()[group_id as usize];
+        let expected_destination = u32::try_from(owner_ordinal).map_err(|_| {
+            RusticolError::artifact("on-the-fly contracted owner ordinal exceeds u32")
+        })?;
+        if destination != expected_destination
+            || plan.ordered_group_ids().get(owner_ordinal).copied() != Some(group_id)
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly contracted destination order disagrees with the compact structural owner basis",
+            ));
+        }
+        destination_by_owner_ordinal.push(destination);
+    }
+    let point_tile_size =
+        usize::try_from(manifest.runtime_options.point_tile_size).map_err(|_| {
+            RusticolError::artifact("on-the-fly contracted point tile size exceeds usize")
+        })?;
+    Ok(Some(LoadedOnTheFlyColorContractionV1 {
+        plan,
+        destination_by_owner_ordinal: destination_by_owner_ordinal.into_boxed_slice(),
+        point_tile_size,
+    }))
 }
 
 fn load_process_seed(
@@ -312,7 +505,16 @@ fn build_common_runtime(
             "on-the-fly execution requires local vertex couplings in prepared kernel calls",
         ));
     }
-    let normalization_factor = normalization.color_factor * normalization.global_coupling_factor
+    let color_factor = if metadata
+        .color_contraction
+        .as_ref()
+        .is_some_and(|contraction| contraction.includes_color_factor)
+    {
+        1.0
+    } else {
+        normalization.color_factor
+    };
+    let normalization_factor = color_factor * normalization.global_coupling_factor
         / (normalization.average_factor * normalization.identical_factor);
     if !normalization_factor.is_finite() {
         return Err(RusticolError::integrity(
@@ -373,7 +575,7 @@ fn build_common_runtime(
         particle_masses,
         particle_mass_parameter_names: BTreeMap::new(),
         normalization_factor,
-        normalization_color_factor: normalization.color_factor,
+        normalization_color_factor: color_factor,
         normalization_average_factor: normalization.average_factor,
         normalization_identical_factor: normalization.identical_factor,
         normalization_qcd_coupling_power: normalization.qcd_coupling_power.unwrap_or(0) as usize,

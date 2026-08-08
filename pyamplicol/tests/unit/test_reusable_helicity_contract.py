@@ -295,3 +295,22 @@ def test_metadata_records_quotient_strategy_and_counts() -> None:
     assert selector_counts["materialized_current_count"] == len(
         prepared.dag.currents
     )
+
+
+def test_materialized_reduction_uses_the_quotient_helicity_representative() -> None:
+    model, prepared = _prepare_builtin("g g > t t~")
+    physics = build_runtime_schema(prepared.dag, model)["physics"]
+    helicities = {record["id"]: record for record in physics["helicities"]}
+    groups = physics["reduction"]["groups"]
+
+    assert any(
+        group["representative_helicity_id"] != group["physical_helicity_ids"][0]
+        for group in groups
+    )
+    for group in groups:
+        representatives = {
+            helicities[identifier]["representative_id"]
+            for identifier in group["physical_helicity_ids"]
+            if not helicities[identifier]["structural_zero"]
+        }
+        assert representatives == {group["representative_helicity_id"]}

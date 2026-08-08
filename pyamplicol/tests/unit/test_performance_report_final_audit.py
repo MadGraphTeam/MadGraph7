@@ -24,6 +24,7 @@ from tools.performance_report.agreements import (
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
+    MADGRAPH_FULL_COLOUR,
     Z_RECURRENCE_CROSS_MODE,
     agreement_edges,
     attach_direct_agreements,
@@ -83,6 +84,7 @@ from tools.performance_report.final_audit import (
     audit_artifact,
     audit_final_report,
 )
+from tools.performance_report.madgraph import madgraph_command_card
 from tools.performance_report.measurement_lineage import (
     CLASS_C_RECURRENCE_SUMMARY_CAP_IMPACT,
 )
@@ -126,11 +128,11 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
         and edge.baseline.cell_id in measurable_ids
     )
 
-    assert len(declared_edges) == 1737
+    assert len(declared_edges) == 1937
     assert (
         len(declared_edges) == final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
     )
-    assert len(measurable_edges) == 1689
+    assert len(measurable_edges) == 1889
     assert sum(
         final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS.values()
     ) == len(measurable_edges)
@@ -143,7 +145,6 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
         if REPORT_CATALOG.static_na_reason(cell) is not None
     )
     assert static_reasons == {
-        "on-the-fly-color-accuracy-not-supported-v1": 100,
         "native-backend-generation-cap-n6-v1": 24,
         "original-amplicol-open-quark-line-limit": 10,
     }
@@ -163,7 +164,7 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
         if edge.candidate.cell_id in n4_measurable_ids
         and edge.baseline.cell_id in n4_measurable_ids
     )
-    assert len(n4_ids) == final_audit_module._EXPECTED_N4_CELL_COUNT == 894
+    assert len(n4_ids) == final_audit_module._EXPECTED_N4_CELL_COUNT == 1026
     assert Counter(edge.kind for edge in n4_edges) == (
         final_audit_module._EXPECTED_N4_DIRECT_AGREEMENT_COUNTS
     )
@@ -1275,6 +1276,97 @@ def test_otf_artifact_audit_accepts_only_compact_seed_and_prepared_jit_contract(
         == 1
     )
 
+    color_relative = f"processes/{process_id}/on-the-fly-color.bin"
+    color_data = b"authenticated-expanded-contracted-color"
+    color_path = tmp_path / color_relative
+    color_path.write_bytes(color_data)
+    color_sha256 = hashlib.sha256(color_data).hexdigest()
+    contracted_manifest = SimpleNamespace(
+        payloads=(
+            *manifest.payloads,
+            payload(
+                color_relative,
+                color_data,
+                role="evaluator-state",
+                media_type="application/octet-stream",
+                owner=process_id,
+            ),
+        ),
+        extensions=manifest.extensions,
+    )
+    contracted_execution = deepcopy(execution)
+    contracted_execution["required_runtime_capabilities"] = [
+        "rusticol.on-the-fly.complex-f64.v1",
+        "rusticol.on-the-fly.contracted-color.v1",
+    ]
+    contracted_execution["color_accuracy"] = "full"
+    contracted_execution["selector_policy"] = {
+        "color_coverage": "contracted",
+        "reference_color_word": None,
+        "trace_reflections_folded": False,
+        "selector_census": {
+            "physical_helicity_count": 1,
+            "physical_color_flow_count": 1,
+        },
+    }
+    contracted_execution["runtime_metadata"]["color_contraction"] = {  # type: ignore[index]
+        "abi": "pyamplicol-recurrence-color-contraction-v3",
+        "color_accuracy": "full",
+        "storage": "expanded",
+        "includes_color_factor": True,
+        "group_count": 2,
+        "sector_count": 2,
+        "active_sector_count": 2,
+        "component_count": 1,
+        "destination_count": 2,
+        "entry_count": 2,
+        "logical_entry_count": 2,
+        "semantic_digest": color_sha256,
+        "factorization": None,
+        "path": "on-the-fly-color.bin",
+        "size_bytes": len(color_data),
+        "sha256": color_sha256,
+    }
+    contracted_cell = replace(
+        cell,
+        measurement=replace(cell.measurement, accuracy=Accuracy.FULL),
+        workload=Workload.CONTRACTED,
+    )
+    assert (
+        _audit_on_the_fly_execution(
+            tmp_path,
+            contracted_manifest,
+            contracted_execution,
+            contracted_cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+            effective_config=effective_config,
+        )
+        == 1
+    )
+
+    selected_contracted = deepcopy(contracted_execution)
+    selected_contracted["selector_policy"]["reference_color_word"] = [1]  # type: ignore[index]
+    with pytest.raises(FinalAuditError, match="has a flow selector"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            contracted_manifest,
+            selected_contracted,
+            contracted_cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
+    with pytest.raises(FinalAuditError, match="payload is missing or ambiguous"):
+        _audit_on_the_fly_execution(
+            tmp_path,
+            manifest,
+            contracted_execution,
+            contracted_cell,
+            process_id=process_id,
+            execution_manifest_path=f"processes/{process_id}/execution.json",
+        )
+
     mismatched_threads = deepcopy(execution)
     mismatched_threads["runtime_options"]["query_construction_threads"] = 3  # type: ignore[index]
     with pytest.raises(FinalAuditError, match="effective evaluator cores"):
@@ -1519,6 +1611,11 @@ def test_otf_artifact_audit_distinguishes_requested_and_physical_layout(
     }
     manifest = SimpleNamespace(
         artifact_id=_ARTIFACT_ID,
+        producer={
+            "version": "0.1.0.dev0+candidate.test",
+            "git_revision": _REVISION,
+            "native_build_inputs_sha256": "e" * 64,
+        },
         processes=(process,),
         runtime={"engine_version": "runtime-v1"},
     )
@@ -1565,6 +1662,9 @@ def test_otf_artifact_audit_distinguishes_requested_and_physical_layout(
     evidence = audit_artifact(cell, tmp_path, process_id)
     assert evidence.execution_mode == ExecutionMode.ON_THE_FLY.value
     assert evidence.arena_record_count == 1
+    assert evidence.producer_version == "0.1.0.dev0+candidate.test"
+    assert evidence.producer_git_revision == _REVISION
+    assert evidence.producer_native_build_inputs_sha256 == "e" * 64
 
     inspected.lc_flow_layout = "topology-replay"
     with pytest.raises(FinalAuditError, match="physics/execution contract"):
@@ -2497,6 +2597,9 @@ def test_otf_v2_replay_uses_compact_selector_context_without_dense_physics(
     evidence = ArtifactEvidence(
         artifact_id=_ARTIFACT_ID,
         process_id="d_dbar_to_z",
+        producer_version="test",
+        producer_git_revision=_REVISION,
+        producer_native_build_inputs_sha256="e" * 64,
         runtime_version="test",
         runtime_capabilities=(),
         execution_manifest_path="execution.json",
@@ -2809,6 +2912,99 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
         }
     )
     return result
+
+
+def test_final_audit_authenticates_madgraph_reference_without_pyamplicol_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = REPORT_CATALOG.cell("reference-madgraph-full-n1-dd-z-jets-contracted")
+    points = (((100.0, 0.0, 0.0, 100.0), (100.0, 0.0, 0.0, -100.0)),)
+    monkeypatch.setattr(
+        final_audit_module,
+        "shared_validation_points",
+        lambda _process: points,
+    )
+    command_card = madgraph_command_card(cell.process)
+    parameter_record = {
+        "external_parameter_count": 26,
+        "external_parameters_sha256": "1" * 64,
+        "binary64_exact_match": True,
+        "format": "%.14e",
+    }
+    command = {
+        "args": ["driver"],
+        "cwd": "/tmp",
+        "elapsed_seconds": 0.1,
+        "returncode": 0,
+    }
+    measurement = empty_measurement()
+    measurement.update(
+        {
+            "status": "ok",
+            "generation_seconds": 1.0,
+            "wall_seconds_per_point": 1.0e-6,
+            "execution_seconds_per_point": 1.0e-6,
+            "matrix_element": 1.0,
+            "sample_count": 5,
+            "standard_error_seconds_per_point": 1.0e-9,
+            "relative_standard_error": 1.0e-3,
+            "artifact": {"path": "/tmp/madgraph"},
+            "selector_contract": None,
+            "validation": {
+                "status": "ok",
+                "method": "independent-madgraph-tree-level-oracle",
+                "point_digest": report_runner.point_digest(points),
+                DIRECT_AGREEMENT_FIELD: [],
+            },
+            "resources": {"available": True},
+            "provenance": {
+                **_source_provenance(),
+                "method": "madgraph-standalone-custom-fortran-driver",
+                "command_card": command_card,
+                "command_card_sha256": hashlib.sha256(
+                    command_card.encode("utf-8")
+                ).hexdigest(),
+                "generation_timing_scope": ("generate-output-standalone-launch-force"),
+                "generation_includes_madgraph_compilation": True,
+                "driver_compilation_in_generation_seconds": False,
+                "driver_warmup_calls": 20,
+                "profile_chunk_count": 5,
+                "model": {
+                    "name": "sm",
+                    "source_directory": "/tmp/MG/models/sm",
+                    "source_sha256": "2" * 64,
+                },
+                "default_restriction": parameter_record,
+                "exact_param_card": parameter_record,
+                "commands": [command] * 7,
+            },
+            "failure": None,
+        }
+    )
+
+    assert (
+        _audit_measurement(
+            cell,
+            measurement,
+            baseline=None,
+            expected_source_revision=_REVISION,
+            expected_legacy_revision=_LEGACY_REVISION,
+            active_runtime=None,
+        )
+        is None
+    )
+
+    bad = deepcopy(measurement)
+    bad["provenance"]["command_card"] = "generate d d~ > z\n"  # type: ignore[index]
+    with pytest.raises(FinalAuditError, match="generation command"):
+        _audit_measurement(
+            cell,
+            bad,
+            baseline=None,
+            expected_source_revision=_REVISION,
+            expected_legacy_revision=_LEGACY_REVISION,
+            active_runtime=None,
+        )
 
 
 def test_class_c_runtime_projection_authenticates_relinked_endpoint(
@@ -3386,7 +3582,7 @@ def test_final_audit_omits_only_non_successful_optional_legacy_baseline(
     )
 
 
-def test_final_audit_consumes_successful_optional_legacy_baseline(
+def test_final_audit_never_promotes_successful_optional_legacy_baseline(
     tmp_path: Path,
 ) -> None:
     baseline = _legacy_cell()
@@ -3408,18 +3604,20 @@ def test_final_audit_consumes_successful_optional_legacy_baseline(
             {baseline.cell_id: PolicyMeasurementState.SUCCESS},
             catalog=catalog,  # type: ignore[arg-type]
         )
-        is baseline_measurement
+        is None
     )
-    with pytest.raises(FinalAuditError, match="successful optional baseline"):
+    assert (
         _validation_baseline_for_audit(
             candidate,
             {candidate.cell_id: candidate_measurement},
             {baseline.cell_id: PolicyMeasurementState.SUCCESS},
             catalog=catalog,  # type: ignore[arg-type]
         )
+        is None
+    )
 
 
-def test_optional_endpoint_transition_preserves_stored_authority_route(
+def test_optional_legacy_endpoint_requires_high_precision_authority_route(
     tmp_path: Path,
 ) -> None:
     baseline = _legacy_cell()
@@ -3443,7 +3641,7 @@ def test_optional_endpoint_transition_preserves_stored_authority_route(
         )
         is None
     )
-    assert (
+    with pytest.raises(FinalAuditError, match="high_precision"):
         _audit_measurement(
             candidate,
             pointwise_measurement,
@@ -3452,8 +3650,6 @@ def test_optional_endpoint_transition_preserves_stored_authority_route(
             expected_legacy_revision=_LEGACY_REVISION,
             active_runtime=_active_runtime(),
         )
-        is not None
-    )
     high_precision_measurement = deepcopy(pointwise_measurement)
     validation = high_precision_measurement["validation"]
     assert isinstance(validation, dict)
@@ -3616,7 +3812,7 @@ def test_final_audit_consumes_durable_selected_independent_authority(
         f"matrix-{execution_mode.value}-builtin-sm-lc-n1-dd-z-jets-selected-flow"
     )
     authorities = independent_numerical_authorities(candidate)
-    recurrence, legacy = authorities
+    (recurrence,) = authorities
     candidate_measurement = _candidate_measurement(tmp_path / "candidate")
     validation = candidate_measurement["validation"]
     assert isinstance(validation, dict)
@@ -3626,40 +3822,36 @@ def test_final_audit_consumes_durable_selected_independent_authority(
     validation[INDEPENDENT_AUTHORITY_FIELD] = {
         "abi": INDEPENDENT_AUTHORITY_ABI,
         "expected_cell_ids": [authority.cell_id for authority in authorities],
-        "selected_cell_id": legacy.cell_id,
+        "selected_cell_id": recurrence.cell_id,
         "status": "verified",
         "reason": "independent-authority-agreement",
         "same_artifact_diagnostics_are_authority": False,
     }
-    legacy_measurement = _baseline_measurement(legacy.cell_id)
+    recurrence_measurement = _candidate_measurement(tmp_path / "recurrence")
 
     assert (
         _validation_baseline_for_audit(
             candidate,
             {
                 candidate.cell_id: candidate_measurement,
-                legacy.cell_id: legacy_measurement,
+                recurrence.cell_id: recurrence_measurement,
             },
             {
-                recurrence.cell_id: PolicyMeasurementState.GENERATION_LIMIT,
-                legacy.cell_id: PolicyMeasurementState.SUCCESS,
+                recurrence.cell_id: PolicyMeasurementState.SUCCESS,
             },
             catalog=REPORT_CATALOG,
         )
-        is legacy_measurement
+        is recurrence_measurement
     )
 
-    with pytest.raises(FinalAuditError, match="higher-priority authority"):
+    with pytest.raises(FinalAuditError, match="selected independent authority"):
         _validation_baseline_for_audit(
             candidate,
             {
                 candidate.cell_id: candidate_measurement,
-                recurrence.cell_id: _candidate_measurement(tmp_path / "recurrence"),
-                legacy.cell_id: legacy_measurement,
             },
             {
-                recurrence.cell_id: PolicyMeasurementState.SUCCESS,
-                legacy.cell_id: PolicyMeasurementState.SUCCESS,
+                recurrence.cell_id: PolicyMeasurementState.GENERATION_LIMIT,
             },
             catalog=REPORT_CATALOG,
         )
@@ -3957,6 +4149,9 @@ def test_runtime_identity_audit_distinguishes_source_and_direct_codegen_levels(
     compiled_evidence = ArtifactEvidence(
         artifact_id=_ARTIFACT_ID,
         process_id="d_dbar_to_z",
+        producer_version=str(_active_runtime()["package_version"]),
+        producer_git_revision=_REVISION,
+        producer_native_build_inputs_sha256="e" * 64,
         runtime_version=str(_active_runtime()["package_version"]),
         runtime_capabilities=(_COLOR_CAPABILITY, _CAPABILITY),
         execution_manifest_path="execution.json",
@@ -4030,6 +4225,65 @@ def test_runtime_identity_audit_distinguishes_source_and_direct_codegen_levels(
             expected_source_revision=_REVISION,
             active_runtime=_active_runtime(),
             artifact=None,
+        )
+
+
+def test_artifact_producer_identity_uses_native_digest_for_dirty_candidate() -> None:
+    active = _active_runtime()
+    evidence = ArtifactEvidence(
+        artifact_id=_ARTIFACT_ID,
+        process_id="d_dbar_to_z",
+        producer_version=str(active["package_version"]),
+        producer_git_revision=_REVISION,
+        producer_native_build_inputs_sha256="e" * 64,
+        runtime_version=str(active["package_version"]),
+        runtime_capabilities=(),
+        execution_manifest_path="execution.json",
+        execution_manifest_sha256="1" * 64,
+        execution_mode="compiled",
+        arena_record_count=1,
+        direct_leaf_count=1,
+        effective_config={},
+        source_jit_identity=None,
+    )
+    final_audit_module._audit_artifact_producer_identity(
+        evidence,
+        expected_source_revision=_REVISION,
+        active_runtime=active,
+    )
+
+    dirty_active = deepcopy(active)
+    dirty_candidate = dirty_active["candidate_build_identity"]
+    assert isinstance(dirty_candidate, dict)
+    dirty_candidate["source_revision"] = None
+    dirty_active["candidate_build_identity_sha256"] = digest_json(dirty_candidate)
+    dirty_evidence = replace(evidence, producer_git_revision=None)
+    final_audit_module._audit_artifact_producer_identity(
+        dirty_evidence,
+        expected_source_revision=None,
+        active_runtime=dirty_active,
+    )
+
+    with pytest.raises(FinalAuditError, match="git_revision"):
+        final_audit_module._audit_artifact_producer_identity(
+            evidence,
+            expected_source_revision=None,
+            active_runtime=dirty_active,
+        )
+    with pytest.raises(FinalAuditError, match="native_build_inputs_sha256"):
+        final_audit_module._audit_artifact_producer_identity(
+            replace(
+                dirty_evidence,
+                producer_native_build_inputs_sha256="0" * 64,
+            ),
+            expected_source_revision=None,
+            active_runtime=dirty_active,
+        )
+    with pytest.raises(FinalAuditError, match="version"):
+        final_audit_module._audit_artifact_producer_identity(
+            replace(dirty_evidence, producer_version="other"),
+            expected_source_revision=None,
+            active_runtime=dirty_active,
         )
 
 
@@ -4239,6 +4493,54 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
         baseline.cell_id: _baseline_measurement(),
         candidate.cell_id: _candidate_measurement(artifact),
     }
+    candidate_validation = measurements[candidate.cell_id]["validation"]
+    assert isinstance(candidate_validation, dict)
+    points = final_audit_module.shared_validation_points(candidate.process)
+    selector_contract = report_runner.SelectorContract.from_mapping(_selector())
+    resolved = report_runner.resolved_sum_validation(
+        _Runtime(),
+        points,
+        cell=candidate,
+        selector_contract=selector_contract,
+        precision=16,
+    )
+    high_resolved = report_runner.resolved_sum_validation(
+        _Runtime(),
+        points,
+        cell=candidate,
+        selector_contract=selector_contract,
+        precision=32,
+    )
+    resolved_point = resolved["points"][0]
+    high_resolved_point = high_resolved["points"][0]
+    assert isinstance(resolved_point, dict)
+    assert isinstance(high_resolved_point, dict)
+    selector_identity = {
+        "cell_id": candidate.cell_id,
+        "accuracy": candidate.measurement.accuracy.value,
+        "workload": candidate.workload.value,
+        "selector_contract": selector_contract.as_dict(),
+        "value_kind": "matrix-element-p16-versus-p32",
+    }
+    high_precision = report_runner.pointwise_validation(
+        1.0,
+        1.0,
+        candidate_scale=float(resolved_point["candidate_scale"]),
+        baseline_scale=float(high_resolved_point["candidate_scale"]),
+        candidate_scale_source="resolved-component-l1-binary64",
+        baseline_scale_source="resolved-component-l1-p32",
+        comparison_binding={
+            "point_digest": report_runner.point_digest(points),
+            "selector_component_identity": selector_identity,
+            "selector_component_sha256": digest_json(selector_identity),
+            "candidate_source_sha256": resolved["resolved_source_sha256"],
+            "baseline_source_sha256": high_resolved["resolved_source_sha256"],
+        },
+    )
+    candidate_validation.pop("pointwise")
+    candidate_validation["resolved_sum"] = resolved
+    candidate_validation["high_precision_resolved_sum"] = high_resolved
+    candidate_validation["high_precision"] = high_precision
     for cell in catalog.measurement_cells():
         service.store.new_attempt(cell.cell_id, ArtifactPolicy.REGENERATE).publish(
             measurements[cell.cell_id]
@@ -4297,6 +4599,9 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
         return ArtifactEvidence(
             artifact_id=_ARTIFACT_ID,
             process_id=process_id,
+            producer_version=str(_active_runtime()["package_version"]),
+            producer_git_revision=_REVISION,
+            producer_native_build_inputs_sha256="e" * 64,
             runtime_version=str(_active_runtime()["package_version"]),
             runtime_capabilities=(_COLOR_CAPABILITY, _CAPABILITY),
             execution_manifest_path="processes/d_dbar_to_z/execution.json",
@@ -4358,14 +4663,15 @@ def test_final_audit_authenticates_cache_store_and_replays_unique_artifact(
     assert result["cryptographic_audit_source"] == "immutable-current-result"
     assert result["numerically_evidenced_cell_count"] == 2
     assert result["legacy_fresh_oracle_count"] == 1
-    assert result["legacy_oracles_with_inbound_agreement"] == 1
-    assert result["legacy_pointwise_agreement_edge_count"] == 1
+    assert result["legacy_oracles_with_inbound_agreement"] == 0
+    assert result["legacy_pointwise_agreement_edge_count"] == 0
     assert result["direct_agreement_edge_count"] == 0
     assert result["direct_agreement_edge_counts"] == {
         "builtin-ufo-recurrence": 0,
         "z-recurrence-cross-mode": 0,
         "lc-cross-layout-component": 0,
         "lc-legacy-pyamplicol-component": 0,
+        MADGRAPH_FULL_COLOUR: 0,
     }
     assert result["replayed_direct_agreement_edge_count"] == 0
     assert set(result["direct_agreement_replay_category_counts"].values()) == {0}

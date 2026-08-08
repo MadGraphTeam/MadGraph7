@@ -328,18 +328,27 @@ class _EagerExactPlan:
             component_count=current_count,
             context="current slots",
         )
+        active_kernel_ids = _active_process_kernel_ids(stages, closures)
+        include_parameter_kernel = _runtime_has_derived_parameters(runtime_schema)
+        process_kernels = _process_prepared_kernels(
+            pack.kernels,
+            active_kernel_ids,
+            include_parameter_kernel=include_parameter_kernel,
+        )
         kernels = {
             kernel.kernel_id: _LazyExactKernel(kernel, payload_root, kernel_loader)
-            for kernel in pack.kernels
+            for kernel in process_kernels
             if kernel.contract_kind != "model-parameter"
         }
         parameter_projection = _prepared_parameter_projection(
             pack.kernels,
             runtime_schema,
             parameter_count,
+            active_kernel_ids=active_kernel_ids,
+            include_parameter_kernel=include_parameter_kernel,
         )
         parameter_derivation = _exact_parameter_derivation(
-            pack.kernels,
+            process_kernels,
             runtime_schema,
             parameter_projection,
             payload_root,
@@ -478,27 +487,6 @@ class _EagerExactPlan:
             dimension_field="dimension",
             component_count=current_count,
             context="current slots",
-        )
-        kernel_map = {
-            kernel.kernel_id: _LazyExactKernel(
-                kernel,
-                payload_root,
-                effective_kernel_loader,
-            )
-            for kernel in pack.kernels
-            if kernel.contract_kind != "model-parameter"
-        }
-        parameter_projection = _prepared_parameter_projection(
-            pack.kernels,
-            runtime_schema,
-            parameter_count,
-        )
-        parameter_derivation = _exact_parameter_derivation(
-            pack.kernels,
-            runtime_schema,
-            parameter_projection,
-            payload_root,
-            effective_kernel_loader,
         )
         plan_record = _mapping(execution.get("plan"), "plan")
         process_prefix = f"processes/{process_id}"
@@ -651,6 +639,37 @@ class _EagerExactPlan:
             )
             for index, (row, root) in enumerate(zip(raw_closures, roots, strict=True))
         )
+        stage_records = tuple(stages)
+        active_kernel_ids = _active_process_kernel_ids(stage_records, closures)
+        include_parameter_kernel = _runtime_has_derived_parameters(runtime_schema)
+        process_kernels = _process_prepared_kernels(
+            pack.kernels,
+            active_kernel_ids,
+            include_parameter_kernel=include_parameter_kernel,
+        )
+        kernel_map = {
+            kernel.kernel_id: _LazyExactKernel(
+                kernel,
+                payload_root,
+                effective_kernel_loader,
+            )
+            for kernel in process_kernels
+            if kernel.contract_kind != "model-parameter"
+        }
+        parameter_projection = _prepared_parameter_projection(
+            pack.kernels,
+            runtime_schema,
+            parameter_count,
+            active_kernel_ids=active_kernel_ids,
+            include_parameter_kernel=include_parameter_kernel,
+        )
+        parameter_derivation = _exact_parameter_derivation(
+            process_kernels,
+            runtime_schema,
+            parameter_projection,
+            payload_root,
+            effective_kernel_loader,
+        )
         result = cls(
             runtime_schema=runtime_schema,
             physics_reduction_groups=None,
@@ -668,7 +687,7 @@ class _EagerExactPlan:
             parameter_derivation=parameter_derivation,
             amplitude_count=amplitude_count,
             couplings=couplings,
-            stages=tuple(stages),
+            stages=stage_records,
             closures=closures,
         )
         result._validate()
@@ -1128,6 +1147,9 @@ def _prepared_parameter_projection(
     kernels: Sequence[PreparedKernelRecord],
     runtime_schema: Mapping[str, object],
     runtime_parameter_count: int,
+    *,
+    active_kernel_ids: frozenset[int] | None = None,
+    include_parameter_kernel: bool = False,
 ) -> _PreparedParameterProjection:
     runtime_slots = _runtime_parameter_slots(
         runtime_schema,
@@ -1135,7 +1157,13 @@ def _prepared_parameter_projection(
     )
     by_name: dict[str, int] = {}
     by_index: dict[int, str] = {}
+    active_names: set[str] = set()
     for kernel in kernels:
+        active = (
+            active_kernel_ids is None
+            or kernel.kernel_id in active_kernel_ids
+            or (include_parameter_kernel and kernel.contract_kind == "model-parameter")
+        )
         for contract in kernel.input_contracts:
             if contract.get("role") != "model-parameter":
                 continue
@@ -1159,9 +1187,15 @@ def _prepared_parameter_projection(
                 raise ArtifactError(
                     f"prepared parameter index {index} names multiple parameters"
                 )
+            if active:
+                active_names.add(name)
 
     entries = []
-    for name, prepared_index in sorted(by_name.items(), key=lambda item: item[1]):
+    active_parameters = sorted(
+        ((name, by_name[name]) for name in active_names),
+        key=lambda item: item[1],
+    )
+    for name, prepared_index in active_parameters:
         slots = runtime_slots.get(name)
         if slots is None:
             raise ArtifactError(
@@ -1175,11 +1209,71 @@ def _prepared_parameter_projection(
                 runtime_imaginary_index=slots.imaginary,
             )
         )
-    parameter_count = max(by_index, default=-1) + 1
+    parameter_count = max((index for _, index in active_parameters), default=-1) + 1
     return _PreparedParameterProjection(
         parameter_count=parameter_count,
         runtime_parameter_count=runtime_parameter_count,
         entries=tuple(entries),
+    )
+
+
+def _active_process_kernel_ids(
+    stages: Sequence[_ExactStage],
+    closures: Sequence[_ExactClosureRow],
+) -> frozenset[int]:
+    kernel_ids = {
+        invocation.kernel_id for stage in stages for invocation in stage.invocations
+    }
+    kernel_ids.update(
+        finalization.kernel_id
+        for stage in stages
+        for finalization in stage.finalizations
+        if finalization.kernel_id != MISSING_U32
+    )
+    kernel_ids.update(
+        closure.kernel_id for closure in closures if closure.kernel_id != MISSING_U32
+    )
+    return frozenset(kernel_ids)
+
+
+def _process_prepared_kernels(
+    kernels: Sequence[PreparedKernelRecord],
+    active_kernel_ids: frozenset[int],
+    *,
+    include_parameter_kernel: bool,
+) -> tuple[PreparedKernelRecord, ...]:
+    if sum(kernel.contract_kind == "model-parameter" for kernel in kernels) > 1:
+        raise ArtifactError(
+            "eager kernel pack declares multiple model-parameter kernels"
+        )
+    process_kernels = tuple(
+        kernel
+        for kernel in kernels
+        if (include_parameter_kernel and kernel.contract_kind == "model-parameter")
+        or kernel.kernel_id in active_kernel_ids
+    )
+    available_ids = {
+        kernel.kernel_id
+        for kernel in process_kernels
+        if kernel.contract_kind != "model-parameter"
+    }
+    missing_ids = active_kernel_ids - available_ids
+    if missing_ids:
+        raise ArtifactError(
+            f"eager process references missing prepared kernel {min(missing_ids)}"
+        )
+    return process_kernels
+
+
+def _runtime_has_derived_parameters(
+    runtime_schema: Mapping[str, object],
+) -> bool:
+    return any(
+        _mapping(record, f"model parameters[{index}]").get("kind")
+        == "derived_parameter_component"
+        for index, record in enumerate(
+            _sequence(runtime_schema.get("model_parameters"), "model parameters")
+        )
     )
 
 

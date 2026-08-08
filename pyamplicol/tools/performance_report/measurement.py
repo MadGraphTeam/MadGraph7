@@ -21,8 +21,13 @@ from .agreements import (
     INDEPENDENT_AUTHORITY_ABI,
     INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
+    MADGRAPH_COMPARISON_FIELD,
+    MADGRAPH_FULL_COLOUR,
     evaluate_lc_common_component,
+    incoming_agreement_edges,
     independent_numerical_authorities,
+    madgraph_candidate_precision,
+    madgraph_comparison_record,
     requires_independent_numerical_authority,
     validate_lc_common_component,
 )
@@ -1259,6 +1264,43 @@ def _load_runtime(artifact_path: Path, process_id: str) -> object:
     return Runtime.load(artifact_path, process=process_id)
 
 
+def _requires_high_precision_validation(
+    cell: CellSpec,
+    *,
+    baseline: Mapping[str, object] | None,
+    selected_authority_cell_id: str | None,
+    catalog: ReportCatalog,
+) -> tuple[bool, bool]:
+    """Return the p32 requirement and whether ``baseline`` is legacy-only.
+
+    A successful original-AmpliCol diagnostic must not suppress pyAmpliCol's
+    own p16-versus-p32 certification now that the legacy evaluator is no
+    longer a numerical authority.
+    """
+
+    baseline_cell = catalog.validation_baseline_cell(cell)
+    baseline_is_legacy_amplicol = (
+        baseline is not None
+        and selected_authority_cell_id is None
+        and baseline_cell is not None
+        and baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+    )
+    scalar = cell.measurement.model in {
+        ModelKey.SCALAR_CONTACT,
+        ModelKey.SCALAR_GRAVITY,
+    }
+    required = scalar or (
+        (baseline is None or baseline_is_legacy_amplicol)
+        and cell.measurement.execution_mode
+        in {
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+        }
+    )
+    return required, baseline_is_legacy_amplicol
+
+
 def _load_on_the_fly_recurrence_authority(
     cell: CellSpec,
     *,
@@ -1338,7 +1380,11 @@ def measure_pyamplicol_cell(
 
     _require_nonzero_lc_all_flow_baseline(cell, baseline)
     contract = _measurement_selector_contract(cell, baseline, selector_provider)
-    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and contract is None:
+    if (
+        cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy is Accuracy.LC
+        and contract is None
+    ):
         raise RunnerError(
             "on-the-fly measurement requires an inherited recurrence selector contract"
         )
@@ -1383,7 +1429,10 @@ def measure_pyamplicol_cell(
 
         contract = derive_selector_contract(runtime, points)
     otf_recurrence_authority: dict[str, object] | None = None
-    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+    if (
+        cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy is Accuracy.LC
+    ):
         assert contract is not None
         recurrence_authority = _load_on_the_fly_recurrence_authority(
             cell,
@@ -1450,10 +1499,6 @@ def measure_pyamplicol_cell(
             cell=cell,
             contract=contract,
         )
-    scalar = cell.measurement.model in {
-        ModelKey.SCALAR_CONTACT,
-        ModelKey.SCALAR_GRAVITY,
-    }
     authority_expected = requires_independent_numerical_authority(
         cell,
         catalog=catalog,
@@ -1461,14 +1506,13 @@ def measure_pyamplicol_cell(
     diagnostic_without_authority = (
         authority_expected and selected_authority_cell_id is None
     )
-    requires_high_precision = scalar or (
-        baseline is None
-        and cell.measurement.execution_mode
-        in {
-            ExecutionMode.RECURRENCE,
-            ExecutionMode.COMPILED,
-            ExecutionMode.EAGER,
-        }
+    requires_high_precision, baseline_is_legacy_amplicol = (
+        _requires_high_precision_validation(
+            cell,
+            baseline=baseline,
+            selected_authority_cell_id=selected_authority_cell_id,
+            catalog=catalog,
+        )
     )
     if requires_high_precision:
         high_precision_resolved = resolved_sum_validation(
@@ -1514,6 +1558,36 @@ def measure_pyamplicol_cell(
                 baseline_source_sha256=baseline_source,
                 value_kind="matrix-element-p16-versus-p32",
             ),
+        )
+    madgraph_edges = tuple(
+        edge
+        for edge in incoming_agreement_edges(cell, catalog=catalog)
+        if edge.kind == MADGRAPH_FULL_COLOUR
+    )
+    if madgraph_edges:
+        if len(madgraph_edges) != 1:
+            raise RunnerError("candidate has ambiguous MadGraph authority edges")
+        edge = madgraph_edges[0]
+        peers = {} if validation_peers is None else validation_peers
+        madgraph_peer = peers.get(edge.baseline.cell_id)
+        if madgraph_peer is None:
+            raise RunnerError("required MadGraph authority measurement is unavailable")
+        comparison_precision = madgraph_candidate_precision(cell)
+        values = runtime.evaluate(  # type: ignore[attr-defined]
+            points,
+            precision=comparison_precision,
+            **_selector_kwargs(cell, contract),
+        )
+        if len(values) != 1:
+            raise RunnerError(
+                "MadGraph comparison requires exactly one "
+                f"p{comparison_precision} value"
+            )
+        validation[MADGRAPH_COMPARISON_FIELD] = madgraph_comparison_record(
+            edge,
+            candidate=_real_nonnegative(values[0]),
+            baseline_measurement=madgraph_peer,
+            point_identity=point_digest(points),
         )
     _attach_baseline_validation(
         cell,
@@ -1580,10 +1654,16 @@ def measure_pyamplicol_cell(
                             "candidate disagrees with independent numerical authority"
                         ),
                     }
+    legacy_baseline = (
+        baseline_is_legacy_amplicol
+        and baseline is not None
+        and baseline.get("status") == ResultStatus.OK.value
+    )
     statuses = {
         str(record.get("status"))
-        for record in validation.values()
+        for field, record in validation.items()
         if isinstance(record, Mapping)
+        and not (legacy_baseline and field == "pointwise")
     }
     internal_failure = ResultStatus.VALIDATION_FAILED.value in statuses
     validation["status"] = (

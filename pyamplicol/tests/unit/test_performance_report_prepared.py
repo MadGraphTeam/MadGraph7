@@ -13,6 +13,7 @@ from tools.performance_report.prepared import (
     PreparedModelError,
     _PublicCliModelCompiler,
     ensure_prepared_model,
+    ensure_report_prepared_model,
     prepared_identity,
     validate_prepared_record,
 )
@@ -70,6 +71,22 @@ def test_prepared_bundle_is_built_once_and_reused(tmp_path: Path) -> None:
     assert source.calls == 1
     record = validate_prepared_record(bundle, expected_identity=_identity())
     assert record["bundle_size"] == len(b"prepared-bundle")
+
+
+def test_report_prepared_model_requires_explicit_revision(tmp_path: Path) -> None:
+    store = ArtifactStore(
+        artifact_root=tmp_path / "artifacts",
+        lock_root=tmp_path / "locks",
+    )
+
+    with pytest.raises(PreparedModelError, match="explicit producer revision"):
+        ensure_report_prepared_model(
+            store=store,
+            repo_root=tmp_path,
+            worker_cores=1,
+            model=ModelKey.UFO_SM,
+            producer_revision=None,
+        )
 
 
 def test_prepared_bundle_digest_or_identity_mismatch_fails_closed(

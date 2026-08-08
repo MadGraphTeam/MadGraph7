@@ -98,6 +98,27 @@ pub struct RuntimeColorContractionEntry {
     pub coefficient_im: f64,
 }
 
+impl RuntimeColorContractionEntry {
+    /// Evaluate `Re(coefficient * left * conj(right))` in the canonical
+    /// expanded-contraction operation order.
+    ///
+    /// The coefficient supplied by [`RecurrenceColorContraction::runtime_entries`]
+    /// already includes the upper-triangle symmetry factor.
+    #[inline(always)]
+    pub fn contract_real_bilinear(
+        self,
+        left_re: f64,
+        left_im: f64,
+        right_re: f64,
+        right_im: f64,
+    ) -> f64 {
+        let product_re = left_re.mul_add(right_re, left_im * right_im);
+        let product_im = left_im.mul_add(right_re, -left_re * right_im);
+        self.coefficient_re
+            .mul_add(product_re, -self.coefficient_im * product_im)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FactorizedColorContractionKind {
     KleinFourWalsh,
@@ -304,6 +325,37 @@ impl RecurrenceColorContraction {
     pub fn runtime_entries(&self) -> RuntimeColorContractionEntries<'_> {
         RuntimeColorContractionEntries {
             inner: self.canonical_logical_entries(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expanded_identity_for_runtime_test() -> Self {
+        Self {
+            accuracy: RecurrenceColorAccuracy::Full,
+            storage: RecurrenceColorStorage::Expanded,
+            includes_color_factor: true,
+            group_count: 1,
+            sector_count: 1,
+            component_count: 1,
+            local_group_count: 1,
+            destination_count: 1,
+            entries: vec![RawColorContractionEntry {
+                left_group_id: 0,
+                right_group_id: 0,
+                weight_re: 1.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+                exact_factor_id: 0,
+            }],
+            exact_factors: vec![ExactComplexRational::ONE],
+            ordered_group_ids: vec![0],
+            destination_by_group: vec![0],
+            sector_by_group: vec![0],
+            component_by_group: vec![0],
+            owner_by_sector: vec![0],
+            ordered_destination_ids: vec![0],
+            factorization: None,
+            runtime_factorization: None,
         }
     }
 }
@@ -1414,6 +1466,18 @@ mod tests {
             recurrence_color_contraction_digest(&bytes),
             recurrence_color_contraction_digest(&bytes)
         );
+    }
+
+    #[test]
+    fn runtime_entry_contracts_complex_upper_triangle_row() {
+        let plan = decode_recurrence_color_contraction_v3(&TestWire::expanded().encode()).unwrap();
+        let runtime = plan.runtime_entries().collect::<Vec<_>>();
+
+        // The diagonal row contributes 3 * |1 + 2i|^2.
+        assert_eq!(runtime[0].contract_real_bilinear(1.0, 2.0, 1.0, 2.0), 15.0);
+        // The stored upper-triangle row has raw coefficient 2 + 0.5i and
+        // symmetry factor two, hence runtime coefficient 4 + i.
+        assert_eq!(runtime[1].contract_real_bilinear(1.0, 2.0, 3.0, 4.0), 42.0);
     }
 
     #[test]

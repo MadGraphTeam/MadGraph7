@@ -19,15 +19,20 @@ use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyTuple};
 use rusticol_core::__private::compile_symbolica_program_to_plane_application_bytes;
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
-    NativeResolvedEvaluation, NativeRuntime, NativeRuntimeProfile, ParameterKind, ParticleRole,
-    ProcessPhysics as CoreProcessPhysics, ReductionKind, RusticolError as CoreError,
-    RusticolErrorKind, eager_direct_descriptor_for_source_application_bytes,
-    preflight_prepared_kernel_pack, runtime_target_info,
+    NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpObserver,
+    NativeOnTheFlyWarmUpStage, NativeResolvedEvaluation, NativeRuntime, NativeRuntimeProfile,
+    ParameterKind, ParticleRole, ProcessPhysics as CoreProcessPhysics, ReductionKind,
+    RusticolError as CoreError, RusticolErrorKind,
+    eager_direct_descriptor_for_source_application_bytes, preflight_prepared_kernel_pack,
+    runtime_target_info,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
+use std::ptr::NonNull;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, ThreadId};
 
 create_exception!(_rusticol, RusticolError, PyException);
 create_exception!(_rusticol, ArtifactError, RusticolError);
@@ -70,6 +75,64 @@ fn require_raw_f64_precision(precision: u32) -> Result<(), CoreError> {
     Err(CoreError::compatibility(format!(
         "raw pyamplicol._rusticol supports only precision=16 for Symbolica-free direct SymJIT evaluation; precision={precision} must be routed through the public Python Symbolica executor"
     )))
+}
+
+fn report_on_the_fly_warm_up_progress(
+    callback: &Py<PyAny>,
+    callback_error: &Mutex<Option<PyErr>>,
+    event: &NativeOnTheFlyWarmUpEvent,
+) -> Result<bool, CoreError> {
+    let payload = serde_json::to_string(event).map_err(|error| {
+        CoreError::serialization(format!(
+            "could not serialize on-the-fly warm-up progress event: {error}"
+        ))
+    })?;
+    let terminal_notification = event.kind == NativeOnTheFlyWarmUpEventKind::End
+        && event.stage == NativeOnTheFlyWarmUpStage::FirstEvaluation;
+    Python::attach(|py| {
+        let decision = callback.bind(py).call1((payload,));
+        let decision = match decision {
+            Ok(decision) => decision,
+            Err(error) if terminal_notification => {
+                error.write_unraisable(py, Some(callback.bind(py)));
+                return Ok(true);
+            }
+            Err(error) => {
+                let message = error.to_string();
+                let mut slot = callback_error.lock().map_err(|_| {
+                    CoreError::internal("on-the-fly warm-up callback error lock was poisoned")
+                })?;
+                *slot = Some(error);
+                return Err(CoreError::evaluation(format!(
+                    "on-the-fly warm-up progress callback failed: {message}"
+                )));
+            }
+        };
+        if decision.is_none() {
+            return Ok(true);
+        }
+        if !decision.is_instance_of::<PyBool>() {
+            let error = PyTypeError::new_err(
+                "on-the-fly warm-up progress callback must return bool or None",
+            );
+            if terminal_notification {
+                error.write_unraisable(py, Some(callback.bind(py)));
+                return Ok(true);
+            }
+            let mut slot = callback_error.lock().map_err(|_| {
+                CoreError::internal("on-the-fly warm-up callback error lock was poisoned")
+            })?;
+            *slot = Some(error);
+            return Err(CoreError::invalid_argument(
+                "on-the-fly warm-up progress callback must return bool or None",
+            ));
+        }
+        decision.extract::<bool>().map_err(|error| {
+            CoreError::invalid_argument(format!(
+                "could not read on-the-fly warm-up progress decision: {error}"
+            ))
+        })
+    })
 }
 
 #[pyclass(module = "pyamplicol._rusticol", frozen, get_all, skip_from_py_object)]
@@ -409,6 +472,54 @@ struct Runtime {
     runtime: NativeRuntime,
 }
 
+/// An exclusive `NativeRuntime` borrow which stable PyO3 can carry through
+/// [`Python::detach`].
+///
+/// Stable PyO3 conservatively uses `Send` as its `Ungil` bound even though
+/// `detach` invokes its closure synchronously on the calling thread. The
+/// native runtime is deliberately `!Send`, so this adapter retains its Rust
+/// borrow for the whole detached call and permits access only on the thread
+/// which created it.
+struct SameThreadNativeRuntimeBorrow<'a> {
+    runtime: NonNull<NativeRuntime>,
+    origin: ThreadId,
+    _exclusive: PhantomData<&'a mut NativeRuntime>,
+}
+
+fn require_origin_thread(origin: ThreadId) -> Result<(), CoreError> {
+    if thread::current().id() == origin {
+        return Ok(());
+    }
+    Err(CoreError::internal(
+        "detached NativeRuntime operation moved away from its owning thread",
+    ))
+}
+
+impl<'a> SameThreadNativeRuntimeBorrow<'a> {
+    fn new(runtime: &'a mut NativeRuntime) -> Self {
+        Self {
+            runtime: NonNull::from(runtime),
+            origin: thread::current().id(),
+            _exclusive: PhantomData,
+        }
+    }
+
+    fn run<R>(mut self, operation: impl FnOnce(&mut NativeRuntime) -> R) -> Result<R, CoreError> {
+        require_origin_thread(self.origin)?;
+        // SAFETY: `new` receives an exclusive borrow whose lifetime is retained
+        // by `_exclusive`. This consuming method can create only one mutable
+        // reborrow, and the thread check above prevents dereferencing the
+        // deliberately thread-affine runtime from any other thread.
+        Ok(operation(unsafe { self.runtime.as_mut() }))
+    }
+}
+
+// SAFETY: transferring the adapter cannot transfer, move, drop, or access the
+// borrowed runtime. `run` is its only accessor and checks the creating thread
+// before dereferencing; dropping the adapter never touches the pointee. The
+// lifetime marker continues to enforce exclusive access on the creating stack.
+unsafe impl Send for SameThreadNativeRuntimeBorrow<'_> {}
+
 // These signatures intentionally mirror the keyword-rich public Python ABI.
 #[allow(clippy::too_many_arguments)]
 #[pymethods]
@@ -503,6 +614,79 @@ impl Runtime {
         self.runtime
             .on_the_fly_runtime_state_census_json()
             .map_err(python_error)
+    }
+
+    #[pyo3(signature=(momenta, helicity_ids=None, color_flow_ids=None, progress_callback=None))]
+    fn _on_the_fly_warm_up_f64_json(
+        &mut self,
+        py: Python<'_>,
+        momenta: &Bound<'_, PyAny>,
+        helicity_ids: Option<Vec<String>>,
+        color_flow_ids: Option<Vec<String>>,
+        progress_callback: Option<Py<PyAny>>,
+    ) -> PyResult<String> {
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        if momenta.point_count() != 1 {
+            return Err(PyValueError::new_err(format!(
+                "on-the-fly warm_up requires exactly one phase-space point, received {}",
+                momenta.point_count()
+            )));
+        }
+        let momenta = momenta.as_slice().to_vec();
+        if let Some(callback) = progress_callback.as_ref() {
+            if !callback.bind(py).is_callable() {
+                return Err(PyTypeError::new_err(
+                    "on-the-fly warm_up progress_callback must be callable or None",
+                ));
+            }
+        }
+        let callback_error = Arc::new(Mutex::new(None));
+        let detached_callback_error = Arc::clone(&callback_error);
+        let detached_runtime = SameThreadNativeRuntimeBorrow::new(&mut self.runtime);
+        let result = py
+            .detach(move || {
+                detached_runtime.run(|runtime| {
+                    if let Some(callback) = progress_callback.as_ref() {
+                        let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+                            report_on_the_fly_warm_up_progress(
+                                callback,
+                                detached_callback_error.as_ref(),
+                                event,
+                            )
+                        };
+                        let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
+                        runtime.warm_up_on_the_fly_f64_with_selectors(
+                            &momenta,
+                            helicity_ids.as_deref(),
+                            color_flow_ids.as_deref(),
+                            Some(observer),
+                        )
+                    } else {
+                        runtime.warm_up_on_the_fly_f64_with_selectors(
+                            &momenta,
+                            helicity_ids.as_deref(),
+                            color_flow_ids.as_deref(),
+                            None,
+                        )
+                    }
+                })
+            })
+            .and_then(|result| result);
+        if let Some(error) = callback_error
+            .lock()
+            .map_err(|_| {
+                PyException::new_err("on-the-fly warm-up callback error lock was poisoned")
+            })?
+            .take()
+        {
+            return Err(error);
+        }
+        let result = result.map_err(python_error)?;
+        serde_json::to_string(&result).map_err(|error| {
+            python_error(CoreError::serialization(format!(
+                "could not serialize on-the-fly warm-up result: {error}"
+            )))
+        })
     }
 
     fn physics_json(&self) -> PyResult<String> {
@@ -2128,6 +2312,18 @@ mod tests {
                 .to_string()
                 .contains("public Python Symbolica executor")
         );
+    }
+
+    #[test]
+    fn detached_runtime_guard_allows_only_its_origin_thread() {
+        let origin = thread::current().id();
+        assert!(require_origin_thread(origin).is_ok());
+
+        let error = thread::spawn(move || require_origin_thread(origin).unwrap_err())
+            .join()
+            .expect("thread guard check must not panic");
+        assert_eq!(error.kind(), RusticolErrorKind::Internal);
+        assert!(error.to_string().contains("owning thread"));
     }
 
     #[test]

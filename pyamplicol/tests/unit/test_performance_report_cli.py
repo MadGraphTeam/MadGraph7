@@ -75,7 +75,7 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     assert publisher.watch is False
     assert publisher.interval_seconds == 600.0
     assert publisher.pdf_timeout_seconds == 900.0
-    assert publisher.expected_page_count == 65
+    assert publisher.expected_page_count == 73
 
     worker = _parser().parse_args(
         (
@@ -88,10 +88,13 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
             "result.json",
             "--memory-limit-bytes",
             "15000000000",
+            "--madgraph",
+            "/tmp/madgraph",
         )
     )
     assert worker.target_runtime == 5.0
     assert worker.memory_limit_bytes == 15_000_000_000
+    assert worker.madgraph == Path("/tmp/madgraph")
 
     limited = _parser().parse_args(
         ("populate", "--generation-time-limit-seconds", "7200")
@@ -121,6 +124,48 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     )
     assert study.study_policy == MACBOOK_M3_Z_TABLE_F_POLICY_NAME
     assert study.max_ram_gb == 30.0
+
+
+def test_worker_cli_threads_madgraph_installation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = REPORT_CATALOG.measurement_cells()[0]
+    installation = tmp_path / "madgraph"
+    captured: dict[str, object] = {}
+
+    def write(
+        cell_id: str,
+        result_path: Path,
+        **arguments: object,
+    ) -> dict[str, object]:
+        captured["cell_id"] = cell_id
+        captured["result_path"] = result_path
+        captured.update(arguments)
+        return {"status": "ok"}
+
+    monkeypatch.setattr("tools.performance_report.cli.write_cell_result", write)
+    assert (
+        main(
+            (
+                "--repo-root",
+                str(tmp_path),
+                "_worker",
+                "--cell-id",
+                cell.cell_id,
+                "--attempt-root",
+                str(tmp_path / "attempt"),
+                "--result-json",
+                str(tmp_path / "result.json"),
+                "--madgraph",
+                str(installation),
+            )
+        )
+        == 0
+    )
+
+    assert captured["cell_id"] == cell.cell_id
+    assert captured["madgraph_installation"] == installation
 
 
 def test_async_publication_can_run_the_authenticated_wrapper_entrypoint(
@@ -284,7 +329,7 @@ def test_final_audit_is_routed_through_the_isolated_result_tables_entrypoint() -
     assert arguments.expected_source_revision == "a" * 40
     assert arguments.publication_revision == "b" * 40
     assert arguments.max_n_final == 9
-    assert arguments.expected_cell_count == 1962
+    assert arguments.expected_cell_count == 2162
     assert arguments.structural_only is True
 
 
@@ -357,7 +402,7 @@ def test_final_audit_receives_the_bound_architecture_profile_service(
     assert observed["expected_source_revision"] == "a" * 40
     assert observed["expected_publication_revision"] == "b" * 40
     assert observed["max_n_final"] == 9
-    assert observed["expected_cell_count"] == 1962
+    assert observed["expected_cell_count"] == 2162
     assert observed["replay"] is False
     assert environment_checks == [(repo.resolve(), profile, "a" * 40)]
     assert json.loads(capsys.readouterr().out)["final_gate_complete"] is True
@@ -490,7 +535,7 @@ def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
 
     assert main(("--repo-root", str(repo), "validate")) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["table_count"] == 23
+    assert payload["table_count"] == 27
     assert payload["cache_count"] > 12
 
     assert main(("--repo-root", str(repo), "audit")) == 0
@@ -538,8 +583,8 @@ def test_populate_dry_run_supports_exact_filters_and_dependencies(
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["requested"] == 1
-    assert payload["scheduled"] == 3
-    assert [cell["rank"] for cell in payload["cells"]] == [0, 1, 2]
+    assert payload["scheduled"] == 1
+    assert [cell["rank"] for cell in payload["cells"]] == [2]
 
 
 def test_epyc_workers25_dry_run_never_creates_an_attempt(
@@ -588,7 +633,7 @@ def test_epyc_workers25_dry_run_never_creates_an_attempt(
     )
 
     assert main(command) == 0
-    assert json.loads(capsys.readouterr().out)["scheduled"] == 3
+    assert json.loads(capsys.readouterr().out)["scheduled"] == 1
 
     stale = list(command)
     stale[stale.index("25")] = "10"
@@ -684,7 +729,7 @@ def test_profile_population_requires_the_active_authenticated_environment(
     assert len(scheduler_settings) == 1
     assert scheduler_settings[0].max_rss_bytes == 30_000_000_000
     assert scheduler_settings[0].campaign_max_rss_bytes is None
-    assert json.loads(capsys.readouterr().out)["planned"] == 3
+    assert json.loads(capsys.readouterr().out)["planned"] == 1
 
 
 def test_profile_fast_lineage_skips_historical_replay(
@@ -791,4 +836,4 @@ def test_profile_fast_lineage_skips_historical_replay(
         )
     ]
     assert bound == [lineage]
-    assert json.loads(capsys.readouterr().out)["planned"] == 3
+    assert json.loads(capsys.readouterr().out)["planned"] == 1

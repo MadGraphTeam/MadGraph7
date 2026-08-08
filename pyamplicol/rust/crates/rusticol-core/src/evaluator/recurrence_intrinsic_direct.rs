@@ -11,7 +11,10 @@ use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectContributionExecutor, DirectExecutorHandle,
     DirectFactorView, DirectFinalizationExecutor, DirectMomentumView, DirectParameterView,
 };
-use crate::recurrence::{DIRECT_NONE_U32, DirectContributionRow, DirectFinalizationRow};
+use crate::recurrence::{
+    DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DIRECT_NONE_U32, DirectContributionRow,
+    DirectFinalizationRow,
+};
 use crate::{RusticolError, RusticolResult};
 use std::ffi::{c_int, c_void};
 use std::ptr;
@@ -517,6 +520,7 @@ impl ColorOrderedThreeVector {
                     point,
                     momentum_term.add(current_term),
                     scale,
+                    contribution_accumulates(row),
                 );
             }
         }
@@ -590,6 +594,7 @@ impl ColorOrderedThreeVector {
                     point,
                     momentum_term.add(current_term),
                     scale,
+                    contribution_accumulates(row),
                 );
             }
         }
@@ -660,6 +665,7 @@ impl DirectContributionFormula for WeylVectorToWeylPositive {
                 point,
                 output0,
                 scale,
+                contribution_accumulates(row),
             );
             add_scaled_current(
                 arena,
@@ -668,6 +674,7 @@ impl DirectContributionFormula for WeylVectorToWeylPositive {
                 point,
                 output1,
                 scale,
+                contribution_accumulates(row),
             );
         }
     }
@@ -731,6 +738,7 @@ impl DirectContributionFormula for WeylVectorToWeylPositive {
                 point,
                 output0,
                 scale,
+                contribution_accumulates(row),
             );
             add_scaled_current_pair(
                 arena,
@@ -739,6 +747,7 @@ impl DirectContributionFormula for WeylVectorToWeylPositive {
                 point,
                 output1,
                 scale,
+                contribution_accumulates(row),
             );
         }
     }
@@ -808,6 +817,7 @@ impl DirectContributionFormula for WeylVectorToWeylNegative {
                 point,
                 output0,
                 scale,
+                contribution_accumulates(row),
             );
             add_scaled_current(
                 arena,
@@ -816,6 +826,7 @@ impl DirectContributionFormula for WeylVectorToWeylNegative {
                 point,
                 output1,
                 scale,
+                contribution_accumulates(row),
             );
         }
     }
@@ -879,6 +890,7 @@ impl DirectContributionFormula for WeylVectorToWeylNegative {
                 point,
                 output0,
                 scale,
+                contribution_accumulates(row),
             );
             add_scaled_current_pair(
                 arena,
@@ -887,6 +899,7 @@ impl DirectContributionFormula for WeylVectorToWeylNegative {
                 point,
                 output1,
                 scale,
+                contribution_accumulates(row),
             );
         }
     }
@@ -955,6 +968,7 @@ impl DirectContributionFormula for AntisymmetricTensorVectorToVector {
                     point,
                     value,
                     scale,
+                    contribution_accumulates(row),
                 );
             }
         }
@@ -1017,6 +1031,7 @@ impl DirectContributionFormula for AntisymmetricTensorVectorToVector {
                     point,
                     value,
                     scale,
+                    contribution_accumulates(row),
                 );
             }
         }
@@ -1074,6 +1089,7 @@ impl DirectContributionFormula for VectorWedgeVectorToAntisymmetricTensor {
                     point,
                     value,
                     scale,
+                    contribution_accumulates(row),
                 );
             }
         }
@@ -1124,6 +1140,7 @@ impl DirectContributionFormula for VectorWedgeVectorToAntisymmetricTensor {
                     point,
                     value,
                     scale,
+                    contribution_accumulates(row),
                 );
             }
         }
@@ -1948,6 +1965,11 @@ unsafe fn load_momentum_pair(
 }
 
 #[inline(always)]
+fn contribution_accumulates(row: DirectContributionRow) -> bool {
+    row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION == 0
+}
+
+#[inline(always)]
 unsafe fn add_scaled_current(
     arena: DirectArenaView,
     component: u32,
@@ -1955,12 +1977,18 @@ unsafe fn add_scaled_current(
     point: usize,
     value: ComplexValue,
     scale: ComplexValue,
+    accumulate: bool,
 ) {
     let offset = component as usize * stride + point;
     let contribution = value.mul(scale);
     unsafe {
-        *arena.current_re.add(offset) += contribution.re;
-        *arena.current_im.add(offset) += contribution.im;
+        if accumulate {
+            *arena.current_re.add(offset) += contribution.re;
+            *arena.current_im.add(offset) += contribution.im;
+        } else {
+            *arena.current_re.add(offset) = contribution.re;
+            *arena.current_im.add(offset) = contribution.im;
+        }
     }
 }
 
@@ -1972,6 +2000,7 @@ unsafe fn add_scaled_current_pair(
     point: usize,
     value: SimdComplex2,
     scale: ComplexValue,
+    accumulate: bool,
 ) {
     let scale_re = f64x2::new([scale.re, scale.re]);
     let scale_im = f64x2::new([scale.im, scale.im]);
@@ -1981,10 +2010,17 @@ unsafe fn add_scaled_current_pair(
     let im = unsafe { core::mem::transmute::<f64x2, [f64; 2]>(contribution_im) };
     let offset = component as usize * stride + point;
     unsafe {
-        *arena.current_re.add(offset) += re[0];
-        *arena.current_re.add(offset + 1) += re[1];
-        *arena.current_im.add(offset) += im[0];
-        *arena.current_im.add(offset + 1) += im[1];
+        if accumulate {
+            *arena.current_re.add(offset) += re[0];
+            *arena.current_re.add(offset + 1) += re[1];
+            *arena.current_im.add(offset) += im[0];
+            *arena.current_im.add(offset + 1) += im[1];
+        } else {
+            *arena.current_re.add(offset) = re[0];
+            *arena.current_re.add(offset + 1) = re[1];
+            *arena.current_im.add(offset) = im[0];
+            *arena.current_im.add(offset + 1) = im[1];
+        }
     }
 }
 
@@ -2366,6 +2402,89 @@ mod tests {
     }
 
     #[test]
+    fn initializing_intrinsic_contribution_overwrites_poisoned_complex_multipoint_destination() {
+        let stride = 5usize;
+        let mut current_re = vec![0.0; 8 * stride];
+        let mut current_im = vec![0.0; 8 * stride];
+        for component in 0..6 {
+            fill_component(
+                &mut current_re,
+                &mut current_im,
+                stride,
+                component,
+                0.4 + component as f64,
+            );
+        }
+        let factors_re = [1.25];
+        let factors_im = [-0.5];
+        let (arena, momenta, parameters, factors) = views(
+            &mut current_re,
+            &mut current_im,
+            stride as u32,
+            &[],
+            &[],
+            &factors_re,
+            &factors_im,
+        );
+        let executor = LoadedRecurrenceIntrinsicDirectExecutor::load(
+            RecurrenceContributionIntrinsicKind::WeylVectorToWeylPositive,
+            RecurrenceIntrinsicScale::new(0.75, -0.2, None).unwrap(),
+        );
+        let handle = executor.contribution_handle();
+        let row = DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: 2,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: 0,
+            destination_component_base: 6,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        assert_eq!(
+            unsafe {
+                (handle.call)(
+                    handle.context,
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    ptr::from_ref(&row),
+                    1,
+                    stride as u32,
+                )
+            },
+            DIRECT_STATUS_OK
+        );
+        let expected_re = current_re[6 * stride..].to_vec();
+        let expected_im = current_im[6 * stride..].to_vec();
+        current_re[6 * stride..].fill(f64::NAN);
+        current_im[6 * stride..].fill(f64::NAN);
+        let initializing = DirectContributionRow {
+            flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            ..row
+        };
+        assert_eq!(
+            unsafe {
+                (handle.call)(
+                    handle.context,
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    ptr::from_ref(&initializing),
+                    1,
+                    stride as u32,
+                )
+            },
+            DIRECT_STATUS_OK
+        );
+        assert_eq!(&current_re[6 * stride..], expected_re.as_slice());
+        assert_eq!(&current_im[6 * stride..], expected_im.as_slice());
+        assert!(expected_im.iter().any(|value| *value != 0.0));
+    }
+
+    #[test]
     fn tensor_vector_intrinsic_matches_reference_math() {
         let stride = 4usize;
         let mut current_re = vec![0.0; 14 * stride];
@@ -2673,6 +2792,50 @@ mod tests {
             assert_close(
                 read_component(&current_re, &current_im, stride, component, point_count),
                 read_component(&before_re, &before_im, stride, component, point_count),
+            );
+        }
+
+        let mut expected = Vec::new();
+        for component in 8..12 {
+            for point in 0..point_count {
+                expected.push(
+                    read_component(&current_re, &current_im, stride, component, point).sub(
+                        read_component(&before_re, &before_im, stride, component, point),
+                    ),
+                );
+            }
+        }
+        for component in 8..12 {
+            let start = component * stride;
+            current_re[start..start + point_count].fill(f64::NAN);
+            current_im[start..start + point_count].fill(f64::NAN);
+        }
+        let initializing = DirectContributionRow {
+            flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            ..row
+        };
+        assert_eq!(
+            unsafe {
+                (handle.call)(
+                    handle.context,
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    ptr::from_ref(&initializing),
+                    1,
+                    point_count as u32,
+                )
+            },
+            DIRECT_STATUS_OK
+        );
+        for (index, (component, point)) in (8..12)
+            .flat_map(|component| (0..point_count).map(move |point| (component, point)))
+            .enumerate()
+        {
+            assert_close(
+                read_component(&current_re, &current_im, stride, component, point),
+                expected[index],
             );
         }
     }

@@ -149,7 +149,7 @@ def test_every_catalog_cell_has_unique_worker_identity() -> None:
     assert len({cell.cell_id for cell in cells}) == len(cells)
 
 
-@pytest.mark.parametrize("mutation", ("missing", "reordered", "extra"))
+@pytest.mark.parametrize("mutation", ("missing", "extra"))
 def test_worker_requires_exact_catalog_numerical_authority_chain(
     tmp_path: Path,
     mutation: str,
@@ -160,10 +160,11 @@ def test_worker_requires_exact_catalog_numerical_authority_chain(
     canonical = tuple(
         authority.cell_id for authority in independent_numerical_authorities(cell)
     )
-    assert len(canonical) == 2
+    assert canonical == (
+        "matrix-recurrence-builtin-sm-full-n4-dd-tt-jets-contracted",
+    )
     observed = {
         "missing": canonical[:-1],
-        "reordered": tuple(reversed(canonical)),
         "extra": (*canonical, REPORT_CATALOG.measurement_cells()[0].cell_id),
     }[mutation]
 
@@ -302,6 +303,33 @@ def test_worker_success_carries_authenticated_split_harness(
     )
 
 
+def test_write_cell_result_threads_madgraph_installation_to_measurement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installation = tmp_path / "madgraph"
+    observed: list[Path | None] = []
+
+    def measure(
+        _cell_id: str,
+        *,
+        madgraph_installation: Path | None,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        observed.append(madgraph_installation)
+        return {"status": "ok", "provenance": {}}
+
+    monkeypatch.setattr("tools.performance_report.worker.measure_cell", measure)
+    result = write_cell_result(
+        "cell",
+        tmp_path / "result.json",
+        madgraph_installation=installation,
+    )
+
+    assert result["status"] == "ok"
+    assert observed == [installation]
+
+
 def test_worker_constructs_and_threads_parent_phase_reporter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -399,6 +427,7 @@ def test_worker_threads_effective_stage_budgets_and_tracks_extended_phases(
         "worker_wall_limit_seconds": 12.0,
         "profiling_time_limit_seconds": 5.0,
         "validation_time_limit_seconds": 3.0,
+        "madgraph_installation": None,
         "phase": "profiling",
     }
 
@@ -640,7 +669,7 @@ def test_z_worker_accepts_recurrence_as_baseline_and_direct_peer(
         "z-builtin-sm-n1-dd-z-jets-jit-o1-selected-flow"
     )
     authorities = independent_numerical_authorities(cell)
-    assert len(authorities) == 2
+    assert len(authorities) == 1
     recurrence = authorities[0]
     measurement = {"status": "ok", "matrix_element": 1.0}
     measurement_path = tmp_path / "recurrence.json"

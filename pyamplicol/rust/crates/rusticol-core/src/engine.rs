@@ -177,6 +177,8 @@ pub const RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY: &str =
 pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
 pub const ON_THE_FLY_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.complex-f64.v1";
+pub const ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
+    "rusticol.on-the-fly.contracted-color.v1";
 pub const ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.lc-color.v1";
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
@@ -251,6 +253,7 @@ pub enum RuntimeCapability {
     RecurrenceLcColorV1,
     RecurrenceContractedColorV1,
     OnTheFlyRuntimeComplexF64V1,
+    OnTheFlyContractedColorV1,
     OnTheFlyLcColorV1,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
@@ -281,6 +284,7 @@ impl RuntimeCapability {
             Self::RecurrenceLcColorV1 => RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
             Self::RecurrenceContractedColorV1 => RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::OnTheFlyRuntimeComplexF64V1 => ON_THE_FLY_RUNTIME_CAPABILITY,
+            Self::OnTheFlyContractedColorV1 => ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::OnTheFlyLcColorV1 => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
@@ -322,6 +326,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         ON_THE_FLY_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
         #[cfg(feature = "f64-symjit")]
@@ -4577,6 +4583,14 @@ mod validation;
 use validation::*;
 
 mod native_runtime;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod on_the_fly_warm_up;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub use on_the_fly_warm_up::{
+    NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpObserver,
+    NativeOnTheFlyWarmUpResult, NativeOnTheFlyWarmUpStage,
+};
 
 mod artifact_load;
 use artifact_load::*;

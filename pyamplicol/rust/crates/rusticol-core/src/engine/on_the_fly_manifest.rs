@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Compact execution-manifest validation for the private on-the-fly LC lane.
+//! Compact execution-manifest validation for the private on-the-fly lane.
 //!
 //! The verified outer artifact owns file sizes and digests, while PACBIN owns
 //! its member index and payload digests. This manifest therefore records only
 //! the identities and canonical paths needed to select the lane.
 
 use super::recurrence_manifest::{
-    RecurrenceExternalLeg, RecurrenceNormalization, RecurrenceParameterProjection,
-    RecurrenceParticleMass, RecurrenceRuntimeParameter,
+    RecurrenceColorContractionReference, RecurrenceExternalLeg, RecurrenceNormalization,
+    RecurrenceParameterProjection, RecurrenceParticleMass, RecurrenceRuntimeParameter,
 };
 use super::{
-    ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY, ON_THE_FLY_RUNTIME_CAPABILITY, confined_internal_path,
+    ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY, ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+    ON_THE_FLY_RUNTIME_CAPABILITY, confined_internal_path,
 };
+use crate::recurrence::RECURRENCE_COLOR_CONTRACTION_CODEC_ABI;
 use crate::recurrence::on_the_fly::{
     ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI, OnTheFlyProcessSeedIdentityV1,
 };
@@ -29,6 +31,7 @@ pub(super) const ON_THE_FLY_RUNTIME_CONTAINER_PATH: &str = "on-the-fly-runtime.p
 pub(super) const ON_THE_FLY_PROCESS_SEED_MEMBER: &str = "on-the-fly/process-seed-v1.bin";
 pub(super) const ON_THE_FLY_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const ON_THE_FLY_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
+pub(super) const ON_THE_FLY_COLOR_CONTRACTION_PATH: &str = "on-the-fly-color.bin";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,9 +51,10 @@ pub(super) struct OnTheFlyExecutionManifest {
 }
 
 /// Irreducible process/runtime state shared with the established recurrence
-/// lane.  Dense public color-flow catalogs, source-template replicas, and
-/// contracted-color metadata deliberately do not belong to an on-the-fly
-/// artifact: selectors and source dispatch are derived from the compact seed.
+/// lane. Dense public color-flow catalogs and source-template replicas do not
+/// belong to an on-the-fly artifact: selectors and source dispatch are derived
+/// from the compact seed. NLC/full add only a bounded reference to their loose
+/// authenticated color-contraction payload.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct OnTheFlyRuntimeMetadata {
@@ -61,6 +65,8 @@ pub(super) struct OnTheFlyRuntimeMetadata {
     pub(super) particle_masses: Vec<RecurrenceParticleMass>,
     pub(super) normalization: RecurrenceNormalization,
     pub(super) process_seed_identity: OnTheFlyProcessSeedIdentityV1,
+    #[serde(default)]
+    pub(super) color_contraction: Option<RecurrenceColorContractionReference>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -81,9 +87,10 @@ pub(super) struct OnTheFlyRuntimeOptions {
 #[serde(rename_all = "kebab-case")]
 pub(super) enum OnTheFlyColorCoverage {
     Complete,
+    Contracted,
 }
 
-/// Compact facts that affect established public LC axis order but cannot be
+/// Compact facts that affect the internal structural color basis but cannot be
 /// reconstructed from external color roles alone.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -124,12 +131,11 @@ impl OnTheFlyExecutionManifest {
         }
         if self.process != outer.expression
             || self.key != outer.id
-            || self.color_accuracy != "lc"
             || self.color_accuracy != outer.color_accuracy
             || self.external_pdg_order != outer.external_pdgs
         {
             return Err(RusticolError::integrity(format!(
-                "on-the-fly execution manifest does not match LC outer process {:?}",
+                "on-the-fly execution manifest does not match outer process {:?}",
                 outer.id
             )));
         }
@@ -138,10 +144,17 @@ impl OnTheFlyExecutionManifest {
             .iter()
             .map(String::as_str)
             .collect::<BTreeSet<_>>();
-        let expected = BTreeSet::from([
-            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
-            ON_THE_FLY_RUNTIME_CAPABILITY,
-        ]);
+        let color_capability = match self.color_accuracy.as_str() {
+            "lc" => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            "nlc" | "full" => ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            _ => {
+                return Err(RusticolError::compatibility(format!(
+                    "unsupported on-the-fly color accuracy {:?}",
+                    self.color_accuracy
+                )));
+            }
+        };
+        let expected = BTreeSet::from([ON_THE_FLY_RUNTIME_CAPABILITY, color_capability]);
         if actual.len() != self.required_runtime_capabilities.len() || actual != expected {
             return Err(RusticolError::integrity(format!(
                 "on-the-fly execution must require exactly {expected:?}"
@@ -164,26 +177,43 @@ impl OnTheFlyExecutionManifest {
                 "on-the-fly query_construction_threads must be positive",
             ));
         }
-        self.selector_policy.validate()?;
+        self.selector_policy.validate(&self.color_accuracy)?;
         self.runtime_metadata
             .validate(&self.external_pdg_order, &self.color_accuracy)?;
         self.runtime_container.validate()
     }
+
+    pub(super) fn uses_contracted_color(&self) -> bool {
+        matches!(self.color_accuracy.as_str(), "nlc" | "full")
+    }
 }
 
 impl OnTheFlySelectorPolicy {
-    fn validate(&self) -> RusticolResult<()> {
-        if let Some(word) = &self.reference_color_word {
-            if word.is_empty()
+    fn validate(&self, color_accuracy: &str) -> RusticolResult<()> {
+        if let Some(word) = &self.reference_color_word
+            && (word.is_empty()
                 || word.contains(&0)
-                || word.iter().copied().collect::<BTreeSet<_>>().len() != word.len()
-            {
-                return Err(RusticolError::artifact(
-                    "on-the-fly reference color word must contain unique positive external labels",
-                ));
-            }
+                || word.iter().copied().collect::<BTreeSet<_>>().len() != word.len())
+        {
+            return Err(RusticolError::artifact(
+                "on-the-fly reference color word must contain unique positive external labels",
+            ));
         }
         self.selector_census.validate()?;
+        let coverage_matches = matches!(
+            (color_accuracy, self.color_coverage),
+            ("lc", OnTheFlyColorCoverage::Complete)
+                | ("nlc" | "full", OnTheFlyColorCoverage::Contracted)
+        );
+        if !coverage_matches
+            || self.color_coverage == OnTheFlyColorCoverage::Contracted
+                && (self.trace_reflections_folded
+                    || self.selector_census.physical_color_flow_count != 1)
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly selector policy disagrees with its color accuracy",
+            ));
+        }
         Ok(())
     }
 }
@@ -416,6 +446,27 @@ impl OnTheFlyRuntimeMetadata {
                 "on-the-fly normalization metadata is invalid",
             ));
         }
+        match (color_accuracy, self.color_contraction.as_ref()) {
+            ("lc", None) => {}
+            ("nlc" | "full", Some(reference)) => {
+                validate_contracted_color_reference(reference, color_accuracy)?;
+            }
+            ("lc", Some(_)) => {
+                return Err(RusticolError::integrity(
+                    "LC on-the-fly execution must not carry a color-contraction companion",
+                ));
+            }
+            ("nlc" | "full", None) => {
+                return Err(RusticolError::integrity(
+                    "NLC/full on-the-fly execution requires a color-contraction companion",
+                ));
+            }
+            _ => {
+                return Err(RusticolError::compatibility(
+                    "unsupported on-the-fly color accuracy",
+                ));
+            }
+        }
         self.validate_process_seed_identity()?;
         Ok(())
     }
@@ -482,24 +533,63 @@ impl OnTheFlyRuntimeMetadata {
                     "on-the-fly process-seed source identity disagrees with external legs",
                 ));
             }
-            let mass_runtime_name = format!("particle.{}.mass", leg.outgoing_pdg.unsigned_abs());
-            let expected_mass_slot = self
-                .parameter_projection
-                .iter()
-                .find(|row| row.runtime_name == mass_runtime_name && row.component == 0)
-                .and_then(|row| row.prepared_parameter_id);
-            if source
-                .states
-                .iter()
-                .any(|state| state.prepared_mass_parameter_slot != expected_mass_slot)
-            {
-                return Err(RusticolError::integrity(
-                    "on-the-fly process-seed source mass slot disagrees with parameter projection",
-                ));
-            }
         }
         Ok(())
     }
+}
+
+fn validate_contracted_color_reference(
+    reference: &RecurrenceColorContractionReference,
+    color_accuracy: &str,
+) -> RusticolResult<()> {
+    let digest_is_canonical = |value: &str| {
+        value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    };
+    if reference.abi != RECURRENCE_COLOR_CONTRACTION_CODEC_ABI
+        || reference.path != ON_THE_FLY_COLOR_CONTRACTION_PATH
+    {
+        return Err(RusticolError::compatibility(
+            "unsupported on-the-fly color-contraction payload contract",
+        ));
+    }
+    if reference.color_accuracy != color_accuracy
+        || !matches!(color_accuracy, "nlc" | "full")
+        || reference.storage != "expanded"
+        || !reference.includes_color_factor
+        || reference.factorization.is_some()
+        || reference.component_count != 1
+        || reference.group_count == 0
+        || reference.group_count != reference.active_sector_count
+        || reference.group_count != reference.destination_count
+        || reference.sector_count < reference.active_sector_count
+        || reference
+            .materialized_destination_count
+            .is_some_and(|count| count != reference.destination_count)
+        || reference.entry_count == 0
+        || reference.logical_entry_count != reference.entry_count
+        || reference.size_bytes == 0
+        || reference.sha256 != reference.semantic_digest
+        || !digest_is_canonical(&reference.sha256)
+        || !digest_is_canonical(&reference.semantic_digest)
+        || [
+            reference.group_count,
+            reference.sector_count,
+            reference.active_sector_count,
+            reference.component_count,
+            reference.destination_count,
+        ]
+        .into_iter()
+        .any(|value| u32::try_from(value).is_err())
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly color-contraction summary is inconsistent",
+        ));
+    }
+    confined_internal_path(&reference.path, "on-the-fly color-contraction payload")?;
+    Ok(())
 }
 
 impl OnTheFlyRuntimeContainer {
@@ -543,19 +633,28 @@ mod tests {
     use super::*;
     use serde_json::{Value, json};
 
-    fn outer() -> ArtifactProcess {
+    fn outer_with_accuracy(color_accuracy: &str) -> ArtifactProcess {
+        let color_capability = if color_accuracy == "lc" {
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY
+        } else {
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+        };
         ArtifactProcess {
             id: "d_dbar_to_t_tbar_g_g".into(),
             expression: "d d~ > t t~ g g".into(),
-            color_accuracy: "lc".into(),
+            color_accuracy: color_accuracy.into(),
             external_pdgs: vec![1, -1, 6, -6, 21, 21],
             physics_path: "processes/d_dbar_to_t_tbar_g_g/physics.json".into(),
             required_runtime_capabilities: vec![
-                ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY.into(),
+                color_capability.into(),
                 ON_THE_FLY_RUNTIME_CAPABILITY.into(),
             ],
             aliases: Vec::new(),
         }
+    }
+
+    fn outer() -> ArtifactProcess {
+        outer_with_accuracy("lc")
     }
 
     fn manifest() -> Value {
@@ -645,6 +744,47 @@ mod tests {
         parse_on_the_fly_execution_manifest(&serde_json::to_vec(value).unwrap(), &outer())
     }
 
+    fn contracted_manifest(color_accuracy: &str) -> Value {
+        let mut value = manifest();
+        value["color_accuracy"] = json!(color_accuracy);
+        value["required_runtime_capabilities"] = json!([
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        ]);
+        value["selector_policy"]["color_coverage"] = json!("contracted");
+        value["selector_policy"]["selector_census"]["physical_color_flow_count"] = json!(1);
+        value["runtime_metadata"]["normalization"]["color_accuracy"] = json!(color_accuracy);
+        value["runtime_metadata"]["color_contraction"] = json!({
+            "abi": RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+            "path": ON_THE_FLY_COLOR_CONTRACTION_PATH,
+            "size_bytes": 256,
+            "sha256": "77".repeat(32),
+            "color_accuracy": color_accuracy,
+            "storage": "expanded",
+            "includes_color_factor": true,
+            "group_count": 6,
+            "sector_count": 36,
+            "active_sector_count": 6,
+            "component_count": 1,
+            "destination_count": 6,
+            "entry_count": 12,
+            "logical_entry_count": 12,
+            "semantic_digest": "77".repeat(32),
+            "factorization": null,
+        });
+        value
+    }
+
+    fn parse_contracted(
+        value: &Value,
+        color_accuracy: &str,
+    ) -> RusticolResult<OnTheFlyExecutionManifest> {
+        parse_on_the_fly_execution_manifest(
+            &serde_json::to_vec(value).unwrap(),
+            &outer_with_accuracy(color_accuracy),
+        )
+    }
+
     #[test]
     fn accepts_only_the_compact_lc_contract() {
         let parsed = parse(&manifest()).unwrap();
@@ -690,6 +830,60 @@ mod tests {
     }
 
     #[test]
+    fn contracted_color_requires_the_canonical_companion_and_public_census() {
+        for accuracy in ["nlc", "full"] {
+            let value = contracted_manifest(accuracy);
+            let parsed = parse_contracted(&value, accuracy).unwrap();
+            assert!(parsed.uses_contracted_color());
+            assert_eq!(
+                parsed
+                    .runtime_metadata
+                    .color_contraction
+                    .as_ref()
+                    .unwrap()
+                    .path,
+                ON_THE_FLY_COLOR_CONTRACTION_PATH
+            );
+
+            let mut materialized = value.clone();
+            materialized["runtime_metadata"]["color_contraction"]["materialized_destination_count"] =
+                json!(6);
+            parse_contracted(&materialized, accuracy).unwrap();
+
+            materialized["runtime_metadata"]["color_contraction"]["materialized_destination_count"] =
+                json!(5);
+            assert!(parse_contracted(&materialized, accuracy).is_err());
+
+            let mut missing = value.clone();
+            missing["runtime_metadata"]
+                .as_object_mut()
+                .unwrap()
+                .remove("color_contraction");
+            assert!(parse_contracted(&missing, accuracy).is_err());
+
+            let mut lc_capability = value.clone();
+            lc_capability["required_runtime_capabilities"][0] =
+                json!(ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY);
+            assert!(parse_contracted(&lc_capability, accuracy).is_err());
+
+            let mut public_flows = value.clone();
+            public_flows["selector_policy"]["selector_census"]["physical_color_flow_count"] =
+                json!(6);
+            assert!(parse_contracted(&public_flows, accuracy).is_err());
+
+            let mut sparse_destinations = value;
+            sparse_destinations["runtime_metadata"]["color_contraction"]["destination_count"] =
+                json!(7);
+            assert!(parse_contracted(&sparse_destinations, accuracy).is_err());
+        }
+
+        let mut lc_with_companion = manifest();
+        lc_with_companion["runtime_metadata"]["color_contraction"] =
+            contracted_manifest("full")["runtime_metadata"]["color_contraction"].clone();
+        assert!(parse(&lc_with_companion).is_err());
+    }
+
+    #[test]
     fn selector_census_fails_closed_against_authenticated_adapter_counts() {
         let census = parse(&manifest()).unwrap().selector_policy.selector_census;
         census.validate_against(64, 6).unwrap();
@@ -718,11 +912,6 @@ mod tests {
         changed_anchor["runtime_metadata"]["process_seed_identity"]["external_sources"][0]["public_label"] =
             json!(9);
         assert!(parse(&changed_anchor).is_err());
-
-        let mut changed_mass_slot = manifest();
-        changed_mass_slot["runtime_metadata"]["process_seed_identity"]["external_sources"][2]["states"]
-            [0]["prepared_mass_parameter_slot"] = json!(6);
-        assert!(parse(&changed_mass_slot).is_err());
 
         let mut unknown_field = manifest();
         unknown_field["runtime_metadata"]["process_seed_identity"]["opaque"] = json!(true);

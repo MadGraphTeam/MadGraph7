@@ -37,6 +37,8 @@ from .agreements import (
     LC_COMMON_COMPONENT_FIELD,
     LC_CROSS_LAYOUT_COMPONENT,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
+    MADGRAPH_COMPARISON_FIELD,
+    MADGRAPH_FULL_COLOUR,
     STRICT_ABSOLUTE_TOLERANCE,
     STRICT_RELATIVE_TOLERANCE,
     Z_RECURRENCE_CROSS_MODE,
@@ -46,7 +48,9 @@ from .agreements import (
     evaluate_lc_common_component,
     incoming_agreement_edges,
     independent_numerical_authorities,
+    madgraph_candidate_precision,
     requires_independent_numerical_authority,
+    validate_madgraph_comparison_record,
     validation_baseline_is_required,
 )
 from .cache import _validate_standalone_internal_validation, digest_json, reset_entry
@@ -68,7 +72,6 @@ from .campaign_policy import (
 from .catalog import (
     REPORT_CATALOG,
     STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6,
-    STATIC_NA_ON_THE_FLY_COLOR_ACCURACY,
     STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
     ReportCatalog,
 )
@@ -140,7 +143,7 @@ from .workspace import load_profile_campaign_policy
 _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FULL_CATALOG_MAX_N_FINAL = 9
-_EXPECTED_FULL_CATALOG_CELL_COUNT = 1962
+_EXPECTED_FULL_CATALOG_CELL_COUNT = 2162
 _EXPECTED_FULL_STATIC_NA_REASONS = {
     **{
         cell_id: STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
@@ -166,47 +169,47 @@ _EXPECTED_FULL_STATIC_NA_REASONS = {
         for variant in ("asm-o3", "cpp-o3")
         for workload in ("selected-flow", "all-flow")
     },
-    **{
-        cell.cell_id: STATIC_NA_ON_THE_FLY_COLOR_ACCURACY
-        for cell in REPORT_CATALOG.measurement_cells()
-        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
-        and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
-    },
 }
 _EXPECTED_FULL_STATIC_NA_CELL_IDS = frozenset(_EXPECTED_FULL_STATIC_NA_REASONS)
-_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1737
-_EXPECTED_N4_CELL_COUNT = 894
+_EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1937
+_EXPECTED_N4_CELL_COUNT = 1026
 _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 140,
     Z_RECURRENCE_CROSS_MODE: 80,
     LC_CROSS_LAYOUT_COMPONENT: 246,
     LC_LEGACY_PYAMPLICOL_COMPONENT: 213,
+    MADGRAPH_FULL_COLOUR: 132,
 }
 _EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 332,
     Z_RECURRENCE_CROSS_MODE: 156,
     LC_CROSS_LAYOUT_COMPONENT: 660,
     LC_LEGACY_PYAMPLICOL_COMPONENT: 541,
+    MADGRAPH_FULL_COLOUR: 200,
 }
 _FULLY_REPLAYED_PYAMPLICOL = "fully-replayed-pyamplicol"
 _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY = (
     "replayed-pyamplicol-vs-authenticated-legacy"
 )
 _AUTHENTICATED_STORED_LEGACY_LAYOUT = "authenticated-stored-legacy-layout"
+_AUTHENTICATED_STORED_MADGRAPH = "authenticated-stored-madgraph"
 _DIRECT_REPLAY_CATEGORIES = (
     _FULLY_REPLAYED_PYAMPLICOL,
     _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY,
     _AUTHENTICATED_STORED_LEGACY_LAYOUT,
+    _AUTHENTICATED_STORED_MADGRAPH,
 )
 _EXPECTED_N4_DIRECT_REPLAY_COUNTS = {
     _FULLY_REPLAYED_PYAMPLICOL: 433,
     _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 213,
     _AUTHENTICATED_STORED_LEGACY_LAYOUT: 33,
+    _AUTHENTICATED_STORED_MADGRAPH: 132,
 }
 _EXPECTED_FULL_DIRECT_REPLAY_COUNTS = {
     _FULLY_REPLAYED_PYAMPLICOL: 1045,
     _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 541,
     _AUTHENTICATED_STORED_LEGACY_LAYOUT: 103,
+    _AUTHENTICATED_STORED_MADGRAPH: 200,
 }
 
 
@@ -258,6 +261,7 @@ def _replay_count_contract_matches_direct_edges(
             - stored_legacy_layout
         )
         replayed_legacy = direct_edge_counts[LC_LEGACY_PYAMPLICOL_COMPONENT]
+        stored_madgraph = direct_edge_counts[MADGRAPH_FULL_COLOUR]
     except KeyError:
         return False
     if fully_replayed < 0:
@@ -266,6 +270,7 @@ def _replay_count_contract_matches_direct_edges(
         _FULLY_REPLAYED_PYAMPLICOL: fully_replayed,
         _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: replayed_legacy,
         _AUTHENTICATED_STORED_LEGACY_LAYOUT: stored_legacy_layout,
+        _AUTHENTICATED_STORED_MADGRAPH: stored_madgraph,
     }
 
 
@@ -283,6 +288,8 @@ _ARENA_CAPABILITY = {
     ExecutionMode.ON_THE_FLY: "rusticol.on-the-fly.complex-f64.v1",
 }
 _ON_THE_FLY_LC_COLOR_CAPABILITY = "rusticol.on-the-fly.lc-color.v1"
+_ON_THE_FLY_CONTRACTED_COLOR_CAPABILITY = "rusticol.on-the-fly.contracted-color.v1"
+_ON_THE_FLY_COLOR_CONTRACTION_ABI = "pyamplicol-recurrence-color-contraction-v3"
 _ON_THE_FLY_EXECUTION_KIND = "pyamplicol-runtime-on-the-fly-execution"
 _ON_THE_FLY_RUNTIME_CONTAINER_KIND = "pyamplicol-on-the-fly-runtime-container"
 _ON_THE_FLY_RUNTIME_STORAGE_ABI = "pacbin-v1"
@@ -403,6 +410,9 @@ class ArtifactEvidence:
 
     artifact_id: str
     process_id: str
+    producer_version: str
+    producer_git_revision: str | None
+    producer_native_build_inputs_sha256: str | None
     runtime_version: str
     runtime_capabilities: tuple[str, ...]
     execution_manifest_path: str
@@ -807,6 +817,7 @@ def _audit_pointwise(
     expected_candidate_source_sha256: str | None = None,
     expected_baseline_source_sha256: str | None = None,
     expected_selector_identity: Mapping[str, object] | None = None,
+    require_success: bool = True,
 ) -> None:
     record = _mapping(raw, context)
     direct_abi = record.get("abi")
@@ -839,7 +850,7 @@ def _audit_pointwise(
         f"{context}.relative_tolerance",
         nonnegative=True,
     )
-    checks = (
+    checks = [
         (
             _same_float(candidate, expected_candidate),
             "candidate does not equal measurement.matrix_element",
@@ -852,11 +863,14 @@ def _audit_pointwise(
             _same_float(relative_tolerance, expected_relative_tolerance),
             "relative tolerance is not the catalog contract",
         ),
-        (
-            record.get("status") == ResultStatus.OK.value,
-            "stored or recomputed status is not ok",
-        ),
-    )
+    ]
+    if require_success:
+        checks.append(
+            (
+                record.get("status") == ResultStatus.OK.value,
+                "stored or recomputed status is not ok",
+            )
+        )
     failures = [message for passed, message in checks if not passed]
     if record.get("abi") == CONDITIONED_COMPARISON_ABI:
         binding = _mapping(record.get("comparison_binding"), f"{context}.binding")
@@ -957,6 +971,44 @@ def _agreement_value(
     *,
     context: str,
 ) -> float:
+    if edge.kind == MADGRAPH_FULL_COLOUR and cell.cell_id == edge.candidate.cell_id:
+        validation = _mapping(
+            measurement.get("validation"),
+            f"{context}.validation",
+        )
+        comparison = _mapping(
+            validation.get(MADGRAPH_COMPARISON_FIELD),
+            f"{context}.validation.{MADGRAPH_COMPARISON_FIELD}",
+        )
+        try:
+            validate_madgraph_comparison_record(
+                comparison,
+                expected_candidate_id=edge.candidate.cell_id,
+                expected_candidate_precision=madgraph_candidate_precision(
+                    edge.candidate
+                ),
+            )
+        except ValueError as error:
+            raise FinalAuditError(f"{context}: {error}") from error
+        binding = _mapping(
+            comparison.get("comparison_binding"),
+            f"{context}.validation.{MADGRAPH_COMPARISON_FIELD}.binding",
+        )
+        expected_point_digest = _measurement_validation_point_digest(
+            measurement,
+            context=context,
+        )
+        if (
+            comparison.get("baseline_cell_id") != edge.baseline.cell_id
+            or binding.get("point_digest") != expected_point_digest
+        ):
+            raise FinalAuditError(
+                f"{context} MadGraph comparison identity differs from the edge"
+            )
+        return _finite_number(
+            comparison.get("candidate"),
+            f"{context}.validation.{MADGRAPH_COMPARISON_FIELD}.candidate",
+        )
     if edge.value_kind == "matrix_element":
         return _finite_number(
             measurement.get("matrix_element"),
@@ -1068,10 +1120,10 @@ def _stored_independent_pointwise_matches_baseline(
 ) -> bool:
     """Authenticate the stored comparison against its selected authority.
 
-    Most authorities compare matrix elements and use the ordinary pointwise
-    audit.  Original-AmpliCol LC all-flow authority instead authenticates the
-    one common selector component; its aggregate is deliberately not a
-    candidate baseline.
+    Authorities compare matrix elements and use the ordinary pointwise audit.
+    The retained Original-AmpliCol LC all-flow diagnostic authenticates only
+    the common selector component; its aggregate is never a candidate
+    baseline.
     """
 
     validation = measurement.get("validation")
@@ -1363,6 +1415,7 @@ def _audit_direct_agreements(
                         if record.get("abi") == DIRECT_AGREEMENT_V2_ABI
                         else None
                     ),
+                    require_success=(edge.kind != LC_LEGACY_PYAMPLICOL_COMPONENT),
                 )
                 audited_edges.append(edge)
             except Exception as error:
@@ -1406,6 +1459,7 @@ def _audit_direct_agreements(
             Z_RECURRENCE_CROSS_MODE,
             LC_CROSS_LAYOUT_COMPONENT,
             LC_LEGACY_PYAMPLICOL_COMPONENT,
+            MADGRAPH_FULL_COLOUR,
         )
     }
 
@@ -2368,7 +2422,7 @@ def _audit_runtime_identity(
     cell: CellSpec,
     provenance: Mapping[str, object],
     *,
-    expected_source_revision: str,
+    expected_source_revision: str | None,
     active_runtime: Mapping[str, object],
     artifact: ArtifactEvidence | None,
 ) -> None:
@@ -2530,6 +2584,11 @@ def _audit_runtime_identity(
         )
     if artifact is None:
         return
+    _audit_artifact_producer_identity(
+        artifact,
+        expected_source_revision=expected_source_revision,
+        active_runtime=active_runtime,
+    )
     artifact_checks = {
         "artifact_id": artifact.artifact_id,
         "loaded_artifact_id": artifact.artifact_id,
@@ -2584,6 +2643,46 @@ def _audit_runtime_identity(
     if mismatches:
         raise FinalAuditError(
             f"{context} differs from the authenticated artifact: "
+            + ", ".join(mismatches)
+        )
+
+
+def _audit_artifact_producer_identity(
+    artifact: ArtifactEvidence,
+    *,
+    expected_source_revision: str | None,
+    active_runtime: Mapping[str, object],
+) -> None:
+    """Bind artifact production to the measured native runtime identity."""
+
+    candidate = _mapping(
+        active_runtime.get("candidate_build_identity"),
+        "active_runtime.candidate_build_identity",
+    )
+    if candidate.get("source_revision") != expected_source_revision:
+        raise FinalAuditError(
+            "active runtime source revision differs from the measurement source"
+        )
+    checks = {
+        "version": (
+            artifact.producer_version,
+            active_runtime.get("package_version"),
+        ),
+        "git_revision": (
+            artifact.producer_git_revision,
+            expected_source_revision,
+        ),
+        "native_build_inputs_sha256": (
+            artifact.producer_native_build_inputs_sha256,
+            active_runtime.get("native_build_inputs_sha256"),
+        ),
+    }
+    mismatches = [
+        field for field, (observed, expected) in checks.items() if observed != expected
+    ]
+    if mismatches:
+        raise FinalAuditError(
+            "artifact producer differs from the measured runtime: "
             + ", ".join(mismatches)
         )
 
@@ -3099,7 +3198,7 @@ def _audit_measurement(
     if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
         if validation.get("method") != "independent-original-amplicol-oracle":
             raise FinalAuditError(
-                f"{context} does not identify the independent AmpliCol oracle"
+                f"{context} does not identify the legacy AmpliCol diagnostic"
             )
         stored_point_digest = validation.get("point_digest")
         expected_point_digest = point_digest(shared_validation_points(cell.process))
@@ -3120,6 +3219,112 @@ def _audit_measurement(
             raise FinalAuditError(
                 f"{context} does not use the pinned original-AmpliCol revision"
             )
+        return None
+
+    if cell.measurement.execution_mode is ExecutionMode.MADGRAPH:
+        if baseline is not None or baseline_cell is not None:
+            raise FinalAuditError(f"{context} MadGraph oracle has a catalog baseline")
+        if validation.get("method") != "independent-madgraph-tree-level-oracle":
+            raise FinalAuditError(
+                f"{context} does not identify the independent MadGraph oracle"
+            )
+        expected_point_digest = point_digest(shared_validation_points(cell.process))
+        if validation.get("point_digest") != expected_point_digest:
+            raise FinalAuditError(
+                f"{context} MadGraph point digest differs from its physical process"
+            )
+        execution_seconds = _finite_number(
+            measurement.get("execution_seconds_per_point"),
+            f"{context}.measurement.execution_seconds_per_point",
+        )
+        if execution_seconds <= 0.0:
+            raise FinalAuditError(
+                f"{context}.measurement.execution_seconds_per_point must be positive"
+            )
+        if provenance.get("method") != "madgraph-standalone-custom-fortran-driver":
+            raise FinalAuditError(f"{context} MadGraph driver method is invalid")
+        from .madgraph import madgraph_command_card
+
+        expected_command_card = madgraph_command_card(cell.process)
+        if (
+            provenance.get("command_card") != expected_command_card
+            or provenance.get("command_card_sha256")
+            != hashlib.sha256(expected_command_card.encode("utf-8")).hexdigest()
+            or provenance.get("generation_timing_scope")
+            != "generate-output-standalone-launch-force"
+            or provenance.get("generation_includes_madgraph_compilation") is not True
+            or provenance.get("driver_compilation_in_generation_seconds") is not False
+        ):
+            raise FinalAuditError(
+                f"{context} MadGraph generation command/timing scope is invalid"
+            )
+        warmup_calls = provenance.get("driver_warmup_calls")
+        profile_chunks = provenance.get("profile_chunk_count")
+        if (
+            isinstance(warmup_calls, bool)
+            or not isinstance(warmup_calls, int)
+            or warmup_calls < 20
+            or isinstance(profile_chunks, bool)
+            or not isinstance(profile_chunks, int)
+            or profile_chunks < 5
+        ):
+            raise FinalAuditError(
+                f"{context} MadGraph driver warmup/profile census is invalid"
+            )
+        model = _mapping(provenance.get("model"), f"{context}.provenance.model")
+        if (
+            model.get("name") != "sm"
+            or not isinstance(model.get("source_directory"), str)
+            or not Path(str(model["source_directory"])).is_absolute()
+            or _SHA256_RE.fullmatch(str(model.get("source_sha256"))) is None
+        ):
+            raise FinalAuditError(f"{context} MadGraph UFO-SM identity is invalid")
+        for field in ("default_restriction", "exact_param_card"):
+            parameter_record = _mapping(
+                provenance.get(field),
+                f"{context}.provenance.{field}",
+            )
+            count = parameter_record.get("external_parameter_count")
+            if (
+                isinstance(count, bool)
+                or not isinstance(count, int)
+                or count < 1
+                or _SHA256_RE.fullmatch(
+                    str(parameter_record.get("external_parameters_sha256"))
+                )
+                is None
+                or parameter_record.get("binary64_exact_match") is not True
+                or parameter_record.get("format") != "%.14e"
+            ):
+                raise FinalAuditError(f"{context} MadGraph {field} identity is invalid")
+        commands = _sequence(
+            provenance.get("commands"),
+            f"{context}.provenance.commands",
+        )
+        if len(commands) < profile_chunks + 2:
+            raise FinalAuditError(f"{context} MadGraph command census is incomplete")
+        for index, raw_command in enumerate(commands):
+            command = _mapping(
+                raw_command,
+                f"{context}.provenance.commands[{index}]",
+            )
+            args = command.get("args")
+            cwd = command.get("cwd")
+            elapsed = _finite_number(
+                command.get("elapsed_seconds"),
+                f"{context}.provenance.commands[{index}].elapsed_seconds",
+                nonnegative=True,
+            )
+            if (
+                command.get("returncode") != 0
+                or isinstance(args, (str, bytes))
+                or not isinstance(args, Sequence)
+                or not args
+                or not isinstance(cwd, str)
+                or not Path(cwd).is_absolute()
+                or elapsed < 0.0
+            ):
+                raise FinalAuditError(f"{context} MadGraph command {index} is invalid")
         return None
 
     raw_execution_seconds = measurement.get("execution_seconds_per_point")
@@ -3242,9 +3447,13 @@ def _audit_measurement(
         if baseline is None:
             raw_pointwise = validation.get("pointwise")
             if isinstance(raw_high_precision, Mapping):
-                if cell.measurement.execution_mode is not ExecutionMode.RECURRENCE:
+                if cell.measurement.execution_mode not in {
+                    ExecutionMode.RECURRENCE,
+                    ExecutionMode.COMPILED,
+                    ExecutionMode.EAGER,
+                }:
                     raise FinalAuditError(
-                        f"{context} stores recurrence-only high-precision authority"
+                        f"{context} stores inapplicable high-precision authority"
                     )
                 _audit_pointwise(
                     raw_high_precision,
@@ -3265,37 +3474,13 @@ def _audit_measurement(
                     ),
                     expected_selector_identity=high_selector_identity,
                 )
-            elif isinstance(raw_pointwise, Mapping):
-                if cell.measurement.execution_mode is not ExecutionMode.RECURRENCE:
-                    raise FinalAuditError(
-                        f"{context} has an unbound pointwise baseline"
-                    )
-                _audit_pointwise(
-                    raw_pointwise,
-                    context=f"{context}.measurement.validation.pointwise",
-                    expected_candidate=matrix_element,
-                    expected_baseline=_finite_number(
-                        raw_pointwise.get("baseline"),
-                        f"{context}.measurement.validation.pointwise.baseline",
-                        nonnegative=True,
-                    ),
-                    expected_relative_tolerance=_expected_pointwise_tolerance(cell),
-                    expected_point_digest=validation_point_digest,
-                    expected_candidate_source_sha256=resolved_source_sha256,
-                    expected_selector_identity=ordinary_selector_identity,
-                )
             elif cell.measurement.execution_mode is ExecutionMode.RECURRENCE:
-                if (
-                    _stored_direct_agreement(
-                        measurement,
-                        edge_kind=LC_LEGACY_PYAMPLICOL_COMPONENT,
-                    )
-                    is None
-                ):
-                    raise FinalAuditError(
-                        f"{context}.measurement.validation has neither "
-                        "high_precision nor authenticated stored legacy authority"
-                    )
+                raise FinalAuditError(
+                    f"{context}.measurement.validation has no high_precision "
+                    "self-consistency authority"
+                )
+            elif isinstance(raw_pointwise, Mapping):
+                raise FinalAuditError(f"{context} has an unbound pointwise baseline")
             elif (
                 _stored_direct_agreement(
                     measurement,
@@ -3384,15 +3569,13 @@ def _validation_baseline_endpoint_for_audit(
     *,
     catalog: ReportCatalog,
 ) -> tuple[CellSpec, Mapping[str, object]] | None:
-    """Resolve a successful baseline without promoting optional terminals.
+    """Resolve an authoritative baseline without promoting diagnostics.
 
-    Original AmpliCol is an optional comparison endpoint for recurrence.  Its
-    result is consumed normally when successful, but a missing or terminal
-    endpoint leaves recurrence to the independently audited resolved-sum and
-    high-precision route.  Compiled/eager results authenticate the exact
-    recurrence-or-AmpliCol endpoint selected by their durable independent-
-    authority record.  Older verified currents without that record retain the
-    former baseline/direct-agreement audit path.
+    Original AmpliCol is never returned as an authority, irrespective of
+    whether its optional comparison happens to agree.  Recurrence is audited
+    through its high-precision self-consistency evidence; compiled/eager
+    results authenticate the recurrence endpoint selected by their durable
+    independent-authority record.
     """
 
     measurement = measurements.get(cell.cell_id)
@@ -3482,19 +3665,15 @@ def _validation_baseline_endpoint_for_audit(
                 "is not successful"
             )
         return baseline_cell, baseline
-    if baseline_state is PolicyMeasurementState.SUCCESS:
+    if (
+        baseline_cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+        and baseline_state is PolicyMeasurementState.SUCCESS
+    ):
         if baseline is None:
             raise FinalAuditError(
                 f"successful optional baseline {baseline_cell.cell_id!r} is missing"
             )
-        if _stored_pointwise_matches_baseline(cell, measurement, baseline) or (
-            _stored_legacy_component_matches_baseline(
-                cell,
-                measurement,
-                baseline_cell,
-                baseline,
-            )
-        ):
+        if _stored_pointwise_matches_baseline(cell, measurement, baseline):
             return baseline_cell, baseline
     if cell.measurement.execution_mode is ExecutionMode.RECURRENCE:
         return None
@@ -3562,7 +3741,7 @@ def _legacy_consumer_coverage(
     *,
     catalog: ReportCatalog,
 ) -> tuple[tuple[str, str], ...]:
-    """Report linked legacy consumers without requiring optional comparisons."""
+    """Report authenticated legacy diagnostics without treating them as authority."""
 
     legacy_ids = {
         cell.cell_id
@@ -3571,14 +3750,47 @@ def _legacy_consumer_coverage(
     }
     linked: list[tuple[str, str]] = []
     for candidate in successful_cells:
-        endpoint = _validation_baseline_endpoint_for_audit(
-            candidate,
-            measurements,
-            measurement_states,
-            catalog=catalog,
+        direct_legacy = next(
+            (
+                edge
+                for edge in incoming_agreement_edges(candidate, catalog=catalog)
+                if edge.kind == LC_LEGACY_PYAMPLICOL_COMPONENT
+                and edge.baseline.cell_id in legacy_ids
+                and _stored_direct_agreement(
+                    measurements[candidate.cell_id],
+                    edge_kind=edge.kind,
+                    baseline_cell_id=edge.baseline.cell_id,
+                )
+                is not None
+            ),
+            None,
         )
-        if endpoint is not None and endpoint[0].cell_id in legacy_ids:
-            linked.append((endpoint[0].cell_id, candidate.cell_id))
+        if direct_legacy is not None:
+            linked.append((direct_legacy.baseline.cell_id, candidate.cell_id))
+            continue
+        baseline_cell = catalog.validation_baseline_cell(candidate)
+        if (
+            baseline_cell is None
+            or baseline_cell.cell_id not in legacy_ids
+            or measurement_states.get(baseline_cell.cell_id)
+            is not PolicyMeasurementState.SUCCESS
+        ):
+            continue
+        baseline = measurements.get(baseline_cell.cell_id)
+        if baseline is not None and (
+            _stored_pointwise_matches_baseline(
+                candidate,
+                measurements[candidate.cell_id],
+                baseline,
+            )
+            or _stored_legacy_component_matches_baseline(
+                candidate,
+                measurements[candidate.cell_id],
+                baseline_cell,
+                baseline,
+            )
+        ):
+            linked.append((baseline_cell.cell_id, candidate.cell_id))
     return tuple(linked)
 
 
@@ -4841,6 +5053,104 @@ def _audit_on_the_fly_process_seed_identity(
             previous_state_index = state_index
 
 
+def _audit_on_the_fly_color_contraction(
+    artifact: Path,
+    manifest: object,
+    runtime_metadata: Mapping[str, object],
+    cell: CellSpec,
+    *,
+    process_id: str,
+    execution_manifest_path: str,
+) -> None:
+    """Authenticate the loose contracted-colour payload without dense axes."""
+
+    raw = runtime_metadata.get("color_contraction")
+    if cell.measurement.accuracy is Accuracy.LC:
+        if raw is not None or "color_contraction" in runtime_metadata:
+            raise FinalAuditError(
+                "LC on-the-fly execution unexpectedly carries color contraction"
+            )
+        return
+    reference = _mapping(raw, "on-the-fly color contraction")
+    expected_fields = {
+        "abi",
+        "color_accuracy",
+        "storage",
+        "includes_color_factor",
+        "group_count",
+        "sector_count",
+        "active_sector_count",
+        "component_count",
+        "destination_count",
+        "entry_count",
+        "logical_entry_count",
+        "semantic_digest",
+        "factorization",
+        "path",
+        "size_bytes",
+        "sha256",
+    }
+    counters: dict[str, int] = {}
+    for field in (
+        "group_count",
+        "sector_count",
+        "active_sector_count",
+        "component_count",
+        "destination_count",
+        "entry_count",
+        "logical_entry_count",
+        "size_bytes",
+    ):
+        value = reference.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise FinalAuditError(
+                f"on-the-fly color contraction {field} must be positive"
+            )
+        counters[field] = value
+    payload_sha256 = reference.get("sha256")
+    if (
+        set(reference) != expected_fields
+        or reference.get("abi") != _ON_THE_FLY_COLOR_CONTRACTION_ABI
+        or reference.get("color_accuracy") != cell.measurement.accuracy.value
+        or reference.get("storage") != "expanded"
+        or reference.get("includes_color_factor") is not True
+        or reference.get("factorization") is not None
+        or counters["component_count"] != 1
+        or counters["active_sector_count"] != counters["group_count"]
+        or counters["destination_count"] != counters["group_count"]
+        or counters["group_count"] > counters["sector_count"]
+        or counters["logical_entry_count"] != counters["entry_count"]
+        or reference.get("path") != "on-the-fly-color.bin"
+        or not isinstance(payload_sha256, str)
+        or _SHA256_RE.fullmatch(payload_sha256) is None
+        or reference.get("semantic_digest") != payload_sha256
+    ):
+        raise FinalAuditError(
+            "on-the-fly contracted color payload reference is noncanonical"
+        )
+    execution_parent = PurePosixPath(execution_manifest_path).parent
+    relative = (
+        execution_parent
+        / _canonical_relative_path(
+            reference["path"],
+            "on-the-fly color contraction",
+        )
+    ).as_posix()
+    data, _payload_path, authenticated_sha256 = _authenticated_payload_bytes(
+        artifact,
+        manifest,
+        relative,
+        role="evaluator-state",
+        media_type="application/octet-stream",
+        process_id=process_id,
+        context="on-the-fly color contraction",
+    )
+    if authenticated_sha256 != payload_sha256 or len(data) != counters["size_bytes"]:
+        raise FinalAuditError(
+            "on-the-fly contracted color payload differs from its reference"
+        )
+
+
 def _audit_on_the_fly_execution(
     artifact: Path,
     manifest: object,
@@ -4874,20 +5184,32 @@ def _audit_on_the_fly_execution(
             "on-the-fly execution capabilities",
         )
     )
+    expected_color_capability = (
+        _ON_THE_FLY_LC_COLOR_CAPABILITY
+        if cell.measurement.accuracy is Accuracy.LC
+        else _ON_THE_FLY_CONTRACTED_COLOR_CAPABILITY
+    )
     if (
         set(execution) != expected_fields
         or execution.get("schema_version") != 3
         or execution.get("kind") != _ON_THE_FLY_EXECUTION_KIND
         or execution.get("process") != cell.process
         or execution.get("key") != process_id
-        or execution.get("color_accuracy") != Accuracy.LC.value
+        or execution.get("color_accuracy") != cell.measurement.accuracy.value
         or len(capabilities) != 2
         or set(capabilities)
         != {
             _ARENA_CAPABILITY[ExecutionMode.ON_THE_FLY],
-            _ON_THE_FLY_LC_COLOR_CAPABILITY,
+            expected_color_capability,
         }
-        or cell.measurement.accuracy is not Accuracy.LC
+        or (
+            cell.measurement.accuracy is Accuracy.LC
+            and cell.workload not in {Workload.SELECTED_FLOW, Workload.ALL_FLOW}
+        )
+        or (
+            cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
+            and cell.workload is not Workload.CONTRACTED
+        )
         or cell.measurement.backend != "jit"
         or cell.measurement.jit_optimization_level != 2
     ):
@@ -4906,6 +5228,8 @@ def _audit_on_the_fly_execution(
     )
     point_tile_size = runtime_options.get("point_tile_size")
     query_construction_threads = runtime_options.get("query_construction_threads")
+    contracted_color = cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
+    expected_color_coverage = "contracted" if contracted_color else "complete"
     if (
         set(runtime_options) != {"point_tile_size", "query_construction_threads"}
         or isinstance(point_tile_size, bool)
@@ -4948,11 +5272,19 @@ def _audit_on_the_fly_execution(
             "trace_reflections_folded",
             "selector_census",
         }
-        or selector_policy.get("color_coverage") != "complete"
+        or selector_policy.get("color_coverage") != expected_color_coverage
         or not isinstance(selector_policy.get("trace_reflections_folded"), bool)
+        or (
+            contracted_color
+            and selector_policy.get("trace_reflections_folded") is not False
+        )
     ):
         raise FinalAuditError("on-the-fly selector policy differs")
     reference_color_word = selector_policy.get("reference_color_word")
+    if contracted_color and reference_color_word is not None:
+        raise FinalAuditError(
+            "contracted on-the-fly selector policy has a flow selector"
+        )
     if reference_color_word is not None:
         reference = _sequence(
             reference_color_word,
@@ -4987,9 +5319,21 @@ def _audit_on_the_fly_execution(
             raise FinalAuditError(
                 f"on-the-fly selector census {field} is outside positive u64"
             )
+    if contracted_color and selector_census["physical_color_flow_count"] != 1:
+        raise FinalAuditError(
+            "contracted on-the-fly selector census must expose one color result"
+        )
     runtime_metadata = _mapping(
         execution.get("runtime_metadata"),
         "on-the-fly runtime_metadata",
+    )
+    _audit_on_the_fly_color_contraction(
+        artifact,
+        manifest,
+        runtime_metadata,
+        cell,
+        process_id=process_id,
+        execution_manifest_path=execution_manifest_path,
     )
 
     kernel_pack = _mapping(
@@ -5260,6 +5604,17 @@ def audit_artifact(
     return ArtifactEvidence(
         artifact_id=manifest.artifact_id,
         process_id=process_id,
+        producer_version=str(manifest.producer["version"]),
+        producer_git_revision=(
+            None
+            if manifest.producer.get("git_revision") is None
+            else str(manifest.producer["git_revision"])
+        ),
+        producer_native_build_inputs_sha256=(
+            None
+            if manifest.producer.get("native_build_inputs_sha256") is None
+            else str(manifest.producer["native_build_inputs_sha256"])
+        ),
         runtime_version=str(manifest.runtime["engine_version"]),
         runtime_capabilities=capabilities,
         execution_manifest_path=execution_path,
@@ -5634,12 +5989,24 @@ def _replayed_agreement_value(
 
 
 def _direct_replay_category(edge: AgreementEdge) -> str:
-    candidate_is_pyamplicol = (
-        edge.candidate.measurement.execution_mode is not ExecutionMode.AMPLICOL
-    )
-    baseline_is_pyamplicol = (
-        edge.baseline.measurement.execution_mode is not ExecutionMode.AMPLICOL
-    )
+    if edge.kind == MADGRAPH_FULL_COLOUR:
+        if (
+            edge.baseline.measurement.execution_mode is not ExecutionMode.MADGRAPH
+            or edge.candidate.measurement.execution_mode
+            in {ExecutionMode.AMPLICOL, ExecutionMode.MADGRAPH}
+        ):
+            raise FinalAuditError(
+                f"{edge.candidate.cell_id}: invalid MadGraph direct-edge endpoints"
+            )
+        return _AUTHENTICATED_STORED_MADGRAPH
+    candidate_is_pyamplicol = edge.candidate.measurement.execution_mode not in {
+        ExecutionMode.AMPLICOL,
+        ExecutionMode.MADGRAPH,
+    }
+    baseline_is_pyamplicol = edge.baseline.measurement.execution_mode not in {
+        ExecutionMode.AMPLICOL,
+        ExecutionMode.MADGRAPH,
+    }
     if candidate_is_pyamplicol and baseline_is_pyamplicol:
         return _FULLY_REPLAYED_PYAMPLICOL
     if (
@@ -5671,6 +6038,16 @@ def _audit_replayed_direct_agreements(
         try:
             category = _direct_replay_category(edge)
             counts[category] += 1
+            stored_record = _stored_direct_agreement(
+                measurements[edge.candidate.cell_id],
+                edge_kind=edge.kind,
+                baseline_cell_id=edge.baseline.cell_id,
+            )
+            if stored_record is None:
+                raise FinalAuditError(
+                    f"{edge.candidate.cell_id} has no authenticated stored "
+                    f"{edge.kind} agreement"
+                )
             candidate = _replayed_agreement_value(
                 edge,
                 edge.candidate,
@@ -5680,22 +6057,64 @@ def _audit_replayed_direct_agreements(
                 in {
                     _FULLY_REPLAYED_PYAMPLICOL,
                     _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY,
+                    _AUTHENTICATED_STORED_MADGRAPH,
                 },
             )
             if category == _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY:
-                record = _stored_direct_agreement(
-                    measurements[edge.candidate.cell_id],
-                    edge_kind=edge.kind,
-                    baseline_cell_id=edge.baseline.cell_id,
+                stored_candidate = _finite_number(
+                    stored_record.get("candidate"),
+                    f"{edge.candidate.cell_id}.stored_legacy_candidate",
                 )
-                if record is None:
+                absolute = abs(candidate - stored_candidate)
+                scale = max(abs(candidate), abs(stored_candidate))
+                if (
+                    absolute > STRICT_ABSOLUTE_TOLERANCE
+                    and absolute > STRICT_RELATIVE_TOLERANCE * scale
+                ):
                     raise FinalAuditError(
-                        f"{edge.candidate.cell_id} has no authenticated stored "
-                        "legacy agreement"
+                        "replayed legacy diagnostic candidate differs from its "
+                        "authenticated stored candidate"
                     )
-                baseline = _finite_number(
-                    record.get("baseline"),
-                    f"{edge.candidate.cell_id}.stored_legacy_baseline",
+                # AmpliCol is diagnostic-only: a faithfully replayed candidate
+                # remains valid even when the stored legacy comparison failed.
+                continue
+            if category == _AUTHENTICATED_STORED_MADGRAPH:
+                candidate_precision = madgraph_candidate_precision(edge.candidate)
+                stored_authority_candidate = _finite_number(
+                    stored_record.get("candidate"),
+                    f"{edge.candidate.cell_id}.stored_madgraph_"
+                    f"p{candidate_precision}_candidate",
+                )
+                absolute = abs(candidate - stored_authority_candidate)
+                scale = max(abs(candidate), abs(stored_authority_candidate))
+                if stored_record.get("abi") == DIRECT_AGREEMENT_V2_ABI:
+                    scale = max(
+                        scale,
+                        _finite_number(
+                            stored_record.get("candidate_scale"),
+                            f"{edge.candidate.cell_id}.candidate_scale",
+                            nonnegative=True,
+                        ),
+                    )
+                if (
+                    absolute > STRICT_ABSOLUTE_TOLERANCE
+                    and absolute > edge.relative_tolerance * scale
+                ):
+                    raise FinalAuditError(
+                        "replayed p16 candidate differs from its authenticated "
+                        f"stored p{candidate_precision} MadGraph comparison"
+                    )
+                # The MadGraph executable is deliberately not replayed here.
+                # Its binary64 result and candidate comparison were already
+                # authenticated by the structural direct-edge audit.
+                continue
+            if category == _AUTHENTICATED_STORED_LEGACY_LAYOUT:
+                baseline = _replayed_agreement_value(
+                    edge,
+                    edge.baseline,
+                    measurements[edge.baseline.cell_id],
+                    replayed,
+                    replay_required=False,
                 )
             else:
                 baseline = _replayed_agreement_value(
@@ -5706,11 +6125,6 @@ def _audit_replayed_direct_agreements(
                     replay_required=category == _FULLY_REPLAYED_PYAMPLICOL,
                 )
             absolute = abs(candidate - baseline)
-            stored_record = _stored_direct_agreement(
-                measurements[edge.candidate.cell_id],
-                edge_kind=edge.kind,
-                baseline_cell_id=edge.baseline.cell_id,
-            )
             scale = max(abs(candidate), abs(baseline))
             if (
                 isinstance(stored_record, Mapping)
@@ -6245,7 +6659,13 @@ def _audit_final_report_locked(
     pyamplicol_cells = tuple(
         cell
         for cell in successful_cells
-        if cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+        if cell.measurement.execution_mode
+        not in {ExecutionMode.AMPLICOL, ExecutionMode.MADGRAPH}
+    )
+    madgraph_cells = tuple(
+        cell
+        for cell in successful_cells
+        if cell.measurement.execution_mode is ExecutionMode.MADGRAPH
     )
     successful_legacy_cells = tuple(
         cell
@@ -6321,7 +6741,7 @@ def _audit_final_report_locked(
     if (
         catalog is REPORT_CATALOG
         and max_n_final == 4
-        and len(cells) == _EXPECTED_N4_CELL_COUNT
+        and len(declared_cells) == _EXPECTED_N4_CELL_COUNT
         and active_policy is STRICT_POLICY
         and not _count_contract_matches_with_optional_categories(
             direct_agreement_counts,
@@ -6478,7 +6898,7 @@ def _audit_final_report_locked(
         if (
             catalog is REPORT_CATALOG
             and max_n_final == 4
-            and len(cells) == _EXPECTED_N4_CELL_COUNT
+            and len(declared_cells) == _EXPECTED_N4_CELL_COUNT
             and active_policy is STRICT_POLICY
             and not _replay_count_contract_matches_direct_edges(
                 replayed_direct_agreement_counts,
@@ -6653,6 +7073,7 @@ def _audit_final_report_locked(
         ],
         "numerically_evidenced_cell_count": len(successful_cells),
         "pyamplicol_measurement_count": len(pyamplicol_cells),
+        "madgraph_reference_measurement_count": len(madgraph_cells),
         "legacy_fresh_oracle_count": len(legacy_cells),
         "legacy_oracles_with_inbound_agreement": len(covered_legacy_ids),
         "legacy_pointwise_agreement_edge_count": len(legacy_agreement_edges),
@@ -6732,7 +7153,7 @@ def _parser() -> argparse.ArgumentParser:
         default=True,
         help=(
             "load every unique artifact and recompute matrix elements, resolved "
-            "totals, selectors, and scalar precision-32 comparisons (default)"
+            "totals, selectors, and precision-32 comparisons (default)"
         ),
     )
     replay.add_argument(

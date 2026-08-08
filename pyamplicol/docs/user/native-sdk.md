@@ -173,8 +173,21 @@ schedules. On-the-fly artifacts carry the referenced prepared kernels and a
 compact process seed from which Rusticol builds the selected query-local
 schedule. Native callers therefore do not need the source `.pyamplicol-model`
 bundle used during generation. On-the-fly generation still requires a prepared
-kernel bundle, and its runtime support is currently limited to LC at native
-f64 precision.
+kernel bundle. At native f64 precision it supports LC selector families and
+the singleton contracted axis used by NLC and full colour. Contracted colour
+rejects LC-flow selectors; no high-multiplicity practicality guarantee is made
+for contracted NLC/full-colour warm-up.
+
+OTF callers can make cold-path work explicit with
+`rusticol_runtime_warm_up_f64` in C, `Runtime::warm_up` in C++,
+`runtime%warm_up` in Fortran, or `Runtime::warm_up` in the safe Rust wrapper.
+Each call accepts exactly one f64 point and optional global helicity/colour ID
+subsets, constructs and retains that selection, and performs its first
+evaluation. An optional fixed-layout callback reports the stage, completed and
+total query counts, elapsed time, worker count, and current/peak RSS when the
+platform exposes it. Updates are throttled, callbacks run only on the
+coordinating caller thread, and returning false cancels at the next pre-commit
+boundary. Ordinary evaluation pays no progress-reporting cost.
 
 The C, C++, Fortran, and Rust total-evaluation entry points also accept optional
 zero-based `u32`/`uint32_t` selector arrays with one entry per point. These map
@@ -197,8 +210,9 @@ libraries remain ordinary target-native files.
 The wheel's `rust/rusticol.rs` is a dependency-free safe Rust 2021 wrapper over
 C ABI v1. It provides an owning `Runtime`, typed physics metadata, atomic model
 parameter updates, warning access, `Selectors`, compatibility-total
-`evaluate_f64`, and resolved `evaluate_resolved_f64`. The handle is freed on
-drop and remains bound to its creating thread.
+`evaluate_f64`, resolved `evaluate_resolved_f64`, and explicit one-point OTF
+`warm_up`. The handle is freed on drop and remains bound to its creating
+thread.
 
 The generated `API/rust/check_standalone.rs` includes that wrapper through
 `RUSTICOL_RUST_SOURCE`; it does not duplicate FFI declarations or depend on a
@@ -242,8 +256,8 @@ exact evaluator; on-the-fly execution rejects every non-f64 precision.
 
 ## C++17
 
-The header-only wrapper provides metadata, model parameters, warnings, and
-total/resolved f64 evaluation. Momentum storage is row-major
+The header-only wrapper provides metadata, model parameters, warnings,
+one-point OTF warm-up, and total/resolved f64 evaluation. Momentum storage is row-major
 `[point][external particle][E, px, py, pz]`; the external-particle axis follows
 the selected process metadata. This complete example evaluates one
 `d d~ > Z g g` point:
@@ -315,7 +329,7 @@ gfortran -std=f2008 "$RUSTICOL_FORTRAN" runtime.f90 "$@" -o runtime_fortran
 ```
 
 `type(rusticol_runtime)` provides load/close, metadata, model-parameter and
-warning methods, and total/resolved f64 evaluation. Resolved Fortran storage is
+warning methods, explicit OTF warm-up, and total/resolved f64 evaluation. Resolved Fortran storage is
 `(color, helicity, point)`, the column-major view of the C ABI sequence
 `(point, helicity, color)`.
 
@@ -357,11 +371,12 @@ Fortran module, and Python extension all execute that same native eager plan.
 
 Prepared recurrence artifacts execute their stored current schedules through
 Rusticol's recurrence Direct-Arena lane. On-the-fly artifacts instead require
-the on-the-fly LC capabilities and construct the requested recurrence family
+the on-the-fly f64 capabilities and construct the requested recurrence family
 from their compact seed before executing the same artifact-local prepared
-kernels. Both remain Symbolica-independent for native f64 evaluation. The
-on-the-fly lane currently supports LC only; NLC and full color are not native
-on-the-fly capabilities.
+kernels. LC exposes selectable flow families. NLC and full colour expose one
+contracted colour component and reject LC-flow selectors; they are correctness
+capabilities without a high-multiplicity runtime-practicality promise. All of
+these paths remain Symbolica-independent for native f64 evaluation.
 
 ASM/C++ libraries are target-specific. Rusticol requires an exact artifact and
 runtime target-triple match and verifies every recorded CPU feature before

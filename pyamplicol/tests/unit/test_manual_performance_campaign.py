@@ -321,7 +321,7 @@ def test_campaign_command_holds_shared_destination_lock(
 
 
 def test_catalog_and_fresh_profile_are_complete_but_measurement_empty() -> None:
-    assert len(REPORT_CATALOG.measurement_cells()) == 1962
+    assert len(REPORT_CATALOG.measurement_cells()) == 2162
     assert PROFILE.is_dir()
     assert not (PROFILE / "pyAmpliCol.pdf").exists()
     assert not any(PROFILE.rglob("current.json"))
@@ -363,7 +363,7 @@ def test_selector_repetition_wildcard_aliases_and_intersection() -> None:
 
     all_arguments = _parse("inspect", "--table", "*", "--model", "all")
     _all_selection, all_cells = selection_from_arguments(all_arguments)
-    assert len(all_cells) == 1962
+    assert len(all_cells) == 2162
 
 
 def test_variant_filter_keeps_unvaried_matrix_rows_in_a_broad_selection() -> None:
@@ -495,16 +495,17 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "--list-sections",
         "--remove-sections",
         "dependency-only work",
-        "AmpliCol, recurrence, then compiled/eager",
+        "original-AmpliCol diagnostic, recurrence authority",
         "quoted `*`",
     ):
         assert fragment in help_text
     run_help = parser._subparsers._group_actions[0].choices["run"].format_help()
     assert "Process family number 1..15" in run_help
-    assert "automatically added authority closure" in run_help
+    assert "automatically added diagnostic dependency" in run_help
     assert "recurrence remains available" in run_help
     assert "Hard construction" in run_help
     assert "Omitted or '*' engine" in run_help
+    assert "--madgraph" in run_help
     assert "--no-artifacts-removal" not in help_text
     arguments = _parse("run", "--dry-run")
     assert arguments.workers == 1
@@ -517,6 +518,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.continue_across_revisions is False
     assert arguments.no_dependencies_added is False
     assert arguments.cleanup_artifacts is False
+    assert arguments.madgraph is None
     assert _parse("run", "--no-dependencies-added").no_dependencies_added is True
     assert _parse("run", "--cleanup-artifacts").cleanup_artifacts is True
     assert _parse("run", "--continue-across-revisions").continue_across_revisions
@@ -541,6 +543,12 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     )
     assert unvalidated_legacy.original_amplicol_available is True
     assert unvalidated_legacy.original_amplicol_repository is None
+    madgraph = Path("/tmp/madgraph")
+    madgraph_settings = manual_campaign._campaign_settings(
+        _parse("run", "--dry-run", "--madgraph", str(madgraph)),
+        source,
+    )
+    assert madgraph_settings.madgraph_installation == madgraph
     refresh = _parse("refresh-pdf")
     assert refresh.expected_page_count is None
     assert refresh.quiet is False
@@ -561,7 +569,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
             "--remove-sections",
             "scope",
         )
-    assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 65
+    assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 73
     underscore = _parse("inspect", "--color_approximation", "lc")
     _selection, cells = selection_from_arguments(underscore)
     assert cells
@@ -4729,6 +4737,100 @@ def test_installed_campaign_uses_copied_local_amplicol_and_explicit_override(
     assert observed == [configured, override]
 
 
+def test_installed_campaign_resolves_saved_madgraph_and_explicit_override(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
+    configured = tmp_path / "configured-madgraph"
+    override = tmp_path / "override-madgraph"
+    for installation in (configured, override):
+        executable = installation / "bin/mg5_aMC"
+        executable.parent.mkdir(parents=True)
+        executable.write_text("#!/bin/sh\n", encoding="ascii")
+        executable.chmod(0o755)
+    (docs_dir / ".pyamplicol-madgraph").write_text(
+        f"{configured.resolve()}\n",
+        encoding="utf-8",
+    )
+
+    arguments = _parse("run")
+    assert (
+        manual_campaign._resolve_madgraph(
+            arguments,
+            installed=True,
+            docs_dir=docs_dir,
+        )
+        == configured.resolve()
+    )
+    assert (
+        manual_campaign._resolve_madgraph(
+            arguments,
+            installed=False,
+            docs_dir=docs_dir,
+        )
+        is None
+    )
+
+    arguments.madgraph = override
+    assert (
+        manual_campaign._resolve_madgraph(
+            arguments,
+            installed=True,
+            docs_dir=docs_dir,
+        )
+        == override.resolve()
+    )
+
+
+def test_madgraph_validation_requires_regular_executable_mg5(
+    tmp_path: Path,
+) -> None:
+    installation = tmp_path / "madgraph"
+    executable = installation / "bin/mg5_aMC"
+    executable.parent.mkdir(parents=True)
+
+    with pytest.raises(ManualCampaignError, match="regular executable bin/mg5_aMC"):
+        manual_campaign._validated_madgraph_installation(installation)
+
+    executable.write_text("#!/bin/sh\n", encoding="ascii")
+    executable.chmod(0o644)
+    with pytest.raises(ManualCampaignError, match="regular executable bin/mg5_aMC"):
+        manual_campaign._validated_madgraph_installation(installation)
+
+    executable.chmod(0o755)
+    assert (
+        manual_campaign._validated_madgraph_installation(installation)
+        == installation.resolve()
+    )
+
+    executable.unlink()
+    target = tmp_path / "mg5_aMC-target"
+    target.write_text("#!/bin/sh\n", encoding="ascii")
+    target.chmod(0o755)
+    executable.symlink_to(target)
+    with pytest.raises(ManualCampaignError, match="regular executable bin/mg5_aMC"):
+        manual_campaign._validated_madgraph_installation(installation)
+
+
+def test_saved_madgraph_configuration_is_one_absolute_regular_line(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
+    config = docs_dir / ".pyamplicol-madgraph"
+    config.write_text("relative/path\n", encoding="utf-8")
+    with pytest.raises(ManualCampaignError, match="configuration is invalid"):
+        manual_campaign._configured_madgraph(docs_dir)
+
+    config.unlink()
+    target = tmp_path / "madgraph-config"
+    target.write_text(f"{tmp_path.resolve()}\n", encoding="utf-8")
+    config.symlink_to(target)
+    with pytest.raises(ManualCampaignError, match="not a regular file"):
+        manual_campaign._configured_madgraph(docs_dir)
+
+
 def test_original_amplicol_planning_availability_is_cheap_and_explicit(
     tmp_path: Path,
 ) -> None:
@@ -5856,5 +5958,5 @@ def test_fresh_manual_report_compiles_with_the_manual_page_contract(
         expected_page_count=DEFAULT_MANUAL_EXPECTED_PAGE_COUNT,
         timeout_seconds=900.0,
     )
-    assert pages == 65
+    assert pages == 73
     assert (docs / "pyAmpliCol.pdf").stat().st_size > 100_000

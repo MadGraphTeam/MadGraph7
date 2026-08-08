@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -297,6 +298,7 @@ def test_source_only_projection_never_builds_a_dag_color_plan_or_schedule(
     monkeypatch.setattr(columnar, "build_recurrence_builder_input_v1", forbidden)
 
     projected = _project(_gluon_process(4))
+    assert projected.color_plan is None
     payload = projected.seed.to_json_dict()
     assert set(payload) == {
         "schema_version",
@@ -322,6 +324,35 @@ def test_source_only_projection_never_builds_a_dag_color_plan_or_schedule(
         b"relation_discovery",
     ):
         assert forbidden_name not in encoded
+
+
+@pytest.mark.parametrize("color_accuracy", ("nlc", "full"))
+def test_contracted_projection_keeps_color_plan_outside_seed_v1(
+    color_accuracy: str,
+) -> None:
+    projected = _project(
+        replace(_gluon_process(4), color_accuracy=color_accuracy)
+    )
+    assert projected.color_plan is not None
+    assert projected.color_plan.color_accuracy == color_accuracy
+    assert projected.color_plan.sector_count == 6
+    assert projected.color_plan.trace_reflections_folded is False
+
+    payload = projected.seed.to_json_dict()
+    assert "color_plan" not in payload
+    assert "color_contraction" not in payload
+    assert set(payload) == {
+        "schema_version",
+        "process_digest",
+        "external_permutation",
+        "external_sources",
+        "parameter_projection",
+        "coupling_order_policy",
+        "coupling_hierarchies",
+        "coupling_limits",
+        "fermion_pairing",
+        "normalization",
+    }
 
 
 def test_projection_is_deterministic_and_scales_with_external_sources_only() -> None:

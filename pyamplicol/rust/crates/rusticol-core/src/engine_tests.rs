@@ -3898,6 +3898,13 @@ fn native_runtime_clear_is_a_noop_outside_the_on_the_fly_lane() {
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
+    scalar_on_the_fly_native_runtime_with_color_contraction(None)
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn scalar_on_the_fly_native_runtime_with_color_contraction(
+    color_contraction: Option<super::on_the_fly_load::LoadedOnTheFlyColorContractionV1>,
+) -> NativeRuntime {
     use super::on_the_fly_lane::OnTheFlyNativeRuntime;
     use super::on_the_fly_selectors::{
         OnTheFlyCompactSelectorAdapterV1, OnTheFlyLcColorCoverageV1, OnTheFlyLcSelectorPolicyV1,
@@ -3981,7 +3988,7 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
         artifact_id: "0".repeat(64),
         runtime: execution,
         execution_lane: NativeExecutionLane::OnTheFly(Box::new(
-            native_runtime::OnTheFlyExecutionRuntime::new(lane, selectors),
+            native_runtime::OnTheFlyExecutionRuntime::new(lane, selectors, color_contraction),
         )),
         process: "s > s".to_string(),
         process_key: "s_to_s".to_string(),
@@ -3996,6 +4003,216 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
         pending_warnings: Vec::new(),
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
+    }
+}
+
+#[cfg(all(
+    any(feature = "f64-compiled", feature = "f64-symjit"),
+    any(target_os = "linux", target_os = "macos")
+))]
+#[test]
+fn on_the_fly_warmed_fixed_selection_is_allocation_free_and_last_family_only() {
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let point_count = 2;
+    let momenta = vec![0.0; point_count * 2 * 4];
+    let color = ["flow:singlet".to_string()];
+    let selection_a = ["h:+0,+0".to_string()];
+    let selection_b = ["h:+1,+1".to_string()];
+    let mut output = vec![0.0; point_count];
+
+    runtime
+        .evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selection_a),
+            Some(&color),
+            None,
+            None,
+            &mut output,
+        )
+        .unwrap();
+    assert!(output.iter().all(|value| value.abs() > f64::EPSILON));
+    let expected_a = output.clone();
+
+    let (warm_a, allocations, bytes) = super::count_allocations(|| {
+        runtime.evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selection_a),
+            Some(&color),
+            None,
+            None,
+            &mut output,
+        )
+    });
+    warm_a.unwrap();
+    assert_eq!(output, expected_a);
+    assert_eq!(allocations, 0, "warmed fixed OTF selection allocated");
+    assert_eq!(bytes, 0, "warmed fixed OTF selection allocated bytes");
+
+    let (cold_b, allocations, _) = super::count_allocations(|| {
+        runtime.evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selection_b),
+            Some(&color),
+            None,
+            None,
+            &mut output,
+        )
+    });
+    cold_b.unwrap();
+    assert!(allocations > 0, "replacement family was not prepared cold");
+    assert_eq!(output, [0.0; 2]);
+
+    let (warm_b, allocations, bytes) = super::count_allocations(|| {
+        runtime.evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selection_b),
+            Some(&color),
+            None,
+            None,
+            &mut output,
+        )
+    });
+    warm_b.unwrap();
+    assert_eq!(allocations, 0, "warmed replacement OTF selection allocated");
+    assert_eq!(bytes, 0, "warmed replacement OTF selection allocated bytes");
+
+    // Only the current family is retained. Returning to A must rebuild it,
+    // after which the same A selection is allocation-free again.
+    let (revisited_a, allocations, _) = super::count_allocations(|| {
+        runtime.evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selection_a),
+            Some(&color),
+            None,
+            None,
+            &mut output,
+        )
+    });
+    revisited_a.unwrap();
+    assert!(
+        allocations > 0,
+        "evicted fixed OTF selection was not rebuilt"
+    );
+    assert_eq!(output, expected_a);
+
+    let (warm_revisited_a, allocations, bytes) = super::count_allocations(|| {
+        runtime.evaluate_f64_into_with_selectors(
+            &momenta,
+            point_count,
+            Some(&selection_a),
+            Some(&color),
+            None,
+            None,
+            &mut output,
+        )
+    });
+    warm_revisited_a.unwrap();
+    assert_eq!(allocations, 0, "rewarmed fixed OTF selection allocated");
+    assert_eq!(bytes, 0, "rewarmed fixed OTF selection allocated bytes");
+    let NativeExecutionLane::OnTheFly(execution) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(execution.retained_family_count(), 1);
+    assert_eq!(execution.retained_selection_count(), 1);
+}
+
+#[cfg(all(
+    any(feature = "f64-compiled", feature = "f64-symjit"),
+    any(target_os = "linux", target_os = "macos")
+))]
+#[test]
+fn on_the_fly_unprofiled_lc_and_contracted_match_profiles_and_allocate_nothing() {
+    for contracted in [false, true] {
+        let contraction = contracted.then(|| {
+            super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
+                plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+                destination_by_owner_ordinal: vec![0].into_boxed_slice(),
+                point_tile_size: 1,
+            }
+        });
+        let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(contraction);
+        if contracted {
+            runtime.runtime.color_accuracy = "full".to_string();
+        }
+        let label = if contracted { "contracted" } else { "LC" };
+        let point_count = 2;
+        let momenta = vec![0.0; point_count * 2 * 4];
+        let helicities = ["h:+0,+0".to_string()];
+        let color = ["flow:singlet".to_string()];
+        let colors = (!contracted).then_some(color.as_slice());
+        let mut output = vec![f64::NAN; point_count];
+
+        runtime
+            .evaluate_f64_into_with_selectors(
+                &momenta,
+                point_count,
+                Some(&helicities),
+                colors,
+                None,
+                None,
+                &mut output,
+            )
+            .unwrap();
+        let expected = output.clone();
+        let profiled = runtime
+            .evaluate_f64_profile(&momenta, point_count, Some(&helicities), colors)
+            .unwrap();
+        assert!(
+            profiled
+                .values
+                .iter()
+                .zip(&expected)
+                .all(|(candidate, expected)| candidate.to_bits() == expected.to_bits()),
+            "unprofiled {label} values differ bitwise from the diagnostic profile"
+        );
+        assert!(
+            profiled.profile.total_s.is_finite() && profiled.profile.total_s >= 0.0,
+            "{label} profile produced invalid timing"
+        );
+        assert!(
+            profiled.profile.recurrence_schedule_execution_count > 0,
+            "{label} profile lost schedule counts"
+        );
+        assert!(
+            profiled.profile.recurrence_source_call_count > 0,
+            "{label} profile lost source-call counts"
+        );
+        assert!(
+            profiled.profile.recurrence_closure_call_count > 0,
+            "{label} profile lost closure-call counts"
+        );
+
+        runtime
+            .evaluate_f64_into_with_selectors(
+                &momenta,
+                point_count,
+                Some(&helicities),
+                colors,
+                None,
+                None,
+                &mut output,
+            )
+            .unwrap();
+        let (result, allocations, bytes) = super::count_allocations(|| {
+            runtime.evaluate_f64_into_with_selectors(
+                &momenta,
+                point_count,
+                Some(&helicities),
+                colors,
+                None,
+                None,
+                &mut output,
+            )
+        });
+        result.unwrap();
+        assert_eq!(output, expected, "warmed {label} values changed");
+        assert_eq!(allocations, 0, "warmed {label} OTF evaluation allocated");
+        assert_eq!(bytes, 0, "warmed {label} OTF evaluation allocated bytes");
     }
 }
 
@@ -4050,6 +4267,389 @@ fn on_the_fly_runtime_state_census_is_observational() {
     assert_eq!(repeated, first);
     assert_eq!(census(&runtime), warm_census);
     assert_eq!(retained_state(&runtime), warm_state);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_contracted_color_selectors_fail_at_the_common_public_boundary() {
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    // Selector capability validation is intentionally lane-neutral and keyed
+    // by authenticated public accuracy.  No contracted request may reach the
+    // compact structural planner.
+    runtime.runtime.color_accuracy = "full".to_string();
+    let momenta = vec![0.0; 2 * 4];
+    let color_by_point = [0_u32];
+    let error = runtime
+        .evaluate_f64_with_selectors(&momenta, 1, None, None, None, Some(&color_by_point))
+        .unwrap_err();
+    assert!(error.to_string().contains("only for LC"));
+
+    let color_ids = ["color:contracted".to_string()];
+    let error = runtime.resolved_shape(None, Some(&color_ids)).unwrap_err();
+    assert!(error.to_string().contains("only for LC"));
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_contracted_later_tile_failure_clears_both_selection_caches() {
+    let contraction = super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
+        plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+        destination_by_owner_ordinal: vec![0].into_boxed_slice(),
+        point_tile_size: 1,
+    };
+    let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
+    runtime.runtime.color_accuracy = "full".to_string();
+    let point_count = 2;
+    let momenta = vec![0.0; point_count * 2 * 4];
+    let selection_a = ["h:+0,+0".to_string()];
+    let selection_b = ["h:+1,+1".to_string()];
+
+    let a_before = runtime
+        .evaluate_f64_with_selectors(&momenta, point_count, Some(&selection_a), None, None, None)
+        .unwrap();
+    let NativeExecutionLane::OnTheFly(execution) = &mut runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(execution.retained_family_count(), 1);
+    assert_eq!(execution.retained_selection_count(), 1);
+    // Selection A is retained on both sides. For replacement B, attempt zero
+    // commits B's cold family on tile one; attempt one fails before tile two,
+    // while B's public wrapper selection is still pending.
+    execution.fail_contracted_execution_at_for_test(Some(1));
+
+    let error = runtime
+        .evaluate_f64_with_selectors(&momenta, point_count, Some(&selection_b), None, None, None)
+        .unwrap_err();
+    assert!(error.to_string().contains("injected"));
+
+    let NativeExecutionLane::OnTheFly(execution) = &mut runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(execution.retained_family_count(), 0);
+    assert_eq!(execution.retained_selection_count(), 0);
+    execution.fail_contracted_execution_at_for_test(None);
+
+    let a_after = runtime
+        .evaluate_f64_with_selectors(&momenta, point_count, Some(&selection_a), None, None, None)
+        .unwrap();
+    assert_eq!(a_after, a_before);
+    let NativeExecutionLane::OnTheFly(execution) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(execution.retained_family_count(), 1);
+    assert_eq!(execution.retained_selection_count(), 1);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_contracted_streaming_bounds_live_outcomes_and_retains_one_family() {
+    let contraction = super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
+        plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+        destination_by_owner_ordinal: vec![0].into_boxed_slice(),
+        point_tile_size: 1,
+    };
+    let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
+    runtime.runtime.color_accuracy = "full".to_string();
+    let momenta = vec![0.0; 2 * 4];
+
+    let values = runtime
+        .evaluate_f64_with_selectors(&momenta, 1, None, None, None, None)
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    let NativeExecutionLane::OnTheFly(execution) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    // The complete scalar selector domain contains four helicities.  With a
+    // one-thread construction pool, only one query outcome may be alive at a
+    // time even though the complete H x S projection remains reusable.
+    assert_eq!(execution.contracted_max_live_query_outcomes_for_test(), 1);
+    assert_eq!(execution.retained_family_count(), 1);
+    assert_eq!(execution.retained_selection_count(), 1);
+    assert!(execution.active_family_prepared_census().is_some());
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_warm_up_reports_ordered_phases_and_reuses_the_committed_family() {
+    let contraction = super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
+        plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+        destination_by_owner_ordinal: vec![0].into_boxed_slice(),
+        point_tile_size: 1,
+    };
+    let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
+    runtime.runtime.color_accuracy = "full".to_string();
+    let momenta = vec![0.0; 2 * 4];
+    let mut events = Vec::new();
+    let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+        assert_eq!(event.schema_version, 1);
+        assert!(event.completed <= event.total);
+        assert!(event.elapsed_seconds.is_finite() && event.elapsed_seconds >= 0.0);
+        events.push((event.kind, event.stage, event.completed, event.total));
+        Ok(true)
+    };
+    let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
+    let first = runtime
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .unwrap();
+    assert!(!first.already_warm);
+    assert!(first.first_evaluation_completed);
+    assert_eq!(first.query_count, 4);
+    assert_eq!(first.warmed_query_count, 4);
+    assert_eq!(
+        events
+            .iter()
+            .map(|(_, stage, _, _)| *stage)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            NativeOnTheFlyWarmUpStage::ProcessPreparation,
+            NativeOnTheFlyWarmUpStage::QueryFamily,
+            NativeOnTheFlyWarmUpStage::FamilyFinalization,
+            NativeOnTheFlyWarmUpStage::FirstEvaluation,
+        ])
+    );
+    let stage_ordinals = events
+        .iter()
+        .map(|(_, stage, _, _)| match stage {
+            NativeOnTheFlyWarmUpStage::ProcessPreparation => 0,
+            NativeOnTheFlyWarmUpStage::QueryFamily => 1,
+            NativeOnTheFlyWarmUpStage::FamilyFinalization => 2,
+            NativeOnTheFlyWarmUpStage::FirstEvaluation => 3,
+        })
+        .collect::<Vec<_>>();
+    assert!(stage_ordinals.windows(2).all(|pair| pair[0] <= pair[1]));
+
+    let repeated = runtime
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, None)
+        .unwrap();
+    assert!(repeated.already_warm);
+    assert_eq!(repeated.query_count, first.query_count);
+    assert_eq!(repeated.warmed_query_count, 0);
+    let values = runtime
+        .evaluate_f64_with_selectors(&momenta, 1, None, None, None, None)
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert!(values[0].is_finite());
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_lc_warm_up_streams_intermediate_progress_and_matches_ordinary_evaluation() {
+    let momenta = vec![0.0; 2 * 4];
+    let mut warmed = scalar_on_the_fly_native_runtime();
+    let mut events = Vec::new();
+    let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+        events.push(event.clone());
+        Ok(true)
+    };
+    let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
+    let result = warmed
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .unwrap();
+    assert!(result.query_count > 1);
+    assert!(events.iter().any(|event| {
+        event.kind == NativeOnTheFlyWarmUpEventKind::Update
+            && event.stage == NativeOnTheFlyWarmUpStage::QueryFamily
+            && event.completed > 0
+            && event.completed < event.total
+    }));
+
+    let mut per_stage = BTreeMap::<NativeOnTheFlyWarmUpStage, (u64, u64)>::new();
+    for event in &events {
+        assert!(event.completed <= event.total);
+        let (total, last_completed) = per_stage
+            .entry(event.stage)
+            .or_insert((event.total, event.completed));
+        assert_eq!(*total, event.total, "warm-up stage total changed");
+        assert!(
+            event.completed >= *last_completed,
+            "warm-up progress regressed"
+        );
+        *last_completed = event.completed;
+    }
+
+    let warmed_value = warmed
+        .evaluate_f64_with_selectors(&momenta, 1, None, None, None, None)
+        .unwrap();
+    let mut ordinary = scalar_on_the_fly_native_runtime();
+    let ordinary_value = ordinary
+        .evaluate_f64_with_selectors(&momenta, 1, None, None, None, None)
+        .unwrap();
+    assert_eq!(warmed_value.len(), ordinary_value.len());
+    assert!(
+        warmed_value
+            .iter()
+            .zip(&ordinary_value)
+            .all(|(warm, ordinary)| warm.to_bits() == ordinary.to_bits())
+    );
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_contracted_midstream_warm_up_cancellation_rolls_back_to_retained_selection() {
+    let contraction = super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
+        plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+        destination_by_owner_ordinal: vec![0].into_boxed_slice(),
+        point_tile_size: 1,
+    };
+    let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
+    runtime.runtime.color_accuracy = "full".to_string();
+    let momenta = vec![0.0; 2 * 4];
+    let retained_helicity = ["h:+0,+0".to_string()];
+    runtime
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&retained_helicity), None, None)
+        .unwrap();
+    let expected = runtime
+        .evaluate_f64_with_selectors(&momenta, 1, Some(&retained_helicity), None, None, None)
+        .unwrap();
+
+    let saw_midstream = std::cell::Cell::new(false);
+    let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+        if event.kind == NativeOnTheFlyWarmUpEventKind::Update
+            && event.stage == NativeOnTheFlyWarmUpStage::QueryFamily
+            && event.completed < event.total
+        {
+            saw_midstream.set(true);
+            return Ok(false);
+        }
+        Ok(true)
+    };
+    let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
+    let error = runtime
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .unwrap_err();
+    assert!(error.to_string().contains("cancelled"));
+    assert!(saw_midstream.get());
+    let retained = runtime
+        .evaluate_f64_with_selectors(&momenta, 1, Some(&retained_helicity), None, None, None)
+        .unwrap();
+    assert_eq!(retained, expected);
+    let NativeExecutionLane::OnTheFly(execution) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(execution.retained_family_count(), 1);
+    assert_eq!(execution.retained_selection_count(), 1);
+    assert_eq!(execution.pending_family_count(), 0);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_warm_up_terminal_notification_is_non_cancellable_after_commit() {
+    let momenta = vec![0.0; 2 * 4];
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let terminal_delivery_count = std::cell::Cell::new(0);
+    let mut failing_terminal = |event: &NativeOnTheFlyWarmUpEvent| {
+        if event.kind == NativeOnTheFlyWarmUpEventKind::End
+            && event.stage == NativeOnTheFlyWarmUpStage::FirstEvaluation
+        {
+            terminal_delivery_count.set(terminal_delivery_count.get() + 1);
+            return Err(RusticolError::evaluation(
+                "injected terminal notification failure",
+            ));
+        }
+        Ok(true)
+    };
+    let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut failing_terminal;
+    let first = runtime
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .unwrap();
+    assert!(first.first_evaluation_completed);
+    assert_eq!(terminal_delivery_count.get(), 1);
+
+    let mut rejecting_terminal = |event: &NativeOnTheFlyWarmUpEvent| {
+        Ok(!(event.kind == NativeOnTheFlyWarmUpEventKind::End
+            && event.stage == NativeOnTheFlyWarmUpStage::FirstEvaluation))
+    };
+    let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut rejecting_terminal;
+    let repeated = runtime
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .unwrap();
+    assert!(repeated.already_warm);
+    assert_eq!(repeated.warmed_query_count, 0);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_warm_up_native_boundary_rejects_invalid_lane_and_selectors() {
+    let mut compiled = zero_native_runtime();
+    let compiled_momenta = vec![0.0; compiled.external_count() * 4];
+    let error = compiled
+        .warm_up_on_the_fly_f64_with_selectors(&compiled_momenta, None, None, None)
+        .unwrap_err();
+    assert_eq!(
+        error.kind(),
+        crate::RusticolErrorKind::UnsupportedRuntimeCapability
+    );
+
+    let contraction = super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
+        plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+        destination_by_owner_ordinal: vec![0].into_boxed_slice(),
+        point_tile_size: 1,
+    };
+    let mut contracted = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
+    contracted.runtime.color_accuracy = "full".to_string();
+    let momenta = vec![0.0; contracted.external_count() * 4];
+    let color = ["color:contracted".to_string()];
+    let error = contracted
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, Some(&color), None)
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
+
+    let mut lc = scalar_on_the_fly_native_runtime();
+    let unknown_helicity = ["h:not-a-helicity".to_string()];
+    let error = lc
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&unknown_helicity), None, None)
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let momenta = vec![0.0; 2 * 4];
+    let color = ["flow:singlet".to_string()];
+    let selection_a = ["h:+0,+0".to_string()];
+    let selection_b = ["h:+1,+1".to_string()];
+    runtime
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&selection_a), Some(&color), None)
+        .unwrap();
+    let expected = runtime
+        .evaluate_f64_with_selectors(&momenta, 1, Some(&selection_a), Some(&color), None, None)
+        .unwrap();
+
+    let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+        Ok(!(event.kind == NativeOnTheFlyWarmUpEventKind::Start
+            && event.stage == NativeOnTheFlyWarmUpStage::QueryFamily))
+    };
+    let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
+    let error = runtime
+        .warm_up_on_the_fly_f64_with_selectors(
+            &momenta,
+            Some(&selection_b),
+            Some(&color),
+            Some(observer),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("cancelled"));
+    let retained = runtime
+        .evaluate_f64_with_selectors(&momenta, 1, Some(&selection_a), Some(&color), None, None)
+        .unwrap();
+    assert_eq!(retained, expected);
+    let NativeExecutionLane::OnTheFly(execution) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(execution.retained_family_count(), 1);
+    assert_eq!(execution.retained_selection_count(), 1);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_warm_up_rejects_more_than_one_point() {
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let error = runtime
+        .warm_up_on_the_fly_f64_with_selectors(&vec![0.0; 2 * 2 * 4], None, None, None)
+        .unwrap_err();
+    assert!(error.to_string().contains("exactly one point"));
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

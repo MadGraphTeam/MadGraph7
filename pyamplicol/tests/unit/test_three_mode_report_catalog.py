@@ -12,8 +12,10 @@ import pytest
 import tools.performance_report.manual_campaign as manual_campaign
 from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_FIELD,
+    DIRECT_AGREEMENT_KINDS,
     INDEPENDENT_AUTHORITY_ABI,
     INDEPENDENT_AUTHORITY_FIELD,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
     incoming_agreement_edges,
     independent_numerical_authorities,
 )
@@ -39,11 +41,10 @@ from tools.performance_report.cache import (
     validate_measurement,
 )
 from tools.performance_report.catalog import (
+    MADGRAPH_FULL_COMPARISON_VIEWS,
     REPORT_CATALOG,
     STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6,
     STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION,
-    STATIC_NA_ON_THE_FLY_COLOR_ACCURACY,
-    STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION,
     STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
 )
 from tools.performance_report.models import (
@@ -60,32 +61,122 @@ from tools.performance_report.runner import pointwise_validation
 from tools.performance_report.service import ReportPaths, ReportService
 
 
-def test_matrix_catalog_has_requested_fifteen_datasets() -> None:
+def test_matrix_catalog_adds_only_the_three_missing_ufo_full_candidates() -> None:
     datasets = REPORT_CATALOG.matrix_datasets
 
-    assert len(datasets) == 15
+    assert len(datasets) == 18
     assert Counter(item.candidate.execution_mode for item in datasets) == {
         ExecutionMode.RECURRENCE: 6,
-        ExecutionMode.COMPILED: 3,
-        ExecutionMode.EAGER: 3,
-        ExecutionMode.ON_THE_FLY: 3,
+        ExecutionMode.COMPILED: 4,
+        ExecutionMode.EAGER: 4,
+        ExecutionMode.ON_THE_FLY: 4,
     }
     assert Counter(item.candidate.model for item in datasets) == {
         ModelKey.BUILTIN_SM: 12,
-        ModelKey.UFO_SM: 3,
+        ModelKey.UFO_SM: 6,
     }
     assert all(
         item.baseline.execution_mode is ExecutionMode.AMPLICOL
         for item in datasets
-        if item.candidate.execution_mode
-        in {ExecutionMode.RECURRENCE, ExecutionMode.ON_THE_FLY}
+        if item.candidate.execution_mode is ExecutionMode.RECURRENCE
     )
     assert all(
         item.baseline.execution_mode is ExecutionMode.RECURRENCE
         for item in datasets
         if item.candidate.execution_mode
         in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        and item.candidate.model is ModelKey.BUILTIN_SM
     )
+    assert all(
+        item.baseline.execution_mode is ExecutionMode.MADGRAPH
+        for item in datasets
+        if item.candidate.model is ModelKey.UFO_SM
+        and item.candidate.accuracy is Accuracy.FULL
+        and item.candidate.execution_mode
+        in {
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+            ExecutionMode.ON_THE_FLY,
+        }
+    )
+
+
+def test_madgraph_full_reference_is_one_shared_fifty_cell_ufo_surface() -> None:
+    references = tuple(
+        cell
+        for cell in REPORT_CATALOG.reference_cells()
+        if cell.dataset_id == "reference_madgraph_full"
+    )
+
+    assert len(references) == 50
+    assert len({cell.cell_id for cell in references}) == 50
+    assert all(
+        cell.measurement.execution_mode is ExecutionMode.MADGRAPH
+        and cell.measurement.model is ModelKey.UFO_SM
+        and cell.measurement.accuracy is Accuracy.FULL
+        and cell.measurement.backend == "fortran"
+        and cell.workload is Workload.CONTRACTED
+        for cell in references
+    )
+
+
+def test_madgraph_comparison_views_reuse_one_recurrence_profile() -> None:
+    views = MADGRAPH_FULL_COMPARISON_VIEWS
+
+    assert REPORT_CATALOG.matrix_comparison_views is views
+    assert len(views) == 4
+    assert {view.baseline_dataset_id for view in views} == {
+        "reference_madgraph_full"
+    }
+    assert {view.candidate_dataset_id for view in views} == {
+        f"matrix_{mode.value.replace('-', '_')}_ufo_sm_full"
+        for mode in {
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+            ExecutionMode.ON_THE_FLY,
+        }
+    }
+    assert len(
+        [
+            dataset
+            for dataset in REPORT_CATALOG.matrix_datasets
+            if dataset.dataset_id == "matrix_recurrence_ufo_sm_full"
+        ]
+    ) == 1
+    assert len(
+        [
+            cell
+            for cell in REPORT_CATALOG.matrix_cells()
+            if cell.dataset_id == "matrix_recurrence_ufo_sm_full"
+        ]
+    ) == 50
+    assert all(
+        REPORT_CATALOG.comparison_view(view.comparison_id) is view for view in views
+    )
+
+
+def test_madgraph_candidate_baselines_and_direct_cell_ids_are_unambiguous() -> None:
+    candidates = tuple(
+        cell
+        for cell in REPORT_CATALOG.matrix_cells()
+        if cell.dataset_id
+        in {
+            "matrix_compiled_ufo_sm_full",
+            "matrix_eager_ufo_sm_full",
+            "matrix_on_the_fly_ufo_sm_full",
+        }
+    )
+
+    assert len(candidates) == 150
+    assert all(
+        (baseline := REPORT_CATALOG.baseline_cell(cell)) is not None
+        and baseline.dataset_id == "reference_madgraph_full"
+        and baseline.measurement.execution_mode is ExecutionMode.MADGRAPH
+        for cell in candidates
+    )
+    cell_ids = tuple(cell.cell_id for cell in REPORT_CATALOG.measurement_cells())
+    assert len(cell_ids) == len(set(cell_ids))
 
 
 def test_required_agreement_evidence_bumps_report_cache_contract() -> None:
@@ -99,6 +190,25 @@ def test_packaged_report_cache_schema_is_canonical() -> None:
         / "src/pyamplicol/_profiling_campaign/results/report-cache.schema.json"
     )
     assert json.loads(packaged.read_text(encoding="ascii")) == schema_document()
+
+
+def test_report_cache_schema_accepts_every_direct_agreement_kind() -> None:
+    def edge_kind_enums(value: object) -> list[tuple[str, ...]]:
+        if isinstance(value, dict):
+            found: list[tuple[str, ...]] = []
+            edge_kind = value.get("edge_kind")
+            if isinstance(edge_kind, dict) and isinstance(edge_kind.get("enum"), list):
+                found.append(tuple(edge_kind["enum"]))
+            for child in value.values():
+                found.extend(edge_kind_enums(child))
+            return found
+        if isinstance(value, list):
+            return [item for child in value for item in edge_kind_enums(child)]
+        return []
+
+    enums = edge_kind_enums(schema_document())
+    assert len(enums) == 6
+    assert all(enum == DIRECT_AGREEMENT_KINDS for enum in enums)
 
 
 def test_prepared_modes_are_portable_o2_and_compiled_is_o3() -> None:
@@ -133,7 +243,7 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
     assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 461
     assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 461
     assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 250
-    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 250
+    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 400
     assert all(
         cell.workload is Workload.CONTRACTED
         for cell in REPORT_CATALOG.matrix_cells()
@@ -185,12 +295,12 @@ def test_extended_lc_families_are_declared_through_n9() -> None:
     } == {"dd_4q_lines"}
 
 
-def test_n_le_four_matrix_smoke_has_495_logical_process_cells() -> None:
+def test_n_le_four_matrix_smoke_has_594_logical_process_cells() -> None:
     cells = [cell for cell in REPORT_CATALOG.matrix_cells() if cell.n_final <= 4]
     logical = {(cell.dataset_id, cell.process_key, cell.n_final) for cell in cells}
 
-    assert len(logical) == 495
-    assert len(cells) == 660
+    assert len(logical) == 594
+    assert len(cells) == 759
 
 
 def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> None:
@@ -214,10 +324,9 @@ def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> 
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.process_key == family.key
     )
-    assert len(cells) == 98
+    assert len(cells) == 110
     assert Counter(REPORT_CATALOG.static_na_reason(cell) for cell in cells) == {
-        None: 92,
-        STATIC_NA_ON_THE_FLY_COLOR_ACCURACY: 6,
+        None: 110,
     }
     assert (
         REPORT_CATALOG.cell(
@@ -359,24 +468,8 @@ def test_canonical_static_na_census_is_exact() -> None:
             for workload in ("selected-flow", "all-flow")
         }
     )
-    expected.update(
-        {
-            cell.cell_id: STATIC_NA_ON_THE_FLY_COLOR_ACCURACY
-            for cell in REPORT_CATALOG.matrix_cells()
-            if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
-            and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
-        }
-    )
-
     assert static_na == expected
     for cell_id, reason in expected.items():
-        if reason == STATIC_NA_ON_THE_FLY_COLOR_ACCURACY:
-            cell = REPORT_CATALOG.cell(cell_id)
-            assert (
-                REPORT_CATALOG.static_na_description(cell)
-                == STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION
-            )
-            continue
         if reason != STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6:
             continue
         cell = REPORT_CATALOG.cell(cell_id)
@@ -428,7 +521,7 @@ def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
         and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
     )
 
-    assert len(cells) == 36
+    assert len(cells) == 48
     assert {
         (
             cell.process_key,
@@ -448,6 +541,15 @@ def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
             (ExecutionMode.COMPILED, ModelKey.BUILTIN_SM),
             (ExecutionMode.EAGER, ModelKey.BUILTIN_SM),
             (ExecutionMode.ON_THE_FLY, ModelKey.BUILTIN_SM),
+        }
+    } | {
+        (process_key, Accuracy.FULL, mode, model)
+        for process_key in process_keys
+        for mode, model in {
+            (ExecutionMode.MADGRAPH, ModelKey.UFO_SM),
+            (ExecutionMode.COMPILED, ModelKey.UFO_SM),
+            (ExecutionMode.EAGER, ModelKey.UFO_SM),
+            (ExecutionMode.ON_THE_FLY, ModelKey.UFO_SM),
         }
     }
     assert (
@@ -472,10 +574,10 @@ def test_contracted_n6_catalog_impact_is_scoped_to_multi_quark_families() -> Non
         and cell.measurement.accuracy is not Accuracy.LC
     )
 
-    assert len(REPORT_CATALOG.measurement_cells()) == 1962
-    assert len(REPORT_CATALOG.matrix_cells()) == 1422
-    assert len(REPORT_CATALOG.reference_cells()) == 314
-    assert len(cells) == 36
+    assert len(REPORT_CATALOG.measurement_cells()) == 2162
+    assert len(REPORT_CATALOG.matrix_cells()) == 1572
+    assert len(REPORT_CATALOG.reference_cells()) == 364
+    assert len(cells) == 48
     assert {cell.process_key for cell in cells} == process_keys
 
 
@@ -842,11 +944,13 @@ def test_unverified_measurement_contract_is_strict_and_catalog_bound() -> None:
     authority = validation[INDEPENDENT_AUTHORITY_FIELD]
     assert isinstance(authority, dict)
     canonical = list(authority["expected_cell_ids"])
-    for malformed in (
+    malformed_chains = [
         canonical[:-1],
-        list(reversed(canonical)),
         [*canonical, "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted"],
-    ):
+    ]
+    if len(canonical) > 1:
+        malformed_chains.append(list(reversed(canonical)))
+    for malformed in malformed_chains:
         tampered = deepcopy(measurement)
         tampered["validation"][INDEPENDENT_AUTHORITY_FIELD][  # type: ignore[index]
             "expected_cell_ids"
@@ -898,6 +1002,26 @@ def test_standalone_scalar_ok_requires_strict_internal_p32_contract(
     validation["status"] = ResultStatus.OK.value
     validation.pop("precision_diagnostic")
     validation.pop(INDEPENDENT_AUTHORITY_FIELD)
+
+    validate_measurement(measurement, expected_cell=cell)
+    validation.pop("high_precision")
+    with pytest.raises(ValueError, match="high_precision"):
+        validate_measurement(measurement, expected_cell=cell)
+
+
+def test_recurrence_ok_requires_p32_even_with_legacy_diagnostic_baseline() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-full-n1-dd-z-jets-contracted"
+    )
+    measurement = _unverified_candidate_measurement(cell)
+    measurement["status"] = ResultStatus.OK.value
+    measurement["failure"] = None
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    validation["status"] = ResultStatus.OK.value
+    validation.pop("precision_diagnostic")
+    validation.pop(INDEPENDENT_AUTHORITY_FIELD)
+    validation["pointwise"] = deepcopy(validation["high_precision"])
 
     validate_measurement(measurement, expected_cell=cell)
     validation.pop("high_precision")
@@ -1119,6 +1243,11 @@ def test_unverified_presentation_overlay_is_attempt_bound_and_json_isolated(
 def test_unverified_measurement_requires_every_hard_direct_agreement() -> None:
     cell = REPORT_CATALOG.cell("matrix-compiled-builtin-sm-lc-n1-dd-z-jets-all-flow")
     required = next(edge for edge in incoming_agreement_edges(cell) if edge.required)
+    legacy = next(
+        edge
+        for edge in incoming_agreement_edges(cell)
+        if edge.kind == LC_LEGACY_PYAMPLICOL_COMPONENT
+    )
     with pytest.raises(ValueError, match="coverage is incomplete"):
         _validate_unverified_direct_agreement_coverage(
             {DIRECT_AGREEMENT_FIELD: []},
@@ -1133,7 +1262,13 @@ def test_unverified_measurement_requires_every_hard_direct_agreement() -> None:
                     "baseline_cell_id": required.baseline.cell_id,
                     "candidate_cell_id": cell.cell_id,
                     "status": ResultStatus.OK.value,
-                }
+                },
+                {
+                    "edge_kind": legacy.kind,
+                    "baseline_cell_id": legacy.baseline.cell_id,
+                    "candidate_cell_id": cell.cell_id,
+                    "status": ResultStatus.VALIDATION_FAILED.value,
+                },
             ]
         },
         expected_cell=cell,

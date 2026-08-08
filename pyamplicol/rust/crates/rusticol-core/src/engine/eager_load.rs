@@ -11,6 +11,7 @@ struct RuntimeLogicalParameterSlots {
 
 pub(super) fn prepare_eager_parameter_state(
     pack: &PreparedKernelPackManifest,
+    active_kernel_ids: &BTreeSet<u32>,
     runtime_parameters: &[GenericRuntimeModelParameterManifest],
     coupling_bytes: &[u8],
     payloads: &EvaluatorPayloadStore,
@@ -20,7 +21,11 @@ pub(super) fn prepare_eager_parameter_state(
     Option<ModelParameterEvaluatorRuntime>,
 )> {
     let logical_slots = eager_runtime_logical_parameter_slots(runtime_parameters)?;
-    let canonical_indices = prepared_parameter_indices(pack)?;
+    let has_derived_parameters = runtime_parameters
+        .iter()
+        .any(|parameter| parameter.kind == "derived_parameter_component");
+    let canonical_indices =
+        prepared_parameter_indices(pack, active_kernel_ids, has_derived_parameters)?;
     let mut entries = Vec::with_capacity(canonical_indices.len());
     let mut base_parameter_count = 0usize;
     for (name, prepared_index) in &canonical_indices {
@@ -154,7 +159,48 @@ fn eager_runtime_logical_parameter_slots(
     Ok(direct)
 }
 
-fn prepared_parameter_indices(
+pub(super) fn prepared_parameter_indices(
+    pack: &PreparedKernelPackManifest,
+    active_kernel_ids: &BTreeSet<u32>,
+    include_derivation_inputs: bool,
+) -> RusticolResult<BTreeMap<String, usize>> {
+    // Validate the stable parameter namespace across the complete authenticated
+    // pack before projecting it to this process.  An inactive kernel must not
+    // weaken pack integrity, but neither may it impose runtime dependencies on
+    // a process that never invokes it.
+    let all_indices = all_prepared_parameter_indices(pack)?;
+    let mut selected_names = BTreeSet::new();
+    let mut unresolved_active_ids = active_kernel_ids.clone();
+    for kernel in &pack.kernels {
+        let is_active = active_kernel_ids.contains(&kernel.kernel_id);
+        if is_active {
+            unresolved_active_ids.remove(&kernel.kernel_id);
+        }
+        if !is_active && (!include_derivation_inputs || kernel.contract_kind != "model-parameter") {
+            continue;
+        }
+        for input in &kernel.input_contracts {
+            if input.role != "model-parameter" {
+                continue;
+            }
+            let name = input.model_parameter_name.as_ref().ok_or_else(|| {
+                RusticolError::integrity("prepared model-parameter input lacks its name")
+            })?;
+            selected_names.insert(name.clone());
+        }
+    }
+    if let Some(kernel_id) = unresolved_active_ids.first() {
+        return Err(RusticolError::integrity(format!(
+            "active prepared kernel {kernel_id} is absent from the authenticated kernel pack"
+        )));
+    }
+    Ok(all_indices
+        .into_iter()
+        .filter(|(name, _)| selected_names.contains(name))
+        .collect())
+}
+
+fn all_prepared_parameter_indices(
     pack: &PreparedKernelPackManifest,
 ) -> RusticolResult<BTreeMap<String, usize>> {
     let mut by_name = BTreeMap::new();
@@ -213,10 +259,10 @@ fn load_prepared_model_parameter_evaluator(
         .filter(|parameter| parameter.kind == "derived_parameter_component")
         .filter_map(|parameter| parameter.runtime_name.clone())
         .collect::<BTreeSet<_>>();
+    if derived_names.is_empty() {
+        return Ok(None);
+    }
     let Some(kernel) = kernel else {
-        if derived_names.is_empty() {
-            return Ok(None);
-        }
         return Err(RusticolError::integrity(
             "eager runtime schema contains derived parameters but its prepared pack has no derivation kernel",
         ));

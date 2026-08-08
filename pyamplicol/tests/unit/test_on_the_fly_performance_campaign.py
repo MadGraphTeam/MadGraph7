@@ -15,10 +15,7 @@ from tools.performance_report.agreements import (
 )
 from tools.performance_report.artifacts import ArtifactStore
 from tools.performance_report.cache import build_reset_caches
-from tools.performance_report.catalog import (
-    REPORT_CATALOG,
-    STATIC_NA_ON_THE_FLY_COLOR_ACCURACY,
-)
+from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.manual_campaign import reproduction_recipe
 from tools.performance_report.models import Accuracy, ExecutionMode, Workload
 from tools.performance_report.render import _BEST_MODE_CODES, render_all_matrix_tables
@@ -45,6 +42,7 @@ from tools.performance_report.runner import (
     point_digest,
     profile_runtime,
     validate_artifact_contract,
+    validate_runtime_contract,
 )
 from tools.performance_report.scheduler import CampaignSettings, plan_campaign
 
@@ -85,7 +83,7 @@ def _otf_cells():
     )
 
 
-def test_otf_matrix_surface_and_static_color_placeholders_are_exact() -> None:
+def test_otf_matrix_surface_is_measurable_for_every_color_accuracy() -> None:
     cells = _otf_cells()
     by_accuracy = Counter(cell.measurement.accuracy for cell in cells)
     lc = tuple(cell for cell in cells if cell.measurement.accuracy is Accuracy.LC)
@@ -93,16 +91,11 @@ def test_otf_matrix_surface_and_static_color_placeholders_are_exact() -> None:
     assert by_accuracy == {
         Accuracy.LC: 66,
         Accuracy.NLC: 50,
-        Accuracy.FULL: 50,
+        Accuracy.FULL: 100,
     }
     assert len({(cell.process_key, cell.n_final) for cell in lc}) == 33
     assert {cell.n_final for cell in lc} == {1, 2, 3, 4}
-    assert all(REPORT_CATALOG.static_na_reason(cell) is None for cell in lc)
-    assert all(
-        REPORT_CATALOG.static_na_reason(cell) == STATIC_NA_ON_THE_FLY_COLOR_ACCURACY
-        for cell in cells
-        if cell.measurement.accuracy is not Accuracy.LC
-    )
+    assert all(REPORT_CATALOG.static_na_reason(cell) is None for cell in cells)
     assert _BEST_MODE_CODES[ExecutionMode.ON_THE_FLY] == "o"
 
 
@@ -134,7 +127,7 @@ def test_otf_uses_amplicol_for_display_and_recurrence_for_correctness() -> None:
     assert REPORT_CATALOG.equivalent_cells(all_flow) == (selected,)
 
 
-def test_otf_plan_orders_authorities_and_omits_static_placeholders(
+def test_otf_plan_orders_lc_and_contracted_authorities(
     tmp_path: Path,
 ) -> None:
     store = ArtifactStore(
@@ -159,19 +152,37 @@ def test_otf_plan_orders_authorities_and_omits_static_placeholders(
         ExecutionMode.RECURRENCE,
         ExecutionMode.ON_THE_FLY,
     )
-    assert (
-        plan_campaign(
-            (
-                next(
-                    cell
-                    for cell in _otf_cells()
-                    if cell.measurement.accuracy is Accuracy.NLC
-                ),
-            ),
+    nlc = next(
+        cell for cell in _otf_cells() if cell.measurement.accuracy is Accuracy.NLC
+    )
+    assert nlc.workload is Workload.CONTRACTED
+    assert tuple(
+        item.cell.measurement.execution_mode
+        for item in plan_campaign(
+            (nlc,),
             store=store,
             settings=CampaignSettings(),
         )
-        == ()
+    ) == (
+        ExecutionMode.RECURRENCE,
+        ExecutionMode.ON_THE_FLY,
+    )
+
+    ufo_full = next(
+        cell
+        for cell in _otf_cells()
+        if cell.dataset_id == "matrix_on_the_fly_ufo_sm_full"
+    )
+    assert tuple(
+        item.cell.measurement.execution_mode
+        for item in plan_campaign(
+            (ufo_full,),
+            store=store,
+            settings=CampaignSettings(),
+        )
+    ) == (
+        ExecutionMode.MADGRAPH,
+        ExecutionMode.ON_THE_FLY,
     )
 
 
@@ -243,14 +254,17 @@ def test_otf_reproduction_recipe_uses_the_compact_public_generation_contract(
     assert "--numerical-current-reuse" not in generate
 
 
-def test_otf_artifact_requires_exactly_two_compact_runtime_capabilities(
+@pytest.mark.parametrize("accuracy", (Accuracy.LC, Accuracy.NLC, Accuracy.FULL))
+def test_otf_artifact_requires_accuracy_specific_compact_runtime_capability(
     monkeypatch: pytest.MonkeyPatch,
+    accuracy: Accuracy,
 ) -> None:
     cell = next(
         cell
         for cell in _otf_cells()
-        if cell.measurement.accuracy is Accuracy.LC
-        and cell.workload is Workload.SELECTED_FLOW
+        if cell.measurement.accuracy is accuracy
+        and cell.workload
+        is (Workload.SELECTED_FLOW if accuracy is Accuracy.LC else Workload.CONTRACTED)
     )
     process = SimpleNamespace(
         execution_mode="on-the-fly",
@@ -258,12 +272,22 @@ def test_otf_artifact_requires_exactly_two_compact_runtime_capabilities(
         selected_source_helicities=(),
         selected_color_sector_ids=(),
         lc_flow_layout="compact/query-local",
+        recurrence_color_accuracy=accuracy.value,
+        recurrence_color_storage="expanded",
+        recurrence_color_component_count=1,
+        recurrence_color_group_count=2,
+        recurrence_color_destination_count=2,
+    )
+    color_capability = (
+        "rusticol.on-the-fly.lc-color.v1"
+        if accuracy is Accuracy.LC
+        else "rusticol.on-the-fly.contracted-color.v1"
     )
     inspection = SimpleNamespace(
         processes=(process,),
         runtime_capabilities=(
             "rusticol.on-the-fly.complex-f64.v1",
-            "rusticol.on-the-fly.lc-color.v1",
+            color_capability,
         ),
     )
     monkeypatch.setattr(
@@ -272,13 +296,64 @@ def test_otf_artifact_requires_exactly_two_compact_runtime_capabilities(
     )
 
     validate_artifact_contract(cell, Path("/artifact"))
+    if accuracy is not Accuracy.LC:
+        process.recurrence_color_component_count = 2
+        with pytest.raises(RunnerError, match="expanded color payload"):
+            validate_artifact_contract(cell, Path("/artifact"))
+        process.recurrence_color_component_count = 1
+        inspection.runtime_capabilities = (
+            "rusticol.on-the-fly.complex-f64.v1",
+            "rusticol.on-the-fly.lc-color.v1",
+        )
+        with pytest.raises(RunnerError, match="accuracy-specific"):
+            validate_artifact_contract(cell, Path("/artifact"))
+        return
     process.lc_flow_layout = "topology-replay"
     with pytest.raises(RunnerError, match="compact/query-local"):
         validate_artifact_contract(cell, Path("/artifact"))
     process.lc_flow_layout = "compact/query-local"
     inspection.runtime_capabilities += ("unexpected-capability",)
-    with pytest.raises(RunnerError, match="exactly its two compact"):
+    with pytest.raises(RunnerError, match="exactly its two accuracy-specific"):
         validate_artifact_contract(cell, Path("/artifact"))
+
+
+@pytest.mark.parametrize("accuracy", (Accuracy.NLC, Accuracy.FULL))
+def test_otf_contracted_runtime_uses_compact_context_without_flow_selectors(
+    accuracy: Accuracy,
+) -> None:
+    cell = next(
+        cell
+        for cell in _otf_cells()
+        if cell.measurement.accuracy is accuracy
+        and cell.workload is Workload.CONTRACTED
+    )
+
+    class Backend:
+        @staticmethod
+        def _on_the_fly_benchmark_context(
+            requested: tuple[str, ...],
+        ) -> dict[str, object]:
+            assert requested == ()
+            return {
+                "process_id": "contracted-otf",
+                "process_expression": cell.process,
+                "color_accuracy": accuracy.value,
+                "helicity_count": 4,
+                "color_count": 1,
+                "selected_color_ids": [],
+            }
+
+    runtime = SimpleNamespace(execution_mode="on-the-fly", _backend=Backend())
+    validate_runtime_contract(cell, runtime)
+
+    class DensePhysicsTrap:
+        @property
+        def physics(self) -> object:
+            raise AssertionError("contracted OTF validation opened dense physics")
+
+    runtime._backend = DensePhysicsTrap()
+    with pytest.raises(RunnerError, match="compact selector context"):
+        validate_runtime_contract(cell, runtime)
 
 
 @pytest.mark.parametrize("workload", (Workload.SELECTED_FLOW, Workload.ALL_FLOW))
@@ -512,4 +587,5 @@ def test_otf_tables_are_in_the_normal_matrix_render_path() -> None:
         "result_matrix_on_the_fly_builtin_sm_lc_table.tex",
         "result_matrix_on_the_fly_builtin_sm_nlc_table.tex",
         "result_matrix_on_the_fly_builtin_sm_full_table.tex",
+        "result_matrix_on_the_fly_ufo_sm_full_vs_madgraph_table.tex",
     } <= tables.keys()

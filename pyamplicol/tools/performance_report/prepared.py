@@ -7,7 +7,6 @@ import hashlib
 import json
 import os
 import platform
-import subprocess
 import tempfile
 import uuid
 from collections.abc import Iterator, Mapping
@@ -308,30 +307,21 @@ def ensure_prepared_model(
         yield bundle_path, reused
 
 
-def _git_revision(repo_root: Path) -> str:
-    completed = subprocess.run(
-        ("git", "rev-parse", "HEAD"),
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    revision = completed.stdout.strip()
-    return revision if completed.returncode == 0 and revision else "unknown"
-
-
 def ensure_report_prepared_model(
     *,
     store: ArtifactStore,
     repo_root: Path,
     worker_cores: int,
     model: ModelKey,
-    producer_revision: str | None = None,
+    producer_revision: str | None,
     progress: ProgressSink | None = None,
 ) -> tuple[Path, bool]:
     """Create or reuse one portable report JIT O2 prepared bundle."""
 
+    if producer_revision is None:
+        raise PreparedModelError(
+            "report prepared-model creation requires an explicit producer revision"
+        )
     from pyamplicol.config import (
         EvaluatorBackend,
         EvaluatorConfig,
@@ -340,9 +330,7 @@ def ensure_report_prepared_model(
         JITConfig,
     )
 
-    revision = (
-        producer_revision if producer_revision is not None else _git_revision(repo_root)
-    )
+    revision = producer_revision
     if not revision:
         raise ValueError("producer_revision must not be empty")
     if model is ModelKey.BUILTIN_SM:
@@ -395,11 +383,14 @@ def ensure_report_ufo_sm_prepared_model(
     repo_root: Path,
     worker_cores: int,
 ) -> tuple[Path, bool]:
+    from pyamplicol._internal.versions import active_source_revision
+
     return ensure_report_prepared_model(
         store=store,
         repo_root=repo_root,
         worker_cores=worker_cores,
         model=ModelKey.UFO_SM,
+        producer_revision=active_source_revision(),
     )
 
 

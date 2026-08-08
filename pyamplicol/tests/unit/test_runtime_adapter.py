@@ -15,6 +15,7 @@ from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_DAG_F64_RUNTIME_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+    ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
     SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -30,9 +31,29 @@ from pyamplicol.api import (
     ResolvedEvaluation,
     Runtime,
     RuntimeBackend,
+    WarmUpResult,
 )
 from pyamplicol.api.errors import CompatibilityError, EvaluationError
 from pyamplicol.artifacts import ArtifactManifest
+from pyamplicol.reporting import (
+    CallbackProgressSink,
+    ProgressEnd,
+    ProgressStart,
+    ProgressUpdate,
+)
+
+
+class _FailingWarmUpProgressSink:
+    def __init__(self, *, fail_during_update: bool = False) -> None:
+        self.fail_during_update = fail_during_update
+        self.events: list[ProgressStart | ProgressUpdate | ProgressEnd] = []
+
+    def emit(self, event: ProgressStart | ProgressUpdate | ProgressEnd) -> None:
+        self.events.append(event)
+        if self.fail_during_update and isinstance(event, ProgressUpdate):
+            raise LookupError("warm-up progress callback failed")
+        if isinstance(event, ProgressEnd) and event.task_id == "runtime-warm-up":
+            raise RuntimeError("terminal warm-up progress delivery failed")
 
 
 def _native_physics(accuracy: str = "lc") -> SimpleNamespace:
@@ -128,6 +149,7 @@ class _NativeRuntime:
     last_benchmark_options: dict[str, object] | None = None
     last_profile_options: dict[str, object] | None = None
     last_arena_profile_options: dict[str, object] | None = None
+    last_warm_up_options: dict[str, object] | None = None
 
     def __init__(self) -> None:
         self.parameter_updates: list[dict[str, complex | float | int]] = []
@@ -155,6 +177,7 @@ class _NativeRuntime:
         return json.dumps(
             {
                 "execution_mode": self.execution_mode,
+                "color_accuracy": self.physics_value.color_accuracy,
                 "process_key": "uux_g",
                 "representative_process_key": "uux_g",
                 "external_count": 3,
@@ -232,6 +255,59 @@ class _NativeRuntime:
             self.otf_process_preparation_count = 1
             self.otf_retained_family_count = 1
             self.otf_retained_selection_count = 1
+
+    def _on_the_fly_warm_up_f64_json(
+        self,
+        momenta: object,
+        helicity_ids: tuple[str, ...] | None = None,
+        color_flow_ids: tuple[str, ...] | None = None,
+        progress_callback: object = None,
+    ) -> str:
+        type(self).last_warm_up_options = {
+            "momenta": momenta,
+            "helicity_ids": helicity_ids,
+            "color_flow_ids": color_flow_ids,
+        }
+        if callable(progress_callback):
+            for kind, stage, completed, total in (
+                ("start", "process_preparation", 0, 1),
+                ("update", "process_preparation", 1, 1),
+                ("update", "query_family", 2, 3),
+                ("update", "query_family", 3, 3),
+                ("update", "family_finalization", 1, 1),
+                ("end", "first_evaluation", 1, 1),
+            ):
+                keep_going = progress_callback(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "kind": kind,
+                            "stage": stage,
+                            "completed": completed,
+                            "total": total,
+                            "elapsed_seconds": 0.25,
+                            "current_rss_bytes": 256 * 1024**2,
+                            "peak_rss_bytes": 384 * 1024**2,
+                            "workers": 4,
+                            "message": None,
+                        }
+                    )
+                )
+                if keep_going is False:
+                    raise RuntimeError("warm-up cancelled")
+        self._warm_on_the_fly()
+        return json.dumps(
+            {
+                "schema_version": 1,
+                "elapsed_seconds": 0.5,
+                "query_count": 3,
+                "warmed_query_count": 3,
+                "current_rss_bytes": 256 * 1024**2,
+                "peak_rss_bytes": 384 * 1024**2,
+                "already_warm": False,
+                "first_evaluation_completed": True,
+            }
+        )
 
     def evaluate(self, _momenta: object, **kwargs: object) -> list[object]:
         self._warm_on_the_fly()
@@ -414,6 +490,7 @@ def _load_on_the_fly_backend(
     _NativeRuntime.last_benchmark_options = None
     _NativeRuntime.last_profile_options = None
     _NativeRuntime.last_arena_profile_options = None
+    _NativeRuntime.last_warm_up_options = None
     return backend_module.load_runtime_backend(tmp_path, process="uux_g")
 
 
@@ -893,6 +970,161 @@ def test_adapter_accepts_on_the_fly_without_reading_dense_selector_metadata(
         assert backend._runtime.physics_access_count == 0
     finally:
         _NativeRuntime.execution_mode = "compiled"
+
+
+def test_on_the_fly_warm_up_maps_native_progress_without_dense_physics(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = _load_on_the_fly_backend(monkeypatch, tmp_path)
+    events: list[object] = []
+    try:
+        result = Runtime(backend).warm_up(
+            ((),),
+            helicities=("h0",),
+            color_flows=("c0",),
+            progress=CallbackProgressSink(events.append),
+        )
+
+        assert result == WarmUpResult(
+            elapsed_seconds=0.5,
+            query_count=3,
+            warmed_query_count=3,
+            current_rss_bytes=256 * 1024**2,
+            peak_rss_bytes=384 * 1024**2,
+            already_warm=False,
+        )
+        assert _NativeRuntime.last_warm_up_options == {
+            "momenta": ((),),
+            "helicity_ids": ("h0",),
+            "color_flow_ids": ("c0",),
+        }
+        assert backend._runtime.physics_access_count == 0
+        assert (
+            sum(
+                isinstance(event, ProgressStart) and event.task_id == "runtime-warm-up"
+                for event in events
+            )
+            == 1
+        )
+        assert (
+            sum(
+                isinstance(event, ProgressEnd)
+                and event.task_id == "runtime-warm-up"
+                and event.success
+                for event in events
+            )
+            == 1
+        )
+        query_updates = [
+            event
+            for event in events
+            if isinstance(event, ProgressUpdate)
+            and event.task_id == "runtime-warm-up:query_family"
+        ]
+        assert query_updates[-1].completed == 3
+        assert query_updates[-1].total == 3
+        assert query_updates[-1].details["native_current_rss_bytes"] == (256 * 1024**2)
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+def test_on_the_fly_warm_up_ignores_terminal_progress_error_after_commit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = _load_on_the_fly_backend(monkeypatch, tmp_path)
+    sink = _FailingWarmUpProgressSink()
+    try:
+        result = Runtime(backend).warm_up(((),), progress=sink)
+
+        assert result.warmed_query_count == 3
+        assert backend._runtime.otf_retained_family_count == 1
+        assert any(
+            isinstance(event, ProgressEnd)
+            and event.task_id == "runtime-warm-up"
+            and event.success
+            for event in sink.events
+        )
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+def test_on_the_fly_warm_up_cleanup_does_not_mask_callback_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = _load_on_the_fly_backend(monkeypatch, tmp_path)
+    sink = _FailingWarmUpProgressSink(fail_during_update=True)
+    try:
+        with pytest.raises(LookupError, match="progress callback failed"):
+            Runtime(backend).warm_up(((),), progress=sink)
+
+        assert backend._runtime.otf_retained_family_count == 0
+        assert any(
+            isinstance(event, ProgressEnd)
+            and event.task_id == "runtime-warm-up"
+            and not event.success
+            for event in sink.events
+        )
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+@pytest.mark.parametrize("first_evaluation_completed", (None, False))
+def test_on_the_fly_warm_up_requires_completed_first_evaluation(
+    first_evaluation_completed: bool | None,
+) -> None:
+    import pyamplicol.runtime.backend as backend_module
+
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "elapsed_seconds": 0.5,
+        "query_count": 3,
+        "warmed_query_count": 3,
+        "current_rss_bytes": None,
+        "peak_rss_bytes": None,
+        "already_warm": False,
+    }
+    if first_evaluation_completed is not None:
+        payload["first_evaluation_completed"] = first_evaluation_completed
+
+    with pytest.raises(ArtifactError, match="first_evaluation_completed"):
+        backend_module._warm_up_result(json.dumps(payload))
+
+
+def test_adapter_accepts_on_the_fly_contracted_color_capability(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(
+        tmp_path,
+        capabilities=(
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        ),
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "on-the-fly"
+    _NativeRuntime.physics_value = _native_physics("full")
+    _NativeRuntime.last_warm_up_options = None
+    try:
+        backend = backend_module.load_runtime_backend(tmp_path, process="uux_g")
+        assert backend.execution_mode == "on-the-fly"
+        assert backend.physics.color_accuracy == "full"
+        with pytest.raises(EvaluationError, match="does not expose color-flow"):
+            Runtime(backend).warm_up(((),), color_flows=("c0",))
+        assert _NativeRuntime.last_warm_up_options is None
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+        _NativeRuntime.physics_value = _native_physics("lc")
 
 
 def test_adapter_does_not_treat_retired_eager_v2_as_selector_support(

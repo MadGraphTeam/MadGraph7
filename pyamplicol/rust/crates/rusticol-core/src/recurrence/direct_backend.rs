@@ -158,9 +158,15 @@ pub(crate) fn clear_direct_executor_error_detail() {
     DIRECT_EXECUTOR_ERROR_DETAIL.with(|detail| *detail.borrow_mut() = None);
 }
 
-/// Preserve a concrete callback failure across the narrow integer-status ABI.
+/// Preserve the first concrete callback failure across the narrow
+/// integer-status ABI.
 pub(crate) fn record_direct_executor_error_detail(detail: RusticolError) {
-    DIRECT_EXECUTOR_ERROR_DETAIL.with(|slot| *slot.borrow_mut() = Some(detail));
+    DIRECT_EXECUTOR_ERROR_DETAIL.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(detail);
+        }
+    });
 }
 
 fn take_direct_executor_error_detail() -> Option<RusticolError> {
@@ -1111,10 +1117,10 @@ pub(crate) fn check_status(
     executor_id: u32,
     status: c_int,
 ) -> RusticolResult<()> {
-    let detail = take_direct_executor_error_detail();
     if status == DIRECT_STATUS_OK {
-        Ok(())
-    } else if let Some(detail) = detail {
+        return Ok(());
+    }
+    if let Some(detail) = take_direct_executor_error_detail() {
         Err(RusticolError::with_kind(
             detail.kind(),
             format!(

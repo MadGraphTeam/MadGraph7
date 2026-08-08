@@ -2,13 +2,14 @@
 
 use rusticol_capi::{
     RUSTICOL_STATUS_BUFFER_TOO_SMALL, RUSTICOL_STATUS_INVALID_ARGUMENT, RUSTICOL_STATUS_OK,
-    RusticolRuntimeHandle, rusticol_last_error_message, rusticol_runtime_color_count,
-    rusticol_runtime_color_id, rusticol_runtime_evaluate_f64,
+    RUSTICOL_WARM_UP_EVENT_END, RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION, RusticolRuntimeHandle,
+    RusticolWarmUpProgressEvent, RusticolWarmUpResult, rusticol_last_error_message,
+    rusticol_runtime_color_count, rusticol_runtime_color_id, rusticol_runtime_evaluate_f64,
     rusticol_runtime_evaluate_resolved_f64, rusticol_runtime_evaluate_selected_f64,
     rusticol_runtime_free, rusticol_runtime_helicity_count, rusticol_runtime_helicity_id,
-    rusticol_runtime_load,
+    rusticol_runtime_load, rusticol_runtime_warm_up_f64,
 };
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
 use std::ptr;
 
@@ -18,6 +19,10 @@ fn fixture_root() -> Option<PathBuf> {
 
 fn contracted_fixture_root() -> Option<PathBuf> {
     std::env::var_os("RUSTICOL_CONTRACTED_SELECTOR_ARTIFACT").map(PathBuf::from)
+}
+
+fn otf_fixture_root() -> Option<PathBuf> {
+    std::env::var_os("RUSTICOL_OTF_ARTIFACT").map(PathBuf::from)
 }
 
 fn last_error() -> String {
@@ -91,6 +96,29 @@ fn validation_momenta(root: &Path) -> Vec<f64> {
 fn repeated_momenta(root: &Path, point_count: usize) -> Vec<f64> {
     let point = validation_momenta(root);
     point.repeat(point_count)
+}
+
+#[derive(Default)]
+struct WarmUpTrace {
+    event_count: usize,
+    saw_terminal_first_evaluation: bool,
+}
+
+unsafe extern "C" fn record_warm_up_progress(
+    event: *const RusticolWarmUpProgressEvent,
+    user_data: *mut c_void,
+) -> c_int {
+    if event.is_null() || user_data.is_null() {
+        return 0;
+    }
+    // SAFETY: The test passes a live trace for this synchronous callback.
+    let trace = unsafe { &mut *user_data.cast::<WarmUpTrace>() };
+    // SAFETY: Rusticol supplies a borrowed event for the callback invocation.
+    let event = unsafe { &*event };
+    trace.event_count += 1;
+    trace.saw_terminal_first_evaluation |= event.kind == RUSTICOL_WARM_UP_EVENT_END
+        && event.stage == RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION;
+    1
 }
 
 fn physical_counts(handle: *mut RusticolRuntimeHandle) -> (usize, usize) {
@@ -378,6 +406,52 @@ fn direct_total_outputs_preserve_bits_canaries_and_capacity_errors() {
         "{}",
         last_error(),
     );
+}
+
+#[test]
+fn otf_warm_up_c_boundary_reports_progress_and_completes_one_f64_point() {
+    let Some(root) = otf_fixture_root() else {
+        return;
+    };
+    let handle = load_fixture(&root);
+    let point = validation_momenta(&root);
+    let mut trace = WarmUpTrace::default();
+    let mut result = RusticolWarmUpResult::default();
+
+    // SAFETY: Every pointer refers to live storage for this synchronous call;
+    // null selector arrays request the complete retained axes.
+    let status = unsafe {
+        rusticol_runtime_warm_up_f64(
+            handle,
+            point.as_ptr(),
+            point.len(),
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            Some(record_warm_up_progress),
+            (&mut trace as *mut WarmUpTrace).cast(),
+            &mut result,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    assert_eq!(result.schema_version, 1);
+    assert_eq!(result.first_evaluation_completed, 1);
+    assert!(result.query_count > 0);
+    assert!(result.warmed_query_count <= result.query_count);
+    assert!(trace.event_count >= 2);
+    assert!(trace.saw_terminal_first_evaluation);
+
+    let mut value = f64::NAN;
+    // SAFETY: The same exactly-one-point input and scalar output remain live.
+    let status = unsafe {
+        rusticol_runtime_evaluate_f64(handle, point.as_ptr(), point.len(), 1, &mut value, 1)
+    };
+    assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    assert!(value.is_finite());
+
+    // SAFETY: The handle is consumed exactly once after warm-up and evaluation.
+    assert_eq!(unsafe { rusticol_runtime_free(handle) }, RUSTICOL_STATUS_OK);
 }
 
 #[test]

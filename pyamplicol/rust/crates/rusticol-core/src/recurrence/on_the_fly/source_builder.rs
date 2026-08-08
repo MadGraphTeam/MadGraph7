@@ -752,6 +752,37 @@ pub(super) fn resolve_prepared_mass_slot(
     Ok(Some(catalog_prepared))
 }
 
+/// Rebind every decoded seed source to the authenticated model-wide parameter
+/// catalog before the runtime turns its prepared slots into executor inputs.
+/// This is a cold load-time check; selected-query execution never reaches it.
+pub(crate) fn validate_on_the_fly_source_mass_bindings_v1(
+    seed: &OnTheFlyProcessSeedV1,
+    templates: &ValidatedRecurrenceTemplateInput,
+    parameter_projection: &[(u32, Option<u32>, u32)],
+) -> RusticolResult<()> {
+    let input = templates.input();
+    let catalog = TemplateCatalog::new(input)?;
+    for anchor in seed.source_anchors() {
+        for state in anchor.states() {
+            let source = canonical_source(input, state.source_template_id)?;
+            let current_state = canonical_current_state(input, state.current_state_template_id)?;
+            let expected = resolve_prepared_mass_slot(
+                source,
+                current_state,
+                input,
+                &catalog,
+                parameter_projection.iter().copied(),
+            )?;
+            if state.prepared_mass_parameter_slot != expected {
+                return Err(integrity(
+                    "on-the-fly source prepared mass slot disagrees with the authenticated recurrence template",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn coupling_policy(
     policy: CouplingOrderPolicyProjection,
     hierarchy_rows: &[CouplingHierarchyProjection],
@@ -1351,6 +1382,44 @@ mod tests {
                 .unwrap_err()
                 .message()
                 .contains("mass projection disagrees with the prepared template catalog")
+        );
+    }
+
+    #[test]
+    fn cold_mass_binding_rejects_wrong_unique_and_missing_prepared_slots() {
+        let (source, templates, direct) = mass_bound_scalar_inputs();
+        let mut seed = build_test_seed(&source, &templates, &direct).unwrap();
+        let mut input = templates.into_input();
+        let second_evaluator = input.evaluator_bindings[1];
+        let mut second_parameter = input.parameters[0];
+        second_parameter.id = 1;
+        second_parameter.template_string_id = second_evaluator.resolver_key_string_id;
+        second_parameter.prepared_parameter_id = 1;
+        second_parameter.semantic_digest_id = second_evaluator.callable_signature_digest_id;
+        input.parameters.push(second_parameter);
+        input.catalog_header[0].parameter_count = 2;
+        let templates = input.validate().unwrap();
+        let projection = [(0, Some(0), 0), (1, Some(1), 0)];
+
+        validate_on_the_fly_source_mass_bindings_v1(&seed, &templates, &projection)
+            .expect("the source mass parameter owns prepared slot zero");
+
+        seed.source_anchors[0].states[0].prepared_mass_parameter_slot = Some(1);
+        let wrong = validate_on_the_fly_source_mass_bindings_v1(&seed, &templates, &projection)
+            .expect_err("another uniquely owned prepared slot is not this source's mass");
+        assert!(
+            wrong
+                .to_string()
+                .contains("authenticated recurrence template")
+        );
+
+        seed.source_anchors[0].states[0].prepared_mass_parameter_slot = None;
+        let missing = validate_on_the_fly_source_mass_bindings_v1(&seed, &templates, &projection)
+            .expect_err("an explicit source mass parameter cannot lose its slot");
+        assert!(
+            missing
+                .to_string()
+                .contains("authenticated recurrence template")
         );
     }
 

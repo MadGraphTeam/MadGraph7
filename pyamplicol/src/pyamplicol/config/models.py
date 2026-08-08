@@ -1028,16 +1028,6 @@ class RunConfig:
         for name, expected_type in expected:
             if not isinstance(getattr(self, name), expected_type):
                 raise ConfigurationError(f"{name} must be a {expected_type.__name__}")
-        if (
-            self.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
-            and self.color.accuracy is not ColorAccuracy.LC
-        ):
-            raise ConfigurationError(
-                "evaluator.execution_mode='on-the-fly' currently requires "
-                "color.accuracy='lc'"
-            )
-
-
 __all__ = [
     "ACTIONS",
     "Action",

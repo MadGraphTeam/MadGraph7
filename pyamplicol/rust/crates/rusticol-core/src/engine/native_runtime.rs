@@ -146,6 +146,39 @@ impl OnTheFlySelectionIdentityV1 {
             color_ordinals: color_ordinals.map(|values| values.to_vec().into_boxed_slice()),
         }
     }
+
+    fn selected_axis_matches(
+        ordinals: Option<&[usize]>,
+        prepared_ids: &[String],
+        selected_ids: Option<&BTreeSet<String>>,
+    ) -> bool {
+        match (ordinals, selected_ids) {
+            (None, None) => true,
+            (Some(_), Some(selected)) => {
+                prepared_ids.len() == selected.len()
+                    && prepared_ids.iter().all(|id| selected.contains(id))
+            }
+            _ => false,
+        }
+    }
+
+    fn matches_fixed_selection(
+        &self,
+        prepared_helicity_ids: &[String],
+        prepared_color_ids: &[String],
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+    ) -> bool {
+        Self::selected_axis_matches(
+            self.helicity_ordinals.as_deref(),
+            prepared_helicity_ids,
+            selected_helicities,
+        ) && Self::selected_axis_matches(
+            self.color_ordinals.as_deref(),
+            prepared_color_ids,
+            selected_colors,
+        )
+    }
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -156,13 +189,28 @@ struct OnTheFlyPreparedSelectionV1 {
     color_indices: Box<[usize]>,
     helicity_ids: Box<[String]>,
     color_ids: Box<[String]>,
-    requests: Box<[super::on_the_fly_lane::OnTheFlyLcQueryRequestV1]>,
+    query_count: usize,
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+struct OnTheFlyWarmUpPreparedSelectionV1 {
+    helicity_count: usize,
+    color_count: usize,
+    query_count: usize,
+    already_warm: bool,
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+enum OnTheFlyReductionV1 {
+    Lc,
+    Contracted(super::on_the_fly_load::LoadedOnTheFlyColorContractionV1),
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(super) struct OnTheFlyExecutionRuntime {
     lane: super::on_the_fly_lane::OnTheFlyNativeRuntime,
     selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
+    reduction: OnTheFlyReductionV1,
     prepared_selections: Vec<OnTheFlyPreparedSelectionV1>,
     last_prepared_selection: Option<usize>,
     pending_prepared_selection: Option<OnTheFlyPreparedSelectionV1>,
@@ -174,10 +222,13 @@ impl OnTheFlyExecutionRuntime {
     pub(super) fn new(
         lane: super::on_the_fly_lane::OnTheFlyNativeRuntime,
         selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
+        color_contraction: Option<super::on_the_fly_load::LoadedOnTheFlyColorContractionV1>,
     ) -> Self {
         Self {
             lane,
             selectors,
+            reduction: color_contraction
+                .map_or(OnTheFlyReductionV1::Lc, OnTheFlyReductionV1::Contracted),
             prepared_selections: Vec::new(),
             last_prepared_selection: None,
             pending_prepared_selection: None,
@@ -194,6 +245,22 @@ impl OnTheFlyExecutionRuntime {
         Ok(())
     }
 
+    fn uses_contracted_color(&self) -> bool {
+        matches!(&self.reduction, OnTheFlyReductionV1::Contracted(_))
+    }
+
+    fn public_selector_counts(&self) -> RusticolResult<(usize, usize)> {
+        let selection = self.selectors.selection(self.lane.seed(), None, None)?;
+        Ok((
+            selection.helicity_count(),
+            if self.uses_contracted_color() {
+                1
+            } else {
+                selection.color_count()
+            },
+        ))
+    }
+
     #[cfg(test)]
     pub(super) fn retained_family_count(&self) -> usize {
         self.lane.retained_family_count()
@@ -202,6 +269,21 @@ impl OnTheFlyExecutionRuntime {
     #[cfg(test)]
     pub(super) fn retained_selection_count(&self) -> usize {
         self.prepared_selections.len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn pending_family_count(&self) -> usize {
+        self.lane.pending_family_count()
+    }
+
+    #[cfg(test)]
+    pub(super) fn fail_contracted_execution_at_for_test(&mut self, attempt: Option<usize>) {
+        self.lane.fail_contracted_execution_at_for_test(attempt);
+    }
+
+    #[cfg(test)]
+    pub(super) const fn contracted_max_live_query_outcomes_for_test(&self) -> usize {
+        self.lane.contracted_max_live_query_outcomes_for_test()
     }
 
     #[cfg(test)]
@@ -313,9 +395,29 @@ impl OnTheFlyExecutionRuntime {
         selected_colors: Option<&BTreeSet<String>>,
         point_count: usize,
     ) -> RusticolResult<(usize, usize)> {
-        let (helicity_ordinals, color_ordinals) = self
-            .selectors
-            .selected_ordinals(selected_helicities, selected_colors)?;
+        if matches!(&self.reduction, OnTheFlyReductionV1::Contracted(_))
+            && selected_colors.is_some()
+        {
+            return Err(RusticolError::selector(
+                "on-the-fly contracted color does not expose a color selector",
+            ));
+        }
+        if let Some(shape) =
+            self.reuse_fixed_selection(selected_helicities, selected_colors, point_count)?
+        {
+            return Ok(shape);
+        }
+        let (helicity_ordinals, color_ordinals) = match &self.reduction {
+            OnTheFlyReductionV1::Lc => self
+                .selectors
+                .selected_ordinals(selected_helicities, selected_colors)?,
+            OnTheFlyReductionV1::Contracted(_) => {
+                let (helicity_ordinals, _) = self
+                    .selectors
+                    .selected_ordinals(selected_helicities, None)?;
+                (helicity_ordinals, None)
+            }
+        };
         self.prepare_selection_identity(
             OnTheFlySelectionIdentityV1 {
                 helicity_ordinals,
@@ -325,15 +427,112 @@ impl OnTheFlyExecutionRuntime {
         )
     }
 
+    /// Reuse the last committed fixed public selection before reparsing its
+    /// string IDs.  The prepared public IDs already authenticate the exact
+    /// selector set, while the identity's `Option` markers distinguish an
+    /// omitted (sum-all) axis from an explicit complete-axis selection.
+    /// Matching therefore borrows both sets and allocates nothing on the
+    /// warmed ordinary-evaluation path.
+    fn reuse_fixed_selection(
+        &mut self,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        point_count: usize,
+    ) -> RusticolResult<Option<(usize, usize)>> {
+        let pending_matches = self
+            .pending_prepared_selection
+            .as_ref()
+            .is_some_and(|prepared| {
+                prepared.identity.matches_fixed_selection(
+                    &prepared.helicity_ids,
+                    &prepared.color_ids,
+                    selected_helicities,
+                    selected_colors,
+                )
+            });
+        let committed_index = self
+            .pending_prepared_selection
+            .is_none()
+            .then_some(self.last_prepared_selection)
+            .flatten()
+            .filter(|index| {
+                self.prepared_selections
+                    .get(*index)
+                    .is_some_and(|prepared| {
+                        prepared.identity.matches_fixed_selection(
+                            &prepared.helicity_ids,
+                            &prepared.color_ids,
+                            selected_helicities,
+                            selected_colors,
+                        )
+                    })
+            });
+        if !pending_matches && committed_index.is_none() {
+            return Ok(None);
+        }
+        let family_point_capacity = self.family_point_capacity(point_count)?;
+        self.reuse_current_queries(family_point_capacity)?;
+        let prepared = if pending_matches {
+            self.pending_prepared_selection
+                .as_ref()
+                .expect("matching pending on-the-fly selection disappeared")
+        } else {
+            &self.prepared_selections
+                [committed_index.expect("matching committed selection disappeared")]
+        };
+        Ok(Some((
+            prepared.helicity_indices.len(),
+            prepared.color_indices.len(),
+        )))
+    }
+
     fn prepare_selection_from_ordinals(
         &mut self,
         helicity_ordinals: Option<&[usize]>,
         color_ordinals: Option<&[usize]>,
         point_count: usize,
     ) -> RusticolResult<(usize, usize)> {
+        if matches!(&self.reduction, OnTheFlyReductionV1::Contracted(_)) && color_ordinals.is_some()
+        {
+            return Err(RusticolError::selector(
+                "on-the-fly contracted color does not expose per-point color ordinals",
+            ));
+        }
         self.prepare_selection_identity(
             OnTheFlySelectionIdentityV1::from_slices(helicity_ordinals, color_ordinals),
             point_count,
+        )
+    }
+
+    fn prepare_selection_for_warm_up(
+        &mut self,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        progress: &mut super::on_the_fly_warm_up::OnTheFlyWarmUpProgress<'_>,
+    ) -> RusticolResult<OnTheFlyWarmUpPreparedSelectionV1> {
+        if self.uses_contracted_color() && selected_colors.is_some() {
+            return Err(RusticolError::selector(
+                "on-the-fly contracted color does not expose a color selector",
+            ));
+        }
+        let (helicity_ordinals, color_ordinals) = match &self.reduction {
+            OnTheFlyReductionV1::Lc => self
+                .selectors
+                .selected_ordinals(selected_helicities, selected_colors)?,
+            OnTheFlyReductionV1::Contracted(_) => {
+                let (helicity_ordinals, _) = self
+                    .selectors
+                    .selected_ordinals(selected_helicities, None)?;
+                (helicity_ordinals, None)
+            }
+        };
+        self.prepare_selection_identity_impl(
+            OnTheFlySelectionIdentityV1 {
+                helicity_ordinals,
+                color_ordinals,
+            },
+            1,
+            Some(progress),
         )
     }
 
@@ -342,22 +541,37 @@ impl OnTheFlyExecutionRuntime {
         identity: OnTheFlySelectionIdentityV1,
         point_count: usize,
     ) -> RusticolResult<(usize, usize)> {
-        let point_capacity = u32::try_from(point_count)
-            .map_err(|_| RusticolError::invalid_argument("on-the-fly point count exceeds u32"))?;
+        let prepared = self.prepare_selection_identity_impl(identity, point_count, None)?;
+        Ok((prepared.helicity_count, prepared.color_count))
+    }
+
+    fn prepare_selection_identity_impl(
+        &mut self,
+        identity: OnTheFlySelectionIdentityV1,
+        point_count: usize,
+        mut progress: Option<&mut super::on_the_fly_warm_up::OnTheFlyWarmUpProgress<'_>>,
+    ) -> RusticolResult<OnTheFlyWarmUpPreparedSelectionV1> {
+        let family_point_capacity = self.family_point_capacity(point_count)?;
         if self
             .pending_prepared_selection
             .as_ref()
             .is_some_and(|prepared| prepared.identity == identity)
         {
-            self.lane.reuse_current_lc_queries(point_capacity)?;
+            self.reuse_current_queries(family_point_capacity)?;
             let prepared = self
                 .pending_prepared_selection
                 .as_ref()
                 .expect("matching pending on-the-fly selection disappeared");
-            return Ok((
-                prepared.helicity_indices.len(),
-                prepared.color_indices.len(),
-            ));
+            if let Some(progress) = progress.as_deref_mut() {
+                self.lane
+                    .report_reused_family_for_warm_up(prepared.query_count, progress)?;
+            }
+            return Ok(OnTheFlyWarmUpPreparedSelectionV1 {
+                helicity_count: prepared.helicity_indices.len(),
+                color_count: prepared.color_indices.len(),
+                query_count: prepared.query_count,
+                already_warm: false,
+            });
         }
         self.discard_pending_selection()?;
         if let Some(index) = self.last_prepared_selection.filter(|index| {
@@ -365,12 +579,18 @@ impl OnTheFlyExecutionRuntime {
                 .get(*index)
                 .is_some_and(|prepared| prepared.identity == identity)
         }) {
-            self.lane.reuse_current_lc_queries(point_capacity)?;
+            self.reuse_current_queries(family_point_capacity)?;
             let prepared = &self.prepared_selections[index];
-            return Ok((
-                prepared.helicity_indices.len(),
-                prepared.color_indices.len(),
-            ));
+            if let Some(progress) = progress.as_deref_mut() {
+                self.lane
+                    .report_reused_family_for_warm_up(prepared.query_count, progress)?;
+            }
+            return Ok(OnTheFlyWarmUpPreparedSelectionV1 {
+                helicity_count: prepared.helicity_indices.len(),
+                color_count: prepared.color_indices.len(),
+                query_count: prepared.query_count,
+                already_warm: true,
+            });
         }
 
         if self.prepared_selections.capacity() == 0 {
@@ -388,30 +608,108 @@ impl OnTheFlyExecutionRuntime {
             identity.color_ordinals.as_deref(),
         )?;
         let helicity_count = selection.helicity_count();
-        let color_count = selection.color_count();
         let helicity_indices = (0..helicity_count)
             .map(|position| selection.helicity_ordinal_at(position))
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let color_indices = (0..color_count)
-            .map(|position| selection.color_ordinal_at(position))
             .collect::<RusticolResult<Vec<_>>>()?;
         let helicity_ids = (0..helicity_count)
             .map(|position| selection.helicity_id_at(position))
             .collect::<RusticolResult<Vec<_>>>()?;
-        let color_ids = (0..color_count)
-            .map(|position| selection.color_id_at(position))
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let requests = selection.iter().collect::<RusticolResult<Vec<_>>>()?;
-        self.lane.prepare_lc_queries(&requests, point_capacity)?;
+        let (color_count, color_indices, color_ids, query_count) = match &self.reduction {
+            OnTheFlyReductionV1::Lc => {
+                let color_count = selection.color_count();
+                let color_indices = (0..color_count)
+                    .map(|position| selection.color_ordinal_at(position))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let color_ids = (0..color_count)
+                    .map(|position| selection.color_id_at(position))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let requests = selection.iter().collect::<RusticolResult<Vec<_>>>()?;
+                if let Some(progress) = progress.as_deref_mut() {
+                    self.lane.prepare_lc_queries_for_warm_up(
+                        &requests,
+                        family_point_capacity,
+                        progress,
+                    )?;
+                } else {
+                    self.lane
+                        .prepare_lc_queries(&requests, family_point_capacity)?;
+                }
+                let query_count = requests.len();
+                (color_count, color_indices, color_ids, query_count)
+            }
+            OnTheFlyReductionV1::Contracted(plan) => {
+                if identity.color_ordinals.is_some() {
+                    return Err(RusticolError::selector(
+                        "on-the-fly contracted color selection is unavailable",
+                    ));
+                }
+                let structural_color_count = plan.destination_by_owner_ordinal.len();
+                if structural_color_count != self.selectors.color_count() {
+                    return Err(RusticolError::integrity(
+                        "on-the-fly contracted owner basis disagrees with compact structural selectors",
+                    ));
+                }
+                if let Some(progress) = progress.as_deref_mut() {
+                    self.lane.prepare_contracted_queries_for_warm_up(
+                        &self.selectors,
+                        &helicity_indices,
+                        structural_color_count,
+                        &plan.destination_by_owner_ordinal,
+                        family_point_capacity,
+                        progress,
+                    )?;
+                } else {
+                    self.lane.prepare_contracted_queries(
+                        &self.selectors,
+                        &helicity_indices,
+                        structural_color_count,
+                        &plan.destination_by_owner_ordinal,
+                        family_point_capacity,
+                    )?;
+                }
+                let query_count = helicity_indices
+                    .len()
+                    .checked_mul(structural_color_count)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(
+                            "on-the-fly contracted query count exceeds usize",
+                        )
+                    })?;
+                (
+                    1,
+                    vec![0],
+                    vec!["color:contracted".to_string()],
+                    query_count,
+                )
+            }
+        };
         self.pending_prepared_selection = Some(OnTheFlyPreparedSelectionV1 {
             identity,
             helicity_indices: helicity_indices.into_boxed_slice(),
             color_indices: color_indices.into_boxed_slice(),
             helicity_ids: helicity_ids.into_boxed_slice(),
             color_ids: color_ids.into_boxed_slice(),
-            requests: requests.into_boxed_slice(),
+            query_count,
         });
-        Ok((helicity_count, color_count))
+        Ok(OnTheFlyWarmUpPreparedSelectionV1 {
+            helicity_count,
+            color_count,
+            query_count,
+            already_warm: false,
+        })
+    }
+
+    fn family_point_capacity(&self, point_count: usize) -> RusticolResult<u32> {
+        let point_capacity = u32::try_from(point_count)
+            .map_err(|_| RusticolError::invalid_argument("on-the-fly point count exceeds u32"))?;
+        match &self.reduction {
+            OnTheFlyReductionV1::Lc => Ok(point_capacity),
+            OnTheFlyReductionV1::Contracted(plan) => {
+                u32::try_from(point_count.min(plan.point_tile_size)).map_err(|_| {
+                    RusticolError::invalid_argument("on-the-fly contracted point tile exceeds u32")
+                })
+            }
+        }
     }
 
     fn current_prepared_selection(&self) -> RusticolResult<&OnTheFlyPreparedSelectionV1> {
@@ -425,9 +723,35 @@ impl OnTheFlyExecutionRuntime {
     }
 
     fn discard_pending_selection(&mut self) -> RusticolResult<()> {
-        self.lane.discard_pending_lc_queries()?;
+        let aborting_prepared_contracted_selection = self.pending_prepared_selection.is_some()
+            && matches!(&self.reduction, OnTheFlyReductionV1::Contracted(_));
+        if aborting_prepared_contracted_selection {
+            // A successful earlier tile commits the executor family before
+            // the wrapper commits its public selection.  If a later tile
+            // fails, retaining either the old wrapper identity or the new
+            // executor family would make the two caches disagree. Clear the
+            // wrapper side even if native row-table invalidation itself fails.
+            let rollback = self.lane.abort_contracted_selection();
+            self.pending_prepared_selection = None;
+            self.prepared_selections.clear();
+            self.last_prepared_selection = None;
+            return rollback;
+        }
+        match &self.reduction {
+            OnTheFlyReductionV1::Lc => self.lane.discard_pending_lc_queries()?,
+            OnTheFlyReductionV1::Contracted(_) => self.lane.discard_pending_contracted_queries()?,
+        }
         self.pending_prepared_selection = None;
         Ok(())
+    }
+
+    fn reuse_current_queries(&mut self, point_capacity: u32) -> RusticolResult<bool> {
+        match &self.reduction {
+            OnTheFlyReductionV1::Lc => self.lane.reuse_current_lc_queries(point_capacity),
+            OnTheFlyReductionV1::Contracted(_) => {
+                self.lane.reuse_current_contracted_queries(point_capacity)
+            }
+        }
     }
 
     fn commit_pending_selection(&mut self) {
@@ -444,6 +768,149 @@ impl OnTheFlyExecutionRuntime {
         Ok((prepared.helicity_ids.to_vec(), prepared.color_ids.to_vec()))
     }
 
+    fn warm_up_f64<'observer>(
+        &mut self,
+        common: &ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        observer: Option<
+            &'observer mut super::on_the_fly_warm_up::NativeOnTheFlyWarmUpObserver<'observer>,
+        >,
+    ) -> RusticolResult<super::on_the_fly_warm_up::NativeOnTheFlyWarmUpResult> {
+        if batch.point_count() != 1 {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly warm-up requires exactly one binary64 phase-space point",
+            ));
+        }
+        let mut progress = super::on_the_fly_warm_up::OnTheFlyWarmUpProgress::new(
+            observer,
+            self.lane.effective_query_construction_threads(),
+        )?;
+        let result = (|| {
+            self.lane.prepare_process_for_warm_up(&mut progress)?;
+            let prepared = self.prepare_selection_for_warm_up(
+                selected_helicities,
+                selected_colors,
+                &mut progress,
+            )?;
+            let input_len = self.fill_point_major(batch)?;
+            progress.emit(
+                super::on_the_fly_warm_up::NativeOnTheFlyWarmUpEventKind::Start,
+                super::on_the_fly_warm_up::NativeOnTheFlyWarmUpStage::FirstEvaluation,
+                0,
+                1,
+                None,
+            )?;
+            let mut output = [0.0_f64];
+            match &self.reduction {
+                OnTheFlyReductionV1::Lc => self.lane.run_f64_into_unprofiled(
+                    &self.point_major_scratch[..input_len],
+                    1,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    &mut output,
+                )?,
+                OnTheFlyReductionV1::Contracted(plan) => {
+                    self.lane.run_contracted_f64_into_unprofiled(
+                        &self.point_major_scratch[..input_len],
+                        1,
+                        &common.model_parameter_values_f64,
+                        common.normalization_factor,
+                        &plan.plan,
+                        plan.point_tile_size,
+                        &mut output,
+                    )?;
+                }
+            }
+            Ok(prepared)
+        })();
+        let prepared = match result {
+            Ok(prepared) => {
+                // The lane commits its executable family only after the first
+                // successful evaluation. Commit the matching public selector
+                // before publishing the terminal event so both cache layers
+                // remain coherent even if an embedding rejects that event.
+                self.commit_pending_selection();
+                prepared
+            }
+            Err(error) => {
+                self.discard_pending_selection()?;
+                return Err(error);
+            }
+        };
+        progress.emit_terminal_notification(
+            super::on_the_fly_warm_up::NativeOnTheFlyWarmUpStage::FirstEvaluation,
+            1,
+            1,
+            None,
+        );
+        let query_count = u64::try_from(prepared.query_count)
+            .map_err(|_| RusticolError::invalid_argument("warm-up query count exceeds u64"))?;
+        Ok(super::on_the_fly_warm_up::NativeOnTheFlyWarmUpResult {
+            schema_version: 1,
+            elapsed_seconds: progress.elapsed_seconds(),
+            query_count,
+            warmed_query_count: if prepared.already_warm {
+                0
+            } else {
+                query_count
+            },
+            current_rss_bytes: progress.current_rss_bytes(),
+            peak_rss_bytes: progress.peak_rss_bytes(),
+            already_warm: prepared.already_warm,
+            first_evaluation_completed: true,
+        })
+    }
+
+    fn run_total_into_unprofiled(
+        &mut self,
+        common: &ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let result = (|| {
+            let point_count = batch.point_count();
+            self.prepare_selection(selected_helicities, selected_colors, point_count)?;
+            let input_len = self.fill_point_major(batch)?;
+            let native_point_count = u32::try_from(point_count).map_err(|_| {
+                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+            })?;
+            match &self.reduction {
+                OnTheFlyReductionV1::Lc => self.lane.run_f64_into_unprofiled(
+                    &self.point_major_scratch[..input_len],
+                    native_point_count,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    output,
+                ),
+                OnTheFlyReductionV1::Contracted(plan) => {
+                    self.lane.run_contracted_f64_into_unprofiled(
+                        &self.point_major_scratch[..input_len],
+                        native_point_count,
+                        &common.model_parameter_values_f64,
+                        common.normalization_factor,
+                        &plan.plan,
+                        plan.point_tile_size,
+                        output,
+                    )
+                }
+            }
+        })();
+        match result {
+            Ok(()) => {
+                self.commit_pending_selection();
+                Ok(())
+            }
+            Err(error) => {
+                self.discard_pending_selection()?;
+                Err(error)
+            }
+        }
+    }
+
     fn run_total_into(
         &mut self,
         common: &ExecutionRuntime,
@@ -456,15 +923,27 @@ impl OnTheFlyExecutionRuntime {
             let point_count = batch.point_count();
             self.prepare_selection(selected_helicities, selected_colors, point_count)?;
             let input_len = self.fill_point_major(batch)?;
-            let (_, profile) = self.lane.run_f64_into(
-                &self.point_major_scratch[..input_len],
-                u32::try_from(point_count).map_err(|_| {
-                    RusticolError::invalid_argument("on-the-fly point count exceeds u32")
-                })?,
-                &common.model_parameter_values_f64,
-                common.normalization_factor,
-                output,
-            )?;
+            let native_point_count = u32::try_from(point_count).map_err(|_| {
+                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+            })?;
+            let (_, profile) = match &self.reduction {
+                OnTheFlyReductionV1::Lc => self.lane.run_f64_into(
+                    &self.point_major_scratch[..input_len],
+                    native_point_count,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    output,
+                )?,
+                OnTheFlyReductionV1::Contracted(plan) => self.lane.run_contracted_f64_into(
+                    &self.point_major_scratch[..input_len],
+                    native_point_count,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    &plan.plan,
+                    plan.point_tile_size,
+                    output,
+                )?,
+            };
             Ok(profile)
         })();
         match result {
@@ -491,21 +970,81 @@ impl OnTheFlyExecutionRuntime {
             let point_count = batch.point_count();
             self.prepare_selection_from_ordinals(helicity_ordinals, color_ordinals, point_count)?;
             let input_len = self.fill_point_major(batch)?;
-            let (_, profile) = self.lane.run_f64_into(
-                &self.point_major_scratch[..input_len],
-                u32::try_from(point_count).map_err(|_| {
-                    RusticolError::invalid_argument("on-the-fly point count exceeds u32")
-                })?,
-                &common.model_parameter_values_f64,
-                common.normalization_factor,
-                output,
-            )?;
+            let native_point_count = u32::try_from(point_count).map_err(|_| {
+                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+            })?;
+            let (_, profile) = match &self.reduction {
+                OnTheFlyReductionV1::Lc => self.lane.run_f64_into(
+                    &self.point_major_scratch[..input_len],
+                    native_point_count,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    output,
+                )?,
+                OnTheFlyReductionV1::Contracted(plan) => self.lane.run_contracted_f64_into(
+                    &self.point_major_scratch[..input_len],
+                    native_point_count,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    &plan.plan,
+                    plan.point_tile_size,
+                    output,
+                )?,
+            };
             Ok(profile)
         })();
         match result {
             Ok(profile) => {
                 self.commit_pending_selection();
                 Ok(profile)
+            }
+            Err(error) => {
+                self.discard_pending_selection()?;
+                Err(error)
+            }
+        }
+    }
+
+    fn run_total_into_by_ordinals_unprofiled(
+        &mut self,
+        common: &ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        helicity_ordinals: Option<&[usize]>,
+        color_ordinals: Option<&[usize]>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let result = (|| {
+            let point_count = batch.point_count();
+            self.prepare_selection_from_ordinals(helicity_ordinals, color_ordinals, point_count)?;
+            let input_len = self.fill_point_major(batch)?;
+            let native_point_count = u32::try_from(point_count).map_err(|_| {
+                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+            })?;
+            match &self.reduction {
+                OnTheFlyReductionV1::Lc => self.lane.run_f64_into_unprofiled(
+                    &self.point_major_scratch[..input_len],
+                    native_point_count,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    output,
+                ),
+                OnTheFlyReductionV1::Contracted(plan) => {
+                    self.lane.run_contracted_f64_into_unprofiled(
+                        &self.point_major_scratch[..input_len],
+                        native_point_count,
+                        &common.model_parameter_values_f64,
+                        common.normalization_factor,
+                        &plan.plan,
+                        plan.point_tile_size,
+                        output,
+                    )
+                }
+            }
+        })();
+        match result {
+            Ok(()) => {
+                self.commit_pending_selection();
+                Ok(())
             }
             Err(error) => {
                 self.discard_pending_selection()?;
@@ -536,17 +1075,37 @@ impl OnTheFlyExecutionRuntime {
                 })?;
             let mut values = vec![0.0; value_count];
             let input_len = self.fill_point_major(batch)?;
-            let (_, profile) = self.lane.run_resolved_f64_into(
-                &self.point_major_scratch[..input_len],
-                u32::try_from(point_count).map_err(|_| {
-                    RusticolError::invalid_argument("on-the-fly point count exceeds u32")
-                })?,
-                &common.model_parameter_values_f64,
-                common.normalization_factor,
-                helicity_count,
-                color_count,
-                &mut values,
-            )?;
+            let native_point_count = u32::try_from(point_count).map_err(|_| {
+                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+            })?;
+            let (_, profile) = match &self.reduction {
+                OnTheFlyReductionV1::Lc => self.lane.run_resolved_f64_into(
+                    &self.point_major_scratch[..input_len],
+                    native_point_count,
+                    &common.model_parameter_values_f64,
+                    common.normalization_factor,
+                    helicity_count,
+                    color_count,
+                    &mut values,
+                )?,
+                OnTheFlyReductionV1::Contracted(plan) => {
+                    if color_count != 1 {
+                        return Err(RusticolError::integrity(
+                            "on-the-fly contracted resolved color axis is not singleton",
+                        ));
+                    }
+                    self.lane.run_contracted_resolved_f64_into(
+                        &self.point_major_scratch[..input_len],
+                        native_point_count,
+                        &common.model_parameter_values_f64,
+                        common.normalization_factor,
+                        &plan.plan,
+                        plan.point_tile_size,
+                        helicity_count,
+                        &mut values,
+                    )?
+                }
+            };
             Ok((
                 ResolvedValues {
                     values,
@@ -1079,6 +1638,7 @@ impl NativeRuntime {
                 selectors,
                 metadata_selectors,
                 public_metadata,
+                color_contraction,
             } = loaded;
             if public_remap {
                 common.set_external_pdg_order_recursive(&selection.external_pdgs);
@@ -1104,7 +1664,7 @@ impl NativeRuntime {
                 artifact_id,
                 runtime: common,
                 execution_lane: NativeExecutionLane::OnTheFly(Box::new(
-                    OnTheFlyExecutionRuntime::new(lane, selectors),
+                    OnTheFlyExecutionRuntime::new(lane, selectors, color_contraction),
                 )),
                 process: selection.public_expression.clone(),
                 process_key: selection.requested_id.clone(),
@@ -1635,9 +2195,20 @@ impl NativeRuntime {
             let selection = runtime.selectors.selection(
                 runtime.lane.seed(),
                 selected_helicities.as_ref(),
-                selected_colors.as_ref(),
+                if runtime.uses_contracted_color() {
+                    None
+                } else {
+                    selected_colors.as_ref()
+                },
             )?;
-            return Ok((selection.helicity_count(), selection.color_count()));
+            return Ok((
+                selection.helicity_count(),
+                if runtime.uses_contracted_color() {
+                    1
+                } else {
+                    selection.color_count()
+                },
+            ));
         }
         let physics = self.runtime.physics.as_ref().ok_or_else(|| {
             RusticolError::artifact(
@@ -1669,6 +2240,11 @@ impl NativeRuntime {
                 .selection(runtime.lane.seed(), None, None)?;
             let mut selected_color_ids = Vec::new();
             if let Some(requested) = requested_color_ids {
+                if runtime.uses_contracted_color() {
+                    return Err(RusticolError::selector(
+                        "on-the-fly contracted color does not expose benchmark color selectors",
+                    ));
+                }
                 selected_color_ids
                     .try_reserve_exact(requested.len())
                     .map_err(|error| {
@@ -1700,7 +2276,7 @@ impl NativeRuntime {
                 "process_expression": self.process,
                 "color_accuracy": self.runtime.color_accuracy,
                 "helicity_count": selection.helicity_count(),
-                "color_count": selection.color_count(),
+                "color_count": if runtime.uses_contracted_color() { 1 } else { selection.color_count() },
                 "selected_color_ids": selected_color_ids,
             }))
             .map(Some)
@@ -1722,6 +2298,11 @@ impl NativeRuntime {
     ) -> RusticolResult<Option<String>> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane {
+            if runtime.uses_contracted_color() && color_ids.is_some() {
+                return Err(RusticolError::selector(
+                    "on-the-fly contracted color does not expose color selector ordinals",
+                ));
+            }
             let helicity_ordinals = helicity_ids
                 .map(|ids| {
                     ids.iter()
@@ -1778,6 +2359,77 @@ impl NativeRuntime {
             });
         }
         Ok(None)
+    }
+
+    /// Explicitly construct and retain one selected OTF family, then execute
+    /// exactly one binary64 point before committing its selector identity.
+    /// Progress callbacks run only on the coordinating caller thread.
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    pub fn warm_up_f64<'observer>(
+        &mut self,
+        momenta: &[f64],
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        observer: Option<
+            &'observer mut super::on_the_fly_warm_up::NativeOnTheFlyWarmUpObserver<'observer>,
+        >,
+    ) -> RusticolResult<super::on_the_fly_warm_up::NativeOnTheFlyWarmUpResult> {
+        self.warm_up_on_the_fly_f64_with_selectors(momenta, helicity_ids, color_ids, observer)
+    }
+
+    /// Explicitly named alias for [`Self::warm_up_f64`], retained for bindings
+    /// which make the on-the-fly-only capability visible in their method name.
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    pub fn warm_up_on_the_fly_f64_with_selectors<'observer>(
+        &mut self,
+        momenta: &[f64],
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        observer: Option<
+            &'observer mut super::on_the_fly_warm_up::NativeOnTheFlyWarmUpObserver<'observer>,
+        >,
+    ) -> RusticolResult<super::on_the_fly_warm_up::NativeOnTheFlyWarmUpResult> {
+        let expected = self.runtime.external_count.checked_mul(4).ok_or_else(|| {
+            RusticolError::invalid_argument("on-the-fly warm-up momentum shape exceeds usize")
+        })?;
+        if momenta.len() != expected {
+            return Err(RusticolError::invalid_argument(format!(
+                "on-the-fly warm-up requires exactly one point ({expected} binary64 momentum values), received {}",
+                momenta.len()
+            )));
+        }
+        let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+        let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
+        let result = (|| {
+            let selected_helicities = selector_scratch
+                .helicity_selector_sets
+                .resolve(helicity_ids, "helicity")?;
+            let selected_colors = selector_scratch
+                .color_selector_sets
+                .resolve(color_ids, "color component")?;
+            let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                momenta,
+                1,
+                self.runtime.external_count,
+                crossing_lookup.as_deref(),
+            )?;
+            let NativeExecutionLane::OnTheFly(runtime) = &mut self.execution_lane else {
+                return Err(RusticolError::unsupported_runtime_capability(
+                    ON_THE_FLY_RUNTIME_CAPABILITY,
+                    "the explicit warm-up API requires an on-the-fly artifact",
+                ));
+            };
+            runtime.warm_up_f64(
+                &self.runtime,
+                batch,
+                selected_helicities,
+                selected_colors,
+                observer,
+            )
+        })();
+        self.point_selector_scratch = selector_scratch;
+        self.input_crossing_map = crossing_lookup;
+        result
     }
 
     /// Resolve and retain batch-global recurrence selectors once.
@@ -2099,6 +2751,23 @@ impl NativeRuntime {
             } = &mut selector_scratch;
             let selected_helicities = helicity_selector_sets.resolve(helicity_ids, "helicity")?;
             let selected_colors = color_selector_sets.resolve(color_ids, "color component")?;
+            if helicity_by_point.is_none() && color_by_point.is_none() {
+                let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                    momenta,
+                    point_count,
+                    self.runtime.external_count,
+                    crossing_lookup.as_deref(),
+                )?;
+                return self.run_selected_f64_batch_into(
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                    output,
+                );
+            }
+            // Per-point routing retains its ordinal planner.  Fixed global
+            // selection is handled above so its IDs are parsed only by the
+            // lane on a cold family and matched allocation-free once warm.
             let (selected_helicity_ordinals, selected_color_ordinals) =
                 self.on_the_fly_selected_ordinals(selected_helicities, selected_colors)?;
             let batch = F64MomentumBatchView::from_contiguous_prevalidated(
@@ -2107,14 +2776,6 @@ impl NativeRuntime {
                 self.runtime.external_count,
                 crossing_lookup.as_deref(),
             )?;
-            if helicity_by_point.is_none() && color_by_point.is_none() {
-                return self.run_selected_f64_batch_into(
-                    batch,
-                    selected_helicities,
-                    selected_colors,
-                    output,
-                );
-            }
 
             let (helicity_count, color_count) = self.on_the_fly_selector_counts()?;
             let plan = planner.build(
@@ -2207,10 +2868,7 @@ impl NativeRuntime {
                 "compact selector counts require an on-the-fly execution lane",
             ));
         };
-        let selection = runtime
-            .selectors
-            .selection(runtime.lane.seed(), None, None)?;
-        Ok((selection.helicity_count(), selection.color_count()))
+        runtime.public_selector_counts()
     }
 
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -2224,9 +2882,21 @@ impl NativeRuntime {
                 "compact selector ordinals require an on-the-fly execution lane",
             ));
         };
-        runtime
-            .selectors
-            .selected_ordinals(selected_helicities, selected_colors)
+        if runtime.uses_contracted_color() {
+            if selected_colors.is_some() {
+                return Err(RusticolError::selector(
+                    "on-the-fly contracted color does not expose color selector ordinals",
+                ));
+            }
+            let (helicity_ordinals, _) = runtime
+                .selectors
+                .selected_ordinals(selected_helicities, None)?;
+            Ok((helicity_ordinals, None))
+        } else {
+            runtime
+                .selectors
+                .selected_ordinals(selected_helicities, selected_colors)
+        }
     }
 
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -2242,15 +2912,13 @@ impl NativeRuntime {
                 "compact selector ordinals require an on-the-fly execution lane",
             ));
         };
-        runtime
-            .run_total_into_by_ordinals(
-                &self.runtime,
-                batch,
-                helicity_ordinals,
-                color_ordinals,
-                output,
-            )
-            .map(drop)
+        runtime.run_total_into_by_ordinals_unprofiled(
+            &self.runtime,
+            batch,
+            helicity_ordinals,
+            color_ordinals,
+            output,
+        )
     }
 
     fn run_f64_batch_into(
@@ -2269,9 +2937,9 @@ impl NativeRuntime {
                 runtime.run_f64_view_into_unprofiled(&mut self.runtime, batch, None, None, output)
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::OnTheFly(runtime) => runtime
-                .run_total_into(&self.runtime, batch, None, None, output)
-                .map(drop),
+            NativeExecutionLane::OnTheFly(runtime) => {
+                runtime.run_total_into_unprofiled(&self.runtime, batch, None, None, output)
+            }
         }
     }
 
@@ -2306,15 +2974,13 @@ impl NativeRuntime {
                 output,
             ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::OnTheFly(runtime) => runtime
-                .run_total_into(
-                    &self.runtime,
-                    batch,
-                    selected_helicities,
-                    selected_colors,
-                    output,
-                )
-                .map(drop),
+            NativeExecutionLane::OnTheFly(runtime) => runtime.run_total_into_unprofiled(
+                &self.runtime,
+                batch,
+                selected_helicities,
+                selected_colors,
+                output,
+            ),
         }
     }
 

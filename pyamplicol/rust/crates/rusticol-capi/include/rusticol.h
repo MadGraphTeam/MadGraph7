@@ -22,6 +22,59 @@ enum rusticol_status {
 
 typedef struct RusticolRuntimeHandle RusticolRuntimeHandle;
 
+enum rusticol_warm_up_event_kind {
+    RUSTICOL_WARM_UP_EVENT_START = 0,
+    RUSTICOL_WARM_UP_EVENT_UPDATE = 1,
+    RUSTICOL_WARM_UP_EVENT_END = 2
+};
+
+enum rusticol_warm_up_stage {
+    RUSTICOL_WARM_UP_STAGE_PROCESS_PREPARATION = 0,
+    RUSTICOL_WARM_UP_STAGE_QUERY_FAMILY = 1,
+    RUSTICOL_WARM_UP_STAGE_FAMILY_FINALIZATION = 2,
+    RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION = 3
+};
+
+/*
+ * Fixed-layout progress snapshot. RSS fields are meaningful only when their
+ * matching *_available field is nonzero. The event pointer is borrowed for
+ * the callback invocation only.
+ */
+typedef struct RusticolWarmUpProgressEvent {
+    uint32_t schema_version;
+    uint32_t kind;
+    uint32_t stage;
+    uint32_t reserved;
+    uint64_t completed;
+    uint64_t total;
+    double elapsed_seconds;
+    uint64_t current_rss_bytes;
+    uint64_t peak_rss_bytes;
+    uint64_t workers;
+    uint32_t current_rss_available;
+    uint32_t peak_rss_available;
+} RusticolWarmUpProgressEvent;
+
+typedef struct RusticolWarmUpResult {
+    uint32_t schema_version;
+    uint32_t reserved;
+    double elapsed_seconds;
+    uint64_t query_count;
+    uint64_t warmed_query_count;
+    uint64_t current_rss_bytes;
+    uint64_t peak_rss_bytes;
+    uint32_t current_rss_available;
+    uint32_t peak_rss_available;
+    uint32_t already_warm;
+    uint32_t first_evaluation_completed;
+} RusticolWarmUpResult;
+
+/* Return nonzero to continue, or zero to request cancellation. */
+typedef int (*RusticolWarmUpProgressCallback)(
+    const RusticolWarmUpProgressEvent *event,
+    void *user_data
+);
+
 /*
  * A handle is mutable and must not be called concurrently. Independent handles
  * may be used concurrently from separate threads.
@@ -183,6 +236,26 @@ int rusticol_runtime_resolved_shape(
     size_t color_count,
     size_t *output_helicity_count,
     size_t *output_color_count
+);
+
+/*
+ * Construct and retain one selected OTF query family, then evaluate exactly
+ * one binary64 point. Momenta use [external particle][E, px, py, pz]. Global
+ * selector IDs are optional; a null pointer with zero count sums that axis.
+ * Progress callbacks run on this coordinating caller thread. The terminal
+ * FIRST_EVALUATION/END event is post-commit and cannot cancel the result.
+ */
+int rusticol_runtime_warm_up_f64(
+    RusticolRuntimeHandle *handle,
+    const double *momenta,
+    size_t momentum_count,
+    const char *const *helicity_ids,
+    size_t helicity_count,
+    const char *const *color_ids,
+    size_t color_count,
+    RusticolWarmUpProgressCallback progress_callback,
+    void *progress_user_data,
+    RusticolWarmUpResult *output
 );
 
 /* Momenta use [point][external particle][E, px, py, pz]. */

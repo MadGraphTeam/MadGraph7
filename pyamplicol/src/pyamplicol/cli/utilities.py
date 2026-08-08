@@ -48,8 +48,9 @@ _PROFILING_CAMPAIGN_GLOBS = (
     "section_*.tex",
     "results/*.json",
 )
-_PROFILING_CAMPAIGN_FILE_COUNT = 61
+_PROFILING_CAMPAIGN_FILE_COUNT = 69
 _PROFILING_CAMPAIGN_LOCAL_AMPLICOL = ".pyamplicol-original-amplicol"
+_PROFILING_CAMPAIGN_LOCAL_MADGRAPH = ".pyamplicol-madgraph"
 _PROFILING_CAMPAIGN_STATE = "campaign_artifacts"
 _PROFILING_CAMPAIGN_SUMMARY = "campaign_summary_ids"
 _PROFILING_CAMPAIGN_PDF = "pyAmpliCol.pdf"
@@ -78,6 +79,7 @@ class UtilityInvocation:
     force: bool = False
     overrides: tuple[str, ...] = ()
     local_amplicol: Path | None = None
+    local_madgraph: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,8 +144,8 @@ def _utility_parser() -> argparse.ArgumentParser:
             "overwrite the managed template files and reset only "
             "DEST/campaign_artifacts, DEST/pyAmpliCol.pdf, and "
             "DEST/campaign_summary_ids, plus known lineage/LaTeX byproducts; "
-            "unrelated files and the recorded local AmpliCol checkout are "
-            "preserved (stop an active campaign first)"
+            "unrelated files and recorded local AmpliCol/MadGraph installations "
+            "are preserved (stop an active campaign first)"
         ),
     )
     campaign_copy.add_argument(
@@ -153,6 +155,15 @@ def _utility_parser() -> argparse.ArgumentParser:
         help=(
             "Record a clean, complete original-AmpliCol checkout as the "
             "default for this copied campaign."
+        ),
+    )
+    campaign_copy.add_argument(
+        "--local-madgraph",
+        type=Path,
+        metavar="PATH_TO_INSTALLATION",
+        help=(
+            "Record a complete MadGraph installation as the default for this "
+            "copied campaign."
         ),
     )
 
@@ -198,6 +209,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             path=namespace.destination,
             force=bool(namespace.force),
             local_amplicol=namespace.local_amplicol,
+            local_madgraph=namespace.local_madgraph,
         )
     return UtilityInvocation(namespace.utility, output_format=namespace.format)
 
@@ -285,6 +297,31 @@ def _resolved_original_amplicol_checkout(path: Path) -> Path:
     if not repository.is_dir():
         raise ConfigurationError(f"--local-amplicol is not a directory: {repository}")
     return repository
+
+
+def _resolved_madgraph_installation(path: Path) -> Path:
+    try:
+        installation = path.expanduser().resolve(strict=True)
+    except OSError as error:
+        raise ConfigurationError(
+            f"--local-madgraph installation is unavailable: {path}"
+        ) from error
+    if not installation.is_dir():
+        raise ConfigurationError(
+            f"--local-madgraph is not a directory: {installation}"
+        )
+    launcher = installation / "bin" / "mg5_aMC"
+    try:
+        launcher_mode = launcher.stat(follow_symlinks=False).st_mode
+    except OSError as error:
+        raise ConfigurationError(
+            "--local-madgraph must contain a regular executable bin/mg5_aMC"
+        ) from error
+    if not stat.S_ISREG(launcher_mode) or not os.access(launcher, os.X_OK):
+        raise ConfigurationError(
+            "--local-madgraph must contain a regular executable bin/mg5_aMC"
+        )
+    return installation
 
 
 def _literal_campaign_destination(destination: Path) -> Path:
@@ -470,11 +507,17 @@ def _copy_profiling_campaign(
     *,
     force: bool,
     local_amplicol: Path | None = None,
+    local_madgraph: Path | None = None,
 ) -> Path:
     validated_amplicol = (
         None
         if local_amplicol is None
         else _resolved_original_amplicol_checkout(local_amplicol)
+    )
+    validated_madgraph = (
+        None
+        if local_madgraph is None
+        else _resolved_madgraph_installation(local_madgraph)
     )
     source = profiling_campaign_root()
     target = _literal_campaign_destination(destination)
@@ -494,6 +537,11 @@ def _copy_profiling_campaign(
             _preflight_managed_file(
                 target,
                 Path(_PROFILING_CAMPAIGN_LOCAL_AMPLICOL),
+            )
+        if validated_madgraph is not None:
+            _preflight_managed_file(
+                target,
+                Path(_PROFILING_CAMPAIGN_LOCAL_MADGRAPH),
             )
         if force:
             _reset_profiling_campaign_outputs(target)
@@ -515,6 +563,12 @@ def _copy_profiling_campaign(
         if validated_amplicol is not None:
             local_amplicol_path.write_text(
                 f"{validated_amplicol}\n",
+                encoding="utf-8",
+            )
+        local_madgraph_path = target / _PROFILING_CAMPAIGN_LOCAL_MADGRAPH
+        if validated_madgraph is not None:
+            local_madgraph_path.write_text(
+                f"{validated_madgraph}\n",
                 encoding="utf-8",
             )
         state_root = target / _PROFILING_CAMPAIGN_STATE
@@ -621,6 +675,7 @@ def execute_utility(invocation: UtilityInvocation) -> object:
                 invocation.path,
                 force=invocation.force,
                 local_amplicol=invocation.local_amplicol,
+                local_madgraph=invocation.local_madgraph,
             )
         )
     if invocation.kind == "doctor":

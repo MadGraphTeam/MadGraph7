@@ -276,10 +276,6 @@ def _producer(value: object) -> Mapping[str, object]:
         )
         if _SHA256.fullmatch(native_inputs_value) is None:
             raise ArtifactError("producer.native_build_inputs_sha256 must be a SHA-256")
-        if revision is None:
-            raise ArtifactError(
-                "producer.native_build_inputs_sha256 requires producer.git_revision"
-            )
         result["native_build_inputs_sha256"] = native_inputs_value
     return MappingProxyType(result)
 

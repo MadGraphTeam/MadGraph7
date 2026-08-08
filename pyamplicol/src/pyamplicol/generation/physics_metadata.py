@@ -818,10 +818,17 @@ def _reduction_groups(
         group_id = _integer(group["group_id"])
         helicities = group_helicities[group_id]
         colors = group_colors[group_id]
+        representative = tuple(
+            _integer(value) for value in _sequence(group["helicities"])
+        )
+        if representative not in helicities:
+            raise ValueError(
+                f"helicity representative is not a member of group {group_id}"
+            )
         records.append(
             {
                 "id": f"reduction:{group_id}",
-                "representative_helicity_id": helicity_ids[helicities[0]],
+                "representative_helicity_id": helicity_ids[representative],
                 "representative_color_id": colors[0],
                 "physical_helicity_ids": [
                     helicity_ids[helicity] for helicity in helicities

@@ -16,25 +16,29 @@ prepared template/executor catalogs, builds and encodes the binary
 `OnTheFlyProcessSeedV1`, and decodes and validates that seed at load. The lane
 never constructs a `DirectRecurrencePlan`.
 
-The native runtime accepts one arbitrary requested Cartesian family of
-helicity ordinals times LC-flow ordinals, subject to checked native `usize`
-sizes and available resources. That family may range from one selector pair to
-the complete all-helicity times all-flow product. Selected-flow/helicity-sum
-and all-flow/single-helicity are the two campaign workloads; they are not
-capability limits.
+For LC, the native runtime accepts one arbitrary requested Cartesian family of
+helicity ordinals times flow ordinals, subject to checked native `usize` sizes
+and available resources. That family may range from one selector pair to the
+complete all-helicity times all-flow product. Selected-flow/helicity-sum and
+all-flow/single-helicity are the two campaign workloads; they are not
+capability limits. NLC/full use an authenticated recurrence-v3 colour metric,
+evaluate only canonical structural-owner amplitudes, and expose one public
+`color:contracted` component rather than a selectable colour-flow axis.
 
 Cold preparation constructs transient selector-local traces and groups their
 operations into one executable family. Only the last successfully evaluated
 family is retained. The mode is integrated with generation, artifact loading
 and inspection, selected/resolved/total evaluation, `Runtime.clear()`,
-profiling, the CLI, and the generated C API. It is currently LC-only and
-native-f64-only.
+profiling, the CLI, explicit one-point warm-up progress, and the native SDKs.
+It is native-f64-only. Contracted NLC/full correctness is covered through the
+complete n<=4 acceptance catalog; their rapidly growing cold selector product
+is not claimed to be practical at high multiplicity.
 
-Numerical comparisons in this milestone establish parity with designated
-legacy authorities. They do not establish independent physics correctness:
-pyAmpliCol's existing modes and legacy AmpliCol share validation lineage and
-known defects. Independent validation is deferred to future full-color,
-arbitrary-precision comparisons with MadGraph.
+Numerical comparisons now include independent full-colour MadGraph targets at
+precision 200 and strict scale-only relative tolerance 1e-10. OTF full colour
+is replayed at native f64 against those frozen targets; OTF NLC is replayed
+against recurrence-p200 targets captured only after the full-colour lane was
+MadGraph-gated. Legacy-only evidence is not treated as independent authority.
 
 ## Prototype evidence and dispositions
 
@@ -190,15 +194,18 @@ watchdog.
 ### Public surface and limitations
 
 OTF participates in the normal Python generation/load/runtime APIs, compact
-inspection, selected/resolved/total evaluation, lifecycle clearing,
-benchmark/profile reporting, CLI workflows, and generated native C API. The
-profile path reports generation separately from generation plus first warm-up,
-and it records the native retained-family census.
+inspection, explicit one-point warm-up, selected/resolved/total evaluation,
+lifecycle clearing, benchmark/profile reporting, CLI workflows, and native
+Rust/C/C++/Fortran APIs. The profile path reports generation separately from
+generation plus first warm-up, and it records the native retained-family
+census.
 
 The runtime rejects non-f64 precision before expensive selector/physics work.
-NLC and full color are not implemented. Current external-model evidence is the
-tested external JSON scalar/contact model; built-in SM has the broader process
-coverage. Neither is a claim of universal UFO correctness.
+LC exposes flow selection. Contracted NLC/full reject flow selectors, apply the
+authenticated colour factor exactly once, and reuse the same structural
+query-family executor. External UFO-SM evidence includes the complete bounded
+n<=4 acceptance catalog; this remains a bounded claim, not universal UFO
+correctness.
 
 ## Original staged plan and dispositions (historical)
 

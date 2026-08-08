@@ -53,6 +53,7 @@ if TYPE_CHECKING:
         ReductionGroup,
         ResolvedEvaluation,
         Runtime,
+        WarmUpResult,
         benchmark,
         generate,
         load,
@@ -105,6 +106,7 @@ __all__ = [
     "ResolvedEvaluation",
     "RunConfig",
     "Runtime",
+    "WarmUpResult",
     "__version__",
     "benchmark",
     "generate",
@@ -154,6 +156,7 @@ _RESULT_EXPORTS = (
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "WarmUpResult",
 )
 _SERVICE_EXPORTS = (
     "BenchmarkRunner",

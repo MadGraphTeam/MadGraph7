@@ -2238,13 +2238,12 @@ fn contract_color_tile<T: ContractedAmplitudeTile>(
                 RusticolError::integrity("contracted right amplitude destination is absent")
             })?;
         for point in 0..point_count {
-            let product_re =
-                left_re[point].mul_add(right_re[point], left_im[point] * right_im[point]);
-            let product_im =
-                left_im[point].mul_add(right_re[point], -left_re[point] * right_im[point]);
-            let contracted = entry
-                .coefficient_re
-                .mul_add(product_re, -entry.coefficient_im * product_im);
+            let contracted = entry.contract_real_bilinear(
+                left_re[point],
+                left_im[point],
+                right_re[point],
+                right_im[point],
+            );
             for physical_helicity in physics.helicity_orbit_members(left_helicity) {
                 if !recurrence_helicity_is_selected(
                     physics,

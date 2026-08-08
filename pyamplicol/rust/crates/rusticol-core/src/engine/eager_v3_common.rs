@@ -416,11 +416,14 @@ fn build_color_topology_replay_manifest(
     }))
 }
 
-pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
+pub(super) fn load_eager_color_topology_replay_manifests(
     decoded: &DecodedEagerRuntimeV3,
-    materialized_groups: &[RawSumGroup],
-    output_count: usize,
-) -> RusticolResult<Option<AmplitudeRuntime>> {
+) -> RusticolResult<
+    Option<(
+        GenericColorTopologyReplayAmplitudeManifest,
+        GenericColorContractionManifest,
+    )>,
+> {
     let retained = RetainedTables::new(&decoded.retained_tables);
     let metadata = retained.table("color_replay_metadata")?;
     let present = retained.scalar_u8(metadata, "present")?;
@@ -669,6 +672,19 @@ pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
         includes_color_factor: true,
         entries,
         repeated_block,
+    };
+    Ok(Some((amplitude_manifest, contraction_manifest)))
+}
+
+pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
+    decoded: &DecodedEagerRuntimeV3,
+    materialized_groups: &[RawSumGroup],
+    output_count: usize,
+) -> RusticolResult<Option<AmplitudeRuntime>> {
+    let Some((amplitude_manifest, contraction_manifest)) =
+        load_eager_color_topology_replay_manifests(decoded)?
+    else {
+        return Ok(None);
     };
     AmplitudeRuntime::color_topology_replay_reducer(
         output_count,

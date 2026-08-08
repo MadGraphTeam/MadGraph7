@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import tools.performance_report.final_audit as final_audit_module
 from tools.performance_report.agreements import (
     BUILTIN_UFO_RECURRENCE,
     DIRECT_AGREEMENT_FIELD,
@@ -15,12 +16,16 @@ from tools.performance_report.agreements import (
     LC_COMMON_COMPONENT_FIELD,
     LC_CROSS_LAYOUT_COMPONENT,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
+    MADGRAPH_COMPARISON_FIELD,
+    MADGRAPH_FULL_COLOUR,
     Z_RECURRENCE_CROSS_MODE,
     agreement_edges,
     attach_direct_agreements,
     evaluate_lc_common_component,
     incoming_agreement_edges,
     independent_numerical_authorities,
+    madgraph_candidate_precision,
+    madgraph_comparison_record,
     requires_independent_numerical_authority,
     validation_baseline_is_required,
 )
@@ -145,15 +150,17 @@ def test_canonical_n4_direct_agreement_graph_has_exact_locked_counts() -> None:
     assert counts == {
         BUILTIN_UFO_RECURRENCE: 140,
         Z_RECURRENCE_CROSS_MODE: 80,
-        LC_CROSS_LAYOUT_COMPONENT: 213,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 180,
+        LC_CROSS_LAYOUT_COMPONENT: 246,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 213,
+        MADGRAPH_FULL_COLOUR: 132,
     }
     assert Counter(
         _direct_replay_category(edge) for edge in agreement_edges(maximum_n_final=4)
     ) == {
-        "fully-replayed-pyamplicol": 400,
-        "replayed-pyamplicol-vs-authenticated-legacy": 180,
+        "fully-replayed-pyamplicol": 433,
+        "replayed-pyamplicol-vs-authenticated-legacy": 213,
         "authenticated-stored-legacy-layout": 33,
+        "authenticated-stored-madgraph": 132,
     }
 
 
@@ -180,8 +187,9 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     assert counts == {
         BUILTIN_UFO_RECURRENCE: 332,
         Z_RECURRENCE_CROSS_MODE: 180,
-        LC_CROSS_LAYOUT_COMPONENT: 639,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 520,
+        LC_CROSS_LAYOUT_COMPONENT: 672,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 553,
+        MADGRAPH_FULL_COLOUR: 200,
     }
     assert {edge.kind for edge in incoming_agreement_edges(candidate)} == {
         LC_CROSS_LAYOUT_COMPONENT
@@ -202,13 +210,15 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     assert Counter(edge.kind for edge in measurable_edges) == {
         BUILTIN_UFO_RECURRENCE: 332,
         Z_RECURRENCE_CROSS_MODE: 156,
-        LC_CROSS_LAYOUT_COMPONENT: 627,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 508,
+        LC_CROSS_LAYOUT_COMPONENT: 660,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 541,
+        MADGRAPH_FULL_COLOUR: 200,
     }
     assert Counter(_direct_replay_category(edge) for edge in measurable_edges) == {
-        "fully-replayed-pyamplicol": 1012,
-        "replayed-pyamplicol-vs-authenticated-legacy": 508,
+        "fully-replayed-pyamplicol": 1045,
+        "replayed-pyamplicol-vs-authenticated-legacy": 541,
         "authenticated-stored-legacy-layout": 103,
+        "authenticated-stored-madgraph": 200,
     }
 
 
@@ -273,9 +283,7 @@ def test_unverified_candidate_still_enforces_hard_direct_agreement(
         "matrix_compiled_builtin_sm_lc",
         workload=Workload.ALL_FLOW,
     )
-    edge = next(
-        item for item in incoming_agreement_edges(candidate) if item.required
-    )
+    edge = next(item for item in incoming_agreement_edges(candidate) if item.required)
     component = 0.25
     measurement = _measurement(
         candidate.cell_id,
@@ -494,6 +502,145 @@ def test_legacy_pyamplicol_component_uses_independent_tolerance() -> None:
     assert record["error_bound"] == pytest.approx(1.0e-8)
 
 
+def test_legacy_amplicol_mismatch_is_retained_without_failing_candidate() -> None:
+    candidate = _cell(
+        "matrix_compiled_builtin_sm_lc",
+        workload=Workload.ALL_FLOW,
+    )
+    edges = incoming_agreement_edges(candidate)
+    layout = next(edge for edge in edges if edge.kind == LC_CROSS_LAYOUT_COMPONENT)
+    legacy = next(edge for edge in edges if edge.kind == LC_LEGACY_PYAMPLICOL_COMPONENT)
+    observed = 1.0 + 5.0e-7
+    measurement = _measurement(candidate.cell_id, 1.0, observed)
+
+    peers = {
+        layout.baseline.cell_id: _measurement(
+            layout.baseline.cell_id,
+            1.0,
+            observed,
+        ),
+        legacy.baseline.cell_id: _measurement(
+            legacy.baseline.cell_id,
+            1.0,
+            1.0,
+        ),
+    }
+    attach_direct_agreements(
+        candidate,
+        measurement,
+        peers,
+    )
+
+    record = next(
+        item
+        for item in measurement["validation"][DIRECT_AGREEMENT_FIELD]
+        if item["edge_kind"] == LC_LEGACY_PYAMPLICOL_COMPONENT
+    )
+    assert record["status"] == ResultStatus.VALIDATION_FAILED.value
+    assert measurement["status"] == ResultStatus.OK.value
+    assert measurement["validation"]["status"] == ResultStatus.OK.value
+
+    audited, counts = final_audit_module._audit_direct_agreements(
+        (candidate,),
+        {candidate.cell_id: measurement, **peers},
+        catalog=REPORT_CATALOG,
+    )
+    assert counts[LC_LEGACY_PYAMPLICOL_COMPONENT] == 1
+    replayed = {
+        candidate.cell_id: _ReplayObservation(1.0, 0.0, 0.0, observed),
+        layout.baseline.cell_id: _ReplayObservation(1.0, 0.0, 0.0, observed),
+    }
+    replay_counts = _audit_replayed_direct_agreements(
+        audited,
+        {candidate.cell_id: measurement, **peers},
+        replayed,
+    )
+    assert replay_counts["replayed-pyamplicol-vs-authenticated-legacy"] == 1
+
+    replayed[candidate.cell_id] = _ReplayObservation(1.0, 0.0, 0.0, 1.0)
+    with pytest.raises(FinalAuditError, match="stored candidate"):
+        _audit_replayed_direct_agreements(
+            audited,
+            {candidate.cell_id: measurement, **peers},
+            replayed,
+        )
+
+
+@pytest.mark.parametrize(
+    ("dataset_id", "candidate_precision"),
+    (
+        ("matrix_compiled_ufo_sm_full", 200),
+        ("matrix_on_the_fly_ufo_sm_full", 16),
+    ),
+)
+def test_madgraph_candidate_precision_is_authenticated_and_authority_not_replayed(
+    dataset_id: str,
+    candidate_precision: int,
+) -> None:
+    candidate = _cell(
+        dataset_id,
+        workload=Workload.CONTRACTED,
+    )
+    edge = next(
+        edge
+        for edge in incoming_agreement_edges(candidate)
+        if edge.kind == MADGRAPH_FULL_COLOUR
+    )
+    baseline = _measurement(edge.baseline.cell_id, 1.0, 0.0)
+    measurement = _measurement(candidate.cell_id, 1.0, 0.0)
+    for value in (baseline, measurement):
+        value["selector_contract"] = None
+        validation = value["validation"]
+        assert isinstance(validation, dict)
+        validation.pop(LC_COMMON_COMPONENT_FIELD)
+        validation["point_digest"] = _selector()["point_digest"]
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    validation[MADGRAPH_COMPARISON_FIELD] = madgraph_comparison_record(
+        edge,
+        candidate=1.0 + 5.0e-12,
+        baseline_measurement=baseline,
+        point_identity=_selector()["point_digest"],
+    )
+    assert madgraph_candidate_precision(candidate) == candidate_precision
+    assert (
+        validation[MADGRAPH_COMPARISON_FIELD]["candidate_precision"]
+        == candidate_precision
+    )
+    attach_direct_agreements(
+        candidate,
+        measurement,
+        {edge.baseline.cell_id: baseline},
+    )
+
+    audited, counts = final_audit_module._audit_direct_agreements(
+        (candidate,),
+        {candidate.cell_id: measurement, edge.baseline.cell_id: baseline},
+        catalog=REPORT_CATALOG,
+    )
+    assert counts[MADGRAPH_FULL_COLOUR] == 1
+    replay_counts = _audit_replayed_direct_agreements(
+        audited,
+        {candidate.cell_id: measurement, edge.baseline.cell_id: baseline},
+        {candidate.cell_id: _ReplayObservation(1.0, 0.0, 0.0, None)},
+    )
+    assert replay_counts["authenticated-stored-madgraph"] == 1
+
+    with pytest.raises(FinalAuditError, match=rf"stored p{candidate_precision}"):
+        _audit_replayed_direct_agreements(
+            audited,
+            {candidate.cell_id: measurement, edge.baseline.cell_id: baseline},
+            {
+                candidate.cell_id: _ReplayObservation(
+                    1.0 + 5.0e-9,
+                    0.0,
+                    0.0,
+                    None,
+                )
+            },
+        )
+
+
 def test_replay_categories_are_explicit_and_missing_endpoints_fail_closed() -> None:
     edges = agreement_edges(maximum_n_final=1)
     pac_pac = next(
@@ -526,6 +673,15 @@ def test_replay_categories_are_explicit_and_missing_endpoints_fail_closed() -> N
             pac_legacy.baseline.cell_id: measurements[pac_legacy.baseline.cell_id],
         },
     )
+    attach_direct_agreements(
+        legacy_layout.candidate,
+        measurements[legacy_layout.candidate.cell_id],
+        {
+            legacy_layout.baseline.cell_id: measurements[
+                legacy_layout.baseline.cell_id
+            ],
+        },
+    )
     replayed = {
         cell_id: _ReplayObservation(1.0, 0.0, 0.0, 1.0)
         for cell_id, cell in cells.items()
@@ -538,7 +694,7 @@ def test_replay_categories_are_explicit_and_missing_endpoints_fail_closed() -> N
         replayed,
     )
 
-    assert sorted(counts.values()) == [1, 1, 1]
+    assert sorted(counts.values()) == [0, 1, 1, 1]
     missing = dict(replayed)
     missing.pop(pac_pac.baseline.cell_id)
     with pytest.raises(FinalAuditError, match="missing its required pyAmpliCol replay"):
@@ -621,7 +777,6 @@ def test_campaign_plan_keeps_z_numerical_peers_availability_optional(
     authorities = independent_numerical_authorities(candidate)
     assert tuple(authority.measurement.execution_mode for authority in authorities) == (
         ExecutionMode.RECURRENCE,
-        ExecutionMode.AMPLICOL,
     )
     assert target.baseline_cell_id is None
     assert target.optional_baseline_cell_id == baseline.cell_id
@@ -665,7 +820,7 @@ def test_all_z_compiled_and_eager_cells_use_optional_ordered_authorities(
         assert validation_baseline_is_required(candidate, baseline) is False
         assert tuple(
             authority.measurement.execution_mode for authority in authorities
-        ) == (ExecutionMode.RECURRENCE, ExecutionMode.AMPLICOL)
+        ) == (ExecutionMode.RECURRENCE,)
         assert any(
             edge.kind == Z_RECURRENCE_CROSS_MODE
             and not edge.required
@@ -709,12 +864,13 @@ def test_catalog_wide_independent_authority_policy_matches_surface_semantics() -
 
     assert len(authority_required) == 808
     assert all(
-        cell.measurement.execution_mode
-        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        cell.measurement.execution_mode in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
         for cell in authority_required
     )
-    assert len(standalone_compiled) == 10
+    assert len(standalone_compiled) == 110
     assert {cell.dataset_id for cell in standalone_compiled} == {
+        "matrix_compiled_ufo_sm_full",
+        "matrix_eager_ufo_sm_full",
         "scalar_contact",
         "scalar_gravity",
     }
@@ -742,7 +898,7 @@ def test_canonical_n4_plan_keeps_bounded_acyclic_dependency_depth(
     )
     by_id = {item.cell.cell_id: item for item in planned}
 
-    assert len(planned) == len(by_id) == 762
+    assert len(planned) == len(by_id) == 1026
     assert max(item.rank for item in planned) == 4
     for item in planned:
         dependency_ids = set(item.comparison_peer_ids)

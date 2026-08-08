@@ -13,6 +13,10 @@
 //! caller explicitly requests introspection; that cache must not participate
 //! in this lane's load or warmed-evaluation path.
 
+use super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1;
+use super::on_the_fly_warm_up::{
+    NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpStage, OnTheFlyWarmUpProgress,
+};
 use super::recurrence_backend::NativeOnTheFlyPreparedExecutorResolver;
 use super::recurrence_lane::{
     DirectProfileDelta, LcResolvedOutputLayout, PreparedParameterProjectionEntry,
@@ -24,7 +28,6 @@ use super::*;
 use crate::direct_arena::DirectArenaTrafficCounters;
 #[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::AuthenticatedRecurrenceBuilderInput;
-use crate::recurrence::PreparedDirectExecutorCatalog;
 use crate::recurrence::direct_backend::DirectExecutionCounters;
 use crate::recurrence::direct_runtime::DirectRuntimeActivityCounters;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -32,13 +35,17 @@ use crate::recurrence::on_the_fly::OnTheFlyCouplingPolicyCensusV1;
 #[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::on_the_fly::build_on_the_fly_selected_trace_against_seed_v1;
 use crate::recurrence::on_the_fly::{
-    DecodedLcQueryV1, OnTheFlyProcessSeedV1, OnTheFlyQueryFamilyCensusV1,
-    OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1,
-    OnTheFlyQueryFamilyHandleV1, OnTheFlyResolvedCouplingPolicyV1, OnTheFlySelectedQueryOutcomeV1,
-    PreparedOnTheFlyGrammarV1, QueryFamilyTraceInput, build_selected_lc_query_family_v1,
+    DecodedLcQueryV1, OnTheFlyProcessSeedV1, OnTheFlyQueryConstructionPoolV1,
+    OnTheFlyQueryFamilyCensusV1, OnTheFlyQueryFamilyExecutionReportV1,
+    OnTheFlyQueryFamilyExecutorV1, OnTheFlyQueryFamilyHandleV1, OnTheFlyResolvedCouplingPolicyV1,
+    OnTheFlySelectedQueryOutcomeV1, PreparedOnTheFlyGrammarV1, QueryFamilyTraceInput,
+    build_selected_lc_query_family_v1, build_streamed_query_family_candidate_v1,
     prepare_on_the_fly_process_v1,
 };
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
+use crate::recurrence::{
+    PreparedDirectExecutorCatalog, RecurrenceColorContraction, RuntimeColorContractionEntry,
+};
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "on-the-fly-test-support")]
@@ -155,6 +162,20 @@ struct PreparedOnTheFlyLcFamilyV1 {
     logical_point_capacity: u32,
 }
 
+/// Retained contracted selection state.  Decoded structural queries and
+/// their traces are deliberately absent: after the union family is prepared,
+/// execution needs only the selected public-helicity identity and the compact
+/// H x S projection from authenticated metric destinations to union-family
+/// amplitude destinations.
+struct PreparedOnTheFlyContractedFamilyV1 {
+    helicity_ordinals: Box<[usize]>,
+    structural_color_count: usize,
+    amplitude_destinations: Box<[Option<usize>]>,
+    executor_handle: Option<OnTheFlyQueryFamilyHandleV1>,
+    census: Option<OnTheFlyQueryFamilyCensusV1>,
+    logical_point_capacity: u32,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct OnTheFlyRetainedStateCensusV1 {
     pub(super) family_count: usize,
@@ -196,8 +217,68 @@ pub(super) struct OnTheFlyNativeRuntime {
     families: Vec<PreparedOnTheFlyLcFamilyV1>,
     last_family: Option<usize>,
     pending_family: Option<PreparedOnTheFlyLcFamilyV1>,
+    contracted_family: Option<PreparedOnTheFlyContractedFamilyV1>,
+    pending_contracted_family: Option<PreparedOnTheFlyContractedFamilyV1>,
+    #[cfg(test)]
+    contracted_test_execution_attempt: usize,
+    #[cfg(test)]
+    contracted_test_fail_execution_at: Option<usize>,
+    #[cfg(test)]
+    contracted_max_live_query_outcomes: usize,
     source_momenta_scratch: Vec<f64>,
     amplitude_scratch: Vec<(f64, f64)>,
+}
+
+fn emit_progress(
+    progress: Option<&mut OnTheFlyWarmUpProgress<'_>>,
+    kind: NativeOnTheFlyWarmUpEventKind,
+    stage: NativeOnTheFlyWarmUpStage,
+    completed: usize,
+    total: usize,
+    message: Option<&str>,
+) -> RusticolResult<()> {
+    if let Some(progress) = progress {
+        progress.emit(kind, stage, completed, total, message)?;
+    }
+    Ok(())
+}
+
+fn emit_reused_family_progress(
+    mut progress: Option<&mut OnTheFlyWarmUpProgress<'_>>,
+    query_count: usize,
+) -> RusticolResult<()> {
+    emit_progress(
+        progress.as_deref_mut(),
+        NativeOnTheFlyWarmUpEventKind::Start,
+        NativeOnTheFlyWarmUpStage::QueryFamily,
+        query_count,
+        query_count,
+        Some("query family already retained"),
+    )?;
+    emit_progress(
+        progress.as_deref_mut(),
+        NativeOnTheFlyWarmUpEventKind::End,
+        NativeOnTheFlyWarmUpStage::QueryFamily,
+        query_count,
+        query_count,
+        Some("query family reused"),
+    )?;
+    emit_progress(
+        progress.as_deref_mut(),
+        NativeOnTheFlyWarmUpEventKind::Start,
+        NativeOnTheFlyWarmUpStage::FamilyFinalization,
+        1,
+        1,
+        Some("family finalization already retained"),
+    )?;
+    emit_progress(
+        progress,
+        NativeOnTheFlyWarmUpEventKind::End,
+        NativeOnTheFlyWarmUpStage::FamilyFinalization,
+        1,
+        1,
+        Some("family finalization reused"),
+    )
 }
 
 impl OnTheFlyNativeRuntime {
@@ -274,6 +355,14 @@ impl OnTheFlyNativeRuntime {
             families: Vec::new(),
             last_family: None,
             pending_family: None,
+            contracted_family: None,
+            pending_contracted_family: None,
+            #[cfg(test)]
+            contracted_test_execution_attempt: 0,
+            #[cfg(test)]
+            contracted_test_fail_execution_at: None,
+            #[cfg(test)]
+            contracted_max_live_query_outcomes: 0,
             source_momenta_scratch: Vec::new(),
             amplitude_scratch: Vec::new(),
         })
@@ -417,6 +506,255 @@ impl OnTheFlyNativeRuntime {
         Ok(())
     }
 
+    pub(super) fn prepare_process_for_warm_up(
+        &mut self,
+        progress: &mut OnTheFlyWarmUpProgress<'_>,
+    ) -> RusticolResult<bool> {
+        let already_prepared = self.prepared_grammar.is_some() && self.coupling_policy.is_some();
+        progress.emit(
+            NativeOnTheFlyWarmUpEventKind::Start,
+            NativeOnTheFlyWarmUpStage::ProcessPreparation,
+            usize::from(already_prepared),
+            1,
+            already_prepared.then_some("process preparation already retained"),
+        )?;
+        self.ensure_process_prepared()?;
+        progress.emit(
+            NativeOnTheFlyWarmUpEventKind::End,
+            NativeOnTheFlyWarmUpStage::ProcessPreparation,
+            1,
+            1,
+            already_prepared.then_some("process preparation reused"),
+        )?;
+        Ok(already_prepared)
+    }
+
+    pub(super) fn report_reused_family_for_warm_up(
+        &self,
+        query_count: usize,
+        progress: &mut OnTheFlyWarmUpProgress<'_>,
+    ) -> RusticolResult<()> {
+        emit_reused_family_progress(Some(progress), query_count)
+    }
+
+    fn prepare_streamed_lc_candidate_for_warm_up(
+        &mut self,
+        requests: &[OnTheFlyLcQueryRequestV1],
+        logical_point_capacity: u32,
+        progress: &mut OnTheFlyWarmUpProgress<'_>,
+    ) -> RusticolResult<(bool, PreparedOnTheFlyLcFamilyV1)> {
+        let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
+            RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
+        })?;
+        let grammar = self.prepared_grammar.as_ref().ok_or_else(|| {
+            RusticolError::internal("on-the-fly grammar disappeared after preparation")
+        })?;
+        let worker_count = self
+            .effective_query_construction_threads
+            .min(requests.len())
+            .max(1);
+        let query_pool = OnTheFlyQueryConstructionPoolV1::new(worker_count)?;
+        let mut amplitude_destinations = Vec::new();
+        amplitude_destinations
+            .try_reserve_exact(requests.len())
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!(
+                    "on-the-fly LC warm-up projection allocation failed: {error}"
+                ))
+            })?;
+        amplitude_destinations.resize(requests.len(), None);
+
+        let templates = &self.templates;
+        let direct_catalog = &self.direct_catalog;
+        let seed = &self.seed;
+        let executor = &mut self.executor;
+        let mut binding_started = false;
+        let mut processed_query_count = 0_usize;
+        let streamed = build_streamed_query_family_candidate_v1(direct_catalog, |consumer| {
+            while processed_query_count < requests.len() {
+                let chunk_end = processed_query_count
+                    .checked_add(query_pool.chunk_capacity())
+                    .unwrap_or(usize::MAX)
+                    .min(requests.len());
+                let expected_queries = requests[processed_query_count..chunk_end]
+                    .iter()
+                    .map(|request| request.query.clone())
+                    .collect::<Vec<_>>();
+                let outcomes = query_pool.build_chunk(
+                    templates,
+                    direct_catalog,
+                    seed,
+                    coupling_policy,
+                    grammar,
+                    expected_queries.clone(),
+                )?;
+                if outcomes.len() != expected_queries.len() {
+                    return Err(RusticolError::integrity(
+                        "on-the-fly LC warm-up trace builder changed a chunk count",
+                    ));
+                }
+
+                let mut traces = Vec::new();
+                let mut projection_slots = Vec::new();
+                traces.try_reserve_exact(outcomes.len()).map_err(|error| {
+                    RusticolError::invalid_argument(format!(
+                        "on-the-fly LC warm-up trace-chunk allocation failed: {error}"
+                    ))
+                })?;
+                projection_slots
+                    .try_reserve_exact(outcomes.len())
+                    .map_err(|error| {
+                        RusticolError::invalid_argument(format!(
+                            "on-the-fly LC warm-up projection-chunk allocation failed: {error}"
+                        ))
+                    })?;
+                for (chunk_offset, (expected_query, outcome)) in
+                    expected_queries.into_iter().zip(outcomes).enumerate()
+                {
+                    let request_index = processed_query_count + chunk_offset;
+                    match outcome {
+                        OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
+                            if selected.query != expected_query {
+                                return Err(RusticolError::integrity(
+                                    "on-the-fly LC warm-up trace query changed during construction",
+                                ));
+                            }
+                            projection_slots.push(request_index);
+                            traces.push(selected);
+                        }
+                        OnTheFlySelectedQueryOutcomeV1::StructuralZero { query } => {
+                            if query != expected_query {
+                                return Err(RusticolError::integrity(
+                                    "on-the-fly LC warm-up structural-zero query changed during construction",
+                                ));
+                            }
+                        }
+                    }
+                }
+                if !traces.is_empty() {
+                    if !binding_started {
+                        executor
+                            .resolver_mut()
+                            .begin_on_the_fly_family_binding(templates, direct_catalog)?;
+                        binding_started = true;
+                    }
+                    executor.resolver_mut().extend_on_the_fly_family_binding(
+                        templates,
+                        direct_catalog,
+                        seed,
+                        traces.iter_mut().map(|selected| &mut selected.trace),
+                    )?;
+                    let inputs = traces
+                        .iter()
+                        .map(|selected| QueryFamilyTraceInput {
+                            trace: &selected.trace,
+                            projection: selected.projection,
+                        })
+                        .collect::<Vec<_>>();
+                    let destinations = consumer.push_chunk(&inputs)?;
+                    if destinations.len() != projection_slots.len() {
+                        return Err(RusticolError::integrity(
+                            "on-the-fly LC warm-up streamed destination range changed a chunk count",
+                        ));
+                    }
+                    for (request_index, destination) in
+                        projection_slots.into_iter().zip(destinations)
+                    {
+                        let slot =
+                            amplitude_destinations
+                                .get_mut(request_index)
+                                .ok_or_else(|| {
+                                    RusticolError::integrity(
+                                        "on-the-fly LC warm-up projection slot is absent",
+                                    )
+                                })?;
+                        if slot.replace(destination as usize).is_some() {
+                            return Err(RusticolError::integrity(
+                                "on-the-fly LC warm-up projection slot is repeated",
+                            ));
+                        }
+                    }
+                }
+                processed_query_count = chunk_end;
+                progress.emit(
+                    NativeOnTheFlyWarmUpEventKind::Update,
+                    NativeOnTheFlyWarmUpStage::QueryFamily,
+                    processed_query_count,
+                    requests.len(),
+                    None,
+                )?;
+            }
+            Ok(())
+        })?;
+        if processed_query_count != requests.len() {
+            return Err(RusticolError::integrity(
+                "on-the-fly LC warm-up streamed construction omitted a selected query",
+            ));
+        }
+        progress.emit(
+            NativeOnTheFlyWarmUpEventKind::End,
+            NativeOnTheFlyWarmUpStage::QueryFamily,
+            requests.len(),
+            requests.len(),
+            None,
+        )?;
+        progress.emit(
+            NativeOnTheFlyWarmUpEventKind::Start,
+            NativeOnTheFlyWarmUpStage::FamilyFinalization,
+            0,
+            1,
+            None,
+        )?;
+        let (cache_hit, census) = if let Some(streamed) = streamed {
+            if !binding_started {
+                return Err(RusticolError::integrity(
+                    "on-the-fly LC warm-up streamed family has no semantic binding transaction",
+                ));
+            }
+            let cache_hit =
+                executor.prepare_streamed_candidate(streamed, logical_point_capacity)?;
+            let census = executor.prepared_census().ok_or_else(|| {
+                RusticolError::integrity("on-the-fly LC warm-up family has no work census")
+            })?;
+            let projected_nonzero_count = amplitude_destinations
+                .iter()
+                .filter(|destination| destination.is_some())
+                .count();
+            if usize::try_from(census.union_amplitude_destination_count).ok()
+                != Some(projected_nonzero_count)
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly LC warm-up family does not retain one destination per nonzero query",
+                ));
+            }
+            (cache_hit, Some(census))
+        } else {
+            if binding_started {
+                return Err(RusticolError::integrity(
+                    "on-the-fly LC warm-up all-zero family retained semantic bindings",
+                ));
+            }
+            (false, None)
+        };
+        progress.emit(
+            NativeOnTheFlyWarmUpEventKind::End,
+            NativeOnTheFlyWarmUpStage::FamilyFinalization,
+            1,
+            1,
+            None,
+        )?;
+        Ok((
+            cache_hit,
+            PreparedOnTheFlyLcFamilyV1 {
+                requests: requests.to_vec().into_boxed_slice(),
+                amplitude_destinations: amplitude_destinations.into_boxed_slice(),
+                executor_handle: None,
+                census,
+                logical_point_capacity,
+            },
+        ))
+    }
+
     /// Cold selector/trace construction. Repeating an identical public
     /// selection reuses its retained requests, projections, and warmed row
     /// family; increasing only the point capacity replaces numeric workspace.
@@ -425,9 +763,32 @@ impl OnTheFlyNativeRuntime {
         requests: &[OnTheFlyLcQueryRequestV1],
         logical_point_capacity: u32,
     ) -> RusticolResult<bool> {
+        self.prepare_lc_queries_impl(requests, logical_point_capacity, None)
+    }
+
+    pub(super) fn prepare_lc_queries_for_warm_up(
+        &mut self,
+        requests: &[OnTheFlyLcQueryRequestV1],
+        logical_point_capacity: u32,
+        progress: &mut OnTheFlyWarmUpProgress<'_>,
+    ) -> RusticolResult<bool> {
+        self.prepare_lc_queries_impl(requests, logical_point_capacity, Some(progress))
+    }
+
+    fn prepare_lc_queries_impl(
+        &mut self,
+        requests: &[OnTheFlyLcQueryRequestV1],
+        logical_point_capacity: u32,
+        mut progress: Option<&mut OnTheFlyWarmUpProgress<'_>>,
+    ) -> RusticolResult<bool> {
         if requests.is_empty() || logical_point_capacity == 0 {
             return Err(RusticolError::invalid_argument(
                 "on-the-fly LC preparation requires queries and a nonzero point capacity",
+            ));
+        }
+        if self.contracted_family.is_some() || self.pending_contracted_family.is_some() {
+            return Err(RusticolError::internal(
+                "on-the-fly lane cannot mix LC and contracted retained families",
             ));
         }
         if requests
@@ -451,6 +812,7 @@ impl OnTheFlyNativeRuntime {
                 })
             })
         {
+            emit_reused_family_progress(progress.as_deref_mut(), requests.len())?;
             return Ok(true);
         }
         if self
@@ -475,6 +837,7 @@ impl OnTheFlyNativeRuntime {
                 .expect("matching on-the-fly pending family disappeared after resize");
             family.logical_point_capacity =
                 family.logical_point_capacity.max(logical_point_capacity);
+            emit_reused_family_progress(progress.as_deref_mut(), requests.len())?;
             return Ok(false);
         }
         // A different uncommitted selector is a failed/superseded candidate,
@@ -501,6 +864,7 @@ impl OnTheFlyNativeRuntime {
                 family.logical_point_capacity.max(logical_point_capacity);
             self.pending_family = None;
             self.last_family = Some(index);
+            emit_reused_family_progress(progress.as_deref_mut(), requests.len())?;
             return Ok(cache_hit);
         }
 
@@ -512,19 +876,34 @@ impl OnTheFlyNativeRuntime {
             })?;
         }
         let candidate_result = (|| {
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::Start,
+                NativeOnTheFlyWarmUpStage::QueryFamily,
+                0,
+                requests.len(),
+                None,
+            )?;
             self.ensure_process_prepared()?;
+            if let Some(progress) = progress.as_deref_mut() {
+                return self.prepare_streamed_lc_candidate_for_warm_up(
+                    requests,
+                    logical_point_capacity,
+                    progress,
+                );
+            }
+            let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
+                RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
+            })?;
+            let grammar = self.prepared_grammar.as_ref().ok_or_else(|| {
+                RusticolError::internal("on-the-fly grammar disappeared after preparation")
+            })?;
             let outcomes = build_selected_lc_query_family_v1(
                 &self.templates,
                 &self.direct_catalog,
                 &self.seed,
-                self.coupling_policy.as_ref().ok_or_else(|| {
-                    RusticolError::internal(
-                        "on-the-fly coupling policy disappeared after preparation",
-                    )
-                })?,
-                self.prepared_grammar.as_ref().ok_or_else(|| {
-                    RusticolError::internal("on-the-fly grammar disappeared after preparation")
-                })?,
+                coupling_policy,
+                grammar,
                 self.effective_query_construction_threads,
                 requests.iter().map(|request| request.query.clone()),
             )?;
@@ -533,6 +912,14 @@ impl OnTheFlyNativeRuntime {
                     "on-the-fly batch trace builder changed the query count",
                 ));
             }
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::End,
+                NativeOnTheFlyWarmUpStage::QueryFamily,
+                requests.len(),
+                requests.len(),
+                None,
+            )?;
             let mut traces = Vec::new();
             let mut amplitude_destinations = vec![None; requests.len()];
             traces.try_reserve_exact(requests.len()).map_err(|error| {
@@ -560,6 +947,14 @@ impl OnTheFlyNativeRuntime {
                     }
                 }
             }
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::Start,
+                NativeOnTheFlyWarmUpStage::FamilyFinalization,
+                0,
+                1,
+                None,
+            )?;
             let (cache_hit, census) = if traces.is_empty() {
                 (false, None)
             } else {
@@ -596,6 +991,14 @@ impl OnTheFlyNativeRuntime {
                 }
                 (cache_hit, Some(census))
             };
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::End,
+                NativeOnTheFlyWarmUpStage::FamilyFinalization,
+                1,
+                1,
+                None,
+            )?;
             Ok((
                 cache_hit,
                 PreparedOnTheFlyLcFamilyV1 {
@@ -617,6 +1020,437 @@ impl OnTheFlyNativeRuntime {
         // Selection-level state is committed only after the first successful
         // evaluation, including structural-zero and executor-cache-hit cases.
         self.pending_family = Some(candidate);
+        Ok(cache_hit)
+    }
+
+    /// Prepare the transient H x S structural query family consumed by a
+    /// contracted NLC/full color metric.  Only its compact identity and
+    /// amplitude projection survive this cold boundary.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn prepare_contracted_queries(
+        &mut self,
+        selectors: &OnTheFlyCompactSelectorAdapterV1,
+        helicity_ordinals: &[usize],
+        structural_color_count: usize,
+        destination_by_owner_ordinal: &[u32],
+        logical_point_capacity: u32,
+    ) -> RusticolResult<bool> {
+        self.prepare_contracted_queries_impl(
+            selectors,
+            helicity_ordinals,
+            structural_color_count,
+            destination_by_owner_ordinal,
+            logical_point_capacity,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn prepare_contracted_queries_for_warm_up(
+        &mut self,
+        selectors: &OnTheFlyCompactSelectorAdapterV1,
+        helicity_ordinals: &[usize],
+        structural_color_count: usize,
+        destination_by_owner_ordinal: &[u32],
+        logical_point_capacity: u32,
+        progress: &mut OnTheFlyWarmUpProgress<'_>,
+    ) -> RusticolResult<bool> {
+        self.prepare_contracted_queries_impl(
+            selectors,
+            helicity_ordinals,
+            structural_color_count,
+            destination_by_owner_ordinal,
+            logical_point_capacity,
+            Some(progress),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_contracted_queries_impl(
+        &mut self,
+        selectors: &OnTheFlyCompactSelectorAdapterV1,
+        helicity_ordinals: &[usize],
+        structural_color_count: usize,
+        destination_by_owner_ordinal: &[u32],
+        logical_point_capacity: u32,
+        mut progress: Option<&mut OnTheFlyWarmUpProgress<'_>>,
+    ) -> RusticolResult<bool> {
+        if helicity_ordinals.is_empty()
+            || structural_color_count == 0
+            || logical_point_capacity == 0
+        {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly contracted preparation requires helicities, structural colors, and a nonzero point capacity",
+            ));
+        }
+        if !self.families.is_empty() || self.pending_family.is_some() {
+            return Err(RusticolError::internal(
+                "on-the-fly lane cannot mix LC and contracted retained families",
+            ));
+        }
+        if helicity_ordinals.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly contracted helicity ordinals are not strictly increasing",
+            ));
+        }
+        let query_count = helicity_ordinals
+            .len()
+            .checked_mul(structural_color_count)
+            .ok_or_else(|| {
+                RusticolError::invalid_argument("on-the-fly contracted query shape exceeds usize")
+            })?;
+        if destination_by_owner_ordinal.len() != structural_color_count
+            || selectors.color_count() != structural_color_count
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly contracted selector or destination shape is inconsistent",
+            ));
+        }
+        let mut destination_seen = vec![false; structural_color_count];
+        for destination in destination_by_owner_ordinal {
+            let destination = usize::try_from(*destination).map_err(|_| {
+                RusticolError::artifact("on-the-fly contracted destination exceeds usize")
+            })?;
+            let seen = destination_seen.get_mut(destination).ok_or_else(|| {
+                RusticolError::integrity(
+                    "on-the-fly contracted destination is outside the structural owner domain",
+                )
+            })?;
+            if *seen {
+                return Err(RusticolError::integrity(
+                    "on-the-fly contracted destination mapping is not one-to-one",
+                ));
+            }
+            *seen = true;
+        }
+        if destination_seen.contains(&false) {
+            return Err(RusticolError::integrity(
+                "on-the-fly contracted destination mapping is not complete",
+            ));
+        }
+        let identity_matches = |family: &PreparedOnTheFlyContractedFamilyV1| {
+            family.helicity_ordinals.as_ref() == helicity_ordinals
+                && family.structural_color_count == structural_color_count
+        };
+        if self
+            .pending_contracted_family
+            .as_ref()
+            .is_some_and(identity_matches)
+        {
+            let (current_capacity, has_executable_family) = self
+                .pending_contracted_family
+                .as_ref()
+                .map(|family| (family.logical_point_capacity, family.census.is_some()))
+                .expect("matching contracted pending family disappeared");
+            if logical_point_capacity > current_capacity && has_executable_family {
+                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
+                    self.discard_pending_contracted_queries()?;
+                    return Err(error);
+                }
+            }
+            let family = self
+                .pending_contracted_family
+                .as_mut()
+                .expect("matching contracted pending family disappeared after resize");
+            family.logical_point_capacity =
+                family.logical_point_capacity.max(logical_point_capacity);
+            emit_reused_family_progress(progress.as_deref_mut(), query_count)?;
+            return Ok(false);
+        }
+        self.discard_pending_contracted_queries()?;
+        if self
+            .contracted_family
+            .as_ref()
+            .is_some_and(identity_matches)
+        {
+            let family = self
+                .contracted_family
+                .as_mut()
+                .expect("matching retained contracted family disappeared");
+            let cache_hit = if let Some(handle) = family.executor_handle {
+                self.executor
+                    .activate_retained_family(handle, logical_point_capacity)?
+            } else {
+                true
+            };
+            family.logical_point_capacity =
+                family.logical_point_capacity.max(logical_point_capacity);
+            emit_reused_family_progress(progress.as_deref_mut(), query_count)?;
+            return Ok(cache_hit);
+        }
+
+        let candidate_result = (|| {
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::Start,
+                NativeOnTheFlyWarmUpStage::QueryFamily,
+                0,
+                query_count,
+                None,
+            )?;
+            self.ensure_process_prepared()?;
+            let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
+                RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
+            })?;
+            let grammar = self.prepared_grammar.as_ref().ok_or_else(|| {
+                RusticolError::internal("on-the-fly grammar disappeared after preparation")
+            })?;
+            let query_pool =
+                OnTheFlyQueryConstructionPoolV1::new(self.effective_query_construction_threads)?;
+            let mut amplitude_destinations = Vec::new();
+            amplitude_destinations
+                .try_reserve_exact(query_count)
+                .map_err(|error| {
+                    RusticolError::invalid_argument(format!(
+                        "on-the-fly contracted projection allocation failed: {error}"
+                    ))
+                })?;
+            amplitude_destinations.resize(query_count, None);
+
+            let templates = &self.templates;
+            let direct_catalog = &self.direct_catalog;
+            let seed = &self.seed;
+            let executor = &mut self.executor;
+            let mut binding_started = false;
+            let mut processed_query_count = 0_usize;
+            #[cfg(test)]
+            let mut max_live_query_outcomes = 0_usize;
+            let streamed = build_streamed_query_family_candidate_v1(direct_catalog, |consumer| {
+                while processed_query_count < query_count {
+                    let chunk_end = processed_query_count
+                        .checked_add(query_pool.chunk_capacity())
+                        .unwrap_or(usize::MAX)
+                        .min(query_count);
+                    let mut queries = Vec::new();
+                    queries
+                        .try_reserve_exact(chunk_end - processed_query_count)
+                        .map_err(|error| {
+                            RusticolError::invalid_argument(format!(
+                                "on-the-fly contracted query-chunk allocation failed: {error}"
+                            ))
+                        })?;
+                    for request_index in processed_query_count..chunk_end {
+                        let helicity_position = request_index / structural_color_count;
+                        let owner_ordinal = request_index % structural_color_count;
+                        queries.push(selectors.decoded_query_at(
+                            seed,
+                            helicity_ordinals[helicity_position],
+                            owner_ordinal,
+                        )?);
+                    }
+                    let expected_queries = queries.clone();
+                    let outcomes = query_pool.build_chunk(
+                        templates,
+                        direct_catalog,
+                        seed,
+                        coupling_policy,
+                        grammar,
+                        queries,
+                    )?;
+                    if outcomes.len() != expected_queries.len() {
+                        return Err(RusticolError::integrity(
+                            "on-the-fly contracted trace builder changed a chunk count",
+                        ));
+                    }
+                    #[cfg(test)]
+                    {
+                        max_live_query_outcomes = max_live_query_outcomes.max(outcomes.len());
+                    }
+
+                    let mut traces = Vec::new();
+                    let mut projection_slots = Vec::new();
+                    traces.try_reserve_exact(outcomes.len()).map_err(|error| {
+                        RusticolError::invalid_argument(format!(
+                            "on-the-fly contracted trace-chunk allocation failed: {error}"
+                        ))
+                    })?;
+                    projection_slots
+                        .try_reserve_exact(outcomes.len())
+                        .map_err(|error| {
+                            RusticolError::invalid_argument(format!(
+                                "on-the-fly contracted projection-chunk allocation failed: {error}"
+                            ))
+                        })?;
+                    for (chunk_offset, (expected_query, outcome)) in
+                        expected_queries.into_iter().zip(outcomes).enumerate()
+                    {
+                        let request_index = processed_query_count + chunk_offset;
+                        let helicity_position = request_index / structural_color_count;
+                        let owner_ordinal = request_index % structural_color_count;
+                        let contracted_destination = usize::try_from(
+                            destination_by_owner_ordinal[owner_ordinal],
+                        )
+                        .map_err(|_| {
+                            RusticolError::artifact(
+                                "on-the-fly contracted destination exceeds usize",
+                            )
+                        })?;
+                        let projection_index = helicity_position
+                            .checked_mul(structural_color_count)
+                            .and_then(|offset| offset.checked_add(contracted_destination))
+                            .ok_or_else(|| {
+                                RusticolError::invalid_argument(
+                                    "on-the-fly contracted projection exceeds usize",
+                                )
+                            })?;
+                        match outcome {
+                            OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
+                                if selected.query != expected_query {
+                                    return Err(RusticolError::integrity(
+                                        "on-the-fly contracted trace query changed during construction",
+                                    ));
+                                }
+                                projection_slots.push(projection_index);
+                                traces.push(selected);
+                            }
+                            OnTheFlySelectedQueryOutcomeV1::StructuralZero { query: selected } => {
+                                if selected != expected_query {
+                                    return Err(RusticolError::integrity(
+                                        "on-the-fly contracted structural-zero query changed during construction",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    if !traces.is_empty() {
+                        if !binding_started {
+                            executor
+                                .resolver_mut()
+                                .begin_on_the_fly_family_binding(templates, direct_catalog)?;
+                            binding_started = true;
+                        }
+                        executor.resolver_mut().extend_on_the_fly_family_binding(
+                            templates,
+                            direct_catalog,
+                            seed,
+                            traces.iter_mut().map(|selected| &mut selected.trace),
+                        )?;
+                        let inputs = traces
+                            .iter()
+                            .map(|selected| QueryFamilyTraceInput {
+                                trace: &selected.trace,
+                                projection: selected.projection,
+                            })
+                            .collect::<Vec<_>>();
+                        let destinations = consumer.push_chunk(&inputs)?;
+                        if destinations.len() != projection_slots.len() {
+                            return Err(RusticolError::integrity(
+                                "on-the-fly streamed destination range changed a chunk count",
+                            ));
+                        }
+                        for (projection_index, destination) in
+                            projection_slots.into_iter().zip(destinations)
+                        {
+                            let slot = amplitude_destinations
+                                .get_mut(projection_index)
+                                .ok_or_else(|| {
+                                    RusticolError::integrity(
+                                        "on-the-fly contracted projection slot is absent",
+                                    )
+                                })?;
+                            if slot.replace(destination as usize).is_some() {
+                                return Err(RusticolError::integrity(
+                                    "on-the-fly contracted projection slot is repeated",
+                                ));
+                            }
+                        }
+                    }
+                    processed_query_count = chunk_end;
+                    emit_progress(
+                        progress.as_deref_mut(),
+                        NativeOnTheFlyWarmUpEventKind::Update,
+                        NativeOnTheFlyWarmUpStage::QueryFamily,
+                        processed_query_count,
+                        query_count,
+                        None,
+                    )?;
+                }
+                Ok(())
+            })?;
+            #[cfg(test)]
+            {
+                self.contracted_max_live_query_outcomes = max_live_query_outcomes;
+            }
+            if processed_query_count != query_count {
+                return Err(RusticolError::integrity(
+                    "on-the-fly contracted streamed construction omitted a structural query",
+                ));
+            }
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::End,
+                NativeOnTheFlyWarmUpStage::QueryFamily,
+                query_count,
+                query_count,
+                None,
+            )?;
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::Start,
+                NativeOnTheFlyWarmUpStage::FamilyFinalization,
+                0,
+                1,
+                None,
+            )?;
+            let (cache_hit, census) = if let Some(streamed) = streamed {
+                if !binding_started {
+                    return Err(RusticolError::integrity(
+                        "on-the-fly streamed family has no semantic binding transaction",
+                    ));
+                }
+                let cache_hit =
+                    executor.prepare_streamed_candidate(streamed, logical_point_capacity)?;
+                let census = executor.prepared_census().ok_or_else(|| {
+                    RusticolError::integrity("on-the-fly contracted family has no work census")
+                })?;
+                let projected_nonzero_count = amplitude_destinations
+                    .iter()
+                    .filter(|destination| destination.is_some())
+                    .count();
+                if usize::try_from(census.union_amplitude_destination_count).ok()
+                    != Some(projected_nonzero_count)
+                {
+                    return Err(RusticolError::integrity(
+                        "on-the-fly contracted family does not retain one destination per nonzero query",
+                    ));
+                }
+                (cache_hit, Some(census))
+            } else {
+                if binding_started {
+                    return Err(RusticolError::integrity(
+                        "on-the-fly all-zero streamed family retained semantic bindings",
+                    ));
+                }
+                (false, None)
+            };
+            emit_progress(
+                progress.as_deref_mut(),
+                NativeOnTheFlyWarmUpEventKind::End,
+                NativeOnTheFlyWarmUpStage::FamilyFinalization,
+                1,
+                1,
+                None,
+            )?;
+            Ok((
+                cache_hit,
+                PreparedOnTheFlyContractedFamilyV1 {
+                    helicity_ordinals: helicity_ordinals.to_vec().into_boxed_slice(),
+                    structural_color_count,
+                    amplitude_destinations: amplitude_destinations.into_boxed_slice(),
+                    executor_handle: None,
+                    census,
+                    logical_point_capacity,
+                },
+            ))
+        })();
+        let (cache_hit, candidate) = match candidate_result {
+            Ok(candidate) => candidate,
+            Err(error) => {
+                self.discard_pending_contracted_queries()?;
+                return Err(error);
+            }
+        };
+        self.pending_contracted_family = Some(candidate);
         Ok(cache_hit)
     }
 
@@ -673,17 +1507,64 @@ impl OnTheFlyNativeRuntime {
         Ok(cache_hit)
     }
 
+    pub(super) fn reuse_current_contracted_queries(
+        &mut self,
+        logical_point_capacity: u32,
+    ) -> RusticolResult<bool> {
+        if logical_point_capacity == 0 {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly contracted preparation requires a nonzero point capacity",
+            ));
+        }
+        if let Some(family) = self.pending_contracted_family.as_mut() {
+            if logical_point_capacity <= family.logical_point_capacity {
+                return Ok(false);
+            }
+            if family.census.is_some()
+                && let Err(error) = self.executor.resize_active_family(logical_point_capacity)
+            {
+                self.discard_pending_contracted_queries()?;
+                return Err(error);
+            }
+            self.pending_contracted_family
+                .as_mut()
+                .expect("pending contracted family disappeared after resize")
+                .logical_point_capacity = logical_point_capacity;
+            return Ok(false);
+        }
+        let family = self.contracted_family.as_mut().ok_or_else(|| {
+            RusticolError::internal("on-the-fly contracted selector cache has no prepared family")
+        })?;
+        if logical_point_capacity <= family.logical_point_capacity {
+            return Ok(true);
+        }
+        let cache_hit = if let Some(handle) = family.executor_handle {
+            self.executor
+                .activate_retained_family(handle, logical_point_capacity)?
+        } else {
+            true
+        };
+        family.logical_point_capacity = logical_point_capacity;
+        Ok(cache_hit)
+    }
+
     pub(super) fn prepared_census(&self) -> Option<OnTheFlyQueryFamilyCensusV1> {
-        self.current_family().and_then(|family| family.census)
+        self.current_family()
+            .and_then(|family| family.census)
+            .or_else(|| {
+                self.current_contracted_family()
+                    .and_then(|family| family.census)
+            })
     }
 
     #[cfg(test)]
     pub(super) fn retained_family_count(&self) -> usize {
-        self.families.len()
+        self.families.len() + usize::from(self.contracted_family.is_some())
     }
 
     pub(super) fn pending_family_count(&self) -> usize {
         usize::from(self.pending_family.is_some())
+            + usize::from(self.pending_contracted_family.is_some())
     }
 
     pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
@@ -703,6 +1584,16 @@ impl OnTheFlyNativeRuntime {
                 }
             }
         }
+        if let Some(family) = &self.contracted_family {
+            census.family_count += 1;
+            census.request_count += family.amplitude_destinations.len();
+            census.executor_handle_count += usize::from(family.executor_handle.is_some());
+            census.amplitude_destination_count += family
+                .amplitude_destinations
+                .iter()
+                .filter(|destination| destination.is_some())
+                .count();
+        }
         // Query-local traces and embedded lookup keys are deliberately absent
         // from the compact retained family type. Their zero counters keep that
         // invariant observable without exposing private family fields.
@@ -715,6 +1606,8 @@ impl OnTheFlyNativeRuntime {
         self.pending_family = None;
         self.last_family = None;
         self.families.clear();
+        self.pending_contracted_family = None;
+        self.contracted_family = None;
         self.prepared_grammar = None;
         self.coupling_policy = None;
         self.coupling_policy_resolution = None;
@@ -722,6 +1615,7 @@ impl OnTheFlyNativeRuntime {
         #[cfg(test)]
         {
             self.process_preparation_census = OnTheFlyProcessPreparationCensusV1::default();
+            self.contracted_max_live_query_outcomes = 0;
         }
         self.source_momenta_scratch = Vec::new();
         self.amplitude_scratch = Vec::new();
@@ -734,6 +1628,12 @@ impl OnTheFlyNativeRuntime {
             .or_else(|| self.last_family.and_then(|index| self.families.get(index)))
     }
 
+    fn current_contracted_family(&self) -> Option<&PreparedOnTheFlyContractedFamilyV1> {
+        self.pending_contracted_family
+            .as_ref()
+            .or(self.contracted_family.as_ref())
+    }
+
     pub(super) fn discard_pending_lc_queries(&mut self) -> RusticolResult<()> {
         self.executor.discard_pending_family()?;
         self.executor
@@ -741,6 +1641,38 @@ impl OnTheFlyNativeRuntime {
             .discard_pending_resolved_bindings();
         self.pending_family = None;
         Ok(())
+    }
+
+    pub(super) fn discard_pending_contracted_queries(&mut self) -> RusticolResult<()> {
+        self.executor.discard_pending_family()?;
+        self.executor
+            .resolver_mut()
+            .discard_pending_resolved_bindings();
+        self.pending_contracted_family = None;
+        Ok(())
+    }
+
+    /// Roll back a contracted selection whose executor family may already
+    /// have committed on an earlier tile.  The wrapper deliberately clears
+    /// its public selection cache in the same error path, so both halves of
+    /// the last-family-only identity remain coherent.
+    pub(super) fn abort_contracted_selection(&mut self) -> RusticolResult<()> {
+        self.executor.clear_families()?;
+        self.executor.resolver_mut().clear_resolved_bindings();
+        self.pending_contracted_family = None;
+        self.contracted_family = None;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(super) fn fail_contracted_execution_at_for_test(&mut self, attempt: Option<usize>) {
+        self.contracted_test_execution_attempt = 0;
+        self.contracted_test_fail_execution_at = attempt;
+    }
+
+    #[cfg(test)]
+    pub(super) const fn contracted_max_live_query_outcomes_for_test(&self) -> usize {
+        self.contracted_max_live_query_outcomes
     }
 
     fn promote_pending_family(&mut self) -> RusticolResult<()> {
@@ -778,6 +1710,34 @@ impl OnTheFlyNativeRuntime {
         self.families.clear();
         self.families.push(family);
         self.last_family = Some(0);
+    }
+
+    fn promote_pending_contracted_family(&mut self) -> RusticolResult<()> {
+        let Some(family) = self.pending_contracted_family.as_ref() else {
+            return Ok(());
+        };
+        let executor_handle = if family.census.is_some() {
+            let handle = self.executor.active_retained_handle().ok_or_else(|| {
+                RusticolError::internal(
+                    "successful on-the-fly contracted family has no retained executor handle",
+                )
+            })?;
+            self.executor
+                .resolver_mut()
+                .commit_pending_resolved_bindings()?;
+            Some(handle)
+        } else {
+            self.executor.clear_families()?;
+            self.executor.resolver_mut().clear_resolved_bindings();
+            None
+        };
+        let mut family = self
+            .pending_contracted_family
+            .take()
+            .expect("validated on-the-fly contracted pending family disappeared during promotion");
+        family.executor_handle = executor_handle;
+        self.contracted_family = Some(family);
+        Ok(())
     }
 
     fn prepare_runtime_parameters(&mut self, runtime_values: &[f64]) -> RusticolResult<()> {
@@ -925,6 +1885,562 @@ impl OnTheFlyNativeRuntime {
         Ok((report, parameter_setup, input_setup, execution))
     }
 
+    fn execute_amplitudes_unprofiled(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<()> {
+        let candidate_pending = self.pending_family.is_some();
+        let result = self.execute_amplitudes_unprofiled_inner(
+            point_major_momenta,
+            point_count,
+            runtime_parameters,
+        );
+        if result.is_err() && candidate_pending {
+            self.discard_pending_lc_queries()?;
+        }
+        result
+    }
+
+    fn execute_amplitudes_unprofiled_inner(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<()> {
+        if point_count == 0 {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly evaluation requires at least one point",
+            ));
+        }
+        self.ensure_point_capacity(point_count)?;
+        self.prepare_runtime_parameters(runtime_parameters)?;
+
+        if self
+            .current_family()
+            .is_some_and(|family| family.census.is_none())
+        {
+            self.promote_pending_family()?;
+            return Ok(());
+        }
+
+        let source_major_len = on_the_fly_source_major_momenta_into(
+            &self.seed,
+            point_major_momenta,
+            point_count,
+            4,
+            &mut self.source_momenta_scratch,
+        )?;
+        let output_len = self.ensure_amplitude_scratch(point_count)?;
+        self.executor.execute_into_unprofiled(
+            &self.source_momenta_scratch[..source_major_len],
+            point_count,
+            &mut self.amplitude_scratch[..output_len],
+        )?;
+        // A cold family becomes reusable only after its first successful
+        // prepared-kernel execution.
+        self.promote_pending_family()?;
+        Ok(())
+    }
+
+    fn ensure_contracted_point_capacity(&mut self, point_count: u32) -> RusticolResult<()> {
+        let Some(prepared) = self.current_contracted_family() else {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly contracted evaluation requires prepared queries",
+            ));
+        };
+        if point_count > prepared.logical_point_capacity {
+            self.reuse_current_contracted_queries(point_count)?;
+        }
+        Ok(())
+    }
+
+    fn ensure_contracted_amplitude_scratch(&mut self, point_count: u32) -> RusticolResult<usize> {
+        let query_count = self
+            .current_contracted_family()
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted evaluation requires prepared queries",
+                )
+            })?
+            .amplitude_destinations
+            .iter()
+            .filter(|destination| destination.is_some())
+            .count();
+        let required = query_count
+            .checked_mul(point_count as usize)
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted amplitude shape exceeds usize",
+                )
+            })?;
+        if self.amplitude_scratch.len() < required {
+            self.amplitude_scratch
+                .try_reserve_exact(required - self.amplitude_scratch.len())
+                .map_err(|error| {
+                    RusticolError::invalid_argument(format!(
+                        "on-the-fly contracted amplitude workspace allocation failed: {error}"
+                    ))
+                })?;
+            self.amplitude_scratch.resize(required, (0.0, 0.0));
+        }
+        Ok(required)
+    }
+
+    fn execute_contracted_amplitudes(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<(
+        OnTheFlyQueryFamilyExecutionReportV1,
+        Duration,
+        Duration,
+        Duration,
+    )> {
+        #[cfg(test)]
+        {
+            let attempt = self.contracted_test_execution_attempt;
+            self.contracted_test_execution_attempt = self
+                .contracted_test_execution_attempt
+                .checked_add(1)
+                .expect("contracted test execution-attempt count exceeds usize");
+            if self.contracted_test_fail_execution_at == Some(attempt) {
+                return Err(RusticolError::internal(
+                    "injected on-the-fly contracted tile failure",
+                ));
+            }
+        }
+        let candidate_pending = self.pending_contracted_family.is_some();
+        let result = self.execute_contracted_amplitudes_inner(
+            point_major_momenta,
+            point_count,
+            runtime_parameters,
+        );
+        if result.is_err() && candidate_pending {
+            self.discard_pending_contracted_queries()?;
+        }
+        result
+    }
+
+    fn execute_contracted_amplitudes_inner(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<(
+        OnTheFlyQueryFamilyExecutionReportV1,
+        Duration,
+        Duration,
+        Duration,
+    )> {
+        if point_count == 0 {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly contracted evaluation requires at least one point",
+            ));
+        }
+        self.ensure_contracted_point_capacity(point_count)?;
+
+        let parameter_started = Instant::now();
+        self.prepare_runtime_parameters(runtime_parameters)?;
+        let parameter_setup = parameter_started.elapsed();
+        if self
+            .current_contracted_family()
+            .is_some_and(|family| family.census.is_none())
+        {
+            let cache_hit = self.pending_contracted_family.is_none();
+            self.promote_pending_contracted_family()?;
+            return Ok((
+                OnTheFlyQueryFamilyExecutionReportV1 {
+                    cache_hit,
+                    ..OnTheFlyQueryFamilyExecutionReportV1::default()
+                },
+                parameter_setup,
+                Duration::ZERO,
+                Duration::ZERO,
+            ));
+        }
+
+        let input_started = Instant::now();
+        let source_major_len = on_the_fly_source_major_momenta_into(
+            &self.seed,
+            point_major_momenta,
+            point_count,
+            4,
+            &mut self.source_momenta_scratch,
+        )?;
+        let input_setup = input_started.elapsed();
+        let output_len = self.ensure_contracted_amplitude_scratch(point_count)?;
+        let execution_started = Instant::now();
+        let report = self.executor.execute_into(
+            &self.source_momenta_scratch[..source_major_len],
+            point_count,
+            &mut self.amplitude_scratch[..output_len],
+        )?;
+        let execution = execution_started.elapsed();
+        self.promote_pending_contracted_family()?;
+        Ok((report, parameter_setup, input_setup, execution))
+    }
+
+    fn execute_contracted_amplitudes_unprofiled(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<()> {
+        #[cfg(test)]
+        {
+            let attempt = self.contracted_test_execution_attempt;
+            self.contracted_test_execution_attempt = self
+                .contracted_test_execution_attempt
+                .checked_add(1)
+                .expect("contracted test execution-attempt count exceeds usize");
+            if self.contracted_test_fail_execution_at == Some(attempt) {
+                return Err(RusticolError::internal(
+                    "injected on-the-fly contracted tile failure",
+                ));
+            }
+        }
+        let candidate_pending = self.pending_contracted_family.is_some();
+        let result = self.execute_contracted_amplitudes_unprofiled_inner(
+            point_major_momenta,
+            point_count,
+            runtime_parameters,
+        );
+        if result.is_err() && candidate_pending {
+            self.discard_pending_contracted_queries()?;
+        }
+        result
+    }
+
+    fn execute_contracted_amplitudes_unprofiled_inner(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<()> {
+        if point_count == 0 {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly contracted evaluation requires at least one point",
+            ));
+        }
+        self.ensure_contracted_point_capacity(point_count)?;
+        self.prepare_runtime_parameters(runtime_parameters)?;
+        if self
+            .current_contracted_family()
+            .is_some_and(|family| family.census.is_none())
+        {
+            self.promote_pending_contracted_family()?;
+            return Ok(());
+        }
+
+        let source_major_len = on_the_fly_source_major_momenta_into(
+            &self.seed,
+            point_major_momenta,
+            point_count,
+            4,
+            &mut self.source_momenta_scratch,
+        )?;
+        let output_len = self.ensure_contracted_amplitude_scratch(point_count)?;
+        self.executor.execute_into_unprofiled(
+            &self.source_momenta_scratch[..source_major_len],
+            point_count,
+            &mut self.amplitude_scratch[..output_len],
+        )?;
+        self.promote_pending_contracted_family()?;
+        Ok(())
+    }
+
+    /// Evaluate a contracted NLC/full color metric without constructing a
+    /// diagnostic report or reading phase clocks.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn run_contracted_f64_into_unprofiled(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+        normalization_factor: f64,
+        contraction: &RecurrenceColorContraction,
+        point_tile_size: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        validate_contracted_run_shape(
+            point_major_momenta,
+            point_count,
+            normalization_factor,
+            contraction,
+            point_tile_size,
+            output.len(),
+            point_count as usize,
+        )?;
+        output.fill(0.0);
+        let point_stride = point_major_momenta.len() / point_count as usize;
+        let helicity_count = self
+            .current_contracted_family()
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted total requires prepared queries",
+                )
+            })?
+            .helicity_ordinals
+            .len();
+        for point_start in (0..point_count as usize).step_by(point_tile_size) {
+            let tile_count = point_tile_size.min(point_count as usize - point_start);
+            let input_start = point_start * point_stride;
+            let input_end = input_start + tile_count * point_stride;
+            self.execute_contracted_amplitudes_unprofiled(
+                &point_major_momenta[input_start..input_end],
+                u32::try_from(tile_count).map_err(|_| {
+                    RusticolError::invalid_argument("on-the-fly contracted tile count exceeds u32")
+                })?,
+                runtime_parameters,
+            )?;
+            let family = self
+                .current_contracted_family()
+                .expect("successful on-the-fly contracted execution lost its prepared family");
+            reduce_contracted_color(
+                contraction.runtime_entries(),
+                &family.amplitude_destinations,
+                &self.amplitude_scratch,
+                tile_count,
+                helicity_count,
+                family.structural_color_count,
+                normalization_factor,
+                |point, _helicity, value| output[point_start + point] += value,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Evaluate a contracted NLC/full color metric into one total per point.
+    /// The manifest tile size bounds both the prepared numeric family and the
+    /// H x S complex-amplitude scratch.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn run_contracted_f64_into(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+        normalization_factor: f64,
+        contraction: &RecurrenceColorContraction,
+        point_tile_size: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<(OnTheFlyQueryFamilyExecutionReportV1, RuntimeProfile)> {
+        validate_contracted_run_shape(
+            point_major_momenta,
+            point_count,
+            normalization_factor,
+            contraction,
+            point_tile_size,
+            output.len(),
+            point_count as usize,
+        )?;
+        output.fill(0.0);
+        let total_started = Instant::now();
+        let mut aggregate_profile = RuntimeProfile::default();
+        let mut aggregate_report = None;
+        let point_stride = point_major_momenta.len() / point_count as usize;
+        let helicity_count = self
+            .current_contracted_family()
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted total requires prepared queries",
+                )
+            })?
+            .helicity_ordinals
+            .len();
+        for point_start in (0..point_count as usize).step_by(point_tile_size) {
+            let tile_count = point_tile_size.min(point_count as usize - point_start);
+            let input_start = point_start.checked_mul(point_stride).ok_or_else(|| {
+                RusticolError::invalid_argument("on-the-fly contracted tile offset exceeds usize")
+            })?;
+            let input_end = input_start
+                .checked_add(tile_count.checked_mul(point_stride).ok_or_else(|| {
+                    RusticolError::invalid_argument(
+                        "on-the-fly contracted tile shape exceeds usize",
+                    )
+                })?)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(
+                        "on-the-fly contracted tile range exceeds usize",
+                    )
+                })?;
+            let tile_started = Instant::now();
+            let (report, parameter_setup, input_setup, execution) = self
+                .execute_contracted_amplitudes(
+                    &point_major_momenta[input_start..input_end],
+                    u32::try_from(tile_count).map_err(|_| {
+                        RusticolError::invalid_argument(
+                            "on-the-fly contracted tile count exceeds u32",
+                        )
+                    })?,
+                    runtime_parameters,
+                )?;
+            let reduction_started = Instant::now();
+            let family = self
+                .current_contracted_family()
+                .expect("successful on-the-fly contracted execution lost its prepared family");
+            reduce_contracted_color(
+                contraction.runtime_entries(),
+                &family.amplitude_destinations,
+                &self.amplitude_scratch,
+                tile_count,
+                helicity_count,
+                family.structural_color_count,
+                normalization_factor,
+                |point, _helicity, value| output[point_start + point] += value,
+            )?;
+            let reduction = reduction_started.elapsed();
+            let tile_profile = profile_from_report(
+                tile_started.elapsed(),
+                parameter_setup,
+                input_setup,
+                execution,
+                reduction,
+                input_end - input_start,
+                u32::try_from(tile_count).expect("validated tile count"),
+                report,
+            );
+            aggregate_profile.add_sector(&tile_profile);
+            merge_execution_report(&mut aggregate_report, report)?;
+        }
+        aggregate_profile.total_s = profile_duration_seconds(total_started.elapsed());
+        Ok((aggregate_report.unwrap_or_default(), aggregate_profile))
+    }
+
+    /// Evaluate contracted values in `[point][selected_helicity][1]` order.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn run_contracted_resolved_f64_into(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+        normalization_factor: f64,
+        contraction: &RecurrenceColorContraction,
+        point_tile_size: usize,
+        helicity_count: usize,
+        output: &mut [f64],
+    ) -> RusticolResult<(OnTheFlyQueryFamilyExecutionReportV1, RuntimeProfile)> {
+        let expected_output = (point_count as usize)
+            .checked_mul(helicity_count)
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted resolved shape exceeds usize",
+                )
+            })?;
+        validate_contracted_run_shape(
+            point_major_momenta,
+            point_count,
+            normalization_factor,
+            contraction,
+            point_tile_size,
+            output.len(),
+            expected_output,
+        )?;
+        let prepared_helicity_count = self
+            .current_contracted_family()
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted resolved evaluation requires prepared queries",
+                )
+            })?
+            .helicity_ordinals
+            .len();
+        if helicity_count != prepared_helicity_count {
+            return Err(RusticolError::integrity(
+                "on-the-fly contracted resolved helicity shape disagrees with its prepared family",
+            ));
+        }
+        output.fill(0.0);
+        let total_started = Instant::now();
+        let mut aggregate_profile = RuntimeProfile::default();
+        let mut aggregate_report = None;
+        let point_stride = point_major_momenta.len() / point_count as usize;
+        for point_start in (0..point_count as usize).step_by(point_tile_size) {
+            let tile_count = point_tile_size.min(point_count as usize - point_start);
+            let input_start = point_start * point_stride;
+            let input_end = input_start + tile_count * point_stride;
+            let tile_started = Instant::now();
+            let (report, parameter_setup, input_setup, execution) = self
+                .execute_contracted_amplitudes(
+                    &point_major_momenta[input_start..input_end],
+                    u32::try_from(tile_count).map_err(|_| {
+                        RusticolError::invalid_argument(
+                            "on-the-fly contracted tile count exceeds u32",
+                        )
+                    })?,
+                    runtime_parameters,
+                )?;
+            let reduction_started = Instant::now();
+            let family = self
+                .current_contracted_family()
+                .expect("successful on-the-fly contracted execution lost its prepared family");
+            reduce_contracted_color(
+                contraction.runtime_entries(),
+                &family.amplitude_destinations,
+                &self.amplitude_scratch,
+                tile_count,
+                helicity_count,
+                family.structural_color_count,
+                normalization_factor,
+                |point, helicity, value| {
+                    let destination = (point_start + point) * helicity_count + helicity;
+                    output[destination] += value;
+                },
+            )?;
+            let reduction = reduction_started.elapsed();
+            let tile_profile = profile_from_report(
+                tile_started.elapsed(),
+                parameter_setup,
+                input_setup,
+                execution,
+                reduction,
+                input_end - input_start,
+                u32::try_from(tile_count).expect("validated tile count"),
+                report,
+            );
+            aggregate_profile.add_sector(&tile_profile);
+            merge_execution_report(&mut aggregate_report, report)?;
+        }
+        aggregate_profile.total_s = profile_duration_seconds(total_started.elapsed());
+        Ok((aggregate_report.unwrap_or_default(), aggregate_profile))
+    }
+
+    /// Evaluate total LC matrix elements without constructing a diagnostic
+    /// report or reading phase clocks.
+    pub(super) fn run_f64_into_unprofiled(
+        &mut self,
+        point_major_momenta: &[f64],
+        point_count: u32,
+        runtime_parameters: &[f64],
+        normalization_factor: f64,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        if output.len() != point_count as usize
+            || !normalization_factor.is_finite()
+            || normalization_factor < 0.0
+        {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly total output shape or normalization is invalid",
+            ));
+        }
+        self.execute_amplitudes_unprofiled(point_major_momenta, point_count, runtime_parameters)?;
+        output.fill(0.0);
+        let family = self
+            .current_family()
+            .expect("successful on-the-fly execution lost its prepared family");
+        reduce_total_into(
+            &family.requests,
+            &family.amplitude_destinations,
+            &self.amplitude_scratch,
+            point_count as usize,
+            normalization_factor,
+            output,
+        )?;
+        Ok(())
+    }
+
     /// Evaluate total LC matrix elements into the same one-value-per-point
     /// shape consumed by the existing `Runtime.evaluate_into` path.
     pub(super) fn run_f64_into(
@@ -1045,6 +2561,146 @@ impl OnTheFlyNativeRuntime {
         );
         Ok((report, profile))
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_contracted_run_shape(
+    point_major_momenta: &[f64],
+    point_count: u32,
+    normalization_factor: f64,
+    contraction: &RecurrenceColorContraction,
+    point_tile_size: usize,
+    actual_output_len: usize,
+    expected_output_len: usize,
+) -> RusticolResult<()> {
+    if point_count == 0
+        || point_tile_size == 0
+        || point_major_momenta.len() % point_count as usize != 0
+        || !normalization_factor.is_finite()
+        || normalization_factor < 0.0
+        || actual_output_len != expected_output_len
+    {
+        return Err(RusticolError::invalid_argument(
+            "on-the-fly contracted input, output, tile, or normalization shape is invalid",
+        ));
+    }
+    if contraction.component_count() != 1
+        || contraction.destination_count() == 0
+        || contraction.factorization().is_some()
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly contracted execution requires an expanded one-component metric",
+        ));
+    }
+    Ok(())
+}
+
+/// Apply A-dagger C A independently for each selected physical helicity.
+/// Structural-zero amplitudes are represented by absent projection entries
+/// and therefore make every touching bilinear term exactly zero.
+#[allow(clippy::too_many_arguments)]
+fn reduce_contracted_color(
+    entries: impl IntoIterator<Item = RuntimeColorContractionEntry>,
+    amplitude_destinations: &[Option<usize>],
+    amplitudes: &[(f64, f64)],
+    point_count: usize,
+    helicity_count: usize,
+    structural_color_count: usize,
+    normalization_factor: f64,
+    mut accumulate: impl FnMut(usize, usize, f64),
+) -> RusticolResult<()> {
+    let projection_len = helicity_count
+        .checked_mul(structural_color_count)
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("on-the-fly contracted projection shape exceeds usize")
+        })?;
+    if amplitude_destinations.len() != projection_len {
+        return Err(RusticolError::integrity(
+            "on-the-fly contracted amplitude projection has the wrong shape",
+        ));
+    }
+    for entry in entries {
+        let left_color = usize::try_from(entry.left_destination_id).map_err(|_| {
+            RusticolError::artifact("on-the-fly contracted left destination exceeds usize")
+        })?;
+        let right_color = usize::try_from(entry.right_destination_id).map_err(|_| {
+            RusticolError::artifact("on-the-fly contracted right destination exceeds usize")
+        })?;
+        if left_color >= structural_color_count || right_color >= structural_color_count {
+            return Err(RusticolError::integrity(
+                "on-the-fly contracted metric destination is outside its structural basis",
+            ));
+        }
+        for helicity in 0..helicity_count {
+            let base = helicity * structural_color_count;
+            let (Some(left_destination), Some(right_destination)) = (
+                amplitude_destinations[base + left_color],
+                amplitude_destinations[base + right_color],
+            ) else {
+                continue;
+            };
+            let left_base = left_destination.checked_mul(point_count).ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted left amplitude offset exceeds usize",
+                )
+            })?;
+            let right_base = right_destination.checked_mul(point_count).ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly contracted right amplitude offset exceeds usize",
+                )
+            })?;
+            if left_base
+                .checked_add(point_count)
+                .is_none_or(|end| end > amplitudes.len())
+                || right_base
+                    .checked_add(point_count)
+                    .is_none_or(|end| end > amplitudes.len())
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly contracted amplitude destination is absent",
+                ));
+            }
+            for point in 0..point_count {
+                let (left_re, left_im) = amplitudes[left_base + point];
+                let (right_re, right_im) = amplitudes[right_base + point];
+                let value = normalization_factor
+                    * entry.contract_real_bilinear(left_re, left_im, right_re, right_im);
+                accumulate(point, helicity, value);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn merge_execution_report(
+    aggregate: &mut Option<OnTheFlyQueryFamilyExecutionReportV1>,
+    report: OnTheFlyQueryFamilyExecutionReportV1,
+) -> RusticolResult<()> {
+    let Some(target) = aggregate.as_mut() else {
+        *aggregate = Some(report);
+        return Ok(());
+    };
+    target.cache_hit &= report.cache_hit;
+    macro_rules! checked_add_report_field {
+        ($field:ident) => {
+            target.$field = target.$field.checked_add(report.$field).ok_or_else(|| {
+                RusticolError::invalid_argument(concat!(
+                    "on-the-fly contracted execution report ",
+                    stringify!($field),
+                    " exceeds u32"
+                ))
+            })?;
+        };
+    }
+    checked_add_report_field!(source_calls);
+    checked_add_report_field!(source_rows);
+    checked_add_report_field!(contribution_calls);
+    checked_add_report_field!(contribution_rows);
+    checked_add_report_field!(finalization_calls);
+    checked_add_report_field!(finalization_rows);
+    checked_add_report_field!(closure_calls);
+    checked_add_report_field!(closure_rows);
+    Ok(())
 }
 
 fn reduce_total_into(
@@ -1567,5 +3223,89 @@ mod tests {
         let mut resolved = [0.0];
         reduce_resolved_into(&requests, &[None], &[], 1, 1.0, layout, &mut resolved).unwrap();
         assert_eq!(resolved, [0.0]);
+    }
+
+    #[test]
+    fn contracted_metric_preserves_imaginary_off_diagonal_terms_per_helicity() {
+        let entries = [
+            RuntimeColorContractionEntry {
+                left_destination_id: 0,
+                right_destination_id: 0,
+                coefficient_re: 1.0,
+                coefficient_im: 0.0,
+            },
+            RuntimeColorContractionEntry {
+                left_destination_id: 0,
+                right_destination_id: 1,
+                coefficient_re: 2.0,
+                coefficient_im: 3.0,
+            },
+            RuntimeColorContractionEntry {
+                left_destination_id: 1,
+                right_destination_id: 1,
+                coefficient_re: 0.5,
+                coefficient_im: 0.0,
+            },
+        ];
+        // H0 owns both structural amplitudes. H1's second structural query is
+        // an authenticated zero and every bilinear touching it must vanish.
+        let projection = [Some(0), Some(1), Some(2), None];
+        let amplitudes = [(1.0, 2.0), (3.0, 4.0), (2.0, 0.0)];
+        let mut resolved = [0.0; 2];
+        reduce_contracted_color(
+            entries,
+            &projection,
+            &amplitudes,
+            1,
+            2,
+            2,
+            2.0,
+            |point, helicity, value| resolved[point * 2 + helicity] += value,
+        )
+        .unwrap();
+
+        // Re((2+3i) * (1+2i) * conj(3+4i)) = 16. The complete
+        // H0 metric is 5 + 16 + 12.5; H1 retains only |2|^2.
+        assert_eq!(resolved, [67.0, 8.0]);
+        assert_eq!(resolved.iter().sum::<f64>(), 75.0);
+    }
+
+    #[test]
+    fn contracted_metric_rejects_projection_and_destination_shape_mismatches() {
+        let entry = RuntimeColorContractionEntry {
+            left_destination_id: 0,
+            right_destination_id: 1,
+            coefficient_re: 1.0,
+            coefficient_im: 0.0,
+        };
+        assert!(
+            reduce_contracted_color(
+                [entry],
+                &[Some(0)],
+                &[(1.0, 0.0)],
+                1,
+                1,
+                2,
+                1.0,
+                |_, _, _| {},
+            )
+            .is_err()
+        );
+        assert!(
+            reduce_contracted_color(
+                [RuntimeColorContractionEntry {
+                    right_destination_id: 2,
+                    ..entry
+                }],
+                &[Some(0), Some(1)],
+                &[(1.0, 0.0), (1.0, 0.0)],
+                1,
+                1,
+                2,
+                1.0,
+                |_, _, _| {},
+            )
+            .is_err()
+        );
     }
 }

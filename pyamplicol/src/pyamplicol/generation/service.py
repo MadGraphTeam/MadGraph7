@@ -172,6 +172,7 @@ from .recurrence_numerical_current_warmup import (
     validate_recurrence_numerical_evidence_fallback,
 )
 from .recurrence_physics import (
+    build_on_the_fly_color_contraction,
     build_on_the_fly_public_metadata,
     build_on_the_fly_runtime_metadata,
     build_recurrence_color_contraction,
@@ -1119,7 +1120,14 @@ def _on_the_fly_selector_census_v1(
         color_flow_count = 1
     census = {
         "physical_helicity_count": helicity_count,
-        "physical_color_flow_count": color_flow_count,
+        # Contracted NLC/full exposes one physical result; ``color_flow_count``
+        # remains the private structural-selector domain bound by the color
+        # payload destinations.
+        "physical_color_flow_count": (
+            color_flow_count
+            if getattr(process, "color_accuracy", "lc") == "lc"
+            else 1
+        ),
     }
     for name, count in census.items():
         if count < 1 or count > _U64_MAX:
@@ -1131,6 +1139,8 @@ def _on_the_fly_selector_census_v1(
 
 def _on_the_fly_validation_selectors_v1(
     projection: OnTheFlyProcessSeedProjectionV1,
+    *,
+    color_accuracy: str = "lc",
 ) -> Mapping[str, tuple[str, ...]]:
     """Choose one deterministic compact selector without opening dense axes."""
 
@@ -1148,8 +1158,60 @@ def _on_the_fly_validation_selectors_v1(
     return MappingProxyType(
         {
             "helicities": (helicity_id,),
-            "color_flows": ("1",),
+            "color_flows": (() if color_accuracy in {"nlc", "full"} else ("1",)),
         }
+    )
+
+
+def _build_on_the_fly_contracted_color_payload_v1(
+    color_plan: GenericColorPlan,
+) -> _OnTheFlyContractedColorPayloadV1:
+    """Encode the contracted metric over compact structural selector ordinals."""
+
+    contraction, sector_owner_ids, owner_sector_ids = (
+        build_on_the_fly_color_contraction(color_plan)
+    )
+    group_count = len(owner_sector_ids)
+    destination_by_group = tuple(range(group_count))
+    payload = encode_recurrence_color_contraction(
+        contraction,
+        sector_count=color_plan.sector_count,
+        component_count=1,
+        ordered_group_ids=tuple(range(group_count)),
+        destination_by_group=destination_by_group,
+        destination_count=group_count,
+        group_sector_ids=owner_sector_ids,
+        group_component_ids=(0,) * group_count,
+        sector_owner_ids=sector_owner_ids,
+        exact_coefficients=recurrence_exact_color_coefficients(
+            color_plan,
+            contraction,
+            owner_sector_ids,
+        ),
+    )
+    semantic_digest = recurrence_color_contraction_digest(payload)
+    summary = MappingProxyType(
+        {
+            "abi": RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+            "color_accuracy": contraction.color_accuracy,
+            "storage": "expanded",
+            "includes_color_factor": contraction.includes_color_factor,
+            "group_count": group_count,
+            "sector_count": color_plan.sector_count,
+            "active_sector_count": group_count,
+            "component_count": 1,
+            "destination_count": group_count,
+            "entry_count": len(contraction.entries),
+            "logical_entry_count": contraction.logical_entry_count,
+            "semantic_digest": semantic_digest,
+            "factorization": None,
+        }
+    )
+    return _OnTheFlyContractedColorPayloadV1(
+        payload=payload,
+        summary=summary,
+        owner_sector_ids=owner_sector_ids,
+        destination_by_group=destination_by_group,
     )
 
 
@@ -2196,6 +2258,14 @@ class _ProjectedOnTheFlyProcess:
 
 
 @dataclass(frozen=True, slots=True)
+class _OnTheFlyContractedColorPayloadV1:
+    payload: bytes
+    summary: Mapping[str, object]
+    owner_sector_ids: tuple[int, ...]
+    destination_by_group: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _RecurrenceModelInputs:
     bundle: PreparedModelBundle
     catalog: RecurrenceTemplateCatalog
@@ -3225,6 +3295,7 @@ class GenerationBackend:
                 coupling_policy,
             ),
             coupling_order_limits=explicit_limits,
+            reference_color_order=self._process_selection.reference_color_order,
         )
         return _ProjectedOnTheFlyProcess(
             index=index,
@@ -3284,7 +3355,28 @@ class GenerationBackend:
             process_seed_identity,
             projection.seed,
         )
-        validation_selectors = _on_the_fly_validation_selectors_v1(projection.seed)
+        color_accuracy = str(expanded.process_ir.color_accuracy)
+        contracted_color = None
+        if color_accuracy in {"nlc", "full"}:
+            if projection.color_plan is None:
+                raise GenerationError(
+                    "on-the-fly contracted-color projection has no color plan"
+                )
+            try:
+                contracted_color = _build_on_the_fly_contracted_color_payload_v1(
+                    projection.color_plan
+                )
+            except ValueError as exc:
+                raise GenerationError(
+                    f"process {process_id!r} on-the-fly color contraction failed: "
+                    f"{exc}"
+                ) from exc
+        elif projection.color_plan is not None:
+            raise GenerationError("LC on-the-fly projection carries a color plan")
+        validation_selectors = _on_the_fly_validation_selectors_v1(
+            projection.seed,
+            color_accuracy=color_accuracy,
+        )
         selector_census = _on_the_fly_selector_census_v1(
             projection.seed,
             expanded.process_ir,
@@ -3364,17 +3456,28 @@ class GenerationBackend:
             ),
             runtime_metadata=runtime_metadata,
             selector_policy={
-                "color_coverage": "complete",
+                "color_coverage": (
+                    "complete" if contracted_color is None else "contracted"
+                ),
                 "reference_color_word": (
                     None
                     if selection.reference_color_order is None
                     else list(selection.reference_color_order)
                 ),
                 "trace_reflections_folded": bool(
-                    model.lc_trace_reflection_equivalence_is_proven(expanded.process_ir)
+                    contracted_color is None
+                    and model.lc_trace_reflection_equivalence_is_proven(
+                        expanded.process_ir
+                    )
                 ),
                 "selector_census": selector_census,
             },
+            color_contraction_payload=(
+                None if contracted_color is None else contracted_color.payload
+            ),
+            color_contraction_summary=(
+                None if contracted_color is None else contracted_color.summary
+            ),
             point_tile_size=run.evaluator.recurrence.point_tile_size,
             query_construction_threads=query_construction_threads,
             validation_point=points[0],
@@ -3382,7 +3485,9 @@ class GenerationBackend:
                 "on_the_fly": {
                     "coupling_order_policy": coupling_policy,
                     "coupling_order_limits": dict(explicit_limits),
-                    "selector_coverage": "complete",
+                    "selector_coverage": (
+                        "complete" if contracted_color is None else "contracted"
+                    ),
                 }
             },
         )
@@ -5761,6 +5866,9 @@ class GenerationBackend:
         if not expected_ids.issubset(actual_ids):
             raise GenerationError("generated artifact omitted concrete processes")
         by_path = {record.path: record for record in manifest.payloads}
+        process_record_by_id = {
+            str(process["id"]): process for process in manifest.processes
+        }
         process_total = len(process_ids)
         for process_index, process_id in enumerate(process_ids, start=1):
             if progress is not None:
@@ -5782,6 +5890,11 @@ class GenerationBackend:
             }
             if self._on_the_fly_execution_enabled:
                 required.add(f"{prefix}/on-the-fly-runtime.pacbin")
+                if process_record_by_id[process_id].get("color_accuracy") in {
+                    "nlc",
+                    "full",
+                }:
+                    required.add(f"{prefix}/on-the-fly-color.bin")
             if not required.issubset(by_path):
                 raise GenerationError(
                     f"artifact payload set is incomplete for {process_id!r}"
@@ -5824,23 +5937,31 @@ class GenerationBackend:
                         )
                     helicities = raw_selectors.get("helicities")
                     color_flows = raw_selectors.get("color_flows")
+                    contracted_color = (
+                        process_record_by_id[process_id].get("color_accuracy")
+                        in {"nlc", "full"}
+                    )
                     if (
                         not isinstance(helicities, tuple)
                         or len(helicities) != 1
                         or not isinstance(helicities[0], str)
                         or not helicities[0].startswith("h:")
                         or not isinstance(color_flows, tuple)
-                        or color_flows != ("1",)
+                        or color_flows
+                        != (() if contracted_color else ("1",))
                     ):
                         raise GenerationError(
                             "on-the-fly validation compact selector is malformed "
                             f"for {process_id!r}"
                         )
-                    selector_label = "compact helicity+flow"
-                    selectors = {
-                        "helicities": helicities,
-                        "color_flows": color_flows,
-                    }
+                    selector_label = (
+                        "compact helicity+contracted-color"
+                        if contracted_color
+                        else "compact helicity+flow"
+                    )
+                    selectors = {"helicities": helicities}
+                    if color_flows:
+                        selectors["color_flows"] = color_flows
                     selected_samples = samples[:1]
                     total = runtime.evaluate(selected_samples, **selectors)
                     resolved_total = runtime.evaluate_resolved(
@@ -6013,9 +6134,13 @@ class GenerationBackend:
     def _validate_recurrence_request(self) -> None:
         """Keep recurrence-family requests out of compiled/eager lanes."""
 
-        if self._on_the_fly_execution_enabled and self._color_accuracy != "lc":
+        if self._on_the_fly_execution_enabled and self._color_accuracy not in {
+            "lc",
+            "nlc",
+            "full",
+        }:
             raise GenerationError(
-                "on-the-fly execution currently supports LC only; "
+                "on-the-fly execution supports LC, NLC, and full color; "
                 f"got color.accuracy={self._color_accuracy!r}"
             )
         if self._recurrence_execution_enabled and self._color_accuracy not in {
@@ -6555,6 +6680,7 @@ class GenerationBackend:
             projected.projection.seed,
             process,
         )
+        color_plan = projected.projection.color_plan
         return {
             "key": process.key,
             "process": process.process,
@@ -6564,11 +6690,13 @@ class GenerationBackend:
             "physical_helicity_count": census["physical_helicity_count"],
             "physical_color_flow_count": census["physical_color_flow_count"],
             "color_sector_count": census["physical_color_flow_count"],
-            "color_coverage": "complete",
+            "color_coverage": "complete" if color_plan is None else "contracted",
             "helicity_coverage": "complete",
-            "color_diagnostics": (),
+            "color_diagnostics": (
+                () if color_plan is None else tuple(color_plan.diagnostics)
+            ),
             "coupling_order_limits": self._coupling_order_limits,
-            "color_plan_materialized": False,
+            "color_plan_materialized": color_plan is not None,
             "source_projection_validated": True,
             "native_seed_construction_deferred": True,
             "dag_compilation_deferred": True,

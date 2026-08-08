@@ -425,7 +425,7 @@ def build_on_the_fly_runtime_metadata(
     model: Model,
     normalization: Mapping[str, object],
 ) -> dict[str, object]:
-    """Return only irreducible runtime support for the source-only LC lane."""
+    """Return irreducible runtime support for the source-only OTF lane."""
 
     # The established recurrence implementation below already owns parameter
     # defaults, source masses, external-slot order, and normalization.  Feed it
@@ -730,6 +730,95 @@ def build_recurrence_color_contraction(
             f"could not build recurrence color contraction: {reason or 'unsupported'}"
         )
     return contraction
+
+
+def build_on_the_fly_color_contraction(
+    color_plan: GenericColorPlan,
+) -> tuple[ColorContractionPlan, tuple[int, ...], tuple[int, ...]]:
+    """Build the one-component metric over OTF structural color selectors.
+
+    Full/NLC color plans explicitly contain whole-open-string block-order
+    replicas.  The native query decoder already erases that traversal-only
+    ordering, so one runtime amplitude is requested for each canonical tensor
+    owner and the color metric contracts those owner amplitudes into one public
+    result.
+    """
+
+    if color_plan.color_accuracy not in {"nlc", "full"}:
+        raise ValueError("on-the-fly color contraction requires NLC or full color")
+    if color_plan.trace_reflections_folded:
+        raise ValueError(
+            "on-the-fly contracted color cannot fold trace reflections"
+        )
+    owner_by_sector = on_the_fly_color_sector_owner_map(color_plan)
+    owner_sector_ids = tuple(
+        sector_id
+        for sector_id, owner_id in enumerate(owner_by_sector)
+        if sector_id == owner_id
+    )
+    sector_by_id = {int(sector.id): sector for sector in color_plan.sectors}
+    descriptors = tuple(
+        ColorGroupDescriptor(
+            group_id=group_id,
+            # All structural selectors contribute to the same contracted
+            # component.  A single component forces expanded v3 storage.
+            helicity_key=(),
+            sector_id=sector_id,
+            word=tuple(sector_by_id[sector_id].color_words[0]),
+            helicity_weight=1.0,
+        )
+        for group_id, sector_id in enumerate(owner_sector_ids)
+    )
+    contraction = build_color_contraction_plan(color_plan, descriptors)
+    if contraction is None or not contraction.supported:
+        reason = None if contraction is None else contraction.reason
+        raise ValueError(
+            "could not build on-the-fly color contraction: "
+            f"{reason or 'unsupported'}"
+        )
+    if contraction.repeated_block is not None:
+        raise ValueError(
+            "one-component on-the-fly color contraction must use expanded storage"
+        )
+    return contraction, owner_by_sector, owner_sector_ids
+
+
+def on_the_fly_color_sector_owner_map(
+    color_plan: GenericColorPlan,
+) -> tuple[int, ...]:
+    """Return each full/NLC sector's canonical structural-selector owner.
+
+    Only permutations of complete open strings are aliases.  Reversing a
+    string, trace orientation, and every other physical sector distinction are
+    retained.  Owner sectors appear in the same order as the lazy compact LC
+    selector axis, including an optional ordinary reference flow moved first.
+    """
+
+    sectors = tuple(sorted(color_plan.sectors, key=lambda item: int(item.id)))
+    if tuple(int(sector.id) for sector in sectors) != tuple(range(len(sectors))):
+        raise ValueError("on-the-fly physical color sectors are not densely numbered")
+    if not sectors:
+        raise ValueError("on-the-fly contracted color plan has no physical sectors")
+
+    owner_by_key: dict[tuple[object, ...], int] = {}
+    owners: list[int] = []
+    for sector in sectors:
+        sector_id = int(sector.id)
+        if sector.kind == "open-lines":
+            open_strings = _canonical_open_string_product_key(
+                (
+                    line.fundamental_label,
+                    line.adjoint_labels,
+                    line.antifundamental_label,
+                    line.singlet_labels,
+                )
+                for line in sector.open_color_lines
+            )
+            key: tuple[object, ...] = ("open-lines", open_strings)
+        else:
+            key = (sector.kind, sector_id)
+        owners.append(owner_by_key.setdefault(key, sector_id))
+    return tuple(owners)
 
 
 def recurrence_color_contraction_destinations(

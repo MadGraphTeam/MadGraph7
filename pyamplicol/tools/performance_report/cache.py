@@ -13,14 +13,20 @@ from typing import Any
 
 from .agreements import (
     DIRECT_AGREEMENT_FIELD,
+    DIRECT_AGREEMENT_KINDS,
     INDEPENDENT_AUTHORITY_ABI,
     INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
+    MADGRAPH_COMPARISON_FIELD,
+    MADGRAPH_FULL_COLOUR,
     incoming_agreement_edges,
     independent_numerical_authorities,
+    madgraph_candidate_precision,
     requires_independent_numerical_authority,
     validate_direct_agreement_records,
     validate_lc_common_component,
+    validate_madgraph_comparison_record,
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus
@@ -656,6 +662,7 @@ def _validate_unverified_direct_agreement_coverage(
     }
     if any(
         record.get("status") != ResultStatus.OK.value
+        and record.get("edge_kind") != LC_LEGACY_PYAMPLICOL_COMPONENT
         for record in direct_records
         if isinstance(record, Mapping)
     ):
@@ -843,6 +850,30 @@ def validate_measurement(
                 None if expected_cell is None else expected_cell.cell_id
             ),
         )
+        madgraph_edges = (
+            ()
+            if expected_cell is None
+            else tuple(
+                edge
+                for edge in incoming_agreement_edges(
+                    expected_cell,
+                    catalog=catalog,
+                )
+                if edge.kind == MADGRAPH_FULL_COLOUR
+            )
+        )
+        if madgraph_edges:
+            validate_madgraph_comparison_record(
+                validation.get(MADGRAPH_COMPARISON_FIELD),
+                expected_candidate_id=expected_cell.cell_id,
+                expected_candidate_precision=madgraph_candidate_precision(
+                    expected_cell
+                ),
+            )
+        elif MADGRAPH_COMPARISON_FIELD in validation:
+            raise ValueError(
+                "measurement without a MadGraph edge has MadGraph comparison evidence"
+            )
         selector_contract = measurement.get("selector_contract")
         if expected_cell is not None:
             expects_lc = expected_cell.measurement.accuracy is Accuracy.LC
@@ -918,11 +949,17 @@ def validate_measurement(
             )
         elif (
             expected_cell is not None
-            and expected_cell.measurement.execution_mode
-            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
-            and not requires_independent_numerical_authority(
-                expected_cell,
-                catalog=catalog,
+            and (
+                expected_cell.measurement.execution_mode
+                is ExecutionMode.RECURRENCE
+                or (
+                    expected_cell.measurement.execution_mode
+                    in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+                    and not requires_independent_numerical_authority(
+                        expected_cell,
+                        catalog=catalog,
+                    )
+                )
             )
         ):
             _validate_standalone_internal_validation(measurement, validation)
@@ -1164,14 +1201,7 @@ def schema_document() -> dict[str, object]:
         ]
     }
     direct_identity_properties: dict[str, Any] = {
-        "edge_kind": {
-            "enum": [
-                "builtin-ufo-recurrence",
-                "z-recurrence-cross-mode",
-                "lc-cross-layout-component",
-                "lc-legacy-pyamplicol-component",
-            ]
-        },
+        "edge_kind": {"enum": list(DIRECT_AGREEMENT_KINDS)},
         "value_kind": {"enum": ["matrix_element", LC_COMMON_COMPONENT_FIELD]},
         "baseline_cell_id": {"type": "string", "minLength": 1},
         "candidate_cell_id": {"type": "string", "minLength": 1},
@@ -1472,6 +1502,7 @@ def schema_document() -> dict[str, object]:
             "additionalProperties": False,
         },
         LC_COMMON_COMPONENT_FIELD: lc_common_component,
+        MADGRAPH_COMPARISON_FIELD: {"type": "object"},
         OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD: otf_recurrence_authority,
     }
     validation_record: dict[str, Any] = {

@@ -5,7 +5,8 @@ First create and enter a reset campaign. The executable controller in that
 copy is the authoritative campaign interface:
 
 ```console
-pyamplicol profiling-campaign copy ./my-profiling-campaign
+pyamplicol profiling-campaign copy ./my-profiling-campaign \
+  --local-madgraph /path/to/MG5_aMC
 cd ./my-profiling-campaign
 ./steer_performance_campaign.py --help
 ```
@@ -32,11 +33,13 @@ when those bindings are present, notably in a contributor checkout prepared
 with `just dev-install`; without them it exits with an actionable instruction.
 
 By default, selected cells gain their available active-source numerical
-authority closure, ordered original AmpliCol, recurrence, then compiled/eager.
-Added cells are dependency-only work; independent processes remain parallel,
-and a terminal authority releases its candidate to run unverified. Without a
-configured legacy checkout, recurrence remains available as the authority for
-compiled/eager work. Pass `--no-dependencies-added` to suppress optional
+authority closure. MadGraph standalone is authoritative for the full-colour
+UFO-SM views, and recurrence is authoritative for the remaining compiled/eager
+cross-mode comparisons. Original AmpliCol is an optional legacy diagnostic and
+performance denominator only. Added cells are dependency-only work;
+independent processes remain parallel, and a terminal required authority
+releases its candidate to run unverified. Pass `--no-dependencies-added` to
+suppress optional
 authority expansion while retaining every hard construction and
 selector/provider dependency. A selection that directly or automatically
 includes `amplicol` requires a clean, complete checkout exposing the PR #12
@@ -46,6 +49,24 @@ probe sources and Make targets. Supply it with
 option overrides the saved default. The `amplicol_with_patches` branch works
 now, and a compatible upstream revision will work unchanged after the PR is
 merged.
+
+The MadGraph full-colour cells require an installation containing executable
+`bin/mg5_aMC` and the standard `models/sm` UFO model. Record it with the copy
+command's `--local-madgraph PATH`, or supply/override it for one invocation via
+`run --madgraph PATH`. The campaign times the streamed `generate`, `output
+standalone`, `launch -f` sequence, including standalone compilation, and uses a
+custom Fortran driver for the reference value and repeated-evaluation timing.
+pyAmpliCol evaluates the shared comparison point at precision 200 for
+recurrence, compiled, and eager, and at the supported precision 16 for OTF;
+the strict relative tolerance is `1e-10` for every candidate.
+
+Use `run --fail-fast` for multiplicity-wave validation: all selected `n=1`
+work completes before `n=2` is released, and the campaign stops at the first
+required mismatch. A disagreement with legacy AmpliCol is non-terminal; only
+its generation-time token is rendered red, while the rest of the existing
+table remains unchanged. OTF NLC and full colour are genuine contracted
+workloads with no flow selector and require their accuracy-specific runtime
+capability; OTF LC retains the selected-flow and all-flow workloads.
 
 Inside a contributor checkout it re-executes with the repository `.venv`; an
 installed copy uses the wheel's Python runtime. Both modes reuse compatible
@@ -124,7 +145,7 @@ Replaying `blocked_dependency.txt` automatically includes required
 prerequisites.
 `unverified.txt` needs no `--force-refresh`: an unverified timing diagnostic is
 not a successful current and is automatically rerun against a later available
-recurrence or AmpliCol authority.
+recurrence or MadGraph authority.
 
 The default lifecycle retains every heavy attempt payload. Use
 `--cleanup-artifacts` to move obsolete sealed attempts into compact history,
@@ -135,9 +156,9 @@ artifact borrowed by an equivalent current remains protected.
 Running `pyamplicol profiling-campaign copy DEST --force` again resets only
 `DEST/campaign_artifacts`, the managed PDF, the campaign summary-ID directory,
 known lineage/LaTeX build byproducts, and the packaged template files. It
-preserves unrelated files and the recorded original-AmpliCol checkout unless a
-new `--local-amplicol` value is supplied. Stop active campaign processes before
-resetting their destination.
+preserves unrelated files and the recorded original-AmpliCol and MadGraph
+paths unless new `--local-amplicol` or `--local-madgraph` values are supplied.
+Stop active campaign processes before resetting their destination.
 
 Capture a running dashboard from another terminal without attaching to or
 changing the campaign:

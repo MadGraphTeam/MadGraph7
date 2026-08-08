@@ -1547,11 +1547,6 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
         ));
     }
     if let Some(native_inputs) = &manifest.producer.native_build_inputs_sha256 {
-        if manifest.producer.git_revision.is_none() {
-            return Err(RusticolError::artifact(
-                "producer.native_build_inputs_sha256 requires producer.git_revision",
-            ));
-        }
         validate_sha256(native_inputs, "producer.native_build_inputs_sha256")?;
     }
     validate_sha256(&manifest.model.content_sha256, "model content_sha256")?;
@@ -2299,6 +2294,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::RecurrenceLcColorV1,
         RuntimeCapability::RecurrenceContractedColorV1,
         RuntimeCapability::OnTheFlyRuntimeComplexF64V1,
+        RuntimeCapability::OnTheFlyContractedColorV1,
         RuntimeCapability::OnTheFlyLcColorV1,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,

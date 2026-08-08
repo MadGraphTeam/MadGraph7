@@ -456,6 +456,7 @@ def _build_artifact(
     prepared_backend: str = "jit",
     vertex_contracts: tuple[dict[str, object], ...] | None = None,
     parameter_kernel: PreparedKernelRecord | None = None,
+    extra_kernels: Sequence[PreparedKernelRecord] = (),
     model_parameters: Sequence[dict[str, object]] = (),
     coupling_row: EagerCouplingRow | None = None,
     invocation_output_factor_source: int = EAGER_OUTPUT_FACTOR_NONE,
@@ -463,7 +464,7 @@ def _build_artifact(
     compact_v3: bool = True,
 ) -> dict[str, object] | None:
     payload_target = {"triple": "test-target", "cpu_features": []}
-    kernels = (
+    base_kernels = (
         _kernel(
             10,
             "vertex",
@@ -488,7 +489,10 @@ def _build_artifact(
                 _contract("coupling-real", 0),
             ),
         ),
-    ) + (() if parameter_kernel is None else (parameter_kernel,))
+    )
+    kernels = base_kernels + tuple(extra_kernels)
+    if parameter_kernel is not None:
+        kernels += (parameter_kernel,)
     pack = PreparedKernelPack(
         backend="jit",
         optimization_settings={"jit_optimization_level": 2},
@@ -1333,6 +1337,150 @@ def test_eager_exact_derives_complex_parameters_at_requested_precision(
     native_values = expected_values(native_decimal)
     assert result.values == tuple(((value,),) for value in exact_values)
     assert result.values != tuple(((value,),) for value in native_values)
+
+
+def test_eager_exact_ignores_parameters_of_inactive_shared_pack_kernel(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    beta_kernel = _kernel(
+        99,
+        "vertex",
+        (
+            _contract("left-current", 0),
+            _contract("right-current", 0),
+            _parameter_contract("beta", 199),
+        ),
+    )
+    _build_artifact(artifact, extra_kernels=(beta_kernel,))
+    executor = EagerExactExecutor(
+        artifact,
+        "synthetic",
+        _NativeRuntime(),
+        kernel_loader=_loader([]),
+    )
+
+    result = executor.evaluate_resolved(
+        _momenta(5),
+        helicities=None,
+        color_flows=None,
+        precision=50,
+    )
+
+    assert result.values
+    assert set(executor._plan.kernels) == {10, 11, 12}
+
+
+def test_eager_exact_ignores_derivation_kernel_without_derived_schema(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    parameter_kernel = _kernel(
+        20,
+        "model-parameter",
+        (_parameter_contract("beta", 199),),
+        output_layout=("model-parameter:unused",),
+    )
+    _build_artifact(artifact, parameter_kernel=parameter_kernel)
+
+    executor = EagerExactExecutor(
+        artifact,
+        "synthetic",
+        _NativeRuntime(),
+        kernel_loader=_loader([]),
+    )
+
+    assert executor._plan.parameter_derivation is None
+    assert executor._plan.parameter_projection.parameter_count == 0
+
+
+def test_eager_exact_rejects_multiple_inactive_derivation_kernels(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    first = _kernel(
+        20,
+        "model-parameter",
+        (_parameter_contract("alpha", 7),),
+        output_layout=("model-parameter:first",),
+    )
+    second = _kernel(
+        21,
+        "model-parameter",
+        (_parameter_contract("beta", 9),),
+        output_layout=("model-parameter:second",),
+    )
+    _build_artifact(
+        artifact,
+        parameter_kernel=first,
+        extra_kernels=(second,),
+    )
+
+    with pytest.raises(
+        ArtifactError,
+        match=r"eager kernel pack declares multiple model-parameter kernels",
+    ):
+        EagerExactExecutor(
+            artifact,
+            "synthetic",
+            _NativeRuntime(),
+            kernel_loader=_loader([]),
+        )
+
+
+def test_eager_exact_requires_parameters_of_active_shared_pack_kernel(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    beta_kernel = _kernel(
+        99,
+        "vertex",
+        (
+            _contract("left-current", 0),
+            _contract("right-current", 0),
+            _parameter_contract("beta", 199),
+        ),
+    )
+    _build_artifact(
+        artifact,
+        invocation_kernel_id=beta_kernel.kernel_id,
+        extra_kernels=(beta_kernel,),
+    )
+
+    with pytest.raises(
+        ArtifactError,
+        match=r"prepared parameter 'beta' is absent from the process runtime schema",
+    ):
+        EagerExactExecutor(
+            artifact,
+            "synthetic",
+            _NativeRuntime(),
+            kernel_loader=_loader([]),
+        )
+
+
+def test_eager_exact_validates_inactive_pack_parameter_identity() -> None:
+    beta_kernel = _kernel(
+        98,
+        "vertex",
+        (_parameter_contract("beta", 199),),
+    )
+    gamma_kernel = _kernel(
+        99,
+        "vertex",
+        (_parameter_contract("gamma", 199),),
+    )
+
+    with pytest.raises(
+        ArtifactError,
+        match=r"prepared parameter index 199 names multiple parameters",
+    ):
+        _prepared_parameter_projection(
+            (beta_kernel, gamma_kernel),
+            {"model_parameters": []},
+            0,
+            active_kernel_ids=frozenset(),
+        )
 
 
 def test_eager_exact_preserves_native_derived_values_without_kernel(

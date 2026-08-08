@@ -63,6 +63,7 @@ These three showcase cards print colorized terminal tables by default. Add
 | `builtin_sm_full.toml` | Built-in compatibility SM, explicit compiled C++, contracted full color |
 | `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O2 pack |
 | `builtin_sm_on_the_fly.toml` | Built-in SM LC generation as a compact on-the-fly seed using the same prepared JIT O2 pack |
+| `otf_pp_zjj.toml` | Generate compact OTF LC `p p > Z j j`, then profile one flow with a helicity sum |
 | `all_options.toml` | Every current schema field, active and commented |
 
 ## Run `q q~ > Z + 6g` With Recurrence, Compiled, And Eager
@@ -88,8 +89,33 @@ materialized-mode comparison stable if project defaults change again.
 
 ## Generate A Compact On-The-Fly LC Artifact
 
-The minimal on-the-fly card uses the wheel-owned prepared JIT O2 kernels and
-keeps complete runtime selector coverage in one compact process seed:
+The dedicated OTF walkthrough expands `p p > Z j j`, loads the concrete
+ordering `d d~ > g z g`, warms one LC flow with a complete helicity sum, and
+then profiles the same selector workload:
+
+```console
+pyamplicol generate --card otf_pp_zjj.toml
+python python/otf_pp_zjj_warm_up.py
+pyamplicol profile --card otf_pp_zjj.toml
+```
+
+The Python step calls
+`Runtime.warm_up((point,), precision=16, color_flows=(flow,))`: its input is
+exactly one phase-space point, native `f64` is explicit, and omitting a
+helicity selector means sum every physical helicity. The standard terminal
+progress dashboard tracks query-family progress and live current/peak RSS.
+It is followed by a colored PrettyTable containing the selected stable flow
+ID, warm-up wall time, query counts, memory, and matrix element. Use
+`--color always` when capturing the ANSI-colored table through a pipe, or
+`--color-flow N` to choose another one-based physical flow.
+
+The `profile` command starts an independent runtime and prints pyAmpliCol's
+colored human benchmark tables. Its 128-point batches are throughput and
+benchmark-capacity measurements; they do not change the explicit
+`warm_up(...)` API's one-point contract.
+
+The smaller single-process card remains useful for quick inspection and a CLI
+profile without multiprocess expansion:
 
 ```console
 pyamplicol generate --card builtin_sm_on_the_fly.toml
@@ -106,8 +132,11 @@ settings are not currently applied by this mode. The profile measures one
 runtime-selected LC flow with a helicity sum over 128-point batches. Generation
 requires the wheel-owned prepared JIT O2 bundle selected for the built-in
 model; the artifact carries the referenced kernels it needs at runtime.
-On-the-fly execution is LC and native `f64` only; NLC, full color, and higher
-precision remain unsupported.
+The walkthrough intentionally targets the practical OTF workload: LC,
+single-flow, helicity-sum execution at native `f64`. Contracted NLC and full
+color are available for low multiplicities but are not showcased here because
+their OTF construction cost grows quickly; higher-precision OTF execution is
+not available.
 
 ## Reproduce The Z-Ladder Workloads
 
@@ -225,6 +254,13 @@ Benchmark the selected process:
 python python/benchmark.py artifacts/pp_zjj \
   --process 'd d~ > g z g' \
   --momenta data/pp_zjj_momenta.json
+```
+
+The compact OTF counterpart uses the same phase-space point but explicitly
+prepares just one LC flow before evaluating it:
+
+```console
+python python/otf_pp_zjj_warm_up.py
 ```
 
 `python/external_models.py` demonstrates explicit JSON and trusted-UFO

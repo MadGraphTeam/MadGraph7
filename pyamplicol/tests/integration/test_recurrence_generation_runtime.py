@@ -44,6 +44,7 @@ _N5_PURE_GLUON_PROCESS = "g g > g g g g g"
 _SAME_FLAVOUR_PROCESS = "d d~ > d d~"
 _NEUTRAL_CURRENT_PROCESS = "d d~ > e+ e-"
 _FOUR_LEPTON_PROCESS = "d d~ > e+ e- e+ e-"
+_FOUR_LEPTON_MADGRAPH_SEED_101 = Decimal("2.66945931894745456e-16")
 _DILEPTON_ZH_PROCESS = "d d~ > e+ e- z h"
 _CHARGED_CURRENT_PROCESS = "u d~ > e+ ve"
 _TWO_QUARK_LINE_PROCESS = "d d~ > t t~"
@@ -702,17 +703,11 @@ def _assert_contracted_color_artifacts_match(
     assert len(manifest.processes) == 1
     process_id = str(manifest.processes[0]["id"])
     execution = json.loads(
-        (
-            recurrence_artifact
-            / "processes"
-            / process_id
-            / "execution.json"
-        ).read_text(encoding="utf-8")
+        (recurrence_artifact / "processes" / process_id / "execution.json").read_text(
+            encoding="utf-8"
+        )
     )
-    assert (
-        execution["recurrence_summary"]["lc_flow_layout"]
-        == "contracted-color-union"
-    )
+    assert execution["recurrence_summary"]["lc_flow_layout"] == "contracted-color-union"
     assert (
         set(execution["required_runtime_capabilities"])
         == _CONTRACTED_RECURRENCE_CAPABILITIES
@@ -722,10 +717,7 @@ def _assert_contracted_color_artifacts_match(
     assert inspection.execution_mode == "recurrence"
     assert inspection.recurrence_color_accuracy == color_accuracy
     assert inspection.recurrence_color_storage == color_reference["storage"]
-    assert (
-        inspection.recurrence_color_sector_count
-        == color_reference["sector_count"]
-    )
+    assert inspection.recurrence_color_sector_count == color_reference["sector_count"]
     assert (
         inspection.recurrence_color_active_sector_count
         == color_reference["active_sector_count"]
@@ -735,10 +727,7 @@ def _assert_contracted_color_artifacts_match(
         == color_reference["component_count"]
     )
     assert inspection.recurrence_color_group_count == color_reference["group_count"]
-    assert (
-        inspection.recurrence_color_entry_count
-        == color_reference["entry_count"]
-    )
+    assert inspection.recurrence_color_entry_count == color_reference["entry_count"]
     assert (
         inspection.recurrence_color_logical_entry_count
         == color_reference["logical_entry_count"]
@@ -754,10 +743,7 @@ def _assert_contracted_color_artifacts_match(
         )
         assert color_reference["storage"] == "repeated"
     color_path = (
-        recurrence_artifact
-        / "processes"
-        / process_id
-        / color_reference["path"]
+        recurrence_artifact / "processes" / process_id / color_reference["path"]
     )
     assert color_path.is_file()
     assert color_path.stat().st_size == color_reference["size_bytes"]
@@ -799,9 +785,9 @@ def _contracted_structure_signature(artifact: Path) -> dict[str, object]:
     assert len(manifest.processes) == 1
     process_id = str(manifest.processes[0]["id"])
     execution = json.loads(
-        (
-            artifact / "processes" / process_id / "execution.json"
-        ).read_text(encoding="utf-8")
+        (artifact / "processes" / process_id / "execution.json").read_text(
+            encoding="utf-8"
+        )
     )
     summary = execution["recurrence_summary"]
     inspection = execution["plan"]["inspection_summary"]
@@ -956,12 +942,13 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
             "color_accuracy": color_accuracy,
             "representation": "recurrence-direct-plan-v2",
         }
-        assert manifest_report["certified_relation_count"] == lane[
-            "certified_relation_count"
-        ]
-        assert manifest_report["applied_relation_count"] == lane[
-            "applied_relation_count"
-        ]
+        assert (
+            manifest_report["certified_relation_count"]
+            == lane["certified_relation_count"]
+        )
+        assert (
+            manifest_report["applied_relation_count"] == lane["applied_relation_count"]
+        )
         if mode == "off":
             assert lane["state"] == "disabled-by-user"
             assert lane["candidate_capture"] is None
@@ -991,9 +978,10 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         )
         assert probe_contract["independent_verification"] is True
         assert probe_contract["current_dimension_bound"] is True
-        assert probe_contract["runtime_parameter_schema_sha256"] == candidate[
-            "runtime_parameter_schema_sha256"
-        ]
+        assert (
+            probe_contract["runtime_parameter_schema_sha256"]
+            == candidate["runtime_parameter_schema_sha256"]
+        )
         assert candidate["parameter_contexts"]
         assert verification["parameter_contexts"]
         assert set(candidate["parameter_context_sha256s"]).isdisjoint(
@@ -1004,24 +992,24 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         assert persisted["generation_raw_evidence_bytes"] > 0
         assert persisted["measured_payload_bytes"] < 64 << 20
         assert (
-            persisted["full_census"]["decision_sha256"]
-            == discovery["decision_sha256"]
+            persisted["full_census"]["decision_sha256"] == discovery["decision_sha256"]
         )
-        assert discovery["certified_numerical_relation_count"] == lane[
-            "certified_relation_count"
-        ]
+        assert (
+            discovery["certified_numerical_relation_count"]
+            == lane["certified_relation_count"]
+        )
         application = lane["application"]
         assert isinstance(application, dict)
-        assert application["certified_relation_count"] == lane[
-            "certified_relation_count"
-        ]
+        assert (
+            application["certified_relation_count"] == lane["certified_relation_count"]
+        )
         native = manifest_report["native_relation_application"]
         assert isinstance(native, dict)
         effective_mode = lane["effective_mode"]
         assert native["requested_mode"] == effective_mode
-        assert native["exact_certified_relation_count"] == lane[
-            "certified_relation_count"
-        ]
+        assert (
+            native["exact_certified_relation_count"] == lane["certified_relation_count"]
+        )
         if effective_mode == "diagnostic":
             assert lane["applied_relation_count"] == 0
             assert lane["warning"]["required"] is False
@@ -1034,8 +1022,9 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
                     "multi-helicity-all-flow-member-scope-unproven",
                     "contracted-opposite-binary64-disabled",
                 }
-                assert lane["application_scope"]["effective_mode_reason"] == (
-                    lane["effective_mode_reason"]
+                assert (
+                    lane["application_scope"]["effective_mode_reason"]
+                    == (lane["effective_mode_reason"])
                 )
         else:
             assert effective_mode == mode == "certified-reuse"
@@ -1046,9 +1035,7 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
             assert lane["warning"]["required"] is (applied > 0)
             assert manifest_report["warning"]["required"] is (applied > 0)
             assert lane["application_validation"]["status"] == (
-                "verified"
-                if applied
-                else "not-required-no-applied-relations"
+                "verified" if applied else "not-required-no-applied-relations"
             )
 
     _assert_runtime_values_match(runtimes["diagnostic"], runtimes["off"], points)
@@ -1134,9 +1121,7 @@ def test_charged_current_alias_uses_native_identity_for_numerical_probes(
         result = original(*args, **kwargs)
         observed_process_ids.append(process_id)
         assert all(
-            point.process_id == process_id
-            for capture in result
-            for point in capture
+            point.process_id == process_id for capture in result for point in capture
         )
         assert all(
             point.process == _CHARGED_CURRENT_PROCESS
@@ -1203,9 +1188,7 @@ def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan
     assert default_lane["certified_relation_count"] == 0
     assert default_lane["applied_relation_count"] == 0
     assert default_lane["state"] == "no_certified_numerical_relation"
-    default_schedule = next(
-        artifacts["default"].rglob("recurrence-runtime.pacbin")
-    )
+    default_schedule = next(artifacts["default"].rglob("recurrence-runtime.pacbin"))
     off_schedule = next(artifacts["off"].rglob("recurrence-runtime.pacbin"))
     assert default_schedule.read_bytes() == off_schedule.read_bytes()
     assert (
@@ -1300,9 +1283,7 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
             _generation_config(
                 "recurrence",
                 lc_flow_layout="all-flow-union",
-                relation_discovery_mode=(
-                    None if mode == "certified-reuse" else mode
-                ),
+                relation_discovery_mode=(None if mode == "certified-reuse" else mode),
             )
         ).generate(
             _RELATION_REUSE_PROCESS,
@@ -1311,10 +1292,7 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         )
         execution = _single_recurrence_execution(artifact)
         executions[mode] = execution
-        assert (
-            execution["plan"]["inspection_summary"].get("relation_discovery")
-            is None
-        )
+        assert execution["plan"]["inspection_summary"].get("relation_discovery") is None
         report = _manifest_relation_discovery(artifact)
         assert isinstance(report, dict)
         reports[mode] = report
@@ -1400,15 +1378,12 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         "zero_hypothesis_count": 0,
         "screened_hypothesis_budget": 1_000_000,
         "budget_classification": "within-authenticated-budget",
-        "nearest_rejected_scope": (
-            "zero-and-tolerance-window-screened-hypotheses"
-        ),
+        "nearest_rejected_scope": ("zero-and-tolerance-window-screened-hypotheses"),
     }
     persisted = certified["persisted_numerical_evidence"]
     assert persisted["raw_evidence_retained"] is False
     assert (
-        persisted["measured_payload_bytes"]
-        < persisted["generation_raw_evidence_bytes"]
+        persisted["measured_payload_bytes"] < persisted["generation_raw_evidence_bytes"]
     )
     assert persisted["full_census"] == {
         "inspected_current_count": 68,
@@ -1423,9 +1398,9 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         "rejection_decision_sha256": certified["discovery"][
             "rejection_decision_sha256"
         ],
-        "certificate_set_sha256": certified["application"][
-            "certificate_replay"
-        ]["certificate_set_sha256"],
+        "certificate_set_sha256": certified["application"]["certificate_replay"][
+            "certificate_set_sha256"
+        ],
     }
     for capture_name in ("candidate_capture", "verification_capture"):
         replay_capture = persisted[capture_name]
@@ -1453,17 +1428,16 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         assert native_report["rejected_candidates"] == []
         assert native_report["certificates"] == []
         assert native_report["certificate_count"] == 0
-        rejected_diagnostics = native_report[
-            "rejected_candidate_diagnostics"
-        ]
+        rejected_diagnostics = native_report["rejected_candidate_diagnostics"]
         assert rejected_diagnostics["total_rejected_hypothesis_count"] == 0
         assert rejected_diagnostics["retained_count"] == 0
         assert rejected_diagnostics["truncated"] is False
         assert rejected_diagnostics["truncation_policy"] == (
             "none-authenticated-full-rejection-digest-v1"
         )
-        assert rejected_diagnostics["full_rejection_sha256"] == (
-            native_report["probe"]["rejection_decision_sha256"]
+        assert (
+            rejected_diagnostics["full_rejection_sha256"]
+            == (native_report["probe"]["rejection_decision_sha256"])
         )
     assert diagnostic_native["exact_certified_relation_count"] == 0
     assert diagnostic_native["applied_relation_count"] == 0
@@ -1511,17 +1485,13 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
             precision,
         )
     off_inspection = executions["off"]["plan"]["inspection_summary"]
-    diagnostic_inspection = executions["diagnostic"]["plan"][
-        "inspection_summary"
-    ]
+    diagnostic_inspection = executions["diagnostic"]["plan"]["inspection_summary"]
     assert (
         executions["off"]["recurrence_summary"]
         == executions["diagnostic"]["recurrence_summary"]
     )
     assert (
-        executions["certified-reuse"]["plan"]["inspection_summary"][
-            "direct_arena"
-        ]
+        executions["certified-reuse"]["plan"]["inspection_summary"]["direct_arena"]
         == off_inspection["direct_arena"]
     )
     for key in (
@@ -1690,12 +1660,13 @@ def test_builtin_fermion_vector_aliases_match_compiled_at_small_scale(
     _require_native_recurrence()
     recurrence_artifact = tmp_path / "recurrence"
     compiled_artifact = tmp_path / "compiled"
-    Generator(_generation_config("recurrence")).generate(
+    color_accuracy = "full" if process_expression == _FOUR_LEPTON_PROCESS else "lc"
+    Generator(_generation_config("recurrence", color_accuracy=color_accuracy)).generate(
         process_expression,
         recurrence_artifact,
         model=builtin_sm_current_recurrence_jit_o2_model,
     )
-    Generator(_generation_config("compiled")).generate(
+    Generator(_generation_config("compiled", color_accuracy=color_accuracy)).generate(
         process_expression,
         compiled_artifact,
     )
@@ -1717,6 +1688,18 @@ def test_builtin_fermion_vector_aliases_match_compiled_at_small_scale(
         recurrence.evaluate(points, precision=200),
         compiled.evaluate(points, precision=200),
     )
+    if process_expression == _FOUR_LEPTON_PROCESS:
+        madgraph = (_FOUR_LEPTON_MADGRAPH_SEED_101,)
+        _assert_scale_sensitive_values_match(
+            recurrence.evaluate(points, precision=200),
+            madgraph,
+            relative_tolerance=Decimal("1e-10"),
+        )
+        _assert_scale_sensitive_values_match(
+            compiled.evaluate(points, precision=200),
+            madgraph,
+            relative_tolerance=Decimal("1e-10"),
+        )
 
 
 @pytest.mark.parametrize(
@@ -1784,9 +1767,7 @@ def test_builtin_neutral_current_recurrence_matches_legacy_oracle(
                 helicity["values"][2],
             ),
             color["id"],
-        ): float(
-            observation["values"][helicity_index][color_index]
-        )
+        ): float(observation["values"][helicity_index][color_index])
         for helicity_index, helicity in enumerate(reference["axes"]["helicities"])
         for color_index, color in enumerate(reference["axes"]["colors"])
     }
@@ -1895,9 +1876,7 @@ def test_builtin_contracted_color_recurrence_matches_compiled(
         process_expression,
         color_accuracy,
         parameter_update=(
-            ("particle.23.mass", 100.0)
-            if process_expression == _PROCESS
-            else None
+            ("particle.23.mass", 100.0) if process_expression == _PROCESS else None
         ),
     )
 
@@ -1939,9 +1918,7 @@ def test_ufo_sm_contracted_color_recurrence_matches_compiled(
         compiled_artifact,
         process_expression,
         color_accuracy,
-        parameter_update=(
-            ("MZ", 100.0) if process_expression == _PROCESS else None
-        ),
+        parameter_update=(("MZ", 100.0) if process_expression == _PROCESS else None),
     )
 
 
@@ -2002,9 +1979,9 @@ def test_builtin_full_n5_pure_gluon_recurrence_fits_static_template_budget(
     assert len(manifest.processes) == 1
     process_id = str(manifest.processes[0]["id"])
     execution = json.loads(
-        (
-            artifact / "processes" / process_id / "execution.json"
-        ).read_text(encoding="utf-8")
+        (artifact / "processes" / process_id / "execution.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert execution["kind"] == _RECURRENCE_KIND
     summary = execution["recurrence_summary"]
@@ -2013,12 +1990,16 @@ def test_builtin_full_n5_pure_gluon_recurrence_fits_static_template_budget(
     construction = inspection["construction"]
     assert summary["lc_flow_layout"] == "contracted-color-union"
     assert (
-        summary["current_count"],
-        summary["contribution_count"],
-    ) == (
-        schedule["current_count"],
-        schedule["contribution_count"],
-    ) == (1_795, 9_990)
+        (
+            summary["current_count"],
+            summary["contribution_count"],
+        )
+        == (
+            schedule["current_count"],
+            schedule["contribution_count"],
+        )
+        == (1_795, 9_990)
+    )
     assert (
         construction["peak_current_count"],
         construction["peak_contribution_count"],
@@ -2287,11 +2268,7 @@ def _assert_all_flow_union_artifacts_match(
                 helicity_ids[0],
                 helicity_ids[len(helicity_ids) // 2],
                 helicity_ids[-1],
-                *(
-                    ("h:-1,+1,-1,+1,-1",)
-                    if process_expression == _PROCESS
-                    else ()
-                ),
+                *(("h:-1,+1,-1,+1,-1",) if process_expression == _PROCESS else ()),
             )
         )
     )

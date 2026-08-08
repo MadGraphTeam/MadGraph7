@@ -7,7 +7,7 @@ import hashlib
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .agreements import (
     DIRECT_AGREEMENT_ABI,
@@ -15,6 +15,7 @@ from .agreements import (
     DIRECT_AGREEMENT_V2_ABI,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
     incoming_agreement_edges,
 )
 from .cache import empty_measurement
@@ -38,6 +39,7 @@ from .models import (
     Accuracy,
     CellSpec,
     ExecutionMode,
+    MatrixComparisonView,
     MatrixDataset,
     ModelKey,
     ProcessFamily,
@@ -235,6 +237,7 @@ class JoinedWorkload:
     candidate: Measurement
     comparison_linked: bool = False
     generation_comparison_linked: bool | None = None
+    legacy_diagnostic: Measurement | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,6 +276,7 @@ class BestModeWorkload:
     terminal_label: _TerminalSummary | None
     comparison_linked: bool = False
     generation_comparison_linked: bool | None = None
+    legacy_diagnostic: Measurement | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,7 +498,14 @@ class BaselineCandidateAdapter:
                     and item.get("value_kind") == edge.value_kind
                     and item.get("candidate_cell_id") == candidate_cell.cell_id
                     and item.get("baseline_cell_id") == baseline_cell.cell_id
-                    and item.get("status") == ResultStatus.OK.value
+                    and (
+                        item.get("status") == ResultStatus.OK.value
+                        or (
+                            edge.kind == LC_LEGACY_PYAMPLICOL_COMPONENT
+                            and item.get("status")
+                            == ResultStatus.VALIDATION_FAILED.value
+                        )
+                    )
                 ),
                 None,
             )
@@ -568,9 +579,23 @@ class BaselineCandidateAdapter:
         pointwise = (
             validation.get("pointwise") if isinstance(validation, Mapping) else None
         )
+        comparison_status = (
+            pointwise.get("status") if isinstance(pointwise, Mapping) else None
+        )
+        legacy_diagnostic = (
+            baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and candidate_cell.measurement.execution_mode
+            is ExecutionMode.RECURRENCE
+        )
         return (
             isinstance(pointwise, Mapping)
-            and pointwise.get("status") == ResultStatus.OK.value
+            and (
+                comparison_status == ResultStatus.OK.value
+                or (
+                    legacy_diagnostic
+                    and comparison_status == ResultStatus.VALIDATION_FAILED.value
+                )
+            )
             and self._exact_number(
                 pointwise.get("candidate"),
                 candidate.get("matrix_element"),
@@ -597,6 +622,31 @@ class BaselineCandidateAdapter:
             if edge.baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
         )
         return peers[0] if len(peers) == 1 else None
+
+    def _legacy_diagnostic_measurement(
+        self,
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        baseline_cell: CellSpec,
+    ) -> Measurement | None:
+        """Locate the recurrence record that compared with legacy AmpliCol."""
+
+        if (
+            baseline_cell.measurement.execution_mode
+            is not ExecutionMode.AMPLICOL
+        ):
+            return None
+        if (
+            candidate_cell.measurement.execution_mode
+            is ExecutionMode.RECURRENCE
+        ):
+            return candidate
+        recurrence_cell = self._recurrence_bridge(candidate_cell)
+        return (
+            None
+            if recurrence_cell is None
+            else self.index.for_cell(recurrence_cell)
+        )
 
     @staticmethod
     def _runtime_artifact_id(measurement: Measurement) -> str | None:
@@ -717,9 +767,12 @@ class BaselineCandidateAdapter:
         *,
         require_runtime_selectors: bool,
     ) -> bool:
-        if not (_ok(candidate) and _ok(baseline)) or not self._same_performance_scope(
-            candidate_cell,
-            baseline_cell,
+        if (
+            candidate_cell.measurement.accuracy is not Accuracy.LC
+            or candidate_cell.workload
+            not in {Workload.SELECTED_FLOW, Workload.ALL_FLOW}
+            or not (_ok(candidate) and _ok(baseline))
+            or not self._same_performance_scope(candidate_cell, baseline_cell)
         ):
             return False
         recurrence_cell = self._recurrence_bridge(candidate_cell)
@@ -751,6 +804,7 @@ class BaselineCandidateAdapter:
         if (
             baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             and candidate_cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+            and candidate_cell.measurement.accuracy is Accuracy.LC
         ):
             return self._otf_amplicol_performance_link(
                 candidate_cell,
@@ -765,6 +819,7 @@ class BaselineCandidateAdapter:
             in {
                 ExecutionMode.COMPILED,
                 ExecutionMode.EAGER,
+                ExecutionMode.ON_THE_FLY,
             }
         ):
             recurrence_cell = self._recurrence_bridge(candidate_cell)
@@ -799,6 +854,7 @@ class BaselineCandidateAdapter:
         if (
             baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             and candidate_cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+            and candidate_cell.measurement.accuracy is Accuracy.LC
         ):
             return self._otf_amplicol_performance_link(
                 candidate_cell,
@@ -849,6 +905,8 @@ class BaselineCandidateAdapter:
         dataset: MatrixDataset,
         family: ProcessFamily,
         n_final: int,
+        *,
+        baseline_dataset_id: str | None = None,
     ) -> JoinedMatrixCell:
         process = family.process(n_final)
         applicable = (
@@ -872,7 +930,16 @@ class BaselineCandidateAdapter:
                     n_final,
                     workload,
                 )
-                baseline_cell = self.catalog.baseline_cell(candidate_cell)
+                baseline_cell = (
+                    self.catalog.baseline_cell(candidate_cell)
+                    if baseline_dataset_id is None
+                    else self._cell(
+                        baseline_dataset_id,
+                        family.key,
+                        n_final,
+                        workload,
+                    )
+                )
                 assert baseline_cell is not None
                 candidate = self.index.for_cell(candidate_cell)
                 baseline = self.index.for_cell(baseline_cell)
@@ -893,6 +960,11 @@ class BaselineCandidateAdapter:
                             candidate,
                             baseline_cell,
                             baseline,
+                        ),
+                        self._legacy_diagnostic_measurement(
+                            candidate_cell,
+                            candidate,
+                            baseline_cell,
                         ),
                     )
                 )
@@ -941,6 +1013,11 @@ class BaselineCandidateAdapter:
                 candidate,
                 baseline_cell,
                 baseline,
+            ),
+            self._legacy_diagnostic_measurement(
+                candidate_cell,
+                candidate,
+                baseline_cell,
             ),
         )
 
@@ -1038,8 +1115,13 @@ class BaselineCandidateAdapter:
                     baseline_cell,
                     baseline,
                 )
+                legacy_diagnostic = self._legacy_diagnostic_measurement(
+                    winner_cell,
+                    winner,
+                    baseline_cell,
+                )
             else:
-                _recurrence_mode, _winner_cell, recurrence = next(
+                _recurrence_mode, recurrence_cell, recurrence = next(
                     candidate
                     for candidate in measured_candidates
                     if candidate[0] is ExecutionMode.RECURRENCE
@@ -1051,6 +1133,11 @@ class BaselineCandidateAdapter:
                 terminal_label = None
                 comparison_linked = False
                 generation_comparison_linked = False
+                legacy_diagnostic = self._legacy_diagnostic_measurement(
+                    recurrence_cell,
+                    recurrence,
+                    baseline_cell,
+                )
             joined_workloads.append(
                 BestModeWorkload(
                     workload,
@@ -1060,6 +1147,7 @@ class BaselineCandidateAdapter:
                     terminal_label,
                     comparison_linked,
                     generation_comparison_linked,
+                    legacy_diagnostic,
                 )
             )
         return BestModeMatrixCell(
@@ -1476,6 +1564,101 @@ def _best_mode_metric(
     if unavailable is not None:
         return unavailable
     return _best_mode_time(measurement.get(field), microseconds=microseconds)
+
+
+def _failed_comparison_status(value: object) -> bool:
+    return value in {
+        ResultStatus.FAILED.value,
+        ResultStatus.VALIDATION_FAILED.value,
+        "mismatch",
+    }
+
+
+def _contains_failed_comparison(value: object) -> bool:
+    if isinstance(value, Mapping):
+        return _failed_comparison_status(value.get("status")) or any(
+            _contains_failed_comparison(item) for item in value.values()
+        )
+    if isinstance(value, list):
+        return any(_contains_failed_comparison(item) for item in value)
+    return False
+
+
+def _original_amplicol_comparison_failed(
+    candidate: Measurement,
+    *,
+    candidate_mode: ExecutionMode | None,
+) -> bool:
+    """Identify only failed comparisons against original AmpliCol."""
+
+    validation = candidate.get("validation")
+    if not isinstance(validation, Mapping):
+        return False
+    if _contains_failed_comparison(
+        validation.get("legacy_amplicol_comparison")
+    ):
+        return True
+    direct = validation.get(DIRECT_AGREEMENT_FIELD)
+    if isinstance(direct, list) and any(
+        isinstance(record, Mapping)
+        and str(record.get("baseline_cell_id", "")).startswith(
+            "reference-amplicol-"
+        )
+        and _failed_comparison_status(record.get("status"))
+        for record in direct
+    ):
+        return True
+    authority = validation.get("independent_authority")
+    if (
+        isinstance(authority, Mapping)
+        and str(authority.get("selected_cell_id", "")).startswith(
+            "reference-amplicol-"
+        )
+        and _failed_comparison_status(authority.get("status"))
+    ):
+        return True
+    for field in ("legacy_comparison", "amplicol_comparison"):
+        comparison = validation.get(field)
+        if isinstance(comparison, Mapping) and _failed_comparison_status(
+            comparison.get("status")
+        ):
+            return True
+    pointwise = validation.get("pointwise")
+    return (
+        candidate_mode is ExecutionMode.RECURRENCE
+        and isinstance(pointwise, Mapping)
+        and _failed_comparison_status(pointwise.get("status"))
+    )
+
+
+def _original_amplicol_generation_metric(
+    joined: JoinedWorkload | BestModeWorkload,
+    *,
+    candidate_mode: ExecutionMode | None,
+) -> str:
+    """Render a retained AmpliCol generation time red on legacy mismatch only."""
+
+    rendered = _best_mode_metric(joined.baseline, "generation_seconds")
+    value = joined.baseline.get("generation_seconds")
+    retained = (
+        _ok(joined.baseline)
+        and not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and float(value) >= 0.0
+    )
+    diagnostic = joined.legacy_diagnostic or joined.candidate
+    diagnostic_mode = (
+        ExecutionMode.RECURRENCE
+        if joined.legacy_diagnostic is not None
+        else candidate_mode
+    )
+    if retained and _original_amplicol_comparison_failed(
+        diagnostic,
+        candidate_mode=diagnostic_mode,
+    ):
+        return rf"\textcolor{{ReportRed}}{{{rendered}}}"
+    return rendered
 
 
 def _diagnostic_best_mode_time(
@@ -2149,12 +2332,26 @@ def _lc_cell(
     selected_baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _best_mode_metric(selected.baseline, "generation_seconds")
+        else (
+            _original_amplicol_generation_metric(
+                selected,
+                candidate_mode=view.dataset.candidate.execution_mode,
+            )
+            if view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+            else _best_mode_metric(selected.baseline, "generation_seconds")
+        )
     )
     all_flow_baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _best_mode_metric(all_flow.baseline, "generation_seconds")
+        else (
+            _original_amplicol_generation_metric(
+                all_flow,
+                candidate_mode=view.dataset.candidate.execution_mode,
+            )
+            if view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+            else _best_mode_metric(all_flow.baseline, "generation_seconds")
+        )
     )
     selected_generation = _fixed_mode_generation_comparison_layout(
         selected,
@@ -2265,7 +2462,14 @@ def _contracted_cell(
     baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _best_mode_metric(joined.baseline, "generation_seconds")
+        else (
+            _original_amplicol_generation_metric(
+                joined,
+                candidate_mode=view.dataset.candidate.execution_mode,
+            )
+            if view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
+            else _best_mode_metric(joined.baseline, "generation_seconds")
+        )
     )
     baseline_runtime = (
         _static_na()
@@ -2383,6 +2587,7 @@ def _matrix_block(
     *,
     block_index: int,
     block_count: int,
+    baseline_dataset_id: str | None = None,
 ) -> list[str]:
     if len(multiplicities) not in (2, 3):
         raise ValueError("matrix blocks must contain two or three multiplicities")
@@ -2441,7 +2646,12 @@ def _matrix_block(
         ]
         runtime_row = ["", "", _metric_row_label(runtime=True)]
         for n_final in multiplicities:
-            view = adapter.matrix_cell(dataset, family, n_final)
+            view = adapter.matrix_cell(
+                dataset,
+                family,
+                n_final,
+                baseline_dataset_id=baseline_dataset_id,
+            )
             views_by_n[n_final].append(view)
             if not view.applicable:
                 generation_row.append(
@@ -2596,6 +2806,7 @@ def _matrix_candidates_are_static_na(
 def _mode_label(mode: ExecutionMode) -> str:
     return {
         ExecutionMode.AMPLICOL: "original AmpliCol",
+        ExecutionMode.MADGRAPH: "MadGraph standalone",
         ExecutionMode.RECURRENCE: "recurrence JIT O2",
         ExecutionMode.COMPILED: "compiled JIT O3",
         ExecutionMode.EAGER: "eager-DAG JIT O2",
@@ -2666,6 +2877,15 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         if dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
         else ""
     )
+    madgraph_reference_detail = (
+        " MadGraph standalone is the authoritative full-colour numerical "
+        "reference; its generation and repeated-evaluation measurements are "
+        "shared by all four UFO-SM comparison views. Recurrence, compiled, and "
+        "eager candidates use p200 at the comparison point; the on-the-fly "
+        "candidate uses its supported p16 lane."
+        if dataset.baseline.execution_mode is ExecutionMode.MADGRAPH
+        else ""
+    )
     unverified_detail = (
         " Unverified compiled or eager diagnostics show absolute generation "
         "and runtime values with a yellow unverified marker, but never enter "
@@ -2701,6 +2921,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(detail)
         + _tex_escape(clock_detail)
         + _tex_escape(legacy_scope_detail)
+        + _tex_escape(madgraph_reference_detail)
         + _tex_escape(unverified_detail)
         + _tex_escape(comparison_identity_detail)
         + _tex_escape(summary_detail)
@@ -2721,6 +2942,7 @@ def render_matrix_table(
     caches: Mapping[str, CachePayload] | Iterable[CachePayload],
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
+    baseline_dataset_id: str | None = None,
 ) -> str:
     """Render one matrix dataset into nonbreaking page-sized TeX blocks."""
 
@@ -2755,9 +2977,42 @@ def render_matrix_table(
             multiplicities,
             block_index=block_index,
             block_count=len(blocks),
+            baseline_dataset_id=baseline_dataset_id,
         )
         lines.extend(block[1:] if block_index == 0 else block)
     return "\n".join(lines) + "\n"
+
+
+def render_matrix_comparison_table(
+    view: MatrixComparisonView,
+    caches: Mapping[str, CachePayload] | Iterable[CachePayload],
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> str:
+    """Render a cache-reusing matrix view against its explicit reference."""
+
+    candidate = catalog.dataset(view.candidate_dataset_id)
+    baseline_specs = {
+        cell.measurement
+        for cell in catalog.reference_cells()
+        if cell.dataset_id == view.baseline_dataset_id
+    }
+    if len(baseline_specs) != 1:
+        raise ValueError(
+            f"comparison view {view.comparison_id!r} has no unique baseline spec"
+        )
+    dataset = replace(
+        candidate,
+        title=view.title,
+        table_name=view.table_name,
+        baseline=next(iter(baseline_specs)),
+    )
+    return render_matrix_table(
+        dataset,
+        caches,
+        catalog=catalog,
+        baseline_dataset_id=view.baseline_dataset_id,
+    )
 
 
 def render_all_matrix_tables(
@@ -2765,17 +3020,35 @@ def render_all_matrix_tables(
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, str]:
-    """Render all twelve matrices in canonical catalog order."""
+    """Render canonical matrices and cache-reusing comparison views."""
 
     cache_source = caches if isinstance(caches, Mapping) else tuple(caches)
-    return {
+    comparison_candidate_ids = {
+        view.candidate_dataset_id for view in catalog.matrix_comparison_views
+    }
+    rendered = {
         dataset.table_name: render_matrix_table(
             dataset,
             cache_source,
             catalog=catalog,
         )
         for dataset in catalog.matrix_datasets
+        if not (
+            dataset.dataset_id in comparison_candidate_ids
+            and dataset.baseline.execution_mode is ExecutionMode.MADGRAPH
+        )
     }
+    rendered.update(
+        {
+            view.table_name: render_matrix_comparison_table(
+                view,
+                cache_source,
+                catalog=catalog,
+            )
+            for view in catalog.matrix_comparison_views
+        }
+    )
+    return rendered
 
 
 def _canonical_best_mode_terminal_label(
@@ -3094,12 +3367,18 @@ def _best_mode_lc_cell(
     selected_baseline_generation = (
         _static_na()
         if baseline_static_na
-        else _best_mode_metric(selected.baseline, "generation_seconds")
+        else _original_amplicol_generation_metric(
+            selected,
+            candidate_mode=selected.mode,
+        )
     )
     all_flow_baseline_generation = (
         _static_na()
         if baseline_static_na
-        else _best_mode_metric(all_flow.baseline, "generation_seconds")
+        else _original_amplicol_generation_metric(
+            all_flow,
+            candidate_mode=all_flow.mode,
+        )
     )
     selected_baseline_runtime = (
         _static_na()
@@ -3172,7 +3451,10 @@ def _best_mode_contracted_cell(
     baseline_generation = (
         _static_na()
         if baseline_static_na
-        else _best_mode_metric(joined.baseline, "generation_seconds")
+        else _original_amplicol_generation_metric(
+            joined,
+            candidate_mode=joined.mode,
+        )
     )
     baseline_runtime = (
         _static_na()
@@ -4673,6 +4955,7 @@ __all__ = [
     "render_all_tables",
     "render_all_z_ladders",
     "render_best_mode_table",
+    "render_matrix_comparison_table",
     "render_matrix_table",
     "render_scalar_ladder",
     "render_validation_summary",

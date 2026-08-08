@@ -74,6 +74,7 @@ from .timing import (
 
 RELATIVE_TOLERANCE = 1.0e-12
 INDEPENDENT_RELATIVE_TOLERANCE = 1.0e-8
+MADGRAPH_RELATIVE_TOLERANCE = 1.0e-10
 ABSOLUTE_TOLERANCE = 1.0e-15
 CONDITIONED_COMPARISON_ABI = "pyamplicol-report-conditioned-comparison-v2"
 RESOLVED_SUM_VALIDATION_ABI = "pyamplicol-report-resolved-sum-validation-v2"
@@ -854,8 +855,6 @@ def config_values(
     if measurement.model is None:
         raise RunnerError("pyAmpliCol measurement requires an explicit model")
     on_the_fly = measurement.execution_mode is ExecutionMode.ON_THE_FLY
-    if on_the_fly and measurement.accuracy is not Accuracy.LC:
-        raise RunnerError("on-the-fly campaign measurements currently require LC")
     if on_the_fly and (
         measurement.backend != "jit" or measurement.jit_optimization_level != 2
     ):
@@ -1068,7 +1067,18 @@ def validate_runtime_contract(cell: CellSpec, runtime: RuntimeLike) -> None:
     if runtime_is_on_the_fly:
         if not cell_is_on_the_fly:
             raise RunnerError("on-the-fly report runtime has the wrong execution mode")
-        _on_the_fly_compact_context(cell, runtime)
+        _helicity_count, color_count = _on_the_fly_compact_context(cell, runtime)
+        if cell.measurement.accuracy is Accuracy.LC:
+            if cell.workload not in {Workload.SELECTED_FLOW, Workload.ALL_FLOW}:
+                raise RunnerError("LC on-the-fly measurement has an invalid workload")
+        elif (
+            cell.measurement.accuracy not in {Accuracy.NLC, Accuracy.FULL}
+            or cell.workload is not Workload.CONTRACTED
+            or color_count != 1
+        ):
+            raise RunnerError(
+                "contracted on-the-fly measurement has an invalid public color axis"
+            )
         return
     if cell_is_on_the_fly:
         raise RunnerError("on-the-fly report runtime has the wrong execution mode")
@@ -1101,6 +1111,7 @@ def validate_artifact_contract(cell: CellSpec, artifact_path: Path) -> None:
     from pyamplicol._internal.versions import (
         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY,
         EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
         ON_THE_FLY_RUNTIME_CAPABILITY,
         RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
@@ -1135,18 +1146,34 @@ def validate_artifact_contract(cell: CellSpec, artifact_path: Path) -> None:
             "report artifact does not require its authenticated execution lane "
             f"{expected_runtime_capability!r}"
         )
-    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and (
-        len(inspection.runtime_capabilities) != 2
-        or runtime_capabilities
-        != {
-            ON_THE_FLY_RUNTIME_CAPABILITY,
-            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
-        }
-    ):
-        raise RunnerError(
-            "on-the-fly report artifact does not expose exactly its two compact "
-            "LC runtime capabilities"
+    if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+        expected_color_capability = (
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY
+            if cell.measurement.accuracy is Accuracy.LC
+            else ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
         )
+        if len(inspection.runtime_capabilities) != 2 or runtime_capabilities != {
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            expected_color_capability,
+        }:
+            raise RunnerError(
+                "on-the-fly report artifact does not expose exactly its two "
+                "accuracy-specific runtime capabilities"
+            )
+        if cell.measurement.accuracy is not Accuracy.LC and (
+            cell.workload is not Workload.CONTRACTED
+            or process.recurrence_color_accuracy != cell.measurement.accuracy.value
+            or process.recurrence_color_storage != "expanded"
+            or process.recurrence_color_component_count != 1
+            or process.recurrence_color_group_count is None
+            or process.recurrence_color_group_count < 1
+            or process.recurrence_color_destination_count
+            != process.recurrence_color_group_count
+        ):
+            raise RunnerError(
+                "contracted on-the-fly report artifact has no authenticated "
+                "expanded color payload"
+            )
     if cell.measurement.accuracy is Accuracy.LC:
         expected_layout = (
             "compact/query-local"
@@ -5420,6 +5447,7 @@ __all__ = [
     "ABSOLUTE_TOLERANCE",
     "CONDITIONED_COMPARISON_ABI",
     "INDEPENDENT_RELATIVE_TOLERANCE",
+    "MADGRAPH_RELATIVE_TOLERANCE",
     "RELATIVE_TOLERANCE",
     "RESOLVED_COMPONENT_SCALE_ABI",
     "RESOLVED_SUM_VALIDATION_ABI",

@@ -257,9 +257,9 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
     )
     exempt = tuple(cell for cell in cells if generation_limit_exempt(cell))
 
-    assert len(cells) == 762
+    assert len(cells) == 1026
     assert len(exempt) == 271
-    assert len(cells) - len(exempt) == 491
+    assert len(cells) - len(exempt) == 755
     assert all(
         cell.measurement.execution_mode.value == "amplicol"
         or (
@@ -270,9 +270,9 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
         for cell in exempt
     )
     full = REPORT_CATALOG.measurement_cells()
-    assert len(full) == 1796
+    assert len(full) == 2162
     assert sum(generation_limit_exempt(cell) for cell in full) == 725
-    assert sum(not generation_limit_exempt(cell) for cell in full) == 1071
+    assert sum(not generation_limit_exempt(cell) for cell in full) == 1437
 
 
 def test_x86_settings_are_exact_and_use_decimal_80_gb() -> None:
@@ -977,10 +977,16 @@ def test_missing_only_reuses_exact_dependency_censor_and_rebinds_changes(
         if cell.dataset_id == "matrix_compiled_builtin_sm_lc"
         and cell.process_key == "dd_z_jets"
         and cell.n_final == 1
+        and cell.workload is Workload.ALL_FLOW
+    )
+    baseline = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == candidate.dataset_id
+        and cell.process_key == candidate.process_key
+        and cell.n_final == candidate.n_final
         and cell.workload is Workload.SELECTED_FLOW
     )
-    baseline = REPORT_CATALOG.baseline_cell(candidate)
-    assert baseline is not None
     first = _memory_censor(
         baseline,
         peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
@@ -1099,9 +1105,9 @@ def test_full_catalog_resource_lanes_are_unique_and_monotone(
     identities = tuple(
         (tuple(resource_lane_identity(cell).items()), cell.n_final) for cell in cells
     )
-    assert len(cells) == 1796
+    assert len(cells) == 2162
     assert len(set(identities)) == len(identities)
-    assert len({lane for lane, _n_final in identities}) == 326
+    assert len({lane for lane, _n_final in identities}) == 444
 
     selected = tuple(
         REPORT_CATALOG.cell(cell_id)

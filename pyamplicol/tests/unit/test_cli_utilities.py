@@ -12,6 +12,7 @@ import pytest
 
 from pyamplicol.cli import UtilityInvocation, parse_cli, run_cli
 from pyamplicol.cli.utilities import list_examples, profiling_campaign_root
+from tools.performance_report.catalog import REPORT_CATALOG
 
 
 def test_examples_list_is_checkout_independent_and_descriptive() -> None:
@@ -48,6 +49,8 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     assert (destination / "builtin_sm_lc.toml").is_file()
     assert (destination / "benchmark_z6g_single_flow_helicity_sum.toml").is_file()
     assert (destination / "benchmark_z6g_all_flows_single_helicity.toml").is_file()
+    assert (destination / "otf_pp_zjj.toml").is_file()
+    assert (destination / "python/otf_pp_zjj_warm_up.py").is_file()
     selected_card = (
         destination / "benchmark_z6g_single_flow_helicity_sum.toml"
     ).read_text(encoding="utf-8")
@@ -88,7 +91,13 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
 
     assert run_cli(("profiling-campaign", "copy", str(destination))) == 0
     copied = tuple(path for path in destination.rglob("*") if path.is_file())
-    assert len(copied) == 61
+    assert len(copied) == 69
+    expected_cache_names = {
+        f"{cell.dataset_id}.json" for cell in REPORT_CATALOG.measurement_cells()
+    } | {"report-cache.schema.json"}
+    assert {
+        path.name for path in (destination / "results").glob("*.json")
+    } == expected_cache_names
     assert (destination / "steer_performance_campaign.py").is_file()
     assert os.access(destination / "steer_performance_campaign.py", os.X_OK)
     launcher = destination / "steer_performance_campaign.py"
@@ -163,6 +172,8 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     (destination / ".artifacts").mkdir()
     (destination / ".artifacts/legacy.bin").write_bytes(b"legacy")
     (destination / "unrelated.txt").write_text("keep\n", encoding="utf-8")
+    madgraph_cache = destination / "results/reference_madgraph_full.json"
+    madgraph_cache.write_text('{"stale":true}\n', encoding="ascii")
     assert run_cli(("profiling-campaign", "copy", str(destination), "--force")) == 0
     assert (destination / "campaign_artifacts").is_dir()
     assert not tuple((destination / "campaign_artifacts").iterdir())
@@ -174,6 +185,11 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     assert (destination / "notes.aux").read_text(encoding="utf-8") == "unrelated\n"
     assert (destination / ".artifacts/legacy.bin").read_bytes() == b"legacy"
     assert (destination / "unrelated.txt").read_text(encoding="utf-8") == "keep\n"
+    reset_madgraph_cache = json.loads(madgraph_cache.read_text(encoding="ascii"))
+    assert reset_madgraph_cache["dataset_id"] == "reference_madgraph_full"
+    assert {
+        entry["measurement"]["status"] for entry in reset_madgraph_cache["entries"]
+    } == {"not_available"}
 
 
 def test_profiling_campaign_force_refuses_an_active_directory_lock(
@@ -259,6 +275,100 @@ def test_profiling_campaign_copy_records_local_amplicol_default(
         == 0
     )
     assert configured.read_text(encoding="utf-8") == f"{replacement.resolve()}\n"
+
+
+def test_profiling_campaign_copy_records_local_madgraph_default(
+    tmp_path: Path,
+) -> None:
+    installation = tmp_path / "madgraph"
+    (installation / "bin").mkdir(parents=True)
+    (installation / "bin/mg5_aMC").write_text("#!/bin/sh\n", encoding="utf-8")
+    (installation / "bin/mg5_aMC").chmod(0o755)
+    installation = installation.resolve()
+    destination = tmp_path / "profiling-campaign"
+    invocation = parse_cli(
+        (
+            "profiling-campaign",
+            "copy",
+            str(destination),
+            "--local-madgraph",
+            str(installation),
+        )
+    )
+    assert isinstance(invocation, UtilityInvocation)
+    assert invocation.local_madgraph == installation
+
+    assert (
+        run_cli(
+            (
+                "profiling-campaign",
+                "copy",
+                str(destination),
+                "--local-madgraph",
+                str(installation),
+            )
+        )
+        == 0
+    )
+    configured = destination / ".pyamplicol-madgraph"
+    assert configured.read_text(encoding="utf-8") == f"{installation}\n"
+
+    assert run_cli(("profiling-campaign", "copy", str(destination), "--force")) == 0
+    assert configured.read_text(encoding="utf-8") == f"{installation}\n"
+
+    replacement = tmp_path / "replacement-madgraph"
+    (replacement / "bin").mkdir(parents=True)
+    (replacement / "bin/mg5_aMC").write_text("#!/bin/sh\n", encoding="utf-8")
+    (replacement / "bin/mg5_aMC").chmod(0o755)
+    assert (
+        run_cli(
+            (
+                "profiling-campaign",
+                "copy",
+                str(destination),
+                "--force",
+                "--local-madgraph",
+                str(replacement),
+            )
+        )
+        == 0
+    )
+    assert configured.read_text(encoding="utf-8") == f"{replacement.resolve()}\n"
+
+
+def test_profiling_campaign_copy_rejects_unsafe_local_madgraph_replacement(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "profiling-campaign"
+    assert run_cli(("profiling-campaign", "copy", str(destination))) == 0
+    sentinel = tmp_path / "external-madgraph-config"
+    sentinel.write_text("keep\n", encoding="utf-8")
+    (destination / ".pyamplicol-madgraph").symlink_to(sentinel)
+    replacement = tmp_path / "replacement-madgraph"
+    (replacement / "bin").mkdir(parents=True)
+    (replacement / "bin/mg5_aMC").write_text("#!/bin/sh\n", encoding="utf-8")
+    (replacement / "bin/mg5_aMC").chmod(0o755)
+    stderr = io.StringIO()
+
+    assert (
+        run_cli(
+            (
+                "profiling-campaign",
+                "copy",
+                str(destination),
+                "--force",
+                "--local-madgraph",
+                str(replacement),
+            ),
+            stderr=stderr,
+        )
+        == 2
+    )
+    assert (
+        "unsafe profiling campaign output" in stderr.getvalue()
+        or "escapes its destination" in stderr.getvalue()
+    )
+    assert sentinel.read_text(encoding="utf-8") == "keep\n"
 
 
 def test_profiling_campaign_force_rejects_unsafe_exact_reset_targets(
@@ -371,6 +481,8 @@ def test_profiling_campaign_copy_help_describes_local_reset(
     assert "DEST/campaign_artifacts" in rendered
     assert "moves with DEST" in rendered
     assert "unrelated files" in rendered
+    assert "--local-madgraph" in rendered
+    assert "MadGraph installation" in rendered
 
 
 def test_config_template_and_resolve(tmp_path: Path) -> None:

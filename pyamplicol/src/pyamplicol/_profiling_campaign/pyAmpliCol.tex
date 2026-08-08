@@ -301,7 +301,8 @@ Eager and recurrence modes include construction and serialization of their
 respective numerical schedules. Preparation of a reusable built-in or UFO/JSON
 model bundle occurs before this timer and is therefore excluded from the
 process-generation values in the tables. On-the-fly generation serializes one
-compact process-seed artifact; the separately reported first cold
+compact process-seed artifact and, for contracted colour accuracies, its
+authenticated colour-contraction payload; the separately reported first cold
 evaluation is not part of that generation timer.
 
 Runtime measurements use the summed matrix element. The reported native wall
@@ -325,20 +326,26 @@ five-second sampling target.
 
 \subsection{Numerical validation}
 
-For each Standard-Model process, all compared execution modes and the original
-\AC{} reference are evaluated at the same deterministic phase-space point with
-identical numerical parameters. Cross-mode comparisons use relative tolerance
-$10^{-12}$ and absolute tolerance $10^{-15}$; comparisons with the
-independent \AC{} result use relative tolerance $10^{-8}$. Scalar-model
-ladders instead compare binary64 evaluation with higher precision and, where
+For each Standard-Model process, compared execution modes and references use
+the same deterministic phase-space point and numerical parameters. Cross-mode
+comparisons use relative tolerance $10^{-12}$ and absolute tolerance
+$10^{-15}$. In the four full-colour UFO-SM views, MadGraph standalone is the
+authoritative physics reference: recurrence, compiled, and eager evaluate the
+shared point at precision 200, while on-the-fly uses its supported precision-16
+lane; every candidate must agree within relative tolerance $10^{-10}$. Scalar-model ladders
+instead compare binary64 evaluation with higher precision and, where
 applicable, direct contact-tensor contraction. Every result must reproduce its
 resolved sum and preserve expected structural zeros.
 
-The Standard-Model comparisons in this report establish parity with designated
-legacy authorities, not independent physics correctness. The existing
-\PAC{} modes and original \AC{} share validation lineage and known defects;
-resolving them requires future full-colour, arbitrary-precision comparisons
-with MadGraph.
+Original \AC{} comparisons remain in the historical LC, NLC, and full-colour
+tables at relative tolerance $10^{-8}$, but they are diagnostic rather than
+authoritative. A discrepancy does not invalidate the \PAC{} result: the table
+colours only the \AC{} generation-time token red and otherwise preserves its
+timings and ratios. MadGraph-discovered fixes are implemented in shared,
+model-generic generation paths so that recurrence, compiled, eager, and
+on-the-fly inherit the same correction. On-the-fly NLC and full colour are
+genuine selector-free contracted evaluations backed by an authenticated
+expanded colour-contraction payload.
 
 For each on-the-fly LC cell, both measured workloads must agree component by
 component with a separately generated recurrence result. The complete
@@ -347,9 +354,10 @@ resolved-component check is performed before and after
 on both passes.
 
 Timing and numerical validation are separate requirements: a timing is
-reported only when the corresponding matrix element passes all validation
-checks, and numerical agreement alone does not substitute for a measured
-generation or runtime value.
+reported only when the corresponding matrix element passes all required
+validation checks, and numerical agreement alone does not substitute for a
+measured generation or runtime value. Legacy \AC{} disagreement is explicitly
+not a required check.
 % pyamplicol-report-section-end: methodology
 
 % pyamplicol-report-section-begin: process-matrices

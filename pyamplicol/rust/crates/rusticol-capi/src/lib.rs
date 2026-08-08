@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: 0BSD
 
 use rusticol_core::{
-    NativeRuntime, RusticolError, RusticolErrorKind, supported_runtime_capabilities,
+    NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpResult,
+    NativeOnTheFlyWarmUpStage, NativeRuntime, RusticolError, RusticolErrorKind,
+    supported_runtime_capabilities,
 };
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::ffi::{CStr, CString, c_char, c_double, c_int};
+use std::ffi::{CStr, CString, c_char, c_double, c_int, c_void};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::ptr;
@@ -20,6 +22,66 @@ pub const RUSTICOL_STATUS_INVALID_ARGUMENT: c_int = 1;
 pub const RUSTICOL_STATUS_BUFFER_TOO_SMALL: c_int = 2;
 pub const RUSTICOL_STATUS_RUNTIME_ERROR: c_int = 3;
 pub const RUSTICOL_STATUS_PANIC: c_int = 4;
+
+pub const RUSTICOL_WARM_UP_EVENT_START: u32 = 0;
+pub const RUSTICOL_WARM_UP_EVENT_UPDATE: u32 = 1;
+pub const RUSTICOL_WARM_UP_EVENT_END: u32 = 2;
+
+pub const RUSTICOL_WARM_UP_STAGE_PROCESS_PREPARATION: u32 = 0;
+pub const RUSTICOL_WARM_UP_STAGE_QUERY_FAMILY: u32 = 1;
+pub const RUSTICOL_WARM_UP_STAGE_FAMILY_FINALIZATION: u32 = 2;
+pub const RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION: u32 = 3;
+
+/// Fixed-layout progress snapshot passed to native warm-up observers.
+///
+/// `current_rss_bytes` and `peak_rss_bytes` are meaningful only when the
+/// corresponding `*_available` field is nonzero. The event is borrowed and is
+/// valid only for the duration of the callback.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RusticolWarmUpProgressEvent {
+    pub schema_version: u32,
+    pub kind: u32,
+    pub stage: u32,
+    pub reserved: u32,
+    pub completed: u64,
+    pub total: u64,
+    pub elapsed_seconds: c_double,
+    pub current_rss_bytes: u64,
+    pub peak_rss_bytes: u64,
+    pub workers: u64,
+    pub current_rss_available: u32,
+    pub peak_rss_available: u32,
+}
+
+/// Fixed-layout result from one explicit binary64 on-the-fly warm-up.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RusticolWarmUpResult {
+    pub schema_version: u32,
+    pub reserved: u32,
+    pub elapsed_seconds: c_double,
+    pub query_count: u64,
+    pub warmed_query_count: u64,
+    pub current_rss_bytes: u64,
+    pub peak_rss_bytes: u64,
+    pub current_rss_available: u32,
+    pub peak_rss_available: u32,
+    pub already_warm: u32,
+    pub first_evaluation_completed: u32,
+}
+
+/// Return nonzero to continue or zero to request cancellation.
+///
+/// The callback runs on the coordinating caller thread. The terminal
+/// first-evaluation `END` event is an informational post-commit notification;
+/// returning zero for that one event does not undo a completed warm-up.
+pub type RusticolWarmUpProgressCallback = Option<
+    unsafe extern "C" fn(
+        event: *const RusticolWarmUpProgressEvent,
+        user_data: *mut c_void,
+    ) -> c_int,
+>;
 
 pub struct RusticolRuntimeHandle {
     runtime: NativeRuntime,
@@ -276,6 +338,56 @@ fn validate_f64_output(
         )));
     }
     Ok(())
+}
+
+fn warm_up_event_kind(kind: NativeOnTheFlyWarmUpEventKind) -> u32 {
+    match kind {
+        NativeOnTheFlyWarmUpEventKind::Start => RUSTICOL_WARM_UP_EVENT_START,
+        NativeOnTheFlyWarmUpEventKind::Update => RUSTICOL_WARM_UP_EVENT_UPDATE,
+        NativeOnTheFlyWarmUpEventKind::End => RUSTICOL_WARM_UP_EVENT_END,
+    }
+}
+
+fn warm_up_stage(stage: NativeOnTheFlyWarmUpStage) -> u32 {
+    match stage {
+        NativeOnTheFlyWarmUpStage::ProcessPreparation => RUSTICOL_WARM_UP_STAGE_PROCESS_PREPARATION,
+        NativeOnTheFlyWarmUpStage::QueryFamily => RUSTICOL_WARM_UP_STAGE_QUERY_FAMILY,
+        NativeOnTheFlyWarmUpStage::FamilyFinalization => RUSTICOL_WARM_UP_STAGE_FAMILY_FINALIZATION,
+        NativeOnTheFlyWarmUpStage::FirstEvaluation => RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION,
+    }
+}
+
+fn warm_up_progress_event(event: &NativeOnTheFlyWarmUpEvent) -> RusticolWarmUpProgressEvent {
+    RusticolWarmUpProgressEvent {
+        schema_version: event.schema_version,
+        kind: warm_up_event_kind(event.kind),
+        stage: warm_up_stage(event.stage),
+        reserved: 0,
+        completed: event.completed,
+        total: event.total,
+        elapsed_seconds: event.elapsed_seconds,
+        current_rss_bytes: event.current_rss_bytes.unwrap_or_default(),
+        peak_rss_bytes: event.peak_rss_bytes.unwrap_or_default(),
+        workers: event.workers,
+        current_rss_available: u32::from(event.current_rss_bytes.is_some()),
+        peak_rss_available: u32::from(event.peak_rss_bytes.is_some()),
+    }
+}
+
+fn warm_up_result(result: NativeOnTheFlyWarmUpResult) -> RusticolWarmUpResult {
+    RusticolWarmUpResult {
+        schema_version: result.schema_version,
+        reserved: 0,
+        elapsed_seconds: result.elapsed_seconds,
+        query_count: result.query_count,
+        warmed_query_count: result.warmed_query_count,
+        current_rss_bytes: result.current_rss_bytes.unwrap_or_default(),
+        peak_rss_bytes: result.peak_rss_bytes.unwrap_or_default(),
+        current_rss_available: u32::from(result.current_rss_bytes.is_some()),
+        peak_rss_available: u32::from(result.peak_rss_bytes.is_some()),
+        already_warm: u32::from(result.already_warm),
+        first_evaluation_completed: u32::from(result.first_evaluation_completed),
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -985,6 +1097,78 @@ pub unsafe extern "C" fn rusticol_runtime_resolved_shape(
     })
 }
 
+/// Explicitly warms one binary64 point for an on-the-fly runtime selection.
+///
+/// This constructs and retains the selected OTF query family, performs exactly one evaluation,
+/// and returns a fixed-layout summary. Global selector arrays contain physical string IDs; an
+/// omitted selector axis is summed over every component retained by the artifact. Progress is
+/// reported only from the coordinating caller thread and is throttled by the core runtime.
+/// Returning zero from the callback requests cancellation at a cancellable cold-path boundary.
+/// The terminal first-evaluation `END` event is post-commit and informational.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call. `momenta`
+/// must reference `momentum_count` readable `f64` values containing exactly one point in
+/// `[external particle][E, px, py, pz]` order. For each nonzero selector count, the corresponding
+/// pointer must reference that many readable NUL-terminated string pointers. `output` must be
+/// writable for one [`RusticolWarmUpResult`]. If supplied, `progress_callback` must remain callable
+/// for the duration of this function and may use `progress_user_data`; it must not call the same
+/// runtime handle recursively.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_warm_up_f64(
+    handle: *mut RusticolRuntimeHandle,
+    momenta: *const c_double,
+    momentum_count: size_t,
+    helicity_ids: *const *const c_char,
+    helicity_count: size_t,
+    color_ids: *const *const c_char,
+    color_count: size_t,
+    progress_callback: RusticolWarmUpProgressCallback,
+    progress_user_data: *mut c_void,
+    output: *mut RusticolWarmUpResult,
+) -> c_int {
+    guard(|| {
+        if output.is_null() {
+            return Err(invalid("warm-up result output is null"));
+        }
+        // SAFETY: The caller supplies writable result storage. Initialize it before any
+        // fallible operation so failures never leave stale success data behind.
+        unsafe { *output = RusticolWarmUpResult::default() };
+
+        // SAFETY: Helpers validate the handle and all input arrays.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        let momenta = unsafe { read_f64_slice(momenta, momentum_count, "warm-up momenta") }?;
+        let helicities =
+            unsafe { read_selector_ids(helicity_ids, helicity_count, "helicity ids") }?;
+        let colors = unsafe { read_selector_ids(color_ids, color_count, "color ids") }?;
+
+        let result = if let Some(callback) = progress_callback {
+            let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+                let event = warm_up_progress_event(event);
+                // SAFETY: The caller guarantees that the callback and user-data pointer remain
+                // valid for this call. The borrowed event lives through the callback only.
+                Ok(unsafe { callback(&event, progress_user_data) } != 0)
+            };
+            handle.runtime.warm_up_f64(
+                momenta,
+                helicities.as_deref(),
+                colors.as_deref(),
+                Some(&mut observer),
+            )
+        } else {
+            handle
+                .runtime
+                .warm_up_f64(momenta, helicities.as_deref(), colors.as_deref(), None)
+        }
+        .map_err(AbiError::from)?;
+
+        // SAFETY: The non-null output was validated before invoking the runtime.
+        unsafe { *output = warm_up_result(result) };
+        Ok(())
+    })
+}
+
 /// Evaluates total f64 matrix elements for a batch of momentum points.
 ///
 /// # Safety
@@ -1421,6 +1605,7 @@ mod tests {
                 "rusticol.compiled.runtime-selectors.v1".to_string(),
                 "rusticol.eager-runtime-layout.complex-f64.v1".to_string(),
                 "rusticol.on-the-fly.complex-f64.v1".to_string(),
+                "rusticol.on-the-fly.contracted-color.v1".to_string(),
                 "rusticol.on-the-fly.lc-color.v1".to_string(),
                 "rusticol.recurrence-color.contracted.v1".to_string(),
                 "rusticol.recurrence-color.lc.v1".to_string(),
@@ -1436,6 +1621,79 @@ mod tests {
     fn native_argument_errors_map_to_the_c_argument_status() {
         let error = AbiError::from(RusticolError::selector("bad selector"));
         assert_eq!(error.status, RUSTICOL_STATUS_INVALID_ARGUMENT);
+    }
+
+    #[test]
+    fn warm_up_pods_preserve_schema_stage_memory_and_completion_state() {
+        assert_eq!(std::mem::size_of::<RusticolWarmUpProgressEvent>(), 72);
+        assert_eq!(std::mem::size_of::<RusticolWarmUpResult>(), 64);
+        let event = NativeOnTheFlyWarmUpEvent {
+            schema_version: 1,
+            kind: NativeOnTheFlyWarmUpEventKind::Update,
+            stage: NativeOnTheFlyWarmUpStage::QueryFamily,
+            completed: 7,
+            total: 11,
+            elapsed_seconds: 0.25,
+            current_rss_bytes: Some(1024),
+            peak_rss_bytes: None,
+            workers: 3,
+            message: Some("not copied across the fixed C ABI".to_string()),
+        };
+        let pod = warm_up_progress_event(&event);
+        assert_eq!(pod.schema_version, 1);
+        assert_eq!(pod.kind, RUSTICOL_WARM_UP_EVENT_UPDATE);
+        assert_eq!(pod.stage, RUSTICOL_WARM_UP_STAGE_QUERY_FAMILY);
+        assert_eq!((pod.completed, pod.total), (7, 11));
+        assert_eq!(pod.current_rss_bytes, 1024);
+        assert_eq!(pod.current_rss_available, 1);
+        assert_eq!(pod.peak_rss_bytes, 0);
+        assert_eq!(pod.peak_rss_available, 0);
+        assert_eq!(pod.workers, 3);
+
+        let result = warm_up_result(NativeOnTheFlyWarmUpResult {
+            schema_version: 1,
+            elapsed_seconds: 0.5,
+            query_count: 19,
+            warmed_query_count: 17,
+            current_rss_bytes: None,
+            peak_rss_bytes: Some(4096),
+            already_warm: false,
+            first_evaluation_completed: true,
+        });
+        assert_eq!((result.query_count, result.warmed_query_count), (19, 17));
+        assert_eq!(result.current_rss_available, 0);
+        assert_eq!(result.peak_rss_available, 1);
+        assert_eq!(result.peak_rss_bytes, 4096);
+        assert_eq!(result.already_warm, 0);
+        assert_eq!(result.first_evaluation_completed, 1);
+    }
+
+    #[test]
+    fn failed_warm_up_clears_result_before_validating_the_handle() {
+        let point = [0.0; 8];
+        let mut result = RusticolWarmUpResult {
+            schema_version: u32::MAX,
+            query_count: u64::MAX,
+            first_evaluation_completed: 1,
+            ..RusticolWarmUpResult::default()
+        };
+        // SAFETY: The point and result are valid; a null handle is deliberately rejected.
+        let status = unsafe {
+            rusticol_runtime_warm_up_f64(
+                ptr::null_mut(),
+                point.as_ptr(),
+                point.len(),
+                ptr::null(),
+                0,
+                ptr::null(),
+                0,
+                None,
+                ptr::null_mut(),
+                &mut result,
+            )
+        };
+        assert_eq!(status, RUSTICOL_STATUS_INVALID_ARGUMENT);
+        assert_eq!(result, RusticolWarmUpResult::default());
     }
 
     #[test]

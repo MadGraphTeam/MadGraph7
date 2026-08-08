@@ -13,11 +13,16 @@ use std::ffi::c_void;
 const STATUS_BOUNDS: i32 = 2;
 
 #[test]
-fn executor_status_preserves_concrete_error_and_drains_the_detail_channel() {
+fn executor_status_success_keeps_first_failure_detail_until_an_actual_failure() {
     clear_direct_executor_error_detail();
     record_direct_executor_error_detail(crate::RusticolError::integrity(
         "descriptor row 789823 is invalid",
     ));
+    record_direct_executor_error_detail(crate::RusticolError::internal(
+        "later detail must not replace the first failure",
+    ));
+
+    assert!(check_status(DirectExecutorRole::Source, 7, DIRECT_STATUS_OK).is_ok());
 
     let error = check_status(DirectExecutorRole::Contribution, 312, 4).unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Integrity);
@@ -31,6 +36,21 @@ fn executor_status_preserves_concrete_error_and_drains_the_detail_channel() {
     assert_eq!(
         generic.message(),
         "direct recurrence Contribution executor 312 returned status 4"
+    );
+}
+
+#[test]
+fn executor_status_entry_clear_prevents_stale_detail_leakage() {
+    record_direct_executor_error_detail(crate::RusticolError::integrity(
+        "detail from an earlier schedule",
+    ));
+    clear_direct_executor_error_detail();
+
+    let error = check_status(DirectExecutorRole::Closure, 41, 9).unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Evaluation);
+    assert_eq!(
+        error.message(),
+        "direct recurrence Closure executor 41 returned status 9"
     );
 }
 

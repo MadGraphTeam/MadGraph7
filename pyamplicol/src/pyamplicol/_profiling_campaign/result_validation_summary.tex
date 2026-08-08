@@ -9,34 +9,36 @@ Only measurements whose numerical checks pass are counted below. The scope compr
 \toprule
 \textbf{final-state multiplicity} & \textbf{declared} & \textbf{static N/A} & \textbf{verified} & \textbf{measurable coverage} \\
 \midrule
-1 & 72 & 4 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 68 open)} \\
-2 & 218 & 16 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 202 open)} \\
-3 & 242 & 18 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 224 open)} \\
-4 & 362 & 28 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 334 open)} \\
-5 & 333 & 28 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 305 open)} \\
-6 & 211 & 10 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 201 open)} \\
+1 & 80 & 0 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 80 open)} \\
+2 & 250 & 0 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 250 open)} \\
+3 & 278 & 0 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 278 open)} \\
+4 & 418 & 0 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 418 open)} \\
+5 & 389 & 0 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 389 open)} \\
+6 & 223 & 4 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 219 open)} \\
 7 & 175 & 10 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 165 open)} \\
 8 & 175 & 10 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 165 open)} \\
 9 & 174 & 10 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 164 open)} \\
 \midrule
-\textbf{total} & 1962 & 134 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 1828 open)} \\
+\textbf{total} & 2162 & 34 & 0 & \textcolor{ReportOrange}{incomplete (0 censored, 2128 open)} \\
 \bottomrule
 \end{tabular}
 \end{center}
 \end{samepage}
-\ReportTableNote{Full-catalog display accounting through \(n=9\): 1962 declared cells, comprising 1828 measurable cells and 134 catalog-authenticated static N/A rows; 539 matrix process/multiplicity positions marked either \textsc{not applicable} or \textsc{not run}; and 36 reference execution fields marked \textsc{not exposed}. The latter two categories are intentional table structure, not unfilled measurements.}
+\ReportTableNote{Full-catalog display accounting through \(n=9\): 2162 declared cells, comprising 2128 measurable cells and 34 catalog-authenticated static N/A rows; 659 matrix process/multiplicity positions marked either \textsc{not applicable} or \textsc{not run}; and 36 reference execution fields marked \textsc{not exposed}. The latter two categories are intentional table structure, not unfilled measurements.}
 \begin{center}
 \small
 \begin{tabular}{@{}l r r@{}}
 \toprule
-\textbf{validation comparison} & \textbf{passed} & \textbf{max. relative difference} \\
+\textbf{validation evidence} & \textbf{records} & \textbf{max. relative difference} \\
 \midrule
-independent original-\AC{} reference records & 0 & \textcolor{ReportMuted}{reference} \\
-\PAC{} versus independent reference & 0 & \textcolor{ReportMuted}{---} \\
+MadGraph standalone tree-level reference records & 0 & \textcolor{ReportMuted}{reference} \\
+\PAC{} versus MadGraph binary64 (p200; OTF p16) & 0 & \textcolor{ReportMuted}{---} \\
+original-\AC{} legacy diagnostic records & 0 & \textcolor{ReportMuted}{diagnostic} \\
+\PAC{} versus original-\AC{} legacy diagnostic & 0 pass, 0 mismatch & \textcolor{ReportMuted}{---} \\
 compiled/eager/OTF versus recurrence & 0 & \textcolor{ReportMuted}{---} \\
 optimized result versus resolved sum & 0 & \textcolor{ReportMuted}{---} \\
-scalar result versus higher precision & 0 & \textcolor{ReportMuted}{---} \\
+binary64 result versus p32 & 0 & \textcolor{ReportMuted}{---} \\
 \bottomrule
 \end{tabular}
 \end{center}
-\ReportTableNote{Profile: \texttt{\ReportProfileName}. Measured source: \textcolor{ReportOrange}{source identity is incomplete or mixed}. Independent-reference comparisons use a relative tolerance of \(10^{-8}\); cross-mode (including OTF/recurrence), resolved-sum, and higher-precision comparisons use \(10^{-12}\).}
+\ReportTableNote{Profile: \texttt{\ReportProfileName}. Measured source: \textcolor{ReportOrange}{source identity is incomplete or mixed}. The authoritative \PAC{} versus MadGraph binary64 full-colour comparison uses p200 for recurrence, compiled, and eager candidates and the supported p16 lane for OTF; all use a relative tolerance of \(10^{-10}\). Original-\AC{} comparisons are retained non-authoritative legacy diagnostics at \(10^{-8}\); a legacy mismatch does not invalidate a candidate; cross-mode (including OTF/recurrence), resolved-sum, and p32 comparisons use \(10^{-12}\).}

@@ -9,10 +9,11 @@ import struct
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from pyamplicol._internal.versions import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -1370,6 +1371,139 @@ def _recurrence_execution_inspection(
     )
 
 
+def _on_the_fly_color_reference(
+    runtime_metadata: Mapping[str, object],
+    *,
+    color_accuracy: str,
+    contracted: bool,
+) -> dict[str, Any] | None:
+    raw = runtime_metadata.get("color_contraction")
+    if not contracted:
+        if raw is not None or "color_contraction" in runtime_metadata:
+            raise ArtifactError(
+                "LC on-the-fly execution unexpectedly carries color contraction"
+            )
+        return None
+    reference = _mapping(
+        raw,
+        "on-the-fly execution.runtime_metadata.color_contraction",
+    )
+    expected_fields = {
+        "abi",
+        "color_accuracy",
+        "storage",
+        "includes_color_factor",
+        "group_count",
+        "sector_count",
+        "active_sector_count",
+        "component_count",
+        "destination_count",
+        "entry_count",
+        "logical_entry_count",
+        "semantic_digest",
+        "factorization",
+        "path",
+        "size_bytes",
+        "sha256",
+    }
+    if set(reference) != expected_fields:
+        raise ArtifactError(
+            "on-the-fly color-contraction reference has unsupported fields"
+        )
+    _require_contract(
+        reference,
+        "abi",
+        _RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+        "on-the-fly execution.runtime_metadata.color_contraction",
+    )
+    accuracy = _string(
+        reference.get("color_accuracy"),
+        "on-the-fly color-contraction accuracy",
+    )
+    storage = _string(
+        reference.get("storage"),
+        "on-the-fly color-contraction storage",
+    )
+    sector_count = _integer(
+        reference.get("sector_count"),
+        "on-the-fly color-contraction sector count",
+        minimum=1,
+    )
+    active_sector_count = _integer(
+        reference.get("active_sector_count"),
+        "on-the-fly color-contraction active sector count",
+        minimum=1,
+    )
+    component_count = _integer(
+        reference.get("component_count"),
+        "on-the-fly color-contraction component count",
+        minimum=1,
+    )
+    group_count = _integer(
+        reference.get("group_count"),
+        "on-the-fly color-contraction group count",
+        minimum=1,
+    )
+    destination_count = _integer(
+        reference.get("destination_count"),
+        "on-the-fly color-contraction destination count",
+        minimum=1,
+    )
+    entry_count = _integer(
+        reference.get("entry_count"),
+        "on-the-fly color-contraction entry count",
+        minimum=1,
+    )
+    logical_entry_count = _integer(
+        reference.get("logical_entry_count"),
+        "on-the-fly color-contraction logical entry count",
+        minimum=1,
+    )
+    semantic_digest = _string(
+        reference.get("semantic_digest"),
+        "on-the-fly color-contraction semantic digest",
+    )
+    payload_sha256 = _string(
+        reference.get("sha256"),
+        "on-the-fly color-contraction SHA-256",
+    )
+    if (
+        accuracy != color_accuracy
+        or accuracy not in {"nlc", "full"}
+        or storage != "expanded"
+        or reference.get("includes_color_factor") is not True
+        or reference.get("factorization") is not None
+        or component_count != 1
+        or active_sector_count != group_count
+        or destination_count != group_count
+        or group_count > sector_count
+        or logical_entry_count != entry_count
+        or reference.get("path") != "on-the-fly-color.bin"
+        or semantic_digest != payload_sha256
+        or len(payload_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in payload_sha256)
+    ):
+        raise ArtifactError(
+            "on-the-fly color-contraction reference is noncanonical"
+        )
+    _integer(
+        reference.get("size_bytes"),
+        "on-the-fly color-contraction payload size",
+        minimum=1,
+    )
+    return {
+        "color_accuracy": accuracy,
+        "storage": storage,
+        "sector_count": sector_count,
+        "active_sector_count": active_sector_count,
+        "component_count": component_count,
+        "group_count": group_count,
+        "destination_count": destination_count,
+        "entry_count": entry_count,
+        "logical_entry_count": logical_entry_count,
+    }
+
+
 def _execution_inspection(
     manifest: ArtifactManifest,
     execution_path: Path,
@@ -1386,18 +1520,36 @@ def _execution_inspection(
         )
     )
     capability_values = frozenset(str(value) for value in capabilities)
-    on_the_fly_capabilities = {
+    on_the_fly_color_capabilities = {
         ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
-        ON_THE_FLY_RUNTIME_CAPABILITY,
+        ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     }
-    if not on_the_fly_capabilities.isdisjoint(capability_values):
-        if capability_values != on_the_fly_capabilities or len(capabilities) != len(
-            on_the_fly_capabilities
-        ):
+    if (
+        ON_THE_FLY_RUNTIME_CAPABILITY in capability_values
+        or not on_the_fly_color_capabilities.isdisjoint(capability_values)
+    ):
+        selected_color_capabilities = capability_values.intersection(
+            on_the_fly_color_capabilities
+        )
+        if len(selected_color_capabilities) != 1:
             raise ArtifactError(
-                "on-the-fly execution must declare exactly its two compact LC "
-                "runtime capabilities"
+                "on-the-fly execution must declare exactly one color capability"
             )
+        selected_color_capability = next(iter(selected_color_capabilities))
+        on_the_fly_capabilities = {
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            selected_color_capability,
+        }
+        if capability_values != on_the_fly_capabilities or len(capabilities) != 2:
+            raise ArtifactError(
+                "on-the-fly execution must declare exactly its two runtime "
+                "capabilities"
+            )
+        contracted_color = (
+            selected_color_capability
+            == ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+        )
+        expected_color_accuracies = {"nlc", "full"} if contracted_color else {"lc"}
         execution = _json_mapping(execution_path, "process execution manifest")
         expected_root_fields = {
             "schema_version",
@@ -1444,12 +1596,12 @@ def _execution_inspection(
             )
             or execution.get("schema_version") != 3
             or kind != _ON_THE_FLY_RUNTIME_KIND
-            or len(declared_capabilities) != len(on_the_fly_capabilities)
+            or len(declared_capabilities) != 2
             or declared_capability_values != on_the_fly_capabilities
             or execution.get("process") != process.get("expression")
             or execution.get("key") != process.get("id")
-            or execution.get("color_accuracy") != "lc"
-            or process.get("color_accuracy") != "lc"
+            or execution.get("color_accuracy") not in expected_color_accuracies
+            or process.get("color_accuracy") != execution.get("color_accuracy")
             or external_pdgs != expected_pdgs
         ):
             raise ArtifactError(
@@ -1476,9 +1628,14 @@ def _execution_inspection(
             "seed_member_path": "on-the-fly/process-seed-v1.bin",
         }:
             raise ArtifactError("on-the-fly runtime-container contract is noncanonical")
-        _mapping(
+        runtime_metadata = _mapping(
             execution.get("runtime_metadata"),
             "on-the-fly execution.runtime_metadata",
+        )
+        color_reference = _on_the_fly_color_reference(
+            runtime_metadata,
+            color_accuracy=str(execution.get("color_accuracy")),
+            contracted=contracted_color,
         )
         selector_policy = _mapping(
             execution.get("selector_policy"),
@@ -1493,15 +1650,21 @@ def _execution_inspection(
             raise ArtifactError(
                 "on-the-fly execution.selector_policy has unsupported fields"
             )
-        if selector_policy.get("color_coverage") != "complete":
+        expected_color_coverage = "contracted" if contracted_color else "complete"
+        if selector_policy.get("color_coverage") != expected_color_coverage:
             raise ArtifactError(
-                "on-the-fly execution.selector_policy.color_coverage must be 'complete'"
+                "on-the-fly execution.selector_policy.color_coverage disagrees "
+                "with its color capability"
             )
         trace_reflections_folded = selector_policy.get("trace_reflections_folded")
         if not isinstance(trace_reflections_folded, bool):
             raise ArtifactError(
                 "on-the-fly execution.selector_policy.trace_reflections_folded "
                 "must be a boolean"
+            )
+        if contracted_color and trace_reflections_folded:
+            raise ArtifactError(
+                "contracted on-the-fly color cannot fold trace reflections"
             )
         reference = selector_policy.get("reference_color_word")
         if reference is not None:
@@ -1549,6 +1712,10 @@ def _execution_inspection(
             raise ArtifactError(
                 "on-the-fly execution selector census exceeds the u64 domain"
             )
+        if contracted_color and color_flow_count != 1:
+            raise ArtifactError(
+                "contracted on-the-fly execution must expose one physical color result"
+            )
         runtime_options = _mapping(
             execution.get("runtime_options"),
             "on-the-fly execution.runtime_options",
@@ -1574,6 +1741,41 @@ def _execution_inspection(
             physical_color_flow_count=color_flow_count,
             requested_point_tile_size=point_tile_size,
             requested_query_construction_threads=query_construction_threads,
+            recurrence_color_accuracy=(
+                None if color_reference is None else color_reference["color_accuracy"]
+            ),
+            recurrence_color_storage=(
+                None if color_reference is None else color_reference["storage"]
+            ),
+            recurrence_color_sector_count=(
+                None if color_reference is None else color_reference["sector_count"]
+            ),
+            recurrence_color_active_sector_count=(
+                None
+                if color_reference is None
+                else color_reference["active_sector_count"]
+            ),
+            recurrence_color_component_count=(
+                None
+                if color_reference is None
+                else color_reference["component_count"]
+            ),
+            recurrence_color_group_count=(
+                None if color_reference is None else color_reference["group_count"]
+            ),
+            recurrence_color_destination_count=(
+                None
+                if color_reference is None
+                else color_reference["destination_count"]
+            ),
+            recurrence_color_entry_count=(
+                None if color_reference is None else color_reference["entry_count"]
+            ),
+            recurrence_color_logical_entry_count=(
+                None
+                if color_reference is None
+                else color_reference["logical_entry_count"]
+            ),
             native_profile_phases=_ON_THE_FLY_PROFILE_PHASES,
         )
     if RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in capability_values:
@@ -1726,8 +1928,8 @@ def _physics_inspection(
             or physics.get("kind") != _ON_THE_FLY_PUBLIC_METADATA_KIND
             or physics.get("process_id") != process.get("id")
             or physics.get("process") != process.get("expression")
-            or physics.get("color_accuracy") != "lc"
-            or process.get("color_accuracy") != "lc"
+            or physics.get("color_accuracy") not in {"lc", "nlc", "full"}
+            or process.get("color_accuracy") != physics.get("color_accuracy")
         ):
             raise ArtifactError(
                 f"{relative} compact on-the-fly metadata disagrees with its process"
@@ -1834,17 +2036,20 @@ def _physics_inspection(
         color_flow_count = execution.physical_color_flow_count
         if helicity_count is None or color_flow_count is None:  # pragma: no cover
             raise ArtifactError("on-the-fly execution has no selector census")
+        contracted_color = process.get("color_accuracy") in {"nlc", "full"}
         return _PhysicsInspection(
             physical_helicities=helicity_count,
             computed_helicities=helicity_count,
             physical_color_components=color_flow_count,
             computed_color_components=color_flow_count,
             helicity_coverage="complete",
-            color_coverage="complete",
+            color_coverage="contracted" if contracted_color else "complete",
             selector_provenance="on-the-fly-compact-seed",
             helicity_runtime_contract="complete-reusable",
-            color_flow_runtime_contract="complete-reusable",
-            lc_physical_sector_count=color_flow_count,
+            color_flow_runtime_contract=(
+                None if contracted_color else "complete-reusable"
+            ),
+            lc_physical_sector_count=(None if contracted_color else color_flow_count),
         )
     helicities = _sequence(physics.get("helicities"), f"{relative}.helicities")
     colors = _sequence(physics.get("color_components"), f"{relative}.color_components")

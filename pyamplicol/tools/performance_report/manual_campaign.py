@@ -108,7 +108,7 @@ DEFAULT_BATCH_SIZE = 128
 DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
 DEFAULT_WORKER_STALE_SECONDS = 15.0
-DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 65
+DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 73
 _REPORT_SECTION_MARKER = re.compile(
     r"^% pyamplicol-report-section-(begin|end): ([a-z][a-z0-9-]*)$"
 )
@@ -126,6 +126,7 @@ _ORIGINAL_AMPLICOL_REQUIRED_MAKE_TARGETS = (
     "amplicol_color_library_probe",
 )
 _LOCAL_AMPLICOL_CONFIG = ".pyamplicol-original-amplicol"
+_LOCAL_MADGRAPH_CONFIG = ".pyamplicol-madgraph"
 MAX_TAIL_READ_BYTES = 64 * 1024
 MAX_LOG_TAIL_LINES = 8
 MANUAL_STATE_SCHEMA = "pyamplicol-manual-campaign-state-v1"
@@ -7361,6 +7362,8 @@ def _campaign_settings(
             else None
         ),
         original_amplicol_revision=original_amplicol_revision,
+        madgraph_installation=getattr(arguments, "madgraph", None),
+        multiplicity_wave_barrier=bool(getattr(arguments, "fail_fast", False)),
     )
 
 
@@ -7440,6 +7443,66 @@ def _configured_original_amplicol(docs_dir: Path) -> Path | None:
     return Path(lines[0])
 
 
+def _configured_madgraph(docs_dir: Path) -> Path | None:
+    config = docs_dir / _LOCAL_MADGRAPH_CONFIG
+    if not config.exists():
+        return None
+    if config.is_symlink() or not config.is_file():
+        raise ManualCampaignError(
+            f"campaign MadGraph configuration is not a regular file: {config}"
+        )
+    try:
+        lines = config.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise ManualCampaignError(
+            f"cannot read campaign MadGraph configuration: {config}"
+        ) from error
+    if len(lines) != 1 or not lines[0] or not Path(lines[0]).is_absolute():
+        raise ManualCampaignError(
+            f"campaign MadGraph configuration is invalid: {config}"
+        )
+    return Path(lines[0])
+
+
+def _validated_madgraph_installation(path: Path) -> Path:
+    try:
+        installation = path.expanduser().resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ManualCampaignError(
+            f"--madgraph installation does not exist: {path}"
+        ) from error
+    if not installation.is_dir():
+        raise ManualCampaignError(
+            f"--madgraph must name an installation directory: {installation}"
+        )
+    executable = installation / "bin/mg5_aMC"
+    try:
+        executable_mode = executable.stat(follow_symlinks=False).st_mode
+    except OSError as error:
+        raise ManualCampaignError(
+            "--madgraph must contain a regular executable bin/mg5_aMC"
+        ) from error
+    if not stat.S_ISREG(executable_mode) or not os.access(executable, os.X_OK):
+        raise ManualCampaignError(
+            "--madgraph must contain a regular executable bin/mg5_aMC"
+        )
+    return installation
+
+
+def _resolve_madgraph(
+    arguments: argparse.Namespace,
+    *,
+    installed: bool,
+    docs_dir: Path,
+) -> Path | None:
+    installation = arguments.madgraph
+    if installation is None and installed:
+        installation = _configured_madgraph(docs_dir)
+    if installation is None:
+        return None
+    return _validated_madgraph_installation(installation)
+
+
 def _original_amplicol_available_for_planning(
     arguments: argparse.Namespace,
     *,
@@ -7447,7 +7510,7 @@ def _original_amplicol_available_for_planning(
     root: Path,
     docs_dir: Path,
 ) -> bool:
-    """Whether optional authority closure may include original AmpliCol."""
+    """Whether optional validation dependencies may include original AmpliCol."""
 
     if bool(getattr(arguments, "no_dependencies_added", False)):
         return False
@@ -7937,6 +8000,11 @@ def _run_campaign(
         arguments,
         installed=installed,
         root=repo_root,
+        docs_dir=service.paths.docs_dir,
+    )
+    arguments.madgraph = _resolve_madgraph(
+        arguments,
+        installed=installed,
         docs_dir=service.paths.docs_dir,
     )
     preliminary_settings = _campaign_settings(
@@ -8929,8 +8997,8 @@ full-line `#` comments. IDs from files and `--cell-id` are ORed before the
 remaining selectors are applied. Each completed run atomically refreshes
 `campaign_summary_ids/`; use one or more of its status files to target a retry.
 `unverified.txt` needs no `--force-refresh`: those retained diagnostics are not
-successful currents, and a later recurrence or AmpliCol authority causes the
-selected cells to run and validate again automatically.
+successful currents, and a later recurrence authority or AmpliCol diagnostic
+dependency causes the selected cells to run and validate again automatically.
 By default every heavy attempt payload is retained. Use `--cleanup-artifacts`
 to archive obsolete sealed attempts, retain their compact metadata, results,
 logs, progress events, and timelines, and remove only their heavy payloads;
@@ -8963,16 +9031,16 @@ visibly falls back to reuse-off while ordinary generation continues under the
 generation-time and 30-GB process-tree caps. Z-table C++/ASM variants above
 multiplicity six remain catalog-defined static N/A and create no attempts.
 
-By default the planner adds each selected cell's available numerical-authority
-closure at the active source revision. The exact per-process order is original
-AmpliCol, recurrence, then compiled/eager; added authorities are shown as
-dependency-only work. Independent processes remain parallel. A missing or
-terminal authority releases its candidate to run unverified rather than
-creating a blocked dependency. Use `--no-dependencies-added` for an explicitly
-baseline-free selection; hard construction and selector/provider dependencies
-are always retained. Selecting `amplicol` explicitly still requires a clean
-complete checkout. An omitted engine selector and quoted `*` both mean every
-engine.
+By default the planner adds each selected cell's available validation
+dependencies at the active source revision. The exact per-process order is the
+original-AmpliCol diagnostic, recurrence authority, then compiled/eager
+candidate; added cells are shown as dependency-only work. Independent processes
+remain parallel. A missing or terminal authority releases its candidate to run
+unverified rather than creating a blocked dependency. Use
+`--no-dependencies-added` for an explicitly baseline-free selection; hard
+construction and selector/provider dependencies are always retained. Selecting
+`amplicol` explicitly still requires a clean complete checkout. An omitted
+engine selector and quoted `*` both mean every engine.
 
 Canonical selector values and aliases
 -------------------------------------
@@ -9018,7 +9086,7 @@ Common recipes
   Stop dispatch on the first terminal failure and retain its full evidence:
     steer_performance_campaign.py run --fail-fast --workers 4 --table matrix
 
-  All pyAmpliCol engines without adding optional authority cells:
+  All pyAmpliCol engines without adding optional validation dependencies:
     steer_performance_campaign.py run \\
       --generation-engine recurrence compiled eager on-the-fly \\
       --no-dependencies-added
@@ -9310,11 +9378,22 @@ def build_parser() -> argparse.ArgumentParser:
             "Clean, complete original-AmpliCol checkout containing the profiling "
             "interface from PR #12 (currently amplicol_with_patches; compatible "
             "upstream revisions are accepted after merge). Required when the "
-            "direct selection or automatically added authority closure includes "
-            "the amplicol engine. When no checkout is configured, recurrence "
-            "remains available as the authority for compiled/eager work. Pass "
+            "direct selection or automatically added diagnostic dependency "
+            "includes the amplicol engine. When no checkout is configured, "
+            "recurrence remains available as the authority for compiled/eager "
+            "work. Pass "
             "--no-dependencies-added for an explicitly baseline-free selection. "
             "Omitted or '*' engine selection means all engines."
+        ),
+    )
+    resources.add_argument(
+        "--madgraph",
+        type=Path,
+        metavar="PATH_TO_MADGRAPH_INSTALLATION",
+        help=(
+            "MadGraph installation containing an executable bin/mg5_aMC. "
+            "Installed campaign copies default to the path saved in "
+            ".pyamplicol-madgraph."
         ),
     )
     profiling = run.add_argument_group("profiling hyperparameters")
@@ -9403,7 +9482,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Stop new dispatch after the first terminal non-success, cancel "
-            "other live workers, retain every failed/cancelled attempt payload, "
+            "other live workers, complete multiplicities in n=1, n=2, ... "
+            "waves, retain every failed/cancelled attempt payload, "
             "exit nonzero, and atomically write "
             "campaign_summary_ids/fail_fast_failure.log with exact diagnostic "
             "and reproduction paths. Cancelled outcomes caused by the stop are "

@@ -56,6 +56,23 @@ def _cell(*, workload: Workload = Workload.SELECTED_FLOW) -> CellSpec:
     )
 
 
+def _hard_dependency_cell() -> CellSpec:
+    return _cell(workload=Workload.ALL_FLOW)
+
+
+def _ufo_recurrence_cell(
+    *, workload: Workload = Workload.SELECTED_FLOW
+) -> CellSpec:
+    return next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "matrix_recurrence_ufo_sm_lc"
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final == 1
+        and cell.workload is workload
+    )
+
+
 def _ok_measurement(
     cell: CellSpec,
     *,
@@ -192,10 +209,10 @@ def test_dependency_hold_becomes_eligible_after_every_prerequisite_is_ok(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     prerequisites = catalog_prerequisite_closure(target)
     assert len(prerequisites) == 1
-    assert prerequisites[0].measurement.execution_mode.value == "recurrence"
+    assert prerequisites[0] == _cell()
 
     before = _classify(store, _prior(target))[target.cell_id]
     assert before.eligible is False
@@ -207,6 +224,19 @@ def test_dependency_hold_becomes_eligible_after_every_prerequisite_is_ok(
     assert after.eligible is True
     assert after.reason == "eligible"
     assert _active_prior_held_ids(store, _prior(target)) == frozenset()
+
+
+def test_compiled_recurrence_authority_is_not_a_hold_prerequisite(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    target = _cell()
+    authority = REPORT_CATALOG.validation_baseline_cell(target)
+
+    assert authority is not None
+    assert authority.measurement.execution_mode.value == "recurrence"
+    assert catalog_prerequisite_closure(target) == ()
+    assert _classify(store, _prior(target))[target.cell_id].eligible is True
 
 
 @pytest.mark.parametrize(
@@ -306,26 +336,25 @@ def test_historical_hold_history_rejects_bad_digest_and_reason_tampering(
         _classify(store, {target.cell_id: tampered})
 
 
-def test_optional_amplicol_ancestor_does_not_hold_compiled_descendant(
+def test_optional_amplicol_diagnostic_is_not_a_hold_prerequisite(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
-    direct = REPORT_CATALOG.validation_baseline_cell(target)
-    assert direct is not None
-    optional_ancestor = REPORT_CATALOG.validation_baseline_cell(direct)
-    assert optional_ancestor is not None
-    _publish_ok(store, direct)
+    target = _ufo_recurrence_cell()
+    (direct,) = catalog_prerequisite_closure(target)
+    optional_diagnostic = REPORT_CATALOG.validation_baseline_cell(target)
+    assert optional_diagnostic is not None
+    assert optional_diagnostic.measurement.execution_mode.value == "amplicol"
 
     disposition = _classify(
         store,
         _prior(target),
     )[target.cell_id]
 
-    assert disposition.eligible is True
+    assert disposition.eligible is False
     assert disposition.prerequisite_ids == (direct.cell_id,)
-    assert optional_ancestor.cell_id not in disposition.prerequisite_ids
-    assert disposition.blocking_prerequisites == ()
+    assert optional_diagnostic.cell_id not in disposition.prerequisite_ids
+    assert disposition.blocking_prerequisites == ((direct.cell_id, "missing"),)
 
 
 @pytest.mark.parametrize(
@@ -341,7 +370,7 @@ def test_terminal_prerequisite_status_keeps_historical_hold(
     status: ResultStatus,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     prerequisites = catalog_prerequisite_closure(target)
     failed = prerequisites[-1]
     for prerequisite in prerequisites:
@@ -392,7 +421,7 @@ def test_active_scoped_hold_blocks_target_and_dependency_descendants(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     prerequisites = _publish_prerequisites(store, target)
     active_dependency = prerequisites[0]
 
@@ -442,7 +471,7 @@ def test_agreement_equivalence_peers_are_required_before_readmission(
 
 def test_unknown_or_invalid_current_fails_closed(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     prerequisite = catalog_prerequisite_closure(target)[0]
     store.new_attempt(
         prerequisite.cell_id,
@@ -472,7 +501,7 @@ def test_additional_current_authenticator_is_strictly_boolean(
     authenticated: object,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     _publish_prerequisites(store, target)
 
     disposition = classify_prior_held_cells(
@@ -486,11 +515,11 @@ def test_additional_current_authenticator_is_strictly_boolean(
     assert states == (set() if authenticated is True else {"unauthenticated"})
 
 
-def test_measurement_lineage_authenticates_mixed_prerequisite_sources(
+def test_measurement_lineage_authenticates_inherited_prerequisite_source(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     prerequisites = catalog_prerequisite_closure(target)
     ancestor = prerequisites[0]
     ancestor_revision = "3" * 40
@@ -614,7 +643,7 @@ def test_expected_source_identity_blocks_stale_prerequisites(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     for prerequisite in catalog_prerequisite_closure(target):
         store.new_attempt(
             prerequisite.cell_id,
@@ -650,7 +679,7 @@ def test_single_source_authentication_checks_measured_identity(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
-    target = _cell()
+    target = _hard_dependency_cell()
     stale = catalog_prerequisite_closure(target)[0]
     for prerequisite in catalog_prerequisite_closure(target):
         measurement = _ok_measurement(prerequisite)

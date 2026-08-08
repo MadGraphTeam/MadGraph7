@@ -22,6 +22,7 @@ from .runner import (
     ABSOLUTE_TOLERANCE,
     CONDITIONED_COMPARISON_ABI,
     INDEPENDENT_RELATIVE_TOLERANCE,
+    MADGRAPH_RELATIVE_TOLERANCE,
     RELATIVE_TOLERANCE,
     SelectorContract,
     _real_nonnegative,
@@ -38,13 +39,17 @@ BUILTIN_UFO_RECURRENCE = "builtin-ufo-recurrence"
 Z_RECURRENCE_CROSS_MODE = "z-recurrence-cross-mode"
 LC_CROSS_LAYOUT_COMPONENT = "lc-cross-layout-component"
 LC_LEGACY_PYAMPLICOL_COMPONENT = "lc-legacy-pyamplicol-component"
+MADGRAPH_FULL_COLOUR = "madgraph-full-colour"
 DIRECT_AGREEMENT_KINDS = (
     BUILTIN_UFO_RECURRENCE,
     Z_RECURRENCE_CROSS_MODE,
     LC_CROSS_LAYOUT_COMPONENT,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
+    MADGRAPH_FULL_COLOUR,
 )
 DIRECT_AGREEMENT_FIELD = "direct_agreements"
+MADGRAPH_COMPARISON_FIELD = "madgraph_comparison"
+MADGRAPH_COMPARISON_ABI = "pyamplicol-report-madgraph-comparison-v1"
 LC_COMMON_COMPONENT_FIELD = "lc_common_component"
 INDEPENDENT_AUTHORITY_ABI = "pyamplicol-report-independent-authority-v1"
 INDEPENDENT_AUTHORITY_FIELD = "independent_authority"
@@ -78,7 +83,7 @@ class AgreementEdge:
     def required(self) -> bool:
         """Whether this peer is a hard measurement prerequisite.
 
-        Original-AmpliCol LC agreement is useful when the legacy oracle is
+        Original-AmpliCol LC agreement is useful as a legacy diagnostic when
         available, but its absence must not censor an otherwise independently
         validated pyAmpliCol measurement.  Z cross-mode recurrence is likewise
         an availability-only numerical authority.  Model-source and
@@ -98,12 +103,15 @@ def validation_baseline_is_required(
     """Return whether ``baseline`` is a hard numerical prerequisite.
 
     Recurrence has its own resolved-sum and high-precision validation path, so
-    original AmpliCol is an optional comparison for recurrence.  Compiled and
-    eager comparison surfaces use recurrence and original AmpliCol as ordered,
-    availability-only numerical authorities rather than hard prerequisites.
+    original AmpliCol is an optional diagnostic for recurrence.  Compiled and
+    eager comparison surfaces use recurrence as their availability-only
+    numerical authority rather than a hard prerequisite.
     """
 
     if baseline is None:
+        return False
+    if baseline.measurement.execution_mode is ExecutionMode.MADGRAPH:
+        # The MadGraph direct edge is the single authoritative boundary.
         return False
     if cell.measurement.execution_mode in {
         ExecutionMode.COMPILED,
@@ -254,14 +262,61 @@ def _lc_legacy_peer(
     )
 
 
+def _madgraph_full_colour_peer(
+    cell: CellSpec,
+    cells: Sequence[CellSpec],
+) -> CellSpec | None:
+    if (
+        cell.measurement.execution_mode
+        not in {
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+            ExecutionMode.ON_THE_FLY,
+        }
+        or cell.measurement.model is not ModelKey.UFO_SM
+        or cell.measurement.accuracy is not Accuracy.FULL
+        or cell.workload is not Workload.CONTRACTED
+        or cell.dataset_id
+        not in {
+            "matrix_recurrence_ufo_sm_full",
+            "matrix_compiled_ufo_sm_full",
+            "matrix_eager_ufo_sm_full",
+            "matrix_on_the_fly_ufo_sm_full",
+        }
+    ):
+        return None
+    return _unique_cell(
+        tuple(
+            candidate
+            for candidate in cells
+            if candidate.dataset_id == "reference_madgraph_full"
+            and candidate.measurement.execution_mode is ExecutionMode.MADGRAPH
+            and candidate.process == cell.process
+            and candidate.process_key == cell.process_key
+            and candidate.n_final == cell.n_final
+            and candidate.workload is Workload.CONTRACTED
+        ),
+        context=f"{cell.cell_id} MadGraph full-colour agreement",
+    )
+
+
 def agreement_relative_tolerance(kind: str) -> float:
     """Return the independent tolerance assigned to one direct-edge family."""
 
     if kind == LC_LEGACY_PYAMPLICOL_COMPONENT:
         return INDEPENDENT_RELATIVE_TOLERANCE
+    if kind == MADGRAPH_FULL_COLOUR:
+        return MADGRAPH_RELATIVE_TOLERANCE
     if kind in DIRECT_AGREEMENT_KINDS:
         return STRICT_RELATIVE_TOLERANCE
     raise AgreementError(f"unsupported direct-agreement kind {kind!r}")
+
+
+def madgraph_candidate_precision(cell: CellSpec) -> int:
+    """Return the precision supported by one full-colour MadGraph candidate."""
+
+    return 16 if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY else 200
 
 
 def incoming_agreement_edges(
@@ -285,6 +340,9 @@ def incoming_agreement_edges(
     legacy = _lc_legacy_peer(cell, cells, catalog=catalog)
     if legacy is not None:
         edges.append(AgreementEdge(LC_LEGACY_PYAMPLICOL_COMPONENT, legacy, cell))
+    madgraph = _madgraph_full_colour_peer(cell, cells)
+    if madgraph is not None:
+        edges.append(AgreementEdge(MADGRAPH_FULL_COLOUR, madgraph, cell))
     return tuple(
         sorted(
             edges,
@@ -304,9 +362,9 @@ def independent_numerical_authorities(
     """Return the canonical ordered independent-authority chain.
 
     This identity is shared by planning, the isolated worker, strict result
-    validation, and late reconciliation.  It deliberately contains only
-    availability-optional numerical authorities: recurrence first, followed
-    by matching original AmpliCol when the catalog exposes it.
+    validation, and late reconciliation.  Original AmpliCol is deliberately
+    excluded: it remains a report diagnostic, but no longer certifies a
+    candidate after MadGraph became the authoritative full-colour boundary.
     """
 
     if cell.measurement.execution_mode not in {
@@ -336,17 +394,6 @@ def independent_numerical_authorities(
     )
     if recurrence is not None:
         candidates.append(recurrence)
-    legacy = (
-        catalog.validation_baseline_cell(recurrence)
-        if recurrence is not None
-        else baseline
-    )
-    if (
-        legacy is not None
-        and legacy.measurement.execution_mode is ExecutionMode.AMPLICOL
-        and legacy.cell_id not in {item.cell_id for item in candidates}
-    ):
-        candidates.append(legacy)
     return tuple(candidates)
 
 
@@ -458,7 +505,17 @@ def _measurement_number(
     edge: AgreementEdge,
     role: str,
 ) -> float:
-    if edge.value_kind == "matrix_element":
+    if edge.kind == MADGRAPH_FULL_COLOUR and role == "candidate":
+        validation = measurement.get("validation")
+        comparison = (
+            validation.get(MADGRAPH_COMPARISON_FIELD)
+            if isinstance(validation, Mapping)
+            else None
+        )
+        if not isinstance(comparison, Mapping):
+            raise AgreementError(f"{edge.candidate.cell_id} has no MadGraph comparison")
+        value = comparison.get("candidate")
+    elif edge.value_kind == "matrix_element":
         value = measurement.get("matrix_element")
     else:
         validation = measurement.get("validation")
@@ -529,7 +586,11 @@ def _measurement_scale(
                 "authority-component-magnitude",
                 _agreement_source_digest(component),
             )
-    if edge.value_kind == "matrix_element" and isinstance(validation, Mapping):
+    if (
+        edge.kind != MADGRAPH_FULL_COLOUR
+        and edge.value_kind == "matrix_element"
+        and isinstance(validation, Mapping)
+    ):
         resolved = validation.get("resolved_sum")
         if isinstance(resolved, Mapping):
             records = resolved.get("points")
@@ -564,6 +625,137 @@ def _measurement_scale(
         }
     )
     return abs(number), "authority-value-magnitude", source
+
+
+def madgraph_comparison_record(
+    edge: AgreementEdge,
+    *,
+    candidate: float,
+    baseline_measurement: Mapping[str, object],
+    point_identity: str,
+) -> dict[str, object]:
+    """Build strict candidate-versus-binary64-MadGraph evidence."""
+
+    if edge.kind != MADGRAPH_FULL_COLOUR:
+        raise AgreementError("MadGraph comparison requires a MadGraph edge")
+    baseline = _measurement_number(
+        baseline_measurement,
+        edge=edge,
+        role="baseline",
+    )
+    baseline_point = _measurement_point_digest(baseline_measurement)
+    if point_identity != baseline_point:
+        raise AgreementError("MadGraph comparison points differ")
+    candidate_precision = madgraph_candidate_precision(edge.candidate)
+    candidate_source = _agreement_source_digest(
+        {
+            "cell_id": edge.candidate.cell_id,
+            "precision": candidate_precision,
+            "point_digest": point_identity,
+            "value": candidate,
+        }
+    )
+    baseline_source = _agreement_source_digest(
+        {
+            "cell_id": edge.baseline.cell_id,
+            "point_digest": baseline_point,
+            "matrix_element": baseline,
+            "provenance": baseline_measurement.get("provenance"),
+        }
+    )
+    identity = {
+        "candidate_cell_id": edge.candidate.cell_id,
+        "baseline_cell_id": edge.baseline.cell_id,
+        "candidate_precision": candidate_precision,
+        "baseline_precision": "binary64",
+        "point_digest": point_identity,
+    }
+    comparison = pointwise_validation(
+        candidate,
+        baseline,
+        relative_tolerance=MADGRAPH_RELATIVE_TOLERANCE,
+        candidate_scale=abs(candidate),
+        baseline_scale=abs(baseline),
+        candidate_scale_source=f"p{candidate_precision}-value-magnitude",
+        baseline_scale_source="madgraph-binary64-value-magnitude",
+        comparison_binding={
+            "point_digest": point_identity,
+            "selector_component_identity": identity,
+            "selector_component_sha256": _agreement_source_digest(identity),
+            "candidate_source_sha256": candidate_source,
+            "baseline_source_sha256": baseline_source,
+        },
+    )
+    return {
+        "abi": MADGRAPH_COMPARISON_ABI,
+        "candidate_cell_id": edge.candidate.cell_id,
+        "baseline_cell_id": edge.baseline.cell_id,
+        "candidate_precision": candidate_precision,
+        "baseline_precision": "binary64",
+        **{key: value for key, value in comparison.items() if key != "abi"},
+    }
+
+
+def validate_madgraph_comparison_record(
+    value: object,
+    *,
+    expected_candidate_id: str | None = None,
+    expected_candidate_precision: int | None = None,
+) -> None:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{MADGRAPH_COMPARISON_FIELD} must be an object")
+    identity_fields = {
+        "abi",
+        "candidate_cell_id",
+        "baseline_cell_id",
+        "candidate_precision",
+        "baseline_precision",
+    }
+    comparison_fields = {
+        "status",
+        "candidate",
+        "baseline",
+        "candidate_scale",
+        "baseline_scale",
+        "candidate_scale_source",
+        "baseline_scale_source",
+        "comparison_scale",
+        "absolute_difference",
+        "relative_difference",
+        "conditioned_residual",
+        "error_bound",
+        "relative_tolerance",
+        "comparison_binding",
+    }
+    if set(value) != identity_fields | comparison_fields:
+        raise ValueError(f"{MADGRAPH_COMPARISON_FIELD} fields differ from the ABI")
+    candidate_id = value.get("candidate_cell_id")
+    baseline_id = value.get("baseline_cell_id")
+    if (
+        value.get("abi") != MADGRAPH_COMPARISON_ABI
+        or not isinstance(candidate_id, str)
+        or not candidate_id
+        or (
+            expected_candidate_id is not None
+            and candidate_id != expected_candidate_id
+        )
+        or not isinstance(baseline_id, str)
+        or not baseline_id
+        or value.get("candidate_precision") not in {16, 200}
+        or (
+            expected_candidate_precision is not None
+            and value.get("candidate_precision") != expected_candidate_precision
+        )
+        or value.get("baseline_precision") != "binary64"
+    ):
+        raise ValueError(f"{MADGRAPH_COMPARISON_FIELD} identity is invalid")
+    comparison = {
+        key: item for key, item in value.items() if key not in identity_fields
+    }
+    comparison["abi"] = CONDITIONED_COMPARISON_ABI
+    validate_conditioned_comparison_record(comparison, require_binding=True)
+    if float(comparison["relative_tolerance"]) != MADGRAPH_RELATIVE_TOLERANCE:
+        raise ValueError(f"{MADGRAPH_COMPARISON_FIELD} tolerance is invalid")
 
 
 def direct_agreement_record(
@@ -740,7 +932,10 @@ def validate_direct_agreement_records(
             raise ValueError(
                 f"{DIRECT_AGREEMENT_FIELD}[{index}] legacy tolerance is invalid"
             )
-        if raw.get("status") != ResultStatus.OK.value:
+        if (
+            raw.get("status") != ResultStatus.OK.value
+            and kind != LC_LEGACY_PYAMPLICOL_COMPONENT
+        ):
             raise ValueError(
                 f"{DIRECT_AGREEMENT_FIELD}[{index}] agreement is not successful"
             )
@@ -816,7 +1011,7 @@ def attach_direct_agreements(
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> None:
-    """Attach every incoming direct edge and make any failure terminal."""
+    """Attach every incoming direct edge and make authoritative failures terminal."""
 
     initial_status = measurement.get("status")
     if initial_status not in {
@@ -864,7 +1059,11 @@ def attach_direct_agreements(
             )
         )
     mutable_validation[DIRECT_AGREEMENT_FIELD] = records
-    failed = any(record["status"] != ResultStatus.OK.value for record in records)
+    failed = any(
+        record["status"] != ResultStatus.OK.value
+        and record["edge_kind"] != LC_LEGACY_PYAMPLICOL_COMPONENT
+        for record in records
+    )
     if failed:
         mutable_validation["status"] = ResultStatus.VALIDATION_FAILED.value
         measurement["status"] = ResultStatus.VALIDATION_FAILED.value
@@ -874,7 +1073,7 @@ def attach_direct_agreements(
         }
     elif initial_status == ResultStatus.UNVERIFIED.value:
         # Hard model/layout/provider agreements remain mandatory even when the
-        # independent recurrence/AmpliCol numerical authority is unavailable.
+        # independent recurrence numerical authority is unavailable.
         # Passing them is necessary but deliberately cannot promote a
         # diagnostic candidate to a reusable success.
         mutable_validation["status"] = ResultStatus.UNVERIFIED.value
@@ -893,6 +1092,9 @@ __all__ = [
     "LC_COMMON_COMPONENT_FIELD",
     "LC_CROSS_LAYOUT_COMPONENT",
     "LC_LEGACY_PYAMPLICOL_COMPONENT",
+    "MADGRAPH_COMPARISON_ABI",
+    "MADGRAPH_COMPARISON_FIELD",
+    "MADGRAPH_FULL_COLOUR",
     "STRICT_ABSOLUTE_TOLERANCE",
     "STRICT_RELATIVE_TOLERANCE",
     "Z_RECURRENCE_CROSS_MODE",
@@ -906,8 +1108,11 @@ __all__ = [
     "incoming_agreement_edges",
     "independent_numerical_authorities",
     "legacy_lc_common_component",
+    "madgraph_candidate_precision",
+    "madgraph_comparison_record",
     "requires_independent_numerical_authority",
     "validate_direct_agreement_records",
     "validate_lc_common_component",
+    "validate_madgraph_comparison_record",
     "validation_baseline_is_required",
 ]

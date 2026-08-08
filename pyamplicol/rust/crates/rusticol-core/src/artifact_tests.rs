@@ -1930,6 +1930,7 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
 fn on_the_fly_capabilities_are_known_and_the_catalog_remains_closed() {
     let capabilities = json!([
         "rusticol.on-the-fly.complex-f64.v1",
+        "rusticol.on-the-fly.contracted-color.v1",
         "rusticol.on-the-fly.lc-color.v1"
     ]);
     let mut artifact = TestArtifact::new();
@@ -2174,8 +2175,17 @@ fn clean_source_structural_proof_payload_roundtrips_with_exact_declaration() {
     native_identity_without_revision.manifest["producer"]["native_build_inputs_sha256"] =
         json!("b".repeat(64));
     native_identity_without_revision.write_manifest();
-    let error = VerifiedArtifact::open(&native_identity_without_revision.root).unwrap_err();
-    assert!(error.to_string().contains("requires producer.git_revision"));
+    let verified = VerifiedArtifact::open(&native_identity_without_revision.root)
+        .expect("native build-input identity is valid without a source revision");
+    assert_eq!(verified.manifest.producer.git_revision, None);
+    assert_eq!(
+        verified
+            .manifest
+            .producer
+            .native_build_inputs_sha256
+            .as_deref(),
+        Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    );
 }
 
 #[test]

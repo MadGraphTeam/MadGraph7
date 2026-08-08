@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Compact public metadata for the LC on-the-fly lane.
+//! Compact public metadata for the on-the-fly lane.
 //!
 //! Ordinary evaluation needs only this O(externals + parameters) payload.
-//! The complete public helicity and color axes remain in the compact selector
-//! adapter and are materialized only when the established physics metadata API
-//! is explicitly requested.
+//! The complete public helicity axis and LC color axis remain in the compact
+//! selector adapter and are materialized only when the established physics
+//! metadata API is explicitly requested. NLC/full expose one contracted color.
 
 use super::on_the_fly_manifest::OnTheFlyExecutionManifest;
 use super::on_the_fly_selectors::{
     OnTheFlyCompactSelectorAdapterV1, OnTheFlySelectorIntrospectionCacheV1,
 };
 use crate::{
-    ArtifactProcess, ColorAccuracy, ColorComponent, Coverage, ExternalParticle, Helicity,
-    LcColorFlow, ModelParameter, ParameterKind, ProcessPhysics as ProcessPhysicsV1, Reduction,
-    ReductionKind, RusticolError, RusticolResult, SelectorCapabilities,
+    ArtifactProcess, ColorAccuracy, ColorComponent, ContractedColor, Coverage, ExternalParticle,
+    Helicity, LcColorFlow, ModelParameter, ParameterKind, ProcessPhysics as ProcessPhysicsV1,
+    Reduction, ReductionKind, RusticolError, RusticolResult, SelectorCapabilities,
 };
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -70,7 +70,6 @@ impl OnTheFlyPublicMetadataV1 {
             || self.process != outer.expression
             || self.process_id != manifest.key
             || self.process != manifest.process
-            || self.color_accuracy != ColorAccuracy::Lc
             || self.color_accuracy.as_str() != outer.color_accuracy
             || self.color_accuracy.as_str() != manifest.color_accuracy
         {
@@ -156,31 +155,70 @@ impl OnTheFlyPublicMetadataV1 {
                 coefficient: 1.0,
             })
             .collect();
-        let color_components = introspection
-            .colors(selectors)?
-            .iter()
-            .map(|record| {
-                Ok(ColorComponent::LcFlow(LcColorFlow {
-                    id: record.id.clone(),
-                    index: record.index,
-                    word: record
-                        .word
+        let (color_components, coverage_color, coverage_color_kind, reduction, selectors_metadata) =
+            match self.color_accuracy {
+                ColorAccuracy::Lc => {
+                    let color_components = introspection
+                        .colors(selectors)?
                         .iter()
-                        .copied()
-                        .map(|label| {
-                            usize::try_from(label).map_err(|_| {
-                                RusticolError::artifact(
-                                    "on-the-fly public color label exceeds usize",
-                                )
-                            })
+                        .map(|record| {
+                            Ok(ColorComponent::LcFlow(LcColorFlow {
+                                id: record.id.clone(),
+                                index: record.index,
+                                word: record
+                                    .word
+                                    .iter()
+                                    .copied()
+                                    .map(|label| {
+                                        usize::try_from(label).map_err(|_| {
+                                            RusticolError::artifact(
+                                                "on-the-fly public color label exceeds usize",
+                                            )
+                                        })
+                                    })
+                                    .collect::<RusticolResult<Vec<_>>>()?,
+                                computed: true,
+                                representative_id: record.id.clone(),
+                                coefficient: 1.0,
+                            }))
                         })
-                        .collect::<RusticolResult<Vec<_>>>()?,
-                    computed: true,
-                    representative_id: record.id.clone(),
-                    coefficient: 1.0,
-                }))
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
+                        .collect::<RusticolResult<Vec<_>>>()?;
+                    (
+                        color_components,
+                        "complete".to_string(),
+                        "physical-lc-flows".to_string(),
+                        Reduction {
+                            kind: ReductionKind::LcDiagonal,
+                            groups: Vec::new(),
+                        },
+                        SelectorCapabilities {
+                            helicity: true,
+                            color_flow: true,
+                            contracted_color: false,
+                        },
+                    )
+                }
+                ColorAccuracy::Nlc | ColorAccuracy::Full => (
+                    vec![ColorComponent::ContractedColor(ContractedColor {
+                        id: "color:contracted".to_string(),
+                        index: 0,
+                        description:
+                            "coherent sparse contraction of the complete ordered color basis"
+                                .to_string(),
+                    })],
+                    "contracted".to_string(),
+                    "contracted-color".to_string(),
+                    Reduction {
+                        kind: ReductionKind::ContractedColor,
+                        groups: Vec::new(),
+                    },
+                    SelectorCapabilities {
+                        helicity: true,
+                        color_flow: false,
+                        contracted_color: false,
+                    },
+                ),
+            };
         let physics = ProcessPhysicsV1 {
             schema_version: crate::RUNTIME_PHYSICS_SCHEMA_VERSION,
             kind: "pyamplicol-resolved-physics".to_string(),
@@ -189,26 +227,18 @@ impl OnTheFlyPublicMetadataV1 {
             color_accuracy: self.color_accuracy,
             coverage: Coverage {
                 helicities: "complete".to_string(),
-                color: "complete".to_string(),
-                color_kind: "physical-lc-flows".to_string(),
+                color: coverage_color,
+                color_kind: coverage_color_kind,
                 structural_zero_helicity_count: 0,
             },
             external_particles: self.external_particles.clone(),
             helicities,
             color_components,
-            // The on-the-fly lane executes every public selector directly;
-            // unlike eager/recurrence, it has no pre-materialized quotient
-            // groups to hydrate into this public display object.
-            reduction: Reduction {
-                kind: ReductionKind::LcDiagonal,
-                groups: Vec::new(),
-            },
+            // Unlike eager/recurrence, the on-the-fly lane has no
+            // pre-materialized public quotient groups to hydrate here.
+            reduction,
             model_parameters: self.model_parameters.clone(),
-            selectors: SelectorCapabilities {
-                helicity: true,
-                color_flow: true,
-                contracted_color: false,
-            },
+            selectors: selectors_metadata,
             extensions: BTreeMap::new(),
         };
         physics.validate()?;
@@ -244,11 +274,11 @@ mod tests {
     use crate::engine::{ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY, ON_THE_FLY_RUNTIME_CAPABILITY};
     use serde_json::{Value, json};
 
-    fn outer() -> ArtifactProcess {
+    fn outer_with_accuracy(color_accuracy: &str) -> ArtifactProcess {
         ArtifactProcess {
             id: "d_dbar_to_z".into(),
             expression: "d d~ > z".into(),
-            color_accuracy: "lc".into(),
+            color_accuracy: color_accuracy.into(),
             external_pdgs: vec![1, -1, 23],
             physics_path: "processes/d_dbar_to_z/physics.json".into(),
             required_runtime_capabilities: vec![
@@ -257,6 +287,10 @@ mod tests {
             ],
             aliases: Vec::new(),
         }
+    }
+
+    fn outer() -> ArtifactProcess {
+        outer_with_accuracy("lc")
     }
 
     fn execution() -> OnTheFlyExecutionManifest {
@@ -364,6 +398,21 @@ mod tests {
         )
     }
 
+    fn parse_contracted(
+        value: &Value,
+        color_accuracy: &str,
+    ) -> RusticolResult<OnTheFlyPublicMetadataV1> {
+        let outer = outer_with_accuracy(color_accuracy);
+        let mut manifest = execution();
+        manifest.color_accuracy = color_accuracy.to_string();
+        parse_on_the_fly_public_metadata(
+            &serde_json::to_vec(value).unwrap(),
+            &outer.physics_path,
+            &outer,
+            &manifest,
+        )
+    }
+
     #[test]
     fn compact_metadata_authenticates_identity_externals_and_parameters() {
         parse(&compact()).unwrap();
@@ -387,6 +436,19 @@ mod tests {
 
         for invalid in cases {
             assert!(parse(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn compact_metadata_accepts_contracted_nlc_and_full_accuracy() {
+        for accuracy in ["nlc", "full"] {
+            let mut value = compact();
+            value["color_accuracy"] = json!(accuracy);
+            let parsed = parse_contracted(&value, accuracy).unwrap();
+            assert_eq!(parsed.color_accuracy.as_str(), accuracy);
+
+            value["color_accuracy"] = json!("lc");
+            assert!(parse_contracted(&value, accuracy).is_err());
         }
     }
 

@@ -275,6 +275,52 @@ class GenerationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class WarmUpResult:
+    """Metrics from warming one on-the-fly selector family at one f64 point."""
+
+    elapsed_seconds: float
+    query_count: int
+    warmed_query_count: int
+    current_rss_bytes: int | None
+    peak_rss_bytes: int | None
+    already_warm: bool
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.elapsed_seconds, bool)
+            or not isinstance(self.elapsed_seconds, (int, float))
+            or not math.isfinite(float(self.elapsed_seconds))
+            or self.elapsed_seconds < 0.0
+        ):
+            raise ValueError("warm-up elapsed_seconds must be finite and non-negative")
+        object.__setattr__(self, "elapsed_seconds", float(self.elapsed_seconds))
+        for name in ("query_count", "warmed_query_count"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"warm-up {name} must be a non-negative integer")
+        if self.warmed_query_count > self.query_count:
+            raise ValueError("warm-up warmed_query_count may not exceed query_count")
+        for name in ("current_rss_bytes", "peak_rss_bytes"):
+            value = getattr(self, name)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+            ):
+                raise ValueError(
+                    f"warm-up {name} must be a non-negative integer or null"
+                )
+        if (
+            self.current_rss_bytes is not None
+            and self.peak_rss_bytes is not None
+            and self.current_rss_bytes > self.peak_rss_bytes
+        ):
+            raise ValueError("warm-up current RSS may not exceed peak RSS")
+        if not isinstance(self.already_warm, bool):
+            raise TypeError("warm-up already_warm must be a boolean")
+        if self.already_warm and self.warmed_query_count != 0:
+            raise ValueError("an already-warm selector family cannot warm new queries")
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessPhysics:
     """Physical axes, reduction metadata, and selectors for one process.
 
@@ -956,4 +1002,5 @@ __all__ = [
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "WarmUpResult",
 ]

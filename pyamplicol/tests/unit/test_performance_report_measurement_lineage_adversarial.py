@@ -675,7 +675,7 @@ def test_recurrence_summary_cap_bridge_has_exact_failure_and_closure_census(
     assert len(closure_ids) == 12
     assert not impacted_ids & closure_ids
     assert len(signed_zero_ids) == 24
-    assert len(signed_zero_closure_ids) == 40
+    assert len(signed_zero_closure_ids) == 42
     assert not (impacted_ids | closure_ids) & (
         signed_zero_ids | signed_zero_closure_ids
     )

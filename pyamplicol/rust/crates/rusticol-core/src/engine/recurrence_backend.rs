@@ -553,7 +553,8 @@ impl NativeOnTheFlyPreparedExecutorResolver {
         seed: &OnTheFlyProcessSeedV1,
         trace: &mut OnTheFlyStructuralTraceV1,
     ) -> RusticolResult<()> {
-        self.bind_on_the_fly_traces(templates, direct, std::iter::once((seed, trace)))
+        self.begin_on_the_fly_family_binding(templates, direct)?;
+        self.extend_on_the_fly_family_binding(templates, direct, seed, std::iter::once(trace))
     }
 
     pub(super) fn bind_on_the_fly_family(
@@ -563,28 +564,22 @@ impl NativeOnTheFlyPreparedExecutorResolver {
         seed: &OnTheFlyProcessSeedV1,
         selected: &mut [OnTheFlySelectedQueryTraceV1],
     ) -> RusticolResult<()> {
-        self.bind_on_the_fly_traces(
+        self.begin_on_the_fly_family_binding(templates, direct)?;
+        self.extend_on_the_fly_family_binding(
             templates,
             direct,
-            selected
-                .iter_mut()
-                .map(|selected| (seed, &mut selected.trace)),
+            seed,
+            selected.iter_mut().map(|selected| &mut selected.trace),
         )
     }
 
-    fn bind_on_the_fly_traces<'trace>(
+    /// Begin a streamed semantic-binding transaction without disturbing the
+    /// last successfully committed family.
+    pub(super) fn begin_on_the_fly_family_binding(
         &mut self,
         templates: &ValidatedRecurrenceTemplateInput,
         direct: &PreparedDirectExecutorCatalog,
-        traces: impl IntoIterator<
-            Item = (
-                &'trace OnTheFlyProcessSeedV1,
-                &'trace mut OnTheFlyStructuralTraceV1,
-            ),
-        >,
     ) -> RusticolResult<()> {
-        // A new bind attempt supersedes any uncommitted candidate. The last
-        // committed exact family remains available if authentication fails.
         self.pending_resolved = None;
         let summary = templates.summary();
         if summary.catalog_digest != self.pool.recurrence_template_catalog_digest
@@ -600,14 +595,27 @@ impl NativeOnTheFlyPreparedExecutorResolver {
                 "on-the-fly direct-template catalog does not match the loaded prepared pack",
             ));
         }
+        self.pending_resolved = Some(BTreeMap::new());
+        Ok(())
+    }
+
+    /// Extend the current streamed transaction by one bounded trace chunk.
+    /// Failure drops only the uncommitted map; the active map remains intact.
+    pub(super) fn extend_on_the_fly_family_binding<'trace>(
+        &mut self,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+        seed: &OnTheFlyProcessSeedV1,
+        traces: impl IntoIterator<Item = &'trace mut OnTheFlyStructuralTraceV1>,
+    ) -> RusticolResult<()> {
+        let mut resolved = self.pending_resolved.take().ok_or_else(|| {
+            RusticolError::internal(
+                "on-the-fly streamed binding extension has no pending transaction",
+            )
+        })?;
         let authenticate = authenticated_prepared_executor_binding(templates, direct)?;
-        // Bind transactionally into an exact candidate set. The active family
-        // remains untouched until the caller commits this set after successful
-        // execution; malformed or failed candidates can be discarded without
-        // reconstructing the last valid bindings.
-        let mut resolved = BTreeMap::new();
         let mut trace_count = 0_u32;
-        for (seed, trace) in traces {
+        for trace in traces {
             trace_count = trace_count.checked_add(1).ok_or_else(|| {
                 RusticolError::integrity("on-the-fly trace-family count exceeds u32")
             })?;
@@ -1436,6 +1444,61 @@ pub(in crate::engine) mod on_the_fly_adapter_tests {
             .bind_on_the_fly_trace(&templates, &direct, &seed, &mut revisited_first)
             .unwrap();
         resolver.commit_pending_resolved_bindings().unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
+    }
+
+    #[test]
+    fn streamed_semantic_binding_failure_rolls_back_every_prior_chunk() {
+        let templates = validated_template_fixture();
+        let summary = templates.summary();
+        let direct_digest = digest(40);
+        let direct = direct_catalog(direct_digest);
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            direct_digest,
+        )
+        .unwrap();
+        let pool = prepared_pool(&templates, direct_digest);
+        let sources = pool.bind_source_domains(source_domains()).unwrap();
+        let mut resolver = pool.into_on_the_fly_resolver(sources);
+
+        let mut committed = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        resolver
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut committed)
+            .unwrap();
+        resolver.commit_pending_resolved_bindings().unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
+
+        let mut first_chunk = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        first_chunk.test_insert_identity_finalizer(direct_digest);
+        resolver
+            .begin_on_the_fly_family_binding(&templates, &direct)
+            .unwrap();
+        resolver
+            .extend_on_the_fly_family_binding(
+                &templates,
+                &direct,
+                &seed,
+                std::iter::once(&mut first_chunk),
+            )
+            .unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 3);
+
+        let mut malformed_second_chunk = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        malformed_second_chunk.test_insert_identity_finalizer(digest(99));
+        let error = resolver
+            .extend_on_the_fly_family_binding(
+                &templates,
+                &direct,
+                &seed,
+                std::iter::once(&mut malformed_second_chunk),
+            )
+            .unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
+        assert!(resolver.commit_pending_resolved_bindings().is_err());
         assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
     }
 

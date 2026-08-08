@@ -50,6 +50,7 @@ from .._internal.versions import (
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EVALUATOR_RUNTIME_CAPABILITIES,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+    ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
     PROCESS_ARTIFACT_SCHEMA_VERSION,
@@ -71,7 +72,7 @@ from .._internal.versions import (
     SYMJIT_F64_RUNTIME_CAPABILITY,
     SYMJIT_PLANE_APPLICATION_ABI,
     TOML_SCHEMA_VERSION,
-    active_native_source_identity,
+    active_native_build_inputs_sha256,
     active_source_revision,
     package_version,
     verify_native_module,
@@ -164,6 +165,7 @@ ON_THE_FLY_RUNTIME_STORAGE_ABI = "pacbin-v1"
 ON_THE_FLY_PUBLIC_METADATA_KIND = "pyamplicol-on-the-fly-public-metadata"
 _ON_THE_FLY_RUNTIME_CONTAINER_PATH = "on-the-fly-runtime.pacbin"
 _ON_THE_FLY_PROCESS_SEED_MEMBER_PATH = "on-the-fly/process-seed-v1.bin"
+_ON_THE_FLY_COLOR_CONTRACTION_PATH = "on-the-fly-color.bin"
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -285,7 +287,7 @@ class RecurrenceProcessArtifact:
 
 @dataclass(frozen=True, slots=True)
 class OnTheFlyProcessArtifact:
-    """One source-only LC runtime seed plus compact public metadata."""
+    """One source-only runtime seed plus compact public metadata."""
 
     process_id: str
     expression: str
@@ -302,6 +304,8 @@ class OnTheFlyProcessArtifact:
     referenced_kernel_ids: frozenset[int]
     runtime_metadata: Mapping[str, object]
     selector_policy: Mapping[str, object]
+    color_contraction_payload: bytes | None
+    color_contraction_summary: Mapping[str, object] | None
     point_tile_size: int
     query_construction_threads: int
     validation_point: ValidationPointRecord
@@ -1300,6 +1304,7 @@ def _eager_prepared_pack_identity(
                 EAGER_PLAN_V3_RUNTIME_CAPABILITY,
                 RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
                 RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+                ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
                 ON_THE_FLY_RUNTIME_CAPABILITY,
                 ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
             }.intersection(_required_runtime_capabilities(existing.runtime))
@@ -1409,7 +1414,8 @@ def _write_process_payloads(
         if (
             physics.get("schema_version") != 1
             or physics.get("kind") != ON_THE_FLY_PUBLIC_METADATA_KIND
-            or physics.get("color_accuracy") != "lc"
+            or process.color_accuracy not in {"lc", "nlc", "full"}
+            or physics.get("color_accuracy") != process.color_accuracy
         ):
             raise ValueError(
                 "on-the-fly generation returned incompatible compact public metadata"
@@ -1501,9 +1507,28 @@ def _write_process_payloads(
             process_id=process.process_id,
         )
         _validate_staged_on_the_fly_runtime(process, runtime_record)
+        color_contraction_record = None
+        if process.color_contraction_payload is not None:
+            if process.color_contraction_summary is None:
+                raise ValueError(
+                    "on-the-fly color-contraction payload has no bounded summary"
+                )
+            color_contraction_record = evaluator_payloads.add_bytes(
+                f"{prefix}/{_ON_THE_FLY_COLOR_CONTRACTION_PATH}",
+                process.color_contraction_payload,
+                process_id=process.process_id,
+                media_type="application/octet-stream",
+            )
+        elif process.color_contraction_summary is not None:
+            raise ValueError(
+                "on-the-fly color-contraction summary has no binary payload"
+            )
         execution_record = builder.add_bytes(
             execution_path,
-            _on_the_fly_execution_summary(process),
+            _on_the_fly_execution_summary(
+                process,
+                color_contraction_record=color_contraction_record,
+            ),
             role="evaluator-manifest",
             media_type="application/json",
             process_id=process.process_id,
@@ -1642,7 +1667,11 @@ def _validate_staged_on_the_fly_runtime(
             )
 
 
-def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
+def _on_the_fly_execution_summary(
+    process: OnTheFlyProcessArtifact,
+    *,
+    color_contraction_record: PayloadRecord | None = None,
+) -> bytes:
     capabilities = list(_on_the_fly_process_runtime_capabilities(process))
     selector_policy = _mapping(process.selector_policy)
     if set(selector_policy) != {
@@ -1652,7 +1681,8 @@ def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
         "selector_census",
     }:
         raise ValueError("on-the-fly selector policy fields are invalid")
-    if selector_policy.get("color_coverage") != "complete" or not isinstance(
+    expected_coverage = "complete" if process.color_accuracy == "lc" else "contracted"
+    if selector_policy.get("color_coverage") != expected_coverage or not isinstance(
         selector_policy.get("trace_reflections_folded"), bool
     ):
         raise ValueError("on-the-fly selector policy is invalid")
@@ -1662,6 +1692,7 @@ def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
         "physical_color_flow_count",
     }:
         raise ValueError("on-the-fly selector census fields are invalid")
+    census_counts = {}
     for field in ("physical_helicity_count", "physical_color_flow_count"):
         count = _nonnegative_integer(
             census.get(field),
@@ -1670,6 +1701,66 @@ def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
         )
         if count > (1 << 64) - 1:
             raise ValueError(f"on-the-fly selector census {field} exceeds u64")
+        census_counts[field] = count
+    if process.color_accuracy in {"nlc", "full"} and (
+        census_counts["physical_color_flow_count"] != 1
+        or selector_policy.get("trace_reflections_folded") is not False
+    ):
+        raise ValueError(
+            "contracted on-the-fly selector policy must expose one color "
+            "result without trace-reflection folding"
+        )
+    runtime_metadata = _deep_plain(process.runtime_metadata)
+    if not isinstance(runtime_metadata, dict):
+        raise TypeError("on-the-fly runtime metadata must be a mapping")
+    if color_contraction_record is None:
+        if process.color_accuracy != "lc":
+            raise ValueError("contracted on-the-fly execution has no color payload")
+    else:
+        if process.color_accuracy not in {"nlc", "full"}:
+            raise ValueError("LC on-the-fly execution carries a color payload")
+        summary = _deep_plain(process.color_contraction_summary)
+        if not isinstance(summary, dict):
+            raise TypeError("on-the-fly color-contraction summary must be a mapping")
+        if set(summary) != {
+            "abi",
+            "color_accuracy",
+            "storage",
+            "includes_color_factor",
+            "group_count",
+            "sector_count",
+            "active_sector_count",
+            "component_count",
+            "destination_count",
+            "entry_count",
+            "logical_entry_count",
+            "semantic_digest",
+            "factorization",
+        }:
+            raise ValueError(
+                "on-the-fly color-contraction summary fields are invalid"
+            )
+        if (
+            summary.get("abi") != "pyamplicol-recurrence-color-contraction-v3"
+            or summary.get("color_accuracy") != process.color_accuracy
+            or summary.get("storage") != "expanded"
+            or summary.get("includes_color_factor") is not True
+            or summary.get("component_count") != 1
+            or summary.get("factorization") is not None
+            or summary.get("active_sector_count") != summary.get("group_count")
+            or summary.get("destination_count") != summary.get("group_count")
+            or summary.get("logical_entry_count") != summary.get("entry_count")
+            or summary.get("semantic_digest") != color_contraction_record.sha256
+        ):
+            raise ValueError(
+                "on-the-fly color-contraction summary is noncanonical"
+            )
+        runtime_metadata["color_contraction"] = {
+            **summary,
+            "path": _ON_THE_FLY_COLOR_CONTRACTION_PATH,
+            "size_bytes": color_contraction_record.size_bytes,
+            "sha256": color_contraction_record.sha256,
+        }
     payload = {
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
         "kind": ON_THE_FLY_RUNTIME_KIND,
@@ -1695,7 +1786,7 @@ def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
             ),
         },
         "selector_policy": _deep_plain(selector_policy),
-        "runtime_metadata": _deep_plain(process.runtime_metadata),
+        "runtime_metadata": runtime_metadata,
         "runtime_container": {
             "kind": ON_THE_FLY_RUNTIME_CONTAINER_KIND,
             "schema_version": ON_THE_FLY_RUNTIME_CONTAINER_SCHEMA_VERSION,
@@ -3543,15 +3634,10 @@ def _producer_metadata(
         },
         "target": target,
     }
+    producer["native_build_inputs_sha256"] = active_native_build_inputs_sha256()
     source_revision = active_source_revision()
     if source_revision is not None:
         producer["git_revision"] = source_revision
-        native_revision, native_inputs = active_native_source_identity()
-        if native_revision != source_revision:
-            raise RuntimeError(
-                "active Python and native source revisions differ during generation"
-            )
-        producer["native_build_inputs_sha256"] = native_inputs
     return producer
 
 
@@ -3803,6 +3889,18 @@ def _validate_append_compatibility(
     if existing is None:
         return
     _reject_legacy_eager_append(existing)
+    existing_producer = _plain_mapping(existing.producer)
+    producer_identity_fields = (
+        ("distribution", "distribution"),
+        ("version", "version"),
+        ("git_revision", "source revision"),
+        ("native_build_inputs_sha256", "native build-input digest"),
+    )
+    for field, label in producer_identity_fields:
+        if existing_producer.get(field) != producer.get(field):
+            raise ValueError(
+                f"append producer {label} differs from the existing artifact"
+            )
     existing_capabilities = _required_runtime_capabilities(existing.runtime)
     existing_uses_eager = (
         EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY in existing_capabilities
@@ -3824,7 +3922,7 @@ def _validate_append_compatibility(
             )
     if _plain_mapping(existing.model) != dict(model):
         raise ValueError("append model provenance differs from the existing artifact")
-    if _plain_mapping(existing.producer).get("target") != producer.get("target"):
+    if existing_producer.get("target") != producer.get("target"):
         raise ValueError("append target differs from the existing artifact")
     requested_path = existing.root / str(existing.configuration["requested_path"])
     effective_path = existing.root / str(existing.configuration["effective_path"])
@@ -4046,12 +4144,18 @@ def _process_runtime_capabilities(
 def _on_the_fly_process_runtime_capabilities(
     process: OnTheFlyProcessArtifact,
 ) -> tuple[str, ...]:
-    if process.color_accuracy != "lc":
-        raise ValueError("on-the-fly generation currently supports LC only")
+    if process.color_accuracy == "lc":
+        color_capability = ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY
+    elif process.color_accuracy in {"nlc", "full"}:
+        color_capability = ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+    else:
+        raise ValueError(
+            f"unsupported on-the-fly color accuracy {process.color_accuracy!r}"
+        )
     return tuple(
         sorted(
             {
-                ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+                color_capability,
                 ON_THE_FLY_RUNTIME_CAPABILITY,
             }
         )

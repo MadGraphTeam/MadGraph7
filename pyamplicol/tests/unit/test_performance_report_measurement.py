@@ -17,6 +17,7 @@ from tools.performance_report.measurement import (
     _baseline_selector_contract,
     _measurement_selector_contract,
     _require_nonzero_lc_all_flow_baseline,
+    _requires_high_precision_validation,
     _reuse_artifact_for_measurement,
     _stable_runtime_identity,
     _validate_runtime_identity_postflight,
@@ -1291,6 +1292,31 @@ def test_catalog_contains_no_amplicol_candidate_matrix_cell() -> None:
         cell.measurement.execution_mode.value != "amplicol"
         for cell in REPORT_CATALOG.matrix_cells()
     )
+
+
+def test_legacy_amplicol_diagnostic_does_not_replace_p32_certification() -> None:
+    recurrence = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-full-n1-dd-z-jets-contracted"
+    )
+    legacy = {"status": ResultStatus.OK.value, "matrix_element": 1.0}
+
+    assert _requires_high_precision_validation(
+        recurrence,
+        baseline=legacy,
+        selected_authority_cell_id=None,
+        catalog=REPORT_CATALOG,
+    ) == (True, True)
+
+    compiled = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted"
+    )
+    recurrence_authority = {"status": ResultStatus.OK.value, "matrix_element": 1.0}
+    assert _requires_high_precision_validation(
+        compiled,
+        baseline=recurrence_authority,
+        selected_authority_cell_id=recurrence.cell_id,
+        catalog=REPORT_CATALOG,
+    ) == (False, False)
 
 
 def test_source_revision_rejects_source_dirt_but_allows_report_outputs(

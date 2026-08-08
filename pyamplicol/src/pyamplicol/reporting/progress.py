@@ -711,6 +711,15 @@ def _detail_line(
         fragments.append(
             (f"  active {_duration_text(now - task.updated_at)}", "YELLOW")
         )
+    native_current_rss = _detail_int(details, "native_current_rss_bytes")
+    native_peak_rss = _detail_int(details, "native_peak_rss_bytes")
+    if native_current_rss is not None or native_peak_rss is not None:
+        fragments.append(
+            (
+                "  self RSS " + _native_rss_text(native_current_rss, native_peak_rss),
+                "YELLOW",
+            )
+        )
     return _paint_fragments(fragments, width=width, enabled=color)
 
 
@@ -823,6 +832,13 @@ def _rss_text(usage: ResourceUsage, *, compact: bool = False) -> str:
         f"{usage.current_rss_bytes / gib:.2f}/"
         f"{usage.peak_rss_bytes / gib:.2f} GiB current/peak"
     )
+
+
+def _native_rss_text(current: int | None, peak: int | None) -> str:
+    gib = 1024**3
+    current_text = "N/A" if current is None else f"{current / gib:.2f}"
+    peak_text = "N/A" if peak is None else f"{peak / gib:.2f}"
+    return f"{current_text}/{peak_text} GiB current/peak"
 
 
 def _format_event(
@@ -974,6 +990,12 @@ def _log_detail_text(details: ProgressDetails) -> str:
         value = _detail_int(details, name)
         if value is not None:
             fragments.append(f"{name}={value}")
+    native_current_rss = _detail_int(details, "native_current_rss_bytes")
+    native_peak_rss = _detail_int(details, "native_peak_rss_bytes")
+    if native_current_rss is not None or native_peak_rss is not None:
+        fragments.append(
+            "self_rss=" + _native_rss_text(native_current_rss, native_peak_rss)
+        )
     return "" if not fragments else " [" + " ".join(fragments) + "]"
 
 

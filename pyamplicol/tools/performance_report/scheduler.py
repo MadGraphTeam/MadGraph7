@@ -169,6 +169,8 @@ class CampaignSettings:
     reuse_cross_source_comparison_dependencies: bool = False
     original_amplicol_repository: Path | None = None
     original_amplicol_revision: str | None = None
+    madgraph_installation: Path | None = None
+    multiplicity_wave_barrier: bool = False
 
     def __post_init__(self) -> None:
         if self.workers < 1 or self.cell_cores < 1:
@@ -449,7 +451,10 @@ def select_cells(
 
 
 def _rank(cell: CellSpec) -> int:
-    if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+    if cell.measurement.execution_mode in {
+        ExecutionMode.AMPLICOL,
+        ExecutionMode.MADGRAPH,
+    }:
         return 0
     if cell.measurement.execution_mode is ExecutionMode.RECURRENCE:
         return 1
@@ -459,11 +464,12 @@ def _rank(cell: CellSpec) -> int:
 
 
 _READY_MODE_ORDER = {
-    ExecutionMode.AMPLICOL: 0,
-    ExecutionMode.RECURRENCE: 1,
-    ExecutionMode.COMPILED: 2,
-    ExecutionMode.ON_THE_FLY: 3,
-    ExecutionMode.EAGER: 4,
+    ExecutionMode.MADGRAPH: 0,
+    ExecutionMode.AMPLICOL: 1,
+    ExecutionMode.RECURRENCE: 2,
+    ExecutionMode.COMPILED: 3,
+    ExecutionMode.ON_THE_FLY: 4,
+    ExecutionMode.EAGER: 5,
 }
 
 
@@ -1565,8 +1571,8 @@ class CampaignScheduler:
         self._resource_lanes: dict[tuple[object, ...], tuple[CellSpec, ...]] = {}
         if settings.campaign_policy.allow_terminal_censors:
             grouped: dict[tuple[object, ...], list[CellSpec]] = {}
-            for cell in catalog.measurement_cells():
-                if catalog.static_na_reason(cell) is not None:
+            for cell in self.catalog.measurement_cells():
+                if self.catalog.static_na_reason(cell) is not None:
                     continue
                 grouped.setdefault(_resource_lane_key(cell), []).append(cell)
             self._resource_lanes = {
@@ -1973,14 +1979,8 @@ class CampaignScheduler:
                 os.fspath(progress_path),
                 "--cell-cores",
                 str(self.settings.cell_cores),
-                *(
-                    (
-                        "--producer-revision",
-                        self.source_revision,
-                    )
-                    if self.settings.source_identity_override is not None
-                    else ()
-                ),
+                "--producer-revision",
+                self.source_revision,
             )
             preflight_timeout = self.settings.generation_time_limit_seconds
             if self.settings.timeout_seconds is not None:
@@ -2264,6 +2264,14 @@ class CampaignScheduler:
     def run(self, planned: Sequence[PlannedCell]) -> CampaignResult:
         ordered = tuple(planned)
         self._validate_z_table_f_plan(ordered)
+        if self.settings.madgraph_installation is None and any(
+            item.cell.measurement.execution_mode is ExecutionMode.MADGRAPH
+            for item in ordered
+        ):
+            raise ValueError(
+                "campaign plan contains MadGraph reference cells but no "
+                "MadGraph installation is configured"
+            )
         static_na = tuple(
             (
                 item.cell.cell_id,
@@ -2344,8 +2352,19 @@ class CampaignScheduler:
         def pop_lockable_candidate(now: float) -> PlannedCell | None:
             deferred: list[tuple[tuple[object, ...], str]] = []
             selected: PlannedCell | None = None
+            active_multiplicity = (
+                min(by_id[cell_id].cell.n_final for cell_id in prerequisites)
+                if self.settings.multiplicity_wave_barrier and prerequisites
+                else None
+            )
             while ready:
                 key = heapq.heappop(ready)
+                if (
+                    active_multiplicity is not None
+                    and by_id[key[1]].cell.n_final != active_multiplicity
+                ):
+                    deferred.append(key)
+                    continue
                 retry_at = waiting_locks.get(key[1])
                 if retry_at is not None and retry_at > now:
                     deferred.append(key)
@@ -2891,6 +2910,13 @@ class CampaignScheduler:
                             self.source_revision,
                             "--manual-source-tree",
                             self.source_tree,
+                        )
+                    )
+                if self.settings.madgraph_installation is not None:
+                    command.extend(
+                        (
+                            "--madgraph",
+                            os.fspath(self.settings.madgraph_installation),
                         )
                     )
                 if phase_channel is not None:

@@ -1,19 +1,22 @@
 # SPDX-License-Identifier: 0BSD
-"""Compact source-only projection for the private LC on-the-fly lane.
+"""Compact source projection for the private on-the-fly lane.
 
 This boundary deliberately stops before color-sector planning, process-DAG
 construction, recurrence schedule lowering, and numerical relation discovery.
 It retains only the canonical external source domain and the model-owned roots
-needed by Rust to discover one requested recurrence at runtime.
+needed by Rust to discover one requested recurrence at runtime.  Contracted
+NLC/full generation additionally retains a Python-only color plan beside the
+seed; it never enters the process-seed-v1 wire contract.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
+from ..color import GenericColorPlan, build_color_plan
 from ..models.base import Model
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR
@@ -159,6 +162,7 @@ class OnTheFlyGenerationProjectionV1:
 
     seed: OnTheFlyProcessSeedProjectionV1
     runtime_normalization: Mapping[str, object]
+    color_plan: GenericColorPlan | None = None
 
 
 def project_on_the_fly_process_seed_v1(
@@ -168,19 +172,21 @@ def project_on_the_fly_process_seed_v1(
     *,
     coupling_order_policy: Literal["minimal", "explicit"],
     coupling_order_limits: Mapping[str, int],
+    reference_color_order: Sequence[int] | None = None,
 ) -> OnTheFlyGenerationProjectionV1:
-    """Project one complete LC source domain without materializing a process.
+    """Project one complete source domain without materializing a process DAG.
 
     The projection always retains every source state. Runtime selectors choose
-    helicities and color flows after loading, so the generation-time
-    ``all-flow-union`` distinction does not exist for this lane.
+    helicities after loading.  LC also chooses a color flow lazily; NLC/full
+    carries a separate contracted-color payload over the same structural
+    selector domain.
     """
 
     if not isinstance(process, CanonicalProcessIR):
         raise TypeError("on-the-fly projection requires a CanonicalProcessIR")
-    if process.color_accuracy != "lc":
+    if process.color_accuracy not in {"lc", "nlc", "full"}:
         raise RecurrenceProjectionError(
-            "on-the-fly source projection currently supports LC processes only"
+            "on-the-fly source projection requires LC, NLC, or full color"
         )
     if not isinstance(template_catalog, RecurrenceTemplateCatalog):
         raise TypeError(
@@ -210,6 +216,20 @@ def project_on_the_fly_process_seed_v1(
         process,
         model,
     )
+    color_plan = None
+    if process.color_accuracy in {"nlc", "full"}:
+        color_plan = build_color_plan(
+            process,
+            color_accuracy=process.color_accuracy,
+            reference_color_order=reference_color_order,
+            fold_trace_reflections=False,
+        )
+        if color_plan.truncated or not color_plan.sectors:
+            detail = "; ".join(color_plan.diagnostics) or "no color sectors"
+            raise RecurrenceProjectionError(
+                "on-the-fly contracted-color projection has no complete color "
+                f"plan: {detail}"
+            )
     coupling_order_names = sorted(
         {
             str(name).upper()
@@ -245,6 +265,7 @@ def project_on_the_fly_process_seed_v1(
     return OnTheFlyGenerationProjectionV1(
         seed=seed,
         runtime_normalization=runtime_normalization,
+        color_plan=color_plan,
     )
 
 

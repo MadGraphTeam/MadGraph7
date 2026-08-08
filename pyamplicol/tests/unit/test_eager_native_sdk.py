@@ -63,6 +63,26 @@ def test_native_sdk_wrappers_expose_per_point_runtime_selectors() -> None:
     assert "color_flow_by_point: Option<&[u32]>" in rust
 
 
+def test_native_sdk_wrappers_expose_structured_one_point_otf_warm_up() -> None:
+    header = _read("rust/crates/rusticol-capi/include/rusticol.h")
+    cpp = _read("rust/crates/rusticol-capi/include/rusticol.hpp")
+    fortran = _read("rust/crates/rusticol-capi/fortran/rusticol.f90")
+    rust = _read("src/pyamplicol/_sdk/rust/rusticol.rs")
+
+    assert "rusticol_runtime_warm_up_f64" in header
+    assert "RusticolWarmUpProgressCallback" in header
+    assert "RusticolWarmUpProgressEvent" in header
+    assert "RusticolWarmUpResult" in header
+    assert "WarmUpResult warm_up(" in cpp
+    assert "std::function<bool(const WarmUpProgress &)>" in cpp
+    assert "procedure, public :: warm_up => rusticol_warm_up" in fortran
+    assert 'bind(C, name="rusticol_runtime_warm_up_f64")' in fortran
+    assert "type, bind(C), public :: rusticol_warm_up_progress_event" in fortran
+    assert "pub fn warm_up(" in rust
+    assert "pub fn warm_up_f64(" in rust
+    assert "FnMut(&WarmUpProgress) -> bool" in rust
+
+
 def test_generated_native_drivers_share_total_and_resolved_entrypoints() -> None:
     templates = {
         "cpp": _read("src/pyamplicol/assets/api_templates/cpp/check_standalone.cpp"),

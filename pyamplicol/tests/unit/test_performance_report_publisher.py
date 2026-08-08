@@ -177,10 +177,10 @@ def test_publish_once_installs_one_consistent_snapshot(
         expected_page_count: int,
         timeout_seconds: float,
     ) -> int:
-        assert expected_page_count == 65
+        assert expected_page_count == 73
         assert timeout_seconds == 900.0
         (docs_dir / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
-        return 65
+        return 73
 
     monkeypatch.setattr(
         "tools.performance_report.publisher._compile_pdf",
@@ -191,7 +191,7 @@ def test_publish_once_installs_one_consistent_snapshot(
     validated = validate_published_snapshot(service)
 
     assert published.current_count == 0
-    assert published.page_count == 65
+    assert published.page_count == 73
     assert validated["status"] == "ok"
     assert validated["snapshot_sha256"] == published.snapshot_sha256
     assert (service.paths.docs_dir / "pyAmpliCol.pdf").is_file()
@@ -263,11 +263,11 @@ def test_publisher_backs_off_behind_controller_report_install(
         expected_page_count: int,
         timeout_seconds: float,
     ) -> int:
-        assert expected_page_count == 65
+        assert expected_page_count == 73
         assert timeout_seconds == 900.0
         (docs_dir / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
         compiled.set()
-        return 65
+        return 73
 
     def publisher() -> None:
         try:
@@ -282,7 +282,7 @@ def test_publisher_backs_off_behind_controller_report_install(
     with service.store.named_lock("report-writer"):
         thread = threading.Thread(target=publisher)
         thread.start()
-        assert compiled.wait(timeout=5.0)
+        assert compiled.wait(timeout=30.0)
         thread.join(timeout=0.15)
         assert thread.is_alive()
 

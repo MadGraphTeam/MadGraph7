@@ -377,6 +377,7 @@ def measure_cell(
     legacy_workspace: Path | None = None,
     legacy_copy_source: bool = False,
     legacy_source_revision: str | None = None,
+    madgraph_installation: Path | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
     worker_started_monotonic = time.monotonic()
@@ -490,6 +491,27 @@ def measure_cell(
                 phase_reporter=phase_reporter,
                 selector_provider=selector_provider,
             )
+    elif cell.measurement.execution_mode is ExecutionMode.MADGRAPH:
+        if madgraph_installation is None:
+            raise ValueError(
+                "MadGraph reference cell requires a configured installation"
+            )
+        from .madgraph import MadGraphMeasurementAdapter, MadGraphSettings
+
+        result = MadGraphMeasurementAdapter().measure(
+            cell,
+            artifact_path=attempt_root / "artifact",
+            settings=MadGraphSettings(
+                installation=madgraph_installation,
+                target_runtime_seconds=target_runtime_seconds,
+                worker_deadline_monotonic=(
+                    None
+                    if worker_wall_limit_seconds is None
+                    else worker_started_monotonic + worker_wall_limit_seconds
+                ),
+            ),
+            phase_reporter=phase_reporter,
+        )
     else:
         result = measure_pyamplicol_cell(
             cell,
@@ -566,6 +588,7 @@ def write_cell_result(
     profiling_time_limit_seconds: float | None = None,
     validation_time_limit_seconds: float | None = None,
     generation_lock_path: Path | None = None,
+    madgraph_installation: Path | None = None,
     **kwargs: object,
 ) -> dict[str, object]:
     try:
@@ -611,6 +634,7 @@ def write_cell_result(
                 worker_wall_limit_seconds=worker_wall_limit_seconds,
                 profiling_time_limit_seconds=profiling_time_limit_seconds,
                 validation_time_limit_seconds=validation_time_limit_seconds,
+                madgraph_installation=madgraph_installation,
                 **kwargs,  # type: ignore[arg-type]
             )
         else:
@@ -626,6 +650,7 @@ def write_cell_result(
                     worker_wall_limit_seconds=worker_wall_limit_seconds,
                     profiling_time_limit_seconds=profiling_time_limit_seconds,
                     validation_time_limit_seconds=validation_time_limit_seconds,
+                    madgraph_installation=madgraph_installation,
                     **kwargs,  # type: ignore[arg-type]
                 )
     except ProfilingTimeLimitError as error:

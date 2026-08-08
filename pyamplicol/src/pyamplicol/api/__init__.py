@@ -59,6 +59,7 @@ if TYPE_CHECKING:
         ProcessPhysics,
         ReductionGroup,
         ResolvedEvaluation,
+        WarmUpResult,
     )
     from .services import (
         BenchmarkRunner,
@@ -119,6 +120,7 @@ __all__ = [
     "Runtime",
     "RuntimeBackend",
     "RuntimeLoader",
+    "WarmUpResult",
     "benchmark",
     "generate",
     "install_backend_factories",
@@ -179,6 +181,7 @@ _RESULT_EXPORTS = (
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "WarmUpResult",
 )
 _SERVICE_EXPORTS = (
     "BenchmarkRunner",

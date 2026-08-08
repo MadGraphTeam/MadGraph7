@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: 0BSD
 // Dependency-free safe Rust 2021 bindings for Rusticol C ABI v1.
 
+use std::any::Any;
 use std::error;
-use std::ffi::{c_char, c_int, CStr, CString};
+use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::fmt;
 use std::marker::PhantomData;
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::ptr::{self, NonNull};
 use std::rc::Rc;
@@ -95,6 +97,164 @@ pub struct ColorComponent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModelParameter {
     pub name: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WarmUpEventKind {
+    Start,
+    Update,
+    End,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WarmUpStage {
+    ProcessPreparation,
+    QueryFamily,
+    FamilyFinalization,
+    FirstEvaluation,
+}
+
+/// One throttled progress snapshot from an explicit OTF warm-up.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WarmUpProgress {
+    pub schema_version: u32,
+    pub kind: WarmUpEventKind,
+    pub stage: WarmUpStage,
+    pub completed: u64,
+    pub total: u64,
+    pub elapsed_seconds: f64,
+    pub current_rss_bytes: Option<u64>,
+    pub peak_rss_bytes: Option<u64>,
+    pub workers: u64,
+}
+
+impl WarmUpProgress {
+    fn from_ffi(event: &ffi::WarmUpProgressEvent) -> Result<Self> {
+        if event.schema_version != 1 {
+            return Err(Error::new(
+                ErrorKind::InvalidResponse,
+                format!(
+                    "Rusticol returned unsupported warm-up progress schema {}",
+                    event.schema_version
+                ),
+            ));
+        }
+        let kind = match event.kind {
+            ffi::WARM_UP_EVENT_START => WarmUpEventKind::Start,
+            ffi::WARM_UP_EVENT_UPDATE => WarmUpEventKind::Update,
+            ffi::WARM_UP_EVENT_END => WarmUpEventKind::End,
+            value => {
+                return Err(Error::new(
+                    ErrorKind::InvalidResponse,
+                    format!("Rusticol returned unknown warm-up event kind {value}"),
+                ));
+            }
+        };
+        let stage = match event.stage {
+            ffi::WARM_UP_STAGE_PROCESS_PREPARATION => WarmUpStage::ProcessPreparation,
+            ffi::WARM_UP_STAGE_QUERY_FAMILY => WarmUpStage::QueryFamily,
+            ffi::WARM_UP_STAGE_FAMILY_FINALIZATION => WarmUpStage::FamilyFinalization,
+            ffi::WARM_UP_STAGE_FIRST_EVALUATION => WarmUpStage::FirstEvaluation,
+            value => {
+                return Err(Error::new(
+                    ErrorKind::InvalidResponse,
+                    format!("Rusticol returned unknown warm-up stage {value}"),
+                ));
+            }
+        };
+        Ok(Self {
+            schema_version: event.schema_version,
+            kind,
+            stage,
+            completed: event.completed,
+            total: event.total,
+            elapsed_seconds: event.elapsed_seconds,
+            current_rss_bytes: (event.current_rss_available != 0)
+                .then_some(event.current_rss_bytes),
+            peak_rss_bytes: (event.peak_rss_available != 0).then_some(event.peak_rss_bytes),
+            workers: event.workers,
+        })
+    }
+}
+
+/// Summary of exactly one binary64 point used to warm an OTF selection.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WarmUpResult {
+    pub schema_version: u32,
+    pub elapsed_seconds: f64,
+    pub query_count: u64,
+    pub warmed_query_count: u64,
+    pub current_rss_bytes: Option<u64>,
+    pub peak_rss_bytes: Option<u64>,
+    pub already_warm: bool,
+    pub first_evaluation_completed: bool,
+}
+
+impl WarmUpResult {
+    fn from_ffi(result: ffi::WarmUpResult) -> Result<Self> {
+        if result.schema_version != 1 {
+            return Err(Error::new(
+                ErrorKind::InvalidResponse,
+                format!(
+                    "Rusticol returned unsupported warm-up result schema {}",
+                    result.schema_version
+                ),
+            ));
+        }
+        if result.first_evaluation_completed == 0 {
+            return Err(Error::new(
+                ErrorKind::InvalidResponse,
+                "Rusticol reported a successful warm-up without its first evaluation",
+            ));
+        }
+        Ok(Self {
+            schema_version: result.schema_version,
+            elapsed_seconds: result.elapsed_seconds,
+            query_count: result.query_count,
+            warmed_query_count: result.warmed_query_count,
+            current_rss_bytes: (result.current_rss_available != 0)
+                .then_some(result.current_rss_bytes),
+            peak_rss_bytes: (result.peak_rss_available != 0).then_some(result.peak_rss_bytes),
+            already_warm: result.already_warm != 0,
+            first_evaluation_completed: true,
+        })
+    }
+}
+
+struct WarmUpCallbackState<'a> {
+    callback: &'a mut dyn FnMut(&WarmUpProgress) -> bool,
+    conversion_error: Option<Error>,
+    panic_payload: Option<Box<dyn Any + Send>>,
+}
+
+unsafe extern "C" fn warm_up_progress_trampoline(
+    event: *const ffi::WarmUpProgressEvent,
+    user_data: *mut c_void,
+) -> c_int {
+    if event.is_null() || user_data.is_null() {
+        return 0;
+    }
+    // SAFETY: `Runtime::warm_up_f64` passes this stack-owned state and the C
+    // ABI invokes the callback synchronously on the coordinating thread only.
+    let state = unsafe { &mut *user_data.cast::<WarmUpCallbackState<'_>>() };
+    // SAFETY: The C ABI promises a borrowed event for this callback invocation.
+    let event = match WarmUpProgress::from_ffi(unsafe { &*event }) {
+        Ok(event) => event,
+        Err(error) => {
+            state.conversion_error = Some(error);
+            return 0;
+        }
+    };
+    let terminal =
+        event.kind == WarmUpEventKind::End && event.stage == WarmUpStage::FirstEvaluation;
+    match catch_unwind(AssertUnwindSafe(|| (state.callback)(&event))) {
+        Ok(keep_going) => c_int::from(keep_going),
+        Err(_) if terminal => 1,
+        Err(payload) => {
+            state.panic_payload = Some(payload);
+            0
+        }
+    }
 }
 
 /// Typed physics metadata used to interpret resolved output axes.
@@ -312,12 +472,7 @@ impl Runtime {
         read_usize_vector(|output, capacity, required| {
             // SAFETY: The helper owns a correctly sized output buffer for the live handle.
             unsafe {
-                ffi::runtime_external_permutation(
-                    self.handle.as_ptr(),
-                    output,
-                    capacity,
-                    required,
-                )
+                ffi::runtime_external_permutation(self.handle.as_ptr(), output, capacity, required)
             }
         })
     }
@@ -421,6 +576,89 @@ impl Runtime {
             )
         })?;
         Ok(values)
+    }
+
+    /// Construct and retain one selected OTF family, then evaluate exactly one
+    /// binary64 point. The optional callback receives throttled progress and
+    /// may return `false` to cancel at the next cold-path boundary.
+    pub fn warm_up(
+        &mut self,
+        point: &[f64],
+        selectors: &Selectors,
+        progress: Option<&mut dyn FnMut(&WarmUpProgress) -> bool>,
+    ) -> Result<WarmUpResult> {
+        self.warm_up_f64(point, selectors, progress)
+    }
+
+    /// Binary64-explicit alias for [`Runtime::warm_up`].
+    ///
+    /// Callback panics are contained at the C boundary and resumed after the
+    /// native call returns. The terminal post-commit notification is
+    /// non-cancellable, so its callback result or panic is ignored.
+    pub fn warm_up_f64(
+        &mut self,
+        point: &[f64],
+        selectors: &Selectors,
+        progress: Option<&mut dyn FnMut(&WarmUpProgress) -> bool>,
+    ) -> Result<WarmUpResult> {
+        self.validate_momenta(point, 1)?;
+        let helicity_strings = cstring_list(&selectors.helicity_ids, "helicity selector")?;
+        let color_strings = cstring_list(&selectors.color_ids, "color selector")?;
+        let helicity_pointers = cstring_pointers(&helicity_strings);
+        let color_pointers = cstring_pointers(&color_strings);
+        let (helicity_pointer, helicity_count) = selector_parts(&helicity_pointers);
+        let (color_pointer, color_count) = selector_parts(&color_pointers);
+        let mut result = ffi::WarmUpResult::default();
+
+        let status = if let Some(callback) = progress {
+            let mut state = WarmUpCallbackState {
+                callback,
+                conversion_error: None,
+                panic_payload: None,
+            };
+            // SAFETY: Every input and selector allocation remains live. The
+            // callback state is stack-owned for this synchronous call.
+            let status = unsafe {
+                ffi::runtime_warm_up_f64(
+                    self.handle.as_ptr(),
+                    point.as_ptr(),
+                    point.len(),
+                    helicity_pointer,
+                    helicity_count,
+                    color_pointer,
+                    color_count,
+                    Some(warm_up_progress_trampoline),
+                    (&mut state as *mut WarmUpCallbackState<'_>).cast(),
+                    &mut result,
+                )
+            };
+            if let Some(payload) = state.panic_payload {
+                resume_unwind(payload);
+            }
+            if let Some(error) = state.conversion_error {
+                return Err(error);
+            }
+            status
+        } else {
+            // SAFETY: Every input and selector allocation remains live; both
+            // callback pointers are null together.
+            unsafe {
+                ffi::runtime_warm_up_f64(
+                    self.handle.as_ptr(),
+                    point.as_ptr(),
+                    point.len(),
+                    helicity_pointer,
+                    helicity_count,
+                    color_pointer,
+                    color_count,
+                    None,
+                    ptr::null_mut(),
+                    &mut result,
+                )
+            }
+        };
+        check(status)?;
+        WarmUpResult::from_ffi(result)
     }
 
     /// Evaluate one selected total per point.
@@ -949,7 +1187,7 @@ fn select_colors(available: Vec<ColorComponent>, selected: &[String]) -> Vec<Col
 }
 
 mod ffi {
-    use super::{c_char, c_int};
+    use super::{c_char, c_int, c_void};
 
     pub(super) const STATUS_OK: c_int = 0;
     pub(super) const STATUS_INVALID_ARGUMENT: c_int = 1;
@@ -957,10 +1195,53 @@ mod ffi {
     pub(super) const STATUS_RUNTIME_ERROR: c_int = 3;
     pub(super) const STATUS_PANIC: c_int = 4;
 
+    pub(super) const WARM_UP_EVENT_START: u32 = 0;
+    pub(super) const WARM_UP_EVENT_UPDATE: u32 = 1;
+    pub(super) const WARM_UP_EVENT_END: u32 = 2;
+    pub(super) const WARM_UP_STAGE_PROCESS_PREPARATION: u32 = 0;
+    pub(super) const WARM_UP_STAGE_QUERY_FAMILY: u32 = 1;
+    pub(super) const WARM_UP_STAGE_FAMILY_FINALIZATION: u32 = 2;
+    pub(super) const WARM_UP_STAGE_FIRST_EVALUATION: u32 = 3;
+
     #[repr(C)]
     pub(super) struct RuntimeHandle {
         _private: [u8; 0],
     }
+
+    #[repr(C)]
+    pub(super) struct WarmUpProgressEvent {
+        pub(super) schema_version: u32,
+        pub(super) kind: u32,
+        pub(super) stage: u32,
+        pub(super) reserved: u32,
+        pub(super) completed: u64,
+        pub(super) total: u64,
+        pub(super) elapsed_seconds: f64,
+        pub(super) current_rss_bytes: u64,
+        pub(super) peak_rss_bytes: u64,
+        pub(super) workers: u64,
+        pub(super) current_rss_available: u32,
+        pub(super) peak_rss_available: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    pub(super) struct WarmUpResult {
+        pub(super) schema_version: u32,
+        pub(super) reserved: u32,
+        pub(super) elapsed_seconds: f64,
+        pub(super) query_count: u64,
+        pub(super) warmed_query_count: u64,
+        pub(super) current_rss_bytes: u64,
+        pub(super) peak_rss_bytes: u64,
+        pub(super) current_rss_available: u32,
+        pub(super) peak_rss_available: u32,
+        pub(super) already_warm: u32,
+        pub(super) first_evaluation_completed: u32,
+    }
+
+    pub(super) type WarmUpProgressCallback =
+        Option<unsafe extern "C" fn(*const WarmUpProgressEvent, *mut c_void) -> c_int>;
 
     pub(super) type StringGetter =
         unsafe extern "C" fn(*const RuntimeHandle, *mut c_char, usize, *mut usize) -> c_int;
@@ -1113,6 +1394,18 @@ mod ffi {
             output_helicity_count: *mut usize,
             output_color_count: *mut usize,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_warm_up_f64(
+            handle: *mut RuntimeHandle,
+            momenta: *const f64,
+            momentum_count: usize,
+            helicity_ids: *const *const c_char,
+            helicity_count: usize,
+            color_ids: *const *const c_char,
+            color_count: usize,
+            progress_callback: WarmUpProgressCallback,
+            progress_user_data: *mut c_void,
+            output: *mut WarmUpResult,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_evaluate_f64(
             handle: *mut RuntimeHandle,
             momenta: *const f64,
@@ -1213,5 +1506,6 @@ mod ffi {
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;
     pub(super) use rusticol_runtime_set_model_parameters_json as runtime_set_model_parameters_json;
     pub(super) use rusticol_runtime_take_warnings_json as runtime_take_warnings_json;
+    pub(super) use rusticol_runtime_warm_up_f64 as runtime_warm_up_f64;
     pub(super) use rusticol_supported_runtime_capabilities_json as supported_runtime_capabilities_json;
 }

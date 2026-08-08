@@ -13,10 +13,14 @@ use super::contact_orbit_owner::{
     PreparedContactOrbitTransition, prepare_contact_orbit_transition,
     selected_contact_orbit_owner_tokens,
 };
+use super::fermion_ordering::{
+    FermionOrderingContext, authenticated_source_requires_exterior_sign, fermion_ordering_factor,
+};
 use super::layout::RuntimeSourceVariantBinding;
 use super::process::{
-    FermionPairingRuleRow, OwnedRecurrenceProcessInput, ProcessLCSectorKind,
-    ProcessPhysicalLCSectorRow, ProcessSourceStateRow, ValidatedFermionPairingCatalog,
+    FermionPairingEndpointPairRow, FermionPairingRuleRow, OwnedRecurrenceProcessInput,
+    ProcessLCSectorKind, ProcessPhysicalLCSectorRow, ProcessSourceStateRow,
+    ValidatedFermionPairingCatalog,
 };
 use super::program::closure_candidate_identity_digest_v1;
 use super::template::{
@@ -4404,6 +4408,65 @@ pub(super) fn build_recurrence_program_with_progress_and_telemetry(
     build_recurrence_program_impl(authenticated, progress, true)
 }
 
+fn established_fermion_ordering_context(
+    process: &OwnedRecurrenceProcessInput,
+    template: &OwnedRecurrenceTemplateInput,
+    pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
+) -> RusticolResult<FermionOrderingContext> {
+    let mut authenticated_colored_endpoints = vec![false; process.external_legs.len()];
+    if let Some(pairing_catalog) = pairing_catalog {
+        for endpoint in pairing_catalog.endpoints().iter().copied() {
+            let selected = authenticated_colored_endpoints
+                .get_mut(endpoint.source_slot as usize)
+                .ok_or_else(|| invalid("fermion-ordering endpoint source slot is absent"))?;
+            if *selected {
+                return Err(invalid(
+                    "fermion-ordering endpoint source slot is authenticated twice",
+                ));
+            }
+            *selected = true;
+        }
+    }
+
+    let mut source_requires_exterior_sign = Vec::with_capacity(process.external_legs.len());
+    for (source_slot, leg) in process.external_legs.iter().copied().enumerate() {
+        let source_slot = u32::try_from(source_slot)
+            .map_err(|_| invalid("fermion-ordering source slot exceeds u32"))?;
+        if leg.source_slot != source_slot {
+            return Err(invalid(
+                "fermion-ordering source slot disagrees with the process table",
+            ));
+        }
+        let state_range = leg.source_state_range.as_usize_range(
+            process.source_states.len(),
+            "fermion-ordering source-state range",
+        )?;
+        let color_representations = process.source_states[state_range]
+            .iter()
+            .map(|source_state| {
+                if source_state.source_slot != source_slot {
+                    return Err(invalid(
+                        "fermion-ordering source state belongs to a different source slot",
+                    ));
+                }
+                template
+                    .current_states
+                    .get(source_state.current_state_template_id as usize)
+                    .map(|state| state.color_representation)
+                    .ok_or_else(|| {
+                        invalid("fermion-ordering source current state is absent from the template")
+                    })
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        source_requires_exterior_sign.push(authenticated_source_requires_exterior_sign(
+            leg.is_fermionic == 1,
+            authenticated_colored_endpoints[source_slot as usize],
+            color_representations,
+        )?);
+    }
+    Ok(FermionOrderingContext::new(source_requires_exterior_sign))
+}
+
 fn build_recurrence_program_impl(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
     progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
@@ -4419,6 +4482,8 @@ fn build_recurrence_program_impl(
     let process_input = authenticated.process().input();
     let pairing_catalog = authenticated.process().fermion_pairing_catalog();
     let template_input = authenticated.template().input();
+    let fermion_ordering =
+        established_fermion_ordering_context(process_input, template_input, pairing_catalog)?;
     let process_catalog = ProcessCatalog::new(process_input)?;
     let helicity_support_rule = helicity_support_rule(authenticated)?;
     let global_helicity_flip_rule = global_helicity_flip_rule(authenticated)?;
@@ -4560,6 +4625,7 @@ fn build_recurrence_program_impl(
                 process_input,
                 pairing_catalog,
                 template_input,
+                &fermion_ordering,
                 &prepared_transitions,
                 &transition_reflections,
                 &coupling_limits,
@@ -4662,6 +4728,8 @@ fn build_recurrence_program_impl(
             strategy,
             process_input,
             &process_catalog,
+            template_input,
+            &fermion_ordering,
             pairing_catalog,
             &prepared_closures,
             &prepared_closure_sectors,
@@ -5823,6 +5891,7 @@ fn build_internal_currents(
     process: &OwnedRecurrenceProcessInput,
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
     template: &OwnedRecurrenceTemplateInput,
+    fermion_ordering: &FermionOrderingContext,
     prepared_transitions: &PreparedTransitionCatalog,
     transition_reflections: &TransitionReflectionIndex,
     coupling_limits: &[Option<u32>],
@@ -5977,6 +6046,7 @@ fn build_internal_currents(
                     target_size + 1 < process.external_legs.len(),
                     pairing_catalog,
                     template,
+                    fermion_ordering,
                     transition_reflections,
                     coupling_limits,
                     propagators,
@@ -6104,6 +6174,7 @@ fn add_transition_contributions(
     propagate_result: bool,
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
     template: &OwnedRecurrenceTemplateInput,
+    fermion_ordering: &FermionOrderingContext,
     transition_reflections: &TransitionReflectionIndex,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
@@ -6170,11 +6241,28 @@ fn add_transition_contributions(
     };
     let (evaluator_parent_ids, exchange_factor) = prepared.canonical_evaluator_parents(parent_ids);
     let output_factor = prepared.output_factor()?;
+    let fermion_factor = fermion_ordering_factor(
+        &template.current_states,
+        [
+            currents[parent_ids[0] as usize]
+                .key
+                .current_state_template_id(),
+            currents[parent_ids[1] as usize]
+                .key
+                .current_state_template_id(),
+        ],
+        [
+            currents[parent_ids[0] as usize].key.support_source_slots(),
+            currents[parent_ids[1] as usize].key.support_source_slots(),
+        ],
+        fermion_ordering,
+    )?;
     let base_factor = multiply_factors(&[
         prepared.transition_exact_factor,
         exchange_factor,
         prepared.contraction_exact_factor,
         output_factor,
+        fermion_factor,
     ])?;
     let parent_reflections = [
         currents[parent_ids[0] as usize].reflection.clone(),
@@ -6970,12 +7058,53 @@ fn closure_pairing_certificate_ids(
         None => Err(invalid(
             "closure realizes fermion pairings without a pairing catalog",
         )),
-        Some(_) if realized.len() == 1 => Ok(realized.into_iter().collect()),
-        Some(_) => Err(invalid(format!(
-            "closure parent lineage realizes {} fermion pairing rules, expected exactly one",
-            realized.len()
-        ))),
+        Some(catalog) => canonical_pairing_owner_id(realized.into_iter().map(|rule_id| {
+            let rule = catalog
+                .rules()
+                .get(rule_id as usize)
+                .copied()
+                .filter(|rule| rule.rule_id == rule_id)
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "closure parent lineage references absent pairing rule {rule_id}"
+                    ))
+                })?;
+            Ok((rule_id, catalog.endpoint_pairings(rule)?))
+        }))?
+        .map(|rule_id| vec![rule_id])
+        .ok_or_else(|| invalid("closure parent lineage realizes no fermion pairing rule")),
     }
+}
+
+fn canonical_pairing_owner_id<'a>(
+    candidates: impl IntoIterator<Item = RusticolResult<(u32, &'a [FermionPairingEndpointPairRow])>>,
+) -> RusticolResult<Option<u32>> {
+    let mut selected = None::<(u32, &'a [FermionPairingEndpointPairRow])>;
+    for candidate in candidates {
+        let (rule_id, endpoint_pairs) = candidate?;
+        let candidate_precedes_selected = selected.is_none_or(|(selected_id, selected_pairs)| {
+            endpoint_pairs
+                .iter()
+                .map(|pair| {
+                    (
+                        pair.fundamental_source_slot,
+                        pair.antifundamental_source_slot,
+                    )
+                })
+                .cmp(selected_pairs.iter().map(|pair| {
+                    (
+                        pair.fundamental_source_slot,
+                        pair.antifundamental_source_slot,
+                    )
+                }))
+                .then_with(|| rule_id.cmp(&selected_id))
+                .is_lt()
+        });
+        if candidate_precedes_selected {
+            selected = Some((rule_id, endpoint_pairs));
+        }
+    }
+    Ok(selected.map(|(rule_id, _)| rule_id))
 }
 
 fn pairing_rule_for_certificate(
@@ -7005,9 +7134,10 @@ fn pairing_rule_for_certificate(
 }
 
 fn pairing_reconstruction_factor(_rule: Option<FermionPairingRuleRow>) -> ExactComplexRational {
-    // The canonical closure/input ordering already carries the fermionic
-    // exchange sign. The pairing rule authenticates which Wick lineage was
-    // realized; multiplying its parity here would apply that sign twice.
+    // Canonical color-line construction already carries the exchange parity
+    // of colored Wick lineages.  The exterior-algebra pass separately owns
+    // color-singlet fermions, so multiplying pairing parity here would count
+    // the colored sign twice.
     ExactComplexRational::ONE
 }
 
@@ -7197,6 +7327,8 @@ fn build_closures(
     strategy: RecurrenceStrategy,
     process: &OwnedRecurrenceProcessInput,
     process_catalog: &ProcessCatalog<'_>,
+    template: &OwnedRecurrenceTemplateInput,
+    fermion_ordering: &FermionOrderingContext,
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
     prepared_closures: &PreparedClosureCatalog,
     prepared_sectors: &PreparedClosureSectorCatalog,
@@ -7278,6 +7410,8 @@ fn build_closures(
                         parent_ids,
                         process,
                         process_catalog,
+                        template,
+                        fermion_ordering,
                         color_states,
                         currents,
                         pairing_catalog,
@@ -7512,6 +7646,8 @@ fn add_closure_terms(
     parent_ids: [u32; 2],
     process: &OwnedRecurrenceProcessInput,
     process_catalog: &ProcessCatalog<'_>,
+    template: &OwnedRecurrenceTemplateInput,
+    fermion_ordering: &FermionOrderingContext,
     color_states: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
@@ -7537,11 +7673,24 @@ fn add_closure_terms(
             closure.canonical_evaluator_parents(parent_ids);
         let evaluator_parent_permutation =
             two_parent_permutation(parent_ids, evaluator_parent_ids, "closure evaluator order")?;
+        let fermion_factor = fermion_ordering_factor(
+            &template.current_states,
+            [
+                parents[0].current_state_template_id(),
+                parents[1].current_state_template_id(),
+            ],
+            [
+                parents[0].support_source_slots(),
+                parents[1].support_source_slots(),
+            ],
+            fermion_ordering,
+        )?;
         let base_factor = multiply_factors(&[
             closure.closure_exact_factor,
             exchange_factor,
             closure.contraction_exact_factor,
             output_factor,
+            fermion_factor,
             pairing_reconstruction_factor(pairing_rule),
         ])?;
         for witness in &closure.witnesses {
@@ -12363,6 +12512,45 @@ mod tests {
         assert_ne!(direct.proof_digest, partner.proof_digest);
     }
 
+    #[test]
+    fn multi_realized_closure_selects_semantic_pairing_owner_independent_of_rule_id() {
+        let later = [
+            FermionPairingEndpointPairRow {
+                fundamental_source_slot: 0,
+                antifundamental_source_slot: 7,
+            },
+            FermionPairingEndpointPairRow {
+                fundamental_source_slot: 2,
+                antifundamental_source_slot: 5,
+            },
+        ];
+        let canonical = [
+            FermionPairingEndpointPairRow {
+                fundamental_source_slot: 0,
+                antifundamental_source_slot: 3,
+            },
+            FermionPairingEndpointPairRow {
+                fundamental_source_slot: 2,
+                antifundamental_source_slot: 7,
+            },
+        ];
+
+        for candidates in [
+            vec![Ok((1, later.as_slice())), Ok((9, canonical.as_slice()))],
+            vec![Ok((9, canonical.as_slice())), Ok((1, later.as_slice()))],
+        ] {
+            assert_eq!(canonical_pairing_owner_id(candidates).unwrap(), Some(9));
+        }
+        assert_eq!(
+            canonical_pairing_owner_id([Ok((4, later.as_slice()))]).unwrap(),
+            Some(4)
+        );
+        assert_eq!(
+            canonical_pairing_owner_id(std::iter::empty()).unwrap(),
+            None
+        );
+    }
+
     fn scalar_reference_program(
         external_count: usize,
     ) -> (
@@ -12378,6 +12566,8 @@ mod tests {
         let prepared_closures = PreparedClosureCatalog::new(&template, &template_catalog).unwrap();
         let process = scalar_reference_process(external_count);
         let process_catalog = ProcessCatalog::new(&process).unwrap();
+        let fermion_ordering =
+            established_fermion_ordering_context(&process, &template, None).unwrap();
         let materialized_sectors = BTreeSet::from([0]);
         let prepared_closure_sectors = PreparedClosureSectorCatalog::new(
             RecurrenceStrategy::AllFlowUnion,
@@ -12451,6 +12641,7 @@ mod tests {
             &process,
             None,
             &template,
+            &fermion_ordering,
             &prepared_transitions,
             &TransitionReflectionIndex::new(&template, &template_catalog).unwrap(),
             &[],
@@ -12476,6 +12667,8 @@ mod tests {
             RecurrenceStrategy::AllFlowUnion,
             &process,
             &process_catalog,
+            &template,
+            &fermion_ordering,
             None,
             &prepared_closures,
             &prepared_closure_sectors,

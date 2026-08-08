@@ -125,10 +125,7 @@ def _config() -> RunConfig:
 
 def _flatten(points: tuple[tuple[tuple[float, ...], ...], ...]) -> list[float]:
     return [
-        component
-        for point in points
-        for momentum in point
-        for component in momentum
+        component for point in points for momentum in point for component in momentum
     ]
 
 
@@ -293,9 +290,7 @@ def _assert_hidden_probe_matches_sm_process(
     resolved = runtime.evaluate_resolved(points)
     on_the_fly_resolved = on_the_fly_runtime.evaluate_resolved(points)
     helicity_axis, color_axis = lc_gate._axes(resolved)
-    on_the_fly_helicity_axis, on_the_fly_color_axis = lc_gate._axes(
-        on_the_fly_resolved
-    )
+    on_the_fly_helicity_axis, on_the_fly_color_axis = lc_gate._axes(on_the_fly_resolved)
     assert on_the_fly_helicity_axis == helicity_axis
     assert on_the_fly_color_axis == color_axis
     flows = tuple(runtime.physics.color_flows)
@@ -436,6 +431,21 @@ def test_hidden_on_the_fly_probe_matches_identical_six_fermion_wick_lineages(
     )
 
 
+def test_hidden_on_the_fly_probe_matches_identical_leptonic_wick_lineages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_hidden_probe_matches_sm_process(
+        tmp_path,
+        monkeypatch,
+        "d d~ > e+ e- e+ e-",
+        "otf_dd_epem_epem",
+        selected_helicity_ids=_IDENTICAL_SIX_FERMION_HELICITIES,
+        expected_flow_count=1,
+        expected_query_count=4,
+    )
+
+
 @pytest.mark.parametrize(
     ("process", "process_id"),
     (
@@ -504,9 +514,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
         "_invoke_rust_recurrence_lowering_v2",
         capture_lowering,
     )
-    generated: dict[
-        str, tuple[_ScalarContactCase, Path, dict[str, object], bytes]
-    ] = {}
+    generated: dict[str, tuple[_ScalarContactCase, Path, dict[str, object], bytes]] = {}
     for case in _CASES:
         artifact = tmp_path / f"fresh-{case.process_id}-artifact"
         assert not artifact.exists()
@@ -585,9 +593,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
             and report["trace_digest"] == one["trace_digest"]
             for report in (*singles, many)
         )
-        assert one["normalization_factor"] == pytest.approx(
-            case.normalization_factor
-        )
+        assert one["normalization_factor"] == pytest.approx(case.normalization_factor)
         work_census = _work_census(one)
         assert one["normalized_values"] == pytest.approx((expected_default,))
         assert many["normalized_values"] == pytest.approx(
@@ -610,8 +616,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
                 strict=True,
             ):
                 assert normalized == pytest.approx(
-                    (raw[0] * raw[0] + raw[1] * raw[1])
-                    * report["normalization_factor"]
+                    (raw[0] * raw[0] + raw[1] * raw[1]) * report["normalization_factor"]
                 )
 
         assert one["currents"]
@@ -629,12 +634,14 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
                 assert single_current["component_count"] == width
                 assert len(single_current["values"]) == width
                 start = point_index * width
-                assert many_current["values"][start : start + width] == single_current[
-                    "values"
-                ]
-                assert many["raw_amplitudes"][point_index] == singles[single_index][
-                    "raw_amplitudes"
-                ][0]
+                assert (
+                    many_current["values"][start : start + width]
+                    == single_current["values"]
+                )
+                assert (
+                    many["raw_amplitudes"][point_index]
+                    == singles[single_index]["raw_amplitudes"][0]
+                )
 
         runtime.set_model_parameters({"lam": 3.0})
         established_mutated = _established_resolved_totals(runtime, (case.point,))[0]
@@ -714,9 +721,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
                 (case.point,),
                 overrides={"unknown_parameter": [1.0, 0.0]},
             )
-        with pytest.raises(
-            rusticol.ArtifactError, match="prepared-kernel pack digest"
-        ):
+        with pytest.raises(rusticol.ArtifactError, match="prepared-kernel pack digest"):
             _invoke_probe(
                 probe,
                 artifact,
@@ -726,9 +731,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
                 (case.point,),
                 pack_digest="1" * 64,
             )
-        with pytest.raises(
-            rusticol.ArtifactError, match=r"executor|semantic|mapping"
-        ):
+        with pytest.raises(rusticol.ArtifactError, match=r"executor|semantic|mapping"):
             _invoke_probe(
                 probe,
                 artifact,

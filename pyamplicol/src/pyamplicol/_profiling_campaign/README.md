@@ -6,7 +6,8 @@ self-contained profiling campaign. Create it in a destination whose name
 identifies its measurement environment:
 
 ```console
-pyamplicol profiling-campaign copy ./my-profiling-campaign
+pyamplicol profiling-campaign copy ./my-profiling-campaign \
+  --local-madgraph /path/to/MG5_aMC
 cd ./my-profiling-campaign
 ```
 
@@ -45,8 +46,9 @@ profiling host.
 `campaign_artifacts/`, `pyAmpliCol.pdf`, `campaign_summary_ids/`, and known
 measurement-lineage/LaTeX build byproducts. It keeps unrelated files and a
 previously recorded `.pyamplicol-original-amplicol` default unless a new
-`--local-amplicol PATH` is supplied. Stop an active campaign before resetting
-its destination.
+`--local-amplicol PATH` is supplied. It likewise preserves the recorded
+`.pyamplicol-madgraph` default unless `--local-madgraph PATH` is supplied.
+Stop an active campaign before resetting its destination.
 
 Release wheels do not include the optional `ratatui` and `ratatui_py`
 dashboard bindings. Installed campaign runs therefore continue headlessly as
@@ -55,11 +57,13 @@ those bindings are present, including in a contributor checkout prepared with
 `just dev-install`; otherwise it exits with the corresponding instruction.
 
 By default, a run adds the available numerical-authority closure for every
-selected cell at the active source revision. Added dependency-only work is
-ordered original AmpliCol, recurrence, then compiled/eager. Independent
-processes remain parallel, while a terminal authority releases its candidate
-to run unverified. When no legacy checkout is configured, recurrence remains
-available as the authority for compiled/eager work. Use
+selected cell at the active source revision. MadGraph standalone is the
+authoritative full-colour boundary for the four UFO-SM comparison views;
+recurrence is the independent authority for compiled/eager comparisons on the
+other surfaces. Original AmpliCol is retained only as a legacy performance and
+numerical diagnostic and never certifies or rejects a candidate. Independent
+processes remain parallel, while a terminal required authority releases its
+candidate to run unverified. Use
 `--no-dependencies-added` to suppress optional authority expansion; hard
 construction and selector/provider dependencies are always retained. A
 selection that directly or automatically includes `amplicol` requires a clean,
@@ -70,11 +74,29 @@ campaign's default; the run option overrides the saved default. The
 `amplicol_with_patches` branch works now; a compatible upstream revision will
 work unchanged after the PR is merged.
 
+The full-colour MadGraph views require an installation with executable
+`bin/mg5_aMC` and its standard `models/sm` UFO model. Supply it once with
+`profiling-campaign copy --local-madgraph PATH`, or override the saved value
+with `run --madgraph PATH`. Each authority cell streams `generate`, `output
+standalone`, and `launch -f` through a MadGraph command card, counts the
+standalone compilation in generation time, then compiles a small campaign-owned
+Fortran driver to evaluate and benchmark the generated matrix element. The
+same deterministic point is evaluated by pyAmpliCol at precision 200 for
+recurrence, compiled, and eager, and at the supported precision 16 for OTF; all
+four candidates must agree within relative tolerance `1e-10`.
+
 For on-the-fly LC cells in the n<=4 matrix, the matching recurrence cell is the
 single numerical correctness authority. No compiled artifact is generated or
 loaded for that gate. Original AmpliCol remains the legacy performance
-baseline used by the OTF-versus-AmpliCol tables. This contract is report-cache
-schema v5; v4 two-authority records are intentionally not migrated.
+baseline used by the OTF-versus-AmpliCol tables. OTF NLC and full colour use a
+selector-free contracted workload and require the authenticated contracted-
+colour runtime capability; the UFO-SM full-colour cells compare directly with
+MadGraph. This contract is report-cache schema v5.
+
+With `run --fail-fast`, dispatch proceeds in multiplicity waves (`n=1`, then
+`n=2`, and so on) and stops at the first required mismatch. A failed legacy
+AmpliCol comparison is deliberately non-terminal: the existing table keeps all
+other entries unchanged and renders only the AmpliCol generation time in red.
 
 Rebuild every table and the PDF from one stable current-result snapshot with:
 
@@ -123,8 +145,8 @@ contains exact canonical cell IDs and can be fed straight back to `run` or
 
 `campaign_summary_ids/unverified.txt` is directly replayable without
 `--force-refresh`: those timing diagnostics are not successful currents, and
-they are rerun and validated automatically once recurrence or AmpliCol
-authority is available.
+they are rerun and validated automatically once the required recurrence or
+MadGraph authority is available.
 
 For state-based retries, keep the ordinary table/process/engine selectors and
 add `--rerun-failed`, `--rerun-capped`, or both. The flags filter only that

@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import json
 from decimal import ROUND_UP, Decimal, localcontext
-from types import MethodType
+from types import MethodType, SimpleNamespace
 
 import pytest
 
@@ -881,6 +881,7 @@ def _synthetic_quotient_executor() -> SymbolicaExactExecutor:
     executor._native_runtime = _ExactRuntimeState()
     executor._permutation = None
     executor._lc_replay = None
+    executor._color_replay = None
     executor._helicity_plan = _exact_helicity_plan(execution, physics, None)
     executor._stage_evaluators = ()
     executor._amplitude_evaluator = None
@@ -900,6 +901,114 @@ def _synthetic_quotient_executor() -> SymbolicaExactExecutor:
 
     executor._evaluate_point = MethodType(evaluate_point, executor)
     return executor
+
+
+def test_exact_executor_switches_to_helicity_sum_color_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary_execution: dict[str, object] = {"runtime_schema": {}, "compiled": {}}
+    summed_execution: dict[str, object] = {"runtime_schema": {}, "compiled": {}}
+    physics: dict[str, object] = {
+        "color_accuracy": "full",
+        "external_particles": [{}, {}],
+        "helicities": [{"id": "h", "values": [1, -1]}],
+        "color_components": [{"id": "contracted"}],
+    }
+    identity = SimpleNamespace(input_mapping=())
+    swapped = SimpleNamespace(input_mapping=((0, 1), (1, 0)))
+    replay = SimpleNamespace(mappings=(identity, swapped))
+    parse_calls: list[tuple[object, object, object]] = []
+
+    def parse_replay(
+        execution: object, selected_physics: object, permutation: object
+    ) -> object:
+        parse_calls.append((execution, selected_physics, permutation))
+        return replay
+
+    monkeypatch.setattr(
+        "pyamplicol.runtime.symbolica_exact.parse_exact_color_topology_replay",
+        parse_replay,
+    )
+    monkeypatch.setattr(
+        "pyamplicol.runtime.symbolica_exact._lc_replay_plan",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        "pyamplicol.runtime.symbolica_exact._exact_helicity_plan",
+        lambda *_args: None,
+    )
+
+    executor = object.__new__(SymbolicaExactExecutor)
+    executor._execution = primary_execution
+    executor._physics = physics
+    executor._primary_execution = primary_execution
+    executor._primary_physics = physics
+    executor._helicity_sum_execution = summed_execution
+    executor._helicity_sum_physics = physics
+    executor._native_runtime = _ExactRuntimeState()
+    executor._permutation = None
+    executor._lc_replay = None
+    executor._color_replay = None
+    executor._helicity_plan = None
+    executor._stage_evaluators = ()
+    executor._amplitude_evaluator = None
+    executor._load_evaluators = MethodType(lambda _self: None, executor)
+    evaluated_points: list[object] = []
+
+    def evaluate_point(
+        _self: SymbolicaExactExecutor,
+        point: object,
+        _parameters: object,
+        _precision: int,
+        _source_states: object = None,
+    ) -> tuple[tuple[Decimal, Decimal], ...]:
+        evaluated_points.append(point)
+        assert isinstance(point, tuple)
+        return ((point[0][0], Decimal(0)),)
+
+    executor._evaluate_point = MethodType(evaluate_point, executor)
+    reduction_calls: list[tuple[object, ...]] = []
+
+    def reduce_replay(*args: object) -> tuple[object, tuple[str, ...], tuple[str, ...]]:
+        reduction_calls.append(args)
+        return (((Decimal(42),),),), ("h",), ("contracted",)
+
+    monkeypatch.setattr(
+        "pyamplicol.runtime.symbolica_exact.reduce_exact_color_topology_replay",
+        reduce_replay,
+    )
+
+    result = executor.evaluate_resolved(
+        (
+            (
+                (1.0, 0.0, 0.0, 1.0),
+                (2.0, 0.0, 0.0, -1.0),
+            ),
+        ),
+        helicities=None,
+        color_flows=None,
+        precision=40,
+    )
+
+    assert executor._execution is summed_execution
+    assert parse_calls == [(summed_execution, physics, None)]
+    assert tuple(point[0][0] for point in evaluated_points) == (
+        Decimal(1),
+        Decimal(2),
+    )
+    assert len(reduction_calls) == 1
+    amplitudes, selected_replay, point_count, normalization, selected_h, selected_c = (
+        reduction_calls[0]
+    )
+    assert len(amplitudes) == 2
+    assert selected_replay is replay
+    assert point_count == 1
+    assert normalization == Decimal(2)
+    assert selected_h is None
+    assert selected_c is None
+    assert result.values == (((Decimal(42),),),)
+    assert result.helicity_ids == ("h",)
+    assert result.color_ids == ("contracted",)
 
 
 def test_exact_executor_replays_physical_helicities_and_selectors() -> None:

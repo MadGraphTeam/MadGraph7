@@ -218,6 +218,40 @@ def test_qq_z6g_examples_cover_the_three_public_execution_modes() -> None:
     assert len(outputs) == len(cards)
 
 
+def test_otf_pp_zjj_example_pins_one_flow_f64_warm_up_and_profile() -> None:
+    config = resolve_config(EXAMPLES / "otf_pp_zjj.toml").effective
+    script = (EXAMPLES / "python/otf_pp_zjj_warm_up.py").read_text(encoding="utf-8")
+    momenta = json.loads(
+        (EXAMPLES / "data/pp_zjj_momenta.json").read_text(encoding="utf-8")
+    )
+
+    assert config.process.entries == (ProcessEntry("p p > Z j j"),)
+    assert config.process.multiparticles == {
+        "p": ("d", "d~", "g"),
+        "j": ("d", "d~", "g"),
+    }
+    assert config.model.source == "built-in-sm"
+    assert config.color.accuracy.value == "lc"
+    assert config.evaluator.execution_mode.value == "on-the-fly"
+    assert config.evaluator.optimization.cores == 4
+    assert config.generation.emit_api_bundle
+    assert config.evaluation.process == "d d~ > g z g"
+    assert config.evaluation.precision == 16
+    assert config.benchmark.precision == 16
+    assert config.benchmark.color_flow_ids == ("1",)
+    assert config.benchmark.helicity_ids == ()
+    assert config.output.format.value == "human"
+    assert config.output.color.value == "auto"
+    assert len(momenta) == 1
+
+    assert "one_point = (point,)" in script
+    assert "runtime.warm_up(" in script
+    assert "precision=16" in script
+    assert "color_flows=(flow,)" in script
+    assert "progress=progress" in script
+    assert "PrettyTable" in script
+
+
 def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:
     momenta = json.loads(
         (EXAMPLES / "data/pp_zjj_momenta.json").read_text(encoding="utf-8")

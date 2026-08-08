@@ -545,7 +545,7 @@ pub(super) fn decode_eager_v3_runtime(
         i32_sequence_values.len(),
     )?;
 
-    let kernel_specs = pack.kernel_specs()?;
+    let mut kernel_specs = pack.kernel_specs()?;
     validate_semantics(
         metadata,
         manifest.dag_summary.interaction_count,
@@ -575,6 +575,12 @@ pub(super) fn decode_eager_v3_runtime(
         &exact_ir,
         &kernel_specs,
     )?;
+    let active_kernel_ids = active_kernel_ids(
+        invocations.iter().map(|row| row.kernel_id),
+        finalizations.iter().map(|row| row.kernel_id),
+        closures.iter().map(|row| row.kernel_id),
+    );
+    kernel_specs.retain(|kernel| active_kernel_ids.contains(&kernel.kernel_id));
 
     let amplitude_count = closures
         .iter()
@@ -644,6 +650,19 @@ pub(super) fn decode_eager_v3_runtime(
         color_contraction_entry_start: metadata.color_contraction_entry_start,
         color_contraction_entry_count: metadata.color_contraction_entry_count,
     })
+}
+
+fn active_kernel_ids(
+    invocation_ids: impl IntoIterator<Item = u32>,
+    finalization_ids: impl IntoIterator<Item = u32>,
+    closure_ids: impl IntoIterator<Item = u32>,
+) -> BTreeSet<u32> {
+    invocation_ids
+        .into_iter()
+        .chain(finalization_ids)
+        .chain(closure_ids)
+        .filter(|kernel_id| *kernel_id != MISSING_U32)
+        .collect()
 }
 
 fn decode_metadata(reader: &PacbinReader) -> RusticolResult<Metadata> {
@@ -3076,6 +3095,14 @@ mod reduction_subset_tests {
     #[test]
     fn bounded_reduction_semantics_accept_canonical_partition() {
         validate(&entries()).expect("canonical reduction subset");
+    }
+
+    #[test]
+    fn active_kernel_census_uses_invocations_and_non_sentinel_terminal_rows() {
+        assert_eq!(
+            active_kernel_ids([7, 7], [MISSING_U32, 9], [11, MISSING_U32]),
+            BTreeSet::from([7, 9, 11])
+        );
     }
 
     #[test]

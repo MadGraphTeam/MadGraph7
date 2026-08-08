@@ -6,23 +6,26 @@ separate. ``src/pyamplicol/_profiling_campaign/result_tables.py`` is the
 canonical command entry point.
 """
 
-from .catalog import REPORT_CATALOG, ReportCatalog
+from .catalog import MADGRAPH_FULL_COMPARISON_VIEWS, REPORT_CATALOG, ReportCatalog
 from .models import (
     Accuracy,
     ArtifactPolicy,
     CellSpec,
     ExecutionMode,
+    MatrixComparisonView,
     ModelKey,
     ResultStatus,
     Workload,
 )
 
 __all__ = [
+    "MADGRAPH_FULL_COMPARISON_VIEWS",
     "REPORT_CATALOG",
     "Accuracy",
     "ArtifactPolicy",
     "CellSpec",
     "ExecutionMode",
+    "MatrixComparisonView",
     "ModelKey",
     "ReportCatalog",
     "ResultStatus",

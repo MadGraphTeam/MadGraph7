@@ -778,7 +778,7 @@ fn exact_amplitude_stage(
             }))
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    let color_contraction = if manifest.color_accuracy == "lc" {
+    let materialized_color_contraction = if manifest.color_accuracy == "lc" {
         Value::Null
     } else {
         let entries = reduction_range(
@@ -810,12 +810,145 @@ fn exact_amplitude_stage(
         .collect::<RusticolResult<Vec<_>>>()?;
         json!({"entries": entries})
     };
+    let (color_topology_replay, color_contraction) =
+        if let Some((replay, contraction)) = exact_color_topology_replay(decoded)? {
+            (replay, contraction)
+        } else {
+            (Value::Null, materialized_color_contraction)
+        };
     Ok(json!({
         "stage_kind": "amplitude-roots",
         "output_count": decoded.dimensions.amplitude_count,
         "roots": roots,
         "color_contraction": color_contraction,
+        "color_topology_replay": color_topology_replay,
     }))
+}
+
+fn exact_color_topology_replay(
+    decoded: &DecodedEagerRuntimeV3,
+) -> RusticolResult<Option<(Value, Value)>> {
+    let Some((replay, contraction)) =
+        super::eager_v3_common::load_eager_color_topology_replay_manifests(decoded)?
+    else {
+        return Ok(None);
+    };
+    let physical_groups = replay
+        .physical_groups
+        .iter()
+        .map(|group| {
+            if !group.helicity_weight.is_finite() || group.helicity_weight <= 0.0 {
+                return Err(RusticolError::integrity(
+                    "eager exact color replay helicity weight is invalid",
+                ));
+            }
+            Ok(json!({
+                "group_id": group.group_id,
+                "helicities": group.helicities,
+                "color_sector_id": group.color_sector_id,
+                "color_word": group.color_word,
+                "helicity_weight": exact_number(group.helicity_weight),
+            }))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let mappings = replay
+        .mappings
+        .iter()
+        .map(|mapping| {
+            let routes = mapping
+                .group_routes
+                .iter()
+                .map(|route| {
+                    Ok(json!({
+                        "source_group_id": route.source_group_id,
+                        "target_group_id": route.target_group_id,
+                        "factor": exact_f64_pair(&route.factor, "color replay route")?,
+                    }))
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            Ok(json!({
+                "label_permutation": mapping.label_permutation,
+                "group_routes": routes,
+            }))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let entries = contraction
+        .entries
+        .iter()
+        .map(|entry| {
+            if !entry.symmetry_factor.is_finite() {
+                return Err(RusticolError::integrity(
+                    "eager exact color replay symmetry factor is invalid",
+                ));
+            }
+            Ok(json!({
+                "left_group_id": entry.left_group_id,
+                "right_group_id": entry.right_group_id,
+                "weight": exact_f64_pair(&entry.weight, "color replay contraction")?,
+                "symmetry_factor": exact_number(entry.symmetry_factor),
+            }))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let repeated_block = contraction
+        .repeated_block
+        .as_ref()
+        .map(|block| {
+            let entries = block
+                .entries
+                .iter()
+                .map(|entry| {
+                    if !entry.symmetry_factor.is_finite() {
+                        return Err(RusticolError::integrity(
+                            "eager exact repeated color symmetry factor is invalid",
+                        ));
+                    }
+                    Ok(json!({
+                        "left_group_index": entry.left_group_index,
+                        "right_group_index": entry.right_group_index,
+                        "weight": exact_f64_pair(
+                            &entry.weight,
+                            "repeated color replay contraction",
+                        )?,
+                        "symmetry_factor": exact_number(entry.symmetry_factor),
+                    }))
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            Ok(json!({
+                "component_count": block.component_count,
+                "component_group_ids": block.component_group_ids,
+                "entries": entries,
+            }))
+        })
+        .transpose()?;
+    let replay = json!({
+        "contract_version": replay.contract_version,
+        "physical_group_count": replay.physical_group_count,
+        "physical_groups": physical_groups,
+        "mappings": mappings,
+    });
+    let contraction = json!({
+        "supported": contraction.supported,
+        "reason": contraction.reason,
+        "group_count": contraction.group_count,
+        "includes_color_factor": contraction.includes_color_factor,
+        "entries": entries,
+        "repeated_block": repeated_block,
+    });
+    Ok(Some((replay, contraction)))
+}
+
+fn exact_f64_pair(values: &[f64], context: &str) -> RusticolResult<[String; 2]> {
+    let [real, imaginary] = values else {
+        return Err(RusticolError::integrity(format!(
+            "eager exact {context} factor is not complex data"
+        )));
+    };
+    if !real.is_finite() || !imaginary.is_finite() {
+        return Err(RusticolError::integrity(format!(
+            "eager exact {context} factor is not finite"
+        )));
+    }
+    Ok([exact_number(*real), exact_number(*imaginary)])
 }
 
 fn coherent_group_color_sector_ids(
@@ -1420,8 +1553,14 @@ pub(super) fn prepare_plan_v3_parameter_state(
         })
         .collect::<RusticolResult<Vec<_>>>()?;
     let encoded = EagerCouplingRow::encode_table(&legacy_rows)?;
+    let active_kernel_ids = decoded
+        .kernel_specs
+        .iter()
+        .map(|kernel| kernel.kernel_id)
+        .collect::<BTreeSet<_>>();
     let (projection, remapped, evaluator) = super::eager_load::prepare_eager_parameter_state(
         pack,
+        &active_kernel_ids,
         runtime_parameters,
         &encoded,
         payloads,

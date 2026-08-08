@@ -845,6 +845,20 @@ def test_manifest_rejects_unknown_nested_fields(tmp_path: Path) -> None:
         load_manifest(root, verify_payloads=False)
 
 
+def test_manifest_accepts_native_digest_without_git_revision(tmp_path: Path) -> None:
+    root = tmp_path / "artifact"
+    _build(root)
+    path = root / "artifact.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["producer"]["native_build_inputs_sha256"] = "a" * 64
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    producer = load_manifest(root, verify_payloads=False).producer
+
+    assert producer["native_build_inputs_sha256"] == "a" * 64
+    assert "git_revision" not in producer
+
+
 def test_manifest_rejects_noncanonical_runtime_capabilities(tmp_path: Path) -> None:
     root = tmp_path / "artifact"
     _build(root)

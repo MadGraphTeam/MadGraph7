@@ -103,6 +103,15 @@ fn load_color_contraction(
     let Some(reference) = manifest.runtime_metadata.color_contraction.as_ref() else {
         return Ok(None);
     };
+    load_color_contraction_reference(artifact, evaluator_root, &manifest.key, reference).map(Some)
+}
+
+pub(super) fn load_color_contraction_reference(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    process_key: &str,
+    reference: &RecurrenceColorContractionReference,
+) -> RusticolResult<RecurrenceColorContraction> {
     let relative_root = evaluator_root
         .strip_prefix(artifact.root())
         .map_err(|_| RusticolError::security("recurrence process root escapes the artifact"))?;
@@ -113,7 +122,7 @@ fn load_color_contraction(
     let record = artifact.payload(logical)?;
     if record.role != PayloadRole::EvaluatorState
         || record.media_type != "application/octet-stream"
-        || record.process_id.as_deref() != Some(manifest.key.as_str())
+        || record.process_id.as_deref() != Some(process_key)
         || record.size_bytes != reference.size_bytes
         || record.sha256 != reference.sha256
     {
@@ -180,7 +189,7 @@ fn load_color_contraction(
             "recurrence color-contraction factorization disagrees with its bounded summary",
         ));
     }
-    Ok(Some(contraction))
+    Ok(contraction)
 }
 
 pub(super) fn load_recurrence_exact_sections(
@@ -2256,6 +2265,7 @@ impl NativeRuntime {
             selectors: _,
             metadata_selectors: _,
             public_metadata: _,
+            color_contraction: _,
         } = loaded_on_the_fly;
 
         let seed = on_the_fly_lane.seed();

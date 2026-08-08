@@ -232,9 +232,59 @@ the stable ID or its one-based advertised position; for example,
 An omitted generation-time selector means reusable complete coverage, not a
 copy of every complete recurrence for every physical selector. Compiled mode
 stores certified recurrence replay classes and localized residual lanes; eager
-mode stores selector domains over prepared-kernel invocations. An explicit
-generation-time selector remains available when a deliberately specialized
-artifact is preferable.
+mode stores selector domains over prepared-kernel invocations. Recurrence,
+eager, and compiled generation may instead fix
+`process.selected_color_sector_ids`, `process.selected_source_helicities`, or
+both when a deliberately specialized artifact is preferable. OTF keeps these
+choices runtime-local: `warm_up(...)` constructs the selected family and the
+last warmed family is reused until another selector is requested.
+
+## Explicit OTF Warm-up
+
+OTF exposes its cold structural work explicitly. `warm_up(...)` accepts
+exactly one phase-space point at native binary64 precision and the same
+batch-global selectors as `evaluate(...)`:
+
+```python
+import sys
+
+from pyamplicol import Runtime
+from pyamplicol.reporting import close_progress_sink, progress_sink
+
+runtime = Runtime.load("artifacts/otf_pp_zjj", process="d d~ > g z g")
+point = points[0]  # one [external particle][E, px, py, pz] point
+flow = runtime.physics.color_flows[0]
+progress = progress_sink("auto", stream=sys.stderr, color=True)
+try:
+    result = runtime.warm_up(
+        (point,),
+        precision=16,
+        color_flows=(flow,),
+        progress=progress,
+    )
+finally:
+    close_progress_sink(progress)
+```
+
+The progress stream separates process preparation, query-family construction,
+family finalization, and the first one-point evaluation. It includes completed
+query counts, construction workers, and sampled native-process RSS. The
+external 30 GiB watchdog remains authoritative for a complete process tree.
+The returned `WarmUpResult` records elapsed time, total and newly built query
+counts, cache reuse, and sampled memory.
+
+Warm-up never uses a benchmark batch. A later 128-point profile may grow the
+numeric workspace once for that batch capacity; this is separate from
+constructing the selector family. Repeating `warm_up(...)` with the identical
+selection reuses the family but still performs its required one-point
+evaluation. Selecting another flow or helicity transactionally replaces the
+last retained family. LC accepts helicity and flow selectors; contracted
+NLC/full accepts helicity selectors only.
+
+The Rust, C, C++, and Fortran native APIs expose the same four stages through
+an optional callback and a fixed numeric result record, so embeddings can draw
+their own progress UI without parsing terminal text. With no observer, warm-up
+performs no memory sampling or progress callback work.
 
 ## Precision And Capabilities
 

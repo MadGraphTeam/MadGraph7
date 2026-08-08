@@ -45,6 +45,7 @@ from .results import (
     HelicityConfiguration,
     ProcessPhysics,
     ResolvedEvaluation,
+    WarmUpResult,
 )
 
 _generator_factory: GeneratorFactory | None = None
@@ -493,6 +494,68 @@ class Runtime:
         return tuple(
             value if isinstance(value, Decimal) else complex(value) for value in values
         )
+
+    def warm_up(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int = 16,
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        color_flows: Sequence[str | ColorFlow] | None = None,
+        progress: ProgressSink | None = None,
+    ) -> WarmUpResult:
+        """Warm one on-the-fly selector family using exactly one f64 point.
+
+        This is an explicit structural warm-up, not a throughput evaluation:
+        batches and high-precision execution are intentionally rejected. LC
+        accepts the same helicity and color-flow selectors as :meth:`evaluate`;
+        contracted NLC/full execution accepts only helicity selectors.
+        """
+
+        try:
+            point_count = len(momenta)
+        except TypeError as exc:
+            raise TypeError("warm_up momenta must be a sized sequence") from exc
+        if point_count != 1:
+            raise ValueError(
+                "warm_up requires exactly one phase-space point; "
+                f"received {point_count}"
+            )
+        precision = _validate_precision(precision)
+        if precision != 16:
+            raise CompatibilityError(
+                "on-the-fly warm_up supports only precision=16 (native f64); "
+                f"received precision={precision}"
+            )
+        _validate_progress(progress)
+        if self.execution_mode != "on-the-fly":
+            raise CompatibilityError(
+                "warm_up is available only for on-the-fly runtimes"
+            )
+        operation = getattr(self._backend, "warm_up", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "installed on-the-fly runtime does not expose explicit warm-up; "
+                "reinstall pyAmpliCol from the current source revision"
+            )
+        result = operation(
+            momenta,
+            helicities=_selector_ids(
+                helicities,
+                expected_type=HelicityConfiguration,
+                name="helicity",
+            ),
+            color_flows=_selector_ids(
+                color_flows,
+                expected_type=ColorFlow,
+                name="color-flow",
+            ),
+            precision=precision,
+            progress=progress,
+        )
+        if not isinstance(result, WarmUpResult):
+            raise EvaluationError("runtime backend returned an invalid WarmUpResult")
+        return result
 
     def evaluate_with_prec(
         self,

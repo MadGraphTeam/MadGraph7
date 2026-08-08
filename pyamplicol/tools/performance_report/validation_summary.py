@@ -8,10 +8,16 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+from .agreements import (
+    DIRECT_AGREEMENT_FIELD,
+    INDEPENDENT_AUTHORITY_FIELD,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
+    MADGRAPH_COMPARISON_FIELD,
+)
 from .campaign_policy import policy_status_label
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .display_contract import report_display_accounting
-from .models import CellSpec, ResultStatus
+from .models import CellSpec, ExecutionMode, ResultStatus
 
 Measurement = Mapping[str, object]
 CachePayload = Mapping[str, object]
@@ -30,9 +36,7 @@ def _number(record: Mapping[str, object], field: str) -> float | None:
 
 def _maximum(records: Iterable[Mapping[str, object]], field: str) -> float | None:
     values = tuple(
-        value
-        for record in records
-        if (value := _number(record, field)) is not None
+        value for record in records if (value := _number(record, field)) is not None
     )
     return max(values) if values else None
 
@@ -104,9 +108,13 @@ class ValidationSummary:
     passed_by_n: tuple[tuple[int, int], ...]
     policy_terminal_by_n: tuple[tuple[int, int], ...]
     status_counts: tuple[tuple[str, int], ...]
-    oracle_count: int
-    independent_count: int
-    independent_maximum_relative_difference: float | None
+    madgraph_reference_count: int
+    madgraph_comparison_count: int
+    madgraph_comparison_maximum_relative_difference: float | None
+    legacy_reference_count: int
+    legacy_comparison_pass_count: int
+    legacy_comparison_failure_count: int
+    legacy_comparison_maximum_relative_difference: float | None
     cross_mode_count: int
     cross_mode_maximum_relative_difference: float | None
     resolved_count: int
@@ -115,6 +123,10 @@ class ValidationSummary:
     high_precision_maximum_relative_difference: float | None
     source_revisions: tuple[str, ...]
     successful_source_identity_count: int
+
+    @property
+    def legacy_comparison_count(self) -> int:
+        return self.legacy_comparison_pass_count + self.legacy_comparison_failure_count
 
     @property
     def declared_total(self) -> int:
@@ -142,10 +154,7 @@ class ValidationSummary:
 
     @property
     def policy_complete(self) -> bool:
-        return (
-            self.passed_total + self.policy_terminal_total
-            == self.expected_total
-        )
+        return self.passed_total + self.policy_terminal_total == self.expected_total
 
     @property
     def uniform_source_revision(self) -> str | None:
@@ -172,16 +181,16 @@ def summarize_validation(
     )
     declared = Counter(cell.n_final for cell in cells)
     static_na = Counter(
-        cell.n_final
-        for cell in cells
-        if catalog.static_na_reason(cell) is not None
+        cell.n_final for cell in cells if catalog.static_na_reason(cell) is not None
     )
     expected = declared - static_na
     passed: Counter[int] = Counter()
     policy_terminal: Counter[int] = Counter()
     statuses: Counter[str] = Counter()
-    oracle_count = 0
-    independent: list[Mapping[str, object]] = []
+    madgraph_reference_count = 0
+    madgraph_comparisons: list[Mapping[str, object]] = []
+    legacy_reference_count = 0
+    legacy_comparisons: list[Mapping[str, object]] = []
     cross_mode: list[Mapping[str, object]] = []
     resolved: list[Mapping[str, object]] = []
     high_precision: list[Mapping[str, object]] = []
@@ -192,9 +201,7 @@ def summarize_validation(
             statuses["static-na"] += 1
             continue
         measurement = measurements.get(cell.cell_id, {})
-        status = str(
-            measurement.get("status", ResultStatus.NOT_AVAILABLE.value)
-        )
+        status = str(measurement.get("status", ResultStatus.NOT_AVAILABLE.value))
         statuses[status] += 1
         if not _successful(measurement):
             if policy_status_label(measurement) is not None:
@@ -206,13 +213,29 @@ def summarize_validation(
             revisions.append(revision)
         validation = measurement["validation"]
         assert isinstance(validation, Mapping)
-        if validation.get("method") == "independent-original-amplicol-oracle":
-            oracle_count += 1
+        method = validation.get("method")
+        if method == "independent-madgraph-tree-level-oracle":
+            madgraph_reference_count += 1
+        elif method == "independent-original-amplicol-oracle":
+            legacy_reference_count += 1
+        if (
+            comparison := _validation_record(
+                measurement,
+                MADGRAPH_COMPARISON_FIELD,
+            )
+        ) is not None:
+            madgraph_comparisons.append(comparison)
         if (pointwise := _validation_record(measurement, "pointwise")) is not None:
-            if _uses_independent_reference(cell):
-                independent.append(pointwise)
-            else:
+            reference_mode = _pointwise_reference_mode(
+                cell,
+                validation,
+                catalog=catalog,
+            )
+            if reference_mode is ExecutionMode.AMPLICOL:
+                legacy_comparisons.append(pointwise)
+            elif reference_mode is ExecutionMode.RECURRENCE:
                 cross_mode.append(pointwise)
+        legacy_comparisons.extend(_additional_legacy_comparisons(validation))
         if (record := _validation_record(measurement, "resolved_sum")) is not None:
             resolved.append(record)
         if (record := _validation_record(measurement, "high_precision")) is not None:
@@ -220,23 +243,33 @@ def summarize_validation(
 
     multiplicities = tuple(sorted(declared))
     return ValidationSummary(
-        declared_by_n=tuple(
-            (n_final, declared[n_final]) for n_final in multiplicities
-        ),
+        declared_by_n=tuple((n_final, declared[n_final]) for n_final in multiplicities),
         expected_by_n=tuple((n_final, expected[n_final]) for n_final in multiplicities),
         static_na_by_n=tuple(
             (n_final, static_na[n_final]) for n_final in multiplicities
         ),
         passed_by_n=tuple((n_final, passed[n_final]) for n_final in multiplicities),
         policy_terminal_by_n=tuple(
-            (n_final, policy_terminal[n_final])
-            for n_final in multiplicities
+            (n_final, policy_terminal[n_final]) for n_final in multiplicities
         ),
         status_counts=tuple(sorted(statuses.items())),
-        oracle_count=oracle_count,
-        independent_count=len(independent),
-        independent_maximum_relative_difference=_maximum(
-            independent,
+        madgraph_reference_count=madgraph_reference_count,
+        madgraph_comparison_count=len(madgraph_comparisons),
+        madgraph_comparison_maximum_relative_difference=_maximum(
+            madgraph_comparisons,
+            "relative_difference",
+        ),
+        legacy_reference_count=legacy_reference_count,
+        legacy_comparison_pass_count=sum(
+            record.get("status") == ResultStatus.OK.value
+            for record in legacy_comparisons
+        ),
+        legacy_comparison_failure_count=sum(
+            record.get("status") != ResultStatus.OK.value
+            for record in legacy_comparisons
+        ),
+        legacy_comparison_maximum_relative_difference=_maximum(
+            legacy_comparisons,
             "relative_difference",
         ),
         cross_mode_count=len(cross_mode),
@@ -259,11 +292,54 @@ def summarize_validation(
     )
 
 
-def _uses_independent_reference(cell: CellSpec) -> bool:
-    return (
-        cell.dataset_id.startswith("matrix_recurrence_")
-        or cell.dataset_id.startswith("z_")
-    )
+def _pointwise_reference_mode(
+    cell: CellSpec,
+    validation: Mapping[str, object],
+    *,
+    catalog: ReportCatalog,
+) -> ExecutionMode | None:
+    """Identify the actual endpoint of a stored pointwise comparison."""
+
+    authority = validation.get(INDEPENDENT_AUTHORITY_FIELD)
+    if isinstance(authority, Mapping):
+        selected = authority.get("selected_cell_id")
+        if isinstance(selected, str):
+            try:
+                return catalog.cell(selected).measurement.execution_mode
+            except KeyError:
+                return None
+    baseline = catalog.validation_baseline_cell(cell)
+    return None if baseline is None else baseline.measurement.execution_mode
+
+
+def _additional_legacy_comparisons(
+    validation: Mapping[str, object],
+) -> tuple[Mapping[str, object], ...]:
+    """Return retained legacy records not represented by ``pointwise``."""
+
+    records: list[Mapping[str, object]] = []
+    direct = validation.get(DIRECT_AGREEMENT_FIELD)
+    if isinstance(direct, list):
+        records.extend(
+            record
+            for record in direct
+            if isinstance(record, Mapping)
+            and record.get("edge_kind") == LC_LEGACY_PYAMPLICOL_COMPONENT
+        )
+    for field in (
+        "legacy_amplicol_comparison",
+        "legacy_comparison",
+        "amplicol_comparison",
+    ):
+        raw = validation.get(field)
+        if not isinstance(raw, Mapping):
+            continue
+        nested = raw.get("pointwise")
+        if isinstance(nested, Mapping):
+            records.append(nested)
+        elif "status" in raw:
+            records.append(raw)
+    return tuple(records)
 
 
 def _scientific(value: float | None) -> str:
@@ -376,19 +452,31 @@ def render_validation_summary(
             r"\begin{tabular}{@{}l r r@{}}",
             r"\toprule",
             (
-                r"\textbf{validation comparison} & \textbf{passed} & "
+                r"\textbf{validation evidence} & \textbf{records} & "
                 r"\textbf{max. relative difference} \\"
             ),
             r"\midrule",
             (
-                r"independent original-\AC{} reference records"
-                f" & {summary.oracle_count} & "
+                r"MadGraph standalone tree-level reference records"
+                f" & {summary.madgraph_reference_count} & "
                 r"\textcolor{ReportMuted}{reference} \\"
             ),
             (
-                r"\PAC{} versus independent reference"
-                f" & {summary.independent_count} & "
-                f"{_scientific(summary.independent_maximum_relative_difference)}"
+                r"\PAC{} versus MadGraph binary64 (p200; OTF p16)"
+                f" & {summary.madgraph_comparison_count} & "
+                f"{_scientific(summary.madgraph_comparison_maximum_relative_difference)}"
+                r" \\"
+            ),
+            (
+                r"original-\AC{} legacy diagnostic records"
+                f" & {summary.legacy_reference_count} & "
+                r"\textcolor{ReportMuted}{diagnostic} \\"
+            ),
+            (
+                r"\PAC{} versus original-\AC{} legacy diagnostic"
+                f" & {summary.legacy_comparison_pass_count} pass, "
+                f"{summary.legacy_comparison_failure_count} mismatch & "
+                f"{_scientific(summary.legacy_comparison_maximum_relative_difference)}"
                 r" \\"
             ),
             (
@@ -404,7 +492,7 @@ def render_validation_summary(
                 r" \\"
             ),
             (
-                r"scalar result versus higher precision"
+                r"binary64 result versus p32"
                 f" & {summary.high_precision_count} & "
                 f"{_scientific(summary.high_precision_maximum_relative_difference)}"
                 r" \\"
@@ -418,9 +506,7 @@ def render_validation_summary(
     if (
         authenticated_source_lineage is not None
         and summary.successful_source_identity_count == summary.passed_total
-        and set(summary.source_revisions).issubset(
-            set(authenticated_source_lineage)
-        )
+        and set(summary.source_revisions).issubset(set(authenticated_source_lineage))
     ):
         ancestor, descendant = authenticated_source_lineage
         source_text = (
@@ -440,10 +526,15 @@ def render_validation_summary(
                 r"\ReportTableNote{Profile: \texttt{\ReportProfileName}. "
                 r"Measured source: "
                 + source_text
-                + r". Independent-reference comparisons use a relative "
-                r"tolerance of \(10^{-8}\); cross-mode (including "
-                r"OTF/recurrence), resolved-sum, and "
-                r"higher-precision comparisons use \(10^{-12}\).}"
+                + r". The authoritative \PAC{} versus MadGraph binary64 "
+                r"full-colour comparison uses p200 for recurrence, compiled, "
+                r"and eager candidates and the supported p16 lane for OTF; "
+                r"all use a relative tolerance "
+                r"of \(10^{-10}\). Original-\AC{} comparisons are retained "
+                r"non-authoritative legacy diagnostics at \(10^{-8}\); a "
+                r"legacy mismatch does not invalidate a candidate; cross-mode "
+                r"(including OTF/recurrence), resolved-sum, and p32 "
+                r"comparisons use \(10^{-12}\).}"
             ),
         ]
     )

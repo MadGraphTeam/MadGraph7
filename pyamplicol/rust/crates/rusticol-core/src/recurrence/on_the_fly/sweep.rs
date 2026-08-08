@@ -2,6 +2,49 @@
 
 use super::source_seed::validate_permutation;
 use super::*;
+use crate::recurrence::fermion_ordering::{FermionOrderingContext, fermion_ordering_factor};
+
+fn on_the_fly_source_requires_exterior_sign(
+    is_fermionic: bool,
+    color_role: OnTheFlyExternalColorRoleV1,
+) -> RusticolResult<bool> {
+    if !is_fermionic {
+        if color_role.is_pairing_endpoint() {
+            return Err(integrity(
+                "fermion-ordering endpoint role belongs to a bosonic source",
+            ));
+        }
+        return Ok(false);
+    }
+    match color_role {
+        OnTheFlyExternalColorRoleV1::Singlet => Ok(true),
+        OnTheFlyExternalColorRoleV1::Fundamental | OnTheFlyExternalColorRoleV1::Antifundamental => {
+            Ok(false)
+        }
+        OnTheFlyExternalColorRoleV1::Adjoint => Err(invalid(
+            "external-fermion ordering does not support adjoint fermion sources",
+        )),
+    }
+}
+
+pub(super) fn on_the_fly_fermion_ordering_context(
+    seed: &OnTheFlyProcessSeedV1,
+) -> RusticolResult<FermionOrderingContext> {
+    let mut source_requires_exterior_sign = Vec::with_capacity(seed.source_anchors.len());
+    for (source_slot, anchor) in seed.source_anchors.iter().enumerate() {
+        let source_slot = checked_u32(source_slot, "fermion-ordering source slot")?;
+        if anchor.source_slot != source_slot {
+            return Err(integrity(
+                "fermion-ordering source anchor disagrees with its slot",
+            ));
+        }
+        source_requires_exterior_sign.push(on_the_fly_source_requires_exterior_sign(
+            anchor.is_fermionic,
+            anchor.color_role,
+        )?);
+    }
+    Ok(FermionOrderingContext::new(source_requires_exterior_sign))
+}
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct PendingContributionKey {
@@ -21,15 +64,16 @@ pub(super) struct PendingCurrent {
     pub(super) stage: u32,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct PreparedContactOrbitLocation<'a> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PreparedContactOrbitLocation {
     transition_id: u32,
-    contact_orbit: Option<&'a PreparedContactOrbitTransition>,
+    state_pair: (u32, u32),
+    row_index: usize,
 }
 
-#[derive(Debug, Default)]
-struct PreparedContactOrbitIndex<'a> {
-    locations: Vec<PreparedContactOrbitLocation<'a>>,
+#[derive(Debug, Default, Eq, PartialEq)]
+pub(super) struct PreparedContactOrbitIndex {
+    locations: Vec<PreparedContactOrbitLocation>,
 }
 
 fn reserve_on_the_fly_contact_locations<T>(
@@ -43,37 +87,46 @@ fn reserve_on_the_fly_contact_locations<T>(
     })
 }
 
-impl<'a> PreparedContactOrbitIndex<'a> {
-    fn new(transitions: &'a BTreeMap<(u32, u32), Vec<PreparedTransition>>) -> RusticolResult<Self> {
-        if !transitions
-            .values()
-            .flatten()
-            .any(|prepared| prepared.contact_orbit.is_some())
-        {
-            return Ok(Self::default());
-        }
+impl PreparedContactOrbitIndex {
+    pub(super) fn new(
+        transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    ) -> RusticolResult<Self> {
         let transition_count = transitions.values().try_fold(0usize, |count, rows| {
             count
                 .checked_add(rows.len())
                 .ok_or_else(|| invalid("contact-orbit transition count exceeds usize"))
         })?;
-        let mut locations = Vec::new();
-        reserve_on_the_fly_contact_locations(&mut locations, transition_count)?;
-        for prepared in transitions.values().flatten() {
-            locations.push(PreparedContactOrbitLocation {
-                transition_id: prepared.row.id,
-                contact_orbit: prepared.contact_orbit.as_ref(),
-            });
+        let contact_count = transitions
+            .values()
+            .flatten()
+            .filter(|prepared| prepared.contact_orbit.is_some())
+            .count();
+        if contact_count == 0 {
+            return Ok(Self::default());
         }
-        locations.sort_unstable_by_key(|location| location.transition_id);
-        if locations
-            .windows(2)
-            .any(|rows| rows[0].transition_id == rows[1].transition_id)
-        {
+        let mut transition_ids = Vec::new();
+        reserve_on_the_fly_contact_locations(&mut transition_ids, transition_count)?;
+        let mut locations = Vec::new();
+        reserve_on_the_fly_contact_locations(&mut locations, contact_count)?;
+        for (state_pair, rows) in transitions {
+            for (row_index, prepared) in rows.iter().enumerate() {
+                transition_ids.push(prepared.row.id);
+                if prepared.contact_orbit.is_some() {
+                    locations.push(PreparedContactOrbitLocation {
+                        transition_id: prepared.row.id,
+                        state_pair: *state_pair,
+                        row_index,
+                    });
+                }
+            }
+        }
+        transition_ids.sort_unstable();
+        if transition_ids.windows(2).any(|rows| rows[0] == rows[1]) {
             return Err(integrity(
                 "contact-orbit transition index contains duplicate IDs",
             ));
         }
+        locations.sort_unstable_by_key(|location| location.transition_id);
         Ok(Self { locations })
     }
 
@@ -81,12 +134,27 @@ impl<'a> PreparedContactOrbitIndex<'a> {
         self.locations.is_empty()
     }
 
-    fn get(&self, transition_id: u32) -> Option<&'a PreparedContactOrbitTransition> {
+    fn get<'a>(
+        &self,
+        transitions: &'a BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+        transition_id: u32,
+    ) -> Option<&'a PreparedContactOrbitTransition> {
         self.locations
             .binary_search_by_key(&transition_id, |location| location.transition_id)
             .ok()
             .and_then(|index| self.locations.get(index))
-            .and_then(|location| location.contact_orbit)
+            .and_then(|location| {
+                transitions
+                    .get(&location.state_pair)
+                    .and_then(|rows| rows.get(location.row_index))
+            })
+            .filter(|prepared| prepared.row.id == transition_id)
+            .and_then(|prepared| prepared.contact_orbit.as_ref())
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.locations.len()
     }
 }
 
@@ -150,13 +218,14 @@ fn reserve_on_the_fly_contact_candidates<T>(
 
 fn plan_on_the_fly_contact_orbit_owners(
     stage_current_start: usize,
-    contact_orbits: &PreparedContactOrbitIndex<'_>,
+    transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    contact_orbits: &PreparedContactOrbitIndex,
     currents: &[PendingCurrent],
 ) -> RusticolResult<Option<OnTheFlyContactOwnerPlan>> {
     plan_on_the_fly_contact_orbit_owners_with_resolver(
         stage_current_start,
         currents,
-        |transition_id| contact_orbits.get(transition_id),
+        |transition_id| contact_orbits.get(transitions, transition_id),
     )
 }
 
@@ -470,6 +539,23 @@ pub(super) fn extend_pairing_lineages(
     target.append(&mut additions);
     target.sort_unstable();
     target.dedup();
+    Ok(())
+}
+
+fn retain_canonical_pairing_lineage(
+    lineages: &mut Vec<PendingPairingLineage>,
+) -> RusticolResult<()> {
+    if lineages.is_empty() {
+        return Err(integrity(
+            "physical closure has no complete Wick-lineage owner",
+        ));
+    }
+    // Pairing lineage is cold proof state, not an additive amplitude term.
+    // Equal runtime closures therefore retain one semantic witness without
+    // duplicating or rescaling their already aggregated numerical factor.
+    lineages.sort_unstable();
+    lineages.dedup();
+    lineages.truncate(1);
     Ok(())
 }
 
@@ -905,6 +991,7 @@ fn include_transition(
     concrete_parent_ids: [u32; 2],
     source_count: usize,
     seed: &OnTheFlyProcessSeedV1,
+    fermion_ordering: &FermionOrderingContext,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
     colors: &mut DynamicLCColorStateInterner,
@@ -960,6 +1047,18 @@ fn include_transition(
             .clone(),
     ];
     let (evaluator_parent_ids, exchange_factor) = prepared.evaluator_parents(concrete_parent_ids);
+    let fermion_factor = fermion_ordering_factor(
+        &templates.input().current_states,
+        [
+            parents[0].current_state_template_id(),
+            parents[1].current_state_template_id(),
+        ],
+        [
+            parents[0].support_source_slots(),
+            parents[1].support_source_slots(),
+        ],
+        fermion_ordering,
+    )?;
     let result_state = templates
         .input()
         .current_states
@@ -1063,6 +1162,7 @@ fn include_transition(
             output_factor,
             exchange_factor,
             witness_factor,
+            fermion_factor,
         ])?;
         let aggregate_factor_after = {
             let aggregate = currents[result_id as usize]
@@ -1277,7 +1377,9 @@ impl QuerySupportSizeIndex {
 pub(super) fn build_forward_currents(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    contact_orbits: &PreparedContactOrbitIndex,
     seed: &OnTheFlyProcessSeedV1,
+    fermion_ordering: &FermionOrderingContext,
     closure_anchor_slot: u32,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
@@ -1288,7 +1390,9 @@ pub(super) fn build_forward_currents(
     build_forward_currents_with_anchor_exclusion(
         templates,
         transitions,
+        contact_orbits,
         seed,
+        fermion_ordering,
         Some(closure_anchor_slot),
         coupling_limits,
         propagators,
@@ -1302,7 +1406,9 @@ pub(super) fn build_forward_currents(
 fn build_forward_currents_with_anchor_exclusion(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    contact_orbits: &PreparedContactOrbitIndex,
     seed: &OnTheFlyProcessSeedV1,
+    fermion_ordering: &FermionOrderingContext,
     closure_anchor_slot: Option<u32>,
     coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
@@ -1311,7 +1417,6 @@ fn build_forward_currents_with_anchor_exclusion(
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
 ) -> RusticolResult<()> {
     let source_count = seed.source_anchors.len();
-    let contact_orbits = PreparedContactOrbitIndex::new(transitions)?;
     // The selected closure always combines its singleton anchor source with
     // the exact complementary support. Supports only grow by disjoint union,
     // so a composite containing the anchor can never feed that complement.
@@ -1355,6 +1460,7 @@ fn build_forward_currents_with_anchor_exclusion(
                         parent_ids,
                         source_count,
                         seed,
+                        fermion_ordering,
                         coupling_limits,
                         propagators,
                         colors,
@@ -1368,7 +1474,8 @@ fn build_forward_currents_with_anchor_exclusion(
         if !contact_orbits.is_empty()
             && let Some(plan) = plan_on_the_fly_contact_orbit_owners(
                 stage_current_start,
-                &contact_orbits,
+                transitions,
+                contact_orbits,
                 currents,
             )?
         {
@@ -1399,8 +1506,10 @@ fn closure_quantum_matches(
 }
 
 pub(super) fn build_selected_closures(
+    templates: &ValidatedRecurrenceTemplateInput,
     closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     seed: &OnTheFlyProcessSeedV1,
+    fermion_ordering: &FermionOrderingContext,
     query: &DecodedLcQueryV1,
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
@@ -1486,6 +1595,18 @@ pub(super) fn build_selected_closures(
             ];
             let (evaluator_parent_ids, exchange_factor) =
                 closure.evaluator_parents(concrete_parent_ids);
+            let fermion_factor = fermion_ordering_factor(
+                &templates.input().current_states,
+                [
+                    parents[0].current_state_template_id(),
+                    parents[1].current_state_template_id(),
+                ],
+                [
+                    parents[0].support_source_slots(),
+                    parents[1].support_source_slots(),
+                ],
+                fermion_ordering,
+            )?;
             for quantum in closure
                 .quantum_flows
                 .iter()
@@ -1518,6 +1639,7 @@ pub(super) fn build_selected_closures(
                         quantum.output_factor()?,
                         exchange_factor,
                         witness.witness.exact_factor(),
+                        fermion_factor,
                     ])?;
                     let coefficients = closure.component_coefficients.clone();
                     match retained.entry(key.clone()) {
@@ -1547,6 +1669,9 @@ pub(super) fn build_selected_closures(
         }
     }
     retained.retain(|_, closure| !closure.factor.is_zero());
+    for closure in retained.values_mut() {
+        retain_canonical_pairing_lineage(&mut closure.pairing_lineages)?;
+    }
     if retained.is_empty() {
         // The process-global immutable grammar proved this closure domain
         // complete before it entered the runtime cache.
@@ -1655,6 +1780,46 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn fermion_ordering_filter_uses_authenticated_source_color_role() {
+        assert!(
+            on_the_fly_source_requires_exterior_sign(true, OnTheFlyExternalColorRoleV1::Singlet,)
+                .unwrap()
+        );
+        assert!(
+            !on_the_fly_source_requires_exterior_sign(
+                true,
+                OnTheFlyExternalColorRoleV1::Fundamental,
+            )
+            .unwrap()
+        );
+        assert!(
+            !on_the_fly_source_requires_exterior_sign(
+                true,
+                OnTheFlyExternalColorRoleV1::Antifundamental,
+            )
+            .unwrap()
+        );
+        assert!(
+            !on_the_fly_source_requires_exterior_sign(false, OnTheFlyExternalColorRoleV1::Adjoint,)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn fermion_ordering_filter_rejects_unsupported_or_unauthenticated_roles() {
+        let adjoint =
+            on_the_fly_source_requires_exterior_sign(true, OnTheFlyExternalColorRoleV1::Adjoint)
+                .unwrap_err();
+        assert!(adjoint.to_string().contains("adjoint fermion"));
+        let bosonic_endpoint = on_the_fly_source_requires_exterior_sign(
+            false,
+            OnTheFlyExternalColorRoleV1::Fundamental,
+        )
+        .unwrap_err();
+        assert!(bosonic_endpoint.to_string().contains("bosonic source"));
+    }
 
     fn contact_digest(byte: u8) -> SemanticDigest {
         SemanticDigest::new([byte; 32]).expect("test digest must be nonzero")
@@ -2223,11 +2388,15 @@ mod tests {
             .enumerate()
             .map(|(id, current)| (current.key.clone(), u32::try_from(id).unwrap()))
             .collect::<BTreeMap<_, _>>();
+        let contact_orbits = PreparedContactOrbitIndex::new(&transitions).unwrap();
+        let fermion_ordering = on_the_fly_fermion_ordering_context(&seed).unwrap();
 
         build_forward_currents_with_anchor_exclusion(
             &templates,
             &transitions,
+            &contact_orbits,
             &seed,
+            &fermion_ordering,
             closure_anchor_slot,
             seed.explicit_coupling_limits(),
             &propagators,
@@ -2605,6 +2774,10 @@ mod tests {
             OnTheFlyLcSelectorV1::Singlet,
         )
         .unwrap();
+        let transitions = BTreeMap::new();
+        let closures = BTreeMap::new();
+        let contact_orbits = PreparedContactOrbitIndex::new(&transitions).unwrap();
+        let fermion_ordering = on_the_fly_fermion_ordering_context(&seed).unwrap();
         let build = |closure_anchor_slot| {
             let mut colors = DynamicLCColorStateInterner::default();
             let mut currents = (0_u32..3)
@@ -2625,8 +2798,10 @@ mod tests {
                 .collect::<BTreeMap<_, _>>();
             build_forward_currents_with_anchor_exclusion(
                 &templates,
-                &BTreeMap::new(),
+                &transitions,
+                &contact_orbits,
                 &seed,
+                &fermion_ordering,
                 closure_anchor_slot,
                 seed.explicit_coupling_limits(),
                 &propagators,
@@ -2636,9 +2811,17 @@ mod tests {
             )
             .unwrap();
             assert!(
-                build_selected_closures(&BTreeMap::new(), &seed, &query, &colors, &currents,)
-                    .unwrap()
-                    .is_none()
+                build_selected_closures(
+                    &templates,
+                    &closures,
+                    &seed,
+                    &fermion_ordering,
+                    &query,
+                    &colors,
+                    &currents,
+                )
+                .unwrap()
+                .is_none()
             );
             currents
         };
@@ -2839,11 +3022,27 @@ mod tests {
             .validate()
             .unwrap();
         let one_catalog = TemplateCatalog::new(one.input()).unwrap();
-        let one_transitions = prepared_transitions(&one, &one_catalog).unwrap();
+        let mut one_transitions = prepared_transitions(&one, &one_catalog).unwrap();
+        let mut ordinary = one_transitions.values().flatten().next().unwrap().clone();
+        ordinary.row.id = u32::MAX - 1;
+        ordinary.contact_orbit = None;
+        assert!(
+            one_transitions
+                .values()
+                .flatten()
+                .all(|prepared| prepared.row.id != ordinary.row.id)
+        );
+        one_transitions.values_mut().next().unwrap().push(ordinary);
         let index = PreparedContactOrbitIndex::new(&one_transitions).unwrap();
         assert!(!index.is_empty());
-        assert!(index.get(0).is_some());
-        assert!(index.get(u32::MAX).is_none());
+        assert_eq!(index.len(), 1);
+        for prepared in one_transitions.values().flatten() {
+            assert_eq!(
+                index.get(&one_transitions, prepared.row.id),
+                prepared.contact_orbit.as_ref(),
+            );
+        }
+        assert!(index.get(&one_transitions, u32::MAX).is_none());
 
         let mut currents = vec![
             contact_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
@@ -2859,6 +3058,7 @@ mod tests {
         assert!(
             plan_on_the_fly_contact_orbit_owners(
                 2,
+                &BTreeMap::new(),
                 &PreparedContactOrbitIndex::default(),
                 &currents
             )
@@ -2906,5 +3106,22 @@ mod tests {
         let owners = projected_pairing_lineages(&closures).unwrap();
         assert_eq!(owners, [&lineage([0, 1]), &lineage([0, 3])]);
         assert!(projected_pairing_lineages(&[]).is_err());
+    }
+
+    #[test]
+    fn multi_realized_closure_keeps_one_semantic_owner_without_rescaling() {
+        let mut pending = closure(vec![
+            lineage([4, 7]),
+            lineage([0, 3]),
+            lineage([2, 5]),
+            lineage([0, 3]),
+        ]);
+        pending.factor = ExactComplexRational::ONE.checked_neg().unwrap();
+        let expected_factor = pending.factor;
+
+        retain_canonical_pairing_lineage(&mut pending.pairing_lineages).unwrap();
+
+        assert_eq!(pending.pairing_lineages, vec![lineage([0, 3])]);
+        assert_eq!(pending.factor, expected_factor);
     }
 }

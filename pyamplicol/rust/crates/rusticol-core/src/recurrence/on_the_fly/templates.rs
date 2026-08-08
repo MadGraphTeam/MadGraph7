@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
+use crate::recurrence::fermion_ordering::FermionOrderingContext;
 
 /// Immutable grammar prepared once for one loaded on-the-fly runtime.
-/// Query families borrow these exact rows; they never rebuild transition,
-/// closure, or propagator indexes per selected query.
+/// Query families borrow these exact rows and query-invariant contexts; they
+/// never rebuild transition, closure, contact-orbit, propagator, or fermion
+/// ordering state per selected query.
 #[derive(Debug)]
 pub(crate) struct PreparedOnTheFlyGrammarV1 {
     pub(super) transitions: BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    pub(super) contact_orbits: PreparedContactOrbitIndex,
     pub(super) closures: BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     pub(super) propagators: BTreeMap<u32, Option<u32>>,
     pub(super) sources: BTreeMap<(u32, u32), PreparedOnTheFlySourceContractV1>,
     pub(super) propagator_executors: BTreeMap<u32, PreparedOnTheFlyExecutorContractV1>,
+    pub(super) fermion_ordering: FermionOrderingContext,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,17 +39,21 @@ pub(super) fn prepare_on_the_fly_grammar_v1(
     seed: &OnTheFlyProcessSeedV1,
 ) -> RusticolResult<PreparedOnTheFlyGrammarV1> {
     let transitions = prepared_transitions(templates, catalog)?;
+    let contact_orbits = PreparedContactOrbitIndex::new(&transitions)?;
     let closures = prepared_closures(templates, catalog)?;
     // Structural-zero queries may trust this immutable domain only because it
     // is proved complete once, before the grammar enters the runtime cache.
     validate_prepared_closure_domain(templates, catalog, &closures)?;
     let propagators = propagator_by_state(templates)?;
+    let fermion_ordering = on_the_fly_fermion_ordering_context(seed)?;
     Ok(PreparedOnTheFlyGrammarV1 {
         transitions,
+        contact_orbits,
         closures,
         sources: prepared_source_contracts(templates, catalog, seed)?,
         propagator_executors: prepared_propagator_executors(templates, catalog, &propagators)?,
         propagators,
+        fermion_ordering,
     })
 }
 
@@ -656,6 +664,8 @@ mod tests {
     use crate::recurrence::contact_orbit_owner::{
         ContactOrbitTestBinding, contact_orbit_test_template,
     };
+    use crate::recurrence::fermion_ordering::fermion_ordering_factor;
+    use crate::recurrence::validated_template_fixture;
 
     #[test]
     fn on_the_fly_prepared_transition_binds_only_certified_contact_metadata() {
@@ -687,6 +697,43 @@ mod tests {
                 .unwrap()
                 .contact_orbit
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn prepared_grammar_caches_exact_query_invariant_contexts() {
+        let templates = validated_template_fixture();
+        let summary = templates.summary();
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            SemanticDigest::new([0x7d; 32]).unwrap(),
+        )
+        .unwrap();
+        let catalog = TemplateCatalog::new(templates.input()).unwrap();
+        let grammar = prepare_on_the_fly_grammar_v1(&templates, &catalog, &seed).unwrap();
+
+        assert_eq!(
+            grammar.contact_orbits,
+            PreparedContactOrbitIndex::new(&grammar.transitions).unwrap(),
+        );
+        let fresh_fermion_ordering = on_the_fly_fermion_ordering_context(&seed).unwrap();
+        assert_eq!(
+            fermion_ordering_factor(
+                &templates.input().current_states,
+                [0, 0],
+                [&[0], &[1]],
+                &grammar.fermion_ordering,
+            )
+            .unwrap(),
+            fermion_ordering_factor(
+                &templates.input().current_states,
+                [0, 0],
+                [&[0], &[1]],
+                &fresh_fermion_ordering,
+            )
+            .unwrap(),
         );
     }
 }

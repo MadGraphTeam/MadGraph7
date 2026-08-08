@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable
 
 import pytest
@@ -127,7 +128,12 @@ def _charged_current_flow(
     )
 
 
-def _process(key: str, states: Iterable[CurrentStateTemplateV1]) -> CanonicalProcessIR:
+def _process(
+    key: str,
+    states: Iterable[CurrentStateTemplateV1],
+    *,
+    color_accuracy: str = "lc",
+) -> CanonicalProcessIR:
     materialized = tuple(states)
     fundamental_count = sum(
         state.lc_color_shape_kind == "fundamental-open-string" for state in materialized
@@ -136,7 +142,7 @@ def _process(key: str, states: Iterable[CurrentStateTemplateV1]) -> CanonicalPro
     return CanonicalProcessIR(
         process="canonical contract fixture",
         key=key,
-        color_accuracy="lc",
+        color_accuracy=color_accuracy,
         legs=tuple(_leg(index + 1, state) for index, state in enumerate(materialized)),
         color_endpoints=ColorEndpointSummary(
             fundamental_count=fundamental_count,
@@ -184,6 +190,38 @@ def test_identical_two_line_pairings_are_direct_plus_exchange_minus() -> None:
     assert catalog.rules[0].source_slot_permutation == (0, 1, 2, 3)
     assert catalog.rules[1].endpoint_pairings == ((1, 3), (2, 0))
     assert catalog.rules[1].source_slot_permutation == (3, 1, 2, 0)
+
+
+def test_four_identical_lines_have_accuracy_independent_canonical_pairings() -> None:
+    particle, antiparticle = _state_pair("four-identical", 930011)
+    external = (antiparticle, particle) * 4
+    catalogs = tuple(
+        build_recurrence_fermion_pairing_catalog_v1(
+            _process(
+                "four-identical-lines",
+                external,
+                color_accuracy=accuracy,
+            ),
+            (particle, antiparticle),
+        )
+        for accuracy in ("lc", "nlc", "full")
+    )
+
+    reference = catalogs[0]
+    canonical_pairings = tuple(rule.endpoint_pairings for rule in reference.rules)
+    assert len(canonical_pairings) == len(set(canonical_pairings)) == 24
+    assert all(pairings == tuple(sorted(pairings)) for pairings in canonical_pairings)
+    assert Counter(
+        (rule.fermion_parity, rule.exact_factor) for rule in reference.rules
+    ) == {
+        (1, ExactComplexRationalV1(1, 1, 0, 1)): 12,
+        (-1, ExactComplexRationalV1(-1, 1, 0, 1)): 12,
+    }
+    assert all(
+        (catalog.topology_digest, catalog.rules)
+        == (reference.topology_digest, reference.rules)
+        for catalog in catalogs[1:]
+    )
 
 
 def test_three_distinct_lines_have_one_rule_and_three_lineages() -> None:

@@ -44,6 +44,12 @@ python-integration:
 python-physics:
     PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration/test_schema_v3_generation_runtime.py tests/unit/test_reference_fixture_v2.py tests/unit/test_tracked_reference_fixture_v2.py tests/unit/test_color_contraction_safety.py -q
 
+# Explicit, fail-fast numerical authority gate. This is intentionally excluded
+# from the default suite because it generates fifteen catalog ProcessSets plus
+# four separate full-colour extra artifacts.
+numerical-acceptance: _source-checkout
+    PYTHONPATH="$PWD/src" PYAMPLICOL_RUN_NUMERICAL_ACCEPTANCE=1 PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} -m pytest tests/integration/test_numerical_acceptance.py -q -x
+
 # Build a fresh wheel through the real backend and stage only ignored native
 # runtime/SDK resources beside the current Python source for source-tree tests.
 source-runtime:

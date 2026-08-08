@@ -241,7 +241,56 @@ Execution mode and evaluator backend are independent choices:
 | `recurrence` | Default. Uses prepared local kernels through compact current-recursion schedules. |
 | `compiled` | Compiles process-wide stage evaluators during generation. |
 | `eager` | Uses a prepared model's local kernels and writes compact DAG invocation tables. |
-| `on-the-fly` | LC-only native `f64`. Stores a compact process seed and constructs query-local recurrence schedules when selected. |
+| `on-the-fly` | Native `f64`. Stores a compact process seed and constructs the requested LC query family, or the contracted NLC/full family, when first selected. |
+
+### Recurrence
+
+Recurrence is the general-purpose default. Generation materializes compact,
+authenticated current schedules while reusing the prepared model's local
+kernels. It is the most direct representation of the recursive construction,
+supports LC, NLC, and full colour, and retains the exact-evaluation path when
+the artifact and backend provide it. Point tiling bounds its reusable numeric
+workspace.
+
+For a deliberately narrow workload, recurrence generation can specialize the
+artifact with `process.selected_color_sector_ids`,
+`process.selected_source_helicities`, or both. The same generation-time
+specialization is supported by eager and compiled mode. Omit these fields when
+one artifact must retain reusable runtime flow and helicity selectors.
+
+### Compiled
+
+Compiled mode lowers the complete process DAG into process-wide stage
+evaluators. It has the largest generation investment but gives the optimizer
+the widest process-local view, and it does not require a prepared local-kernel
+pack. This makes it the natural fallback for raw model IR and the useful
+specialized baseline when one flow or helicity assignment is fixed during
+generation. It supports LC, NLC, full colour, and retained exact evaluation.
+
+### Eager
+
+Eager mode keeps the process structure as compact invocation/finalization/
+closure tables and calls the prepared model's local kernels directly. It is
+usually the quickest materialized mode to generate and load, while still
+supporting LC, NLC, full colour, exact replay, point tiling, reusable runtime
+selectors, and the same optional generation-time flow/helicity specialization
+as recurrence and compiled mode.
+
+### On-the-fly
+
+On-the-fly stores a process seed instead of a materialized process schedule.
+The first explicit `warm_up(...)` or evaluation constructs and caches exactly
+the requested selector family, then ordinary evaluations reuse it. This is
+especially useful for LC single-flow/helicity-sum workloads at high
+multiplicity: the compact artifact can switch selectors, although switching
+replaces the last cached family and incurs another warm-up.
+
+OTF is native binary64 only. LC exposes physical flow selectors. NLC and full
+colour instead expose one contracted component and accept helicity selection
+but no colour-flow selector; those contracted modes are correctness-oriented
+and can become impractical as multiplicity grows because their cold family is
+the helicity-by-structural-colour product. OTF does not use the materialized LC
+flow-layout setting or the generation-time selector-specialization fields.
 
 | Backend | Use |
 | --- | --- |
@@ -297,20 +346,21 @@ kernel pack is unavailable; prepare the model or select `compiled` explicitly.
 `evaluator.recurrence.workspace_mib` defaults to 256 MiB. As with eager mode,
 the runtime may reduce the tile size to stay within the workspace limit.
 
-On-the-fly execution currently accepts LC requests only and evaluates at
-native `f64` precision. It does not materialize either LC flow layout: one
-compact process-seed artifact supports both selected-flow helicity sums and
-all-flow sums at a selected helicity. Consequently, `inspect` reports the
-static physical helicity and color-flow census, not a dense artifact axis or a
-topology-replay census. The relevant physical selection is constructed only
-when a runtime query asks for it.
+On-the-fly execution evaluates at native `f64` precision. LC does not
+materialize either flow layout: one compact process-seed artifact supports
+both selected-flow helicity sums and all-flow sums at a selected helicity.
+Consequently, LC `inspect` reports the static physical helicity and color-flow
+census, not a dense artifact axis or a topology-replay census. NLC/full report
+the singleton `color:contracted` public component backed by an authenticated
+colour-contraction payload. The relevant selector family is constructed only
+when `warm_up(...)` or evaluation first asks for it.
 
 For on-the-fly generation, `evaluator.optimization.cores` is the requested
 query-construction thread count. It is not a promise that numerical evaluation
-uses that many threads. The current on-the-fly runtime records the recurrence
-`point_tile_size` request for provenance but does not apply recurrence or eager
-point tiling or workspace limits. Input batches are not capped by that setting;
-no on-the-fly tile or workspace tuning surface is exposed yet.
+uses that many threads. Contracted execution applies its authenticated point
+tile size; LC numerical evaluation reuses the prepared family at the requested
+batch capacity. Query-construction threads affect the cold warm-up, not the
+steady-state numerical executor.
 
 The default batch size is 128 and the default output chunk size is 512.
 Optimization defaults are 10

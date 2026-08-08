@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -65,6 +67,113 @@ struct ColorComponent {
 struct ModelParameter {
     std::string name;
 };
+
+enum class WarmUpEventKind : std::uint32_t {
+    start = RUSTICOL_WARM_UP_EVENT_START,
+    update = RUSTICOL_WARM_UP_EVENT_UPDATE,
+    end = RUSTICOL_WARM_UP_EVENT_END,
+};
+
+enum class WarmUpStage : std::uint32_t {
+    process_preparation = RUSTICOL_WARM_UP_STAGE_PROCESS_PREPARATION,
+    query_family = RUSTICOL_WARM_UP_STAGE_QUERY_FAMILY,
+    family_finalization = RUSTICOL_WARM_UP_STAGE_FAMILY_FINALIZATION,
+    first_evaluation = RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION,
+};
+
+struct WarmUpProgress {
+    std::uint32_t schema_version{};
+    WarmUpEventKind kind{};
+    WarmUpStage stage{};
+    std::uint64_t completed{};
+    std::uint64_t total{};
+    double elapsed_seconds{};
+    std::uint64_t current_rss_bytes{};
+    std::uint64_t peak_rss_bytes{};
+    std::uint64_t workers{};
+    bool current_rss_available{};
+    bool peak_rss_available{};
+};
+
+struct WarmUpResult {
+    std::uint32_t schema_version{};
+    double elapsed_seconds{};
+    std::uint64_t query_count{};
+    std::uint64_t warmed_query_count{};
+    std::uint64_t current_rss_bytes{};
+    std::uint64_t peak_rss_bytes{};
+    bool current_rss_available{};
+    bool peak_rss_available{};
+    bool already_warm{};
+    bool first_evaluation_completed{};
+};
+
+namespace detail {
+
+inline WarmUpProgress warm_up_progress(const RusticolWarmUpProgressEvent &event) {
+    return {
+        event.schema_version,
+        static_cast<WarmUpEventKind>(event.kind),
+        static_cast<WarmUpStage>(event.stage),
+        event.completed,
+        event.total,
+        event.elapsed_seconds,
+        event.current_rss_bytes,
+        event.peak_rss_bytes,
+        event.workers,
+        event.current_rss_available != 0,
+        event.peak_rss_available != 0,
+    };
+}
+
+inline WarmUpResult warm_up_result(const RusticolWarmUpResult &result) {
+    return {
+        result.schema_version,
+        result.elapsed_seconds,
+        result.query_count,
+        result.warmed_query_count,
+        result.current_rss_bytes,
+        result.peak_rss_bytes,
+        result.current_rss_available != 0,
+        result.peak_rss_available != 0,
+        result.already_warm != 0,
+        result.first_evaluation_completed != 0,
+    };
+}
+
+struct WarmUpCallbackState {
+    const std::function<bool(const WarmUpProgress &)> *callback{};
+    std::exception_ptr exception;
+};
+
+inline int warm_up_progress_callback(
+    const RusticolWarmUpProgressEvent *event,
+    void *user_data) noexcept {
+    if (event == nullptr || user_data == nullptr) {
+        return 0;
+    }
+    auto &state = *static_cast<WarmUpCallbackState *>(user_data);
+    if (state.callback == nullptr) {
+        return 0;
+    }
+    try {
+        return (*state.callback)(warm_up_progress(*event)) ? 1 : 0;
+    } catch (...) {
+        const bool terminal =
+            event->kind == RUSTICOL_WARM_UP_EVENT_END &&
+            event->stage == RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION;
+        if (!terminal) {
+            state.exception = std::current_exception();
+            return 0;
+        }
+        // This event is emitted after the selected family and first evaluation
+        // have committed. Match the core contract by treating it as a
+        // non-cancellable notification.
+        return 1;
+    }
+}
+
+}  // namespace detail
 
 class ResolvedEvaluation {
 public:
@@ -227,6 +336,37 @@ public:
         check(rusticol_runtime_evaluate_f64(
             handle_, momenta.data(), momenta.size(), point_count, values.data(), values.size()));
         return values;
+    }
+
+    WarmUpResult warm_up(
+        const std::vector<double> &point,
+        const std::vector<std::string> &helicity_ids = {},
+        const std::vector<std::string> &color_ids = {},
+        const std::function<bool(const WarmUpProgress &)> &progress = {}) {
+        const auto helicity_ptrs = c_string_pointers(helicity_ids);
+        const auto color_ptrs = c_string_pointers(color_ids);
+        RusticolWarmUpResult result{};
+        detail::WarmUpCallbackState callback_state{progress ? &progress : nullptr, {}};
+        const int status = rusticol_runtime_warm_up_f64(
+            handle_,
+            point.data(),
+            point.size(),
+            helicity_ptrs.empty() ? nullptr : helicity_ptrs.data(),
+            helicity_ptrs.size(),
+            color_ptrs.empty() ? nullptr : color_ptrs.data(),
+            color_ptrs.size(),
+            progress ? detail::warm_up_progress_callback : nullptr,
+            progress ? static_cast<void *>(&callback_state) : nullptr,
+            &result);
+        if (callback_state.exception) {
+            std::rethrow_exception(callback_state.exception);
+        }
+        check(status);
+        const auto converted = detail::warm_up_result(result);
+        if (converted.schema_version != 1 || !converted.first_evaluation_completed) {
+            throw Error("Rusticol returned an invalid successful warm-up result");
+        }
+        return converted;
     }
 
     std::vector<double> evaluate_selected(

@@ -12,6 +12,11 @@ use super::trace::{OnTheFlyTraceContributionProofRowV1, OnTheFlyTraceOperationV1
 use super::*;
 use crate::recurrence::PreparedDirectExecutorCatalog;
 use crate::recurrence::construct::current_key_with_dynamic_color;
+use sha2::{Digest, Sha256};
+use std::ops::Range;
+
+const STREAMED_QUERY_FAMILY_IDENTITY_DOMAIN: &[u8] =
+    b"pyamplicol-on-the-fly-streamed-query-family-v1\0";
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct FamilySourceIdentity {
@@ -66,6 +71,11 @@ struct FamilyCurrentDefinition {
     finalization: Option<FamilyFinalizationIdentity>,
 }
 
+struct FamilyUnionCurrentRecord {
+    id: u32,
+    definition: Option<FamilyCurrentDefinition>,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct QueryFamilyTraceInput<'a> {
     pub(crate) trace: &'a OnTheFlyStructuralTraceV1,
@@ -73,19 +83,26 @@ pub(crate) struct QueryFamilyTraceInput<'a> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct QueryFamilyCacheIdentityV1 {
-    direct_catalog: PreparedDirectExecutorCatalog,
-    queries: Box<
-        [(
-            SemanticDigest,
-            SemanticDigest,
-            SemanticDigest,
-            OnTheFlyProjectionProbeV1,
-        )],
-    >,
+enum QueryFamilyCacheIdentityV1 {
+    Exact {
+        direct_catalog: PreparedDirectExecutorCatalog,
+        queries: Box<
+            [(
+                SemanticDigest,
+                SemanticDigest,
+                SemanticDigest,
+                OnTheFlyProjectionProbeV1,
+            )],
+        >,
+    },
+    Streamed {
+        direct_catalog_digest: SemanticDigest,
+        query_count: u32,
+        ordered_query_digest: SemanticDigest,
+    },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 enum OnTheFlyFamilyRowsV1 {
     Source(Box<[DirectSourceRow]>),
     Contribution(Box<[DirectContributionRow]>),
@@ -104,7 +121,7 @@ impl OnTheFlyFamilyRowsV1 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 struct OnTheFlyFamilyRowGroupV1 {
     seed_digest: SemanticDigest,
     stage: u32,
@@ -115,7 +132,7 @@ struct OnTheFlyFamilyRowGroupV1 {
     rows: OnTheFlyFamilyRowsV1,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 struct OnTheFlyBuiltQueryFamilyV1 {
     census: OnTheFlyQueryFamilyCensusV1,
     source_count: u32,
@@ -128,6 +145,32 @@ struct OnTheFlyBuiltQueryFamilyV1 {
     row_groups: Box<[OnTheFlyFamilyRowGroupV1]>,
     #[cfg(any(test, feature = "on-the-fly-test-support"))]
     observed_currents: Box<[OnTheFlyFamilyObservedCurrentDescriptorV1]>,
+}
+
+/// Opaque, fully materialized streamed family.  Its compact cache identity is
+/// computed while chunks are consumed, so no query-local identity table
+/// survives the cold construction boundary.
+#[derive(Debug)]
+pub(crate) struct OnTheFlyStreamedQueryFamilyCandidateV1 {
+    identity: QueryFamilyCacheIdentityV1,
+    family: OnTheFlyBuiltQueryFamilyV1,
+}
+
+/// Synchronous chunk consumer used by contracted color construction.  A
+/// producer may create and bind a bounded batch of query-local traces, hand
+/// borrowed inputs to this interface, and immediately drop the whole batch.
+/// Returned destinations are dense across every previously consumed chunk.
+pub(crate) trait OnTheFlyQueryFamilyChunkConsumerV1 {
+    fn push_chunk(&mut self, selected: &[QueryFamilyTraceInput<'_>]) -> RusticolResult<Range<u32>>;
+}
+
+impl<F> OnTheFlyQueryFamilyChunkConsumerV1 for F
+where
+    F: for<'trace> FnMut(&[QueryFamilyTraceInput<'trace>]) -> RusticolResult<Range<u32>>,
+{
+    fn push_chunk(&mut self, selected: &[QueryFamilyTraceInput<'_>]) -> RusticolResult<Range<u32>> {
+        self(selected)
+    }
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -454,22 +497,16 @@ fn prepared_binding(
 /// complete source/contribution/finalization definitions agree.  Conflicting
 /// duplicates fail closed.  Closures remain distinct per requested query so a
 /// future executable union cannot lose an amplitude destination.
-fn build_query_family_from_traces(
+fn build_query_family_from_chunks(
     direct_catalog: &PreparedDirectExecutorCatalog,
-    selected: &[QueryFamilyTraceInput<'_>],
-) -> RusticolResult<OnTheFlyBuiltQueryFamilyV1> {
-    let first = selected
-        .first()
-        .ok_or_else(|| invalid("query-family census requires at least one query"))?;
-    let source_count = first.trace.layout.source_count;
-    let lorentz_component_count = first.trace.layout.lorentz_component_count;
-    let parameter_count = first.trace.layout.parameter_count;
+    produce: impl FnOnce(&mut dyn OnTheFlyQueryFamilyChunkConsumerV1) -> RusticolResult<()>,
+) -> RusticolResult<Option<(OnTheFlyBuiltQueryFamilyV1, SemanticDigest)>> {
+    let mut layout = None;
     let mut seen_queries = BTreeSet::new();
     let mut seed_partitions = BTreeSet::new();
     let mut colors = DynamicLCColorStateInterner::default();
-    let mut union_ids = BTreeMap::<(SemanticDigest, CurrentCoreKey), u32>::new();
-    let mut definitions =
-        BTreeMap::<(SemanticDigest, CurrentCoreKey), FamilyCurrentDefinition>::new();
+    let mut union_currents =
+        BTreeMap::<(SemanticDigest, CurrentCoreKey), FamilyUnionCurrentRecord>::new();
     #[cfg(any(test, feature = "on-the-fly-test-support"))]
     let mut observed_current_identities = BTreeMap::<u32, (SemanticDigest, u32, u32)>::new();
     let mut closure_definitions = Vec::<FamilyClosureIdentity>::new();
@@ -478,7 +515,7 @@ fn build_query_family_from_traces(
     let mut finalization_groups = BTreeSet::new();
     let mut closure_groups = BTreeSet::new();
     let mut census = OnTheFlyQueryFamilyCensusV1 {
-        query_count: checked_u32(selected.len(), "query-family query count")?,
+        query_count: 0,
         source_frame_partition_count: 0,
         projection_applied_query_count: 0,
         projection_pre_current_count: 0,
@@ -503,401 +540,451 @@ fn build_query_family_from_traces(
         union_contribution_rows: 0,
         union_finalization_rows: 0,
         union_closure_rows: 0,
-        union_amplitude_destination_count: checked_u32(
-            selected.len(),
-            "query-family amplitude destination count",
-        )?,
+        union_amplitude_destination_count: 0,
         union_source_executor_call_groups: 0,
         union_contribution_executor_call_groups: 0,
         union_finalization_executor_call_groups: 0,
         union_closure_executor_call_groups: 0,
     };
+    let mut identity_hash = Sha256::new();
+    identity_hash.update(STREAMED_QUERY_FAMILY_IDENTITY_DOMAIN);
+    identity_hash.update(direct_catalog.direct_template_catalog_digest().as_bytes());
 
-    for (query_index, selected_query) in selected.iter().enumerate() {
-        let trace = selected_query.trace;
-        if trace.layout.source_count != source_count
-            || trace.layout.lorentz_component_count != lorentz_component_count
-            || trace.layout.parameter_count != parameter_count
-        {
-            return Err(integrity(
-                "query-family traces do not share one source-frame workspace shape",
-            ));
-        }
-        seed_partitions.insert(trace.seed_digest);
-        if !seen_queries.insert(trace.query_digest) {
-            return Err(invalid("query-family repeats a selected query"));
-        }
-        if trace.layout.amplitude_component_count != 1 {
-            return Err(integrity(
-                "query-local trace does not expose exactly one amplitude destination",
-            ));
-        }
-        if selected_query.projection.applied {
-            add(
-                &mut census.projection_applied_query_count,
-                1,
-                "projection-applied query count",
-            )?;
-        }
-        for (target, value, label) in [
-            (
-                &mut census.projection_pre_current_count,
-                selected_query.projection.pre[0],
-                "projection pre-current count",
-            ),
-            (
-                &mut census.projection_pre_contribution_count,
-                selected_query.projection.pre[1],
-                "projection pre-contribution count",
-            ),
-            (
-                &mut census.projection_pre_closure_count,
-                selected_query.projection.pre[2],
-                "projection pre-closure count",
-            ),
-            (
-                &mut census.projection_post_current_count,
-                selected_query.projection.post[0],
-                "projection post-current count",
-            ),
-            (
-                &mut census.projection_post_contribution_count,
-                selected_query.projection.post[1],
-                "projection post-contribution count",
-            ),
-            (
-                &mut census.projection_post_closure_count,
-                selected_query.projection.post[2],
-                "projection post-closure count",
-            ),
-        ] {
-            add(target, value, label)?;
-        }
-        if selected_query.projection.post
-            != [
-                trace.proof.current_count(),
-                trace.proof.contribution_count(),
-                trace.proof.closure_count(),
-            ]
-        {
-            return Err(integrity(
-                "query-local projection proof does not describe its retained trace",
-            ));
-        }
-        let current_count = trace.current_keys.len();
-        if current_count != trace.current_colors.len()
-            || current_count != trace.current_component_ranges.len()
-            || current_count != trace.proof.current_count() as usize
-        {
-            return Err(integrity(
-                "query-local current identity columns have inconsistent lengths",
-            ));
-        }
-        add(
-            &mut census.dynamic_current_occurrence_count,
-            checked_u32(current_count, "dynamic current occurrence count")?,
-            "dynamic current occurrence count",
-        )?;
-
-        let mut local_to_union = Vec::new();
-        local_to_union
-            .try_reserve_exact(current_count)
-            .map_err(|error| {
-                invalid(format!(
-                    "query-family current map allocation failed: {error}"
-                ))
-            })?;
-        let mut normalized_keys = Vec::new();
-        normalized_keys
-            .try_reserve_exact(current_count)
-            .map_err(|error| {
-                invalid(format!(
-                    "query-family current key allocation failed: {error}"
-                ))
-            })?;
-        let mut bases = BTreeMap::new();
-        for (local_id, ((key, color), [base, count])) in trace
-            .current_keys
-            .iter()
-            .zip(trace.current_colors.iter())
-            .zip(trace.current_component_ranges.iter().copied())
-            .enumerate()
-        {
-            if count == 0 || bases.insert(base, local_id as u32).is_some() {
+    let mut consume = |selected: &[QueryFamilyTraceInput<'_>]| -> RusticolResult<Range<u32>> {
+        let first_destination = census.query_count;
+        for selected_query in selected {
+            let query_index = census.query_count as usize;
+            let trace = selected_query.trace;
+            let trace_layout = (
+                trace.layout.source_count,
+                trace.layout.lorentz_component_count,
+                trace.layout.parameter_count,
+            );
+            if layout.is_some_and(|established| established != trace_layout) {
                 return Err(integrity(
-                    "query-local current component ranges are empty or ambiguous",
+                    "query-family traces do not share one source-frame workspace shape",
+                ));
+            }
+            layout.get_or_insert(trace_layout);
+            identity_hash.update(trace.seed_digest.as_bytes());
+            identity_hash.update(trace.query_digest.as_bytes());
+            identity_hash.update(trace.semantic_digest().as_bytes());
+            identity_hash.update([u8::from(selected_query.projection.enabled)]);
+            identity_hash.update([u8::from(selected_query.projection.applied)]);
+            for value in selected_query
+                .projection
+                .pre
+                .into_iter()
+                .chain(selected_query.projection.post)
+            {
+                identity_hash.update(value.to_le_bytes());
+            }
+            seed_partitions.insert(trace.seed_digest);
+            if !seen_queries.insert(trace.query_digest) {
+                return Err(invalid("query-family repeats a selected query"));
+            }
+            if trace.layout.amplitude_component_count != 1 {
+                return Err(integrity(
+                    "query-local trace does not expose exactly one amplitude destination",
+                ));
+            }
+            if selected_query.projection.applied {
+                add(
+                    &mut census.projection_applied_query_count,
+                    1,
+                    "projection-applied query count",
+                )?;
+            }
+            for (target, value, label) in [
+                (
+                    &mut census.projection_pre_current_count,
+                    selected_query.projection.pre[0],
+                    "projection pre-current count",
+                ),
+                (
+                    &mut census.projection_pre_contribution_count,
+                    selected_query.projection.pre[1],
+                    "projection pre-contribution count",
+                ),
+                (
+                    &mut census.projection_pre_closure_count,
+                    selected_query.projection.pre[2],
+                    "projection pre-closure count",
+                ),
+                (
+                    &mut census.projection_post_current_count,
+                    selected_query.projection.post[0],
+                    "projection post-current count",
+                ),
+                (
+                    &mut census.projection_post_contribution_count,
+                    selected_query.projection.post[1],
+                    "projection post-contribution count",
+                ),
+                (
+                    &mut census.projection_post_closure_count,
+                    selected_query.projection.post[2],
+                    "projection post-closure count",
+                ),
+            ] {
+                add(target, value, label)?;
+            }
+            if selected_query.projection.post
+                != [
+                    trace.proof.current_count(),
+                    trace.proof.contribution_count(),
+                    trace.proof.closure_count(),
+                ]
+            {
+                return Err(integrity(
+                    "query-local projection proof does not describe its retained trace",
+                ));
+            }
+            let current_count = trace.current_keys.len();
+            if current_count != trace.current_colors.len()
+                || current_count != trace.current_component_ranges.len()
+                || current_count != trace.proof.current_count() as usize
+            {
+                return Err(integrity(
+                    "query-local current identity columns have inconsistent lengths",
                 ));
             }
             add(
-                &mut census.dynamic_current_component_occurrence_count,
-                count,
-                "dynamic current component occurrence count",
+                &mut census.dynamic_current_occurrence_count,
+                checked_u32(current_count, "dynamic current occurrence count")?,
+                "dynamic current occurrence count",
             )?;
-            let color_id = colors.intern(color.clone())?;
-            let normalized = current_key_with_dynamic_color(key, color_id)?;
-            let family_key = (trace.seed_digest, normalized);
-            let next = checked_u32(union_ids.len(), "query-family union current count")?;
-            let union_id = *union_ids.entry(family_key.clone()).or_insert(next);
-            local_to_union.push(union_id);
-            normalized_keys.push(family_key);
-        }
-        #[cfg(any(test, feature = "on-the-fly-test-support"))]
-        {
-            if trace.current_semantic_digests.len() != local_to_union.len() {
-                return Err(integrity(
-                    "query-local current semantic identities have an inconsistent length",
-                ));
-            }
-            for (local_id, union_id) in local_to_union.iter().copied().enumerate() {
-                let semantic_digest = trace.current_semantic_digests[local_id];
-                let stage = current_stage(&trace.current_keys[local_id])?;
-                let component_count = trace.current_component_ranges[local_id][1];
-                match observed_current_identities.entry(union_id) {
+
+            let mut local_to_union = Vec::new();
+            local_to_union
+                .try_reserve_exact(current_count)
+                .map_err(|error| {
+                    invalid(format!(
+                        "query-family current map allocation failed: {error}"
+                    ))
+                })?;
+            let mut normalized_keys = Vec::new();
+            normalized_keys
+                .try_reserve_exact(current_count)
+                .map_err(|error| {
+                    invalid(format!(
+                        "query-family current key allocation failed: {error}"
+                    ))
+                })?;
+            let mut bases = BTreeMap::new();
+            for (local_id, ((key, color), [base, count])) in trace
+                .current_keys
+                .iter()
+                .zip(trace.current_colors.iter())
+                .zip(trace.current_component_ranges.iter().copied())
+                .enumerate()
+            {
+                if count == 0 || bases.insert(base, local_id as u32).is_some() {
+                    return Err(integrity(
+                        "query-local current component ranges are empty or ambiguous",
+                    ));
+                }
+                add(
+                    &mut census.dynamic_current_component_occurrence_count,
+                    count,
+                    "dynamic current component occurrence count",
+                )?;
+                let color_id = colors.intern(color.clone())?;
+                let normalized = current_key_with_dynamic_color(key, color_id)?;
+                let family_key = (trace.seed_digest, normalized);
+                let next = checked_u32(union_currents.len(), "query-family union current count")?;
+                let union_id = match union_currents.entry(family_key.clone()) {
                     std::collections::btree_map::Entry::Vacant(entry) => {
-                        entry.insert((semantic_digest, stage, component_count));
+                        entry.insert(FamilyUnionCurrentRecord {
+                            id: next,
+                            definition: None,
+                        });
+                        next
                     }
-                    std::collections::btree_map::Entry::Occupied(entry)
-                        if *entry.get() == (semantic_digest, stage, component_count) => {}
-                    std::collections::btree_map::Entry::Occupied(_) => {
-                        return Err(integrity(
-                            "query-family union current has inconsistent observed identity",
-                        ));
+                    std::collections::btree_map::Entry::Occupied(entry) => entry.get().id,
+                };
+                local_to_union.push(union_id);
+                normalized_keys.push(family_key);
+            }
+            #[cfg(any(test, feature = "on-the-fly-test-support"))]
+            {
+                if trace.current_semantic_digests.len() != local_to_union.len() {
+                    return Err(integrity(
+                        "query-local current semantic identities have an inconsistent length",
+                    ));
+                }
+                for (local_id, union_id) in local_to_union.iter().copied().enumerate() {
+                    let semantic_digest = trace.current_semantic_digests[local_id];
+                    let stage = current_stage(&trace.current_keys[local_id])?;
+                    let component_count = trace.current_component_ranges[local_id][1];
+                    match observed_current_identities.entry(union_id) {
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            entry.insert((semantic_digest, stage, component_count));
+                        }
+                        std::collections::btree_map::Entry::Occupied(entry)
+                            if *entry.get() == (semantic_digest, stage, component_count) => {}
+                        std::collections::btree_map::Entry::Occupied(_) => {
+                            return Err(integrity(
+                                "query-family union current has inconsistent observed identity",
+                            ));
+                        }
                     }
                 }
             }
-        }
 
-        let mut local_definitions = trace
-            .current_component_ranges
-            .iter()
-            .map(|range| FamilyCurrentDefinition::new(range[1]))
-            .collect::<Vec<_>>();
-        let mut contribution_proofs = trace.contribution_proof_rows.iter();
-        for operation in trace.operations.iter() {
-            match operation {
-                OnTheFlyTraceOperationV1::Source { key, row } => {
-                    let current_id = current_id_by_component_base(
-                        &bases,
-                        row.destination_component_base,
-                        "source destination",
-                    )?;
-                    let definition = &mut local_definitions[current_id as usize];
-                    let identity = FamilySourceIdentity {
-                        executor: *key,
-                        source_slot: row.source_slot,
-                        momentum: trace_momentum(trace, row.momentum_form_id, "source")?,
-                        source_template_or_dispatch_domain: row.source_template_or_dispatch_domain,
-                        spin_state_class: row.spin_state_class,
-                        exact_factor: trace_factor(trace, row.exact_factor_id, "source")?,
-                        selector_domain_id: row.selector_domain_id,
-                    };
-                    if definition.source.replace(identity).is_some() {
-                        return Err(integrity("query-local current repeats its source row"));
+            let mut local_definitions = trace
+                .current_component_ranges
+                .iter()
+                .map(|range| FamilyCurrentDefinition::new(range[1]))
+                .collect::<Vec<_>>();
+            let mut contribution_proofs = trace.contribution_proof_rows.iter();
+            for operation in trace.operations.iter() {
+                match operation {
+                    OnTheFlyTraceOperationV1::Source { key, row } => {
+                        let current_id = current_id_by_component_base(
+                            &bases,
+                            row.destination_component_base,
+                            "source destination",
+                        )?;
+                        let definition = &mut local_definitions[current_id as usize];
+                        let identity = FamilySourceIdentity {
+                            executor: *key,
+                            source_slot: row.source_slot,
+                            momentum: trace_momentum(trace, row.momentum_form_id, "source")?,
+                            source_template_or_dispatch_domain: row
+                                .source_template_or_dispatch_domain,
+                            spin_state_class: row.spin_state_class,
+                            exact_factor: trace_factor(trace, row.exact_factor_id, "source")?,
+                            selector_domain_id: row.selector_domain_id,
+                        };
+                        if definition.source.replace(identity).is_some() {
+                            return Err(integrity("query-local current repeats its source row"));
+                        }
+                        add(&mut census.dynamic_source_rows, 1, "dynamic source rows")?;
                     }
-                    add(&mut census.dynamic_source_rows, 1, "dynamic source rows")?;
-                }
-                OnTheFlyTraceOperationV1::Contribution { key: executor, row } => {
-                    let proof = contribution_proofs.next().ok_or_else(|| {
-                        integrity("query-local contribution has no cold semantic identity")
-                    })?;
-                    let result = current_id_by_component_base(
-                        &bases,
-                        row.destination_component_base,
-                        "contribution destination",
-                    )?;
-                    if result != proof.result_current_id
-                        || trace_factor(trace, row.exact_factor_id, "contribution")?
-                            != proof.exact_factor
-                    {
-                        return Err(integrity(
-                            "query-local contribution row disagrees with its cold identity",
-                        ));
+                    OnTheFlyTraceOperationV1::Contribution { key: executor, row } => {
+                        let proof = contribution_proofs.next().ok_or_else(|| {
+                            integrity("query-local contribution has no cold semantic identity")
+                        })?;
+                        let result = current_id_by_component_base(
+                            &bases,
+                            row.destination_component_base,
+                            "contribution destination",
+                        )?;
+                        if result != proof.result_current_id
+                            || trace_factor(trace, row.exact_factor_id, "contribution")?
+                                != proof.exact_factor
+                        {
+                            return Err(integrity(
+                                "query-local contribution row disagrees with its cold identity",
+                            ));
+                        }
+                        let mut physical_parents = [
+                            current_id_by_component_base(
+                                &bases,
+                                row.parent0_component_base,
+                                "contribution parent 0",
+                            )?,
+                            current_id_by_component_base(
+                                &bases,
+                                row.parent1_component_base_or_sentinel,
+                                "contribution parent 1",
+                            )?,
+                        ];
+                        let mut semantic_parents = proof.parent_current_ids;
+                        physical_parents.sort_unstable();
+                        semantic_parents.sort_unstable();
+                        if physical_parents != semantic_parents
+                            || !matches!(
+                                row.flags,
+                                0 | DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+                            )
+                        {
+                            return Err(integrity(
+                                "query-local contribution physical row is not its semantic binary row",
+                            ));
+                        }
+                        let identity = FamilyContributionIdentity {
+                            executor: *executor,
+                            key: remapped_contribution_key(proof, &local_to_union)?,
+                            exact_factor: proof.exact_factor,
+                            selector_domain_id: row.selector_domain_id,
+                        };
+                        if !local_definitions[result as usize]
+                            .contributions
+                            .insert(identity)
+                        {
+                            return Err(integrity(
+                                "query-local current repeats an exact contribution row",
+                            ));
+                        }
+                        add(
+                            &mut census.dynamic_contribution_rows,
+                            1,
+                            "dynamic contribution rows",
+                        )?;
                     }
-                    let mut physical_parents = [
-                        current_id_by_component_base(
+                    OnTheFlyTraceOperationV1::Finalization { key, row } => {
+                        let current_id = current_id_by_component_base(
+                            &bases,
+                            row.component_base,
+                            "finalization destination",
+                        )?;
+                        let identity = FamilyFinalizationIdentity {
+                            executor: *key,
+                            momentum: trace_momentum(trace, row.momentum_form_id, "finalization")?,
+                            component_count: row.component_count,
+                            exact_factor: trace_factor(trace, row.exact_factor_id, "finalization")?,
+                            selector_domain_id: row.selector_domain_id,
+                            flags: row.flags,
+                        };
+                        let definition = &mut local_definitions[current_id as usize];
+                        if u32::from(row.component_count) != definition.component_count
+                            || definition.finalization.replace(identity).is_some()
+                        {
+                            return Err(integrity(
+                                "query-local current has an invalid finalization row",
+                            ));
+                        }
+                        add(
+                            &mut census.dynamic_finalization_rows,
+                            1,
+                            "dynamic finalization rows",
+                        )?;
+                    }
+                    OnTheFlyTraceOperationV1::Closure { key, row } => {
+                        if row.amplitude_destination_id != 0 {
+                            return Err(integrity(
+                                "query-local closure does not target its sole amplitude",
+                            ));
+                        }
+                        let parent0 = current_id_by_component_base(
                             &bases,
                             row.parent0_component_base,
-                            "contribution parent 0",
-                        )?,
-                        current_id_by_component_base(
+                            "closure parent 0",
+                        )?;
+                        let parent1 = current_id_by_component_base(
                             &bases,
                             row.parent1_component_base_or_sentinel,
-                            "contribution parent 1",
-                        )?,
-                    ];
-                    let mut semantic_parents = proof.parent_current_ids;
-                    physical_parents.sort_unstable();
-                    semantic_parents.sort_unstable();
-                    if physical_parents != semantic_parents
-                        || !matches!(
-                            row.flags,
-                            0 | DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
-                        )
-                    {
-                        return Err(integrity(
-                            "query-local contribution physical row is not its semantic binary row",
+                            "closure parent 1",
+                        )?;
+                        let component_start = row.component_factor_start as usize;
+                        let component_end = component_start
+                            .checked_add(usize::from(row.component_count))
+                            .ok_or_else(|| integrity("closure component-factor span overflows"))?;
+                        let component_factors = trace
+                            .exact_factors
+                            .get(component_start..component_end)
+                            .ok_or_else(|| integrity("closure component-factor span is absent"))?
+                            .to_vec()
+                            .into_boxed_slice();
+                        let amplitude_destination_id =
+                            checked_u32(query_index, "query-family amplitude destination ID")?;
+                        closure_definitions.push(FamilyClosureIdentity {
+                            seed_digest: trace.seed_digest,
+                            query_digest: trace.query_digest,
+                            stage: current_stage(&trace.current_keys[parent0 as usize])?
+                                .max(current_stage(&trace.current_keys[parent1 as usize])?),
+                            executor: *key,
+                            parent_current_ids: [
+                                local_to_union[parent0 as usize],
+                                local_to_union[parent1 as usize],
+                            ],
+                            parent_momenta: [
+                                trace_momentum(
+                                    trace,
+                                    row.parent0_momentum_form_id,
+                                    "closure parent 0",
+                                )?,
+                                trace_momentum(
+                                    trace,
+                                    row.parent1_momentum_form_id_or_sentinel,
+                                    "closure parent 1",
+                                )?,
+                            ],
+                            exact_factor: trace_factor(trace, row.exact_factor_id, "closure")?,
+                            component_factors,
+                            component_count: row.component_count,
+                            selector_domain_id: row.selector_domain_id,
+                            proof_group_id: row.flags,
+                            amplitude_destination_id,
+                        });
+                        closure_groups.insert((
+                            trace.seed_digest,
+                            current_stage(&trace.current_keys[parent0 as usize])?
+                                .max(current_stage(&trace.current_keys[parent1 as usize])?),
+                            prepared_executor_id(direct_catalog, *key)?,
                         ));
+                        add(&mut census.dynamic_closure_rows, 1, "dynamic closure rows")?;
                     }
-                    let identity = FamilyContributionIdentity {
-                        executor: *executor,
-                        key: remapped_contribution_key(proof, &local_to_union)?,
-                        exact_factor: proof.exact_factor,
-                        selector_domain_id: row.selector_domain_id,
-                    };
-                    if !local_definitions[result as usize]
-                        .contributions
-                        .insert(identity)
-                    {
-                        return Err(integrity(
-                            "query-local current repeats an exact contribution row",
-                        ));
-                    }
-                    add(
-                        &mut census.dynamic_contribution_rows,
-                        1,
-                        "dynamic contribution rows",
-                    )?;
-                }
-                OnTheFlyTraceOperationV1::Finalization { key, row } => {
-                    let current_id = current_id_by_component_base(
-                        &bases,
-                        row.component_base,
-                        "finalization destination",
-                    )?;
-                    let identity = FamilyFinalizationIdentity {
-                        executor: *key,
-                        momentum: trace_momentum(trace, row.momentum_form_id, "finalization")?,
-                        component_count: row.component_count,
-                        exact_factor: trace_factor(trace, row.exact_factor_id, "finalization")?,
-                        selector_domain_id: row.selector_domain_id,
-                        flags: row.flags,
-                    };
-                    let definition = &mut local_definitions[current_id as usize];
-                    if u32::from(row.component_count) != definition.component_count
-                        || definition.finalization.replace(identity).is_some()
-                    {
-                        return Err(integrity(
-                            "query-local current has an invalid finalization row",
-                        ));
-                    }
-                    add(
-                        &mut census.dynamic_finalization_rows,
-                        1,
-                        "dynamic finalization rows",
-                    )?;
-                }
-                OnTheFlyTraceOperationV1::Closure { key, row } => {
-                    if row.amplitude_destination_id != 0 {
-                        return Err(integrity(
-                            "query-local closure does not target its sole amplitude",
-                        ));
-                    }
-                    let parent0 = current_id_by_component_base(
-                        &bases,
-                        row.parent0_component_base,
-                        "closure parent 0",
-                    )?;
-                    let parent1 = current_id_by_component_base(
-                        &bases,
-                        row.parent1_component_base_or_sentinel,
-                        "closure parent 1",
-                    )?;
-                    let component_start = row.component_factor_start as usize;
-                    let component_end = component_start
-                        .checked_add(usize::from(row.component_count))
-                        .ok_or_else(|| integrity("closure component-factor span overflows"))?;
-                    let component_factors = trace
-                        .exact_factors
-                        .get(component_start..component_end)
-                        .ok_or_else(|| integrity("closure component-factor span is absent"))?
-                        .to_vec()
-                        .into_boxed_slice();
-                    let amplitude_destination_id =
-                        checked_u32(query_index, "query-family amplitude destination ID")?;
-                    closure_definitions.push(FamilyClosureIdentity {
-                        seed_digest: trace.seed_digest,
-                        query_digest: trace.query_digest,
-                        stage: current_stage(&trace.current_keys[parent0 as usize])?
-                            .max(current_stage(&trace.current_keys[parent1 as usize])?),
-                        executor: *key,
-                        parent_current_ids: [
-                            local_to_union[parent0 as usize],
-                            local_to_union[parent1 as usize],
-                        ],
-                        parent_momenta: [
-                            trace_momentum(
-                                trace,
-                                row.parent0_momentum_form_id,
-                                "closure parent 0",
-                            )?,
-                            trace_momentum(
-                                trace,
-                                row.parent1_momentum_form_id_or_sentinel,
-                                "closure parent 1",
-                            )?,
-                        ],
-                        exact_factor: trace_factor(trace, row.exact_factor_id, "closure")?,
-                        component_factors,
-                        component_count: row.component_count,
-                        selector_domain_id: row.selector_domain_id,
-                        proof_group_id: row.flags,
-                        amplitude_destination_id,
-                    });
-                    closure_groups.insert((
-                        trace.seed_digest,
-                        current_stage(&trace.current_keys[parent0 as usize])?
-                            .max(current_stage(&trace.current_keys[parent1 as usize])?),
-                        prepared_executor_id(direct_catalog, *key)?,
-                    ));
-                    add(&mut census.dynamic_closure_rows, 1, "dynamic closure rows")?;
                 }
             }
-        }
-        if contribution_proofs.next().is_some() {
-            return Err(integrity(
-                "query-local cold contribution identities outnumber direct rows",
-            ));
-        }
+            if contribution_proofs.next().is_some() {
+                return Err(integrity(
+                    "query-local cold contribution identities outnumber direct rows",
+                ));
+            }
 
-        for ((family_key, definition), union_id) in normalized_keys
-            .into_iter()
-            .zip(local_definitions)
-            .zip(local_to_union)
-        {
-            let key = &family_key.1;
-            match key.node_kind() {
-                RecurrenceNodeKind::Source
-                    if definition.source.is_none()
-                        || !definition.contributions.is_empty()
-                        || definition.finalization.is_some() =>
-                {
+            for ((family_key, definition), union_id) in normalized_keys
+                .into_iter()
+                .zip(local_definitions)
+                .zip(local_to_union)
+            {
+                let key = &family_key.1;
+                match key.node_kind() {
+                    RecurrenceNodeKind::Source
+                        if definition.source.is_none()
+                            || !definition.contributions.is_empty()
+                            || definition.finalization.is_some() =>
+                    {
+                        return Err(integrity(
+                            "query-family source current has a non-source definition",
+                        ));
+                    }
+                    RecurrenceNodeKind::Current
+                        if definition.source.is_some() || definition.contributions.is_empty() =>
+                    {
+                        return Err(integrity(
+                            "query-family non-source current has no contribution definition",
+                        ));
+                    }
+                    _ => {}
+                }
+                let record = union_currents.get_mut(&family_key).ok_or_else(|| {
+                    integrity("query-family normalized current lost its union identity")
+                })?;
+                if record.id != union_id {
                     return Err(integrity(
-                        "query-family source current has a non-source definition",
+                        "query-family normalized current changed its union identity",
                     ));
                 }
-                RecurrenceNodeKind::Current
-                    if definition.source.is_some() || definition.contributions.is_empty() =>
-                {
-                    return Err(integrity(
-                        "query-family non-source current has no contribution definition",
-                    ));
-                }
-                _ => {}
-            }
-            match definitions.entry(family_key) {
-                std::collections::btree_map::Entry::Vacant(entry) => {
-                    entry.insert(definition);
-                }
-                std::collections::btree_map::Entry::Occupied(entry)
-                    if entry.get() == &definition => {}
-                std::collections::btree_map::Entry::Occupied(_) => {
-                    return Err(integrity(format!(
-                        "query-family semantic current {union_id} has conflicting definitions"
-                    )));
+                match record.definition.as_ref() {
+                    None => record.definition = Some(definition),
+                    Some(established) if established == &definition => {}
+                    Some(_) => {
+                        return Err(integrity(format!(
+                            "query-family semantic current {union_id} has conflicting definitions"
+                        )));
+                    }
                 }
             }
+            add(&mut census.query_count, 1, "query-family query count")?;
+            add(
+                &mut census.union_amplitude_destination_count,
+                1,
+                "query-family amplitude destination count",
+            )?;
         }
-    }
+        Ok(first_destination..census.query_count)
+    };
+    produce(&mut consume)?;
+    drop(consume);
+
+    let Some((source_count, lorentz_component_count, parameter_count)) = layout else {
+        return Ok(None);
+    };
+    identity_hash.update(census.query_count.to_le_bytes());
+    let ordered_query_digest = SemanticDigest::new(identity_hash.finalize().into())?;
 
     census.source_frame_partition_count =
         checked_u32(seed_partitions.len(), "source-frame partition count")?;
@@ -910,7 +997,7 @@ fn build_query_family_from_traces(
         .map(|closure| closure.amplitude_destination_id)
         .collect::<BTreeSet<_>>();
     if closure_queries != seen_queries
-        || closure_destinations.len() != selected.len()
+        || closure_destinations.len() != census.query_count as usize
         || closure_destinations
             .iter()
             .copied()
@@ -921,7 +1008,11 @@ fn build_query_family_from_traces(
             "query-family closures do not retain one distinct destination per requested query",
         ));
     }
-    for ((seed_digest, key), definition) in &definitions {
+    for ((seed_digest, key), record) in &union_currents {
+        let definition = record
+            .definition
+            .as_ref()
+            .ok_or_else(|| integrity("query-family union current has no semantic definition"))?;
         add(
             &mut census.union_unique_current_component_count,
             definition.component_count,
@@ -967,7 +1058,7 @@ fn build_query_family_from_traces(
             ));
         }
     }
-    census.union_unique_current_count = checked_u32(definitions.len(), "union current count")?;
+    census.union_unique_current_count = checked_u32(union_currents.len(), "union current count")?;
     census.union_closure_rows = census.dynamic_closure_rows;
     census.union_source_executor_call_groups =
         checked_u32(source_groups.len(), "union source executor groups")?;
@@ -1000,18 +1091,54 @@ fn build_query_family_from_traces(
             "query-family union census is inconsistent with its local traces",
         ));
     }
-    materialize_query_family(
+    let family = materialize_query_family(
         direct_catalog,
         census,
         source_count,
         lorentz_component_count,
         parameter_count,
-        union_ids,
-        definitions,
+        union_currents,
         closure_definitions,
         #[cfg(any(test, feature = "on-the-fly-test-support"))]
         observed_current_identities,
-    )
+    )?;
+    Ok(Some((family, ordered_query_digest)))
+}
+
+fn build_query_family_from_traces(
+    direct_catalog: &PreparedDirectExecutorCatalog,
+    selected: &[QueryFamilyTraceInput<'_>],
+) -> RusticolResult<OnTheFlyBuiltQueryFamilyV1> {
+    build_query_family_from_chunks(direct_catalog, |consumer| {
+        let destinations = consumer.push_chunk(selected)?;
+        if destinations.start != 0 || destinations.end as usize != selected.len() {
+            return Err(integrity(
+                "query-family one-shot destination range is inconsistent",
+            ));
+        }
+        Ok(())
+    })?
+    .map(|(family, _)| family)
+    .ok_or_else(|| invalid("query-family census requires at least one query"))
+}
+
+pub(crate) fn build_streamed_query_family_candidate_v1(
+    direct_catalog: &PreparedDirectExecutorCatalog,
+    produce: impl FnOnce(&mut dyn OnTheFlyQueryFamilyChunkConsumerV1) -> RusticolResult<()>,
+) -> RusticolResult<Option<OnTheFlyStreamedQueryFamilyCandidateV1>> {
+    let direct_catalog_digest = direct_catalog.direct_template_catalog_digest();
+    build_query_family_from_chunks(direct_catalog, produce).map(|candidate| {
+        candidate.map(
+            |(family, ordered_query_digest)| OnTheFlyStreamedQueryFamilyCandidateV1 {
+                identity: QueryFamilyCacheIdentityV1::Streamed {
+                    direct_catalog_digest,
+                    query_count: family.census.query_count,
+                    ordered_query_digest,
+                },
+                family,
+            },
+        )
+    })
 }
 
 fn query_family_census_from_traces(
@@ -1028,8 +1155,7 @@ fn materialize_query_family(
     source_count: u32,
     lorentz_component_count: u16,
     parameter_count: u32,
-    union_ids: BTreeMap<(SemanticDigest, CurrentCoreKey), u32>,
-    definitions: BTreeMap<(SemanticDigest, CurrentCoreKey), FamilyCurrentDefinition>,
+    union_currents: BTreeMap<(SemanticDigest, CurrentCoreKey), FamilyUnionCurrentRecord>,
     closure_definitions: Vec<FamilyClosureIdentity>,
     #[cfg(any(test, feature = "on-the-fly-test-support"))] observed_current_identities: BTreeMap<
         u32,
@@ -1038,15 +1164,14 @@ fn materialize_query_family(
 ) -> RusticolResult<OnTheFlyBuiltQueryFamilyV1> {
     type GroupKey = (SemanticDigest, u32);
     let mut records = std::iter::repeat_with(|| None)
-        .take(definitions.len())
+        .take(union_currents.len())
         .collect::<Vec<Option<(SemanticDigest, CurrentCoreKey, FamilyCurrentDefinition)>>>();
-    for (family_key, definition) in definitions {
-        let id = union_ids
-            .get(&family_key)
-            .copied()
-            .ok_or_else(|| integrity("query-family definition has no union current identity"))?;
+    for (family_key, record) in union_currents {
+        let definition = record
+            .definition
+            .ok_or_else(|| integrity("query-family union current has no semantic definition"))?;
         let slot = records
-            .get_mut(id as usize)
+            .get_mut(record.id as usize)
             .ok_or_else(|| integrity("query-family union current ID is out of bounds"))?;
         if slot
             .replace((family_key.0, family_key.1, definition))
@@ -1062,12 +1187,8 @@ fn materialize_query_family(
             "query-family union current IDs are not dense zero-based",
         ));
     }
-    let records = records
-        .into_iter()
-        .map(|record| record.expect("validated dense query-family records"))
-        .collect::<Vec<_>>();
-
     let mut component_bases = Vec::new();
+    let mut component_counts = Vec::new();
     let mut stages = Vec::new();
     let mut current_component_count = 0_u32;
     component_bases
@@ -1077,11 +1198,22 @@ fn materialize_query_family(
                 "query-family component-base allocation failed: {error}"
             ))
         })?;
+    component_counts
+        .try_reserve_exact(records.len())
+        .map_err(|error| {
+            invalid(format!(
+                "query-family component-count allocation failed: {error}"
+            ))
+        })?;
     stages
         .try_reserve_exact(records.len())
         .map_err(|error| invalid(format!("query-family stage allocation failed: {error}")))?;
-    for (_, key, definition) in &records {
+    for record in &records {
+        let (_, key, definition) = record
+            .as_ref()
+            .expect("validated dense query-family record");
         component_bases.push(current_component_count);
+        component_counts.push(definition.component_count);
         current_component_count = current_component_count
             .checked_add(definition.component_count)
             .ok_or_else(|| invalid("query-family current component count exceeds u32"))?;
@@ -1125,7 +1257,11 @@ fn materialize_query_family(
         BTreeMap::<u32, BTreeMap<GroupKey, Vec<FamilyFinalizationDraft>>>::new();
     let mut closure_groups = BTreeMap::<u32, BTreeMap<GroupKey, Vec<FamilyClosureDraft>>>::new();
 
-    for (current_id, (seed_digest, _key, definition)) in records.iter().enumerate() {
+    // Consume semantic definitions as their compact executable drafts are
+    // produced, rather than retaining both complete representations until
+    // closure materialization.
+    for (current_id, record) in records.into_iter().enumerate() {
+        let (seed_digest, _key, definition) = record.expect("validated dense query-family record");
         let current_id = checked_u32(current_id, "query-family current ID")?;
         let stage = stages[current_id as usize];
         let destination_component_base = component_bases[current_id as usize];
@@ -1160,10 +1296,10 @@ fn materialize_query_family(
                 selector_domain_id: source.selector_domain_id,
             };
             source_groups
-                .entry((*seed_digest, direct_executor_id))
+                .entry((seed_digest, direct_executor_id))
                 .or_default()
                 .push(FamilySourceDraft {
-                    seed_digest: *seed_digest,
+                    seed_digest,
                     stage,
                     direct_executor_id,
                     key: source.executor,
@@ -1228,10 +1364,10 @@ fn materialize_query_family(
             contribution_groups
                 .entry(stage)
                 .or_default()
-                .entry((*seed_digest, direct_executor_id))
+                .entry((seed_digest, direct_executor_id))
                 .or_default()
                 .push(FamilyContributionDraft {
-                    seed_digest: *seed_digest,
+                    seed_digest,
                     stage,
                     destination_current_id: current_id,
                     direct_executor_id,
@@ -1267,10 +1403,10 @@ fn materialize_query_family(
             finalization_groups
                 .entry(stage)
                 .or_default()
-                .entry((*seed_digest, direct_executor_id))
+                .entry((seed_digest, direct_executor_id))
                 .or_default()
                 .push(FamilyFinalizationDraft {
-                    seed_digest: *seed_digest,
+                    seed_digest,
                     stage,
                     direct_executor_id,
                     key: finalization.executor,
@@ -1278,16 +1414,15 @@ fn materialize_query_family(
                 });
         }
     }
-
     for closure in closure_definitions {
         let [parent0, parent1] = closure.parent_current_ids;
-        let parent0_count = records
+        let parent0_count = component_counts
             .get(parent0 as usize)
-            .map(|record| record.2.component_count)
+            .copied()
             .ok_or_else(|| integrity("query-family closure parent 0 is absent"))?;
-        let parent1_count = records
+        let parent1_count = component_counts
             .get(parent1 as usize)
-            .map(|record| record.2.component_count)
+            .copied()
             .ok_or_else(|| integrity("query-family closure parent 1 is absent"))?;
         if parent0_count != u32::from(closure.component_count)
             || parent1_count != u32::from(closure.component_count)
@@ -1823,16 +1958,17 @@ impl OnTheFlyFamilyWorkspaceV1 {
                 }
             }
         }
-        for (real, imag) in [
-            (&mut self.current_re, &mut self.current_im),
-            (&mut self.amplitude_re, &mut self.amplitude_im),
-        ] {
-            for plane in 0..real.len() / self.point_stride as usize {
-                let start = plane * self.point_stride as usize;
-                let end = start + point_count as usize;
-                real.as_mut_slice()[start..end].fill(0.0);
-                imag.as_mut_slice()[start..end].fill(0.0);
-            }
+        // Source rows overwrite their complete destination and family lowering
+        // marks exactly the first contribution to every recursive current with
+        // INITIALIZE_DESTINATION. Finalization is in-place only after that
+        // write. Clearing the current arena here therefore duplicates writes
+        // on every warmed evaluation. Closures accumulate into amplitudes, so
+        // their active prefix must still start at zero.
+        for plane in 0..self.amplitude_re.len() / self.point_stride as usize {
+            let start = plane * self.point_stride as usize;
+            let end = start + point_count as usize;
+            self.amplitude_re.as_mut_slice()[start..end].fill(0.0);
+            self.amplitude_im.as_mut_slice()[start..end].fill(0.0);
         }
         Ok(())
     }
@@ -2113,7 +2249,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         direct_catalog: &PreparedDirectExecutorCatalog,
         selected: &[QueryFamilyTraceInput<'_>],
     ) -> QueryFamilyCacheIdentityV1 {
-        QueryFamilyCacheIdentityV1 {
+        QueryFamilyCacheIdentityV1::Exact {
             direct_catalog: direct_catalog.clone(),
             queries: selected
                 .iter()
@@ -2135,22 +2271,24 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         direct_catalog: &PreparedDirectExecutorCatalog,
         selected: &[QueryFamilyTraceInput<'_>],
     ) -> bool {
-        family.identity.direct_catalog == *direct_catalog
-            && family.identity.queries.len() == selected.len()
-            && family
-                .identity
-                .queries
-                .iter()
-                .zip(selected)
-                .all(|(cached, selected)| {
-                    *cached
-                        == (
-                            selected.trace.seed_digest,
-                            selected.trace.query_digest,
-                            selected.trace.semantic_digest(),
-                            selected.projection,
-                        )
-                })
+        let QueryFamilyCacheIdentityV1::Exact {
+            direct_catalog: cached_catalog,
+            queries,
+        } = &family.identity
+        else {
+            return false;
+        };
+        *cached_catalog == *direct_catalog
+            && queries.len() == selected.len()
+            && queries.iter().zip(selected).all(|(cached, selected)| {
+                *cached
+                    == (
+                        selected.trace.seed_digest,
+                        selected.trace.query_digest,
+                        selected.trace.semantic_digest(),
+                        selected.projection,
+                    )
+            })
     }
 
     fn bind_groups(
@@ -2411,6 +2549,75 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         Ok(false)
     }
 
+    /// Install one bounded-memory streamed candidate.  Unlike the LC seam,
+    /// its cache identity is a compact ordered digest produced together with
+    /// the materialized family, so no H x S query identity table is retained.
+    pub(crate) fn prepare_streamed_candidate(
+        &mut self,
+        candidate: OnTheFlyStreamedQueryFamilyCandidateV1,
+        logical_point_capacity: u32,
+    ) -> RusticolResult<bool> {
+        let OnTheFlyStreamedQueryFamilyCandidateV1 { identity, family } = candidate;
+        if let Some(index) = self.last_used.filter(|&index| {
+            self.families
+                .get(index)
+                .is_some_and(|family| family.identity == identity)
+        }) {
+            return self.activate_retained_index(index, logical_point_capacity);
+        }
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.identity == identity)
+        {
+            let replacement = self
+                .pending
+                .as_ref()
+                .filter(|pending| logical_point_capacity > pending.workspace.logical_point_capacity)
+                .map(|pending| {
+                    OnTheFlyFamilyWorkspaceV1::new(&pending.family, logical_point_capacity)
+                })
+                .transpose()?;
+            if let Some(replacement) = replacement {
+                self.invalidate_exposed_row_tables()?;
+                let pending = self
+                    .pending
+                    .as_mut()
+                    .expect("matching streamed query family disappeared");
+                pending.workspace = replacement;
+                pending.applied_parameter_version = u64::MAX;
+            }
+            return Ok(false);
+        }
+
+        self.discard_pending_family()?;
+        if family.census.source_frame_partition_count != 1 {
+            return Err(invalid(
+                "executable query families currently require one compact source frame",
+            ));
+        }
+        let workspace = OnTheFlyFamilyWorkspaceV1::new(&family, logical_point_capacity)?;
+        let resolved_groups = self.bind_groups(&family)?;
+        if self.families.capacity() == 0 {
+            self.families.try_reserve_exact(1).map_err(|error| {
+                invalid(format!(
+                    "query-family retained-family allocation failed: {error}"
+                ))
+            })?;
+        }
+        let candidate = BoundOnTheFlyQueryFamilyV1 {
+            identity,
+            family,
+            workspace,
+            resolved_groups,
+            applied_parameter_version: u64::MAX,
+            descriptor_exposed: false,
+        };
+        self.invalidate_exposed_row_tables()?;
+        self.pending = Some(candidate);
+        Ok(false)
+    }
+
     /// Allocation-free warmed execution after one cold [`Self::prepare`] call.
     pub(crate) fn execute_into(
         &mut self,
@@ -2418,6 +2625,72 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         point_count: u32,
         outputs: &mut [(f64, f64)],
     ) -> RusticolResult<OnTheFlyQueryFamilyExecutionReportV1> {
+        let cache_hit = self.pending.is_none();
+        let mut report = self.execute_into_impl(
+            external_momenta,
+            point_count,
+            outputs,
+            OnTheFlyQueryFamilyExecutionReportV1::default(),
+            |report, role, row_count| match role {
+                DirectExecutorRole::Source => {
+                    add(&mut report.source_calls, 1, "executed source calls")?;
+                    add(&mut report.source_rows, row_count, "executed source rows")
+                }
+                DirectExecutorRole::Contribution => {
+                    add(
+                        &mut report.contribution_calls,
+                        1,
+                        "executed contribution calls",
+                    )?;
+                    add(
+                        &mut report.contribution_rows,
+                        row_count,
+                        "executed contribution rows",
+                    )
+                }
+                DirectExecutorRole::Finalization => {
+                    add(
+                        &mut report.finalization_calls,
+                        1,
+                        "executed finalization calls",
+                    )?;
+                    add(
+                        &mut report.finalization_rows,
+                        row_count,
+                        "executed finalization rows",
+                    )
+                }
+                DirectExecutorRole::Closure => {
+                    add(&mut report.closure_calls, 1, "executed closure calls")?;
+                    add(&mut report.closure_rows, row_count, "executed closure rows")
+                }
+            },
+        )?;
+        report.cache_hit = cache_hit;
+        Ok(report)
+    }
+
+    /// Allocation-free warmed execution without diagnostic report counters.
+    pub(crate) fn execute_into_unprofiled(
+        &mut self,
+        external_momenta: &[f64],
+        point_count: u32,
+        outputs: &mut [(f64, f64)],
+    ) -> RusticolResult<()> {
+        self.execute_into_impl(external_momenta, point_count, outputs, (), |_, _, _| Ok(()))
+    }
+
+    fn execute_into_impl<Report, RecordGroup>(
+        &mut self,
+        external_momenta: &[f64],
+        point_count: u32,
+        outputs: &mut [(f64, f64)],
+        report: Report,
+        record_group: RecordGroup,
+    ) -> RusticolResult<Report>
+    where
+        RecordGroup: FnMut(&mut Report, DirectExecutorRole, u32) -> RusticolResult<()>,
+    {
         let pending = self.pending.is_some();
         let result = (|| {
             let family = if pending {
@@ -2442,8 +2715,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                 .workspace
                 .refresh_inputs(&family.family, external_momenta, point_count)?;
             family.descriptor_exposed = true;
-            let mut report = execute_bound_family(family, point_count)?;
-            report.cache_hit = !pending;
+            let report = execute_bound_family(family, point_count, report, record_group)?;
             family.workspace.write_outputs(
                 family.family.amplitude_destination_count,
                 point_count,
@@ -2508,54 +2780,25 @@ impl<R: OnTheFlyPreparedExecutorResolver> Drop for OnTheFlyQueryFamilyExecutorV1
     }
 }
 
-fn execute_bound_family(
+fn execute_bound_family<Report, RecordGroup>(
     cached: &mut BoundOnTheFlyQueryFamilyV1,
     point_count: u32,
-) -> RusticolResult<OnTheFlyQueryFamilyExecutionReportV1> {
+    mut report: Report,
+    mut record_group: RecordGroup,
+) -> RusticolResult<Report>
+where
+    RecordGroup: FnMut(&mut Report, DirectExecutorRole, u32) -> RusticolResult<()>,
+{
+    clear_direct_executor_error_detail();
     let (arena, momenta, parameters, factors) = cached.workspace.raw_views()?;
-    let mut report = OnTheFlyQueryFamilyExecutionReportV1::default();
     for (group, resolved) in cached
         .family
         .row_groups
         .iter()
         .zip(cached.resolved_groups.iter().copied())
     {
-        clear_direct_executor_error_detail();
         let row_count = checked_u32(group.rows.len(), "query-family row-group count")?;
-        match group.role {
-            DirectExecutorRole::Source => {
-                add(&mut report.source_calls, 1, "executed source calls")?;
-                add(&mut report.source_rows, row_count, "executed source rows")?;
-            }
-            DirectExecutorRole::Contribution => {
-                add(
-                    &mut report.contribution_calls,
-                    1,
-                    "executed contribution calls",
-                )?;
-                add(
-                    &mut report.contribution_rows,
-                    row_count,
-                    "executed contribution rows",
-                )?;
-            }
-            DirectExecutorRole::Finalization => {
-                add(
-                    &mut report.finalization_calls,
-                    1,
-                    "executed finalization calls",
-                )?;
-                add(
-                    &mut report.finalization_rows,
-                    row_count,
-                    "executed finalization rows",
-                )?;
-            }
-            DirectExecutorRole::Closure => {
-                add(&mut report.closure_calls, 1, "executed closure calls")?;
-                add(&mut report.closure_rows, row_count, "executed closure rows")?;
-            }
-        }
+        record_group(&mut report, group.role, row_count)?;
         let status: c_int = unsafe {
             match (&group.rows, resolved.handle) {
                 (
@@ -2684,6 +2927,7 @@ mod tests {
     struct ProbeState {
         calls: RefCell<Vec<(DirectExecutorRole, usize, u32)>>,
         fail_role: Cell<Option<DirectExecutorRole>>,
+        record_failure_detail: Cell<bool>,
         invalidations: Cell<u32>,
     }
 
@@ -2692,7 +2936,18 @@ mod tests {
             self.calls
                 .borrow_mut()
                 .push((role, rows as usize, row_count));
-            self.fail_role.get() == Some(role)
+            let failed = self.fail_role.get() == Some(role);
+            if failed && self.record_failure_detail.get() {
+                crate::recurrence::direct_backend::record_direct_executor_error_detail(
+                    crate::RusticolError::integrity(format!("probe {role:?} first failure detail")),
+                );
+                crate::recurrence::direct_backend::record_direct_executor_error_detail(
+                    crate::RusticolError::internal(
+                        "later probe detail must not replace the first failure",
+                    ),
+                );
+            }
+            failed
         }
     }
 
@@ -2975,6 +3230,204 @@ mod tests {
         .unwrap()
     }
 
+    fn streamed_pair_candidate(
+        catalog: &PreparedDirectExecutorCatalog,
+        first: &OnTheFlyStructuralTraceV1,
+        first_projection: OnTheFlyProjectionProbeV1,
+        second: &OnTheFlyStructuralTraceV1,
+        second_projection: OnTheFlyProjectionProbeV1,
+        split: bool,
+    ) -> OnTheFlyStreamedQueryFamilyCandidateV1 {
+        build_streamed_query_family_candidate_v1(catalog, |consumer| {
+            if split {
+                assert_eq!(
+                    consumer.push_chunk(&[QueryFamilyTraceInput {
+                        trace: first,
+                        projection: first_projection,
+                    }])?,
+                    0..1
+                );
+                assert_eq!(
+                    consumer.push_chunk(&[QueryFamilyTraceInput {
+                        trace: second,
+                        projection: second_projection,
+                    }])?,
+                    1..2
+                );
+            } else {
+                assert_eq!(
+                    consumer.push_chunk(&[
+                        QueryFamilyTraceInput {
+                            trace: first,
+                            projection: first_projection,
+                        },
+                        QueryFamilyTraceInput {
+                            trace: second,
+                            projection: second_projection,
+                        },
+                    ])?,
+                    0..2
+                );
+            }
+            Ok(())
+        })
+        .unwrap()
+        .expect("two nonzero traces must materialize one streamed family")
+    }
+
+    #[test]
+    fn streamed_query_family_is_chunk_boundary_independent_and_warm_reusable() {
+        let catalog = direct_catalog();
+        let (first, first_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let (mut second, second_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
+        second.test_remap_dynamic_color_id(7);
+
+        let monolithic = streamed_pair_candidate(
+            &catalog,
+            &first,
+            first_projection,
+            &second,
+            second_projection,
+            false,
+        );
+        let exact_lc_family = build_query_family_from_traces(
+            &catalog,
+            &[
+                QueryFamilyTraceInput {
+                    trace: &first,
+                    projection: first_projection,
+                },
+                QueryFamilyTraceInput {
+                    trace: &second,
+                    projection: second_projection,
+                },
+            ],
+        )
+        .unwrap();
+        let chunked = streamed_pair_candidate(
+            &catalog,
+            &first,
+            first_projection,
+            &second,
+            second_projection,
+            true,
+        );
+        assert_eq!(exact_lc_family, monolithic.family);
+        assert_eq!(monolithic.identity, chunked.identity);
+        assert_eq!(monolithic.family, chunked.family);
+
+        let reversed = build_streamed_query_family_candidate_v1(&catalog, |consumer| {
+            assert_eq!(
+                consumer.push_chunk(&[
+                    QueryFamilyTraceInput {
+                        trace: &second,
+                        projection: second_projection,
+                    },
+                    QueryFamilyTraceInput {
+                        trace: &first,
+                        projection: first_projection,
+                    },
+                ])?,
+                0..2
+            );
+            Ok(())
+        })
+        .unwrap()
+        .unwrap();
+        assert_ne!(chunked.identity, reversed.identity);
+
+        let mut monolithic_executor =
+            OnTheFlyQueryFamilyExecutorV1::new(ProbeResolver::new(catalog.clone()));
+        let mut chunked_executor =
+            OnTheFlyQueryFamilyExecutorV1::new(ProbeResolver::new(catalog.clone()));
+        monolithic_executor
+            .prepare_streamed_candidate(monolithic, 1)
+            .unwrap();
+        chunked_executor
+            .prepare_streamed_candidate(chunked, 1)
+            .unwrap();
+        let mut monolithic_outputs = [(0.0, 0.0); 2];
+        let mut chunked_outputs = [(0.0, 0.0); 2];
+        let monolithic_report = monolithic_executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut monolithic_outputs)
+            .unwrap();
+        let chunked_report = chunked_executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut chunked_outputs)
+            .unwrap();
+        assert_eq!(monolithic_report, chunked_report);
+        assert_eq!(monolithic_outputs, chunked_outputs);
+        assert_eq!(chunked_outputs, [(46.0, 0.0), (46.0, 0.0)]);
+        assert_eq!(chunked_executor.retained_family_count(), 1);
+        let retained_handle = chunked_executor.active_retained_handle().unwrap();
+        assert!(matches!(
+            chunked_executor.families[0].identity,
+            QueryFamilyCacheIdentityV1::Streamed { query_count: 2, .. }
+        ));
+
+        let same_candidate = streamed_pair_candidate(
+            &catalog,
+            &first,
+            first_projection,
+            &second,
+            second_projection,
+            true,
+        );
+        assert!(
+            chunked_executor
+                .prepare_streamed_candidate(same_candidate, 1)
+                .unwrap()
+        );
+        assert_eq!(
+            chunked_executor.active_retained_handle(),
+            Some(retained_handle)
+        );
+        assert_eq!(chunked_executor.retained_family_count(), 1);
+        assert!(
+            chunked_executor
+                .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut chunked_outputs)
+                .unwrap()
+                .cache_hit
+        );
+    }
+
+    #[test]
+    fn streamed_query_family_rejects_cross_chunk_duplicates_and_conflicts() {
+        let catalog = direct_catalog();
+        let (first, first_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let repeated = build_streamed_query_family_candidate_v1(&catalog, |consumer| {
+            consumer.push_chunk(&[QueryFamilyTraceInput {
+                trace: &first,
+                projection: first_projection,
+            }])?;
+            consumer.push_chunk(&[QueryFamilyTraceInput {
+                trace: &first,
+                projection: first_projection,
+            }])?;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(repeated.to_string().contains("repeats a selected query"));
+
+        let (second, second_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(2));
+        let conflicting = build_streamed_query_family_candidate_v1(&catalog, |consumer| {
+            consumer.push_chunk(&[QueryFamilyTraceInput {
+                trace: &first,
+                projection: first_projection,
+            }])?;
+            consumer.push_chunk(&[QueryFamilyTraceInput {
+                trace: &second,
+                projection: second_projection,
+            }])?;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(conflicting.to_string().contains("conflicting definitions"));
+    }
+
     #[test]
     fn query_family_union_interns_exact_currents_and_retains_destinations() {
         let (first, first_projection) =
@@ -3150,6 +3603,17 @@ mod tests {
         vec![source0, 0.0, 0.0, 0.0, source1, 0.0, 0.0, 0.0]
     }
 
+    fn source_major_momenta(source0: &[f64], source1: &[f64]) -> Vec<f64> {
+        assert_eq!(source0.len(), source1.len());
+        let point_count = source0.len();
+        let mut momenta = Vec::with_capacity(8 * point_count);
+        for source in [source0, source1] {
+            momenta.extend_from_slice(source);
+            momenta.extend(std::iter::repeat_n(0.0, 3 * point_count));
+        }
+        momenta
+    }
+
     #[test]
     fn query_family_executes_union_once_and_reuses_stable_warm_rows() {
         let catalog = direct_catalog();
@@ -3172,15 +3636,14 @@ mod tests {
             },
         ];
         let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
-        assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
+        assert!(!executor.prepare(&catalog, &selected, 3).unwrap());
         let census = executor.prepared_census().unwrap();
         assert_eq!(census.union_unique_current_count, 3);
         assert_eq!(census.union_amplitude_destination_count, 2);
         executor.set_parameters(&[(1.0, 0.0)]).unwrap();
-        let mut outputs = [(0.0, 0.0); 2];
-        let cold = executor
-            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut outputs)
-            .unwrap();
+        let momenta = source_major_momenta(&[2.0, 4.0, -1.0], &[3.0, 5.0, 2.0]);
+        let mut outputs = [(0.0, 0.0); 6];
+        let cold = executor.execute_into(&momenta, 3, &mut outputs).unwrap();
         assert!(!cold.cache_hit);
         assert_eq!(
             cold,
@@ -3196,7 +3659,17 @@ mod tests {
                 closure_rows: 2,
             }
         );
-        assert_eq!(outputs, [(46.0, 0.0), (46.0, 0.0)]);
+        assert_eq!(
+            outputs,
+            [
+                (46.0, 0.0),
+                (180.0, 0.0),
+                (8.0, 0.0),
+                (46.0, 0.0),
+                (180.0, 0.0),
+                (8.0, 0.0),
+            ]
+        );
         let first_calls = executor.resolver().state.calls.borrow().clone();
         assert_eq!(
             first_calls.iter().map(|call| call.0).collect::<Vec<_>>(),
@@ -3208,13 +3681,27 @@ mod tests {
             ]
         );
 
-        assert!(executor.prepare(&catalog, &selected, 1).unwrap());
+        assert!(executor.prepare(&catalog, &selected, 3).unwrap());
         executor.set_parameters(&[(2.0, 0.0)]).unwrap();
-        let warm = executor
-            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut outputs)
-            .unwrap();
+        let retained = executor
+            .last_used
+            .and_then(|index| executor.families.get_mut(index))
+            .expect("cold execution did not retain its query family");
+        retained.workspace.current_re.as_mut_slice().fill(f64::NAN);
+        retained.workspace.current_im.as_mut_slice().fill(f64::NAN);
+        let warm = executor.execute_into(&momenta, 3, &mut outputs).unwrap();
         assert!(warm.cache_hit);
-        assert_eq!(outputs, [(92.0, 0.0), (92.0, 0.0)]);
+        assert_eq!(
+            outputs,
+            [
+                (92.0, 0.0),
+                (360.0, 0.0),
+                (16.0, 0.0),
+                (92.0, 0.0),
+                (360.0, 0.0),
+                (16.0, 0.0),
+            ]
+        );
         let calls = executor.resolver().state.calls.borrow();
         assert_eq!(calls.len(), 8);
         assert_eq!(
@@ -3435,11 +3922,21 @@ mod tests {
             .state
             .fail_role
             .set(Some(DirectExecutorRole::Contribution));
+        executor.resolver().state.record_failure_detail.set(true);
+        crate::recurrence::direct_backend::record_direct_executor_error_detail(
+            crate::RusticolError::integrity("stale detail from an earlier family schedule"),
+        );
         let mut output = [(123.0, 456.0)];
         let error = executor
-            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .execute_into_unprofiled(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap_err();
-        assert!(error.to_string().contains("returned status 4"));
+        assert!(
+            error
+                .to_string()
+                .contains("probe Contribution first failure detail")
+        );
+        assert!(!error.to_string().contains("stale detail"));
+        assert!(!error.to_string().contains("later probe detail"));
         assert_eq!(output, [(123.0, 456.0)]);
         assert!(executor.pending.is_none());
         assert_eq!(executor.retained_family_count(), 0);
@@ -3771,6 +4268,49 @@ mod tests {
                 ],
                 1,
             )
+            .unwrap_err();
+        assert!(error.to_string().contains("one compact source frame"));
+        assert!(executor.pending.is_none());
+        assert_eq!(executor.retained_family_count(), 1);
+        assert!(executor.activate_retained_family(first_handle, 1).unwrap());
+        let report = executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .unwrap();
+        assert!(report.cache_hit);
+        assert_eq!(output, [(46.0, 0.0)]);
+    }
+
+    #[test]
+    fn failed_streamed_candidate_prepare_keeps_last_valid_family_and_handle() {
+        let catalog = direct_catalog();
+        let resolver = ProbeResolver::new(catalog.clone());
+        let (first, first_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let first_selected = [QueryFamilyTraceInput {
+            trace: &first,
+            projection: first_projection,
+        }];
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
+        let mut output = [(0.0, 0.0)];
+        executor.prepare(&catalog, &first_selected, 1).unwrap();
+        executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .unwrap();
+        let first_handle = executor.active_retained_handle().unwrap();
+
+        let (mut second, second_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
+        second.seed_digest = SemanticDigest::new([0x83; 32]).unwrap();
+        let streamed = streamed_pair_candidate(
+            &catalog,
+            &first,
+            first_projection,
+            &second,
+            second_projection,
+            true,
+        );
+        let error = executor
+            .prepare_streamed_candidate(streamed, 1)
             .unwrap_err();
         assert!(error.to_string().contains("one compact source frame"));
         assert!(executor.pending.is_none());

@@ -123,8 +123,10 @@ None of these lanes compiles missing kernels during process generation. Their
 symbolic generation layer still uses Symbolica and follows the normal
 license/concurrency policy. A saved JIT application's post-generation `f64`
 runtime is Symbolica-free; higher precision continues to use Symbolica for
-eager and recurrence execution. On-the-fly execution currently supports LC and
-native `f64` only; it does not support NLC, full color, or higher precision.
+eager and recurrence execution. On-the-fly execution supports native `f64`
+only. LC retains physical flow selection; NLC and full colour expose a
+singleton contracted component and intentionally do not expose a colour-flow
+selector. Higher precision is not available for OTF.
 
 JIT bundles retain SymJIT application/MIR state and rebuild executable code for
 the receiving CPU when loaded. SymJIT storage-v3 prepared state is portable

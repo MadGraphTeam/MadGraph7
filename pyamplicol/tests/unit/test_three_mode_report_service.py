@@ -12,7 +12,10 @@ import pytest
 
 from tools.performance_report.agreements import DIRECT_AGREEMENT_FIELD
 from tools.performance_report.cache import empty_measurement, reset_entry
-from tools.performance_report.catalog import REPORT_CATALOG
+from tools.performance_report.catalog import (
+    MADGRAPH_FULL_COMPARISON_VIEWS,
+    REPORT_CATALOG,
+)
 from tools.performance_report.measurement import failure_measurement
 from tools.performance_report.models import ArtifactPolicy, ResultStatus
 from tools.performance_report.publication import publication_absolute_paths
@@ -54,7 +57,7 @@ def _service(tmp_path: Path) -> ReportService:
     )
 
 
-def test_reset_publishes_only_canonical_na_caches_and_twenty_three_tables(
+def test_reset_publishes_only_canonical_na_caches_and_twenty_seven_tables(
     tmp_path: Path,
 ) -> None:
     service = _service(tmp_path)
@@ -62,11 +65,18 @@ def test_reset_publishes_only_canonical_na_caches_and_twenty_three_tables(
     paths = service.publish(reset=True, merge_artifacts=False)
     result = service.validate()
 
-    assert result["table_count"] == 23
+    assert result["table_count"] == 27
     assert result["statuses"] == {
         "not_available": len(REPORT_CATALOG.measurement_cells())
     }
-    assert len([path for path in paths if path.suffix == ".tex"]) == 23
+    assert len([path for path in paths if path.suffix == ".tex"]) == 27
+    assert all(
+        (service.paths.docs_dir / view.table_name).is_file()
+        for view in MADGRAPH_FULL_COMPARISON_VIEWS
+    )
+    assert not (
+        service.paths.docs_dir / "result_matrix_compiled_ufo_sm_full_table.tex"
+    ).exists()
     assert (service.paths.results_dir / "report-cache.schema.json").is_file()
 
 

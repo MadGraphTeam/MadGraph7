@@ -13,6 +13,11 @@ from pyamplicol.api.protocols import Momenta
 from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path
+from pyamplicol.runtime._color_topology_exact import (
+    apply_exact_color_replay_input_mapping,
+    parse_exact_color_topology_replay,
+    reduce_exact_color_topology_replay,
+)
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime._native_selection import (
     native_physics_axes,
@@ -128,6 +133,13 @@ class EagerExactExecutor:
             }
         self._exact_execution = exact_execution
         self._lc_replay = _lc_replay_plan(exact_execution, physics, permutation)
+        self._color_replay = parse_exact_color_topology_replay(
+            exact_execution, physics, permutation
+        )
+        if self._lc_replay is not None and self._color_replay is not None:
+            raise ArtifactError(
+                "eager exact execution cannot combine LC and full-colour replay"
+            )
 
     def _diagnostic_project_onshell(
         self,
@@ -190,15 +202,20 @@ class EagerExactExecutor:
                 parameters,
                 working_precision,
             )
-            evaluation_points = (
-                points
-                if self._lc_replay is None
-                else tuple(
+            if self._lc_replay is not None:
+                evaluation_points = tuple(
                     _apply_lc_replay_input_mapping(point, entry.input_mapping)
                     for entry in self._lc_replay.entries
                     for point in points
                 )
-            )
+            elif self._color_replay is not None:
+                evaluation_points = tuple(
+                    apply_exact_color_replay_input_mapping(point, mapping.input_mapping)
+                    for mapping in self._color_replay.mappings
+                    for point in points
+                )
+            else:
+                evaluation_points = points
             amplitudes = tuple(
                 _evaluate_point(
                     self._plan,
@@ -209,14 +226,24 @@ class EagerExactExecutor:
                 )
                 for point in evaluation_points
             )
-            values, helicity_ids, color_ids = _reduce_resolved(
-                amplitudes,
-                self._exact_execution,
-                self._physics,
-                normalization,
-                helicities if self._lc_replay is None else None,
-                color_flows if self._lc_replay is None else None,
-            )
+            if self._color_replay is not None:
+                values, helicity_ids, color_ids = reduce_exact_color_topology_replay(
+                    amplitudes,
+                    self._color_replay,
+                    len(points),
+                    normalization,
+                    helicities,
+                    color_flows,
+                )
+            else:
+                values, helicity_ids, color_ids = _reduce_resolved(
+                    amplitudes,
+                    self._exact_execution,
+                    self._physics,
+                    normalization,
+                    helicities if self._lc_replay is None else None,
+                    color_flows if self._lc_replay is None else None,
+                )
             if self._lc_replay is not None:
                 values, helicity_ids, color_ids = _apply_lc_replay_resolved(
                     values,

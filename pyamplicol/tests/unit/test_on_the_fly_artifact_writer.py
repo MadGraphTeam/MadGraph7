@@ -18,8 +18,10 @@ from pyamplicol.api.requests import ModelSource, ProcessRequest, ProcessSet
 from pyamplicol.api.services import Generator
 from pyamplicol.artifacts import inspect_artifact, load_manifest
 from pyamplicol.artifacts import inspection as artifact_inspection
+from pyamplicol.color import build_color_plan
 from pyamplicol.config import (
     Action,
+    ColorConfig,
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
     GenerationConfig,
@@ -133,10 +135,11 @@ def _prepared_model_path() -> Path:
     )
 
 
-def _configuration() -> _GenerationConfigProvenance:
+def _configuration(color_accuracy: str = "lc") -> _GenerationConfigProvenance:
     return _GenerationConfigProvenance.from_config(
         RunConfig(
             action=Action.GENERATE,
+            color=ColorConfig(accuracy=color_accuracy),
             generation=GenerationConfig(
                 emit_api_bundle=False,
                 validation=GenerationValidationConfig(
@@ -232,6 +235,8 @@ def _process_artifact(
                 "physical_color_flow_count": 1,
             },
         },
+        color_contraction_payload=None,
+        color_contraction_summary=None,
         point_tile_size=128,
         query_construction_threads=3,
         validation_point=ValidationPointRecord(
@@ -241,6 +246,49 @@ def _process_artifact(
             error="not sampled in writer test",
         ),
         generation_filters={"on_the_fly": {"selector_coverage": "complete"}},
+    )
+
+
+def _contracted_process_artifact(
+    tmp_path: Path,
+    *,
+    color_accuracy: str,
+) -> OnTheFlyProcessArtifact:
+    process = build_process_ir("d d~ > z", color_accuracy=color_accuracy)
+    color_plan = build_color_plan(
+        process,
+        color_accuracy=color_accuracy,
+        fold_trace_reflections=False,
+    )
+    contracted = service_module._build_on_the_fly_contracted_color_payload_v1(
+        color_plan
+    )
+    base = _process_artifact(
+        tmp_path,
+        runtime_name=f"{color_accuracy}-runtime.pacbin",
+    )
+    return replace(
+        base,
+        color_accuracy=color_accuracy,
+        physics={**base.physics, "color_accuracy": color_accuracy},
+        runtime_metadata={
+            **base.runtime_metadata,
+            "normalization": {
+                "color_accuracy": color_accuracy,
+                "color_factor": 3.0,
+            },
+        },
+        selector_policy={
+            **base.selector_policy,
+            "color_coverage": "contracted",
+            "trace_reflections_folded": False,
+            "selector_census": {
+                "physical_helicity_count": 1,
+                "physical_color_flow_count": 1,
+            },
+        },
+        color_contraction_payload=contracted.payload,
+        color_contraction_summary=contracted.summary,
     )
 
 
@@ -254,8 +302,8 @@ def _prepare_writer_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(
         artifact_writer,
-        "active_native_source_identity",
-        lambda: (source_revision, native_inputs),
+        "active_native_build_inputs_sha256",
+        lambda: native_inputs,
     )
     monkeypatch.setattr(
         artifact_writer,
@@ -270,6 +318,61 @@ def _prepare_writer_identity(monkeypatch: pytest.MonkeyPatch) -> None:
         "_derive_eager_direct_descriptor",
         lambda source, **_widths: b"direct-table:" + source,
     )
+
+
+def test_producer_keeps_authenticated_native_digest_without_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native_inputs = "b" * 64
+    monkeypatch.setattr(artifact_writer, "package_version", lambda: "0.1.0")
+    monkeypatch.setattr(artifact_writer, "active_source_revision", lambda: None)
+    monkeypatch.setattr(
+        artifact_writer,
+        "active_native_build_inputs_sha256",
+        lambda: native_inputs,
+    )
+    monkeypatch.setattr(
+        artifact_writer,
+        "_target_metadata",
+        lambda _config: (
+            {"triple": "aarch64-apple-darwin", "cpu_features": []},
+            1,
+        ),
+    )
+
+    producer = artifact_writer._producer_metadata(
+        RunConfig(action=Action.GENERATE)
+    )
+
+    assert producer["native_build_inputs_sha256"] == native_inputs
+    assert "git_revision" not in producer
+
+
+def test_append_rejects_native_build_input_mismatch() -> None:
+    existing = SimpleNamespace(
+        runtime={"required_runtime_capabilities": []},
+        producer={
+            "distribution": "pyamplicol",
+            "version": "0.1.0",
+            "native_build_inputs_sha256": "a" * 64,
+        },
+    )
+
+    with pytest.raises(ValueError, match="native build-input digest differs"):
+        artifact_writer._validate_append_compatibility(
+            existing,
+            producer={
+                "distribution": "pyamplicol",
+                "version": "0.1.0",
+                "native_build_inputs_sha256": "b" * 64,
+            },
+            model={},
+            eager_pack_identity=None,
+            requested_bytes=b"",
+            effective_bytes=b"",
+            adjustments=(),
+            processes=(),
+        )
 
 
 def _payload_inventory(root: Path) -> tuple[tuple[object, ...], ...]:
@@ -346,6 +449,8 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
             )
         )
         assert execution["kind"] == artifact_writer.ON_THE_FLY_RUNTIME_KIND
+        assert "color_contraction" not in execution["runtime_metadata"]
+        assert not (output / f"processes/{_PROCESS_ID}/on-the-fly-color.bin").exists()
         assert execution["selector_policy"]["selector_census"] == {
             "physical_helicity_count": 1,
             "physical_color_flow_count": 1,
@@ -397,6 +502,81 @@ def test_on_the_fly_writer_publishes_one_seed_and_compact_metadata_deterministic
         second / runtime_relative
     ).read_bytes()
     assert _payload_inventory(first) == _payload_inventory(second)
+
+
+@pytest.mark.parametrize("color_accuracy", ("nlc", "full"))
+def test_on_the_fly_writer_publishes_authenticated_contracted_color(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    color_accuracy: str,
+) -> None:
+    _prepare_writer_identity(monkeypatch)
+    source_path = _prepared_model_path()
+    output = tmp_path / f"{color_accuracy}-artifact"
+    process = _contracted_process_artifact(
+        tmp_path,
+        color_accuracy=color_accuracy,
+    )
+
+    write_schema_v3_artifact(
+        output,
+        mode="error",
+        source=ModelSource.from_path(source_path),
+        compiled_model=load_compiled_model(source_path),
+        configuration=_configuration(color_accuracy),
+        processes=(process,),
+        timings={"total": 0.1},
+        api_bundle_hook=None,
+    )
+
+    manifest = load_manifest(output)
+    color_path = f"processes/{_PROCESS_ID}/on-the-fly-color.bin"
+    color_record = next(
+        record for record in manifest.payloads if record.path == color_path
+    )
+    color_payload = (output / color_path).read_bytes()
+    execution = json.loads(
+        (output / f"processes/{_PROCESS_ID}/execution.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    reference = execution["runtime_metadata"]["color_contraction"]
+
+    assert color_payload == process.color_contraction_payload
+    assert color_record.sha256 == hashlib.sha256(color_payload).hexdigest()
+    assert reference == {
+        **process.color_contraction_summary,
+        "path": "on-the-fly-color.bin",
+        "size_bytes": len(color_payload),
+        "sha256": color_record.sha256,
+    }
+    assert execution["required_runtime_capabilities"] == sorted(
+        (
+            "rusticol.on-the-fly.complex-f64.v1",
+            "rusticol.on-the-fly.contracted-color.v1",
+        )
+    )
+    assert execution["selector_policy"] == {
+        "color_coverage": "contracted",
+        "reference_color_word": None,
+        "trace_reflections_folded": False,
+        "selector_census": {
+            "physical_helicity_count": 1,
+            "physical_color_flow_count": 1,
+        },
+    }
+    inspected = inspect_artifact(output).processes[0]
+    assert inspected.execution_mode == "on-the-fly"
+    assert inspected.color_accuracy == color_accuracy
+    assert inspected.physical_color_components == 1
+    assert inspected.computed_color_components == 1
+    assert inspected.color_coverage == "contracted"
+    assert inspected.color_flow_runtime_contract is None
+    assert inspected.recurrence_color_accuracy == color_accuracy
+    assert inspected.recurrence_color_storage == "expanded"
+    assert inspected.recurrence_color_component_count == 1
+    assert inspected.recurrence_color_group_count == 1
+    assert inspected.recurrence_color_destination_count == 1
 
 
 def test_on_the_fly_writer_append_skips_structural_proofs_for_complete_set(
@@ -583,14 +763,24 @@ def test_on_the_fly_writer_rejects_changed_or_noncanonical_runtime(
             api_bundle_hook=None,
         )
 
-    with pytest.raises(ValueError, match="currently supports LC only"):
+    missing_color = _process_artifact(tmp_path, runtime_name="missing-color.pacbin")
+    missing_color = replace(
+        missing_color,
+        color_accuracy="nlc",
+        physics={**missing_color.physics, "color_accuracy": "nlc"},
+        selector_policy={
+            **missing_color.selector_policy,
+            "color_coverage": "contracted",
+        },
+    )
+    with pytest.raises(ValueError, match="no color payload"):
         write_schema_v3_artifact(
             tmp_path / "nlc-artifact",
             mode="error",
             source=ModelSource.from_path(source_path),
             compiled_model=compiled,
             configuration=_configuration(),
-            processes=(replace(noncanonical, color_accuracy="nlc"),),
+            processes=(missing_color,),
             timings={},
             api_bundle_hook=None,
         )

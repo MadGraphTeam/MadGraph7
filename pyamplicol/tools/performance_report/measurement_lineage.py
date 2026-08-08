@@ -300,6 +300,11 @@ _SIGNED_ZERO_HELICITY_AGREEMENT_IDS = frozenset(
         for n_final in range(4, 8)
         for process in ("dd-epemzh-jets", "dd-ttzh-jets")
     }
+) | frozenset(
+    {
+        f"matrix-on-the-fly-builtin-sm-lc-n4-{process}-all-flow"
+        for process in ("dd-epemzh-jets", "dd-ttzh-jets")
+    }
 )
 
 _ENVIRONMENT_KEYS = {
@@ -1701,7 +1706,7 @@ def signed_zero_helicity_agreement_closure(
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> tuple[CellSpec, ...]:
-    """Return the exact 40-cell dependent closure of the signed-zero targets."""
+    """Return the exact 42-cell dependent closure of the signed-zero targets."""
 
     closure = _agreement_consumer_closure(
         {
@@ -1715,7 +1720,7 @@ def signed_zero_helicity_agreement_closure(
     } != _SIGNED_ZERO_HELICITY_AGREEMENT_IDS:
         raise MeasurementLineageError(
             "canonical signed-zero agreement closure changed from its reviewed "
-            "40-cell census"
+            "42-cell census"
         )
     return closure
 

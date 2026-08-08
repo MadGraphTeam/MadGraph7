@@ -28,6 +28,11 @@ from pyamplicol.api.protocols import Momenta
 from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path, normalize_relative_path
+from pyamplicol.runtime._color_topology_exact import (
+    apply_exact_color_replay_input_mapping,
+    parse_exact_color_topology_replay,
+    reduce_exact_color_topology_replay,
+)
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime._native_selection import (
     exact_runtime_state_payload,
@@ -468,6 +473,15 @@ class SymbolicaExactExecutor:
             self._physics,
             permutation,
         )
+        self._color_replay = parse_exact_color_topology_replay(
+            self._execution,
+            self._physics,
+            permutation,
+        )
+        if self._lc_replay is not None and self._color_replay is not None:
+            raise ArtifactError(
+                "compiled exact execution cannot combine LC and full-colour replay"
+            )
         self._helicity_plan = _exact_helicity_plan(
             self._execution,
             self._physics,
@@ -540,16 +554,41 @@ class SymbolicaExactExecutor:
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
-            evaluation_points = (
-                points
-                if self._lc_replay is None
-                else tuple(
+            if self._lc_replay is not None:
+                evaluation_points = tuple(
                     _apply_lc_replay_input_mapping(point, entry.input_mapping)
                     for entry in self._lc_replay.entries
                     for point in points
                 )
-            )
-            if self._helicity_plan is None:
+            elif self._color_replay is not None:
+                evaluation_points = tuple(
+                    apply_exact_color_replay_input_mapping(
+                        point, mapping.input_mapping
+                    )
+                    for mapping in self._color_replay.mappings
+                    for point in points
+                )
+            else:
+                evaluation_points = points
+            if self._color_replay is not None:
+                if self._helicity_plan is not None:
+                    raise ArtifactError(
+                        "compiled exact color replay requires the helicity-sum "
+                        "execution"
+                    )
+                amplitudes = tuple(
+                    self._evaluate_point(point, parameters, working_precision)
+                    for point in evaluation_points
+                )
+                values, helicity_ids, color_ids = reduce_exact_color_topology_replay(
+                    amplitudes,
+                    self._color_replay,
+                    len(points),
+                    normalization,
+                    helicities,
+                    color_flows,
+                )
+            elif self._helicity_plan is None:
                 amplitudes = tuple(
                     self._evaluate_point(point, parameters, working_precision)
                     for point in evaluation_points
@@ -611,6 +650,15 @@ class SymbolicaExactExecutor:
         self._execution = execution
         self._physics = physics
         self._lc_replay = _lc_replay_plan(execution, physics, self._permutation)
+        self._color_replay = parse_exact_color_topology_replay(
+            execution,
+            physics,
+            self._permutation,
+        )
+        if self._lc_replay is not None and self._color_replay is not None:
+            raise ArtifactError(
+                "compiled exact execution cannot combine LC and full-colour replay"
+            )
         self._helicity_plan = _exact_helicity_plan(
             execution,
             physics,

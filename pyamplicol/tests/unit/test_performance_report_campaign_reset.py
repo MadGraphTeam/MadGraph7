@@ -70,9 +70,13 @@ def test_reset_cardinality_matches_the_current_catalog() -> None:
         cell.measurement.execution_mode is ExecutionMode.AMPLICOL for cell in cells
     )
 
-    assert EXPECTED_CATALOG_CELL_COUNT == len(cells) == 1962
+    assert EXPECTED_CATALOG_CELL_COUNT == len(cells) == 2162
     assert EXPECTED_AMPLICOL_CELL_COUNT == amplicol == 314
-    assert EXPECTED_NON_AMPLICOL_CELL_COUNT == len(cells) - amplicol == 1648
+    assert EXPECTED_NON_AMPLICOL_CELL_COUNT == len(cells) - amplicol == 1848
+    assert (
+        sum(REPORT_CATALOG.static_na_reason(cell) is not None for cell in cells) == 34
+    )
+    assert sum(REPORT_CATALOG.static_na_reason(cell) is None for cell in cells) == 2128
 
 
 def _contract() -> dict[str, object]:

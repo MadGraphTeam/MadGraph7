@@ -66,6 +66,7 @@ from .dag_types import (
     GenericDAG,
     InteractionNode,
 )
+from .fermion_ordering import apply_fermion_ordering_signs
 
 DAGProgressCallback = Callable[[Mapping[str, str | int]], None]
 
@@ -185,6 +186,9 @@ class GenericDAGCompiler:
             return
         self.progress_callback({"step": step, **details})
 
+    def _apply_fermion_ordering(self, dag: GenericDAG) -> GenericDAG:
+        return apply_fermion_ordering_signs(dag, self.model)
+
     def compile(self, process: CanonicalProcessIR) -> GenericDAG:
         if not isinstance(process, CanonicalProcessIR):
             raise TypeError(
@@ -231,18 +235,20 @@ class GenericDAGCompiler:
             self.max_quark_pairs is not None
             and process_ir.color_endpoints.pair_count > self.max_quark_pairs
         ):
-            return GenericDAG(
-                process=process_ir,
-                color_plan=color_plan,
-                currents=(),
-                sources=(),
-                interactions=(),
-                amplitude_roots=(),
-                truncated=False,
-                helicity_coverage=helicity_coverage,
-                color_coverage=color_coverage,
-                selected_source_helicities=selected_source_helicities,
-                selected_color_sector_ids=selected_color_sector_ids,
+            return self._apply_fermion_ordering(
+                GenericDAG(
+                    process=process_ir,
+                    color_plan=color_plan,
+                    currents=(),
+                    sources=(),
+                    interactions=(),
+                    amplitude_roots=(),
+                    truncated=False,
+                    helicity_coverage=helicity_coverage,
+                    color_coverage=color_coverage,
+                    selected_source_helicities=selected_source_helicities,
+                    selected_color_sector_ids=selected_color_sector_ids,
+                )
             )
         complete_sector_ids = {sector.id for sector in color_plan.sectors}
         color_plan, _missing_sector_ids = _restrict_color_plan(
@@ -445,32 +451,36 @@ class GenericDAGCompiler:
             int(leg.outgoing_pdg or 0) in self.ignored_particle_ids
             for leg in process_ir.legs
         ):
-            return GenericDAG(
-                process=process_ir,
-                color_plan=color_plan,
-                currents=tuple(table.currents),
-                sources=tuple(sources),
-                interactions=(),
-                amplitude_roots=(),
-                truncated=False,
-                helicity_coverage=helicity_coverage,
-                color_coverage=color_coverage,
-                selected_source_helicities=selected_source_helicities,
-                selected_color_sector_ids=selected_color_sector_ids,
+            return self._apply_fermion_ordering(
+                GenericDAG(
+                    process=process_ir,
+                    color_plan=color_plan,
+                    currents=tuple(table.currents),
+                    sources=tuple(sources),
+                    interactions=(),
+                    amplitude_roots=(),
+                    truncated=False,
+                    helicity_coverage=helicity_coverage,
+                    color_coverage=color_coverage,
+                    selected_source_helicities=selected_source_helicities,
+                    selected_color_sector_ids=selected_color_sector_ids,
+                )
             )
 
         if live_state_plan is not None:
-            return self._compile_backward_live_plan(
-                process_ir=process_ir,
-                color_plan=color_plan,
-                table=table,
-                sources=sources,
-                reuse_tracker=reuse_tracker,
-                plan=live_state_plan,
-                global_flip_anchor=global_flip_anchor,
-                helicity_coverage=helicity_coverage,
-                color_coverage=color_coverage,
-                selected_source_helicities=selected_source_helicities,
+            return self._apply_fermion_ordering(
+                self._compile_backward_live_plan(
+                    process_ir=process_ir,
+                    color_plan=color_plan,
+                    table=table,
+                    sources=sources,
+                    reuse_tracker=reuse_tracker,
+                    plan=live_state_plan,
+                    global_flip_anchor=global_flip_anchor,
+                    helicity_coverage=helicity_coverage,
+                    color_coverage=color_coverage,
+                    selected_source_helicities=selected_source_helicities,
+                )
             )
 
         def state_allowed(
@@ -1160,29 +1170,31 @@ class GenericDAGCompiler:
                                             and len(table.currents) > self.max_currents
                                         ):
                                             truncated = True
-                                            return GenericDAG(
-                                                process=process_ir,
-                                                color_plan=color_plan,
-                                                currents=tuple(table.currents),
-                                                sources=tuple(sources),
-                                                interactions=tuple(interactions),
-                                                amplitude_roots=tuple(
-                                                    self._build_amplitude_roots(
-                                                        process_ir,
-                                                        table,
-                                                        color_engine,
-                                                        candidate_splits=closure_candidate_splits,
-                                                    )
-                                                ),
-                                                truncated=truncated,
-                                                helicity_coverage=helicity_coverage,
-                                                color_coverage=color_coverage,
-                                                selected_source_helicities=(
-                                                    selected_source_helicities
-                                                ),
-                                                selected_color_sector_ids=(
-                                                    selected_color_sector_ids
-                                                ),
+                                            return self._apply_fermion_ordering(
+                                                GenericDAG(
+                                                    process=process_ir,
+                                                    color_plan=color_plan,
+                                                    currents=tuple(table.currents),
+                                                    sources=tuple(sources),
+                                                    interactions=tuple(interactions),
+                                                    amplitude_roots=tuple(
+                                                        self._build_amplitude_roots(
+                                                            process_ir,
+                                                            table,
+                                                            color_engine,
+                                                            candidate_splits=closure_candidate_splits,
+                                                        )
+                                                    ),
+                                                    truncated=truncated,
+                                                    helicity_coverage=helicity_coverage,
+                                                    color_coverage=color_coverage,
+                                                    selected_source_helicities=(
+                                                        selected_source_helicities
+                                                    ),
+                                                    selected_color_sector_ids=(
+                                                        selected_color_sector_ids
+                                                    ),
+                                                )
                                             )
 
             if reuse_tracker is not None:
@@ -1234,7 +1246,7 @@ class GenericDAGCompiler:
                 interaction_count=len(dag.interactions),
                 amplitude_count=len(dag.amplitude_roots),
             )
-            return dag
+            return self._apply_fermion_ordering(dag)
         dag = assign_recursive_current_evaluation_reuse(dag, self.model)
         self._report_progress(
             "symmetry-reuse",
@@ -1242,7 +1254,7 @@ class GenericDAGCompiler:
             interaction_count=len(dag.interactions),
             amplitude_count=len(dag.amplitude_roots),
         )
-        return dag
+        return self._apply_fermion_ordering(dag)
 
     def _compile_backward_live_plan(
         self,

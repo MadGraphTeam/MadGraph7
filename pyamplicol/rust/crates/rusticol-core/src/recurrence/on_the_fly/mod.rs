@@ -113,7 +113,7 @@ pub use family::OnTheFlyQueryFamilyCensusV1;
 pub use family::on_the_fly_query_family_census_v1;
 pub(crate) use family::{
     OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1,
-    OnTheFlyQueryFamilyHandleV1, QueryFamilyTraceInput,
+    OnTheFlyQueryFamilyHandleV1, QueryFamilyTraceInput, build_streamed_query_family_candidate_v1,
 };
 pub(crate) use interpreter::{
     OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
@@ -129,7 +129,7 @@ pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
 pub(crate) use seed_codec::decode_on_the_fly_process_seed_v1;
 pub(crate) use source_builder::{
     build_on_the_fly_process_seed_v1, build_on_the_fly_process_seeds_v1,
-    parse_on_the_fly_process_seed_projection_v1,
+    parse_on_the_fly_process_seed_projection_v1, validate_on_the_fly_source_mass_bindings_v1,
 };
 #[cfg(test)]
 pub(crate) use source_seed::scalar_adapter_test_seed;
@@ -220,6 +220,75 @@ pub(crate) fn prepare_on_the_fly_process_v1(
 
 fn resolve_indexed_query_results<T>(outcomes: Vec<RusticolResult<T>>) -> RusticolResult<Vec<T>> {
     outcomes.into_iter().collect()
+}
+
+/// One cold, bounded construction pool reused across every streamed query
+/// chunk.  Keeping the pool outside the chunk loop avoids creating O(H x S)
+/// thread pools while retaining deterministic indexed outcomes.
+pub(crate) struct OnTheFlyQueryConstructionPoolV1 {
+    pool: Option<rayon::ThreadPool>,
+    thread_count: usize,
+}
+
+impl OnTheFlyQueryConstructionPoolV1 {
+    pub(crate) fn new(thread_count: usize) -> RusticolResult<Self> {
+        if thread_count == 0 {
+            return Err(invalid(
+                "on-the-fly query construction thread count must be positive",
+            ));
+        }
+        let pool = (thread_count > 1)
+            .then(|| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(thread_count)
+                    .build()
+                    .map_err(|error| {
+                        RusticolError::internal(format!(
+                            "could not create bounded on-the-fly query construction pool: {error}"
+                        ))
+                    })
+            })
+            .transpose()?;
+        Ok(Self { pool, thread_count })
+    }
+
+    pub(crate) const fn chunk_capacity(&self) -> usize {
+        self.thread_count
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_chunk(
+        &self,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+        seed: &OnTheFlyProcessSeedV1,
+        coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
+        grammar: &PreparedOnTheFlyGrammarV1,
+        queries: Vec<DecodedLcQueryV1>,
+    ) -> RusticolResult<Vec<OnTheFlySelectedQueryOutcomeV1>> {
+        if queries.len() > self.thread_count {
+            return Err(invalid(
+                "streamed on-the-fly query chunk exceeds its bounded construction pool",
+            ));
+        }
+        let build = |query| {
+            build_selected_lc_query_trace_impl(
+                templates,
+                direct,
+                seed,
+                coupling_policy,
+                grammar,
+                query,
+                true,
+            )
+        };
+        let outcomes = if let Some(pool) = &self.pool {
+            pool.install(|| queries.into_par_iter().map(build).collect::<Vec<_>>())
+        } else {
+            queries.into_iter().map(build).collect::<Vec<_>>()
+        };
+        resolve_indexed_query_results(outcomes)
+    }
 }
 
 fn build_selected_lc_query_family_serial_v1(
@@ -479,7 +548,9 @@ fn build_selected_lc_trace_impl(
     build_forward_currents(
         templates,
         &grammar.transitions,
+        &grammar.contact_orbits,
         seed,
+        &grammar.fermion_ordering,
         query.closure_anchor_slot,
         coupling_limits,
         &grammar.propagators,
@@ -495,8 +566,15 @@ fn build_selected_lc_trace_impl(
                 .checked_add(count)
                 .ok_or_else(|| invalid("constructed contribution count exceeds usize"))
         })?;
-    let Some(selected_closures) =
-        build_selected_closures(&grammar.closures, seed, query, &colors, &currents)?
+    let Some(selected_closures) = build_selected_closures(
+        templates,
+        &grammar.closures,
+        seed,
+        &grammar.fermion_ordering,
+        query,
+        &colors,
+        &currents,
+    )?
     else {
         return Ok(None);
     };
@@ -625,8 +703,16 @@ mod structural_zero_tests {
 
         currents.clear();
         let complete = prepared_closures(&templates, &catalog).unwrap();
-        let error =
-            build_selected_closures(&complete, &seed, &query, &colors, &currents).unwrap_err();
+        let error = build_selected_closures(
+            &templates,
+            &complete,
+            &seed,
+            &grammar.fermion_ordering,
+            &query,
+            &colors,
+            &currents,
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("closure anchor"));
     }
 }

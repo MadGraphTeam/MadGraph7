@@ -4,8 +4,10 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import math
 import os
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from copy import deepcopy
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
+    ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
@@ -36,8 +39,15 @@ from pyamplicol.api.results import (
     ProcessPhysics,
     ReductionGroup,
     ResolvedEvaluation,
+    WarmUpResult,
 )
 from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
+from pyamplicol.reporting import (
+    ProgressEnd,
+    ProgressSink,
+    ProgressStart,
+    ProgressUpdate,
+)
 from pyamplicol.runtime._native_selection import native_process_selection
 
 if TYPE_CHECKING:
@@ -52,6 +62,20 @@ if TYPE_CHECKING:
 _Accuracy = Literal["lc", "nlc", "full"]
 _ParticleState = Literal["incoming", "outgoing"]
 _ExecutionMode = Literal["compiled", "eager", "recurrence", "on-the-fly"]
+
+_ON_THE_FLY_WARM_UP_TASK_ID = "runtime-warm-up"
+_ON_THE_FLY_WARM_UP_STAGES = (
+    "process_preparation",
+    "query_family",
+    "family_finalization",
+    "first_evaluation",
+)
+_ON_THE_FLY_WARM_UP_STAGE_LABELS = {
+    "process_preparation": "Preparing the OTF process",
+    "query_family": "Constructing the OTF query family",
+    "family_finalization": "Finalizing the OTF family",
+    "first_evaluation": "Evaluating the warm-up point",
+}
 
 
 def _manifest_integer(value: object, description: str) -> int:
@@ -119,6 +143,237 @@ def _normalized_selectors(values: Sequence[str] | None) -> tuple[str, ...] | Non
     if values is None:
         return None
     return tuple(values) or None
+
+
+def _warm_up_integer(
+    payload: Mapping[str, object],
+    name: str,
+    *,
+    optional: bool = False,
+) -> int | None:
+    value = payload.get(name)
+    if optional and value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        qualifier = "non-negative integer"
+        if optional:
+            qualifier += " or null"
+        raise ArtifactError(f"native OTF warm-up {name} must be a {qualifier}")
+    return value
+
+
+def _warm_up_seconds(payload: Mapping[str, object], name: str) -> float:
+    value = payload.get(name)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or value < 0.0
+    ):
+        raise ArtifactError(
+            f"native OTF warm-up {name} must be finite and non-negative"
+        )
+    return float(value)
+
+
+def _warm_up_payload(raw: object, description: str) -> Mapping[str, object]:
+    try:
+        payload = json.loads(str(raw))
+    except (TypeError, ValueError) as exc:
+        raise ArtifactError(
+            f"native OTF warm-up {description} is invalid: {exc}"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise ArtifactError(f"native OTF warm-up {description} must be an object")
+    if payload.get("schema_version") != 1:
+        raise ArtifactError(
+            f"native OTF warm-up {description} has an invalid schema version"
+        )
+    return payload
+
+
+def _warm_up_result(raw: object) -> WarmUpResult:
+    payload = _warm_up_payload(raw, "result")
+    if payload.get("first_evaluation_completed") is not True:
+        raise ArtifactError(
+            "native OTF warm-up first_evaluation_completed must be true"
+        )
+    already_warm = payload.get("already_warm")
+    if not isinstance(already_warm, bool):
+        raise ArtifactError("native OTF warm-up already_warm must be a boolean")
+    query_count = _warm_up_integer(payload, "query_count")
+    warmed_query_count = _warm_up_integer(payload, "warmed_query_count")
+    current_rss_bytes = _warm_up_integer(payload, "current_rss_bytes", optional=True)
+    peak_rss_bytes = _warm_up_integer(payload, "peak_rss_bytes", optional=True)
+    assert query_count is not None
+    assert warmed_query_count is not None
+    try:
+        return WarmUpResult(
+            elapsed_seconds=_warm_up_seconds(payload, "elapsed_seconds"),
+            query_count=query_count,
+            warmed_query_count=warmed_query_count,
+            current_rss_bytes=current_rss_bytes,
+            peak_rss_bytes=peak_rss_bytes,
+            already_warm=already_warm,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ArtifactError(f"native OTF warm-up result is invalid: {exc}") from exc
+
+
+class _OnTheFlyWarmUpProgress:
+    """Translate throttled native snapshots into the shared progress protocol."""
+
+    def __init__(
+        self,
+        sink: ProgressSink,
+        *,
+        process: object,
+        color_accuracy: object,
+    ) -> None:
+        self._sink = sink
+        self._active_stage: str | None = None
+        self._process = process if isinstance(process, str) else None
+        self._color_accuracy = (
+            color_accuracy if isinstance(color_accuracy, str) else None
+        )
+        details: dict[str, str] = {"execution_mode": "on-the-fly"}
+        if self._process:
+            details["process"] = self._process
+        if self._color_accuracy:
+            details["color_accuracy"] = self._color_accuracy
+        self._sink.emit(
+            ProgressStart(
+                _ON_THE_FLY_WARM_UP_TASK_ID,
+                "Warming the on-the-fly runtime",
+                total=len(_ON_THE_FLY_WARM_UP_STAGES),
+                unit="phases",
+                details=details,
+            )
+        )
+
+    def __call__(self, raw: object) -> bool:
+        payload = _warm_up_payload(raw, "progress event")
+        kind = payload.get("kind")
+        if kind not in {"start", "update", "end"}:
+            raise ArtifactError("native OTF warm-up progress kind is invalid")
+        stage = payload.get("stage")
+        if stage not in _ON_THE_FLY_WARM_UP_STAGES:
+            raise ArtifactError("native OTF warm-up progress stage is invalid")
+        assert isinstance(stage, str)
+        completed = _warm_up_integer(payload, "completed")
+        total = _warm_up_integer(payload, "total")
+        workers = _warm_up_integer(payload, "workers")
+        current_rss_bytes = _warm_up_integer(
+            payload, "current_rss_bytes", optional=True
+        )
+        peak_rss_bytes = _warm_up_integer(payload, "peak_rss_bytes", optional=True)
+        assert completed is not None
+        assert total is not None
+        assert workers is not None
+        if completed > total:
+            raise ArtifactError(
+                "native OTF warm-up progress completed count exceeds its total"
+            )
+        if (
+            current_rss_bytes is not None
+            and peak_rss_bytes is not None
+            and current_rss_bytes > peak_rss_bytes
+        ):
+            raise ArtifactError("native OTF warm-up current RSS exceeds its peak RSS")
+        elapsed_seconds = _warm_up_seconds(payload, "elapsed_seconds")
+        message = payload.get("message")
+        if message is not None and not isinstance(message, str):
+            raise ArtifactError(
+                "native OTF warm-up progress message must be a string or null"
+            )
+        stage_index = _ON_THE_FLY_WARM_UP_STAGES.index(stage)
+        if stage != self._active_stage:
+            self._finish_active_stage(success=True)
+            self._active_stage = stage
+            self._sink.emit(
+                ProgressUpdate(
+                    _ON_THE_FLY_WARM_UP_TASK_ID,
+                    completed=stage_index,
+                    total=len(_ON_THE_FLY_WARM_UP_STAGES),
+                    message=_ON_THE_FLY_WARM_UP_STAGE_LABELS[stage],
+                )
+            )
+            self._sink.emit(
+                ProgressStart(
+                    self._stage_task_id(stage),
+                    _ON_THE_FLY_WARM_UP_STAGE_LABELS[stage],
+                    total=total,
+                    parent_task_id=_ON_THE_FLY_WARM_UP_TASK_ID,
+                    unit="queries" if stage == "query_family" else "steps",
+                    details={"stage": stage},
+                )
+            )
+        details: dict[str, str | int | float] = {
+            "stage": stage,
+            "workers": workers,
+            "elapsed_seconds": elapsed_seconds,
+        }
+        if current_rss_bytes is not None:
+            details["native_current_rss_bytes"] = current_rss_bytes
+        if peak_rss_bytes is not None:
+            details["native_peak_rss_bytes"] = peak_rss_bytes
+        self._sink.emit(
+            ProgressUpdate(
+                self._stage_task_id(stage),
+                completed=completed,
+                total=total,
+                message=message,
+                details=details,
+            )
+        )
+        return True
+
+    def finish(
+        self,
+        *,
+        success: bool,
+        elapsed_seconds: float | None = None,
+        message: str | None = None,
+    ) -> None:
+        self._finish_active_stage(success=success, message=message)
+        if success:
+            self._sink.emit(
+                ProgressUpdate(
+                    _ON_THE_FLY_WARM_UP_TASK_ID,
+                    completed=len(_ON_THE_FLY_WARM_UP_STAGES),
+                    total=len(_ON_THE_FLY_WARM_UP_STAGES),
+                    message="warm-up complete",
+                )
+            )
+        self._sink.emit(
+            ProgressEnd(
+                _ON_THE_FLY_WARM_UP_TASK_ID,
+                success=success,
+                message=message,
+                elapsed_seconds=elapsed_seconds,
+            )
+        )
+
+    @staticmethod
+    def _stage_task_id(stage: str) -> str:
+        return f"{_ON_THE_FLY_WARM_UP_TASK_ID}:{stage}"
+
+    def _finish_active_stage(
+        self,
+        *,
+        success: bool,
+        message: str | None = None,
+    ) -> None:
+        if self._active_stage is None:
+            return
+        self._sink.emit(
+            ProgressEnd(
+                self._stage_task_id(self._active_stage),
+                success=success,
+                message=message,
+            )
+        )
+        self._active_stage = None
 
 
 def _selected_manifest_process(
@@ -531,11 +786,18 @@ class RusticolRuntimeBackend:
                 EAGER_RUNTIME_LAYOUT_F64_CAPABILITY in capabilities
             )
         elif self._execution_mode == "on-the-fly":
-            expected = {
+            color_capabilities = {
                 ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
-                ON_THE_FLY_RUNTIME_CAPABILITY,
+                ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             }
-            if len(capabilities) != len(expected) or set(capabilities) != expected:
+            selected_color_capabilities = set(capabilities).intersection(
+                color_capabilities
+            )
+            if (
+                len(capabilities) != 2
+                or ON_THE_FLY_RUNTIME_CAPABILITY not in capabilities
+                or len(selected_color_capabilities) != 1
+            ):
                 raise CompatibilityError(
                     "on-the-fly artifact has an invalid runtime capability contract"
                 )
@@ -561,6 +823,76 @@ class RusticolRuntimeBackend:
                 f"artifact requires runtime capability {required!r}, but the "
                 "installed native runtime does not accept per-point selectors"
             )
+
+    def warm_up(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int = 16,
+        progress: ProgressSink | None = None,
+    ) -> WarmUpResult:
+        """Warm one compact OTF selector family from exactly one f64 point."""
+
+        if self._execution_mode != "on-the-fly":
+            raise CompatibilityError(
+                "explicit warm-up is available only for on-the-fly runtimes"
+            )
+        self._require_supported_precision(precision)
+        if len(momenta) != 1:
+            raise EvaluationError(
+                "on-the-fly warm-up requires exactly one phase-space point"
+            )
+        helicities = _normalized_selectors(helicities)
+        color_flows = _normalized_selectors(color_flows)
+        color_accuracy = self._native_metadata.get("color_accuracy")
+        if not isinstance(color_accuracy, str):
+            color_accuracy = getattr(self._runtime, "color_accuracy", None)
+        if color_accuracy not in {"lc", "nlc", "full"}:
+            raise ArtifactError(
+                "native on-the-fly runtime metadata has invalid color accuracy"
+            )
+        if color_accuracy != "lc" and color_flows is not None:
+            raise EvaluationError(
+                "NLC/full on-the-fly warm-up does not expose color-flow selectors"
+            )
+        color_flows = self._resolve_color_flows(color_flows)
+        operation = getattr(self._runtime, "_on_the_fly_warm_up_f64_json", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "installed native runtime has no explicit on-the-fly warm-up binding"
+            )
+        reporter = (
+            None
+            if progress is None
+            else _OnTheFlyWarmUpProgress(
+                progress,
+                process=self._native_metadata.get("process"),
+                color_accuracy=color_accuracy,
+            )
+        )
+        try:
+            raw = _invoke(
+                self._native_module,
+                operation,
+                momenta,
+                helicity_ids=helicities,
+                color_flow_ids=color_flows,
+                progress_callback=reporter,
+            )
+            result = _warm_up_result(raw)
+        except Exception as exc:
+            if reporter is not None:
+                # Cleanup reporting must not replace the native/callback error.
+                with suppress(Exception):
+                    reporter.finish(success=False, message=str(exc))
+            raise
+        if reporter is not None:
+            # The native warm-up is committed; terminal reporting cannot undo it.
+            with suppress(Exception):
+                reporter.finish(success=True, elapsed_seconds=result.elapsed_seconds)
+        return result
 
     def evaluate(
         self,

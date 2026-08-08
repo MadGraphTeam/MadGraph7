@@ -17,6 +17,7 @@ mod direct_pacbin;
 mod direct_plan;
 pub mod direct_runtime;
 mod exact;
+mod fermion_ordering;
 mod input;
 mod layout;
 pub(crate) mod on_the_fly;
@@ -66,6 +67,7 @@ pub use direct_pacbin::{
     load_recurrence_direct_plan_pacbin, write_recurrence_direct_plan_pacbin,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
+pub(crate) use direct_plan::DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
 pub use direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_NONE_U32,
     DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,

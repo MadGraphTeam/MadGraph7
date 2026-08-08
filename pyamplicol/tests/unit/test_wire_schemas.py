@@ -175,10 +175,23 @@ def test_artifact_schema_accepts_a_positive_v3_manifest() -> None:
     ).validate(_valid_manifest())
 
 
+def test_artifact_schema_accepts_native_identity_without_git_revision() -> None:
+    manifest = _valid_manifest()
+    manifest["producer"].pop("git_revision")
+    manifest["producer"]["native_build_inputs_sha256"] = "3" * 64
+
+    jsonschema.Draft202012Validator(
+        _schema("artifact-manifest-v3.schema.json")
+    ).validate(manifest)
+
+
 @pytest.mark.parametrize(
     "mutation",
     (
         lambda value: value["producer"].update(git_revision="4" * 64),
+        lambda value: value["producer"].update(
+            native_build_inputs_sha256="4" * 63 + "z"
+        ),
         lambda value: value["payloads"][0].update(path="../escape"),
         lambda value: value["payloads"][0].update(
             role="configuration-requested",

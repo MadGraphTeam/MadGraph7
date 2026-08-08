@@ -347,8 +347,8 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
     )
     monkeypatch.setattr(
         artifact_writer,
-        "active_native_source_identity",
-        lambda: (source_revision, native_inputs),
+        "active_native_build_inputs_sha256",
+        lambda: native_inputs,
     )
     signatures = {
         10: "a" * 64,

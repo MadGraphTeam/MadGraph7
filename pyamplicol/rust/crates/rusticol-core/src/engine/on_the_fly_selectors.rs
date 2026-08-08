@@ -424,6 +424,28 @@ impl OnTheFlyCompactSelectorAdapterV1 {
         self.color_count
     }
 
+    /// Decode one structural query directly from compact ordinals.
+    ///
+    /// Contracted NLC/full execution has a singleton public color axis, but
+    /// evaluates its authenticated structural owner basis before applying the
+    /// color metric.  This cold adapter keeps those decoded queries transient
+    /// instead of retaining flow strings, traces, or a dense public table.
+    pub(super) fn decoded_query_at(
+        &self,
+        seed: &OnTheFlyProcessSeedV1,
+        helicity_ordinal: usize,
+        structural_color_ordinal: usize,
+    ) -> RusticolResult<DecodedLcQueryV1> {
+        let public_helicities = self.helicity_at(helicity_ordinal)?;
+        let (_, selector) = self.color_at(structural_color_ordinal)?;
+        DecodedLcQueryV1::new(
+            seed,
+            self.external_permutation.to_vec(),
+            &public_helicities,
+            selector,
+        )
+    }
+
     pub(super) fn parse_helicity_id(&self, value: &str) -> RusticolResult<Box<[i32]>> {
         let payload = value
             .strip_prefix("h:")
@@ -1096,14 +1118,9 @@ impl OnTheFlyLazySelectionV1<'_> {
             color_position,
             "color",
         )?;
-        let public_helicities = self.adapter.helicity_at(helicity_ordinal)?;
-        let (_, selector) = self.adapter.color_at(color_ordinal)?;
-        let query = DecodedLcQueryV1::new(
-            self.seed,
-            self.adapter.external_permutation.to_vec(),
-            &public_helicities,
-            selector,
-        )?;
+        let query = self
+            .adapter
+            .decoded_query_at(self.seed, helicity_ordinal, color_ordinal)?;
         OnTheFlyLcQueryRequestV1::new(
             query,
             vec![OnTheFlyLcReductionTargetV1::new(
@@ -1468,6 +1485,12 @@ const fn adjoint_labels_len(values: &[u32]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::SemanticDigest;
+    use crate::recurrence::on_the_fly::scalar_adapter_test_seed;
+
+    fn digest(byte: u8) -> SemanticDigest {
+        SemanticDigest::new([byte; 32]).unwrap()
+    }
 
     fn adapter(
         roles: &[(u32, OnTheFlyExternalColorRoleV1, &[i32])],
@@ -1587,6 +1610,21 @@ mod tests {
         assert_eq!(canonical_helicity_id(&[-1, 0, 1]), "h:-1,+0,+1");
         assert_eq!(canonical_color_id(&[]), "flow:singlet");
         assert_eq!(canonical_color_id(&[2, 5, 1]), "flow:2,5,1");
+    }
+
+    #[test]
+    fn direct_ordinal_decoder_matches_the_existing_lc_query_contract() {
+        let seed = scalar_adapter_test_seed(digest(1), digest(2), digest(3), digest(4)).unwrap();
+        let selector = OnTheFlyCompactSelectorAdapterV1::from_seed(
+            &seed,
+            OnTheFlyLcSelectorPolicyV1::complete(None, false),
+        )
+        .unwrap();
+        let decoded = selector.decoded_query_at(&seed, 0, 0).unwrap();
+        let expected =
+            DecodedLcQueryV1::new(&seed, vec![0, 1], &[0, 0], OnTheFlyLcSelectorV1::Singlet)
+                .unwrap();
+        assert_eq!(decoded, expected);
     }
 
     #[test]

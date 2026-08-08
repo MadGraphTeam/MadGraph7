@@ -1141,6 +1141,8 @@ def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
         assert (packaged / "qq_z6g_recurrence_jit_o2.toml").is_file()
         assert (packaged / "qq_z6g_compiled_jit_o3.toml").is_file()
         assert (packaged / "qq_z6g_eager_jit_o2.toml").is_file()
+        assert (packaged / "otf_pp_zjj.toml").is_file()
+        assert (packaged / "python/otf_pp_zjj_warm_up.py").is_file()
         assert (packaged / "native" / "runtime.cpp").is_file()
         assert (packaged / "all_options.toml").read_bytes() == (
             overlay / "examples" / "all_options.toml"

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from os import PathLike
 from typing import Literal, TypeAlias
 
@@ -205,6 +205,13 @@ class Runtime:
     def physics(self) -> ProcessPhysics: ...
     def metadata_json(self) -> str: ...
     def physics_json(self) -> str: ...
+    def _on_the_fly_warm_up_f64_json(
+        self,
+        momenta: Momenta,
+        helicity_ids: Sequence[str] | None = None,
+        color_flow_ids: Sequence[str] | None = None,
+        progress_callback: Callable[[str], bool | None] | None = None,
+    ) -> str: ...
     def evaluate(
         self,
         momenta: Momenta,

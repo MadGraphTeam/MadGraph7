@@ -9,19 +9,28 @@ schema-v3 artifact from Python, C11, C++17, Fortran 2008, or Rust 2021.
 
 Start with:
 
-1. [Installation](installation.md) for binary-wheel, source, retained-wheel,
+1. [Get started: a gentle walkthrough](gentle-walkthrough.md) for a
+   MadGraph-familiar, copy-paste tour of generation, process outputs, inspection,
+   evaluation, profiling, Python, and the native APIs.
+2. [LC workloads and execution modes](lc-workloads-and-execution-modes.md) for
+   choosing topology replay versus all-flow union, comparing recurrence,
+   compiled, eager, and OTF, and planning an explicit OTF warm-up.
+3. [Profiling campaign: from measurements to the PDF](profiling-campaign-walkthrough.md)
+   for launching, stopping and resuming a validated scan, retaining its
+   evidence, publishing the report, and reading the “Best vs AmpliCol” matrix.
+4. [Installation](installation.md) for binary-wheel, source, retained-wheel,
    and contributor workflows.
-2. [Configuration](configuration.md) for the primary run card, direct flags,
+5. [Configuration](configuration.md) for the primary run card, direct flags,
    overrides, color modes, and evaluator choices.
-3. [Models And Processes](models.md) for JSON/UFO inputs, multiprocess
+6. [Models And Processes](models.md) for JSON/UFO inputs, multiprocess
    expansion, the built-in compatibility model, and supported UFO features.
-4. [Runtime](runtime.md) for total/resolved evaluation, selectors, genuine UFO
+7. [Runtime](runtime.md) for total/resolved evaluation, selectors, genuine UFO
    parameter updates, benchmarking, and artifact trust.
-5. [Native SDK](native-sdk.md) for generated C11, C++17, Fortran 2008, and Rust
+8. [Native SDK](native-sdk.md) for generated C11, C++17, Fortran 2008, and Rust
    2021 drivers and the installed static SDK.
-6. [Symbolica Licensing](symbolica.md) for restricted generation and the
+9. [Symbolica Licensing](symbolica.md) for restricted generation and the
    Symbolica-independent direct-JIT f64 runtime path.
-7. [Release Status](release-status.md) for the tagged and validated `0.1.1`
+10. [Release Status](release-status.md) for the tagged and validated `0.1.1`
    artifacts, TestPyPI availability, and the pending PyPI upload.
 
 Every packaged card and source example is indexed in

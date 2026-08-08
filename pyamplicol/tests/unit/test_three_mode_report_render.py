@@ -13,6 +13,7 @@ from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_V2_ABI,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
     STRICT_ABSOLUTE_TOLERANCE,
     incoming_agreement_edges,
 )
@@ -35,7 +36,10 @@ from tools.performance_report.campaign_policy import (
     dependency_reference,
     policy_censor_measurement,
 )
-from tools.performance_report.catalog import REPORT_CATALOG
+from tools.performance_report.catalog import (
+    MADGRAPH_FULL_COMPARISON_VIEWS,
+    REPORT_CATALOG,
+)
 from tools.performance_report.models import (
     Accuracy,
     ExecutionMode,
@@ -51,6 +55,7 @@ from tools.performance_report.render import (
     render_all_tables,
     render_all_z_ladders,
     render_best_mode_table,
+    render_matrix_comparison_table,
     render_matrix_table,
     render_scalar_ladder,
     render_z_ladder,
@@ -229,7 +234,10 @@ def _ok_measurement(
         if execution_mode is ExecutionMode.RECURRENCE
         else "c" * 64
     )
-    if execution_mode is ExecutionMode.ON_THE_FLY:
+    if (
+        execution_mode is ExecutionMode.ON_THE_FLY
+        and cell.measurement.accuracy is Accuracy.LC
+    ):
         validation[OTF_RECURRENCE_AUTHORITY_VALIDATION_FIELD] = {
             "authority": {"artifact_id": "b" * 64},
         }
@@ -593,12 +601,23 @@ def _memory_censor(cell) -> dict[str, object]:
     )
 
 
-def test_all_fifteen_matrices_render_in_catalog_order(reset_caches) -> None:
+def test_nineteen_matrices_render_in_catalog_and_comparison_order(
+    reset_caches,
+) -> None:
     rendered = render_all_matrix_tables(reset_caches)
-    expected = [dataset.table_name for dataset in REPORT_CATALOG.matrix_datasets]
+    expected = [
+        dataset.table_name
+        for dataset in REPORT_CATALOG.matrix_datasets
+        if dataset.baseline.execution_mode is not ExecutionMode.MADGRAPH
+    ] + [view.table_name for view in MADGRAPH_FULL_COMPARISON_VIEWS]
 
-    assert len(rendered) == 15
+    assert len(rendered) == 19
     assert list(rendered) == expected
+    assert not {
+        dataset.table_name
+        for dataset in REPORT_CATALOG.matrix_datasets
+        if dataset.baseline.execution_mode is ExecutionMode.MADGRAPH
+    } & set(rendered)
     lc_tex = next(
         rendered[dataset.table_name]
         for dataset in REPORT_CATALOG.matrix_datasets
@@ -646,6 +665,166 @@ def test_all_fifteen_matrices_render_in_catalog_order(reset_caches) -> None:
             line for line in tex.splitlines() if not line.startswith(r"\providecommand")
         )
         assert all(macro not in table_body for macro in obsolete_clock_macros)
+
+
+def test_madgraph_views_join_shared_reference_without_copying_measurements(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    view = next(
+        item
+        for item in MADGRAPH_FULL_COMPARISON_VIEWS
+        if item.candidate_dataset_id == "matrix_recurrence_ufo_sm_full"
+    )
+    baseline_cache = _cache_by_dataset(caches, view.baseline_dataset_id)
+    candidate_cache = _cache_by_dataset(caches, view.candidate_dataset_id)
+    _set_ok(
+        baseline_cache,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=8.0,
+        wall=4.0e-6,
+        execution=3.0e-6,
+    )
+    _set_ok(
+        candidate_cache,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+    baseline_measurement = next(
+        entry["measurement"]
+        for entry in baseline_cache["entries"]
+        if entry["process_key"] == "dd_z_jets" and entry["n_final"] == 1
+    )
+    candidate_measurement = next(
+        entry["measurement"]
+        for entry in candidate_cache["entries"]
+        if entry["process_key"] == "dd_z_jets" and entry["n_final"] == 1
+    )
+
+    dataset = REPORT_CATALOG.dataset(view.candidate_dataset_id)
+    joined = BaselineCandidateAdapter(caches).matrix_cell(
+        dataset,
+        REPORT_CATALOG.process_families[0],
+        1,
+        baseline_dataset_id=view.baseline_dataset_id,
+    )
+    tex = render_matrix_comparison_table(view, caches)
+
+    assert joined.workloads[0].baseline is baseline_measurement
+    assert joined.workloads[0].candidate is candidate_measurement
+    assert r"\subsection{UFO-SM recurrence JIT O2 versus MadGraph full-colour}" in tex
+    assert r"\texttt{8.00}" in tex
+    assert r"\bestmoderatio{ReportGreen}{0.500}" in tex
+    assert "MadGraph standalone is the authoritative full-colour" in tex
+
+
+def test_only_amplicol_generation_turns_red_for_legacy_mismatch(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    candidate = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_nlc",
+    )
+    _set_ok(
+        baseline,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=100.0e-6,
+        execution=90.0e-6,
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=2.0,
+        wall=50.0e-6,
+        execution=40.0e-6,
+    )
+    measurement = next(
+        entry["measurement"]
+        for entry in candidate["entries"]
+        if entry["process_key"] == "dd_z_jets" and entry["n_final"] == 1
+    )
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+
+    dataset = REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_nlc")
+    before = render_matrix_table(dataset, caches)
+    assert r"\textcolor{ReportRed}{\texttt{4.00}}" not in before
+
+    validation["pointwise"]["status"] = ResultStatus.VALIDATION_FAILED.value
+    validation["legacy_amplicol_comparison"] = {
+        "status": "mismatch",
+        "pointwise": {"status": ResultStatus.VALIDATION_FAILED.value},
+    }
+    tex = render_matrix_table(dataset, caches)
+
+    assert r"\textcolor{ReportRed}{\texttt{4.00}}" in tex
+    assert r"\textcolor{ReportRed}{\texttt{100}}" not in tex
+    assert r"\matrixstatus{ReportRed}{validation failed}" not in tex
+    assert tex.replace(
+        r"\textcolor{ReportRed}{\texttt{4.00}}",
+        r"\texttt{4.00}",
+    ) == before
+
+
+def test_best_mode_inherits_legacy_mismatch_from_recurrence_bridge(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    recurrence = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_nlc",
+    )
+    compiled = _cache_by_dataset(
+        caches,
+        "matrix_compiled_builtin_sm_nlc",
+    )
+    for cache, generation, wall in (
+        (baseline, 4.0, 100.0e-6),
+        (recurrence, 3.0, 60.0e-6),
+        (compiled, 2.0, 50.0e-6),
+    ):
+        _set_ok(
+            cache,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+            generation=generation,
+            wall=wall,
+            execution=0.8 * wall,
+        )
+
+    before = render_best_mode_table(Accuracy.NLC, caches)
+    recurrence_measurement = next(
+        entry["measurement"]
+        for entry in recurrence["entries"]
+        if entry["process_key"] == "dd_z_jets" and entry["n_final"] == 1
+    )
+    validation = recurrence_measurement["validation"]
+    validation["pointwise"]["status"] = ResultStatus.VALIDATION_FAILED.value
+    validation["legacy_amplicol_comparison"] = {"status": "mismatch"}
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+
+    assert r"\textcolor{ReportRed}{\texttt{4.00}}" in tex
+    assert r"\textcolor{ReportRed}{\texttt{100}}" not in tex
+    assert tex.replace(
+        r"\textcolor{ReportRed}{\texttt{4.00}}",
+        r"\texttt{4.00}",
+    ) == before
 
 
 def test_identical_quark_line_family_renders_in_every_matrix_block(
@@ -1047,7 +1226,7 @@ def test_summary_statistics_share_fixed_anchors_and_compact_notes(
         r"\makebox[4.2em][l]{#5}"
     )
 
-    assert len(summary_tables) == 22
+    assert len(summary_tables) == 26
     for tex in summary_tables:
         assert summary_column_layout in tex
         assert fixed_slot_layout in tex
@@ -1434,7 +1613,7 @@ def test_best_mode_mixed_generic_outcomes_have_deterministic_labels(
             _set_presentation_outcome(
                 _cache_by_dataset(
                     caches,
-                    f"matrix_{mode.value}_builtin_sm_nlc",
+                    f"matrix_{mode.value.replace('-', '_')}_builtin_sm_nlc",
                 ),
                 process_key="dd_z_jets",
                 n_final=1,
@@ -1825,6 +2004,7 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
         "matrix_compiled_builtin_sm_nlc",
     )
     eager = _cache_by_dataset(caches, "matrix_eager_builtin_sm_nlc")
+    on_the_fly = _cache_by_dataset(caches, "matrix_on_the_fly_builtin_sm_nlc")
     recurrence_entries = recurrence["entries"]
     assert isinstance(recurrence_entries, list)
     for recurrence_entry in recurrence_entries:
@@ -1853,6 +2033,26 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
             X86_EPYC_POLICY,
             "x86_EPYC",
             REPORT_CATALOG.cell(str(eager_entry["cell_id"])),
+            kind=PolicyCensorKind.DEPENDENCY,
+            source_identity=_POLICY_IDENTITY,
+            resources=None,
+            dependencies=(
+                dependency_reference(
+                    recurrence_cell.cell_id,
+                    recurrence_censor,
+                ),
+            ),
+        )
+        on_the_fly_entry = _entry(
+            on_the_fly,
+            process_key=process_key,
+            n_final=1,
+            workload=Workload.CONTRACTED,
+        )
+        on_the_fly_entry["measurement"] = policy_censor_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            REPORT_CATALOG.cell(str(on_the_fly_entry["cell_id"])),
             kind=PolicyCensorKind.DEPENDENCY,
             source_identity=_POLICY_IDENTITY,
             resources=None,
@@ -2708,11 +2908,12 @@ def test_best_mode_missing_candidates_remain_incomplete_under_strict_policy(
         ExecutionMode.RECURRENCE,
         ExecutionMode.COMPILED,
         ExecutionMode.EAGER,
+        ExecutionMode.ON_THE_FLY,
     ):
         entry = _entry(
             _cache_by_dataset(
                 caches,
-                f"matrix_{mode.value}_builtin_sm_nlc",
+                f"matrix_{mode.value.replace('-', '_')}_builtin_sm_nlc",
             ),
             process_key="dd_z_jets",
             n_final=1,
@@ -2736,6 +2937,8 @@ def test_matrix_baseline_labels_follow_dataset_contract(reset_caches) -> None:
     rendered = render_all_matrix_tables(reset_caches)
 
     for dataset in REPORT_CATALOG.matrix_datasets:
+        if dataset.table_name not in rendered:
+            continue
         tex = rendered[dataset.table_name]
         if dataset.candidate.execution_mode in {
             ExecutionMode.RECURRENCE,
@@ -2745,6 +2948,10 @@ def test_matrix_baseline_labels_follow_dataset_contract(reset_caches) -> None:
         else:
             assert "Baseline: recurrence JIT O2" in tex
         assert dataset.title in tex
+    for view in MADGRAPH_FULL_COMPARISON_VIEWS:
+        tex = rendered[view.table_name]
+        assert "Baseline: MadGraph standalone" in tex
+        assert view.title in tex
 
 
 def test_matrix_tables_are_fixed_nonsplittable_blocks(reset_caches) -> None:
@@ -3099,9 +3306,9 @@ def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["required_measurement_count"] == 828
-    assert evidence["rendered_required_measurement_count"] == 828
-    assert evidence["structurally_not_applicable_display_slot_count"] == 405
+    assert evidence["required_measurement_count"] == 1026
+    assert evidence["rendered_required_measurement_count"] == 1026
+    assert evidence["structurally_not_applicable_display_slot_count"] == 486
     assert evidence["not_exposed_display_slot_count"] == 16
     assert evidence["applicable_na_display_slot_count"] == 0
     assert evidence["missing_rendered_cell_count"] == 0
@@ -3117,10 +3324,10 @@ def test_visible_completeness_authenticates_catalog_static_na_slots(
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["declared_measurement_cell_count"] == 1962
-    assert evidence["required_measurement_count"] == 1828
-    assert evidence["catalog_static_na_cell_count"] == 134
-    assert evidence["rendered_catalog_static_na_cell_count"] == 134
+    assert evidence["declared_measurement_cell_count"] == 2162
+    assert evidence["required_measurement_count"] == 2128
+    assert evidence["catalog_static_na_cell_count"] == 34
+    assert evidence["rendered_catalog_static_na_cell_count"] == 34
     assert evidence["applicable_na_display_slot_count"] == 0
     assert evidence["missing_rendered_cell_count"] == 0
 
@@ -4196,7 +4403,7 @@ def test_all_outputs_include_matrices_z_and_scalar_ladders(
 ) -> None:
     rendered = render_all_tables(reset_caches)
 
-    assert len(rendered) == 23
+    assert len(rendered) == 27
     assert "result_validation_summary.tex" in rendered
     assert set(render_all_best_mode_tables(reset_caches)) < set(rendered)
     assert set(render_all_matrix_tables(reset_caches)) < set(rendered)
@@ -4222,6 +4429,16 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
             },
         ),
         (
+            "reference_amplicol_lc",
+            "dd_z_jets",
+            1,
+            Workload.ALL_FLOW,
+            {
+                "status": "ok",
+                "method": "independent-original-amplicol-oracle",
+            },
+        ),
+        (
             "matrix_recurrence_builtin_sm_lc",
             "dd_z_jets",
             1,
@@ -4229,12 +4446,34 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
             {
                 "status": "ok",
                 "pointwise": {
-                    "status": "ok",
-                    "relative_difference": 1.0e-9,
+                    "status": "validation_failed",
+                    "relative_difference": 1.0e-5,
+                    "relative_tolerance": 1.0e-8,
                 },
                 "resolved_sum": {
                     "status": "ok",
                     "maximum_relative_difference": 2.0e-13,
+                },
+            },
+        ),
+        (
+            "matrix_recurrence_builtin_sm_lc",
+            "dd_z_jets",
+            1,
+            Workload.ALL_FLOW,
+            {
+                "status": "ok",
+                "direct_agreements": [
+                    {
+                        "edge_kind": LC_LEGACY_PYAMPLICOL_COMPONENT,
+                        "status": "ok",
+                        "relative_difference": 8.0e-9,
+                        "relative_tolerance": 1.0e-8,
+                    }
+                ],
+                "resolved_sum": {
+                    "status": "ok",
+                    "maximum_relative_difference": 1.0e-13,
                 },
             },
         ),
@@ -4252,6 +4491,38 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
                 "resolved_sum": {
                     "status": "ok",
                     "maximum_relative_difference": 4.0e-14,
+                },
+            },
+        ),
+        (
+            "reference_madgraph_full",
+            "dd_z_jets",
+            1,
+            Workload.CONTRACTED,
+            {
+                "status": "ok",
+                "method": "independent-madgraph-tree-level-oracle",
+            },
+        ),
+        (
+            "matrix_recurrence_ufo_sm_full",
+            "dd_z_jets",
+            1,
+            Workload.CONTRACTED,
+            {
+                "status": "ok",
+                "madgraph_comparison": {
+                    "status": "ok",
+                    "relative_difference": 7.0e-12,
+                    "relative_tolerance": 1.0e-10,
+                },
+                "high_precision": {
+                    "status": "ok",
+                    "relative_difference": 4.0e-14,
+                },
+                "resolved_sum": {
+                    "status": "ok",
+                    "maximum_relative_difference": 7.0e-14,
                 },
             },
         ),
@@ -4303,50 +4574,61 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
 
     assert r"\begin{tabular}{@{}l r r r l@{}}" in tex
     assert summary.expected_by_n == (
-        (1, 68),
-        (2, 202),
-        (3, 224),
-        (4, 334),
-        (5, 305),
-        (6, 201),
+        (1, 80),
+        (2, 250),
+        (3, 278),
+        (4, 418),
+        (5, 389),
+        (6, 219),
         (7, 165),
         (8, 165),
         (9, 164),
     )
-    assert summary.declared_total == 1962
+    assert summary.declared_total == 2162
     assert summary.static_na_by_n == (
-        (1, 4),
-        (2, 16),
-        (3, 18),
-        (4, 28),
-        (5, 28),
-        (6, 10),
+        (1, 0),
+        (2, 0),
+        (3, 0),
+        (4, 0),
+        (5, 0),
+        (6, 4),
         (7, 10),
         (8, 10),
         (9, 10),
     )
-    assert summary.static_na_total == 134
-    assert summary.expected_total == 1828
-    assert summary.passed_total == 4
+    assert summary.static_na_total == 34
+    assert summary.expected_total == 2128
+    assert summary.passed_total == 8
     assert summary.status_counts == (
-        ("not_available", 1824),
-        ("ok", 4),
-        ("static-na", 134),
+        ("not_available", 2120),
+        ("ok", 8),
+        ("static-na", 34),
     )
-    assert summary.oracle_count == 1
-    assert summary.independent_count == 1
-    assert summary.independent_maximum_relative_difference == 1.0e-9
+    assert summary.madgraph_reference_count == 1
+    assert summary.madgraph_comparison_count == 1
+    assert summary.madgraph_comparison_maximum_relative_difference == 7.0e-12
+    assert summary.legacy_reference_count == 2
+    assert summary.legacy_comparison_pass_count == 1
+    assert summary.legacy_comparison_failure_count == 1
+    assert summary.legacy_comparison_maximum_relative_difference == 1.0e-5
     assert summary.cross_mode_count == 1
     assert summary.cross_mode_maximum_relative_difference == 3.0e-13
-    assert summary.resolved_count == 3
+    assert summary.resolved_count == 5
     assert summary.resolved_maximum_relative_difference == 2.0e-13
-    assert summary.high_precision_count == 1
+    assert summary.high_precision_count == 2
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "1962 & 134 & 4" in tex
-    assert "1962 declared cells" in tex
-    assert "1828 measurable cells" in tex
-    assert "134 catalog-authenticated static N/A" in tex
-    assert "539 matrix process/multiplicity positions" in tex
+    assert "2162 & 34 & 8" in tex
+    assert "2162 declared cells" in tex
+    assert "2128 measurable cells" in tex
+    assert "34 catalog-authenticated static N/A" in tex
+    assert "659 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex
+    assert "MadGraph standalone tree-level reference records & 1" in tex
+    assert r"\PAC{} versus MadGraph binary64 (p200; OTF p16) & 1" in tex
+    assert r"original-\AC{} legacy diagnostic records & 2" in tex
+    assert r"\PAC{} versus original-\AC{} legacy diagnostic & 1 pass, 1 mismatch" in tex
+    assert r"relative tolerance of \(10^{-10}\)" in tex
+    assert "legacy mismatch does not invalidate a candidate" in tex
+    assert "independent original" not in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

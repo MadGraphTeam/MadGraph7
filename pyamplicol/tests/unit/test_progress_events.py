@@ -86,6 +86,23 @@ def test_log_progress_includes_recurrence_stage_counters() -> None:
     assert "contribution_count=96112" in line
 
 
+def test_log_progress_renders_native_self_rss_samples() -> None:
+    stream = io.StringIO()
+    StreamProgressSink(stream).emit(
+        ProgressUpdate(
+            "runtime-warm-up:query_family",
+            2,
+            3,
+            details={
+                "native_current_rss_bytes": 256 * 1024**2,
+                "native_peak_rss_bytes": 384 * 1024**2,
+            },
+        )
+    )
+
+    assert "self_rss=0.25/0.38 GiB current/peak" in stream.getvalue()
+
+
 def test_auto_progress_uses_logging_for_non_tty_streams() -> None:
     assert isinstance(progress_sink("auto", stream=io.StringIO()), LoggingProgressSink)
     assert isinstance(progress_sink("tty", stream=io.StringIO()), TtyProgressSink)

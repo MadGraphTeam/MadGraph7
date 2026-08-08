@@ -20,8 +20,8 @@ use crate::recurrence::direct_backend::{
     DirectParameterView, record_direct_executor_error_detail,
 };
 use crate::recurrence::{
-    DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectExecutorRole,
-    DirectFinalizationRow,
+    DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DIRECT_NONE_U32, DirectClosureRow,
+    DirectContributionRow, DirectExecutorRole, DirectFinalizationRow,
 };
 use crate::{RusticolError, RusticolResult};
 use std::cell::{Cell, RefCell};
@@ -94,9 +94,14 @@ struct SymjitDirectExecutorContext {
     output_destinations: Box<[u32]>,
     broadcast_slot_by_binding: Box<[Option<u32>]>,
     broadcast_scalar_by_slot: Box<[u32]>,
+    exact_factor_broadcast_slots: Box<[usize]>,
     workspace: RefCell<PlaneWorkspace>,
     internal_scratch_bytes: Cell<u64>,
     internal_broadcast_bytes: Cell<u64>,
+    #[cfg(test)]
+    invariant_broadcast_resolution_count: Cell<u64>,
+    #[cfg(test)]
+    exact_factor_broadcast_resolution_count: Cell<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -393,6 +398,25 @@ impl LoadedSymjitDirectExecutor {
             };
             broadcast_slot_by_binding.push(Some(slot));
         }
+        let mut exact_factor_broadcast_slots = Vec::new();
+        exact_factor_broadcast_slots
+            .try_reserve_exact(broadcast_scalar_by_slot.len())
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate recurrence exact-factor broadcast catalog: {error}"
+                ))
+            })?;
+        for (slot, &scalar_index) in broadcast_scalar_by_slot.iter().enumerate() {
+            match scalars.get(scalar_index as usize).ok_or_else(|| {
+                RusticolError::integrity("recurrence scalar projection is out of bounds")
+            })? {
+                SymjitDirectScalarProjection::Literal(_)
+                | SymjitDirectScalarProjection::Parameter { .. } => {}
+                SymjitDirectScalarProjection::ExactFactor { .. } => {
+                    exact_factor_broadcast_slots.push(slot);
+                }
+            }
+        }
 
         Ok(Self {
             context: Box::new(SymjitDirectExecutorContext {
@@ -404,9 +428,14 @@ impl LoadedSymjitDirectExecutor {
                 output_destinations: output_destinations.into_boxed_slice(),
                 broadcast_slot_by_binding: broadcast_slot_by_binding.into_boxed_slice(),
                 broadcast_scalar_by_slot: broadcast_scalar_by_slot.into_boxed_slice(),
+                exact_factor_broadcast_slots: exact_factor_broadcast_slots.into_boxed_slice(),
                 workspace: RefCell::new(PlaneWorkspace::default()),
                 internal_scratch_bytes: Cell::new(0),
                 internal_broadcast_bytes: Cell::new(0),
+                #[cfg(test)]
+                invariant_broadcast_resolution_count: Cell::new(0),
+                #[cfg(test)]
+                exact_factor_broadcast_resolution_count: Cell::new(0),
             }),
         })
     }
@@ -473,6 +502,14 @@ impl LoadedSymjitDirectExecutor {
     #[cfg(test)]
     fn broadcast_plane_count(&self) -> usize {
         self.context.broadcast_scalar_by_slot.len()
+    }
+
+    #[cfg(test)]
+    fn broadcast_resolution_counts(&self) -> (u64, u64) {
+        (
+            self.context.invariant_broadcast_resolution_count.get(),
+            self.context.exact_factor_broadcast_resolution_count.get(),
+        )
     }
 }
 
@@ -794,6 +831,16 @@ impl DirectRowRef<'_> {
             _ => None,
         }
     }
+
+    fn accumulates_output(&self) -> bool {
+        match self {
+            Self::Contribution(row) => {
+                row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION == 0
+            }
+            Self::Finalization(_) => false,
+            Self::Closure(_) => true,
+        }
+    }
 }
 
 impl SymjitDirectExecutorContext {
@@ -865,67 +912,81 @@ impl SymjitDirectExecutorContext {
             workspace.row_groups.len() - 1
         };
 
-        for (row_index, typed_row) in rows.iter().enumerate() {
-            let row = typed_row.direct_row_ref();
-            let refresh_bytes =
-                self.refresh_broadcasts(&mut workspace, &row, parameters, factors)?;
-            self.record_internal_broadcast_bytes(refresh_bytes);
-            let (factor_re, factor_im) = exact_factor(&row, factors)?;
-            let use_direct = is_identity_factor(factor_re, factor_im)
-                && workspace
-                    .row_groups
-                    .get(group_index)
-                    .and_then(|group| group.rows.get(row_index))
-                    .is_some_and(|tables| tables.direct.is_some());
-            {
-                let tables = workspace
-                    .row_groups
-                    .get_mut(group_index)
-                    .and_then(|group| group.rows.get_mut(row_index))
-                    .ok_or_else(|| {
-                        RusticolError::internal(
-                            "recurrence cached descriptor table is out of bounds",
-                        )
-                    })?;
-                let table = if use_direct {
-                    tables.direct.as_mut().ok_or_else(|| {
-                        RusticolError::internal(
-                            "recurrence direct-output table disappeared after selection",
-                        )
-                    })?
+        let mut call_scratch_bytes = 0_u64;
+        let mut call_broadcast_bytes = 0_u64;
+        let result = (|| {
+            for (row_index, typed_row) in rows.iter().enumerate() {
+                let row = typed_row.direct_row_ref();
+                let refresh_bytes = if row_index == 0 {
+                    // Preserve scalar-catalog order on the first row while
+                    // refreshing every literal/model parameter exactly once
+                    // for this executor call. Only exact factors can vary on
+                    // later rows.
+                    self.refresh_first_row_broadcasts(&mut workspace, &row, parameters, factors)?
                 } else {
-                    &mut tables.scratch
+                    self.refresh_exact_factor_broadcasts(&mut workspace, &row, parameters, factors)?
                 };
-                self.kernel.execute_table(table, 0, point_count as usize)?;
-            }
-            if !use_direct {
-                apply_outputs(
-                    self.role,
-                    &self.input_planes,
-                    &self.output_destinations,
-                    &workspace.scratch,
-                    point_stride,
+                call_broadcast_bytes = call_broadcast_bytes.saturating_add(refresh_bytes);
+                let (factor_re, factor_im) = exact_factor(&row, factors)?;
+                let use_direct = is_identity_factor(factor_re, factor_im)
+                    && workspace
+                        .row_groups
+                        .get(group_index)
+                        .and_then(|group| group.rows.get(row_index))
+                        .is_some_and(|tables| tables.direct.is_some());
+                {
+                    let tables = workspace
+                        .row_groups
+                        .get_mut(group_index)
+                        .and_then(|group| group.rows.get_mut(row_index))
+                        .ok_or_else(|| {
+                            RusticolError::internal(
+                                "recurrence cached descriptor table is out of bounds",
+                            )
+                        })?;
+                    let table = if use_direct {
+                        tables.direct.as_mut().ok_or_else(|| {
+                            RusticolError::internal(
+                                "recurrence direct-output table disappeared after selection",
+                            )
+                        })?
+                    } else {
+                        &mut tables.scratch
+                    };
+                    self.kernel.execute_table(table, 0, point_count as usize)?;
+                }
+                if !use_direct {
+                    apply_outputs(
+                        &self.input_planes,
+                        &self.output_destinations,
+                        &workspace.scratch,
+                        point_stride,
+                        point_count as usize,
+                        factor_re,
+                        factor_im,
+                        &row,
+                        arena,
+                        momenta,
+                    )?;
+                    let scratch_one_way = internal_plane_bytes(
+                        self.output_destinations.len(),
+                        point_count as usize,
+                        "recurrence scratch traffic",
+                    )?;
+                    call_scratch_bytes =
+                        call_scratch_bytes.saturating_add(scratch_one_way.saturating_mul(2));
+                }
+                call_broadcast_bytes = call_broadcast_bytes.saturating_add(internal_plane_bytes(
+                    broadcast_count,
                     point_count as usize,
-                    factor_re,
-                    factor_im,
-                    &row,
-                    arena,
-                    momenta,
-                )?;
-                let scratch_one_way = internal_plane_bytes(
-                    self.output_destinations.len(),
-                    point_count as usize,
-                    "recurrence scratch traffic",
-                )?;
-                self.record_internal_scratch_bytes(scratch_one_way.saturating_mul(2));
+                    "recurrence broadcast traffic",
+                )?);
             }
-            self.record_internal_broadcast_bytes(internal_plane_bytes(
-                broadcast_count,
-                point_count as usize,
-                "recurrence broadcast traffic",
-            )?);
-        }
-        Ok(())
+            Ok(())
+        })();
+        self.record_internal_scratch_bytes(call_scratch_bytes);
+        self.record_internal_broadcast_bytes(call_broadcast_bytes);
+        result
     }
 
     fn build_cached_row_group<T: DirectTypedRow>(
@@ -1055,7 +1116,7 @@ impl SymjitDirectExecutorContext {
         })
     }
 
-    fn refresh_broadcasts(
+    fn refresh_first_row_broadcasts(
         &self,
         workspace: &mut PlaneWorkspace,
         row: &DirectRowRef<'_>,
@@ -1064,14 +1125,69 @@ impl SymjitDirectExecutorContext {
     ) -> RusticolResult<u64> {
         let mut refresh_bytes = 0_u64;
         for (slot, &index) in self.broadcast_scalar_by_slot.iter().enumerate() {
-            let value = resolve_scalar_value(
-                self.scalars.get(index as usize).ok_or_else(|| {
-                    RusticolError::integrity("recurrence scalar projection is out of bounds")
-                })?,
-                row,
-                parameters,
-                factors,
-            )?;
+            let projection = self.scalars.get(index as usize).ok_or_else(|| {
+                RusticolError::integrity("recurrence scalar projection is out of bounds")
+            })?;
+            #[cfg(test)]
+            match projection {
+                SymjitDirectScalarProjection::Literal(_)
+                | SymjitDirectScalarProjection::Parameter { .. } => {
+                    self.invariant_broadcast_resolution_count.set(
+                        self.invariant_broadcast_resolution_count
+                            .get()
+                            .saturating_add(1),
+                    )
+                }
+                SymjitDirectScalarProjection::ExactFactor { .. } => {
+                    self.exact_factor_broadcast_resolution_count.set(
+                        self.exact_factor_broadcast_resolution_count
+                            .get()
+                            .saturating_add(1),
+                    )
+                }
+            }
+            let value = resolve_scalar_value(projection, row, parameters, factors)?;
+            let (_, refreshed) = workspace.broadcast_pointer(slot, value)?;
+            if refreshed {
+                refresh_bytes = refresh_bytes.saturating_add(internal_plane_bytes(
+                    1,
+                    workspace.point_stride,
+                    "recurrence broadcast refresh traffic",
+                )?);
+            }
+        }
+        Ok(refresh_bytes)
+    }
+
+    fn refresh_exact_factor_broadcasts(
+        &self,
+        workspace: &mut PlaneWorkspace,
+        row: &DirectRowRef<'_>,
+        parameters: DirectParameterView,
+        factors: DirectFactorView,
+    ) -> RusticolResult<u64> {
+        let mut refresh_bytes = 0_u64;
+        for &slot in self.exact_factor_broadcast_slots.iter() {
+            let scalar_index = *self.broadcast_scalar_by_slot.get(slot).ok_or_else(|| {
+                RusticolError::internal(
+                    "recurrence exact-factor broadcast slot is outside its catalog",
+                )
+            })?;
+            let projection = self.scalars.get(scalar_index as usize).ok_or_else(|| {
+                RusticolError::integrity("recurrence scalar projection is out of bounds")
+            })?;
+            let SymjitDirectScalarProjection::ExactFactor { .. } = projection else {
+                return Err(RusticolError::internal(
+                    "recurrence row-local broadcast is not an exact factor",
+                ));
+            };
+            #[cfg(test)]
+            self.exact_factor_broadcast_resolution_count.set(
+                self.exact_factor_broadcast_resolution_count
+                    .get()
+                    .saturating_add(1),
+            );
+            let value = resolve_scalar_value(projection, row, parameters, factors)?;
             let (_, refreshed) = workspace.broadcast_pointer(slot, value)?;
             if refreshed {
                 refresh_bytes = refresh_bytes.saturating_add(internal_plane_bytes(
@@ -1194,7 +1310,6 @@ fn internal_plane_bytes(
 
 #[allow(clippy::too_many_arguments)]
 fn apply_outputs(
-    role: DirectExecutorRole,
     projections: &[SymjitDirectPlaneProjection],
     output_destinations: &[u32],
     scratch: &[f64],
@@ -1243,7 +1358,7 @@ fn apply_outputs(
             scratch_im,
             factor_re,
             factor_im,
-            role != DirectExecutorRole::Finalization,
+            row.accumulates_output(),
         );
     }
     Ok(())
@@ -1942,6 +2057,50 @@ pub(crate) mod tests {
         .unwrap()
     }
 
+    fn mixed_invariant_and_exact_broadcast_executor() -> LoadedSymjitDirectExecutor {
+        let bytes =
+            compile_symbolica_program_to_plane_application_bytes(DOUBLE_PROGRAM, 2, 1, 2, false)
+                .unwrap();
+        LoadedSymjitDirectExecutor::load_prepared_application_bytes(
+            &bytes,
+            PathBuf::from("mixed-recurrence-broadcasts.symjit"),
+            SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI,
+            2,
+            false,
+            DirectExecutorRole::Contribution,
+            vec![
+                SymjitDirectParameterBinding::Broadcast { index: 2 },
+                SymjitDirectParameterBinding::Broadcast { index: 3 },
+                SymjitDirectParameterBinding::Broadcast { index: 0 },
+                SymjitDirectParameterBinding::Broadcast { index: 1 },
+            ],
+            vec![
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: false,
+                },
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: true,
+                },
+            ],
+            vec![
+                SymjitDirectScalarProjection::ExactFactor { imaginary: false },
+                SymjitDirectScalarProjection::ExactFactor { imaginary: true },
+                SymjitDirectScalarProjection::Parameter {
+                    index: 0,
+                    imaginary: false,
+                },
+                SymjitDirectScalarProjection::Parameter {
+                    index: 0,
+                    imaginary: true,
+                },
+            ],
+            vec![0, 1],
+        )
+        .unwrap()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn views(
         current_re: &mut [f64],
@@ -2088,6 +2247,61 @@ pub(crate) mod tests {
                 let im = 0.5 - point as f64 * 0.125;
                 assert_eq!(current_re[len + point], 7.0 + re * 2.0 + im * 0.5);
                 assert_eq!(current_im[len + point], -2.0 - re * 0.5 + im * 2.0);
+            }
+        }
+    }
+
+    #[test]
+    fn initializing_contribution_overwrites_poisoned_complex_multipoint_destination() {
+        let loaded = identity_executor(DirectExecutorRole::Contribution);
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        for &len in &[3, 7, 129] {
+            let mut current_re = vec![f64::NAN; len * 2];
+            let mut current_im = vec![f64::NAN; len * 2];
+            for point in 0..len {
+                current_re[point] = point as f64 + 0.25;
+                current_im[point] = 0.5 - point as f64 * 0.125;
+            }
+            let mut amplitude_re = vec![0.0; len];
+            let mut amplitude_im = vec![0.0; len];
+            let factors_re = [2.0];
+            let factors_im = [-0.5];
+            let (arena, momenta, parameters, factors) = views(
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+                &[],
+                &[],
+                &factors_re,
+                &factors_im,
+                len,
+            );
+            let row = DirectContributionRow {
+                parent0_component_base: 0,
+                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                destination_component_base: 1,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            };
+            assert_eq!(
+                unsafe {
+                    call(
+                        context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                    )
+                },
+                DIRECT_STATUS_OK
+            );
+            for point in 0..len {
+                let re = point as f64 + 0.25;
+                let im = 0.5 - point as f64 * 0.125;
+                assert_eq!(current_re[len + point], re * 2.0 + im * 0.5);
+                assert_eq!(current_im[len + point], -re * 0.5 + im * 2.0);
             }
         }
     }
@@ -2652,6 +2866,162 @@ pub(crate) mod tests {
                 // Two shared planes are read on each call. Both are filled
                 // once, and only the parameter plane changes on the last call.
                 3 * 2 * plane_bytes + 3 * plane_bytes,
+            )
+        );
+    }
+
+    #[test]
+    fn multirow_call_refreshes_invariants_once_and_exact_factors_per_row() {
+        let loaded = mixed_invariant_and_exact_broadcast_executor();
+        assert_eq!(loaded.broadcast_plane_count(), 4);
+        assert_eq!(loaded.context.exact_factor_broadcast_slots.as_ref(), [2, 3]);
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        let len = 17;
+        let mut current_re = vec![0.0; 2 * len];
+        let mut current_im = vec![0.0; 2 * len];
+        let mut amplitude_re = vec![0.0; len];
+        let mut amplitude_im = vec![0.0; len];
+        let factors_re = [2.0, -1.0];
+        let factors_im = [-0.25, 0.75];
+        let first_row = DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+            destination_component_base: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let rows = [
+            first_row,
+            DirectContributionRow {
+                destination_component_base: 1,
+                exact_factor_id: 1,
+                ..first_row
+            },
+        ];
+        let expected_increment = |parameter_re: f64, parameter_im: f64, factor: usize| {
+            let kernel_re = parameter_re + factors_re[factor];
+            let kernel_im = parameter_im + factors_im[factor];
+            (
+                kernel_re * factors_re[factor] - kernel_im * factors_im[factor],
+                kernel_re * factors_im[factor] + kernel_im * factors_re[factor],
+            )
+        };
+        let invoke = |parameter_re: f64,
+                      parameter_im: f64,
+                      current_re: &mut [f64],
+                      current_im: &mut [f64],
+                      amplitude_re: &mut [f64],
+                      amplitude_im: &mut [f64]| {
+            let parameters_re = [parameter_re];
+            let parameters_im = [parameter_im];
+            let (arena, momenta, parameters, factors) = views(
+                current_re,
+                current_im,
+                amplitude_re,
+                amplitude_im,
+                &parameters_re,
+                &parameters_im,
+                &factors_re,
+                &factors_im,
+                len,
+            );
+            unsafe {
+                call(
+                    context,
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    rows.as_ptr(),
+                    rows.len() as u32,
+                    len as u32,
+                )
+            }
+        };
+
+        assert_eq!(
+            invoke(
+                3.0,
+                0.5,
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+            ),
+            DIRECT_STATUS_OK
+        );
+        assert_eq!(loaded.broadcast_resolution_counts(), (2, 4));
+        for factor in 0..2 {
+            let (expected_re, expected_im) = expected_increment(3.0, 0.5, factor);
+            assert!(
+                current_re[factor * len..(factor + 1) * len]
+                    .iter()
+                    .all(|&value| value == expected_re)
+            );
+            assert!(
+                current_im[factor * len..(factor + 1) * len]
+                    .iter()
+                    .all(|&value| value == expected_im)
+            );
+        }
+
+        let (status, allocations, bytes) = count_allocations(|| {
+            invoke(
+                3.0,
+                0.5,
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+            )
+        });
+        assert_eq!(status, DIRECT_STATUS_OK);
+        assert_eq!((allocations, bytes), (0, 0));
+        assert_eq!(loaded.broadcast_resolution_counts(), (4, 8));
+
+        assert_eq!(
+            invoke(
+                -4.0,
+                1.25,
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+            ),
+            DIRECT_STATUS_OK
+        );
+        assert_eq!(loaded.broadcast_resolution_counts(), (6, 12));
+        for factor in 0..2 {
+            let (first_re, first_im) = expected_increment(3.0, 0.5, factor);
+            let (mutated_re, mutated_im) = expected_increment(-4.0, 1.25, factor);
+            assert!(
+                current_re[factor * len..(factor + 1) * len]
+                    .iter()
+                    .all(|&value| value == 2.0 * first_re + mutated_re)
+            );
+            assert!(
+                current_im[factor * len..(factor + 1) * len]
+                    .iter()
+                    .all(|&value| value == 2.0 * first_im + mutated_im)
+            );
+        }
+
+        let plane_bytes = len as u64 * size_of::<f64>() as u64;
+        assert_eq!(
+            loaded.internal_traffic_bytes(),
+            (
+                // Two scratch output planes are written and read for each of
+                // two rows on every call.
+                3 * 2 * 2 * 2 * plane_bytes,
+                // Four broadcast planes are read per row. Refreshes are 6 on
+                // the cold call, 4 on the identical warm call, then 6 after
+                // both model-parameter planes mutate.
+                (3 * 2 * 4 + 6 + 4 + 6) * plane_bytes,
             )
         );
     }

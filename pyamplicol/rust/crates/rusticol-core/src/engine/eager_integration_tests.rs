@@ -114,6 +114,16 @@ fn input(role: &str, component: u32) -> PreparedKernelInputManifest {
     }
 }
 
+fn model_parameter_input(name: &str, index: u32) -> PreparedKernelInputManifest {
+    PreparedKernelInputManifest {
+        role: "model-parameter".to_string(),
+        component: 0,
+        symbol: format!("pyamplicol::test::model-parameter::{name}"),
+        model_parameter_name: Some(name.to_string()),
+        model_parameter_index: Some(index),
+    }
+}
+
 fn kernel(
     kernel_id: u32,
     contract_kind: &str,
@@ -260,6 +270,153 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
         recurrence_template: None,
         recurrence_direct_template: None,
     }
+}
+
+#[test]
+fn eager_parameter_projection_uses_active_and_derivation_dependencies_only() {
+    let pack = filtered_pack(vec![
+        kernel(
+            7,
+            "vertex",
+            vec![model_parameter_input("alpha", 3)],
+            "kernels/7/application.symjit",
+        ),
+        kernel(
+            8,
+            "propagator",
+            vec![model_parameter_input("MW", 40)],
+            "kernels/8/application.symjit",
+        ),
+        kernel(
+            9,
+            "model-parameter",
+            vec![model_parameter_input("Gf", 100)],
+            "kernels/9/application.symjit",
+        ),
+    ]);
+    let indices = super::eager_load::prepared_parameter_indices(&pack, &BTreeSet::from([7]), true)
+        .expect("project process-local prepared parameters");
+
+    assert_eq!(
+        indices,
+        BTreeMap::from([("Gf".to_string(), 100), ("alpha".to_string(), 3)])
+    );
+    assert!(!indices.contains_key("MW"));
+
+    let indices_without_derived =
+        super::eager_load::prepared_parameter_indices(&pack, &BTreeSet::from([7]), false)
+            .expect("omit unused derivation inputs");
+    assert_eq!(
+        indices_without_derived,
+        BTreeMap::from([("alpha".to_string(), 3)])
+    );
+
+    let runtime_parameters = [GenericRuntimeModelParameterManifest {
+        name: "alpha".to_string(),
+        kind: "external_parameter".to_string(),
+        parameter_index: 0,
+        default: 1.0,
+        pdg: None,
+        runtime_name: None,
+        complex_component: None,
+    }];
+    let payloads = EvaluatorPayloadStore::directory(Path::new("."));
+    let (projection, _, evaluator) = super::eager_load::prepare_eager_parameter_state(
+        &pack,
+        &BTreeSet::from([7]),
+        &runtime_parameters,
+        &[],
+        &payloads,
+    )
+    .expect("an unused derivation kernel must not load or impose its inputs");
+    assert_eq!(projection.parameter_count, 4);
+    assert!(evaluator.is_none());
+}
+
+#[test]
+fn eager_parameter_projection_preserves_full_pack_parameter_integrity() {
+    let pack = filtered_pack(vec![
+        kernel(
+            7,
+            "vertex",
+            vec![model_parameter_input("alpha", 3)],
+            "kernels/7/application.symjit",
+        ),
+        kernel(
+            8,
+            "propagator",
+            vec![model_parameter_input("MW", 40)],
+            "kernels/8/application.symjit",
+        ),
+        kernel(
+            9,
+            "closure",
+            vec![model_parameter_input("MW", 41)],
+            "kernels/9/application.symjit",
+        ),
+    ]);
+
+    let error = super::eager_load::prepared_parameter_indices(&pack, &BTreeSet::from([7]), false)
+        .expect_err("inactive contracts must still share one authenticated namespace");
+    assert!(error.to_string().contains("conflicting stable indices"));
+}
+
+#[test]
+fn eager_parameter_projection_ignores_inactive_missing_runtime_dependencies_but_not_active_ones() {
+    let pack = filtered_pack(vec![
+        kernel(
+            7,
+            "vertex",
+            vec![model_parameter_input("alpha", 3)],
+            "kernels/7/application.symjit",
+        ),
+        kernel(
+            8,
+            "propagator",
+            vec![model_parameter_input("MW", 40)],
+            "kernels/8/application.symjit",
+        ),
+    ]);
+    let runtime_parameters = vec![GenericRuntimeModelParameterManifest {
+        name: "alpha".to_string(),
+        kind: "external_parameter".to_string(),
+        parameter_index: 0,
+        default: 1.0,
+        pdg: None,
+        runtime_name: None,
+        complex_component: None,
+    }];
+    let payloads = EvaluatorPayloadStore::directory(Path::new("."));
+
+    let (projection, _, evaluator) = super::eager_load::prepare_eager_parameter_state(
+        &pack,
+        &BTreeSet::from([7]),
+        &runtime_parameters,
+        &[],
+        &payloads,
+    )
+    .expect("inactive prepared dependencies do not belong to this process");
+    assert_eq!(projection.parameter_count, 4);
+    assert_eq!(projection.entries.len(), 1);
+    assert_eq!(projection.entries[0].prepared_index, 3);
+    assert_eq!(projection.entries[0].runtime_real_index, 0);
+    assert!(evaluator.is_none());
+
+    let error = match super::eager_load::prepare_eager_parameter_state(
+        &pack,
+        &BTreeSet::from([8]),
+        &runtime_parameters,
+        &[],
+        &payloads,
+    ) {
+        Ok(_) => panic!("an active prepared dependency must exist in the runtime schema"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("prepared parameter \"MW\" is absent")
+    );
 }
 
 fn portable_outer_target() -> crate::Target {

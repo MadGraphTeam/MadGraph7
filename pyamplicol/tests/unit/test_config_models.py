@@ -262,7 +262,7 @@ def test_all_flow_union_layout_requires_lc_accuracy() -> None:
         ColorConfig(accuracy="full", lc_flow_layout="all-flow-union")
 
 
-def test_on_the_fly_execution_is_lc_only_without_a_layout_specialization() -> None:
+def test_on_the_fly_execution_supports_every_color_accuracy() -> None:
     selected_flow = RunConfig(
         action="generate",
         evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
@@ -274,14 +274,16 @@ def test_on_the_fly_execution_is_lc_only_without_a_layout_specialization() -> No
     )
     assert selected_flow.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
     assert all_flow.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
-    with pytest.raises(
-        ConfigurationError,
-        match=r"execution_mode='on-the-fly'.*color\.accuracy='lc'",
-    ):
-        RunConfig(
+    for accuracy in ("nlc", "full"):
+        contracted = RunConfig(
             action="generate",
-            color=ColorConfig(accuracy="nlc"),
+            color=ColorConfig(accuracy=accuracy),
             evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
+        )
+        assert contracted.color.accuracy.value == accuracy
+        assert (
+            contracted.evaluator.execution_mode
+            is EvaluatorExecutionMode.ON_THE_FLY
         )
 
 

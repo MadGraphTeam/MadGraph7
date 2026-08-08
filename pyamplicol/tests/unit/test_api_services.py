@@ -21,6 +21,7 @@ from pyamplicol.api import (
     ReductionGroup,
     ResolvedEvaluation,
     Runtime,
+    WarmUpResult,
 )
 from pyamplicol.api.results import GenerationPlan
 from pyamplicol.config import BenchmarkConfig, GenerationConfig
@@ -121,6 +122,14 @@ class _DiagnosticRuntimeBackend(_RuntimeBackend):
     ) -> tuple[object, dict[str, object]]:
         self.diagnostic_call = (momenta, precision)
         return momenta, {"unchanged": True, "projected_digest": "a" * 64}
+
+
+class _WarmUpRuntimeBackend(_RuntimeBackend):
+    execution_mode = "on-the-fly"
+
+    def warm_up(self, momenta: object, **options: object) -> WarmUpResult:
+        self.warm_up_call = (momenta, options)
+        return WarmUpResult(0.5, 7, 7, None, None, False)
 
 
 class _BenchmarkBackend:
@@ -288,6 +297,34 @@ def test_runtime_preserves_pre_selector_backend_compatibility() -> None:
 
     with pytest.raises(EvaluationError, match="does not support per-point"):
         runtime.evaluate([[]], helicity_by_point=("h0",))
+
+
+def test_runtime_warm_up_is_one_point_native_f64_only() -> None:
+    backend = _WarmUpRuntimeBackend()
+    runtime = Runtime(backend)
+    point = ((1.0, 0.0, 0.0, 1.0),)
+
+    result = runtime.warm_up((point,), helicities=("h0",), color_flows=("c0",))
+
+    assert result == WarmUpResult(0.5, 7, 7, None, None, False)
+    assert backend.warm_up_call == (
+        (point,),
+        {
+            "helicities": ("h0",),
+            "color_flows": ("c0",),
+            "precision": 16,
+            "progress": None,
+        },
+    )
+    with pytest.raises(ValueError, match="exactly one"):
+        runtime.warm_up(())
+    with pytest.raises(ValueError, match="exactly one"):
+        runtime.warm_up((point, point))
+    with pytest.raises(CompatibilityError, match="only precision=16"):
+        runtime.warm_up((point,), precision=200)
+    backend.execution_mode = "compiled"
+    with pytest.raises(CompatibilityError, match="only for on-the-fly"):
+        runtime.warm_up((point,))
 
 
 def test_runtime_normalizes_empty_selector_sequences_to_omitted_axes() -> None:

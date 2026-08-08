@@ -204,6 +204,16 @@
               "type": "null"
             }
           ]
+        },
+        "native_build_inputs_sha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },

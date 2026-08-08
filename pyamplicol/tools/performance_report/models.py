@@ -37,6 +37,7 @@ class Accuracy(StrEnum):
 
 class ExecutionMode(StrEnum):
     AMPLICOL = "amplicol"
+    MADGRAPH = "madgraph"
     RECURRENCE = "recurrence"
     COMPILED = "compiled"
     EAGER = "eager"
@@ -134,6 +135,23 @@ class MatrixDataset:
     baseline: MeasurementSpec
     multiplicities: tuple[int, ...]
     static_na_reason_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MatrixComparisonView:
+    """One rendered matrix comparison backed by shared measurement datasets.
+
+    A view deliberately identifies its candidate and reference datasets by ID
+    instead of duplicating either measurement surface.  In particular, the
+    MadGraph recurrence view can reuse the existing UFO-SM/full recurrence
+    profile while presenting it against the independent MadGraph reference.
+    """
+
+    comparison_id: str
+    candidate_dataset_id: str
+    baseline_dataset_id: str
+    title: str
+    table_name: str
 
 
 @dataclass(frozen=True, slots=True)

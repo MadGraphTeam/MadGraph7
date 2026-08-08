@@ -10,6 +10,7 @@ from .models import (
     Accuracy,
     CellSpec,
     ExecutionMode,
+    MatrixComparisonView,
     MatrixDataset,
     MeasurementSpec,
     ModelKey,
@@ -176,7 +177,7 @@ def matrix_multiplicities(accuracy: Accuracy) -> tuple[int, ...]:
 
     LC retains the full report ladder.  Contracted NLC/full-colour tables
     expose ``n=6`` so multi-quark families can declare candidate coverage
-    independently of the historical AmpliCol oracle.
+    independently of the historical AmpliCol implementation.
     """
 
     return tuple(range(1, 10 if accuracy is Accuracy.LC else 7))
@@ -189,6 +190,8 @@ def _measurement(
 ) -> MeasurementSpec:
     if mode is ExecutionMode.AMPLICOL:
         return MeasurementSpec(mode, None, accuracy, "fortran", None)
+    if mode is ExecutionMode.MADGRAPH:
+        return MeasurementSpec(mode, model, accuracy, "fortran", None)
     if mode is ExecutionMode.COMPILED:
         return MeasurementSpec(mode, model, accuracy, "jit", 3)
     return MeasurementSpec(mode, model, accuracy, "jit", 2)
@@ -215,10 +218,15 @@ def _matrix_dataset(
         ExecutionMode.EAGER: "eager-DAG JIT O2",
         ExecutionMode.ON_THE_FLY: "on-the-fly JIT O2",
     }[mode]
-    baseline_label = (
-        "AmpliCol"
-        if baseline_mode is ExecutionMode.AMPLICOL
-        else "recurrence JIT O2"
+    baseline_label = {
+        ExecutionMode.AMPLICOL: "AmpliCol",
+        ExecutionMode.MADGRAPH: "MadGraph",
+        ExecutionMode.RECURRENCE: "recurrence JIT O2",
+    }[baseline_mode]
+    baseline_model = (
+        ModelKey.UFO_SM
+        if baseline_mode is ExecutionMode.MADGRAPH
+        else ModelKey.BUILTIN_SM
     )
     stem = f"matrix_{mode.value.replace('-', '_')}_{model.value}_{accuracy.value}"
     return MatrixDataset(
@@ -227,7 +235,7 @@ def _matrix_dataset(
         table_name=f"result_{stem}_table.tex",
         title=f"{model_label} {mode_label} versus {baseline_label} {accuracy_label}",
         candidate=_measurement(mode, model, accuracy),
-        baseline=_measurement(baseline_mode, ModelKey.BUILTIN_SM, accuracy),
+        baseline=_measurement(baseline_mode, baseline_model, accuracy),
         multiplicities=(
             matrix_multiplicities(accuracy)
             if multiplicities is None
@@ -238,16 +246,14 @@ def _matrix_dataset(
 
 
 MATRIX_DATASETS = tuple(
-    
-        _matrix_dataset(
-            mode=ExecutionMode.RECURRENCE,
-            model=model,
-            accuracy=accuracy,
-            baseline_mode=ExecutionMode.AMPLICOL,
-        )
-        for model in (ModelKey.BUILTIN_SM, ModelKey.UFO_SM)
-        for accuracy in Accuracy
-    
+    _matrix_dataset(
+        mode=ExecutionMode.RECURRENCE,
+        model=model,
+        accuracy=accuracy,
+        baseline_mode=ExecutionMode.AMPLICOL,
+    )
+    for model in (ModelKey.BUILTIN_SM, ModelKey.UFO_SM)
+    for accuracy in Accuracy
 ) + tuple(
     _matrix_dataset(
         mode=mode,
@@ -268,13 +274,52 @@ MATRIX_DATASETS = tuple(
             if accuracy is Accuracy.LC
             else matrix_multiplicities(accuracy)
         ),
-        static_na_reason_code=(
-            None
-            if accuracy is Accuracy.LC
-            else "on-the-fly-color-accuracy-not-supported-v1"
-        ),
     )
     for accuracy in Accuracy
+) + tuple(
+    _matrix_dataset(
+        mode=mode,
+        model=ModelKey.UFO_SM,
+        accuracy=Accuracy.FULL,
+        baseline_mode=ExecutionMode.MADGRAPH,
+    )
+    for mode in (
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+        ExecutionMode.ON_THE_FLY,
+    )
+)
+
+
+def _madgraph_full_comparison_view(
+    mode: ExecutionMode,
+) -> MatrixComparisonView:
+    mode_label = {
+        ExecutionMode.RECURRENCE: "recurrence JIT O2",
+        ExecutionMode.COMPILED: "compiled JIT O3",
+        ExecutionMode.EAGER: "eager-DAG JIT O2",
+        ExecutionMode.ON_THE_FLY: "on-the-fly JIT O2",
+    }[mode]
+    stem = f"matrix_{mode.value.replace('-', '_')}_ufo_sm_full_vs_madgraph"
+    return MatrixComparisonView(
+        comparison_id=stem,
+        candidate_dataset_id=(
+            f"matrix_{mode.value.replace('-', '_')}_ufo_sm_full"
+        ),
+        baseline_dataset_id="reference_madgraph_full",
+        title=f"UFO-SM {mode_label} versus MadGraph full-colour",
+        table_name=f"result_{stem}_table.tex",
+    )
+
+
+MADGRAPH_FULL_COMPARISON_VIEWS = tuple(
+    _madgraph_full_comparison_view(mode)
+    for mode in (
+        ExecutionMode.RECURRENCE,
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+        ExecutionMode.ON_THE_FLY,
+    )
 )
 
 SCALAR_DATASETS = (
@@ -353,14 +398,8 @@ STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT = (
 STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6 = (
     "native-backend-generation-cap-n6-v1"
 )
-STATIC_NA_ON_THE_FLY_COLOR_ACCURACY = (
-    "on-the-fly-color-accuracy-not-supported-v1"
-)
 STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION = (
     "user cap: native C++/ASM generation is not attempted above n=6"
-)
-STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION = (
-    "on-the-fly execution currently supports leading colour only"
 )
 
 
@@ -377,6 +416,7 @@ class ReportCatalog:
     models: dict[ModelKey, ModelSpec]
     process_families: tuple[ProcessFamily, ...]
     matrix_datasets: tuple[MatrixDataset, ...]
+    matrix_comparison_views: tuple[MatrixComparisonView, ...]
     scalar_datasets: tuple[ScalarDataset, ...]
     z_variants: tuple[ZVariant, ...]
     _measurement_cells_cache: tuple[CellSpec, ...] | None = field(
@@ -395,6 +435,16 @@ class ReportCatalog:
         ]
         if not matches:
             raise KeyError(f"unknown matrix dataset {dataset_id!r}")
+        return matches[0]
+
+    def comparison_view(self, comparison_id: str) -> MatrixComparisonView:
+        matches = [
+            view
+            for view in self.matrix_comparison_views
+            if view.comparison_id == comparison_id
+        ]
+        if not matches:
+            raise KeyError(f"unknown matrix comparison view {comparison_id!r}")
         return matches[0]
 
     def matrix_cells(self) -> tuple[CellSpec, ...]:
@@ -454,6 +504,25 @@ class ReportCatalog:
                                 workload=workload,
                             )
                         )
+        for family in self.process_families:
+            for n_final in matrix_multiplicities(Accuracy.FULL):
+                process = family.process(n_final)
+                if process is None or n_final > family.maximum_n(Accuracy.FULL):
+                    continue
+                cells.append(
+                    CellSpec(
+                        dataset_id="reference_madgraph_full",
+                        process=process,
+                        n_final=n_final,
+                        process_key=family.key,
+                        measurement=_measurement(
+                            ExecutionMode.MADGRAPH,
+                            ModelKey.UFO_SM,
+                            Accuracy.FULL,
+                        ),
+                        workload=Workload.CONTRACTED,
+                    )
+                )
         return tuple(cells)
 
     def scalar_cells(self) -> tuple[CellSpec, ...]:
@@ -527,7 +596,10 @@ class ReportCatalog:
     def equivalent_cells(self, cell: CellSpec) -> tuple[CellSpec, ...]:
         """Return artifact owners whose generated artifact this cell may reuse."""
 
-        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+        if cell.measurement.execution_mode in {
+            ExecutionMode.AMPLICOL,
+            ExecutionMode.MADGRAPH,
+        }:
             return ()
         directional_otf_artifact = (
             cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
@@ -572,7 +644,8 @@ class ReportCatalog:
         """
 
         if (
-            cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            cell.measurement.execution_mode
+            in {ExecutionMode.AMPLICOL, ExecutionMode.MADGRAPH}
             or cell.dataset_id in {
                 dataset.dataset_id for dataset in self.scalar_datasets
             }
@@ -584,14 +657,15 @@ class ReportCatalog:
         else:
             dataset = self.dataset(cell.dataset_id)
             baseline_mode = dataset.baseline.execution_mode
-            dataset_id = (
-                f"reference_amplicol_{cell.measurement.accuracy.value}"
-                if baseline_mode is ExecutionMode.AMPLICOL
-                else (
+            if baseline_mode is ExecutionMode.AMPLICOL:
+                dataset_id = f"reference_amplicol_{cell.measurement.accuracy.value}"
+            elif baseline_mode is ExecutionMode.MADGRAPH:
+                dataset_id = "reference_madgraph_full"
+            else:
+                dataset_id = (
                     "matrix_recurrence_builtin_sm_"
                     f"{cell.measurement.accuracy.value}"
                 )
-            )
         return next(
             candidate
             for candidate in self.measurement_cells()
@@ -651,8 +725,6 @@ class ReportCatalog:
         reason = self.static_na_reason(cell)
         if reason == STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6:
             return STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION
-        if reason == STATIC_NA_ON_THE_FLY_COLOR_ACCURACY:
-            return STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION
         return reason
 
     def validation_baseline_cell(self, cell: CellSpec) -> CellSpec | None:
@@ -663,7 +735,10 @@ class ReportCatalog:
         otherwise model-generic recurrence measurements.
         """
 
-        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY:
+        if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and (
+            self.dataset(cell.dataset_id).baseline.execution_mode
+            is not ExecutionMode.MADGRAPH
+        ):
             return next(
                 candidate
                 for candidate in self.measurement_cells()
@@ -679,6 +754,12 @@ class ReportCatalog:
         baseline = self.baseline_cell(cell)
         if (
             baseline is not None
+            and baseline.measurement.execution_mode is ExecutionMode.MADGRAPH
+        ):
+            # MadGraph is consumed once through the strict direct edge.
+            return None
+        if (
+            baseline is not None
             and baseline.measurement.execution_mode is ExecutionMode.AMPLICOL
             and not self.legacy_reference_available(cell)
         ):
@@ -690,12 +771,14 @@ REPORT_CATALOG = ReportCatalog(
     MODELS,
     PROCESS_FAMILIES,
     MATRIX_DATASETS,
+    MADGRAPH_FULL_COMPARISON_VIEWS,
     SCALAR_DATASETS,
     Z_VARIANTS,
 )
 
 __all__ = [
     "BUILTIN_SM",
+    "MADGRAPH_FULL_COMPARISON_VIEWS",
     "MATRIX_DATASETS",
     "MODELS",
     "PROCESS_FAMILIES",
@@ -705,8 +788,6 @@ __all__ = [
     "SCALAR_GRAVITY",
     "STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6",
     "STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION",
-    "STATIC_NA_ON_THE_FLY_COLOR_ACCURACY",
-    "STATIC_NA_ON_THE_FLY_COLOR_ACCURACY_DESCRIPTION",
     "STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT",
     "UFO_SM",
     "Z_VARIANTS",

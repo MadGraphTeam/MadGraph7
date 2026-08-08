@@ -440,7 +440,7 @@ def _parser() -> argparse.ArgumentParser:
         help="require the clean publication checkout to equal this full Git SHA",
     )
     final_audit.add_argument("--max-n-final", type=int, default=9)
-    final_audit.add_argument("--expected-cell-count", type=int, default=1962)
+    final_audit.add_argument("--expected-cell-count", type=int, default=2162)
     final_audit.add_argument(
         "--structural-only",
         action="store_true",
@@ -486,6 +486,7 @@ def _parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     worker.add_argument("--legacy-source-revision", help=argparse.SUPPRESS)
+    worker.add_argument("--madgraph", type=Path, help=argparse.SUPPRESS)
     worker.add_argument(
         "--target-runtime",
         type=float,
@@ -1551,6 +1552,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             legacy_workspace=args.legacy_workspace,
             legacy_copy_source=args.legacy_copy_source,
             legacy_source_revision=args.legacy_source_revision,
+            madgraph_installation=args.madgraph,
             log_path=args.log_path,
             worker_harness=worker_harness,
         )
