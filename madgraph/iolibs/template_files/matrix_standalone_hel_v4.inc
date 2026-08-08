@@ -205,7 +205,16 @@ C     One row per helicity, and as wide as the standard GET_JAMP's AMP: when
 C     the color flow definitions are emitted as operand tables their
 C     temporaries are written at AMP(K,NGRAPHS+ITMP), past NGRAPHS, and
 C     jamp_decl declares the tables that index them.
-      COMPLEX*16 AMP(NCOMB,%(namp_dim)s), JAMP(NCOLOR)
+C
+C     On the heap, not in the executable. A helicity-major AMP is NCOMB times
+C     the standard one -- 256 x 281160 x 16 = 1.15 GB for g g > 6g -- and as a
+C     fixed-size local that lands in __DATA. Together with the 825 MB of __TEXT
+C     that 3.9M recycled call sites produce, the image then runs past the arm64
+C     dyld shared region and the binary will not START: dyld fails to map its
+C     cache and reports the first framework it cannot find. Allocating instead
+C     moved __DATA from 1.18 GB to 32 MB and made g g > 6g runnable.
+      COMPLEX*16 JAMP(NCOLOR)
+      COMPLEX*16, ALLOCATABLE, SAVE :: AMP(:,:)
 %(jamp_tmp_decl)s
 %(jamp_decl)s
       type(aloha) W(NWAVEFUNCS)
@@ -241,6 +250,7 @@ C     through GET_MATRIX, which is where the standard file makes this call.
 C     Without it CF is all zeros and every |M|^2 comes out exactly 0.
 C     INIT_CF is a no-op after the first call (SAVEd CF_DONE).
       CALL %(proc_prefix)sINIT_CF()
+      IF (.NOT.ALLOCATED(AMP)) ALLOCATE(AMP(NCOMB,%(namp_dim)s))
       AMP(:,:) = (0D0,0D0)
 %(flavor_mask_setup)s
 ${helas_calls}
