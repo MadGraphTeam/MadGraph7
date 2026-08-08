@@ -106,6 +106,11 @@ profiling host. Original AmpliCol builds use the independent
 maintained legacy generator target is not parallel-safe. Defaults are one
 worker, one pyAmpliCol core, one AmpliCol build job, a one-hour
 generation/preparation limit, and a decimal 30 GB process-tree RAM limit.
+`--ram-limit` applies to each worker tree. Add `--campaign-ram-limit` to place
+an aggregate ceiling across all workers; it is conservatively divided by the
+requested worker count and combined with the per-worker limit. Thus
+`--workers 10 --ram-limit 30000000000 --campaign-ram-limit 30000000000`
+limits each tree to 3 GB rather than permitting ten independent 30 GB claims.
 Press `Ctrl-C` or `Esc` to stop dispatch, terminate supervised process trees,
 preserve completed currents, and restore the terminal.
 

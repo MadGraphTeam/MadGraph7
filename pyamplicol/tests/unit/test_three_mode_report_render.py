@@ -1097,23 +1097,23 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         (
             Accuracy.NLC,
             (
-                "r:2|c:0|e:0",
-                "r:8|c:0|e:0",
-                "r:9|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:2|c:0|e:0",
+                "r:2|c:0|e:0|o:0",
+                "r:8|c:0|e:0|o:0",
+                "r:9|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:2|c:0|e:0|o:0",
             ),
         ),
         (
             Accuracy.FULL,
             (
-                "r:2|c:0|e:0",
-                "r:8|c:0|e:0",
-                "r:9|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:14|c:0|e:0",
-                "r:2|c:0|e:0",
+                "r:2|c:0|e:0|o:0",
+                "r:8|c:0|e:0|o:0",
+                "r:9|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:14|c:0|e:0|o:0",
+                "r:2|c:0|e:0|o:0",
             ),
         ),
     ),
@@ -1243,7 +1243,7 @@ def test_summary_statistics_share_fixed_anchors_and_compact_notes(
 
     assert "Fixed-engine tables intentionally omit mode letters" in fixed_tex
     assert "selected independently in each cell and workload" in best_tex
-    assert "Summary mode counts use r|c|e" in best_tex
+    assert "Summary mode counts use r|c|e|o" in best_tex
 
 
 def test_lc_summaries_omit_union_generation_and_keep_both_wall_workloads(

@@ -167,6 +167,7 @@ generation/preparation limit, a one-hour whole-worker limit, and a decimal
 --generation-time-limit SECONDS
 --worker-wall-limit SECONDS
 --ram-limit BYTES
+--campaign-ram-limit BYTES
 --target-measurement-duration SECONDS
 --minimum-samples N
 --warmups N
@@ -178,6 +179,20 @@ Original AmpliCol compilation has the separate `--amplicol-build-jobs` control,
 which defaults to 1 even when pyAmpliCol receives more cores. Keep that serial
 default for the maintained legacy checkout: its generator Make target is not
 parallel-safe.
+
+`--ram-limit` is a cap for each worker tree. The optional
+`--campaign-ram-limit` is an aggregate ceiling: the controller conservatively
+divides it by the requested worker count and uses the smaller of that share and
+the per-worker cap. For example, ten workers with both limits set to decimal
+30 GB receive at most 3 GB each, so they cannot collectively claim ten times
+30 GB:
+
+```console
+./steer_performance_campaign.py run \
+  --workers 10 --ram-limit 30000000000 \
+  --campaign-ram-limit 30000000000 \
+  --table matrix --multiplicity 1 2 3
+```
 
 Increase parallelism only when the machine has enough RAM for that many
 independent worker trees. `--fail-fast` changes validation scheduling into
@@ -581,8 +596,8 @@ included candidate times and baseline times were each added together.
 2. Record external AmpliCol or MadGraph paths only when those comparisons are
    required.
 3. Preview a narrow selector with `run --dry-run`.
-4. Confirm worker count, per-worker cores, wall-time limit, and 30 GB RAM cap
-   before broadening the scan.
+4. Confirm worker count, per-worker cores, wall-time limit, per-worker RAM cap,
+   and any aggregate campaign RAM cap before broadening the scan.
 5. Stop with `Ctrl-C` or dashboard `Esc`; resume by repeating the command.
 6. Use `inspect` and `campaign_summary_ids/` to understand non-successes before
    forcing a refresh.

@@ -767,6 +767,16 @@ def _positive_finite_float(value: str) -> float:
     return result
 
 
+def _positive_int(value: str) -> int:
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("expected a positive integer") from error
+    if result <= 0:
+        raise argparse.ArgumentTypeError("expected a positive integer")
+    return result
+
+
 def _nonnegative_finite_float(value: str) -> float:
     try:
         result = float(value)
@@ -7337,6 +7347,11 @@ def _campaign_settings(
             else float(arguments.worker_wall_limit)
         ),
         max_rss_bytes=int(arguments.ram_limit),
+        campaign_max_rss_bytes=(
+            None
+            if getattr(arguments, "campaign_ram_limit", None) is None
+            else int(arguments.campaign_ram_limit)
+        ),
         artifact_policy=(
             ArtifactPolicy.REGENERATE
             if fresh_attempt
@@ -8232,7 +8247,10 @@ def _run_campaign(
         static_na_ids=static_na,
         source_revision=source.revision,
         generation_time_limit_seconds=float(arguments.generation_time_limit),
-        memory_limit_bytes=int(arguments.ram_limit),
+        memory_limit_bytes=(
+            preliminary_settings.effective_cell_rss_limit()
+            or int(arguments.ram_limit)
+        ),
         worker_wall_limit_seconds=arguments.worker_wall_limit,
         reproduction_settings=ReproductionSettings(
             cores=int(arguments.cores_per_worker),
@@ -9337,10 +9355,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     resources.add_argument(
         "--ram-limit",
-        type=int,
+        type=_positive_int,
         default=DEFAULT_RAM_BYTES,
         metavar="BYTES",
         help="Decimal process-tree RAM ceiling per worker (30 GB = 30000000000).",
+    )
+    resources.add_argument(
+        "--campaign-ram-limit",
+        type=_positive_int,
+        metavar="BYTES",
+        help=(
+            "Optional decimal RAM ceiling across all concurrent worker trees. "
+            "The controller enforces it conservatively by also limiting each "
+            "worker to this value divided by --workers; the effective worker "
+            "cap is the smaller of that share and --ram-limit."
+        ),
     )
     resources.add_argument(
         "--worker-wall-limit",

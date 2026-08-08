@@ -221,6 +221,13 @@ class CampaignSettings:
             raise ValueError("max_rss_bytes must be positive")
         if self.campaign_max_rss_bytes is not None and self.campaign_max_rss_bytes <= 0:
             raise ValueError("campaign_max_rss_bytes must be positive")
+        if (
+            self.campaign_max_rss_bytes is not None
+            and self.campaign_max_rss_bytes < self.workers
+        ):
+            raise ValueError(
+                "campaign_max_rss_bytes must provide at least one byte per worker"
+            )
         if self.campaign_invocation_id is not None and (
             not self.campaign_invocation_id
             or len(self.campaign_invocation_id) > 128
@@ -257,6 +264,23 @@ class CampaignSettings:
         elif self.study_contract_sha256 is not None:
             raise ValueError("a study contract SHA-256 requires the Z-table F policy")
         validate_campaign_settings(self.campaign_policy, self)
+
+    def effective_cell_rss_limit(self) -> int | None:
+        """Return the conservative process-tree cap for each cell worker."""
+
+        limits = [
+            limit
+            for limit in (
+                self.max_rss_bytes,
+                (
+                    None
+                    if self.campaign_max_rss_bytes is None
+                    else self.campaign_max_rss_bytes // self.workers
+                ),
+            )
+            if limit is not None
+        ]
+        return min(limits) if limits else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1678,6 +1702,9 @@ class CampaignScheduler:
                     self.settings.validation_time_limit_seconds
                 ),
                 "memory_limit_bytes": self._effective_cell_rss_limit(),
+                "campaign_memory_limit_bytes": (
+                    self.settings.campaign_max_rss_bytes
+                ),
                 "workers": self.settings.workers,
                 "cores_per_worker": self.settings.cell_cores,
                 "amplicol_build_jobs": self.settings.amplicol_build_jobs,
@@ -3539,19 +3566,7 @@ class CampaignScheduler:
             )
 
     def _effective_cell_rss_limit(self) -> int | None:
-        limits = [
-            limit
-            for limit in (
-                self.settings.max_rss_bytes,
-                (
-                    None
-                    if self.settings.campaign_max_rss_bytes is None
-                    else self.settings.campaign_max_rss_bytes // self.settings.workers
-                ),
-            )
-            if limit is not None
-        ]
-        return min(limits) if limits else None
+        return self.settings.effective_cell_rss_limit()
 
     def _publish_blocked_dependency(
         self,

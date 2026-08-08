@@ -506,6 +506,8 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert "Hard construction" in run_help
     assert "Omitted or '*' engine" in run_help
     assert "--madgraph" in run_help
+    assert "--campaign-ram-limit" in run_help
+    assert "Optional decimal RAM ceiling across all concurrent" in run_help
     assert "--no-artifacts-removal" not in help_text
     arguments = _parse("run", "--dry-run")
     assert arguments.workers == 1
@@ -513,6 +515,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.amplicol_build_jobs == 1
     assert arguments.generation_time_limit == 3600.0
     assert arguments.ram_limit == 30_000_000_000
+    assert arguments.campaign_ram_limit is None
     assert arguments.worker_wall_limit == 3600.0
     assert arguments.no_color is False
     assert arguments.force_refresh is False
@@ -592,6 +595,55 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     _selection, cells = selection_from_arguments(underscore)
     assert cells
     assert {cell.measurement.accuracy.value for cell in cells} == {"lc"}
+
+
+@pytest.mark.parametrize("value", ("0", "-1", "1.5"))
+def test_campaign_ram_limit_requires_a_positive_integer(value: str) -> None:
+    with pytest.raises(SystemExit):
+        _parse("run", "--dry-run", "--campaign-ram-limit", value)
+
+
+def test_campaign_ram_limit_conservatively_caps_ten_workers_and_provenance(
+    tmp_path: Path,
+) -> None:
+    source = manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ())
+    arguments = _parse(
+        "run",
+        "--dry-run",
+        "--workers",
+        "10",
+        "--ram-limit",
+        "30000000000",
+        "--campaign-ram-limit",
+        "30000000000",
+        "--allow-oversubscription",
+    )
+    settings = manual_campaign._campaign_settings(arguments, source)
+
+    assert settings.max_rss_bytes == 30_000_000_000
+    assert settings.campaign_max_rss_bytes == 30_000_000_000
+    assert settings.effective_cell_rss_limit() == 3_000_000_000
+    assert settings.effective_cell_rss_limit() * settings.workers == (
+        settings.campaign_max_rss_bytes
+    )
+
+    scheduler = manual_campaign.CampaignScheduler(
+        _manual_service(tmp_path),
+        settings=settings,
+    )
+    assert scheduler._effective_cell_rss_limit() == 3_000_000_000
+    result: dict[str, object] = {}
+    scheduler._attach_manual_provenance(
+        result,
+        cell=_presentation_test_cell(),
+    )
+    provenance = result["provenance"]
+    assert isinstance(provenance, dict)
+    manual = provenance["manual_campaign"]
+    assert isinstance(manual, dict)
+    assert manual["memory_limit_bytes"] == 3_000_000_000
+    assert manual["campaign_memory_limit_bytes"] == 30_000_000_000
+    assert manual["workers"] == 10
 
 
 def test_colours_are_default_and_only_explicitly_disabled(

@@ -112,6 +112,17 @@ def _measurement(
     return measurement
 
 
+def _pointwise_validation() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "pointwise": {
+            "status": "ok",
+            "candidate": 1.0,
+            "baseline": 1.0,
+        },
+    }
+
+
 @pytest.fixture
 def otf_render_caches(
     monkeypatch: pytest.MonkeyPatch,
@@ -208,6 +219,66 @@ def test_otf_best_mode_winner_keeps_pair_semantics_and_o_marker(
     ) in row
     assert "r|c|e|o" in tex
     assert "follows the enclosing cold-start contract" in tex
+
+
+@pytest.mark.parametrize("accuracy", (Accuracy.NLC, Accuracy.FULL))
+def test_otf_contracted_best_mode_winner_is_in_row_mix_and_legend(
+    accuracy: Accuracy,
+) -> None:
+    caches = build_reset_caches()
+    workload = Workload.CONTRACTED
+    baseline = _cache(caches, f"reference_amplicol_{accuracy.value}")
+    recurrence = _cache(
+        caches,
+        f"matrix_recurrence_builtin_sm_{accuracy.value}",
+    )
+    candidate = _cache(
+        caches,
+        f"matrix_on_the_fly_builtin_sm_{accuracy.value}",
+    )
+    _set_measurement(
+        baseline,
+        process_key="dd_z_jets",
+        workload=workload,
+        generation=10.0,
+        wall=10.0e-6,
+    )
+    _set_measurement(
+        recurrence,
+        process_key="dd_z_jets",
+        workload=workload,
+        generation=8.0,
+        wall=2.0e-6,
+        artifact_id=_RECURRENCE_ARTIFACT_ID,
+        validation=_pointwise_validation(),
+    )
+    _set_measurement(
+        candidate,
+        process_key="dd_z_jets",
+        workload=workload,
+        generation=4.0,
+        wall=1.0e-6,
+        cold_warmup=1.0,
+        artifact_id=_OTF_ARTIFACT_ID,
+        validation=_pointwise_validation(),
+    )
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        accuracy,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[0].mode is ExecutionMode.ON_THE_FLY
+
+    tex = render_best_mode_table(accuracy, caches)
+    row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
+    assert (
+        r"\bestmodecodeprefix{o}\bestmodecompactprefix{0.400} & "
+        r"\bestmodeprimaryratio{ReportGreen}{0.500}"
+    ) in row
+    assert r"\bestmodemix{r:0|c:0|e:0|o:1}" in tex
+    assert "Summary mode counts use r|c|e|o" in tex
+    assert "contracted cold-start contract" in tex
 
 
 def test_otf_amplicol_links_are_metric_and_workload_specific(

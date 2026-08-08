@@ -3565,13 +3565,7 @@ def _best_mode_generation_mode_mix(
     )
     if not valid:
         return ""
-    displayed_modes = (
-        _BEST_MODE_ORDER
-        if accuracy is Accuracy.LC
-        else tuple(
-            mode for mode in _BEST_MODE_ORDER if mode is not ExecutionMode.ON_THE_FLY
-        )
-    )
+    displayed_modes = _BEST_MODE_ORDER
     counts = {
         mode: sum(item.mode is mode for item in valid) for mode in displayed_modes
     }
@@ -3736,22 +3730,16 @@ def _best_mode_block(
         r" OTF \texttt{([xG]x(G+W)) | [G]G+W} follows the enclosing "
         r"cold-start contract."
         if accuracy is Accuracy.LC
-        else ""
+        else (
+            r" OTF \texttt{([xG]x(G+W))} follows the enclosing "
+            r"contracted cold-start contract."
+        )
     )
     mode_legend_note = (
-        (
-            r" Muted generation-row codes (r)|(c)|(e)|(o) identify "
-            r"recurrence JIT O2, compiled JIT O3, eager-DAG JIT O2, and "
-            r"on-the-fly JIT O2 wall-time winners; runtime rows omit them. "
-            r"Summary mode counts use r|c|e|o in the same order."
-        )
-        if accuracy is Accuracy.LC
-        else (
-            r" Muted generation-row codes (r)|(c)|(e) identify recurrence "
-            r"JIT O2, compiled JIT O3, and eager-DAG JIT O2 wall-time "
-            r"winners; runtime rows omit them. Summary mode counts use "
-            r"r|c|e in the same order."
-        )
+        r" Muted generation-row codes (r)|(c)|(e)|(o) identify "
+        r"recurrence JIT O2, compiled JIT O3, eager-DAG JIT O2, and "
+        r"on-the-fly JIT O2 wall-time winners; runtime rows omit them. "
+        r"Summary mode counts use r|c|e|o in the same order."
     )
     lines.extend(
         [
@@ -3830,8 +3818,9 @@ def _best_mode_block(
                 r"static N/A entries; their candidates are shown absolutely and "
                 r"excluded from ratio summaries. Unavailable baselines keep "
                 r"their status; candidates remain absolute. Unverified "
-                r"compiled or eager diagnostics are never eligible for best-mode "
-                r"selection or summaries and remain visibly marked unverified."
+                r"compiled, eager, or on-the-fly diagnostics are never eligible "
+                r"for best-mode selection or summaries and remain visibly marked "
+                r"unverified."
                 + boundary_note
                 + otf_generation_note
                 + r" Only exact stored same-point links enter ratios."
