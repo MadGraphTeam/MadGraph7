@@ -2,6 +2,7 @@
 
 import argparse
 import atexit
+import glob
 import os
 import re
 import collections
@@ -30,6 +31,142 @@ def get_num_lines(file_path):
     while buf.readline():
         lines += 1
     return lines
+
+
+# Default number of fortran statements per amplitude-chunk file; kept in step
+# with export_v4.AMP_CHUNK_SIZE_DEFAULT, which this module cannot import (it is
+# shipped stand-alone as bin/internal/hel_recycle.py). See the comment there.
+AMP_CHUNK_SIZE_DEFAULT = 2000
+
+# The markers the exporter puts around the HELAS block of an amplitude-chunk
+# file, so that the unrolling below can read the calls back out of it.
+AMP_CHUNK_BEGIN = 'HELAS CALLS BEGIN'
+AMP_CHUNK_END = 'HELAS CALLS END'
+AMP_CHUNK_CALL_RE = re.compile(r'^\s*CALL\s+ORIGAMP\d+_(\d+)\s*\(', re.IGNORECASE)
+
+
+_CHUNK_COMMENT_RE = re.compile(r"^(\s*#|c\$|c$|(c\s+([^=]|$))|cf2py|c\-\-|c\*\*|\s*!|!\$)",
+                               re.IGNORECASE)
+_CHUNK_CONTINUATION_RE = re.compile(r"^(?:     )[$&]")
+
+
+def chunk_statements(lines, chunk_size):
+    """Group column-formatted fortran *lines* into slices of about *chunk_size*
+    statements each. A slice boundary may only fall where a new statement
+    starts at nesting depth zero: continuation lines stay with their statement,
+    comments attach to the statement below them, and an IF(...)THEN block --
+    which split_amps puts around a flavor-masked amplitude -- is never cut in
+    half. Mirrors export_v4.chunk_fortran_statements.
+    """
+
+    def depth_change(line):
+        code = line.upper().split('!')[0].strip()
+        if code.startswith('IF') and code.endswith('THEN'):
+            return 1
+        if code.startswith('DO ') or code == 'DO':
+            return 1
+        if code.startswith(('ENDIF', 'END IF', 'ENDDO', 'END DO')):
+            return -1
+        return 0
+
+    chunks = []
+    current = []
+    pending = []
+    nb_statements = 0
+    depth = 0
+    for line in lines:
+        if not line.strip() or _CHUNK_COMMENT_RE.search(line):
+            pending.append(line)
+            continue
+        if _CHUNK_CONTINUATION_RE.match(line):
+            (current if current else pending).append(line)
+            continue
+        if depth == 0 and nb_statements >= chunk_size and current:
+            chunks.append(current)
+            current = []
+            nb_statements = 0
+        current.extend(pending)
+        pending = []
+        current.append(line)
+        nb_statements += 1
+        depth = max(0, depth + depth_change(line))
+    if pending:
+        current.extend(pending)
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def get_subroutine_signature(text):
+    """(name, argument list) of the first SUBROUTINE statement of *text*, with
+    its continuation lines folded back in. The chunk template is written by the
+    exporter, which is where the argument list of a chunk is decided (it
+    depends on the crossing and flavor-mask holes), so it is read back from
+    there rather than repeated here."""
+
+    statement = ''
+    for line in text.split('\n'):
+        if not statement:
+            if 'SUBROUTINE' not in line.upper():
+                continue
+            statement = line.strip()
+        elif line[5:6] in ('$', '&'):
+            statement += line[6:].strip()
+        else:
+            break
+        if statement.endswith(')'):
+            break
+    head, _, args = statement.partition('(')
+    return head.split()[-1], args.rsplit(')', 1)[0]
+
+
+def read_amp_chunk_body(path):
+    """Return the HELAS call lines of an amplitude-chunk file, i.e. what used
+    to sit inline in the matrix element before the split."""
+
+    body = []
+    inside = False
+    with open(path) as chunk_file:
+        for line in chunk_file:
+            if AMP_CHUNK_BEGIN in line.upper():
+                inside = True
+            elif AMP_CHUNK_END in line.upper():
+                break
+            elif inside:
+                body.append(line)
+    return body
+
+
+def splice_amp_chunks(path):
+    """Iterate over the lines of *path*, substituting the body of
+    matrix<i>_origamp<k>.f wherever the matrix element calls it.
+
+    The exporter can move the HELAS call sequence of matrix<i>_orig.f into
+    files of its own; the unrolling below has to see that sequence, and it sees
+    exactly the lines that used to be there.
+    """
+
+    directory = os.path.dirname(path) or '.'
+    base = os.path.basename(path)[:-len('_orig.f')]
+    skipping = False
+    with open(path) as input_file:
+        for line in input_file:
+            if skipping:
+                # the call is long enough to be wrapped as soon as the flavor
+                # masks are threaded through it; its continuations must go with
+                # it, or they would be folded onto the last spliced statement
+                if _CHUNK_CONTINUATION_RE.match(line):
+                    continue
+                skipping = False
+            match = AMP_CHUNK_CALL_RE.match(line)
+            if not match:
+                yield line
+                continue
+            skipping = True
+            chunk = os.path.join(
+                directory, '%s_origamp%s.f' % (base, match.group(1)))
+            for chunk_line in read_amp_chunk_body(chunk):
+                yield chunk_line
 
 class DAG:
 
@@ -454,6 +591,9 @@ class HelicityRecycler():
         self.all_hel = []
         self.hel_filt = True
         self.gauge = gauge
+        # statements per matrix<i>_optimamp<k>.f; 0 keeps the unrolled sequence
+        # inline in matrix<i>_optim.f as it always was
+        self.amp_chunk_size = AMP_CHUNK_SIZE_DEFAULT
 
     def set_input(self, file):
         if 'born_matrix' in file:
@@ -696,39 +836,41 @@ class HelicityRecycler():
 
     def read_orig(self):
 
-        with open(self.input_file, 'r') as input_file:
+        # The HELAS call sequence may live in matrix<i>_origamp<k>.f rather than
+        # inline; splice_amp_chunks puts those lines back where they were.
+        input_file = splice_amp_chunks(self.input_file)
 
-            self.prepare_bools()
+        self.prepare_bools()
 
-            for line_num, line in tqdm(enumerate(input_file), total=get_num_lines(self.input_file)):
-                if line_num == 0:
-                    line_cache = line
-                    continue
-                
-                if '!SKIP' in line:
-                    continue
-                
-                char_5 = ''
-                try:
-                    char_5 = line[5]
-                except IndexError:
-                    pass
-                if char_5 == '$':
-                    line_cache = undo_multiline(line_cache, line)
-                    continue
+        for line_num, line in tqdm(enumerate(input_file), total=get_num_lines(self.input_file)):
+            if line_num == 0:
+                line_cache = line
+                continue
 
-                line, line_cache = line_cache, line
+            if '!SKIP' in line:
+                continue
 
-                self.get_old_name(line)
-                self.get_good_hel(line)
-                self.get_amp_stuff(line_num, line)
-                call_type = self.function_call(line)
-                self.get_gwc(line, call_type)
+            char_5 = ''
+            try:
+                char_5 = line[5]
+            except IndexError:
+                pass
+            if char_5 == '$':
+                line_cache = undo_multiline(line_cache, line)
+                continue
 
-                
-                if call_type in ['external', 'internal', 'amplitude']:
-                    self.template_dict['helas_calls'] += self.unfold_helicities(
-                        line, call_type)
+            line, line_cache = line_cache, line
+
+            self.get_old_name(line)
+            self.get_good_hel(line)
+            self.get_amp_stuff(line_num, line)
+            call_type = self.function_call(line)
+            self.get_gwc(line, call_type)
+
+
+            if call_type in ['external', 'internal', 'amplitude']:
+                self.template_dict['helas_calls'] += self.unfold_helicities(
+                    line, call_type)
 
         self.template_dict['nwavefuncs'] = max(External.num_externals, Internal.max_wav_num, External.max_wav_num)
         # filter out uselless call
@@ -755,7 +897,77 @@ class HelicityRecycler():
                 out_file.write(line)
         out_file.close()
 
+    def amp_chunk_paths(self):
+        """(chunk template, chunk file stem) for this matrix element, or None
+        when the exporter did not write a chunk template for it."""
+
+        if not self.output_file.endswith('_optim.f'):
+            return None
+        template_file = '%s_ampchunk.f' % self.template_file[:-len('.f')]
+        if not os.path.exists(template_file):
+            return None
+        return template_file, self.output_file[:-len('_optim.f')]
+
+    def write_amp_chunks(self):
+        """Move the unrolled HELAS call sequence out of matrix<i>_optim.f and
+        into matrix<i>_optimamp<k>.f, one subroutine per amp_chunk_size
+        statements, leaving the calls to them behind.
+
+        That sequence is essentially the whole recycled matrix element at high
+        multiplicity, and as one basic block inside one routine it is what
+        makes the file uncompilable; split up it also gets to be compiled
+        apart from -- and at a lower optimisation level than -- the JAMP and
+        colour blocks, which are the only part -O has anything to do on.
+
+        Returns the number of chunk files written; 0 leaves the sequence inline
+        and matrix<i>_optim.f exactly as it was before.
+        """
+
+        paths = self.amp_chunk_paths()
+        if not paths:
+            return 0
+        template_file, stem = paths
+        # a shorter sequence than last time must not leave live orphans behind
+        for stale in glob.glob('%s_optimamp*.f' % stem):
+            os.remove(stale)
+
+        lines = self.template_dict['helas_calls'].split('\n')
+        if self.amp_chunk_size <= 0 or len(lines) <= self.amp_chunk_size:
+            return 0
+        chunks = chunk_statements(lines, self.amp_chunk_size)
+        if len(chunks) < 2:
+            return 0
+
+        template = open(template_file).read()
+        name, args = get_subroutine_signature(template)
+        # the leading blank puts the comments below in column 1: the template
+        # hole itself is indented, and a comment marker has to start the line
+        driver = ['',
+                  'C     The unrolled HELAS call sequence lives in '
+                  '%s_optimamp<k>.f,' % os.path.basename(stem),
+                  'C     one subroutine per %d statements.' % self.amp_chunk_size]
+        for i, chunk in enumerate(chunks):
+            chunk_dict = dict(self.template_dict)
+            chunk_dict['chunk_id'] = str(i + 1)
+            # the template hole is indented; the leading newline keeps the
+            # first call of the slice in the same columns as all the others,
+            # which a long one would otherwise be split out of
+            chunk_dict['helas_calls'] = '\n' + '\n'.join(chunk)
+            text = Template(template).safe_substitute(chunk_dict)
+            text = '\n'.join([do_multiline(sub) for sub in text.split('\n')])
+            with open('%s_optimamp%d.f' % (stem, i + 1), 'w') as chunk_file:
+                chunk_file.write(text)
+            driver.append('      CALL %s(%s)'
+                          % (Template(name).safe_substitute(chunk_id=i + 1),
+                             args))
+        self.template_dict['helas_calls'] = '\n'.join(driver)
+        return len(chunks)
+
     def write_zero_matrix_element(self):
+        paths = self.amp_chunk_paths()
+        if paths:
+            for stale in glob.glob('%s_optimamp*.f' % paths[1]):
+                os.remove(stale)
         try:
       	    os.remove(self.output_file)
         except Exception:
@@ -772,6 +984,7 @@ class HelicityRecycler():
         
         atexit.register(self.clean_up)
         self.read_orig()
+        self.write_amp_chunks()
         self.read_template()
         atexit.unregister(self.clean_up)
 

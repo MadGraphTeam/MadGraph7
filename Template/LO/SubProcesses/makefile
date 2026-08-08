@@ -48,12 +48,24 @@ MATRIX = $(patsubst %.f,%.o,$(wildcard matrix*_optim.f))
 # the optimized binaries alongside the recycled bases. When recycling is off the
 # matrix*.f glob below already covers them.
 ROUTER = $(patsubst %.f,%.o,$(wildcard matrix*_router.f))
+# Amplitude chunks: at high multiplicity the HELAS call sequence of a matrix
+# element is emitted as its own set of files, one subroutine each, so that it
+# is not one enormous basic block (gfortran's cost on which grows faster than
+# linearly) and so that it can carry its own optimisation flag -- see AMP_FLAG
+# below. matrix<i>_origamp<k>.f goes into both binaries, because a matrix
+# element that has no helicity to recycle is reused as its own optimized copy.
+ORIGAMP = $(patsubst %.f,%.o,$(wildcard matrix*_origamp*.f))
+OPTIMAMP = $(patsubst %.f,%.o,$(wildcard matrix*_optimamp*.f))
+AMPCHUNK = $(ORIGAMP) $(OPTIMAMP)
 ifeq ($(strip $(MATRIX_HEL)),)
         MATRIX = $(patsubst %.f,%.o,$(wildcard matrix*.f))
+        AMPCHUNK =
 else
-        MATRIX += $(ROUTER)
-        MATRIX_HEL += $(ROUTER)
+        MATRIX += $(ROUTER) $(AMPCHUNK)
+        MATRIX_HEL += $(ROUTER) $(ORIGAMP)
 endif
+# every matrix object except the amplitude chunks, which get a rule of their own
+MATRIX_CORE = $(filter-out $(AMPCHUNK),$(sort $(MATRIX) $(MATRIX_HEL)))
 
 
 PROCESS= driver.o myamp.o genps.o unwgt.o setcuts.o \
@@ -90,8 +102,15 @@ $(LIBDIR)libgammaUPC.$(libext):
 	cd ../../Source/PDF/gammaUPC; make
 
 # Add source so that the compiler finds the DiscreteSampler module.
-$(MATRIX): %.o: %.f
+$(MATRIX_CORE): %.o: %.f
 	$(FC) $(FFLAGS) $(MATRIX_FLAG) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
+# The amplitude chunks carry their own flag, which lands after FFLAGS and so
+# wins over the GLOBAL_FLAG. It is empty by default: splitting the sequence up
+# is what makes it compilable, and dropping it to -O0 on top buys about 1.5x
+# more on the compile but costs 19% of the run time at g g > t t~ 3g and 61% at
+# g g > 5g. Set amp_flag in the run_card when the compile is the problem.
+$(AMPCHUNK): %.o: %.f
+	$(FC) $(FFLAGS) $(MATRIX_FLAG) $(AMP_FLAG) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
 %.o: %.f
 	$(FC) $(FFLAGS) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
 

@@ -4606,7 +4606,10 @@ class RunCardLO(RunCard):
         self.add_param('aloha_flag', '', include=False, hidden=True, comment='global fortran compilation flag, suggestion: -ffast-math',
                        fct_mod=(self.make_clean, ('Source/DHELAS'),{}))
         self.add_param('matrix_flag', '', include=False, hidden=True, comment='fortran compilation flag	for the	matrix-element files, suggestion -O3',
-                       fct_mod=(self.make_Ptouch, ('matrix'),{}))        
+                       fct_mod=(self.make_Ptouch, ('matrix'),{}))
+        self.add_param('amp_flag', '', include=False, hidden=True, comment='fortran compilation flag for the amplitude (HELAS call) files split out of the matrix elements; it lands after matrix_flag. -O0 buys about 1.5x on their compile but costs 19%% of the run time at g g > t t~ 3g and 61%% at g g > 5g -- the helicity-recycled sequence is not the flat run of external calls the un-recycled one is -- so it is only worth setting when the compile itself is the problem',
+                       fct_mod=(self.make_Ptouch, ('matrix'),{}))
+        self.add_param('amp_chunk_size', 2000, include=False, hidden=True, comment='number of fortran statements per amplitude file when the helicity-recycled matrix element is split up; 0 keeps the unrolled call sequence inline in matrix<i>_optim.f')
         self.add_param('vector_size', 1, include='vector.inc', hidden=True, comment='lockstep size for parralelism run', 
                        fortran_name='WARP_SIZE', fct_mod=(self.reset_simd,(),{}))
         self.add_param('nb_warp', 1, include='vector.inc', hidden=True, comment='number of warp for parralelism run', 

@@ -4624,6 +4624,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 self.make_opts_var['GLOBAL_FLAG'] = run_card['global_flag']     
             self.make_opts_var['ALOHA_FLAG'] = run_card['aloha_flag']     
             self.make_opts_var['MATRIX_FLAG'] = run_card['matrix_flag']
+            self.make_opts_var['AMP_FLAG'] = run_card['amp_flag']
 
         return self.update_make_opts_full(make_opts, self.make_opts_var)
 

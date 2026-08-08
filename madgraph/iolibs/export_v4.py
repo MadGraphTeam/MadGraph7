@@ -86,6 +86,96 @@ default_compiler= {'fortran': 'gfortran',
                        'cpp':'g++'}
 
 
+# Number of fortran statements per amplitude-chunk file. The HELAS call
+# sequence of a high-multiplicity matrix element is one enormous basic block
+# and gfortran's cost on it grows faster than linearly, so it is emitted as its
+# own set of files (matrix<i>_origamp<k>.f / matrix<i>_optimamp<k>.f), one
+# subroutine each, called in sequence. A matrix element whose sequence is
+# shorter than this is written inline exactly as before, which keeps every
+# small process byte-identical to the unchunked output.
+# Overridable at output time with 'output madevent --amp_chunk_size=N' and, for
+# the helicity-recycled copy, with the 'amp_chunk_size' run_card parameter.
+# 0 (or a negative value) disables the split entirely.
+# 2000 was measured on the recycled matrix element of g g > 5g (14 MB, 386k
+# lines): serial compile 158 s at 500, 140 s at 1000, 111 s at 2000, 114 s at
+# 10000, so the curve is flat past 2000 while the peak memory of one file keeps
+# growing (70 / 115 / 204 / 779 MB).
+AMP_CHUNK_SIZE_DEFAULT = 2000
+
+
+_AMP_COMMENT_RE = re.compile(r"^(\s*#|c\$|c$|(c\s+([^=]|$))|cf2py|c\-\-|c\*\*|\s*!|!\$)",
+                             re.IGNORECASE)
+_AMP_CONTINUATION_RE = re.compile(r"^(?:     )[$&]")
+
+
+def chunk_fortran_statements(lines, chunk_size, fixed_form=True):
+    """Group *lines* into slices of about *chunk_size* statements each, and
+    return the list of slices.
+
+    With fixed_form=True the lines are already column-formatted fortran (what
+    hel_recycle produces); with fixed_form=False they are the raw HELAS calls
+    the exporter hands to the FortranWriter, one statement per entry and with
+    '#' comments.
+
+    A slice boundary may only fall where a new statement starts at nesting
+    depth zero: continuation lines (5 blanks then '$' or '&') stay with their
+    statement, comments attach to the statement that follows them, and an
+    IF(...)THEN / DO block -- hel_recycle emits those around a flavor-masked
+    split amplitude -- is never cut in half.
+    """
+
+    def is_continuation(line):
+        return fixed_form and bool(_AMP_CONTINUATION_RE.match(line))
+
+    def is_comment(line):
+        if not line.strip():
+            return True
+        if fixed_form:
+            return bool(_AMP_COMMENT_RE.search(line))
+        return line.lstrip().startswith('#')
+
+    def depth_change(line):
+        code = line.upper().split('!')[0].strip()
+        if code.startswith('IF') and code.endswith('THEN'):
+            return 1
+        if code.startswith('DO ') or code == 'DO':
+            return 1
+        if code.startswith('END IF') or code.startswith('ENDIF') or \
+           code.startswith('END DO') or code.startswith('ENDDO'):
+            return -1
+        return 0
+
+    chunks = []
+    current = []
+    pending = []          # comments waiting for the statement they annotate
+    nb_statements = 0
+    depth = 0
+    for line in lines:
+        if is_comment(line):
+            pending.append(line)
+            continue
+        if is_continuation(line):
+            # a continuation can only follow a statement already in flight
+            (current if current else pending).append(line)
+            continue
+        if depth == 0 and nb_statements >= chunk_size and current:
+            chunks.append(current)
+            current = []
+            nb_statements = 0
+        current.extend(pending)
+        pending = []
+        current.append(line)
+        nb_statements += 1
+        depth += depth_change(line)
+        if depth < 0:
+            depth = 0
+    if pending:
+        (current if current else chunks[-1] if chunks else current).extend(pending)
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 class VirtualExporter(object):
     
     #exporter variable who modified the way madgraph interacts with this class
@@ -9543,6 +9633,95 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         else:
             self.opt['nb_warp'] = 1
 
+        if opt and isinstance(opt['output_options'], dict) and \
+                                       'amp_chunk_size' in opt['output_options']:
+            self.opt['amp_chunk_size'] = banner_mod.ConfigFile.format_variable(
+                  opt['output_options']['amp_chunk_size'], int, 'amp_chunk_size')
+        else:
+            self.opt['amp_chunk_size'] = AMP_CHUNK_SIZE_DEFAULT
+
+    def write_amp_chunk_files(self, replace_dict, proc_id):
+        """Move the HELAS call sequence of matrix<proc_id>_orig.f out of
+        MATRIX<proc_id> and into matrix<proc_id>_origamp<k>.f, one subroutine
+        per amp_chunk_size statements, and leave the calls to them behind.
+
+        Returns the number of chunk files written (0 when the sequence is short
+        enough to stay inline, which leaves replace_dict untouched and the
+        generated file byte-identical to the unchunked output).
+        """
+
+        chunk_size = self.opt.get('amp_chunk_size', AMP_CHUNK_SIZE_DEFAULT)
+        calls = replace_dict['helas_calls'].split('\n')
+        # a re-output into the same directory (output -noclean) with a bigger
+        # chunk size, or none, must not leave live orphans behind: the makefile
+        # globs these and would compile and link whatever it finds
+        for stale in glob.glob('matrix%s_origamp*.f' % proc_id):
+            os.remove(stale)
+        if chunk_size <= 0 or len(calls) <= chunk_size:
+            return 0
+
+        chunks = chunk_fortran_statements(calls, chunk_size, fixed_form=False)
+        if len(chunks) < 2:
+            return 0
+
+        self.set_amp_chunk_replace_keys(replace_dict)
+        template = open(pjoin(_file_path,
+            'iolibs/template_files/matrix_madevent_ampchunk_v4.inc')).read()
+        args = ('P,NHEL,IC,IVEC,FLAVOR,W,AMP%s' %
+                replace_dict['amp_chunk_mask_arg'])
+        driver = ['C     The HELAS call sequence lives in matrix%s_origamp<k>.f, one'
+                  % proc_id,
+                  'C     subroutine per %d statements, so that the amplitudes can be'
+                  % chunk_size,
+                  'C     compiled apart from the JAMP and colour blocks below.']
+        for i, chunk in enumerate(chunks):
+            chunk_dict = dict(replace_dict)
+            chunk_dict['chunk_id'] = str(i + 1)
+            chunk_dict['helas_calls'] = '\n'.join(chunk)
+            writer = writers.FortranWriter(
+                'matrix%s_origamp%d.f' % (proc_id, i + 1))
+            writer.writelines(misc.apply_template(template, chunk_dict))
+            driver.append('CALL ORIGAMP%s_%d(%s)' % (proc_id, i + 1, args))
+        replace_dict['helas_calls'] = '\n'.join(driver)
+        return len(chunks)
+
+    def write_amp_chunk_template(self, replace_dict, ime):
+        """Write template_matrix<ime>_ampchunk.f, the per-chunk counterpart of
+        template_matrix<ime>.f: hel_recycle renders it once per slice of the
+        unrolled call sequence into matrix<ime>_optimamp<k>.f. Skipped when the
+        chunk size is 0, in which case hel_recycle keeps the sequence inline."""
+
+        if self.opt.get('amp_chunk_size', AMP_CHUNK_SIZE_DEFAULT) <= 0:
+            return
+        self.set_amp_chunk_replace_keys(replace_dict)
+        tfile = open(pjoin(_file_path,
+            'iolibs/template_files/matrix_madevent_ampchunk_v4_hel.inc')).read()
+        writer = writers.FortranWriter('template_matrix%d_ampchunk.f' % ime)
+        writer.uniformcase = False
+        writer.writelines(misc.apply_template(tfile, replace_dict))
+
+    def set_amp_chunk_replace_keys(self, replace_dict):
+        """Fill the replace_dict holes that only the amplitude-chunk files use:
+        the flavor-mask arrays they have to be handed. Their DATA tables stay
+        in the matrix element, so the dummies are declared assumed-size.
+
+        Nothing the matrix element itself writes is touched here -- the chunks
+        recompute the fake widths from coupl.inc instead of reading them out of
+        the matrix element's SAVEd locals -- so a process whose call sequence is
+        short enough to stay inline comes out byte-identical."""
+
+        if replace_dict.get('flavor_mask_decl'):
+            replace_dict['amp_chunk_mask_arg'] = \
+                ',CURRENT_WF_MASK,CURRENT_AMP_MASK'
+            replace_dict['amp_chunk_mask_decl'] = (
+                'C     Flavor masks of the calling matrix element; the DATA\n'
+                'C     tables they are copied from stay there.\n'
+                '      INTEGER*8 CURRENT_WF_MASK(*)\n'
+                '      INTEGER*8 CURRENT_AMP_MASK(*)')
+        else:
+            replace_dict['amp_chunk_mask_arg'] = ''
+            replace_dict['amp_chunk_mask_decl'] = ''
+
     # helper function for customise helas writter
     @staticmethod
     def custom_helas_call(call, arg):
@@ -10766,6 +10945,27 @@ C       with every entry counted once.
             lines.append('\tln -sf %s %s' % (base_o, o))
             lines.append('%s:' % base_o)
             lines.append('\t+$(MAKE) -C %s %s' % (pjoin('..', base_dir), o))
+        if self.opt.get('amp_chunk_size', AMP_CHUNK_SIZE_DEFAULT) > 0:
+            # ... and, when the base's HELAS call sequence was split out into
+            # amplitude files of its own, those objects too. They are globbed
+            # in the base directory at make time rather than listed here: the
+            # optim ones do not exist until gen_ximprove has recycled the base,
+            # which is well after this file is written. The pattern rules below
+            # override the shared makefile's %.o: %.f (it is included last), and
+            # the extra prerequisites get them built before either binary links.
+            base = pjoin('..', base_dir)
+            for kind in ('origamp', 'optimamp'):
+                var = 'XG_%s' % kind.upper()
+                lines.append('%s := $(notdir $(patsubst %%.f,%%.o,'
+                             '$(wildcard %s/matrix%d_%s*.f)))'
+                             % (var, base, base_proc_id, kind))
+                lines.append('matrix%d_%s%%.o:' % (base_proc_id, kind))
+                lines.append('\t+$(MAKE) -C %s $@' % base)
+                lines.append('\tln -sf %s/$@ $@' % base)
+            lines.append('MATRIX += $(XG_ORIGAMP) $(XG_OPTIMAMP)')
+            lines.append('MATRIX_HEL += $(XG_ORIGAMP)')
+            lines.append('madevent_forhel: $(XG_ORIGAMP)')
+            lines.append('madevent: $(XG_ORIGAMP) $(XG_OPTIMAMP)')
         open('crossgroup.mk', 'w').write('\n'.join(lines) + '\n')
 
     def write_crossgroup_helunion(self, subproc_path):
@@ -13250,6 +13450,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                                 subproc_number=group_number,
                                 **_xgrow_kw(ime))
                 calls,ncolor = replace_dict['return_value']
+                # Emit the HELAS call sequence as matrix<i>_origamp<k>.f, one
+                # subroutine per amp_chunk_size statements, and leave the calls
+                # to them in MATRIX<i>. Short sequences stay inline, so nothing
+                # below the high-multiplicity threshold changes at all.
+                self.write_amp_chunk_files(replace_dict, str(ime+1))
                 tfile = open(replace_dict['template_file']).read()
                 file = misc.apply_template(tfile, replace_dict)
                 # Add the split orders helper functions.
@@ -13271,7 +13476,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                 writer = writers.FortranWriter('template_matrix%d.f' % (ime+1))
                 writer.uniformcase = False
                 writer.writelines(file)
-                
+
+                # ... and the template hel_recycle renders the unrolled call
+                # sequence into, one file per chunk, the same way.
+                self.write_amp_chunk_template(replace_dict, ime+1)
+
                 
                 
                 
