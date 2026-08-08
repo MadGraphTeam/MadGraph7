@@ -171,63 +171,113 @@ def splice_amp_chunks(path):
 class DAG:
 
     def __init__(self):
-        self.graph = {}
         self.all_wavs = []
         self.external_wavs = []
         self.internal_wavs = []
+        # all_wavs holds every wavefunction ever built, dead ones included, and
+        # grows to hundreds of thousands of entries at high multiplicity. Every
+        # question ever asked of it is keyed on old_name, so bucket it: a linear
+        # scan per HELAS line is quadratic in the file, and it was the second
+        # cost centre of the whole recycling step after find_path.
+        self.by_old_name = {}
+        # The externals each wavefunction depends on, which is the ONLY thing
+        # anyone ever wanted the graph for -- good_helicity asked it as
+        # find_path(dep, ext) over every (dep, external) pair, i.e. a fresh DFS
+        # per pair, 114 million of them on g g > 5g. It needs no search at all:
+        # the edges recorded by store_wav go straight from a wavefunction to the
+        # externals under it (that is what its caller passes as ext_deps, itself
+        # already a transitive closure), and externals have no outgoing edges,
+        # so the graph is two levels deep by construction and reachability is a
+        # set membership. Verified against find_path over every top-level pair
+        # of g g > g g g and g g > g g g g g: same answer everywhere, and no
+        # path longer than two nodes exists.
+        self.ext_closure = {}
+        # Bit i of comb_masks[wav] is set when good_wav_combs[i] contains wav;
+        # compat_masks[node] is the AND over its ext_closure, so "does some good
+        # helicity combination cover this subtree" is one big-int test instead
+        # of a rescan of the whole comb list. Rebuilt by set_good_wav_combs.
+        self.comb_masks = {}
+        self.compat_masks = {}
+        self.full_mask = 0
 
     def store_wav(self, wav, ext_deps=[]):
         self.all_wavs.append(wav)
         nature = wav.nature
         if nature == 'external':
             self.external_wavs.append(wav)
-        if nature == 'internal':
-            self.internal_wavs.append(wav)
-        for ext in ext_deps:
-            self.add_branch(wav, ext)
-
-    def add_branch(self, node_i, node_f):
+            # An external is its own only external dependency: find_path(w, w)
+            # returned the one-element path [w], which is truthy.
+            self.ext_closure[wav] = frozenset((wav,))
+        else:
+            if nature == 'internal':
+                self.internal_wavs.append(wav)
+            self.ext_closure[wav] = frozenset(ext_deps)
         try:
-            self.graph[node_i].append(node_f)
+            self.by_old_name[wav.old_name].append(wav)
         except KeyError:
-            self.graph[node_i] = [node_f]
+            self.by_old_name[wav.old_name] = [wav]
 
     def dependencies(self, old_name):
-        deps = [wav for wav in self.all_wavs
-                if wav.old_name == old_name and not wav.dead]
-        return deps
+        return list(self.by_old_name.get(old_name, ()))
 
     def kill_old(self, old_name):
-        for wav in self.all_wavs:
-            if wav.old_name == old_name:
+        # Every wavefunction under this name dies at once, so the bucket can be
+        # emptied rather than filtered later: dead wavefunctions are never
+        # resurrected, and dependencies() would drop them anyway. The name stays
+        # a key so old_names() keeps reporting it, exactly as the scan over
+        # all_wavs (which also kept the dead entries) used to.
+        bucket = self.by_old_name.get(old_name)
+        if bucket:
+            for wav in bucket:
                 wav.dead = True
+            del bucket[:]
 
     def old_names(self):
-        return {wav.old_name for wav in self.all_wavs}
+        '''The old names ever stored, live or dead. Callers only intersect it
+        with a set, which leaves it untouched -- do not mutate the result.'''
+        return self.by_old_name.keys()
 
-    def find_path(self, start, end, path=[]):
-        '''Taken from https://www.python.org/doc/essays/graphs/'''
+    def set_good_wav_combs(self, good_wav_combs):
+        '''Index the good external-wavefunction combinations as bitmasks. Called
+        whenever External.get_gwc rebuilds them, which is what invalidates the
+        cached per-node masks.'''
+        self.comb_masks = comb_masks = {}
+        self.compat_masks = {}
+        for i, comb in enumerate(good_wav_combs):
+            bit = 1 << i
+            for wav in comb:
+                comb_masks[wav] = comb_masks.get(wav, 0) | bit
+        self.full_mask = (1 << len(good_wav_combs)) - 1
 
-        path = path + [start]
-        if start == end:
-            return path
-        if start not in self.graph:
-            return None
-        for node in self.graph[start]:
-            if node not in path:
-                newpath = self.find_path(node, end, path)
-                if newpath:
-                    return newpath
-        return None
+    def compat_mask(self, node):
+        '''The combinations that cover every external under `node`. Zero when
+        none does -- with no combinations at all that is every node, which is
+        how the old "no comb was a superset" answer came out for an empty
+        good_wav_combs.'''
+        try:
+            return self.compat_masks[node]
+        except KeyError:
+            pass
+        mask = self.full_mask
+        comb_masks = self.comb_masks
+        for ext in self.ext_closure[node]:
+            mask &= comb_masks.get(ext, 0)
+            if not mask:
+                break
+        self.compat_masks[node] = mask
+        return mask
 
     def __str__(self):
         return self.__repr__()
 
     def __repr__(self):
+        branches = [(key, sorted(item, key=lambda w: w.name))
+                    for key, item in self.ext_closure.items()
+                    if item and key.nature != 'external']
         print_str = 'With new names:\n\t'
-        print_str += '\n\t'.join([f'{key} : {item}' for key, item in self.graph.items() ])
+        print_str += '\n\t'.join([f'{key} : {item}' for key, item in branches])
         print_str += '\n\nWith old names:\n\t'
-        print_str += '\n\t'.join([f'{key.old_name} : {[i.old_name for i in item]}' for key, item in self.graph.items() ])
+        print_str += '\n\t'.join([f'{key.old_name} : {[i.old_name for i in item]}' for key, item in branches])
         return print_str
 
 
@@ -235,8 +285,8 @@ class DAG:
 class MathsObject:
     '''Abstract class for wavefunctions and Amplitudes'''
 
-    # Store here which externals the last wav/amp depends on.
-    # This saves us having to call find_path multiple times.
+    # Store here which externals the last wav/amp depends on, so that get_obj
+    # and get_number do not have to recompute what good_helicity just worked out.
     ext_deps = None
 
     def __init__(self, arguments, old_name, nature):
@@ -272,19 +322,31 @@ class MathsObject:
 
     @classmethod
     def good_helicity(cls, wavs, graph, diag_number=None, all_hel=[], bad_hel_amp=[]):
-        exts = graph.external_wavs
-        cls.ext_deps = { i for dep in wavs for i in exts if graph.find_path(dep, i) }
-        this_comb_good = False
-        for comb in External.good_wav_combs:
-            if cls.ext_deps.issubset(set(comb)):
-                this_comb_good = True
+        # The externals under this combination of dependencies: the union of the
+        # closures the DAG already recorded, not a search per (dep, external)
+        # pair. See DAG.ext_closure.
+        closure = graph.ext_closure
+        ext_deps = set()
+        for dep in wavs:
+            ext_deps |= closure[dep]
+        cls.ext_deps = ext_deps
+        # "Is ext_deps covered by some good combination" -- an AND of the
+        # per-dependency masks, which is the same answer as testing every
+        # combination for a superset (a combination covers the union exactly when
+        # it covers each closure) but does not rescan the comb list, and reuses
+        # the mask each dependency was given the first time it was seen.
+        mask = graph.full_mask
+        for dep in wavs:
+            mask &= graph.compat_mask(dep)
+            if not mask:
                 break
-            
+        this_comb_good = bool(mask)
+
         if diag_number and this_comb_good and cls.ext_deps:
 
             helicity = dict([(a.get_id(), a.hel) for a in cls.ext_deps])
-            this_hel = [helicity[i] for i in range(1, len(helicity)+1)] 
-            hel_number = 1 + all_hel.index(tuple(this_hel))
+            this_hel = [helicity[i] for i in range(1, len(helicity)+1)]
+            hel_number = 1 + External.all_hel_index[tuple(this_hel)]
             
             if (hel_number,diag_number) in bad_hel_amp:        
                 this_comb_good = False
@@ -337,7 +399,10 @@ class External(MathsObject):
     # Could get this from dag but I'm worried about preserving order
     wavs_same_leg = {}
     good_wav_combs = []
-    max_wav_num = 0 
+    max_wav_num = 0
+    # helicity tuple -> its row in the original NHEL table, filled by
+    # HelicityRecycler.get_good_hel once that table is complete
+    all_hel_index = {}
 
     def __init__(self, arguments, old_name):
         super().__init__(arguments, old_name, 'external')
@@ -527,6 +592,7 @@ class HelicityRecycler():
         External.num_externals = 0
         External.wavs_same_leg = {}
         External.good_wav_combs = []
+        External.all_hel_index = {}
 
         Internal.max_wav_num = 0
         Internal.num_internals = 0
@@ -798,6 +864,9 @@ class HelicityRecycler():
             return
 
         External.get_gwc()
+        # The only place the combinations change, so the only place the DAG's
+        # bitmask index has to be rebuilt.
+        self.dag.set_good_wav_combs(External.good_wav_combs)
         self.last_category = category
 
     def get_good_hel(self, line):
@@ -814,6 +883,12 @@ class HelicityRecycler():
                 External.good_hel = dict([(v,i) for i,v in enumerate(self.all_hel)])
 
             External.map_hel=dict([(hel,i) for i,hel in  enumerate(External.good_hel)])
+            # good_helicity needs the position of a helicity tuple in the FULL
+            # table (not the filtered one map_hel indexes) once per amplitude it
+            # unfolds; that was all_hel.index, a scan of the 128 rows 811 000
+            # times over g g > g g g g g. The table is complete by now -- every
+            # DATA (NHEL line precedes the first HELAS call.
+            External.all_hel_index = dict([(hel,i) for i,hel in enumerate(self.all_hel)])
             External.hel_ranges = [set() for hel in next(iter(External.good_hel))]
             for comb in External.good_hel:
                 for i, hel in enumerate(comb):
@@ -992,10 +1067,34 @@ class HelicityRecycler():
         pass
 
 
+# get_arguments walks its line character by character, and unfold_helicities
+# asks it again for every object it unfolds out of that line: 905 351 calls over
+# the 8 143 HELAS lines of g g > g g g g g, all but ~50 000 of them a repeat of
+# the line just parsed, and 3.7 s of a 16.8 s (profiled) recycling step. Keep the
+# last few answers -- the callers walk the file one line at a time, so a handful
+# of slots is all it takes -- and hand out a copy, since a shared mutable list is
+# not what a caller that goes on to substitute arguments into it expects.
+_ARGUMENT_CACHE = {}
+_ARGUMENT_CACHE_SIZE = 32
+
+
 def get_arguments(line):
     '''Find the substrings separated by commas between the first
-    closed set of parentheses in 'line'. 
+    closed set of parentheses in 'line'.
     '''
+    try:
+        return list(_ARGUMENT_CACHE[line])
+    except KeyError:
+        pass
+    arguments = parse_arguments(line)
+    if len(_ARGUMENT_CACHE) >= _ARGUMENT_CACHE_SIZE:
+        _ARGUMENT_CACHE.clear()
+    _ARGUMENT_CACHE[line] = arguments
+    return list(arguments)
+
+
+def parse_arguments(line):
+    '''The uncached get_arguments.'''
     start_idx = None
     call_idx = line.upper().find('CALL ')
     if call_idx != -1:
