@@ -1179,8 +1179,7 @@ class HelicityRecycler():
         if len(stmts) <= limit:
             # small enough to stay in MATRIX: make sure no chunk file survives
             # from an earlier, larger pass.
-            if os.path.exists(chunk_file):
-                os.remove(chunk_file)
+            self.clean_chunk_files(chunk_file)
             return 0
 
         chunks, cur = [], []
@@ -1192,8 +1191,7 @@ class HelicityRecycler():
         if cur:
             chunks.append(cur)
         if len(chunks) <= 1:
-            if os.path.exists(chunk_file):
-                os.remove(chunk_file)
+            self.clean_chunk_files(chunk_file)
             return 0
 
         prefix = spec['name']
@@ -1222,11 +1220,63 @@ class HelicityRecycler():
             body.append('      END')
             bodies.append('\n'.join(body))
 
-        with open(chunk_file, 'w') as fsock:
-            fsock.write('\n\n\n'.join(bodies) + '\n')
+        self.write_chunk_files(chunk_file, bodies)
         with open(self.output_file, 'w') as fsock:
             fsock.write('\n'.join(lines[:begin] + calls + lines[end:]) + '\n')
         return len(chunks)
+
+    @staticmethod
+    def clean_chunk_files(chunk_file):
+        """Drop every chunk file of an earlier, larger pass. The makefile takes
+        these with a wildcard, so an orphan left behind is still compiled and
+        still linked."""
+
+        stem = chunk_file[:-2] if chunk_file.endswith('.f') else chunk_file
+        for stale in glob.glob('%s*.f' % stem):
+            os.remove(stale)
+
+    def write_chunk_files(self, chunk_file, bodies):
+        """Spread the chunk subroutines over several source files.
+
+        Cutting MATRIX into chunk subroutines makes the file compilable, but as
+        long as they all land in ONE file the compiler still reads the whole
+        thing as a single translation unit: one process, one core, and a heap
+        that grows with the file. g g > 6g gives 419 MB and 9.8M lines, on
+        which gfortran sat at 15 GB and climbing, single threaded, while the
+        other 17 cores of the machine did nothing.
+
+        The subroutines are independent -- they share W/AMP by reference and
+        nothing else -- so which file each one lives in is free. Spread them
+        over chunk_nfiles files and `make -j` compiles them at once, each
+        process holding only its own share. Same trick, and the same reason, as
+        the madevent side writing matrix<i>_optimamp<k>.f per chunk.
+
+        Returns the list of files written."""
+
+        stem = chunk_file[:-2] if chunk_file.endswith('.f') else chunk_file
+        # a shorter sequence than last time must not leave live orphans behind:
+        # the makefile picks these up with a wildcard.
+        for stale in glob.glob('%s*.f' % stem):
+            os.remove(stale)
+
+        nfiles = getattr(self, 'chunk_nfiles', 0)
+        if not nfiles or nfiles < 1:
+            nfiles = 1
+        nfiles = min(nfiles, len(bodies))
+
+        written = []
+        # contiguous, balanced: the first (len % nfiles) files take one extra,
+        # which keeps the subroutine numbering monotonic across the set.
+        per, extra = divmod(len(bodies), nfiles)
+        at = 0
+        for i in range(nfiles):
+            take = per + (1 if i < extra else 0)
+            path = '%s%d.f' % (stem, i + 1)
+            with open(path, 'w') as fsock:
+                fsock.write('\n\n\n'.join(bodies[at:at + take]) + '\n')
+            written.append(path)
+            at += take
+        return written
 
     def clean_up(self):
         pass

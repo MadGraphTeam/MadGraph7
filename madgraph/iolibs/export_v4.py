@@ -8412,6 +8412,24 @@ C       so this also stays correct for split-order processes.
                            self.hel_recycling_chunk_stmts)
             return self.hel_recycling_chunk_stmts
 
+    def _hel_recycling_chunk_files(self):
+        """How many source files to spread the chunk subroutines over.
+
+        Defaults to the core count, so that `make -j` builds them all at once:
+        the chunks are independent, and left in one file they are one
+        translation unit that one gfortran process compiles on one core with a
+        heap that grows with the whole file. Override with
+        --hel_recycling_files=<n>; 1 restores the single-file behaviour."""
+
+        default = os.cpu_count() or 1
+        try:
+            return max(1, int(self.cmd_options.get('hel_recycling_files',
+                                                   default)))
+        except (TypeError, ValueError):
+            logger.warning('--hel_recycling_files must be an integer; using %s',
+                           default)
+            return default
+
     def _hel_recycling_chunk_spec(self, replace_dict, out_path):
         """Describe how to split the recycled helas block of the standalone
         MATRIX into chunk subroutines: the file to write them to, the shared
@@ -8466,6 +8484,7 @@ C       so this also stays correct for split-order processes.
         # libraries end up in one f2py module (write_f2py_splitter).
         return {'file': '%s_getamp.f' % base,
                 'stmts': self._hel_recycling_chunk_size(),
+                'nfiles': self._hel_recycling_chunk_files(),
                 'spec': {'name': '%sGET_AMP_CH' % replace_dict['proc_prefix'],
                          'prologue': prologue,
                          'candidates': candidates, 'locals': locals_,
@@ -8486,6 +8505,7 @@ C       so this also stays correct for split-order processes.
         if chunk:
             recycler.chunk_file = chunk['file']
             recycler.chunk_stmts = chunk['stmts']
+            recycler.chunk_nfiles = chunk.get('nfiles', 1)
             recycler.chunk_spec = chunk['spec']
         recycler.hel_filt = True     # drop helicity combinations not in good_hels
         recycler.amp_splt = True     # P1N amplitude split (the speed-up)
