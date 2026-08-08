@@ -1,3 +1,9 @@
+---
+title: "Model Asset Provenance"
+nav_order: 6
+parent: "Development Documentation"
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Model Asset Provenance
 
 Package-owned model assets live in `src/pyamplicol/assets/models`. Their exact

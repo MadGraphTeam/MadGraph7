@@ -88,8 +88,9 @@ seed = 12345
 relative_tolerance = 1e-12
 # generation.validation.absolute_tolerance: Non-negative tolerance. Default 1e-300.
 absolute_tolerance = 1e-300
-# generation.validation.post_build_validation: Validate the built evaluator.
-post_build_validation = true
+# generation.validation.post_build_validation: Re-open and numerically smoke-test
+# the built evaluator. Default false; structural artifact checks always run.
+post_build_validation = false
 
 [generation.relation_discovery]
 # generation.relation_discovery.mode: "off", "diagnostic", or
@@ -216,9 +217,11 @@ precision = 16
 warmup_runs = 2
 # benchmark.minimum_samples: Positive minimum measured samples. Default 5.
 minimum_samples = 5
-# benchmark.helicity_ids: Optional benchmark helicity selectors. Default empty.
+# benchmark.helicity_ids: Optional benchmark helicity selectors. With both
+# selector lists empty, profiling chooses the generated layout's hot workload.
 helicity_ids = []
-# benchmark.color_flow_ids: Optional benchmark LC flow selectors. Default empty.
+# benchmark.color_flow_ids: Optional benchmark LC flow selectors. With both
+# selector lists empty, profiling chooses the generated layout's hot workload.
 color_flow_ids = []
 
 [output]

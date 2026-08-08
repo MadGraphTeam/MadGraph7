@@ -443,9 +443,9 @@ fn validate_application_config(
     } else {
         false
     };
-    if !host_native && metadata.optimization_level != 2 {
+    if !host_native && !matches!(metadata.optimization_level, 1 | 2) {
         return Err(RusticolError::compatibility(format!(
-            "SymJIT application {} uses compiler type {:?}, which is not native for this host; only optimization level 2 applications are cross-architecture portable",
+            "SymJIT application {} uses compiler type {:?}, which is not native for this host; only optimization level 1 or 2 applications are cross-architecture portable",
             path.display(),
             config.compiler_type()
         )));
@@ -589,6 +589,20 @@ mod tests {
             endianness: "little",
             required_defuns,
         }
+    }
+
+    fn nonnative_config(optimization_level: u8) -> Config {
+        let compiler_type = if cfg!(target_arch = "aarch64") {
+            CompilerType::Amd
+        } else {
+            CompilerType::Arm
+        };
+        let mut config = Config::new(compiler_type, 0).unwrap();
+        config.set_complex(true);
+        config.set_symbolica(true);
+        config.set_direct(false);
+        config.set_opt_level(optimization_level);
+        config
     }
 
     fn write_application(bytes: &[u8], suffix: &str) -> PathBuf {
@@ -1014,6 +1028,33 @@ mod tests {
         let error = SymjitApplicationEvaluator::load(&path, metadata(&[])).unwrap_err();
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cross_architecture_application_accepts_o1_o2_only() {
+        for optimization_level in [1, 2] {
+            let mut metadata = metadata(&[]);
+            metadata.optimization_level = optimization_level;
+            validate_application_config(
+                Path::new("portable.symjit"),
+                &nonnative_config(optimization_level),
+                &metadata,
+            )
+            .unwrap();
+        }
+
+        for optimization_level in [0, 3] {
+            let mut metadata = metadata(&[]);
+            metadata.optimization_level = optimization_level;
+            let error = validate_application_config(
+                Path::new("target-specific.symjit"),
+                &nonnative_config(optimization_level),
+                &metadata,
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+            assert!(error.to_string().contains("optimization level 1 or 2"));
+        }
     }
 
     #[test]

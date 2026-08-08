@@ -57,12 +57,18 @@ def _install_target_info(
     )
 
 
-def test_o2_jit_artifacts_declare_portable_64le_target(
+@pytest.mark.parametrize("optimization_level", (1, 2))
+def test_portable_jit_artifacts_declare_portable_64le_target(
     monkeypatch: pytest.MonkeyPatch,
+    optimization_level: int,
 ) -> None:
     _install_target_info(monkeypatch)
     target, c_abi = artifact_writer._artifact_target_metadata(
-        _config(backend=EvaluatorBackend.JIT, native_arch=False)
+        _config(
+            backend=EvaluatorBackend.JIT,
+            native_arch=False,
+            jit_optimization_level=optimization_level,
+        )
     )
     assert target == {
         "triple": PORTABLE_64LE_TARGET,
@@ -71,14 +77,14 @@ def test_o2_jit_artifacts_declare_portable_64le_target(
     assert c_abi == 7
 
 
-def test_implicit_generation_config_requires_o2_content_evidence(
+def test_implicit_generation_config_requires_portable_jit_content_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_target_info(monkeypatch)
     concrete, _ = artifact_writer._artifact_target_metadata(GenerationConfig())
     portable, _ = artifact_writer._artifact_target_metadata(
         GenerationConfig(),
-        implicit_o2_evidence=True,
+        implicit_portable_jit_evidence=True,
     )
     assert concrete == {
         "triple": "x86_64-unknown-linux-gnu",
@@ -103,8 +109,8 @@ def test_portable_cpp_still_declares_concrete_host_target(
     }
 
 
-@pytest.mark.parametrize("optimization_level", (0, 1, 3))
-def test_non_o2_jit_artifacts_stay_on_the_concrete_host_target(
+@pytest.mark.parametrize("optimization_level", (0, 3))
+def test_nonportable_jit_artifacts_stay_on_the_concrete_host_target(
     monkeypatch: pytest.MonkeyPatch,
     optimization_level: int,
 ) -> None:
@@ -126,7 +132,7 @@ def test_non_o2_jit_artifacts_stay_on_the_concrete_host_target(
     "runtime_capability",
     (SYMBOLICA_CPP_RUNTIME_CAPABILITY, SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY),
 )
-def test_target_specific_capability_prevents_o2_jit_portable_target(
+def test_target_specific_capability_prevents_portable_jit_target(
     monkeypatch: pytest.MonkeyPatch,
     runtime_capability: str,
 ) -> None:
@@ -145,13 +151,14 @@ def test_target_specific_capability_prevents_o2_jit_portable_target(
     ("kind", "optimization_level", "expected"),
     (
         ("symjit-application-evaluator", 2, (True, 1)),
-        ("symjit-application-evaluator", 1, (False, 1)),
+        ("symjit-application-evaluator", 1, (True, 1)),
+        ("symjit-application-evaluator", 0, (False, 1)),
         ("symjit-application-evaluator", 3, (False, 1)),
         ("compiled-complex-evaluator", 2, (False, 0)),
         ("jit-symbolica-evaluator", 2, (False, 0)),
     ),
 )
-def test_implicit_generation_evaluator_evidence_is_strictly_o2_symjit(
+def test_implicit_generation_evaluator_evidence_requires_portable_symjit(
     kind: str,
     optimization_level: int,
     expected: tuple[bool, int],
@@ -165,7 +172,10 @@ def test_implicit_generation_evaluator_evidence_is_strictly_o2_symjit(
             },
         }
     }
-    assert artifact_writer._mapping_has_only_o2_symjit_evaluators(record) == expected
+    assert (
+        artifact_writer._mapping_has_only_portable_symjit_evaluators(record)
+        == expected
+    )
 
 
 def test_jit_stays_baseline_when_cpp_native_option_is_irrelevant(

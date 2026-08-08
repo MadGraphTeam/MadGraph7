@@ -81,9 +81,9 @@ impl LoadedExecutionManifest {
         }
     }
 
-    fn validate_portable_o2(&self) -> RusticolResult<()> {
+    fn validate_portable_execution(&self) -> RusticolResult<()> {
         match self {
-            Self::Compiled(value) => validate_compiled_portable_o2(value).map(|_| ()),
+            Self::Compiled(value) => validate_compiled_portable_jit(value).map(|_| ()),
             // Eager and recurrence loaders authenticate their prepared backend,
             // portable flag, target marker, and exact O2 level while loading
             // the kernel pack. Their compact execution headers intentionally do
@@ -295,16 +295,16 @@ fn validate_portable_execution_contract(
 ) -> RusticolResult<()> {
     if artifact.manifest().producer.target.triple == crate::artifact::PORTABLE_64LE_ARTIFACT_TARGET
     {
-        manifest.validate_portable_o2()?;
+        manifest.validate_portable_execution()?;
     }
     Ok(())
 }
 
-fn validate_compiled_portable_o2(manifest: &ExecutionManifest) -> RusticolResult<usize> {
+fn validate_compiled_portable_jit(manifest: &ExecutionManifest) -> RusticolResult<usize> {
     let mut leaf_count = 0usize;
     if let Some(model_parameters) = &manifest.compiled.model_parameter_evaluator {
         leaf_count = leaf_count
-            .checked_add(model_parameters.evaluator.validate_portable_o2()?)
+            .checked_add(model_parameters.evaluator.validate_portable_jit()?)
             .ok_or_else(|| RusticolError::integrity("portable evaluator leaf count overflows"))?;
     }
     if let Some(stages) = &manifest.compiled.stage_evaluators {
@@ -314,15 +314,16 @@ fn validate_compiled_portable_o2(manifest: &ExecutionManifest) -> RusticolResult
             .chain(std::iter::once(&stages.amplitude_stage))
         {
             leaf_count = leaf_count
-                .checked_add(stage.evaluator.validate_portable_o2()?)
+                .checked_add(stage.evaluator.validate_portable_jit()?)
                 .ok_or_else(|| {
                     RusticolError::integrity("portable evaluator leaf count overflows")
                 })?;
-            if stage
-                .compiled_plane_arena
-                .as_ref()
-                .is_some_and(|arena| arena.leaves.iter().any(|leaf| leaf.optimization_level != 2))
-            {
+            if stage.compiled_plane_arena.as_ref().is_some_and(|arena| {
+                arena
+                    .leaves
+                    .iter()
+                    .any(|leaf| !matches!(leaf.optimization_level, 1 | 2))
+            }) {
                 return Err(nonportable_compiled_evaluator_error());
             }
         }
@@ -345,7 +346,7 @@ fn validate_compiled_portable_o2(manifest: &ExecutionManifest) -> RusticolResult
         )
     {
         leaf_count = leaf_count
-            .checked_add(validate_compiled_portable_o2(nested)?)
+            .checked_add(validate_compiled_portable_jit(nested)?)
             .ok_or_else(|| RusticolError::integrity("portable evaluator leaf count overflows"))?;
     }
     if leaf_count == 0 && manifest.compiled.runtime_available {
@@ -355,22 +356,22 @@ fn validate_compiled_portable_o2(manifest: &ExecutionManifest) -> RusticolResult
 }
 
 impl EvaluatorManifest {
-    fn validate_portable_o2(&self) -> RusticolResult<usize> {
+    fn validate_portable_jit(&self) -> RusticolResult<usize> {
         match self {
             Self::SymjitApplication {
                 optimization_level,
                 plane_application,
                 ..
-            } if *optimization_level == 2
+            } if matches!(*optimization_level, 1 | 2)
                 && plane_application
                     .as_ref()
-                    .is_none_or(|application| application.optimization_level == 2) =>
+                    .is_none_or(|application| matches!(application.optimization_level, 1 | 2)) =>
             {
                 Ok(1)
             }
             Self::Chunked { chunks, .. } => chunks.iter().try_fold(0usize, |count, chunk| {
                 count
-                    .checked_add(chunk.validate_portable_o2()?)
+                    .checked_add(chunk.validate_portable_jit()?)
                     .ok_or_else(|| {
                         RusticolError::integrity("portable evaluator leaf count overflows")
                     })
@@ -382,7 +383,7 @@ impl EvaluatorManifest {
 
 fn nonportable_compiled_evaluator_error() -> RusticolError {
     RusticolError::compatibility(
-        "portable-64le compiled artifacts require only canonical O2 SymJIT evaluators; O1, O3, C++, ASM, and legacy JIT evaluators remain target-specific",
+        "portable-64le compiled artifacts require only canonical O1/O2 SymJIT evaluators; O0, O3, C++, ASM, and legacy JIT evaluators remain target-specific",
     )
 }
 
@@ -995,19 +996,24 @@ mod portable_execution_tests {
     }
 
     #[test]
-    fn compiled_portable_contract_accepts_o2_and_rejects_o1_o3() {
-        validate_compiled_portable_o2(&portable_fixture())
+    fn compiled_portable_contract_accepts_o1_o2_and_rejects_o0_o3() {
+        validate_compiled_portable_jit(&portable_fixture())
             .expect("canonical O2 fixture is portable");
 
         let fixture = portable_fixture_value();
-        for level in [1, 3] {
+        let mut o1 = fixture.clone();
+        replace_symjit_optimization_level(&mut o1, 1);
+        let o1: ExecutionManifest = serde_json::from_value(o1).expect("parse modified O1 fixture");
+        validate_compiled_portable_jit(&o1).expect("canonical O1 fixture is portable");
+
+        for level in [0, 3] {
             let mut value = fixture.clone();
             replace_symjit_optimization_level(&mut value, level);
             let manifest: ExecutionManifest =
                 serde_json::from_value(value).expect("parse modified fixture");
-            let error = validate_compiled_portable_o2(&manifest).unwrap_err();
+            let error = validate_compiled_portable_jit(&manifest).unwrap_err();
             assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
-            assert!(error.to_string().contains("O1, O3, C++, ASM"));
+            assert!(error.to_string().contains("O0, O3, C++, ASM"));
         }
     }
 }

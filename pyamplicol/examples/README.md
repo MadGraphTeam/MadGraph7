@@ -46,7 +46,7 @@ These three showcase cards print colorized terminal tables by default. Add
 | `generate_pp_zjj_from_ufo_sm.toml` | Generate a portable compiled-JIT-O2 multiprocess `p p > Z j j` artifact from the serialized UFO SM |
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
-| `benchmark.toml` | Short benchmark of the same selected subprocess |
+| `benchmark.toml` | Short topology-replay benchmark of the same subprocess at one selected flow |
 | `qq_z6g_recurrence_jit_o2.toml` | `u u~ > Z + 6g` through the default recurrence schedule and prepared JIT O2 kernels |
 | `qq_z6g_compiled_jit_o3.toml` | The same `Z + 6g` workload through process-local compiled-DAG JIT O3 execution |
 | `qq_z6g_eager_jit_o2.toml` | The same `Z + 6g` workload through eager-DAG execution and prepared JIT O2 kernels |
@@ -253,7 +253,8 @@ Benchmark the selected process:
 ```console
 python python/benchmark.py artifacts/pp_zjj \
   --process 'd d~ > g z g' \
-  --momenta data/pp_zjj_momenta.json
+  --momenta data/pp_zjj_momenta.json \
+  --color-flow 1
 ```
 
 The compact OTF counterpart uses the same phase-space point but explicitly
@@ -347,4 +348,4 @@ Both examples apply a direct `aS` override, evaluate the five-particle
 validation point, and verify that resolved components reproduce the total.
 
 Current release validation and upload status are listed in
-the [release-status guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md).
+the [release and support guide](https://mg5amcnlo.github.io/pyamplicol/user/release-and-support/).

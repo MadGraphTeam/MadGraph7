@@ -333,7 +333,7 @@ def test_selftest_api_drivers_match_the_public_templates() -> None:
 
 
 @pytest.mark.parametrize("optimization_level", (0, 1, 3))
-def test_portable_fixture_rejects_nonportable_optimization_level(
+def test_portable_fixture_requires_its_canonical_o2_optimization_level(
     tmp_path: Path,
     optimization_level: int,
 ) -> None:

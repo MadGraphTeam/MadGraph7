@@ -1,3 +1,8 @@
+---
+title: "Development Documentation"
+nav_order: 7
+has_children: true
+---
 <!-- SPDX-License-Identifier: 0BSD -->
 # Development Documentation
 
@@ -9,9 +14,13 @@ source and tests:
 - [`PACKAGING_CONTRACT.md`](PACKAGING_CONTRACT.md)
 - [`PHYSICS_EXTRACTION_CONTRACT.md`](PHYSICS_EXTRACTION_CONTRACT.md)
 - [`ARCHITECTURE_DECISIONS.md`](ARCHITECTURE_DECISIONS.md)
+- [`ON_THE_FLY_MODE_ARCHITECTURE.md`](ON_THE_FLY_MODE_ARCHITECTURE.md)
 - [`MODEL_ASSET_PROVENANCE.md`](MODEL_ASSET_PROVENANCE.md) and
   [`model-assets/`](model-assets/README.md)
 
 Historical feature plans, audit trails, milestone ledgers, and duplicated
 machine-readable summaries are deliberately not maintained here. Current
 behavior is defined by the implementation, tests, and contracts above.
+The on-the-fly architecture page is retained because it records the current
+production contract and validation boundary; its historical dispositions are
+explicitly labelled as such.

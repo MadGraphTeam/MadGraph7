@@ -1,3 +1,9 @@
+---
+title: "Physics Extraction Contract"
+nav_order: 5
+parent: "Development Documentation"
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Physics Extraction Contract
 
 This document records the first independent physics audit. It is normative

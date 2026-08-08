@@ -36,7 +36,7 @@ samples = 10
 seed = 12345
 relative_tolerance = 1e-12
 absolute_tolerance = 1e-300
-post_build_validation = true
+post_build_validation = false
 
 [evaluator]
 backend = "jit"

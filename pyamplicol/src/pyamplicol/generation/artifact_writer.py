@@ -650,7 +650,9 @@ def write_schema_v3_artifact(
     producer = _producer_metadata(
         configuration.effective,
         runtime_capabilities=canonical_runtime_capabilities,
-        implicit_o2_evidence=_implicit_generation_o2_evidence(processes),
+        implicit_portable_jit_evidence=_implicit_generation_portable_jit_evidence(
+            processes
+        ),
     )
     model = _model_metadata(source, compiled_model)
     dependencies = _dependency_metadata(source)
@@ -3612,13 +3614,13 @@ def _producer_metadata(
     config: GenerationConfig | RunConfig,
     *,
     runtime_capabilities: Sequence[str] = (),
-    implicit_o2_evidence: bool = False,
+    implicit_portable_jit_evidence: bool = False,
 ) -> dict[str, object]:
     version = package_version()
     target, c_abi = _artifact_target_metadata(
         config,
         runtime_capabilities=runtime_capabilities,
-        implicit_o2_evidence=implicit_o2_evidence,
+        implicit_portable_jit_evidence=implicit_portable_jit_evidence,
     )
     producer: dict[str, object] = {
         "distribution": "pyamplicol",
@@ -3645,22 +3647,25 @@ def _artifact_target_metadata(
     config: GenerationConfig | RunConfig,
     *,
     runtime_capabilities: Sequence[str] = (),
-    implicit_o2_evidence: bool = False,
+    implicit_portable_jit_evidence: bool = False,
 ) -> tuple[dict[str, object], int]:
     target, c_abi = _target_metadata(config)
-    requested_o2_jit = (
-        implicit_o2_evidence
+    requested_portable_jit = (
+        implicit_portable_jit_evidence
         if isinstance(config, GenerationConfig)
         else (
             str(config.evaluator.backend) == "jit"
-            and config.evaluator.jit.optimization_level == 2
+            and config.evaluator.jit.optimization_level in {1, 2}
         )
     )
-    portable_64le = requested_o2_jit and not {
-        SYMBOLICA_ASM_RUNTIME_CAPABILITY,
-        SYMBOLICA_CPP_RUNTIME_CAPABILITY,
-        SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
-    }.intersection(runtime_capabilities)
+    portable_64le = (
+        requested_portable_jit
+        and not {
+            SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+            SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+            SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
+        }.intersection(runtime_capabilities)
+    )
     if portable_64le:
         target = {
             "triple": PORTABLE_64LE_TARGET,
@@ -3669,7 +3674,7 @@ def _artifact_target_metadata(
     return target, c_abi
 
 
-def _implicit_generation_o2_evidence(
+def _implicit_generation_portable_jit_evidence(
     processes: Sequence[ProcessArtifact],
 ) -> bool:
     if not processes or any(
@@ -3691,7 +3696,7 @@ def _implicit_generation_o2_evidence(
             records.extend(_compiled_execution_evidence_records(selector.execution))
     evaluator_count = 0
     for record in records:
-        valid, count = _mapping_has_only_o2_symjit_evaluators(record)
+        valid, count = _mapping_has_only_portable_symjit_evaluators(record)
         if not valid or count == 0:
             return False
         evaluator_count += count
@@ -3711,7 +3716,7 @@ def _compiled_execution_evidence_records(
     return records
 
 
-def _mapping_has_only_o2_symjit_evaluators(
+def _mapping_has_only_portable_symjit_evaluators(
     value: Mapping[str, object],
 ) -> tuple[bool, int]:
     evaluator_count = 0
@@ -3727,9 +3732,9 @@ def _mapping_has_only_o2_symjit_evaluators(
                 evaluator_count += 1
                 plane = item.get("plane_application")
                 if (
-                    item.get("optimization_level") != 2
+                    item.get("optimization_level") not in (1, 2)
                     or not isinstance(plane, Mapping)
-                    or plane.get("optimization_level") != 2
+                    or plane.get("optimization_level") not in (1, 2)
                 ):
                     valid = False
                     return
@@ -3741,7 +3746,7 @@ def _mapping_has_only_o2_symjit_evaluators(
                     "optimization_level",
                     "direct_codegen_optimization_level",
                 ):
-                    if field in item and item[field] != 2:
+                    if field in item and item[field] not in (1, 2):
                         valid = False
                         return
             for nested in item.values():

@@ -1,3 +1,8 @@
+---
+title: "Get started: a gentle walkthrough"
+nav_order: 2.5
+has_children: true
+---
 <!-- SPDX-License-Identifier: 0BSD -->
 
 # Get started: a gentle walkthrough
@@ -189,7 +194,7 @@ The packaged `generate_pp_zjj_from_ufo_sm.toml` card demonstrates a related
 choice: it reads the serialized form of the UFO Standard Model and selects
 `compiled` execution. Raw JSON or UFO model data contains the physics rules but
 not the prepared recurrence building blocks, so that card deliberately builds
-process-wide compiled evaluators. See [Models and Processes](models.md) when
+process-wide compiled evaluators. See [Models and Processes](models-and-processes.md) when
 preparing recurrence, eager, or on-the-fly building blocks for another model.
 
 ### Cards, named options, and `--set`
@@ -265,7 +270,7 @@ Process outputs are executable inputs, much like a compiled library. Only load
 one that you generated yourself or obtained from a source you trust. Normal
 loading validates its declared structure and compatibility. It is not a proof
 of who published it; the trust rules and optional all-file hash check are
-described in [Runtime](runtime.md#artifact-trust).
+described in [Artifacts and Portability](artifacts-and-portability.md).
 
 ### Representatives and aliases avoid duplicate work
 
@@ -512,7 +517,7 @@ python python/runtime_evaluation.py \
   --process 'd d~ > g z g'
 ```
 
-See [Runtime](runtime.md) for point-wise selectors, exact precision, model
+See [Runtime and Selectors](runtime-and-selectors.md) for point-wise selectors, exact precision, model
 parameters, resolved output shapes, and explicit on-the-fly `warm_up(...)`.
 
 ### Generated Python, C, C++, Fortran, and Rust drivers
@@ -550,7 +555,7 @@ a retained higher-precision evaluator when that execution mode provides one;
 on-the-fly execution is double precision in all languages.
 
 For embedding rather than running the example drivers, start with
-[Native SDK](native-sdk.md). It contains complete loading/evaluation examples,
+[Native APIs](native-apis.md). It contains complete loading/evaluation examples,
 memory layout, compiler commands, model-parameter updates, selector arrays, and
 the cross-language on-the-fly warm-up callback.
 
@@ -581,7 +586,7 @@ OTF NLC and full-colour calculation are available for low multiplicity, but
 their contracted family grows rapidly and is not intended here as a
 high-multiplicity performance route. The detailed differences among recurrence,
 compiled, eager, and OTF are summarized in
-[Configuration](configuration.md#evaluators).
+[Generation Modes and Evaluators](generation-modes-and-evaluators.md).
 
 ## A practical checklist for a new calculation
 
@@ -608,8 +613,8 @@ compiled, eager, and OTF are summarized in
     with physics results.
 
 From here, continue with [Configuration](configuration.md) for all run-card
-choices, [Models and Processes](models.md) for UFO/JSON and multiprocess details,
-[Runtime](runtime.md) for evaluation, and [Native SDK](native-sdk.md) for
+choices, [Models and Processes](models-and-processes.md) for UFO/JSON and multiprocess details,
+[Runtime and Selectors](runtime-and-selectors.md) for evaluation, and [Native APIs](native-apis.md) for
 language integration. To compare many validated process/mode combinations and
 turn the measurements into the report, follow the
 [profiling-campaign walkthrough](profiling-campaign-walkthrough.md). Every

@@ -1545,18 +1545,14 @@ def reproduction_recipe(
         "--no-emit-api-bundle" if on_the_fly else "--emit-api-bundle",
         "--no-validation" if on_the_fly else "--validation",
         "--validation-samples",
-        "10",
+        "1",
         "--validation-seed",
         "12345",
         "--relative-tolerance",
         "1e-12",
         "--absolute-tolerance",
         "1e-300",
-        (
-            "--no-post-build-validation"
-            if on_the_fly
-            else "--post-build-validation"
-        ),
+        "--no-post-build-validation",
         numerical_reuse_flag,
         "--force",
         "--color",

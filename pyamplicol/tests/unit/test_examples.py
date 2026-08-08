@@ -151,7 +151,15 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert not total.evaluation.resolved
     assert resolved.evaluation.resolved
     assert total.evaluation.process == resolved.evaluation.process == "d d~ > g z g"
-    assert resolve_config(EXAMPLES / "benchmark.toml").effective.action == "benchmark"
+    benchmark = resolve_config(EXAMPLES / "benchmark.toml").effective
+    assert benchmark.action == "benchmark"
+    assert benchmark.benchmark.helicity_ids == ()
+    assert benchmark.benchmark.color_flow_ids == ("1",)
+    examples_readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
+    assert (
+        "--momenta data/pp_zjj_momenta.json \\\n  --color-flow 1"
+        in examples_readme
+    )
 
 
 def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:
@@ -176,6 +184,7 @@ def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:
         assert config.benchmark.target_runtime == 20.0
         assert config.benchmark.warmup_runs == 2
         assert config.benchmark.minimum_samples == 5
+        assert not config.generation.validation.post_build_validation
 
     assert selected.process.reference_color_order == ()
     assert selected.process.selected_color_sector_ids == ()
@@ -212,6 +221,7 @@ def test_qq_z6g_examples_cover_the_three_public_execution_modes() -> None:
         assert config.benchmark.target_runtime == 5.0
         assert config.benchmark.color_flow_ids == ("1",)
         assert config.benchmark.helicity_ids == ()
+        assert not config.generation.validation.post_build_validation
         assert config.generation.output is not None
         outputs.add(config.generation.output)
 
@@ -378,9 +388,9 @@ def test_typed_external_model_example_selects_process_local_compiled_jit() -> No
 
 def test_readme_states_current_release_boundary_and_public_surfaces() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    status = (ROOT / "docs/user/release-status.md").read_text(encoding="utf-8")
-    assert "Version `0.1.1` is available for testing" in readme
-    assert "has not yet been uploaded to PyPI" in readme
+    status = (ROOT / "docs/user/release-and-support.md").read_text(encoding="utf-8")
+    assert "https://mg5amcnlo.github.io/pyamplicol/" in readme
+    assert "https://github.com/mg5amcnlo/pyamplicol/wiki" not in readme
     assert "Generator(GenerationConfig(workers=4))" in readme
     assert "p p > Z j j" in readme
     assert "Runtime.load" in readme

@@ -1,387 +1,418 @@
+---
+title: "Configuration"
+nav_order: 3
+has_children: true
+---
 <!-- SPDX-License-Identifier: 0BSD -->
-
 # Configuration
 
-TOML schema version 1 is shared by the CLI and Python configuration classes.
-`examples/all_options.toml` is the exhaustive commented field reference.
-Commands using `models/`, `data/`, or the packaged cards assume the installed
-environment is active and the current directory is the workspace created by
-`pyamplicol examples copy ./pyamplicol-examples`.
+pyAmpliCol uses one typed configuration schema for TOML run cards, direct CLI
+options, and Python configuration classes. Unknown fields are rejected rather
+than ignored, with a nearest-field suggestion when a likely spelling exists.
 
-## Primary Run Card
+The complete field-by-field reference is the shipped
+[`examples/all_options.toml`](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/all_options.toml).
+This page focuses on practical configurations.
 
-The recommended card uses a serialized external model so loading does not
-execute UFO Python:
+## Minimal generation card
 
 ```toml
 schema_version = 1
 action = "generate"
 
 [model]
-source = "models/json/sm/sm.json"
-restriction = "default"
+source = "built-in-sm"
 
 [process]
-entries = [{ expression = "p p > Z j j" }]
+entries = [{ expression = "d d~ > Z g", name = "ddbar_Zg" }]
+
+[color]
+accuracy = "lc"
+
+[generation]
+output = "artifacts/ddbar_Zg"
+```
+
+Run it with:
+
+```console
+pyamplicol run.toml
+```
+
+Equivalent direct command:
+
+```console
+pyamplicol generate 'd d~ > Z g' artifacts/ddbar_Zg \
+  --model built-in-sm --color-accuracy lc
+```
+
+## Configuration precedence
+
+Values are resolved in this order:
+
+1. schema defaults;
+2. TOML card values;
+3. dedicated command-line flags;
+4. repeated `--set section.field=value` overrides, from left to right;
+5. effective license/resource adjustments.
+
+For example:
+
+```console
+pyamplicol generate_pp_zjj_from_ufo_sm.toml \
+  --set generation.workers=2 \
+  --set generation.mode=replace
+```
+
+Requested and effective configurations are retained separately in generated
+artifact provenance. A restricted Symbolica environment may reduce effective
+generation resources without rewriting the requested card.
+
+Inspect resolution without running the action:
+
+```console
+pyamplicol config resolve generate_pp_zjj_from_ufo_sm.toml
+pyamplicol config resolve generate_pp_zjj_from_ufo_sm.toml --format json
+```
+
+Create a commented template:
+
+```console
+pyamplicol config template run.toml
+```
+
+## Paths
+
+Paths in a TOML card are resolved relative to that card, including:
+
+- model sources;
+- artifact outputs and inputs;
+- model-parameter cards;
+- momenta files;
+- cache paths.
+
+This makes copied example workspaces movable. Direct CLI paths are resolved
+from the current working directory.
+
+Generation output policy is explicit:
+
+| `generation.mode` | Behavior |
+| --- | --- |
+| `error` | Default; refuse an existing destination. |
+| `replace` | Atomically replace the generated artifact. |
+| `append` | Add to an existing compatible artifact. |
+
+Use `replace` deliberately while iterating:
+
+```console
+pyamplicol generate --card run.toml --set generation.mode=replace
+```
+
+## External JSON or UFO model
+
+The primary example uses serialized JSON, which does not execute Python while
+loading:
+
+```toml
+[model]
+source = "models/json/sm/sm.json"
+restriction = "default"
+simplify = true
+cache = true
+```
+
+A trusted UFO directory uses the same field:
+
+```toml
+[model]
+source = "/absolute/path/to/MyUFO"
+restriction = "default"
+```
+
+UFO modules are Python code and execute during loading. See
+[Models and Processes](models-and-processes.md) before using an external model.
+
+## Processes and multiparticles
+
+One card may contain one inclusive multiparticle request or multiple named
+requests:
+
+```toml
+[process]
+entries = [
+  { expression = "p p > Z j j" },
+  { expression = "u u~ > Z g", name = "uubar_Zg" },
+]
 flavor_scheme = 2
 max_quark_lines = 2
 
 [process.multiparticles]
 p = ["d", "d~", "g"]
 j = ["d", "d~", "g"]
+```
 
+Every model provides the generic `all` multiparticle for valid propagating
+physical external particles. It excludes ghosts, Goldstones,
+non-propagating records, and auxiliary states. An explicit `all` entry replaces
+the default; other user labels are merged over model defaults.
+
+Broad products such as `p p > all all` can expand combinatorially. Prefer a
+narrow user-defined label for production scans.
+
+`flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
+expansion. Coupling-order names come from the selected model: the generic
+engine treats them as model-defined filtering and scheduling data and does not
+assign arbitrary names fixed QCD or electroweak meanings.
+
+## Color accuracy and LC layout
+
+```toml
 [color]
-accuracy = "lc"
+accuracy = "lc"                 # lc, nlc, or full
+lc_flow_layout = "topology-replay"
+```
 
-[generation]
-output = "artifacts/pp_zjj"
-emit_api_bundle = true
+| Accuracy | Resolved color output |
+| --- | --- |
+| `lc` | One entry per physical leading-color flow. |
+| `nlc` | One contracted color entry per helicity. |
+| `full` | One contracted color entry per helicity. |
 
+LC offers two complete-coverage layouts:
+
+| Layout | Best suited to |
+| --- | --- |
+| `topology-replay` | Default: one selected flow with a helicity sum. |
+| `all-flow-union` | All flows with one selected helicity. |
+
+Both preserve all physical flows and helicities for runtime selection.
+`all-flow-union` is LC-only and is incompatible with generation-fixed or
+truncated color/helicity coverage.
+
+## Execution mode and evaluator backend
+
+```toml
 [evaluator]
-execution_mode = "compiled"
+execution_mode = "compiled"     # recurrence, compiled, eager, on-the-fly
+backend = "jit"                 # jit, asm, cpp
+batch_size = 128
+
+[evaluator.jit]
+optimization_level = 2
+compress = true
 ```
 
-Run it and override fields without editing the card:
+### Execution modes
 
-```console
-pyamplicol generate_pp_zjj_from_ufo_sm.toml \
-  --set generation.workers=2
-```
+| Mode | What is stored in the process artifact |
+| --- | --- |
+| `recurrence` | Compact current-recursion schedules over prepared local kernels. |
+| `compiled` | Process-wide stage evaluators compiled during generation. |
+| `eager` | Compact DAG invocation tables over prepared local kernels. |
+| `on-the-fly` | A compact process seed; the selected LC query family, or contracted NLC/full family, is constructed on first use. |
 
-The resolver applies defaults, card values, dedicated flags, repeated `--set`
-overrides in order, then effective license/resource clamps. Requested and
-effective configurations are retained separately. Unknown fields are errors
-and may include a nearest-field suggestion.
+`recurrence` is the default. Eager, recurrence, and on-the-fly require a
+compatible prepared `.pyamplicol-model` kernel pack; `built-in-sm` selects the
+packaged JIT O2 pack automatically. Raw JSON/UFO model IR normally uses
+`compiled` unless you first create a prepared bundle.
 
-Model, cache, output, artifact, momenta, and parameter-card paths in TOML are
-resolved relative to the card. `model.restriction` is a loader restriction name
-such as `default`, `no_widths`, or `none`; omitting it applies a model-provided
-default when available. The typed `ModelSource` API can instead receive an
-explicit restriction file path.
+Recurrence, compiled, and eager may fix
+`process.selected_color_sector_ids`, `process.selected_source_helicities`, or
+both at generation time when a deliberately specialized artifact is useful.
+Omit them to retain reusable runtime selectors. On-the-fly keeps selection at
+runtime instead: its last warmed family is retained until another selector is
+requested.
 
-## Processes
+On-the-fly is native binary64 only. LC retains physical flow and helicity
+selection without materializing either LC layout. NLC and full colour expose
+one contracted color component, accept helicity selection, and reject LC-flow
+selectors. Their cold family is correctness-oriented and may become
+impractical at high multiplicity. For on-the-fly generation,
+`evaluator.optimization.cores` requests query-construction workers for the cold
+warm-up; it does not make steady-state numerical evaluation use that many
+threads. See [Generation Modes and Evaluators](generation-modes-and-evaluators.md)
+for the distinct lifecycle of each mode.
 
-`process.entries` is the only process-request list. An entry may have a stable
-name; unnamed multiparticle requests receive generated concrete names:
+### Backends
+
+| Backend | Notes |
+| --- | --- |
+| `jit` | Default direct SymJIT application. Compiled O1/O2 artifacts are portable on supported 64-bit little-endian hosts; prepared packs use exact O2. |
+| `asm` | Target-native Symbolica assembly evaluator. |
+| `cpp` | Target-native generated C++ evaluator. |
+
+Explicit JIT O0/O3 and ASM/C++ artifacts remain target-native. See
+[Artifacts and Portability](artifacts-and-portability.md).
+
+## Generation validation
 
 ```toml
-[process]
-entries = [{ expression = "p p > Z j j" }]
+[generation.validation]
+enabled = true
+samples = 2
+seed = 12345
+relative_tolerance = 1e-12
+absolute_tolerance = 1e-300
+post_build_validation = false
 ```
 
-For the primary two-flavor expansion, the physical filter finds 19 ordered
-candidates and collapses incoming/outgoing permutations to eight reusable
-representatives. Candidate 19, `g g > Z g g`, has no tree-level Standard Model
-amplitude and is reported and omitted, leaving seven stored processes. The
-stable name is not a filesystem path. Either `p_p_to_z_j_j_4` or the concrete expression
-`d d~ > g z g` selects that representative from the shared
-`artifacts/pp_zjj` root; Rusticol remaps all public axes to the requested
-side-preserving order.
-
-Explicit named requests can mix multiplicities in one artifact:
-
-```toml
-[process]
-entries = [
-  { expression = "u u~ > Z g", name = "uubar_Zg" },
-  { expression = "u u~ > Z g g", name = "uubar_Zgg" },
-]
-```
-
-`flavor_scheme`, `max_quark_lines`, and coupling-order policy constrain
-expansion. Coupling-order names are model data and are filtering/scheduling
-hints; the generic engine does not assign fixed QCD or electroweak semantics to
-arbitrary names.
-
-Every model defines `all` as its declaration-ordered set of valid propagating
-physical external particles, excluding ghosts, Goldstones, non-propagating
-records, and auxiliary states. User multiparticles are merged over model
-defaults, so defining `p` or `j` leaves `all` available; defining `all`
-explicitly overrides it. Requests such as `p p > all all` are valid, but can
-expand combinatorially for large UFO models. Prefer a narrower custom label
-when the full physical catalog is not required.
-
-## Direct Commands
-
-The direct equivalent of the primary card is:
-
-```console
-pyamplicol generate "p p > Z j j" artifacts/pp_zjj \
-  --model models/json/sm/sm.json \
-  --restriction default \
-  --multiparticle 'p=d,d~,g' \
-  --multiparticle 'j=d,d~,g' \
-  --flavor-scheme 2 \
-  --max-quark-lines 2 \
-  --execution-mode compiled
-```
-
-The external-model example is explicit because raw model IR is not a prepared
-recurrence bundle. Omitting the execution mode selects recurrence and therefore
-requires `built-in-sm` or a compatible `.pyamplicol-model` source.
-
-## Default numerical current reuse
-
-Post-build validation defaults to two deterministic native binary64 points.
-This is a runtime total-versus-resolved consistency check. It is separate from,
-and does not reduce, the arbitrary-precision relation certification below:
-that remains at 96 digits with four candidate probes and four independent
-verification probes.
-
-Generation audits missed current relations during its bounded warm-up and
-applies certified reuse by default:
-
-```toml
-[generation.relation_discovery]
-mode = "certified-reuse"
-precision_digits = 96
-probe_count = 4
-verification_probe_count = 4
-relative_tolerance = 1e-70
-absolute_tolerance = 1e-80
-seed = 1348026701
-```
-
-`diagnostic` records deterministic high-precision candidates and exact replay
-outcomes without changing the generated evaluator. `certified-reuse` first
-prefers independently replayable exact structural certificates. It may also
-apply numerically discovered equal, opposite, or zero-current relations when a
-separate deterministic probe set verifies them within both tolerances. The
-artifact records the probe derivation, tolerances, mappings, proof status, and
-replay identity. Generation emits one warning when an applied relation set
-lacks exact structural proof.
-
-This policy applies to LC, NLC, and full colour and to compiled, eager, and
-recurrence generation with built-in or prepared external/UFO models. The
-compact on-the-fly source projection does not run this configurable
-relation-discovery pass. Invalid, non-finite, unstable, or stale evidence is
-rejected. To retain the unoptimized path, use:
-
-```console
-pyamplicol generate ... --no-numerical-current-reuse
-```
-
-The equivalent card/API setting is
-`generation.relation_discovery.mode = "off"`. Use
-`--numerical-current-reuse` to override an `off` card from the command line.
-
-The command families are:
-
-```text
-generate
-evaluate
-profile
-benchmark (compatibility alias for profile)
-inspect
-model inspect|compile|processes
-request-symbolica-trial-license
-request-symbolica-hobbyist-license
-config template|resolve
-examples list|copy|run
-profiling-campaign copy
-doctor
-self-test
-```
-
-Use `generate --dry-run` for the non-writing operation exposed by
-`Generator.plan()`. An external UFO/JSON source must first be compiled or
-present in the configured model cache; dry-run intentionally does not compile
-trusted external input as a side effect.
-
-The direct `profile` command resolves internally to the schema-v1 `benchmark`
-action. Existing cards therefore keep `action = "benchmark"`; both direct
-spellings accept the same runtime, process, batch-size, sampling, selector, and
-output options.
-
-## Color And Evaluation
-
-| `color.accuracy` | Resolved color dimension |
-| --- | --- |
-| `lc` | One entry per physical leading-color flow |
-| `nlc` | One contracted color entry per helicity |
-| `full` | One contracted color entry per helicity |
-
-LC generation always includes complete physical flow coverage. Runtime
-selectors use `evaluation.helicity_ids` and `evaluation.color_flow_ids`;
-benchmark selectors use the corresponding `benchmark` fields. Color-flow
-selectors are valid only for LC. NLC/full currently describe the supported
-contracted SU(3) calculations rather than an arbitrary UFO color basis.
-
-`color.lc_flow_layout` chooses how complete LC coverage is organized:
-
-| LC flow layout | Optimized workload |
-| --- | --- |
-| `topology-replay` | Default. One runtime-selected flow with a helicity sum. |
-| `all-flow-union` | All physical flows with one runtime-selected helicity. |
-
-Both layouts retain every physical flow and helicity and accept runtime
-selectors. The union layout constructs one shared cross-flow recurrence; enable
-it in a card with `lc_flow_layout = "all-flow-union"` under `[color]`, or use:
-
-```console
-pyamplicol generate --card run.toml --lc-flow-layout all-flow-union
-```
-
-`all-flow-union` is rejected for NLC/full. It is also incompatible with an LC
-request that fixes `process.selected_color_sector_ids` or
-`process.selected_source_helicities`, or truncates coverage with
-`process.max_color_sectors`. Use the default topology-replay layout for those
-generation-selected or truncated artifacts.
-
-`evaluation.resolved = false` selects the optimized total. With
-`resolved = true`, all selected physical components are returned and their
-explicit sum must agree with the total.
-
-## Evaluators
-
-Execution mode and evaluator backend are independent choices:
-
-| Execution mode | Process artifact |
-| --- | --- |
-| `recurrence` | Default. Uses prepared local kernels through compact current-recursion schedules. |
-| `compiled` | Compiles process-wide stage evaluators during generation. |
-| `eager` | Uses a prepared model's local kernels and writes compact DAG invocation tables. |
-| `on-the-fly` | Native `f64`. Stores a compact process seed and constructs the requested LC query family, or the contracted NLC/full family, when first selected. |
-
-### Recurrence
-
-Recurrence is the general-purpose default. Generation materializes compact,
-authenticated current schedules while reusing the prepared model's local
-kernels. It is the most direct representation of the recursive construction,
-supports LC, NLC, and full colour, and retains the exact-evaluation path when
-the artifact and backend provide it. Point tiling bounds its reusable numeric
-workspace.
-
-For a deliberately narrow workload, recurrence generation can specialize the
-artifact with `process.selected_color_sector_ids`,
-`process.selected_source_helicities`, or both. The same generation-time
-specialization is supported by eager and compiled mode. Omit these fields when
-one artifact must retain reusable runtime flow and helicity selectors.
-
-### Compiled
-
-Compiled mode lowers the complete process DAG into process-wide stage
-evaluators. It has the largest generation investment but gives the optimizer
-the widest process-local view, and it does not require a prepared local-kernel
-pack. This makes it the natural fallback for raw model IR and the useful
-specialized baseline when one flow or helicity assignment is fixed during
-generation. It supports LC, NLC, full colour, and retained exact evaluation.
-
-### Eager
-
-Eager mode keeps the process structure as compact invocation/finalization/
-closure tables and calls the prepared model's local kernels directly. It is
-usually the quickest materialized mode to generate and load, while still
-supporting LC, NLC, full colour, exact replay, point tiling, reusable runtime
-selectors, and the same optional generation-time flow/helicity specialization
-as recurrence and compiled mode.
-
-### On-the-fly
-
-On-the-fly stores a process seed instead of a materialized process schedule.
-The first explicit `warm_up(...)` or evaluation constructs and caches exactly
-the requested selector family, then ordinary evaluations reuse it. This is
-especially useful for LC single-flow/helicity-sum workloads at high
-multiplicity: the compact artifact can switch selectors, although switching
-replaces the last cached family and incurs another warm-up.
-
-OTF is native binary64 only. LC exposes physical flow selectors. NLC and full
-colour instead expose one contracted component and accept helicity selection
-but no colour-flow selector; those contracted modes are correctness-oriented
-and can become impractical as multiplicity grows because their cold family is
-the helicity-by-structural-colour product. OTF does not use the materialized LC
-flow-layout setting or the generation-time selector-specialization fields.
-
-| Backend | Use |
-| --- | --- |
-| `jit` | Default direct SymJIT application; compiled DAGs use portable optimization level 2 with compression enabled |
-| `asm` | Symbolica assembly evaluator |
-| `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
-
-Recurrence, eager, and on-the-fly modes normally require a
-`.pyamplicol-model` bundle
-already prepared for exactly one backend. The `built-in-sm` source is the
-exception: installed wheels carry the portable `built-in-sm-jit-o2` pack.
-Generation never compiles missing prepared kernels. The prepared backend and
-code-shaping optimization settings are authoritative; conflicting requests are
-retained in the requested configuration, adjusted in the effective
-configuration, and reported once. Pass an explicit prepared-model path to
-select built-in C++ or ASM instead of the packaged JIT O2 pack.
-
-`evaluator.jit.compress = true` factors repeated complex instruction
-sequences into internal SymJIT applets. It is enabled by default and changes
-only generated evaluator structure, not physics results or runtime APIs. Use
-`--no-jit-compress` or set the card field to `false` for controlled A/B
-measurements and debugging. Prepared bundles bake this choice into their
-kernel pack, so eager, recurrence, and on-the-fly generation report the pack's
-value as the effective configuration when it differs from the request.
-
-`.pyAmplicol-model.json` model IR is architecture-independent. SymJIT
-storage-v3 prepared packs and newly generated all-JIT process artifacts at
-optimization level 2 are portable across supported 64-bit little-endian
-`x86_64` and `aarch64` hosts and rebuild executable code for the receiving CPU.
-JIT O1/O3 and C++/ASM process artifacts remain target-specific. Campaign
-timing records remain machine/profile-specific measurements.
-pyAmpliCol therefore forces O2 when preparing JIT kernels, independently of the
-JIT level used for process-local compiled DAG evaluators. C++ and ASM prepared
-packs remain target-native.
-
-`evaluator.eager.point_tile_size` defaults to 1024 and is an upper bound. The
-runtime reduces it as needed to keep reusable storage within
-`evaluator.eager.workspace_mib`, which defaults to 256 MiB. Arbitrarily large
-input batches are processed through those fixed-size tiles.
-
-Cards that omit `evaluator.execution_mode` now resolve to recurrence. A card
-that intentionally uses process-local compiled DAGs must say so explicitly:
+Generation validation checks symbolic/numerical construction before
+publication. Structural artifact checks always run. The optional
+`post_build_validation` reopens the finished artifact and evaluates it again;
+it is disabled by default because its cost can dominate large process builds.
+Enable it when you explicitly want that additional runtime smoke:
 
 ```console
 pyamplicol generate --card run.toml \
-  --execution-mode compiled
+  --set generation.validation.post_build_validation=true
 ```
 
-There is no fallback from recurrence to compiled execution when a prepared
-kernel pack is unavailable; prepare the model or select `compiled` explicitly.
+## Numerical current reuse
 
-`evaluator.recurrence.point_tile_size` defaults to 1024, and
-`evaluator.recurrence.workspace_mib` defaults to 256 MiB. As with eager mode,
-the runtime may reduce the tile size to stay within the workspace limit.
+Certified current-relation reuse is enabled by default. It prefers exact
+structural proofs and may apply independently verified high-precision equal,
+opposite, or zero relations. The artifact records the evidence, tolerances,
+probe derivation, replay identity, and whether a structural proof was present.
 
-On-the-fly execution evaluates at native `f64` precision. LC does not
-materialize either flow layout: one compact process-seed artifact supports
-both selected-flow helicity sums and all-flow sums at a selected helicity.
-Consequently, LC `inspect` reports the static physical helicity and color-flow
-census, not a dense artifact axis or a topology-replay census. NLC/full report
-the singleton `color:contracted` public component backed by an authenticated
-colour-contraction payload. The relevant selector family is constructed only
-when `warm_up(...)` or evaluation first asks for it.
+This configurable discovery pass applies to recurrence, compiled, and eager
+generation. On-the-fly uses its compact source projection instead and does not
+run relation discovery.
 
-For on-the-fly generation, `evaluator.optimization.cores` is the requested
-query-construction thread count. It is not a promise that numerical evaluation
-uses that many threads. Contracted execution applies its authenticated point
-tile size; LC numerical evaluation reuses the prepared family at the requested
-batch capacity. Query-construction threads affect the cold warm-up, not the
-steady-state numerical executor.
+`diagnostic` records deterministic candidates and their exact replay without
+changing the generated evaluator. `certified-reuse` may apply a relation only
+after its independent verification pass succeeds; it emits one warning when
+an applied relation has numerical evidence but no structural proof. Malformed,
+non-finite, unstable, or stale evidence fails closed and is never reused.
 
-The default batch size is 128 and the default output chunk size is 512.
-Optimization defaults are 10
-Horner iterations, backend-selected common-pair iterations, 1000 Horner
-variables, 5,000,000 common-pair cache entries, and pair distance 1000.
-Stage-local parameters are mandatory and are not a user toggle.
+Keep the unoptimized path for a comparison with:
 
-## Python Resolution
+```console
+pyamplicol generate --card run.toml --no-numerical-current-reuse
+```
+
+Or in TOML:
+
+```toml
+[generation.relation_discovery]
+mode = "off"                    # off, diagnostic, certified-reuse
+```
+
+The exhaustive probe, precision, seed, and tolerance fields are documented in
+`all_options.toml`.
+
+## Evaluation card
+
+```toml
+schema_version = 1
+action = "evaluate"
+
+[evaluation]
+artifact = "artifacts/pp_zjj"
+process = "d d~ > g z g"
+precision = 16
+resolved = true
+model_parameters = "data/model_parameters.json"
+momenta = "data/pp_zjj_momenta.json"
+
+[output]
+format = "human"                # human or json
+color = "auto"                  # auto, always, never
+progress = "off"                # auto, tty, log, off
+```
+
+`helicity_ids` and `color_flow_ids` may be added under `[evaluation]`. Empty
+lists mean complete retained coverage.
+
+The model-parameter card is a flat JSON object:
+
+```json
+{
+  "aS": 0.117,
+  "MZ": 91.1876,
+  "complex_parameter": [1.0, -0.25]
+}
+```
+
+Values must be finite real numbers or `[real, imaginary]` pairs. Direct
+parameter overrides are applied after the card and win atomically.
+
+## Profiling card
+
+Run cards retain `action = "benchmark"`; the preferred direct CLI spelling is
+`pyamplicol profile`:
+
+```toml
+action = "benchmark"
+
+[evaluation]
+artifact = "artifacts/pp_zjj"
+process = "d d~ > g z g"
+momenta = "data/pp_zjj_momenta.json"
+
+[benchmark]
+target_runtime = 1.0
+batch_size = 128
+precision = 16
+warmup_runs = 2
+minimum_samples = 5
+color_flow_ids = ["1"]
+```
+
+With both benchmark selector lists empty, LC profiling infers the stored
+layout's deterministic hot workload. Explicit subsets and selected-axis lists
+override that default; a complete summed-axis list is normalized to equivalent
+omission. A valid shape outside the optimized layout emits at most one pre-loop
+warning per loaded process.
+
+See [Runtime and Selectors](runtime-and-selectors.md) for evaluation and profiling
+semantics.
+
+## Output and progress
+
+```toml
+[output]
+format = "human"
+color = "auto"
+progress = "auto"
+log_level = "info"
+```
+
+- `human` produces aligned colored terminal tables.
+- `json` reserves standard output for machine-readable data.
+- `auto` progress uses a TTY progress bar interactively and rate-limited log
+  messages otherwise.
+- `Ctrl-C` during profiling retains completed timing blocks and marks the result
+  partial.
+
+## Resolve configuration from Python
 
 ```python
+from pathlib import Path
+
 from pyamplicol.config import resolve_config
 
 resolution = resolve_config(
-    "generate_pp_zjj_from_ufo_sm.toml",
-    dedicated={"generation.workers": 4},
-    overrides=("generation.workers=2", "generation.workers=1"),
+    {
+        "schema_version": 1,
+        "action": "generate",
+        "model": {"source": "models/json/sm/sm.json"},
+        "process": {"entries": [{"expression": "d d~ > z g"}]},
+        "generation": {"output": "artifacts/builtin_ddbar_to_zg"},
+    },
+    base_dir=Path("pyamplicol-examples"),
+    overrides=("generation.workers=2",),
 )
-assert resolution.requested.generation.workers == 1
-assert resolution.effective.model.source.endswith("models/json/sm/sm.json")
+print(resolution.effective.generation.output)
 ```
 
-In-memory mappings accept a `base_dir`; otherwise their relative paths use the
-current directory. A `--set` value follows TOML syntax, so strings containing
-spaces must be quoted.
+For a mapping, relative paths use `base_dir`; without it they use the current
+working directory. Values supplied through `--set` or `overrides=` use TOML
+syntax, so quote strings containing spaces.
+
+## Further reading
+
+- [Generation Modes and Evaluators](generation-modes-and-evaluators.md)
+- [LC workloads and execution modes](lc-workloads-and-execution-modes.md)
+- [Models and Processes](models-and-processes.md)
+- [Runtime and Selectors](runtime-and-selectors.md)
+- [Exhaustive current schema](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/all_options.toml)

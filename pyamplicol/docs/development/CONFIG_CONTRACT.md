@@ -1,3 +1,9 @@
+---
+title: "Configuration Contract"
+nav_order: 2
+parent: "Development Documentation"
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Configuration Contract
 
 TOML schema version 1 and the Python configuration dataclasses share one field
@@ -65,7 +71,7 @@ topology, replay, and reference-order IDs are not configurable.
 - `seed: int = 12345`
 - `relative_tolerance: float = 1e-12`
 - `absolute_tolerance: float = 1e-300`
-- `post_build_validation: bool = true`
+- `post_build_validation: bool = false`
 
 ### Relation Discovery
 
@@ -78,8 +84,14 @@ topology, replay, and reference-order IDs are not configurable.
 - `seed: int >= 0 = 1348026701`
 
 Candidate and independent verification probes are bounded and deterministic.
-The two post-build validation samples use the native binary64 runtime and are
-independent of the 96-digit relation-discovery certification probes below.
+Artifact writing always validates the schema, declared payloads, references,
+and digests. Optional post-build validation additionally re-opens the completed
+artifact and compares native binary64 optimized and resolved evaluation. It is
+off by default because that second runtime pass does not alter the artifact and
+can be disproportionately expensive for large resolved axes; enable it with
+`--post-build-validation` when an immediate runtime smoke is wanted. Its
+configured samples are independent of the 96-digit relation-discovery
+certification probes below.
 Exact binary64 term-vector or `ExactComplexRational` schedule proofs remain the
 preferred promotion path. When no exact structural proof exists,
 `certified-reuse` may apply equal, opposite, or zero-current reuse only after
@@ -138,20 +150,20 @@ to compiled execution. Cards that require process-local compiled DAGs must set
 
 ### On-The-Fly Execution
 
-On-the-fly execution currently requires `color.accuracy = "lc"`, a prepared
-model bundle, and native `f64` precision. It stores a compact process seed and
-constructs recurrence schedules for the requested selector instead of
-materializing a topology-replay or all-flow-union process layout. Static
-inspection therefore exposes the physical helicity/color-flow census, not a
-dense artifact axis; the runtime still supplies the complete physical LC
-selection contract.
+On-the-fly execution requires a prepared model bundle and native `f64`
+precision. It stores a compact process seed and constructs recurrence schedules
+for the requested selector instead of materializing a process layout. LC does
+not materialize topology replay or all-flow union: static inspection exposes
+the physical helicity/color-flow census and the runtime supplies both selector
+families. NLC and full colour expose one contracted component, accept helicity
+selectors, and reject LC-flow selectors.
 
 `evaluator.optimization.cores` resolves to a positive requested
 query-construction thread count for this mode. It is not a numerical-runtime
-thread guarantee. On-the-fly metadata records the recurrence
-`point_tile_size` request for provenance, but the current runtime applies
-neither recurrence/eager point tiling nor their workspace limits. There is no
-on-the-fly-specific tile or workspace configuration section.
+thread guarantee. LC numerical execution sizes its warmed family to the
+requested batch capacity. Contracted NLC/full execution applies the
+authenticated recurrence point tile. There is no on-the-fly-specific tile or
+workspace configuration section.
 
 ### Evaluator Optimization
 
@@ -172,9 +184,9 @@ the prepared kernel pack remains authoritative for code-shaping optimization.
 - `compress: bool = true`
 
 JIT artifacts embed direct SymJIT applications. The defaults above apply to
-process-local compiled DAG evaluators. Prepared JIT kernel packs used by eager
-and recurrence execution force optimization level 2 to preserve their
-cross-architecture storage contract.
+process-local compiled DAG evaluators. Prepared JIT kernel packs used by eager,
+recurrence, and on-the-fly execution force optimization level 2 to preserve
+their cross-architecture storage contract.
 
 ### C++
 
@@ -212,6 +224,14 @@ macOS x86_64, and glibc Linux x86_64. Other targets are rejected explicitly.
 - `minimum_samples: int = 5`
 - `helicity_ids: list[str] = []`
 - `color_flow_ids: list[str] = []`
+
+For LC profiling, empty benchmark selector lists resolve at runtime to the
+generated layout's optimized workload: one physical flow and the helicity sum
+for `topology-replay`, or all physical flows and one computed helicity for
+`all-flow-union`. Explicit subsets and selected-axis lists are preserved; a
+complete summed-axis list is normalized to equivalent omission. A valid
+non-hot shape emits at most one pre-loop warning per loaded process. Evaluation
+selector defaults remain the complete matrix element.
 
 ## Output And Symbolica
 

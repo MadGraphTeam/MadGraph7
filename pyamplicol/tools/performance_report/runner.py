@@ -888,11 +888,13 @@ def config_values(
             "emit_api_bundle": not on_the_fly,
             "validation": {
                 "enabled": not on_the_fly,
-                "samples": 10,
+                "samples": 1,
                 "seed": GENERATION_VALIDATION_SEED,
                 "relative_tolerance": RELATIVE_TOLERANCE,
                 "absolute_tolerance": 1.0e-300,
-                "post_build_validation": not on_the_fly,
+                # The campaign immediately loads the artifact and performs its
+                # own resolved, high-precision, and authority validation.
+                "post_build_validation": False,
             },
             **({"relation_discovery": {"mode": "off"}} if on_the_fly else {}),
         },

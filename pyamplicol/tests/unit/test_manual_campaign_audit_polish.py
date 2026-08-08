@@ -226,7 +226,7 @@ def test_generation_recipe_spells_out_measurement_relevant_hyperparameters() -> 
     assert recipe.generate is not None
     generate = recipe.generate
     expected_pairs = {
-        "--validation-samples": "10",
+        "--validation-samples": "1",
         "--validation-seed": "12345",
         "--relative-tolerance": "1e-12",
         "--absolute-tolerance": "1e-300",
@@ -245,6 +245,7 @@ def test_generation_recipe_spells_out_measurement_relevant_hyperparameters() -> 
     assert "--model-cache" in generate
     assert "--model-cache-dir" in generate
     assert "--numerical-current-reuse" in generate
+    assert "--no-post-build-validation" in generate
     generate_index = generate.index("generate")
     assert parse_cli(generate[generate_index:]).resolve().effective.action == "generate"
 

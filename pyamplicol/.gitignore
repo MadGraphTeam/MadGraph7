@@ -55,6 +55,11 @@ src/pyamplicol/assets/selftest/*/
 
 # Generated process and benchmark output
 outputs/
+.sass-cache/
+docs/_site/
+docs/.jekyll-cache/
+docs/.sass-cache/
+docs/.bundle/
 docs/.result_outputs/
 docs/**/results/*.lock
 docs/**/results/.coordination/

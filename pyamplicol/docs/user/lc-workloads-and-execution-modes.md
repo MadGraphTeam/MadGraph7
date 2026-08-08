@@ -1,3 +1,8 @@
+---
+title: "LC workloads and execution modes"
+nav_order: 1
+parent: "Get started: a gentle walkthrough"
+---
 <!-- SPDX-License-Identifier: 0BSD -->
 
 # LC workloads and execution modes
@@ -284,7 +289,7 @@ The two `None` arguments are the optional per-point zero-based helicity and
 flow index slices. Dropping `runtime` releases the native handle.
 
 Complete load, error-handling, metadata, memory-layout, and compiler examples
-are in the [Native SDK guide](native-sdk.md). Stable IDs can be read from that
+are in the [Native APIs guide](native-apis.md). Stable IDs can be read from that
 metadata or copied from `pyamplicol inspect`; do not infer IDs from their
 position except where the CLI explicitly accepts a one-based ordinal.
 
@@ -560,6 +565,7 @@ they do not have the corresponding OTF family cache.
 6. Profile the exact process, selector, parameters, batch size, and target
    machine used by the application.
 
-See [Configuration](configuration.md#color-and-evaluation) for every card
-field, [Runtime](runtime.md) for resolved output and per-point selectors, and
-the [Native SDK](native-sdk.md) for complete buildable language examples.
+See [Configuration](configuration.md#color-accuracy-and-lc-layout) for every card
+field, [Runtime and Selectors](runtime-and-selectors.md) for resolved output and
+per-point selectors, and the [Native APIs](native-apis.md) for complete
+buildable language examples.

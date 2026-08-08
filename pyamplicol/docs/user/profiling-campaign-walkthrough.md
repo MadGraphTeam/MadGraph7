@@ -1,3 +1,8 @@
+---
+title: "Profiling campaign: from measurements to the PDF"
+nav_order: 2
+parent: "Get started: a gentle walkthrough"
+---
 <!-- SPDX-License-Identifier: 0BSD -->
 
 # Profiling campaign: from measurements to the PDF
@@ -594,4 +599,4 @@ For the physical difference between the two LC workloads and the four
 pyAmpliCol execution modes, continue with
 [LC workloads and execution modes](lc-workloads-and-execution-modes.md). The
 ordinary one-output timing workflow remains documented in
-[Runtime](runtime.md#runtime-profiling).
+[Profiling and Benchmarking](profiling-and-benchmarking.md#what-is-timed).

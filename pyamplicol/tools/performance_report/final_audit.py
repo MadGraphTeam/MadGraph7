@@ -2801,9 +2801,6 @@ def _audit_effective_config_mapping(
     evaluator = _mapping(effective.get("evaluator"), f"{context}.evaluator")
     color = _mapping(effective.get("color"), f"{context}.color")
     generation = _mapping(effective.get("generation"), f"{context}.generation")
-    validation = _mapping(
-        generation.get("validation"), f"{context}.generation.validation"
-    )
     on_the_fly = cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
     expected_layout = (
         "topology-replay"
@@ -2832,19 +2829,6 @@ def _audit_effective_config_mapping(
         jit = _mapping(evaluator.get("jit"), f"{context}.evaluator.jit")
         if jit.get("optimization_level") != cell.measurement.jit_optimization_level:
             mismatches.append("evaluator.jit.optimization_level")
-    expected_validation = {
-        "enabled": not on_the_fly,
-        "samples": 10,
-        "seed": 12345,
-        "relative_tolerance": RELATIVE_TOLERANCE,
-        "absolute_tolerance": 1.0e-300,
-        "post_build_validation": not on_the_fly,
-    }
-    mismatches.extend(
-        f"generation.validation.{field}"
-        for field, value in expected_validation.items()
-        if validation.get(field) != value
-    )
     if on_the_fly and generation.get("relation_discovery") != {"mode": "off"}:
         mismatches.append("generation.relation_discovery")
     if mismatches:

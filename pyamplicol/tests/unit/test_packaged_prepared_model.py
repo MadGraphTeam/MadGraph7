@@ -160,7 +160,7 @@ def test_packaged_prepared_model_accepts_older_package_producer(
     producer = _metadata()["producer"]
     assert isinstance(producer, dict)
     assert str(producer["package_version"]).startswith("0.1.0")
-    monkeypatch.setattr(versions, "package_version", lambda: "0.1.1")
+    monkeypatch.setattr(versions, "package_version", lambda: "0.1.2")
 
     with prepared_models.packaged_prepared_model_path(
         prepared_models.BUILTIN_SM_JIT_O2

@@ -1,3 +1,9 @@
+---
+title: "Public API Contract"
+nav_order: 1
+parent: "Development Documentation"
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Public API Contract
 
 This document is normative for Python API version 1. Implementations may add
@@ -133,6 +139,16 @@ exclusive within each selector dimension. Momenta have shape
 only `precision=16` (native f64); every other precision fails before selector
 resolution or dense metadata access.
 
+`Runtime.warm_up(momenta, *, precision=16, helicities=None,
+color_flows=None, progress=None) -> WarmUpResult` is available only for OTF
+runtimes. `momenta` must contain exactly one binary64 phase-space point. The
+operation transactionally constructs and retains the selected family, performs
+its first evaluation, and reports elapsed time, total/new query counts, cache
+reuse, and optional current/peak RSS. The optional `ProgressSink` observes
+process preparation, query-family construction, family finalization, and first
+evaluation. LC accepts helicity/flow selectors; contracted NLC/full accepts
+helicity selectors only.
+
 `Runtime.evaluate_resolved(momenta, *, helicities=None, color_flows=None,
 precision=16) -> ResolvedEvaluation` returns LC values with shape `(point,
 physical_helicity, physical_color_flow)` and NLC/full values with shape
@@ -142,6 +158,10 @@ physical_helicity, physical_color_flow)` and NLC/full values with shape
 `Runtime.set_model_parameters(mapping)` validates the complete update before
 committing it. `set_model_parameter(name, value)` is a convenience wrapper.
 `mute_warnings()` and `unmute_warnings()` modify only that runtime handle.
+`Runtime.clear()` discards warmed OTF process/family/scratch state while
+retaining the loaded artifact, current model parameters, and any already
+materialized `physics` compatibility view. It is a no-op for recurrence,
+compiled, and eager runtimes.
 
 `load(...)` is an alias for `Runtime.load(...)`.
 

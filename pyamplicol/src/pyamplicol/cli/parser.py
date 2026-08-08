@@ -322,6 +322,10 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         dest="generation.validation.post_build_validation",
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
+        help=(
+            "re-open and numerically smoke-test the written artifact "
+            "(off by default)"
+        ),
     )
     numerical_reuse = parser.add_mutually_exclusive_group()
     numerical_reuse.add_argument(
@@ -561,6 +565,10 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=argparse.SUPPRESS,
         metavar="ID",
+        help=(
+            "stable helicity ID; omitting both selector options chooses the "
+            "artifact layout's optimized profiling workload"
+        ),
     )
     parser.add_argument(
         "--color-flow",
@@ -568,7 +576,11 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=argparse.SUPPRESS,
         metavar="ID_OR_NUMBER",
-        help="stable color-flow ID or one-based ordinal shown by inspect",
+        help=(
+            "stable color-flow ID or one-based ordinal shown by inspect; "
+            "omitting both selector options chooses the artifact layout's "
+            "optimized profiling workload"
+        ),
     )
     parser.add_argument(
         "--momenta",

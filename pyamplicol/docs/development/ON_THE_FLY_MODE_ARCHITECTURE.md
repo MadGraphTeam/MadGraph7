@@ -1,3 +1,8 @@
+---
+title: "On-the-fly mode architecture"
+nav_order: 8
+parent: "Development Documentation"
+---
 <!-- SPDX-License-Identifier: 0BSD -->
 
 # On-the-fly Mode Architecture and Implementation Record
@@ -6,9 +11,9 @@
 
 This document records the architecture selected from the on-the-fly research
 prototypes based on source revision
-`a08feed4aacf39c00dfedaeedd3a82a9666f1565` and the production LC
-implementation that followed. The prototype commits are historical evidence,
-not code that was merged wholesale.
+`a08feed4aacf39c00dfedaeedd3a82a9666f1565` and the production implementation
+that followed. The prototype commits are historical evidence, not code that
+was merged wholesale.
 
 On-the-fly execution is a distinct artifact and native runtime lane. Python
 produces a compact process source projection; Rust authenticates it against the
@@ -247,6 +252,12 @@ AmpliCol results, and observed a maximum conditioned OTF/recurrence residual of
 `3.93e-15`. This establishes legacy LC parity, not independent physics
 correctness.
 
+The later contracted-colour acceptance suite covers the complete bounded
+n<=4 catalog. OTF full colour is replayed against frozen independent MadGraph
+targets produced at precision 200; OTF NLC is replayed against recurrence-p200
+targets admitted only after the matching full-colour lane passed its MadGraph
+gate. This is the current bounded NLC/full correctness claim.
+
 Retained selected-flow/helicity-sum high-multiplicity comparisons have passed:
 
 - n=5: process IDs 7, 8, 11, 13, and 15 against legacy AmpliCol;
@@ -267,7 +278,7 @@ batch size 128 and implements only obvious, generic, low-risk improvements
 found within the hour. The former 2x AmpliCol aspiration remains context, not a
 completion gate.
 
-## Definition of complete
+## Original LC milestone definition of complete
 
 The LC OTF milestone is complete when:
 
@@ -279,7 +290,8 @@ The LC OTF milestone is complete when:
 - the intentional dirty worktree is preserved and the implementation is
   committed and pushed.
 
-Completion does not require a p32 comparison, n=10 reproduction, 2x runtime
-ratio, NLC/full-color OTF, or repair of the shared legacy physics bugs. Those
-physics corrections follow future full-color arbitrary-precision validation
-against MadGraph.
+That original LC-only milestone did not require a p32 comparison, n=10
+reproduction, 2x runtime ratio, NLC/full-color OTF, or repair of shared legacy
+physics bugs. The production scope has since added the bounded n<=4 contracted
+NLC/full capability and independent full-colour MadGraph gate described above;
+it still makes no high-multiplicity practicality claim for those families.

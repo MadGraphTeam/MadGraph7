@@ -80,7 +80,7 @@ rusticol-config = "pyamplicol._sdk.config:main"
 
 [project.urls]
 Homepage = "https://github.com/mg5amcnlo/pyamplicol"
-Documentation = "https://github.com/mg5amcnlo/pyamplicol#readme"
+Documentation = "https://mg5amcnlo.github.io/pyamplicol/"
 Issues = "https://github.com/mg5amcnlo/pyamplicol/issues"
 Source = "https://github.com/mg5amcnlo/pyamplicol"
 

@@ -304,6 +304,48 @@ def _cell(
     )
 
 
+@pytest.mark.parametrize(
+    "validation",
+    (
+        {
+            "enabled": True,
+            "samples": 10,
+            "seed": 12345,
+            "relative_tolerance": 1.0e-12,
+            "absolute_tolerance": 1.0e-300,
+            "post_build_validation": True,
+        },
+        {
+            "enabled": True,
+            "samples": 1,
+            "seed": 12345,
+            "relative_tolerance": 1.0e-12,
+            "absolute_tolerance": 1.0e-300,
+            "post_build_validation": False,
+        },
+    ),
+)
+def test_final_audit_does_not_promote_generation_smoke_policy_to_identity(
+    validation: dict[str, object],
+) -> None:
+    final_audit_module._audit_effective_config_mapping(
+        _cell(ExecutionMode.RECURRENCE),
+        {
+            "evaluator": {
+                "execution_mode": "recurrence",
+                "backend": "jit",
+                "jit": {"optimization_level": 3},
+            },
+            "color": {
+                "accuracy": "lc",
+                "lc_flow_layout": "topology-replay",
+            },
+            "generation": {"validation": validation},
+        },
+        context="test effective config",
+    )
+
+
 def test_final_pdf_audit_rejects_successful_latex_with_overfull_box(
     tmp_path: Path,
     monkeypatch,

@@ -1,39 +1,30 @@
 <!-- SPDX-License-Identifier: 0BSD -->
 
-# pyAmpliCol
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mg5amcnlo/pyamplicol/main/docs/assets/pyamplicol_logo.png" alt="pyAmpliCol" width="760">
+</p>
 
-[![Tests](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg)](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml)
+<p align="center">
+  <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/v/pyamplicol.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/pyversions/pyamplicol.svg" alt="Python versions"></a>
+  <a href="https://mg5amcnlo.github.io/pyamplicol/"><img src="https://img.shields.io/badge/docs-User%20Guide-2f81f7.svg?logo=githubpages" alt="pyAmpliCol documentation"></a>
+  <a href="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/mg5amcnlo/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
+</p>
+
+<p align="center"><strong>Fast color-ordered scattering amplitudes from Python and native APIs.</strong></p>
 
 pyAmpliCol generates and evaluates color-ordered scattering amplitudes from
 built-in, JSON, or UFO models. It provides a typed Python API and CLI, fast
 Rust-backed execution, runtime helicity and color-flow selection, and generated
 Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
-## Release status
-
-Version `0.1.1` is available for testing from
-[TestPyPI](https://test.pypi.org/project/pyamplicol/0.1.1/) and is tagged as an
-immutable archival source snapshot. It has not yet been uploaded to PyPI. The
-[validated release-artifacts workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)
-produces one source distribution and three `cp311-abi3` wheels; publication
-uses a successful run whose head SHA is the intended release source:
-
-- macOS 11 or newer on Apple silicon;
-- macOS 11 or newer on x86-64;
-- manylinux 2.28 x86-64.
-
-Each wheel completed the full installed Python, C11, C++17, Fortran 2008, and
-Rust 2021 API deployment on CPython 3.11. CPython 3.14 received a focused abi3
-installation, import, metadata, and direct-runtime smoke test. The release
-workflow did not run the separate performance campaigns.
-
-See the
-[release status](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md)
-for the remaining PyPI upload step.
+Explore the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/)
+for guided workflows, API examples, technical reference, and release support.
 
 ## Installation
 
-Once the release is uploaded:
+Install the release from PyPI:
 
 ```console
 python -m venv .venv
@@ -44,10 +35,10 @@ python -m pip install pyamplicol
 The binary wheels include the Rust runtime and native SDK; wheel users do not
 need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 
-To build the tagged source snapshot before the PyPI upload:
+To build the tagged source snapshot:
 
 ```console
-git clone --branch v0.1.1 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v0.1.3 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -68,7 +59,7 @@ The first `just dev-install` native build can take several minutes. Repeated
 installs reuse the workspace-local Cargo cache and are substantially faster.
 
 Full installation details are in the
-[installation guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/installation.md).
+[documentation](https://mg5amcnlo.github.io/pyamplicol/).
 
 ## Quick start
 
@@ -193,21 +184,10 @@ cd ./pyamplicol-profiling-campaign
 
 That deliberately small real campaign measures only the final-state-
 multiplicity-one `d d~ > Z` recurrence cell. Broader campaign selections are
-intended for dedicated profiling hosts, not installation smoke tests.
-
-Each campaign keeps attempts, prepared artifacts, logs, locks, and leases in
-its visible `campaign_artifacts/` directory. Moving or renaming the whole
-campaign moves that state with it and never consults legacy repository-level
-`.artifacts` state. `--force` resets that local state plus the managed PDF,
-summary IDs, measurement lineage, and known LaTeX byproducts while preserving
-unrelated destination files and a previously recorded original-AmpliCol
-checkout. Stop active campaign processes before resetting their destination.
-
-All pyAmpliCol backends work from installed resources. The optional original
-AmpliCol reference backend additionally requires
-`--original-amplicol PATH_TO_COMPLETE_CHECKOUT`; it is unavailable when that
-checkout is not supplied. Neither pyAmpliCol nor the supported patched
-original-AmpliCol comparison checkout requires LHAPDF.
+intended for dedicated profiling hosts. The
+[documentation](https://mg5amcnlo.github.io/pyamplicol/) covers selection,
+continuation, optional original-AmpliCol comparisons, artifact retention, and
+PDF generation.
 
 The repository retains only two rendered performance snapshots. Raw JSON,
 generated tables, attempts, and campaign workspaces stay untracked:
@@ -215,28 +195,19 @@ generated tables, attempts, and campaign workspaces stay untracked:
 - [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
 - [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
-These reports come from separate manual measurement campaigns; they are not
-release-CI results. The report format is directly reproducible from an
-installed package: create the workspace with
-`pyamplicol profiling-campaign copy DEST --force`, run the desired selection,
-then execute `DEST/steer_performance_campaign.py refresh-pdf`.
+These are manual measurement snapshots rather than release-CI results; raw
+campaign data remains local and the report format is reproducible from an
+installed package.
 
 ## Documentation
 
-- [User guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/index.md)
-- [Configuration](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/configuration.md)
-- [Models and processes](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/models.md)
-- [Runtime](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/runtime.md)
-- [Native SDK](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/native-sdk.md)
-- [Symbolica licensing](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/symbolica.md)
-- [Performance reports](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/README.md)
+Read the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/).
 
 ## Dependencies and license
 
 Release builds use pinned published dependencies plus SymJIT 2.22.0 from an
 immutable revision of the official
-[symjit-crate repository](https://github.com/siravan/symjit-crate). pyAmpliCol
-does not carry a private SymJIT fork or a local SymJIT patch.
+[symjit-crate repository](https://github.com/siravan/symjit-crate).
 
 pyAmpliCol is distributed under the 0BSD license. Third-party components and
 model assets retain their own terms; see

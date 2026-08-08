@@ -443,7 +443,7 @@ class GenerationValidationConfig:
     seed: int = field(default=12345, metadata=_setting("int"))
     relative_tolerance: float = field(default=1e-12, metadata=_setting("float"))
     absolute_tolerance: float = field(default=1e-300, metadata=_setting("float"))
-    post_build_validation: bool = field(default=True, metadata=_setting("bool"))
+    post_build_validation: bool = field(default=False, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         for name in (

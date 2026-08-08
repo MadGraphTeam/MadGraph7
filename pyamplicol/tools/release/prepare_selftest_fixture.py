@@ -275,9 +275,8 @@ def _validate_portable_symjit_source(
         )
     if evaluator.get("optimization_level") != PORTABLE_OPTIMIZATION_LEVEL:
         raise RuntimeError(
-            "portable self-test source must use SymJIT optimization level "
-            f"{PORTABLE_OPTIMIZATION_LEVEL}; other optimization levels "
-            "may contain source-architecture register allocation"
+            "portable self-test source must use its canonical SymJIT "
+            f"optimization level {PORTABLE_OPTIMIZATION_LEVEL}"
         )
     if (
         evaluator.get("runtime_capability") != SYMJIT_F64_RUNTIME_CAPABILITY

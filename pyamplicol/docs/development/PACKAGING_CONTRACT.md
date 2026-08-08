@@ -1,5 +1,9 @@
+---
+title: "Packaging Contract"
+nav_order: 4
+parent: "Development Documentation"
+---
 <!-- SPDX-License-Identifier: 0BSD -->
-
 # Packaging And Release Contract
 
 This document is normative for standalone pyAmpliCol package builds and
@@ -7,7 +11,7 @@ publication.
 
 ## Canonical Build
 
-- Distribution: `pyamplicol==0.1.1`, Python 3.11+, license `0BSD`.
+- Distribution: `pyamplicol==0.1.3`, Python 3.11+, license `0BSD`.
 - Backend: the in-tree PEP 517 wrapper delegates to pinned Maturin.
 - Python extension: `pyamplicol._rusticol`, built from `rusticol-python` with
   `abi3-py311`.
@@ -184,6 +188,6 @@ validated inventory, verifies the expected platforms and non-candidate version,
 and publishes through a protected TestPyPI or PyPI environment using OIDC
 Trusted Publishing. Only that final job receives `id-token: write`.
 
-The exact-source validated-artifact workflow completed successfully at
-<https://github.com/mg5amcnlo/pyamplicol/actions/runs/30673372972>. Uploading
-the retained files is a separate manual action and has not yet been performed.
+Published releases reference one successful exact-source validated-artifact
+workflow run. Uploading its retained files is a separate manual action and
+never rebuilds them.
