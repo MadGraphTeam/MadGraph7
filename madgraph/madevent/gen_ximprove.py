@@ -437,6 +437,11 @@ class gensym(object):
                 recycler.hel_filt = self.run_card['hel_filtering']
                 recycler.amp_splt = self.run_card['hel_splitamp']
                 recycler.amp_filt = self.run_card['hel_zeroamp']
+                # The unrolled call sequence is the whole file at high
+                # multiplicity; write it out in slices of this many statements
+                # (0 keeps it inline) so that gfortran is not handed one
+                # multi-million-line basic block.
+                recycler.amp_chunk_size = self.run_card['amp_chunk_size']
 
                 recycler.set_input(matrix_file)
                 recycler.set_output(out_file)

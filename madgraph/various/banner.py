@@ -4606,7 +4606,10 @@ class RunCardLO(RunCard):
         self.add_param('aloha_flag', '', include=False, hidden=True, comment='global fortran compilation flag, suggestion: -ffast-math',
                        fct_mod=(self.make_clean, ('Source/DHELAS'),{}))
         self.add_param('matrix_flag', '', include=False, hidden=True, comment='fortran compilation flag	for the	matrix-element files, suggestion -O3',
-                       fct_mod=(self.make_Ptouch, ('matrix'),{}))        
+                       fct_mod=(self.make_Ptouch, ('matrix'),{}))
+        self.add_param('amp_flag', '-O0', include=False, hidden=True, comment='fortran compilation flag for the amplitude (HELAS call) files split out of the matrix elements; it lands after matrix_flag. The optimiser has next to nothing to do on a flat sequence of external calls but is most of the compile time there, so -O0 is the default; the JAMP and colour blocks keep matrix_flag',
+                       fct_mod=(self.make_Ptouch, ('matrix'),{}))
+        self.add_param('amp_chunk_size', 2000, include=False, hidden=True, comment='number of fortran statements per amplitude file when the helicity-recycled matrix element is split up; 0 keeps the unrolled call sequence inline in matrix<i>_optim.f')
         self.add_param('vector_size', 1, include='vector.inc', hidden=True, comment='lockstep size for parralelism run', 
                        fortran_name='WARP_SIZE', fct_mod=(self.reset_simd,(),{}))
         self.add_param('nb_warp', 1, include='vector.inc', hidden=True, comment='number of warp for parralelism run', 

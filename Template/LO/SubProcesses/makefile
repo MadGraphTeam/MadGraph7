@@ -48,12 +48,24 @@ MATRIX = $(patsubst %.f,%.o,$(wildcard matrix*_optim.f))
 # the optimized binaries alongside the recycled bases. When recycling is off the
 # matrix*.f glob below already covers them.
 ROUTER = $(patsubst %.f,%.o,$(wildcard matrix*_router.f))
+# Amplitude chunks: at high multiplicity the HELAS call sequence of a matrix
+# element is emitted as its own set of files, one subroutine each, so that it
+# is not one enormous basic block (gfortran's cost on which grows faster than
+# linearly) and so that it can carry its own optimisation flag -- see AMP_FLAG
+# below. matrix<i>_origamp<k>.f goes into both binaries, because a matrix
+# element that has no helicity to recycle is reused as its own optimized copy.
+ORIGAMP = $(patsubst %.f,%.o,$(wildcard matrix*_origamp*.f))
+OPTIMAMP = $(patsubst %.f,%.o,$(wildcard matrix*_optimamp*.f))
+AMPCHUNK = $(ORIGAMP) $(OPTIMAMP)
 ifeq ($(strip $(MATRIX_HEL)),)
         MATRIX = $(patsubst %.f,%.o,$(wildcard matrix*.f))
+        AMPCHUNK =
 else
-        MATRIX += $(ROUTER)
-        MATRIX_HEL += $(ROUTER)
+        MATRIX += $(ROUTER) $(AMPCHUNK)
+        MATRIX_HEL += $(ROUTER) $(ORIGAMP)
 endif
+# every matrix object except the amplitude chunks, which get a rule of their own
+MATRIX_CORE = $(filter-out $(AMPCHUNK),$(sort $(MATRIX) $(MATRIX_HEL)))
 
 
 PROCESS= driver.o myamp.o genps.o unwgt.o setcuts.o \
@@ -90,8 +102,15 @@ $(LIBDIR)libgammaUPC.$(libext):
 	cd ../../Source/PDF/gammaUPC; make
 
 # Add source so that the compiler finds the DiscreteSampler module.
-$(MATRIX): %.o: %.f
+$(MATRIX_CORE): %.o: %.f
 	$(FC) $(FFLAGS) $(MATRIX_FLAG) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
+# The amplitude chunks are a flat sequence of external CALLs, which the
+# optimiser has essentially nothing to do on (measured: 1.00-1.08x at -O2 over
+# -O0), while they are all of the compile time. AMP_FLAG lands after FFLAGS, so
+# the -O0 it defaults to wins over the GLOBAL_FLAG; the JAMP and colour blocks,
+# which are what -O does buy something on, stay in the matrix element itself.
+$(AMPCHUNK): %.o: %.f
+	$(FC) $(FFLAGS) $(MATRIX_FLAG) $(AMP_FLAG) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
 %.o: %.f
 	$(FC) $(FFLAGS) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
 
