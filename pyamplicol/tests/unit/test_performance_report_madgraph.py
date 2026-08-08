@@ -184,6 +184,7 @@ def test_command_card_uses_exact_standalone_launch_sequence_and_installed_sm() -
         madgraph.madgraph_command_card("g g > g g\nimport model sm")
     assert "iso_fortran_env, only: int64" in madgraph._DRIVER_SOURCE
     assert "integer(kind=int64) :: clock_start" in madgraph._DRIVER_SOURCE
+    assert "if (answer /= reference) error stop 16" in madgraph._DRIVER_SOURCE
     assert (
         hashlib.sha256(madgraph._DRIVER_SOURCE.encode("utf-8")).hexdigest()
         == madgraph.MADGRAPH_DRIVER_SOURCE_SHA256
@@ -270,6 +271,23 @@ def test_driver_output_parser_accepts_fortran_numbers_and_checks_checksum(
             ),
             4,
         )
+
+    # Sequential floating-point accumulation has an O(points * epsilon)
+    # forward error even when every evaluated value is identical.  This is a
+    # real n=1 campaign calibration sample whose individual-value guard passed.
+    repeated_points = 65_790
+    repeated = _command_result(
+        cwd=tmp_path,
+        stdout=(
+            "PYAMPLICOL_MG_VALUE 2.29970567613276160E+002\n"
+            f"PYAMPLICOL_MG_POINTS {repeated_points}\n"
+            "PYAMPLICOL_MG_SECONDS 6.97789999999999938E-002\n"
+            "PYAMPLICOL_MG_CHECKSUM 1.51297636432885565E+007\n"
+        ),
+    )
+    parsed_repeated = madgraph._parse_driver_output(repeated, repeated_points)
+    assert parsed_repeated.value == 229.97056761327616
+    assert parsed_repeated.points == repeated_points
 
 
 def test_installation_validation_requires_regular_executable_launcher(

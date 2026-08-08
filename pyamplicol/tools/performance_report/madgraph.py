@@ -193,6 +193,7 @@ program pyamplicol_madgraph_driver
   call system_clock(clock_start, clock_rate)
   do i = 1, repetitions
     call smatrix(p, answer)
+    if (answer /= reference) error stop 16
     checksum = checksum + answer
   end do
   call system_clock(clock_end)
@@ -693,10 +694,20 @@ def _parse_driver_output(result: CommandResult, expected_points: int) -> DriverR
             "MadGraph driver emitted invalid timing or value data"
         )
     expected_checksum = points * value
+    # The driver checks every individual value against ``reference``.  The
+    # checksum is accumulated sequentially only to keep the timed calls live,
+    # so allow its standard forward-error bound instead of mistaking ordinary
+    # O(points * epsilon) summation drift for a changed matrix element.
+    unit_roundoff = math.ulp(1.0) / 2.0
+    accumulated_roundoff = points * unit_roundoff
+    checksum_rel_tol = max(
+        5.0e-13,
+        accumulated_roundoff / (1.0 - accumulated_roundoff),
+    )
     if not math.isclose(
         checksum,
         expected_checksum,
-        rel_tol=5.0e-13,
+        rel_tol=checksum_rel_tol,
         abs_tol=1.0e-300,
     ):
         raise MadGraphAdapterError("MadGraph repeated evaluations changed their value")
