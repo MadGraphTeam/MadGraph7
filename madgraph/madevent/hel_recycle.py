@@ -1422,15 +1422,37 @@ def split_amps(line, new_amps, gauge):
     # Remove the one that occurs the most
     occur.pop(to_remove)
     
-    lines = [] 
+    lines = []
+    # Which amplitudes carry a given wavefunction, one bit per amplitude. The
+    # selection below was a rescan of every amplitude for every combination of
+    # columns -- 12.5 million `w in amp.args` evaluations on g g > g g g g g,
+    # the largest single cost left in the recycling step -- and it is an AND of
+    # these masks instead. A HELAS call never uses the same wavefunction twice,
+    # so a name identifies the column it came from and asking "is w anywhere in
+    # this amplitude" is the same question as asking its column.
+    amp_masks = {}
+    for i, amp in enumerate(new_amps):
+        bit = 1 << i
+        for a in amp.args:
+            amp_masks[a] = amp_masks.get(a, 0) | bit
+    all_amps_mask = (1 << len(new_amps)) - 1
     # Get the wavs per column
-    wav_name = [o.keys() for o in occur]          
+    wav_name = [o.keys() for o in occur]
     for wfcts in product(*wav_name):
         # Select the amplitudes produced by wfcts
-        sub_amps = [amp for amp in new_amps 
-                    if all(w in amp.args for w in wfcts)]
-        if not sub_amps:
+        mask = all_amps_mask
+        for w in wfcts:
+            mask &= amp_masks.get(w, 0)
+            if not mask:
+                break
+        if not mask:
             continue
+        # lowest bit first, so sub_amps keeps the order of new_amps
+        sub_amps = []
+        while mask:
+            low = mask & -mask
+            sub_amps.append(new_amps[low.bit_length() - 1])
+            mask ^= low
         if len(sub_amps) ==1:
             lines.append(apply_args(line, [i.args for i in sub_amps]).replace('\n',''))
             
