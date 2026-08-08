@@ -35,10 +35,11 @@ python -m pip install pyamplicol
 The binary wheels include the Rust runtime and native SDK; wheel users do not
 need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 
-To build the tagged source snapshot:
+After the 0.1.4 release candidate is validated and tagged, build its source
+snapshot with:
 
 ```console
-git clone --branch v0.1.3 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v0.1.4 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```

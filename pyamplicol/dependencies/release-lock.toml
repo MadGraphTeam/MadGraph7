@@ -3,7 +3,7 @@ schema_version = 1
 
 [project]
 distribution = "pyamplicol"
-version = "0.1.3"
+version = "0.1.4"
 python_requires = ">=3.11"
 wheel_abi = "cp311-abi3"
 license = "0BSD"

@@ -32,6 +32,15 @@ Release dependencies include Symbolica 2.2.0 and the official
 [`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.22.0 at
 immutable revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`.
 
+## 0.1.4 release candidate
+
+The current source tree is preparing version `0.1.4`. It is not yet a tagged
+or published release. Its source distribution and platform wheels must first
+complete the validated release-artifacts workflow; publication will then reuse
+those exact files without rebuilding them. Until both validation and
+publication complete, version `0.1.3` remains the current PyPI release and the
+supported release boundary described above.
+
 ## Install a release
 
 ```console

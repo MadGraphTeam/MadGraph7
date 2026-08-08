@@ -32,13 +32,13 @@ Run the packaged direct-runtime self-test:
 pyamplicol self-test
 ```
 
-On a healthy published 0.1.3 macOS arm64 installation, the colored terminal
-tables report checks equivalent to this compact transcription:
+On a healthy 0.1.4 macOS arm64 release-candidate installation, the colored
+terminal tables report checks equivalent to this compact transcription:
 
 ```text
 python          pass
 model-assets    pass   67 verified files
-rusticol-python pass   package 0.1.3, C ABI 1
+rusticol-python pass   package 0.1.4, C ABI 1
 native-sdk      pass   aarch64-apple-darwin; ABI 1; librusticol_capi.a
 physics-f64     pass   d_dbar_to_z; shape (1, 12, 1); direct SymJIT
 ```
