@@ -373,8 +373,7 @@ def _generation_command(
         "--no-emit-api-bundle",
         "--progress",
         "off",
-        "--format",
-        "json",
+        "--json",
     ]
     for name, value in (process_overrides or {}).items():
         command.extend(
@@ -411,8 +410,7 @@ def _profile_command(
         str(minimum_samples),
         "--progress",
         "off",
-        "--format",
-        "json",
+        "--json",
     ]
     if "color_flow" in selectors:
         command.extend(("--color-flow", selectors["color_flow"]))

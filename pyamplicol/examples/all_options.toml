@@ -225,7 +225,7 @@ helicity_ids = []
 color_flow_ids = []
 
 [output]
-# output.format: "human" or "json". Default human.
+# output.format: typed API/config provenance default. The CLI uses --json.
 format = "human"
 # output.color: "auto", "always", or "never". Default auto.
 color = "auto"

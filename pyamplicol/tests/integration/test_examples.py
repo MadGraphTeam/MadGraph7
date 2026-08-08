@@ -47,7 +47,7 @@ def test_cards_cross_cli_resolution_and_typed_dispatch_without_running_work(
     stderr = io.StringIO()
     services = _RecordingServices()
     status = run_cli(
-        (str(card), "--progress", "off", "--format", "json"),
+        (str(card), "--progress", "off", "--json"),
         services=services,
         stdout=stdout,
         stderr=stderr,

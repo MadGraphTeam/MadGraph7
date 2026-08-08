@@ -57,7 +57,7 @@ Inspect without loading executable evaluator state:
 
 ```console
 pyamplicol inspect artifacts/pp_zjj
-pyamplicol inspect artifacts/pp_zjj --format json
+pyamplicol inspect artifacts/pp_zjj --json
 ```
 
 The inventory reports process IDs and aliases, target, execution mode,

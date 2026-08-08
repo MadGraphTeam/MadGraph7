@@ -70,9 +70,9 @@ independent-physics-oracle: _source-checkout
 
 installed-smoke:
     PYTHONPATH="$PWD/src" {{python}} -m pyamplicol.selftest
-    PYTHONPATH="$PWD/src" {{python}} -m pyamplicol self-test --format json
-    PYTHONPATH="$PWD/src" {{python}} -m pyamplicol examples list --format json
-    PYTHONPATH="$PWD/src" PYAMPLICOL_EXAMPLE_CACHE="$PWD/.artifacts/source-gate-example" {{python}} -m pyamplicol examples run builtin_sm_lc --set generation.mode=replace --format json
+    PYTHONPATH="$PWD/src" {{python}} -m pyamplicol self-test --json
+    PYTHONPATH="$PWD/src" {{python}} -m pyamplicol examples list --json
+    PYTHONPATH="$PWD/src" PYAMPLICOL_EXAMPLE_CACHE="$PWD/.artifacts/source-gate-example" {{python}} -m pyamplicol examples run builtin_sm_lc --set generation.mode=replace --json
 
 rust-check:
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- fmt --all --check

@@ -37,7 +37,7 @@ ordering `d d~ > g z g`. Its representative stable ID is
 `p_p_to_z_j_j_4`. Its
 parameter card updates the genuine UFO external inputs `aS` and `MZ`.
 These three showcase cards print colorized terminal tables by default. Add
-`--format json` when a machine-readable result is wanted instead.
+`--json` when a machine-readable result is wanted instead.
 
 ## Run Cards
 

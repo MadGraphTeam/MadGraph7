@@ -72,7 +72,7 @@ Inspect resolution without running the action:
 
 ```console
 pyamplicol config resolve generate_pp_zjj_from_ufo_sm.toml
-pyamplicol config resolve generate_pp_zjj_from_ufo_sm.toml --format json
+pyamplicol config resolve generate_pp_zjj_from_ufo_sm.toml --json
 ```
 
 Create a commented template:
@@ -315,7 +315,7 @@ model_parameters = "data/model_parameters.json"
 momenta = "data/pp_zjj_momenta.json"
 
 [output]
-format = "human"                # human or json
+format = "human"                # programmatic/config provenance default
 color = "auto"                  # auto, always, never
 progress = "off"                # auto, tty, log, off
 ```
@@ -377,8 +377,12 @@ progress = "auto"
 log_level = "info"
 ```
 
-- `human` produces aligned colored terminal tables.
-- `json` reserves standard output for machine-readable data.
+- The `pyamplicol` CLI always produces aligned colored terminal tables unless
+  the invocation includes `--json`. The run-card `format` field remains part
+  of the typed configuration used by the Python API and recorded provenance;
+  it does not silently switch CLI stdout to JSON.
+- `pyamplicol ... --json` reserves standard output for stable, uncolored,
+  machine-readable data.
 - `auto` progress uses a TTY progress bar interactively and rate-limited log
   messages otherwise.
 - `Ctrl-C` during profiling retains completed timing blocks and marks the result

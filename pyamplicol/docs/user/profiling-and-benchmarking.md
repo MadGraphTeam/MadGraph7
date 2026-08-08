@@ -225,7 +225,7 @@ Choose explicitly when scripting:
 
 ```console
 pyamplicol profile artifacts/pp_zjj --progress log
-pyamplicol profile artifacts/pp_zjj --progress off --format json > profile.json
+pyamplicol profile artifacts/pp_zjj --progress off --json > profile.json
 ```
 
 JSON mode reserves stdout for the machine-readable result; diagnostics stay on

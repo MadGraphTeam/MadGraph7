@@ -246,8 +246,7 @@ def test_deployment_runs_a_copied_external_ufo_example(tmp_path: Path) -> None:
         os.fspath(card),
         "--set",
         "generation.mode=replace",
-        "--format",
-        "json",
+        "--json",
     ]
 
 

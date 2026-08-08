@@ -21,6 +21,14 @@ MANYLINUX_IMAGE = (
     "sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614"
 )
 MEMORY_WATCHDOG = "tools/ci/memory_watchdog.py --limit-gib 30 --"
+SYMBOLICA_CONCURRENCY = (
+    "    concurrency:\n"
+    '      group: "pyamplicol-symbolica-${{ startsWith(matrix.runner, '
+    "'macos-') && matrix.runner || format('{0}-{1}', matrix.runner, "
+    'github.run_id) }}"\n'
+    "      cancel-in-progress: false\n"
+    "      queue: max\n"
+)
 
 
 def _guarded_count(workflow: str, command: str) -> int:
@@ -95,6 +103,20 @@ def test_external_actions_and_rustup_installer_are_immutable() -> None:
     assert combined.count(RUSTUP_INIT_URL) == 2
     assert combined.count(RUSTUP_INIT_SHA256) == 2
     assert combined.count("sha256sum --check --strict") >= 2
+
+
+def test_symbolica_jobs_serialize_macos_per_runner_and_keep_queue() -> None:
+    expected_counts = {
+        "candidate.yml": 1,
+        "eager-portability.yml": 2,
+        "release-artifacts.yml": 1,
+        "release-prepared-models.yml": 1,
+    }
+    for name, expected in expected_counts.items():
+        workflow = (WORKFLOWS / name).read_text(encoding="utf-8")
+        assert workflow.count(SYMBOLICA_CONCURRENCY) == expected, name
+        assert workflow.count("startsWith(matrix.runner, 'macos-')") == expected
+        assert workflow.count("matrix.runner, github.run_id") == expected
 
 
 def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
@@ -376,7 +398,7 @@ def test_complete_source_gate_covers_every_required_suite_serially() -> None:
     assert "tests/integration/test_schema_v3_generation_runtime.py" in justfile
     assert "run_cargo.py --mode {{build_mode}} -- test --workspace" in justfile
     assert "{{python}} -m pyamplicol.selftest" in justfile
-    assert "{{python}} -m pyamplicol examples list --format json" in justfile
+    assert "{{python}} -m pyamplicol examples list --json" in justfile
     assert "examples run builtin_sm_lc" in justfile
     assert "generation.mode=replace" in justfile
     assert justfile.count("PYAMPLICOL_BUILD_MODE=release just source-gate") == 2

@@ -15,14 +15,74 @@ from pyamplicol.cli.utilities import list_examples, profiling_campaign_root
 from tools.performance_report.catalog import REPORT_CATALOG
 
 
+class _TTYStringIO(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
 def test_examples_list_is_checkout_independent_and_descriptive() -> None:
-    invocation = parse_cli(("examples", "list", "--format", "json"))
+    invocation = parse_cli(("examples", "list", "--json"))
     assert isinstance(invocation, UtilityInvocation)
+    assert invocation.output_format == "json"
+    assert invocation.output_color == "auto"
     stdout = io.StringIO()
-    assert run_cli(("examples", "list", "--format", "json"), stdout=stdout) == 0
+    assert run_cli(("examples", "list", "--json"), stdout=stdout) == 0
     entries = json.loads(stdout.getvalue())
     assert any(entry["name"] == "builtin_sm_lc" for entry in entries)
     assert all("SPDX" not in entry["description"] for entry in entries)
+    otf = next(entry for entry in entries if entry["name"] == "otf_pp_zjj")
+    assert "first explicit warm_up or evaluation" in otf["description"]
+    assert "complete helicity sum" in otf["description"]
+
+
+def test_examples_list_presentation_options_are_explicit(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    invocation = parse_cli(("examples", "list", "--color", "always"))
+    assert isinstance(invocation, UtilityInvocation)
+    assert invocation.output_format == "human"
+    assert invocation.output_color == "always"
+
+    machine = parse_cli(("examples", "list", "--json"))
+    assert isinstance(machine, UtilityInvocation)
+    assert machine.output_format == "json"
+
+    with pytest.raises(SystemExit) as exc_info:
+        parse_cli(("examples", "list", "--help"))
+    assert exc_info.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--json" in help_text
+    assert "--color {auto,always,never}" in help_text
+    assert "--format" not in help_text
+    with pytest.raises(SystemExit):
+        parse_cli(("examples", "list", "--format", "json"))
+
+
+def test_utility_output_auto_colors_a_terminal_and_json_is_uncolored(
+    tmp_path: Path,
+) -> None:
+    human = _TTYStringIO()
+    assert run_cli(("examples", "list"), stdout=human) == 0
+    assert "Packaged Examples" in human.getvalue()
+    assert "\x1b[" in human.getvalue()
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(human.getvalue())
+
+    target = tmp_path / "template.toml"
+    machine = _TTYStringIO()
+    assert (
+        run_cli(
+            ("config", "template", str(target), "--json"),
+            stdout=machine,
+        )
+        == 0
+    )
+    assert json.loads(machine.getvalue()) == {
+        "destination": str(target.resolve()),
+        "operation": "configuration template",
+        "status": "complete",
+    }
+    assert "\x1b[" not in machine.getvalue()
 
 
 def test_examples_run_help_lists_every_runnable_card(
@@ -508,8 +568,7 @@ def test_config_template_and_resolve(tmp_path: Path) -> None:
                 str(target),
                 "--set",
                 "generation.workers=1",
-                "--format",
-                "json",
+                "--json",
             ),
             stdout=stdout,
         )

@@ -29,8 +29,15 @@ can be moved without referring back to the installation.
 pyamplicol examples list
 ```
 
-The command prints each card stem, action, and one-line description. A card can
-also run in a versioned private cache workspace:
+The command prints a colored table with each card stem, action, and one-line
+description. Use `--json` when a script needs the same inventory as stable,
+uncolored machine-readable output:
+
+```console
+pyamplicol examples list --json
+```
+
+A card can also run in a versioned private cache workspace:
 
 ```console
 pyamplicol examples run evaluate_total
@@ -67,8 +74,8 @@ side-permutation classes, stores seven tree-level representatives, and reports
 the loop-induced `g g > Z g g` class as omitted. Evaluation selects the public
 ordering `d d~ > g z g`; the stored representative is reused automatically.
 
-The three result cards use colored human tables by default. Add
-`--format json` for machine-readable stdout.
+The three result cards use colored human tables by default. Add `--json` for
+machine-readable stdout.
 
 ## Run cards by topic
 

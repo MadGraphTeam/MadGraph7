@@ -74,6 +74,7 @@ _PROFILING_CAMPAIGN_GENERATED_FILES = (
 class UtilityInvocation:
     kind: UtilityKind
     output_format: Literal["human", "json"] = "human"
+    output_color: Literal["auto", "always", "never"] = "auto"
     path: Path | None = None
     name: str | None = None
     force: bool = False
@@ -89,6 +90,31 @@ class ExampleEntry:
     description: str
 
 
+@dataclass(frozen=True, slots=True)
+class UtilityResult:
+    operation: str
+    status: Literal["complete"]
+    destination: Path
+
+
+def _add_output_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--json",
+        dest="output_format",
+        action="store_const",
+        const="json",
+        default="human",
+        help="emit stable machine-readable JSON instead of a human table",
+    )
+    parser.add_argument(
+        "--color",
+        dest="output_color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help="detect a terminal, force ANSI color, or disable color",
+    )
+
+
 def _utility_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pyamplicol")
     commands = parser.add_subparsers(dest="utility", required=True)
@@ -98,18 +124,20 @@ def _utility_parser() -> argparse.ArgumentParser:
     template = config_commands.add_parser("template")
     template.add_argument("output", type=Path, nargs="?")
     template.add_argument("--force", action="store_true")
+    _add_output_options(template)
     resolve = config_commands.add_parser("resolve")
     resolve.add_argument("card", type=Path)
     resolve.add_argument("--set", dest="overrides", action="append", default=[])
-    resolve.add_argument("--format", choices=("human", "json"), default="human")
+    _add_output_options(resolve)
 
     examples = commands.add_parser("examples")
     example_commands = examples.add_subparsers(dest="examples_command", required=True)
     listing = example_commands.add_parser("list")
-    listing.add_argument("--format", choices=("human", "json"), default="human")
+    _add_output_options(listing)
     copy = example_commands.add_parser("copy")
     copy.add_argument("destination", type=Path)
     copy.add_argument("--force", action="store_true")
+    _add_output_options(copy)
     runnable_names = _runnable_example_names()
     run = example_commands.add_parser(
         "run",
@@ -123,7 +151,7 @@ def _utility_parser() -> argparse.ArgumentParser:
         help="packaged example to run",
     )
     run.add_argument("--set", dest="overrides", action="append", default=[])
-    run.add_argument("--format", choices=("human", "json"), default="human")
+    _add_output_options(run)
 
     profiling_campaign = commands.add_parser("profiling-campaign")
     profiling_commands = profiling_campaign.add_subparsers(
@@ -166,10 +194,11 @@ def _utility_parser() -> argparse.ArgumentParser:
             "copied campaign."
         ),
     )
+    _add_output_options(campaign_copy)
 
     for name in ("doctor", "self-test"):
         command = commands.add_parser(name)
-        command.add_argument("--format", choices=("human", "json"), default="human")
+        _add_output_options(command)
     return parser
 
 
@@ -179,39 +208,55 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
         if namespace.config_command == "template":
             return UtilityInvocation(
                 "config-template",
+                output_format=namespace.output_format,
+                output_color=namespace.output_color,
                 path=namespace.output,
                 force=bool(namespace.force),
             )
         return UtilityInvocation(
             "config-resolve",
-            output_format=namespace.format,
+            output_format=namespace.output_format,
+            output_color=namespace.output_color,
             path=namespace.card,
             overrides=tuple(namespace.overrides),
         )
     if namespace.utility == "examples":
         if namespace.examples_command == "list":
-            return UtilityInvocation("examples-list", output_format=namespace.format)
+            return UtilityInvocation(
+                "examples-list",
+                output_format=namespace.output_format,
+                output_color=namespace.output_color,
+            )
         if namespace.examples_command == "copy":
             return UtilityInvocation(
                 "examples-copy",
+                output_format=namespace.output_format,
+                output_color=namespace.output_color,
                 path=namespace.destination,
                 force=bool(namespace.force),
             )
         return UtilityInvocation(
             "examples-run",
-            output_format=namespace.format,
+            output_format=namespace.output_format,
+            output_color=namespace.output_color,
             name=namespace.name,
             overrides=tuple(namespace.overrides),
         )
     if namespace.utility == "profiling-campaign":
         return UtilityInvocation(
             "profiling-campaign-copy",
+            output_format=namespace.output_format,
+            output_color=namespace.output_color,
             path=namespace.destination,
             force=bool(namespace.force),
             local_amplicol=namespace.local_amplicol,
             local_madgraph=namespace.local_madgraph,
         )
-    return UtilityInvocation(namespace.utility, output_format=namespace.format)
+    return UtilityInvocation(
+        namespace.utility,
+        output_format=namespace.output_format,
+        output_color=namespace.output_color,
+    )
 
 
 def _source_examples_root() -> Path:
@@ -598,14 +643,20 @@ def _copy_packaged_models(destination: Path) -> None:
 
 
 def _card_description(path: Path) -> str:
+    descriptions: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         description = stripped.lstrip("# ") if stripped.startswith("#") else ""
-        if description and not description.startswith("SPDX-License-Identifier:"):
-            return description
+        if description.startswith("SPDX-License-Identifier:"):
+            continue
+        if description:
+            descriptions.append(description)
+            continue
+        if descriptions:
+            break
         if stripped and not stripped.startswith("#"):
             break
-    return "Packaged run-card example"
+    return " ".join(descriptions) or "Packaged run-card example"
 
 
 def list_examples() -> tuple[ExampleEntry, ...]:
@@ -653,7 +704,7 @@ def execute_utility(invocation: UtilityInvocation) -> object:
             raise ConfigurationError(f"configuration file exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-        return str(target)
+        return UtilityResult("configuration template", "complete", target)
     if invocation.kind == "config-resolve":
         assert invocation.path is not None
         return resolution_to_dict(
@@ -667,17 +718,16 @@ def execute_utility(invocation: UtilityInvocation) -> object:
             examples_root(), invocation.path, force=invocation.force
         )
         _copy_packaged_models(destination / "models")
-        return str(destination)
+        return UtilityResult("examples copy", "complete", destination)
     if invocation.kind == "profiling-campaign-copy":
         assert invocation.path is not None
-        return str(
-            _copy_profiling_campaign(
-                invocation.path,
-                force=invocation.force,
-                local_amplicol=invocation.local_amplicol,
-                local_madgraph=invocation.local_madgraph,
-            )
+        destination = _copy_profiling_campaign(
+            invocation.path,
+            force=invocation.force,
+            local_amplicol=invocation.local_amplicol,
+            local_madgraph=invocation.local_madgraph,
         )
+        return UtilityResult("profiling campaign copy", "complete", destination)
     if invocation.kind == "doctor":
         return run_doctor()
     if invocation.kind == "self-test":
@@ -688,6 +738,7 @@ def execute_utility(invocation: UtilityInvocation) -> object:
 __all__ = [
     "ExampleEntry",
     "UtilityInvocation",
+    "UtilityResult",
     "example_card",
     "examples_root",
     "execute_utility",

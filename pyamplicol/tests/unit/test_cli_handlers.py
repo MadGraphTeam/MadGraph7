@@ -292,8 +292,7 @@ def test_generate_tty_dashboard_preserves_status_lines_and_terminal_width(
             "generate",
             "d d~ > z g",
             str(tmp_path / "artifact"),
-            "--format",
-            "json",
+            "--json",
             "--progress",
             "tty",
             "--color",
@@ -321,8 +320,7 @@ def test_profile_tty_dashboard_closes_between_lifecycle_roots(
         (
             "profile",
             str(tmp_path / "artifact"),
-            "--format",
-            "json",
+            "--json",
             "--progress",
             "tty",
             "--color",
@@ -391,8 +389,7 @@ def test_cli_dispatches_protocol_and_keeps_json_on_stdout(tmp_path: Path) -> Non
             str(tmp_path / "artifact"),
             "--workers",
             "3",
-            "--format",
-            "json",
+            "--json",
             "--progress",
             "off",
         ),
@@ -411,6 +408,38 @@ def test_cli_dispatches_protocol_and_keeps_json_on_stdout(tmp_path: Path) -> Non
     assert "symbolica" not in sys.modules
 
 
+def test_cli_defaults_to_a_colored_table_for_structured_results(
+    tmp_path: Path,
+) -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    status = run_cli(
+        (
+            "generate",
+            "d d~ > z g",
+            str(tmp_path / "artifact"),
+            "--workers",
+            "3",
+            "--color",
+            "always",
+            "--progress",
+            "off",
+        ),
+        services=_Services(),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert status == 0
+    output = stdout.getvalue()
+    assert "pyAmpliCol Result" in output
+    assert "workers" in output
+    assert "\x1b[" in output
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(output)
+    assert stderr.getvalue() == ""
+
+
 def test_cli_failures_write_only_diagnostics_to_stderr(tmp_path: Path) -> None:
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -419,8 +448,7 @@ def test_cli_failures_write_only_diagnostics_to_stderr(tmp_path: Path) -> None:
             "generate",
             "d d~ > z g",
             str(tmp_path / "artifact"),
-            "--format",
-            "json",
+            "--json",
         ),
         services=_Services(fail=True),
         stdout=stdout,
@@ -450,8 +478,7 @@ def test_profile_json_is_stdout_clean_and_uses_benchmark_service(
             "4",
             "--minimum-samples",
             "2",
-            "--format",
-            "json",
+            "--json",
             "--progress",
             "log",
         ),
@@ -498,8 +525,7 @@ def test_partial_profile_prints_result_and_exits_as_interrupted(tmp_path: Path) 
         (
             "profile",
             str(tmp_path / "artifact"),
-            "--format",
-            "json",
+            "--json",
             "--progress",
             "off",
         ),
@@ -519,7 +545,7 @@ def test_inspect_cli_lists_artifact_processes_as_json() -> None:
     artifact = ROOT / "src/pyamplicol/assets/selftest/portable-64le/artifact"
 
     status = run_cli(
-        ("inspect", str(artifact), "--format", "json", "--progress", "off"),
+        ("inspect", str(artifact), "--json", "--progress", "off"),
         stdout=stdout,
         stderr=stderr,
     )
@@ -581,8 +607,7 @@ def test_inspect_process_defaults_to_compact_metadata_without_runtime(
             str(tmp_path / "artifact"),
             "--process",
             selector,
-            "--format",
-            "json",
+            "--json",
             "--progress",
             "off",
         ),
@@ -634,8 +659,7 @@ def test_inspect_full_physics_is_the_only_runtime_materialization_path(
             "--process",
             "stable-alias",
             "--full-physics",
-            "--format",
-            "json",
+            "--json",
             "--progress",
             "off",
         ),

@@ -193,5 +193,5 @@ jobs:
           env PYTHON=$PWD/.venv/bin/python just rust-test
       - name: Exercise installed candidate and checkout-independent examples
         run: |
-          .venv/bin/python -m pyamplicol self-test --format json
+          .venv/bin/python -m pyamplicol self-test --json
           .venv/bin/python -m pytest tests/integration/test_examples.py -q

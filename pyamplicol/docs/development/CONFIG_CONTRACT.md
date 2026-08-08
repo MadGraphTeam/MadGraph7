@@ -235,7 +235,9 @@ selector defaults remain the complete matrix element.
 
 ## Output And Symbolica
 
-- `output.format: human | json = human`
+- `output.format: human | json = human` for typed API/config provenance. The
+  public CLI normalizes this to human tables unless `--json` is explicitly
+  present.
 - `output.color: auto | always | never = auto`
 - `output.progress: auto | tty | log | off = auto`
 - `output.log_level: debug | info | warning | error = info`

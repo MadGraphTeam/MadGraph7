@@ -32,7 +32,7 @@ Run the packaged direct-runtime self-test:
 pyamplicol self-test
 ```
 
-On a healthy 0.1.4 macOS arm64 release-candidate installation, the colored
+On a healthy 0.1.4 macOS arm64 release installation, the colored
 terminal tables report checks equivalent to this compact transcription:
 
 ```text
@@ -394,8 +394,8 @@ Include only the smallest evidence that identifies the failing boundary:
 
 ```console
 python -c 'import pyamplicol; print(pyamplicol.__version__)'
-pyamplicol doctor --format json
-pyamplicol inspect PATH_TO_ARTIFACT --format json
+pyamplicol doctor --json
+pyamplicol inspect PATH_TO_ARTIFACT --json
 ```
 
 Also include:

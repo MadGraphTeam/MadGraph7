@@ -31,7 +31,7 @@ helicities, color coverage, payload sizes, and dependencies. Use JSON for a
 machine-readable inventory:
 
 ```console
-pyamplicol inspect artifacts/pp_zjj --format json > pp_zjj-inventory.json
+pyamplicol inspect artifacts/pp_zjj --json > pp_zjj-inventory.json
 ```
 
 For one process, either a stable ID or a process expression is accepted:
@@ -223,8 +223,8 @@ color flow)`. At NLC and full color, color is contracted and the final axis has
 length one. That contracted singleton is output metadata, not a selectable LC
 flow.
 
-Human CLI output uses colored tables and scientific notation; add `--format
-json` only when a machine-readable representation is wanted.
+Human CLI output uses colored tables and scientific notation; add `--json` only
+when a machine-readable representation is wanted.
 
 ## Batch-global selectors
 

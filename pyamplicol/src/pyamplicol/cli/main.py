@@ -60,16 +60,23 @@ def write_result(
     if format == "json":
         json.dump(plain, stream, indent=2, sort_keys=True, allow_nan=False)
         stream.write("\n")
-    elif isinstance(plain, str):
-        stream.write(f"{plain}\n")
-    else:
+    elif format == "human":
         rendered = render_summary(value, color=color)
-        if rendered is not None:
-            stream.write(f"{rendered}\n")
-        else:
-            json.dump(plain, stream, indent=2, sort_keys=True, allow_nan=False)
-            stream.write("\n")
+        if rendered is None:
+            raise RuntimeError(
+                "human table rendering is unavailable; use --json for "
+                "machine-readable output"
+            )
+        stream.write(f"{rendered}\n")
+    else:
+        raise ValueError(f"unsupported output format {format!r}")
     stream.flush()
+
+
+def _color_enabled(mode: str, stream: TextIO) -> bool:
+    return mode == "always" or (
+        mode == "auto" and bool(getattr(stream, "isatty", lambda: False)())
+    )
 
 
 def run_cli(
@@ -88,7 +95,13 @@ def run_cli(
     try:
         invocation = parse_cli(argv)
         if isinstance(invocation, LicenseRequestInvocation):
-            invocation.run(stdin=input_stream, stdout=output_stream)
+            result = invocation.run(stdin=input_stream, stdout=output_stream)
+            write_result(
+                result,
+                format=invocation.output_format,
+                stream=output_stream,
+                color=_color_enabled(invocation.output_color, output_stream),
+            )
             return 0
         if isinstance(invocation, UtilityInvocation):
             if invocation.kind == "examples-run":
@@ -96,7 +109,9 @@ def run_cli(
                 arguments = [str(example_card(invocation.name))]
                 for override in invocation.overrides:
                     arguments.extend(("--set", override))
-                arguments.extend(("--format", invocation.output_format))
+                if invocation.output_format == "json":
+                    arguments.append("--json")
+                arguments.extend(("--color", invocation.output_color))
                 invocation = parse_cli(arguments)
                 assert not isinstance(
                     invocation, (LicenseRequestInvocation, UtilityInvocation)
@@ -107,6 +122,7 @@ def run_cli(
                     result,
                     format=invocation.output_format,
                     stream=output_stream,
+                    color=_color_enabled(invocation.output_color, output_stream),
                 )
                 if invocation.kind in {"doctor", "self-test"}:
                     return 0 if bool(getattr(result, "ok", False)) else 1
@@ -120,10 +136,7 @@ def run_cli(
                 stream=diagnostic_stream,
             )
         config = resolution.effective
-        progress_color = config.output.color == "always" or (
-            config.output.color == "auto"
-            and bool(getattr(diagnostic_stream, "isatty", lambda: False)())
-        )
+        progress_color = _color_enabled(config.output.color, diagnostic_stream)
         sink = progress_sink(
             config.output.progress,
             stream=diagnostic_stream,
@@ -153,10 +166,7 @@ def run_cli(
         )
         close_progress_sink(sink)
         sink = None
-        color = config.output.color == "always" or (
-            config.output.color == "auto"
-            and bool(getattr(output_stream, "isatty", lambda: False)())
-        )
+        color = _color_enabled(config.output.color, output_stream)
         write_result(
             result,
             format=config.output.format,

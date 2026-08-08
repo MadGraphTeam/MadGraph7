@@ -13,9 +13,9 @@ record of the supported release boundary and explains how to report a problem.
 
 ## Current release boundary
 
-Version `0.1.3` is represented by the immutable
-[`v0.1.3` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.1.3)
-and [PyPI release](https://pypi.org/project/pyamplicol/0.1.3/). Its validated
+Version `0.1.4` is represented by the immutable
+[`v0.1.4` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.1.4)
+and [PyPI release](https://pypi.org/project/pyamplicol/0.1.4/). Its validated
 inventory is one source distribution and three `cp311-abi3` wheels:
 
 - macOS 11 or newer on Apple silicon;
@@ -32,14 +32,12 @@ Release dependencies include Symbolica 2.2.0 and the official
 [`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.22.0 at
 immutable revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`.
 
-## 0.1.4 release candidate
+## 0.1.4 release
 
-The current source tree is preparing version `0.1.4`. It has not yet been
-published and remains a release candidate until its source distribution and
-platform wheels complete the validated release-artifacts workflow. Publication
-will then reuse those exact files without rebuilding them. Until publication
-completes, version `0.1.3` remains the current PyPI release and the supported
-release boundary described above.
+Version `0.1.4` adds on-the-fly generation and its explicit one-point
+`warm_up(...)` lifecycle, while retaining compiled, eager, and recurrence
+generation. It also ships progress-aware warm-up entry points for the Python,
+C, C++, Fortran, and Rust APIs and the packaged `p p > Z j j` OTF example.
 
 ## Install a release
 
@@ -157,9 +155,9 @@ Include the smallest information that distinguishes the failure:
 Useful read-only captures are:
 
 ```console
-pyamplicol doctor --format json > doctor.json
-pyamplicol inspect ARTIFACT --format json > inspect.json
-pyamplicol config resolve RUN_CARD.toml --format json > config.json
+pyamplicol doctor --json > doctor.json
+pyamplicol inspect ARTIFACT --json > inspect.json
+pyamplicol config resolve RUN_CARD.toml --json > config.json
 ```
 
 Review these files before attaching them. Do not publish private model data,

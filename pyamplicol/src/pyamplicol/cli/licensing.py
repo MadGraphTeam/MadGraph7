@@ -12,14 +12,33 @@ LicenseKind = Literal["trial", "hobbyist"]
 
 
 @dataclass(frozen=True, slots=True)
+class LicenseRequestResult:
+    request: LicenseKind
+    status: Literal["accepted"] = "accepted"
+    next_step: str = "The license key will be sent by email."
+
+
+@dataclass(frozen=True, slots=True)
 class LicenseRequestInvocation:
     kind: LicenseKind
     name: str | None
     email: str | None
     organization: str | None = None
     assume_yes: bool = False
+    output_format: Literal["human", "json"] = "human"
+    output_color: Literal["auto", "always", "never"] = "auto"
 
-    def run(self, *, stdin: TextIO, stdout: TextIO) -> None:
+    def run(self, *, stdin: TextIO, stdout: TextIO) -> LicenseRequestResult:
+        if self.output_format == "json" and (
+            self.name is None
+            or self.email is None
+            or (self.kind == "trial" and self.organization is None)
+            or not self.assume_yes
+        ):
+            raise ValueError(
+                "--json license requests require all fields and --yes; "
+                "interactive prompts are disabled to keep stdout machine-readable"
+            )
         name = self.name or _prompt(stdin, stdout, "Name")
         email = self.email or _prompt(stdin, stdout, "Email")
         organization: str | None = None
@@ -46,10 +65,7 @@ class LicenseRequestInvocation:
             request_trial_license(name, email, organization)
         else:
             request_hobbyist_license(name, email)
-        stdout.write(
-            "Symbolica accepted the request. The license key will be sent by email.\n"
-        )
-        stdout.flush()
+        return LicenseRequestResult(self.kind)
 
 
 def _prompt(stdin: TextIO, stdout: TextIO, label: str) -> str:
@@ -66,4 +82,4 @@ def _prompt(stdin: TextIO, stdout: TextIO, label: str) -> str:
     return value
 
 
-__all__ = ["LicenseKind", "LicenseRequestInvocation"]
+__all__ = ["LicenseKind", "LicenseRequestInvocation", "LicenseRequestResult"]

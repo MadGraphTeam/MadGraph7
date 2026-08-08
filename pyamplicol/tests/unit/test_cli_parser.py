@@ -211,7 +211,7 @@ def test_card_can_be_invoked_as_the_first_argument(tmp_path: Path) -> None:
         'action = "evaluate"\n[evaluation]\nartifact = "artifact"\n',
         encoding="utf-8",
     )
-    invocation = parse_cli((str(card), "--set", "output.format=json"))
+    invocation = parse_cli((str(card), "--json"))
     config = invocation.resolve().effective
     assert invocation.action is None
     assert config.action == "evaluate"
@@ -323,7 +323,7 @@ def test_direct_process_names_must_align_with_expressions() -> None:
 
 
 def test_model_command_accepts_common_flags_before_the_command_group() -> None:
-    invocation = parse_cli(("--format", "json", "model", "inspect"))
+    invocation = parse_cli(("--json", "model", "inspect"))
     assert invocation.resolve().effective.output.format == "json"
 
 
@@ -358,14 +358,38 @@ def test_model_help_does_not_import_symbolica(
 def test_global_output_flags_are_accepted_before_subcommand(tmp_path: Path) -> None:
     invocation = parse_cli(
         (
-            "--format",
-            "json",
+            "--json",
             "generate",
             "u u~ > g g",
             str(tmp_path / "artifact"),
         )
     )
     assert invocation.resolve().effective.output.format == "json"
+
+
+def test_json_output_is_selected_only_by_the_json_flag(tmp_path: Path) -> None:
+    card = tmp_path / "json-card.toml"
+    card.write_text(
+        'schema_version = 1\naction = "generate"\n'
+        '[output]\nformat = "json"\n'
+        '[process]\nentries = [{ expression = "d d~ > z" }]\n',
+        encoding="utf-8",
+    )
+
+    assert parse_cli((str(card),)).resolve().effective.output.format == "human"
+    assert parse_cli((str(card), "--json")).resolve().effective.output.format == "json"
+
+    with pytest.raises(ConfigurationError, match="selected only with --json"):
+        parse_cli((str(card), "--set", "output.format=json")).resolve()
+    assert (
+        parse_cli((str(card), "--set", "output.format=human"))
+        .resolve()
+        .effective.output.format
+        == "human"
+    )
+
+    with pytest.raises(SystemExit):
+        parse_cli(("generate", "d d~ > z", "--format", "json"))
 
 
 def test_set_order_is_preserved_across_subcommand_position(tmp_path: Path) -> None:

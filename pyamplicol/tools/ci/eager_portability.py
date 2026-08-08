@@ -233,8 +233,7 @@ def _model_compile_command(python: Path, bundle: Path) -> list[str]:
         "--no-symbolica-suggestion",
         "--progress",
         "off",
-        "--format",
-        "json",
+        "--json",
     ]
 
 
@@ -274,8 +273,7 @@ def _generation_command(
         "--no-symbolica-suggestion",
         "--progress",
         "off",
-        "--format",
-        "json",
+        "--json",
     ]
 
 

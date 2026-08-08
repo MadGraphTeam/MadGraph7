@@ -439,8 +439,7 @@ def _generation_command(
         "--no-emit-api-bundle",
         "--progress",
         "off",
-        "--format",
-        "json",
+        "--json",
     )
     if dependency_site is None:
         return (str(python), "-m", "pyamplicol", *arguments)

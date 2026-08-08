@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from pyamplicol.api import (
     BenchmarkComponentTiming,
     BenchmarkProfileCounters,
@@ -27,7 +29,9 @@ from pyamplicol.artifacts import (
     ArtifactProcessInspection,
 )
 from pyamplicol.cli.main import write_result
+from pyamplicol.cli.utilities import ExampleEntry, UtilityResult
 from pyamplicol.config import BenchmarkConfig
+from pyamplicol.diagnostics import DiagnosticCheck, DiagnosticReport
 from pyamplicol.reporting import render_summary
 
 
@@ -45,6 +49,61 @@ def test_human_structured_results_use_aligned_prettytable() -> None:
     assert "field" in rendered
     assert "generated processes" in rendered
     assert "complete" in rendered
+
+
+def test_examples_and_diagnostics_have_dedicated_colored_record_tables() -> None:
+    examples = (
+        ExampleEntry("otf_pp_zjj", "generate", "OTF p p > Z j j walkthrough"),
+        ExampleEntry("benchmark", "benchmark", "Profile one process output"),
+    )
+    rendered_examples = render_summary(examples, color=True)
+    assert rendered_examples is not None
+    assert "Packaged Examples" in rendered_examples
+    assert "name" in rendered_examples
+    assert "action" in rendered_examples
+    assert "description" in rendered_examples
+    assert "\x1b[" in rendered_examples
+    assert not rendered_examples.lstrip().startswith("[")
+
+    diagnostics = DiagnosticReport(
+        "0.1.4",
+        (
+            DiagnosticCheck("native-sdk", "pass", "ABI 1"),
+            DiagnosticCheck("symbolica", "warning", "restricted single-core"),
+        ),
+    )
+    rendered_diagnostics = render_summary(diagnostics, color=True)
+    assert rendered_diagnostics is not None
+    assert "pyAmpliCol Diagnostics" in rendered_diagnostics
+    assert "native-sdk" in rendered_diagnostics
+    assert "\x1b[32mpass" in rendered_diagnostics
+    assert "\x1b[33mwarning" in rendered_diagnostics
+
+
+def test_human_renderer_never_embeds_or_falls_back_to_json() -> None:
+    result = {
+        "status": "complete",
+        "nested": {"worker_count": 4, "backend": "jit"},
+        "entries": (
+            {"name": "first", "process": "d d~ > z"},
+            {"name": "second", "process": "u d~ > w+"},
+        ),
+    }
+    stream = io.StringIO()
+    write_result(result, format="human", stream=stream, color=False)
+    output = stream.getvalue()
+    assert "worker count" in output
+    assert "Entries" in output
+    assert '"status"' not in output
+    assert "[{" not in output
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(output)
+
+    operation = UtilityResult("examples copy", "complete", Path("examples"))
+    rendered = render_summary(operation, color=False)
+    assert rendered is not None
+    assert "Operation Complete" in rendered
+    assert "destination" in rendered
 
 
 def test_generation_mode_is_labelled_as_existing_output_policy() -> None:

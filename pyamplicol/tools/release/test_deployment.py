@@ -671,8 +671,7 @@ def _copied_example_command(python: Path, card: Path) -> list[Path | str]:
         card,
         "--set",
         "generation.mode=replace",
-        "--format",
-        "json",
+        "--json",
     ]
 
 
@@ -1315,8 +1314,7 @@ def test_deployment(
                     "-m",
                     "pyamplicol",
                     "self-test",
-                    "--format",
-                    "json",
+                    "--json",
                 ],
                 env=smoke_environment,
             )

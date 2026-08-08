@@ -480,7 +480,7 @@ For a human-readable view of current coverage and status, including OTF, use:
   --generation-engine recurrence compiled eager on-the-fly
 ```
 
-Add `--format json` for stable, uncoloured output suitable for scripts. Exact
+Add `--json` for stable, uncoloured output suitable for scripts. Exact
 cell IDs in `inspect`, the current JSON, and `campaign_summary_ids/` connect a
 compact table status back to its retained attempt evidence. The PDF does not
 turn every timing into a clickable evidence link; the result record stores the

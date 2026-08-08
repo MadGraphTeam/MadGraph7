@@ -118,6 +118,20 @@ class CliInvocation:
         *,
         clamps: Sequence[ClampRequest] = (),
     ) -> ConfigResolution:
+        if any(
+            str(override).partition("=")[0].strip() == "output.format"
+            and str(override)
+            .partition("=")[2]
+            .strip()
+            .strip("\"'")
+            .casefold()
+            == "json"
+            for override in self.overrides
+        ):
+            raise ConfigurationError(
+                "CLI JSON output is selected only with --json; "
+                "remove the output.format override"
+            )
         return resolve_config(
             self.card,
             action=self.action,
@@ -145,10 +159,11 @@ def _common_parent(*, include_card: bool = True) -> argparse.ArgumentParser:
         help="Override one schema field; repeat to apply overrides in order.",
     )
     parser.add_argument(
-        "--format",
-        dest="output.format",
-        choices=("human", "json"),
+        "--json",
+        dest="_json_output",
+        action="store_true",
         default=argparse.SUPPRESS,
+        help="Emit machine-readable JSON instead of human-facing tables.",
     )
     parser.add_argument(
         "--color",
@@ -741,6 +756,13 @@ def build_parser() -> argparse.ArgumentParser:
     trial.add_argument("--email")
     trial.add_argument("--organization")
     trial.add_argument("--yes", dest="assume_yes", action="store_true")
+    trial.add_argument("--json", dest="_json_output", action="store_true")
+    trial.add_argument(
+        "--color",
+        dest="_output_color",
+        choices=("auto", "always", "never"),
+        default="auto",
+    )
 
     hobbyist = subparsers.add_parser(
         "request-symbolica-hobbyist-license",
@@ -749,6 +771,13 @@ def build_parser() -> argparse.ArgumentParser:
     hobbyist.add_argument("--name")
     hobbyist.add_argument("--email")
     hobbyist.add_argument("--yes", dest="assume_yes", action="store_true")
+    hobbyist.add_argument("--json", dest="_json_output", action="store_true")
+    hobbyist.add_argument(
+        "--color",
+        dest="_output_color",
+        choices=("auto", "always", "never"),
+        default="auto",
+    )
     return parser
 
 
@@ -788,6 +817,8 @@ def _namespace_to_invocation(
             email=raw.pop("email", None),
             organization=raw.pop("organization", None),
             assume_yes=bool(raw.pop("assume_yes", False)),
+            output_format="json" if bool(raw.pop("_json_output", False)) else "human",
+            output_color=str(raw.pop("_output_color", "auto")),
         )
     action = Action(action_value) if action_value is not None else None
     if action is Action.MODEL_COMPILE:
@@ -812,6 +843,9 @@ def _namespace_to_invocation(
         else None
     )
     overrides = tuple(raw.pop("_overrides", ()))
+    raw["output.format"] = (
+        "json" if bool(raw.pop("_json_output", False)) else "human"
+    )
     dry_run = bool(raw.pop("_dry_run", False))
     full_physics = bool(raw.pop("_full_physics", False))
 

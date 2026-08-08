@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import importlib
-import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
@@ -37,12 +36,31 @@ def _plain(value: object) -> object:
 
 
 def _value_text(value: object) -> str:
-    if isinstance(value, (Mapping, list)):
-        return json.dumps(value, sort_keys=True, separators=(", ", ": "))
     if value is None:
         return "N/A"
     if isinstance(value, bool):
         return "yes" if value else "no"
+    if isinstance(value, Mapping):
+        if not value:
+            return "none"
+        scalar_items = tuple(
+            (str(key), entry)
+            for key, entry in value.items()
+            if not isinstance(entry, (Mapping, list, tuple))
+        )
+        if len(scalar_items) == len(value) and len(value) <= 4:
+            return "; ".join(
+                f"{key}={_value_text(entry)}" for key, entry in scalar_items
+            )
+        labels = ", ".join(str(key).replace("_", " ") for key in value)
+        return f"{len(value)} fields ({labels})"
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        entries = tuple(value)
+        if not entries:
+            return "none"
+        if all(not isinstance(entry, (Mapping, list, tuple)) for entry in entries):
+            return ", ".join(_value_text(entry) for entry in entries)
+        return f"{len(entries)} entries"
     return str(value)
 
 
@@ -166,16 +184,22 @@ def _colored(text: str, *, key: str, enabled: bool) -> str:
     if normalized in {
         "yes",
         "ok",
+        "pass",
         "passed",
+        "accepted",
         "complete",
         "completed",
         "valid",
         "verified",
     }:
         color = colorama.Fore.GREEN
-    elif normalized in {"no", "failed", "error", "invalid"}:
+    elif normalized in {"no", "fail", "failed", "error", "invalid"}:
         color = colorama.Fore.RED
-    elif key.casefold() in {"warning", "warnings", "adjustments"}:
+    elif normalized == "warning" or key.casefold() in {
+        "warning",
+        "warnings",
+        "adjustments",
+    }:
         color = colorama.Fore.YELLOW
     else:
         return text
@@ -1508,9 +1532,14 @@ def _generation_summary(
                 f"; {member_count} indexed evaluator payloads "
                 f"({_byte_size(unpacked)} unpacked)"
             )
+    request_count = len(result.processes.requests)
+    alias_count = len(result.processes.aliases)
+    process_count = f"{request_count} request{'s' if request_count != 1 else ''}"
+    if alias_count:
+        process_count += f"; {alias_count} aliases"
     rows = (
         ("output", str(result.output)),
-        ("processes", _value_text(_plain(result.processes))),
+        ("processes", process_count),
         ("existing-output policy", result.mode),
         ("schema version", str(result.schema_version)),
         ("files", files),
@@ -1535,7 +1564,27 @@ def _generation_summary(
                 _paint(value, value_colors[field], enabled=color),
             )
         )
-    return cast(str, table.get_string())
+    process_table = prettytable.PrettyTable(("name", "process"))
+    process_table.title = _paint("Generated Processes", "CYAN", enabled=color)
+    process_table.align = "l"
+    process_table.max_width["name"] = 34
+    process_table.max_width["process"] = 76
+    process_table.hrules = prettytable.HRuleStyle.FRAME
+    for request in result.processes.requests:
+        process_table.add_row(
+            (
+                _paint(request.name, "CYAN", enabled=color),
+                _paint(request.expression, "GREEN", enabled=color),
+            )
+        )
+    for alias in result.processes.aliases:
+        process_table.add_row(
+            (
+                _paint(alias.name, "MAGENTA", enabled=color),
+                f"alias of {alias.process_name}",
+            )
+        )
+    return f"{table.get_string()}\n\n{process_table.get_string()}"
 
 
 def _artifact_inspection_summary(
@@ -2031,8 +2080,224 @@ def _artifact_inspection_summary(
     return "\n\n".join(sections)
 
 
+def _human_result_title(value: object, plain: object) -> str:
+    class_name = type(value).__name__
+    if (
+        isinstance(value, Sequence)
+        and not isinstance(value, (str, bytes))
+        and value
+        and all(type(entry).__name__ == "ExampleEntry" for entry in value)
+    ):
+        return "Packaged Examples"
+    if class_name == "DiagnosticReport":
+        return "pyAmpliCol Diagnostics"
+    if class_name == "UtilityResult":
+        return "Operation Complete"
+    if class_name == "LicenseRequestResult":
+        return "Symbolica License Request"
+    if isinstance(plain, (str, int, float, bool)) or plain is None:
+        return "pyAmpliCol Result"
+    if isinstance(plain, Mapping):
+        keys = frozenset(plain)
+        if {"requested", "effective", "adjustments"} <= keys:
+            return "Resolved Configuration"
+        if {"available", "model", "entries"} <= keys:
+            return "Model Processes"
+        if {"name", "supported", "contents"} <= keys:
+            return "Model Inspection"
+        if {"model", "supported", "output"} <= keys:
+            return "Model Compilation"
+    name = class_name.removesuffix("Result")
+    words: list[str] = []
+    current = ""
+    for character in name:
+        if current and character.isupper() and not current[-1].isupper():
+            words.append(current)
+            current = character
+        else:
+            current += character
+    if current:
+        words.append(current)
+    if words and name not in {"dict", "tuple", "list"}:
+        return " ".join(words)
+    return "pyAmpliCol Result"
+
+
+def _record_color(key: str, text: str, *, color: bool) -> str:
+    normalized = key.casefold().replace("_", " ")
+    if normalized in {"name", "check", "field", "id", "key"}:
+        return _paint(text, "CYAN", enabled=color)
+    if normalized in {"action", "kind", "request", "mode"}:
+        return _paint(text, "MAGENTA", enabled=color)
+    if normalized in {"status", "supported", "available", "ok"}:
+        return _colored(text, key=key, enabled=color)
+    return text
+
+
+def _record_sequence_summary(
+    records: Sequence[object],
+    *,
+    prettytable: Any,
+    color: bool,
+    title: str,
+) -> str:
+    mappings = tuple(entry for entry in records if isinstance(entry, Mapping))
+    if len(mappings) != len(records):
+        table = prettytable.PrettyTable(("#", "value"))
+        table.align["#"] = "r"
+        table.align["value"] = "l"
+        table.max_width["value"] = 100
+        for index, entry in enumerate(records, start=1):
+            table.add_row((index, _value_text(entry)))
+    else:
+        ordered_keys: list[str] = []
+        for record in mappings:
+            for raw_key in record:
+                key = str(raw_key)
+                if key not in ordered_keys:
+                    ordered_keys.append(key)
+        visible_keys = ordered_keys[:6]
+        has_remainder = len(ordered_keys) > len(visible_keys)
+        headings = tuple(key.replace("_", " ") for key in visible_keys)
+        if has_remainder:
+            headings += ("other fields",)
+        table = prettytable.PrettyTable(headings or ("value",))
+        table.align = "l"
+        for heading in headings:
+            if heading == "name":
+                table.max_width[heading] = 68
+            elif heading in {"description", "detail"}:
+                table.max_width[heading] = 60
+            else:
+                table.max_width[heading] = 34
+        for record in mappings:
+            row = [
+                _record_color(
+                    key,
+                    _value_text(record.get(key)),
+                    color=color,
+                )
+                for key in visible_keys
+            ]
+            if has_remainder:
+                remainder = {
+                    key: record.get(key)
+                    for key in ordered_keys[len(visible_keys) :]
+                }
+                row.append(_value_text(remainder))
+            table.add_row(tuple(row) if row else ("N/A",))
+    table.title = _paint(title, "CYAN", enabled=color)
+    table.hrules = prettytable.HRuleStyle.FRAME
+    return cast(str, table.get_string())
+
+
+def _flatten_record(
+    value: Mapping[str, object],
+    *,
+    prefix: str = "",
+) -> tuple[tuple[str, object], ...]:
+    rows: list[tuple[str, object]] = []
+    for raw_key, entry in value.items():
+        key = str(raw_key).replace("_", " ")
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(entry, Mapping):
+            if entry:
+                rows.extend(_flatten_record(entry, prefix=path))
+            else:
+                rows.append((path, entry))
+        else:
+            rows.append((path, entry))
+    return tuple(rows)
+
+
+def _mapping_summary(
+    value: object,
+    plain: Mapping[str, object],
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    title = _human_result_title(value, plain)
+    if title == "Resolved Configuration" and all(
+        isinstance(plain.get(key), Mapping) for key in ("requested", "effective")
+    ):
+        sections: list[str] = []
+        for key in ("requested", "effective"):
+            configuration = cast(Mapping[str, object], plain[key])
+            section = prettytable.PrettyTable(("field", "value"))
+            section.title = _paint(
+                f"{key.title()} Configuration",
+                "CYAN",
+                enabled=color,
+            )
+            section.align = "l"
+            section.max_width["field"] = 42
+            section.max_width["value"] = 74
+            section.hrules = prettytable.HRuleStyle.FRAME
+            for field, entry in _flatten_record(configuration):
+                section.add_row(
+                    (
+                        _paint(field, "CYAN", enabled=color),
+                        _record_color(
+                            field.rsplit(".", maxsplit=1)[-1],
+                            _value_text(entry),
+                            color=color,
+                        ),
+                    )
+                )
+            sections.append(cast(str, section.get_string()))
+        adjustments = plain.get("adjustments")
+        if isinstance(adjustments, Sequence) and not isinstance(
+            adjustments, (str, bytes)
+        ):
+            sections.append(
+                _record_sequence_summary(
+                    adjustments,
+                    prettytable=prettytable,
+                    color=color,
+                    title="Adjustments",
+                )
+            )
+        return "\n\n".join(sections)
+    table = prettytable.PrettyTable(("field", "value"))
+    table.title = _paint(title, "CYAN", enabled=color)
+    table.align["field"] = "l"
+    table.align["value"] = "l"
+    table.max_width["field"] = 40
+    table.max_width["value"] = 88
+    table.hrules = prettytable.HRuleStyle.FRAME
+    for key, entry in _flatten_record(plain):
+        table.add_row(
+            (
+                _paint(key, "CYAN", enabled=color),
+                _record_color(
+                    key.rsplit(".", maxsplit=1)[-1],
+                    _value_text(entry),
+                    color=color,
+                ),
+            )
+        )
+    sections = [cast(str, table.get_string())]
+    for raw_key, entry in plain.items():
+        if (
+            isinstance(entry, Sequence)
+            and not isinstance(entry, (str, bytes))
+            and entry
+            and all(isinstance(item, Mapping) for item in entry)
+        ):
+            sections.append(
+                _record_sequence_summary(
+                    entry,
+                    prettytable=prettytable,
+                    color=color,
+                    title=str(raw_key).replace("_", " ").title(),
+                )
+            )
+    return "\n\n".join(sections)
+
+
 def render_summary(value: object, *, color: bool = False) -> str | None:
-    """Return a two-column table for structured results, if applicable."""
+    """Return colored human tables for every CLI result shape."""
 
     try:
         prettytable: Any = importlib.import_module("prettytable")
@@ -2059,27 +2324,41 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             color=color,
         )
     plain = _plain(value)
-    if not isinstance(plain, Mapping):
-        return None
     if isinstance(value, BenchmarkResult):
         return _benchmark_summary(value, prettytable=prettytable, color=color)
-    if plain.get("kind") == "pyamplicol-artifact-inspection":
+    if (
+        isinstance(plain, Mapping)
+        and plain.get("kind") == "pyamplicol-artifact-inspection"
+    ):
         return _artifact_inspection_summary(
             plain,
             prettytable=prettytable,
             color=color,
         )
+    if isinstance(plain, Mapping):
+        return _mapping_summary(
+            value,
+            plain,
+            prettytable=prettytable,
+            color=color,
+        )
+    if isinstance(plain, Sequence) and not isinstance(plain, (str, bytes)):
+        return _record_sequence_summary(
+            plain,
+            prettytable=prettytable,
+            color=color,
+            title=_human_result_title(value, plain),
+        )
     table = prettytable.PrettyTable(("field", "value"))
-    table.align["field"] = "l"
-    table.align["value"] = "l"
-    table.max_width["field"] = 30
-    table.max_width["value"] = 88
+    table.title = _paint(_human_result_title(value, plain), "CYAN", enabled=color)
+    table.align = "l"
     table.hrules = prettytable.HRuleStyle.FRAME
-    for key, entry in plain.items():
-        text = _value_text(entry)
-        label = key.replace("_", " ")
-        rendered = _colored(text, key=key, enabled=color)
-        table.add_row((label, rendered))
+    table.add_row(
+        (
+            _paint("result", "CYAN", enabled=color),
+            _paint(_value_text(plain), "GREEN", enabled=color),
+        )
+    )
     return cast(str, table.get_string())
 
 

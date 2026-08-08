@@ -258,7 +258,7 @@ native SDK, Symbolica license status, and available compiler tools separately.
 Use JSON when attaching diagnostics to an issue:
 
 ```console
-pyamplicol doctor --format json
+pyamplicol doctor --json
 ```
 
 If f64 evaluation fails, do not assume it is a Symbolica-license problem: first

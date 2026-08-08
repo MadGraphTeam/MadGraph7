@@ -72,7 +72,7 @@ pyamplicol inspect artifacts/pp_zjj --process 'd d~ > g z g'
 Machine-readable output is available without changing the artifact:
 
 ```console
-pyamplicol inspect artifacts/pp_zjj --format json > inspection.json
+pyamplicol inspect artifacts/pp_zjj --json > inspection.json
 ```
 
 ## 4. Evaluate totals and resolved components
@@ -90,10 +90,10 @@ Both cards load `artifacts/pp_zjj`, apply the UFO parameter card in
   explicit per-point sum.
 
 The two totals agree. Nonzero matrix elements are displayed in scientific
-notation; exact zeros remain `0`. Add `--format json` for scripts:
+notation; exact zeros remain `0`. Add `--json` for scripts:
 
 ```console
-pyamplicol evaluate_total.toml --format json
+pyamplicol evaluate_total.toml --json
 ```
 
 ## 5. Understand process ordering

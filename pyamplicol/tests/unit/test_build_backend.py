@@ -538,6 +538,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
     temporary_directory = tmp_path / "overlay-temporary"
     temporary_directory.mkdir()
     cargo_target_directory = tmp_path / "shared-cargo-target"
+    base_version = backend.canonical_package_version(ROOT)
     with backend._overlay(
         "candidate",
         temporary_directory=temporary_directory,
@@ -550,8 +551,9 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         assert (overlay / ".cargo" / "config.toml").read_bytes() == (
             candidate_inputs[1].read_bytes()
         )
-        assert 'version = "0.1.0-dev.0+candidate.' in cargo
-        assert lock.count('version = "0.1.0-dev.0+candidate.') == 3
+        candidate_prefix = f'version = "{base_version}-dev.0+candidate.'
+        assert candidate_prefix in cargo
+        assert lock.count(candidate_prefix) == 3
         candidate_core = (
             overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
         ).read_text(encoding="utf-8")
@@ -821,7 +823,7 @@ def test_release_prepared_model_bootstrap_overlay_is_non_publishable(
             "schema_version": 1,
             "selftest_fixture_bootstrap": False,
             "source_checkout": str(ROOT.resolve()),
-            "version": "0.1.0",
+            "version": backend.canonical_package_version(ROOT),
         }
         assert (overlay / "Cargo.lock").read_bytes() == source_lock
         assert not (overlay / ".cargo/config.toml").exists()
@@ -1166,7 +1168,7 @@ def test_wheel_profiling_campaign_is_a_bounded_reset_template() -> None:
             path.relative_to(packaged) for path in packaged.rglob("*") if path.is_file()
         }
         assert copied == set(backend._profiling_campaign_inventory(source))
-        assert len(copied) == 61
+        assert len(copied) == 69
         assert {
             Path("result_matrix_on_the_fly_builtin_sm_full_table.tex"),
             Path("result_matrix_on_the_fly_builtin_sm_lc_table.tex"),

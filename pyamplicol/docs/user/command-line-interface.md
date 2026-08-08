@@ -157,7 +157,7 @@ expression, or a unique side-preserving permutation of one. See
 the ordering contract.
 
 Inspection does not execute evaluator state. Human output uses compact colored
-tables; machine output is available with `--format json`.
+tables; machine output is available with `--json`.
 
 ## Evaluate
 
@@ -258,6 +258,9 @@ pyamplicol examples list
 pyamplicol examples run generate_pp_zjj_from_ufo_sm
 ```
 
+The list uses a colored table on a terminal. Add `--json` for stable,
+uncolored machine-readable output.
+
 `examples run` accepts the stem of a shipped `.toml` card. `all_options` is a
 reference template, not a runnable example. Unknown names fail with the full
 available-name list.
@@ -279,7 +282,7 @@ The common presentation options are:
 
 | Option | Values | Meaning |
 | --- | --- | --- |
-| `--format` | `human`, `json` | Colored tables for people or stable machine-readable stdout |
+| `--json` | flag | Emit stable machine-readable stdout instead of the human-facing table |
 | `--color` | `auto`, `always`, `never` | Detect a terminal, force ANSI color, or disable it |
 | `--progress` | `auto`, `tty`, `log`, `off` | Select live bars, rate-limited log progress, or silence |
 | `--log-level` | `debug`, `info`, `warning`, `error` | Control diagnostic verbosity |
@@ -288,7 +291,7 @@ JSON mode keeps stdout machine-readable; progress and diagnostics use stderr.
 This makes pipelines predictable:
 
 ```console
-pyamplicol inspect artifacts/pp_zjj --format json > artifact.json
+pyamplicol inspect artifacts/pp_zjj --json > artifact.json
 ```
 
 Use `--color always` only when the consumer understands ANSI escapes. The
@@ -307,8 +310,8 @@ pyamplicol self-test
 Then inspect the relevant artifact and effective configuration:
 
 ```console
-pyamplicol inspect artifacts/pp_zjj --format json > inspect.json
-pyamplicol config resolve run.toml --format json > config.json
+pyamplicol inspect artifacts/pp_zjj --json > inspect.json
+pyamplicol config resolve run.toml --json > config.json
 ```
 
 For common failures and the information to include in a bug report, see

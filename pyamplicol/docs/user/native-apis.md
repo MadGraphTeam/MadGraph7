@@ -51,7 +51,7 @@ rusticol-config --cargo-rustflags
 rusticol-config --json
 ```
 
-For a 0.1.4 macOS arm64 release-candidate wheel, the first three commands print:
+For a 0.1.4 macOS arm64 release wheel, the first three commands print:
 
 ```text
 1

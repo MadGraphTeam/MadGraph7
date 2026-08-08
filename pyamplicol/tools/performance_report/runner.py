@@ -976,10 +976,16 @@ def _generation_cli_argv(
     """Return the exact public ``pyamplicol generate`` argument vector."""
 
     command_values = {key: value for key, value in values.items() if key != "process"}
+    output = command_values.get("output")
+    if isinstance(output, Mapping):
+        command_values["output"] = {
+            key: value for key, value in output.items() if key != "format"
+        }
     return (
         "generate",
         cell.process,
         os.fspath(destination),
+        "--json",
         *_cli_overrides(command_values),
     )
 
@@ -4285,8 +4291,7 @@ def _profile_cli_argv(
         str(benchmark_config.warmup_runs),
         "--minimum-samples",
         str(benchmark_config.minimum_samples),
-        "--format",
-        "json",
+        "--json",
         "--progress",
         "off",
     ]
