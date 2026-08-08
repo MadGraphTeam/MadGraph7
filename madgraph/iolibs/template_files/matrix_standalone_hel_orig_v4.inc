@@ -103,6 +103,13 @@ C ----------
 C BEGIN CODE
 C ----------
       bwcutoff=15
+C     See the same call in matrix_standalone_hel_v4.inc: past a size the color
+C     matrix is rebuilt at run time instead of written out as DATA, and this
+C     routine sums over CF itself rather than calling GET_MATRIX. Without the
+C     call CF is all zeros, every |M|^2 is 0, and the warm-up then measures no
+C     good helicities at all -- which it reports by writing nothing, so the
+C     output silently falls back to the compute-all matrix.f.
+      CALL %(proc_prefix)sINIT_CF()
       AMP(:) = (0D0,0D0)
 %(flavor_mask_setup)s
 %(helas_calls)s
@@ -132,6 +139,14 @@ C ----------
       %(proc_prefix)sMATRIX = %(proc_prefix)sMATRIX/%(proc_prefix)sDENOM
       END
 
+
+C     The color matrix rebuild, for the same reason: the warm-up probe links
+C     matrix_orig.f alone, so it cannot borrow the copy that the recycled
+C     matrix.f gets from the appended standard routines. Both are empty when
+C     the entries were written out as DATA instead.
+%(color_init_routine)s
+
+%(jamp_init_routine)s
 
 C     Crossing machinery, also emitted here so the warm-up probe (which links
 C     matrix_orig.f alone) can enumerate the crossings and measure the good

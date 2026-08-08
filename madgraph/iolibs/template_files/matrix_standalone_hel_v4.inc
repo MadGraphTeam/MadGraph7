@@ -234,6 +234,13 @@ C ----------
 C BEGIN CODE
 C ----------
       bwcutoff=15
+C     Fill the color matrix. Above a size, color_data_lines stops writing the
+C     entries out as DATA and leaves them to be rebuilt here instead, one line
+C     per orbit -- and the color sum below reads CF directly rather than going
+C     through GET_MATRIX, which is where the standard file makes this call.
+C     Without it CF is all zeros and every |M|^2 comes out exactly 0.
+C     INIT_CF is a no-op after the first call (SAVEd CF_DONE).
+      CALL %(proc_prefix)sINIT_CF()
       AMP(:,:) = (0D0,0D0)
 %(flavor_mask_setup)s
 ${helas_calls}
