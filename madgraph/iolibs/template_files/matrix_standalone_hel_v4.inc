@@ -1,9 +1,11 @@
 C     Standalone helicity-recycling driver template.
 C     The percent-paren placeholders are filled at generation time by the
 C     standalone exporter; the dollar-brace placeholders (helas_calls,
-C     jamp_lines, helicity_lines, ncomb, nwavefuncs, csym_reuse) are filled by
+C     helicity_lines, ncomb, nwavefuncs, csym_reuse, csym_dead) are filled by
 C     hel_recycle.py when it rewrites the MATRIX body into the recycled form
-C     (shared wavefunctions + P1N amplitude split).
+C     (shared wavefunctions + P1N amplitude split). The rewriter's jamp_lines
+C     are deliberately NOT used: the color flows come from the shared GET_JAMP
+C     instead, see the color stage of MATRIX below.
 C
 C     NCOMB below is the RECYCLED count (only the good helicity combinations
 C     survive); NHEL(0,K) carries the original helicity id of row K, which is
@@ -194,41 +196,58 @@ C     1..NFLAV: SMATRIX applies the crossing once, above.
 C
 C LOCAL VARIABLES
 C
-      INTEGER I,J,K
-      COMPLEX*16 ZTEMP
+      INTEGER I,J,K,KK
 C     Raw storage handed to the P1N split-amplitude calls as a type(aloha)
 C     scratch wavefunction (see CombineAmp in the DHELAS library).
       COMPLEX*16 TMP(%(wavefunctionsize)d)
-      INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
-      INTEGER %(proc_prefix)sDENOM, CF_INDEX
-C     One row per helicity, and as wide as the standard GET_JAMP's AMP: when
-C     the color flow definitions are emitted as operand tables their
-C     temporaries are written at AMP(K,NGRAPHS+ITMP), past NGRAPHS, and
-C     jamp_decl declares the tables that index them.
+C     AMP is HELICITY MAJOR because that is the layout the recycled helas
+C     block writes: one CombineAmp call fills the same amplitude for a whole
+C     set of helicity rows at once, so a column of AMP is what it produces.
+C     It is exactly the wrong layout to READ from, which is why the color
+C     stage gathers rows out of it (into AMPK) rather than indexing it.
+C     Only NGRAPHS wide: the color flow temporaries used to be written past
+C     NGRAPHS in here, and now live in the gather buffer instead.
 C
-C     On the heap, not in the executable. A helicity-major AMP is NCOMB times
-C     the standard one -- 256 x 281160 x 16 = 1.15 GB for g g > 6g -- and as a
-C     fixed-size local that lands in __DATA. Together with the 825 MB of __TEXT
-C     that 3.9M recycled call sites produce, the image then runs past the arm64
-C     dyld shared region and the binary will not START: dyld fails to map its
-C     cache and reports the first framework it cannot find. Allocating instead
-C     moved __DATA from 1.18 GB to 32 MB and made g g > 6g runnable.
-      COMPLEX*16 JAMP(NCOLOR)
+C     On the heap, not in the executable. Helicity major makes it NCOMB times
+C     the standard AMP -- 519 MB for g g > 6g even at this width -- and a
+C     fixed-size local that size is linked into __DATA. Together with the
+C     825 MB of __TEXT that 3.9M recycled call sites produce, the image runs
+C     up against the arm64 dyld shared region, and past it the binary does not
+C     START: dyld fails to map its cache and blames the first framework it
+C     then cannot find. Allocating keeps __DATA at tens of MB whatever the
+C     multiplicity, and costs nothing measurable (g g > 5g steady state
+C     0.0219/0.0227 s allocated against 0.0217/0.0218 s linked in).
       COMPLEX*16, ALLOCATABLE, SAVE :: AMP(:,:)
-%(jamp_tmp_decl)s
-%(jamp_decl)s
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
       double precision bwcutoff
       INTEGER FLAVOR(NEXTERNAL)
+C     The rows whose helas calls were actually generated. A C-parity partner
+C     dropped by the warm-up has none, so its whole AMP row is zero and the
+C     color stage would run a full sum over zeros; HRROW lists the rows worth
+C     visiting and csym_reuse copies the |M|^2 back into the rest. Built once,
+C     from the marks below (none = every row is live).
+      LOGICAL HRDEAD(NCOMB)
+      INTEGER HRROW(NCOMB), NHRROW
+      SAVE HRDEAD, HRROW, NHRROW
+      DATA NHRROW/0/
+C     The color matrix itself is never read here -- the color sum is done by
+C     the shared GET_MATRIX / GET_MATRIX_BATCHV. What this routine still owns
+C     is where the common block is FILLED: below a size the entries (and DENOM,
+C     always) are written out as DATA, and the standard output puts that DATA in
+C     its MATRIX for the same reason. Drop it and DENOM is 0, which turns every
+C     |M|^2 into a NaN rather than into a zero.
+      INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
+      INTEGER %(proc_prefix)sDENOM
+      common/%(proc_prefix)scolor_matrix/%(proc_prefix)sCF,%(proc_prefix)sDENOM
+%(hr_color_decl)s
 C     Recycled helicity table (NHEL(0,k) is the original helicity id).
       INTEGER NHEL(0:NEXTERNAL,NCOMB)
 ${helicity_lines}
 C
 C GLOBAL VARIABLES
 C
-      common/%(proc_prefix)scolor_matrix/%(proc_prefix)sCF,%(proc_prefix)sDENOM
       include 'coupl.inc'
 %(global_variable)s
 C
@@ -243,34 +262,33 @@ C ----------
 C BEGIN CODE
 C ----------
       bwcutoff=15
-C     Fill the color matrix. Above a size, color_data_lines stops writing the
-C     entries out as DATA and leaves them to be rebuilt here instead, one line
-C     per orbit -- and the color sum below reads CF directly rather than going
-C     through GET_MATRIX, which is where the standard file makes this call.
-C     Without it CF is all zeros and every |M|^2 comes out exactly 0.
-C     INIT_CF is a no-op after the first call (SAVEd CF_DONE).
-      CALL %(proc_prefix)sINIT_CF()
-      IF (.NOT.ALLOCATED(AMP)) ALLOCATE(AMP(NCOMB,%(namp_dim)s))
+      IF (.NOT.ALLOCATED(AMP)) ALLOCATE(AMP(NCOMB,NGRAPHS))
+      IF (NHRROW.EQ.0) THEN
+        DO K = 1, NCOMB
+          HRDEAD(K) = .FALSE.
+        ENDDO
+${csym_dead}
+        DO K = 1, NCOMB
+          IF (.NOT.HRDEAD(K)) THEN
+            NHRROW = NHRROW + 1
+            HRROW(NHRROW) = K
+          ENDIF
+        ENDDO
+      ENDIF
       AMP(:,:) = (0D0,0D0)
 %(flavor_mask_setup)s
 ${helas_calls}
-
-C     The recycled jamp block (substituted below) resets JAMP and fills
-C     JAMP(icolor) from AMP(K,igraph) for the current helicity K.
-      DO K = 1, NCOMB
-${jamp_lines}
-         TS(K) = 0.D0
-         CF_INDEX = 0
-         DO I = 1, NCOLOR
-            ZTEMP = (0.D0,0.D0)
-            DO J = I, NCOLOR
-               CF_INDEX = CF_INDEX + 1
-               ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX)*JAMP(J)
-            ENDDO
-            TS(K) = TS(K) + REAL(ZTEMP*DCONJG(JAMP(I)))
-         ENDDO
-         TS(K) = TS(K) / %(proc_prefix)sDENOM
-      ENDDO
+C     END OF RECYCLED HELAS BLOCK
+C     That marker is where hel_recycle.split_helas_block cuts when it moves the
+C     block into chunk subroutines, so it has to stay right after the calls.
+C     The madevent templates need no marker: there the color flows follow the
+C     calls directly, and the rewriter cuts at those instead.
+C
+C     Color stage. Everything below is the SHARED per-helicity code -- the
+C     same GET_JAMP the standard output calls, and the same color sum (folded,
+C     and batched through BLAS when it is worth it) -- so the recycled build
+C     inherits whatever the color side gains instead of carrying its own copy.
+%(hr_color_sum)s
 C     C-parity de-duplication: a dropped partner's HELAS calls were never
 C     generated, so its TS() is 0 here; copy the representative's identical
 C     |M|^2 back into it (empty unless the warm-up validated the pairing).
