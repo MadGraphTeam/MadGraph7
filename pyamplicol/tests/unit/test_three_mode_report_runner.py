@@ -58,12 +58,30 @@ from tools.performance_report.runner import (
     point_digest,
     pointwise_validation,
     profiling_chunk_guard,
+    provenance_payload,
     resolved_sum_validation,
     runtime_identity_payload,
     validate_artifact_contract,
     validate_runtime_contract,
     validate_selector_contract,
 )
+
+
+def test_provenance_payload_records_measurement_numpy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Numpy:
+        __version__ = "2.4.2-measurement"
+
+    monkeypatch.setattr(
+        "tools.performance_report.runner.importlib.import_module",
+        lambda name: Numpy() if name == "numpy" else None,
+    )
+
+    provenance = provenance_payload()
+
+    assert provenance["numpy"] == "2.4.2-measurement"
+    assert provenance["python_implementation"]
 
 
 def test_profiling_chunk_guard_rejects_only_chunks_larger_than_remaining() -> None:

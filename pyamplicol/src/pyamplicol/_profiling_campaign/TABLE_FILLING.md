@@ -70,11 +70,13 @@ capability; OTF LC retains the selected-flow and all-flow workloads.
 
 Inside a contributor checkout it re-executes with the repository `.venv`; an
 installed copy uses the wheel's Python runtime. Both modes reuse compatible
-same-source currents by default, supervise each process tree, and keep attempts
-and large artifacts in this campaign's visible `campaign_artifacts/` directory.
-That state moves with the entire campaign and never falls back to an old
-repository-level `.artifacts` directory. Use separate copied directories for
-independent campaigns, even when their basenames happen to match.
+same-source currents by default, supervise each process tree, and store campaign
+state plus compact retained evidence in this campaign's visible
+`campaign_artifacts/` directory. Full workspaces and other heavy debugging
+payloads are retained only with `--retain-workspaces`. That state moves with the
+entire campaign and never falls back to an old repository-level `.artifacts`
+directory. Use separate copied directories for independent campaigns, even when
+their basenames happen to match.
 
 Preview selections before launching workers:
 

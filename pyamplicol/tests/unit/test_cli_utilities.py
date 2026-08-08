@@ -115,7 +115,9 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
         text=True,
     )
     assert direct.returncode == 0, direct.stderr
-    assert (destination / "TABLE_FILLING.md").is_file()
+    table_filling = (destination / "TABLE_FILLING.md").read_text(encoding="utf-8")
+    assert "compact retained evidence" in table_filling
+    assert "keep attempts and large artifacts" not in table_filling
     assert (destination / "results/report-cache.schema.json").is_file()
     assert not (destination / "pyAmpliCol.pdf").exists()
     assert not (destination / ".artifacts").exists()

@@ -34,6 +34,7 @@ from tools.performance_report.workspace import (
     ReportWorkspaceError,
     export_profile,
     initialize_profile,
+    record_authenticated_profile_environment,
     refresh_profile_environment,
     require_active_profile_environment,
     require_authenticated_profile_environment,
@@ -270,14 +271,15 @@ def _test_environment(
     }
 
 
-def _test_runtime() -> dict[str, object]:
+def _test_runtime(source_revision: str = "a" * 40) -> dict[str, object]:
     return {
         "package_version": "0.1.0",
         "native_build_inputs_sha256": "a" * 64,
         "native_extension": {"sha256": "b" * 64},
         "python_package_tree": {"sha256": "c" * 64},
         "candidate_build_identity": {
-            "candidate_fingerprint": "candidate-aarch64"
+            "candidate_fingerprint": "candidate-aarch64",
+            "source_revision": source_revision,
         },
         "native_target": {
             "triple": "aarch64-apple-darwin",
@@ -373,7 +375,7 @@ def test_active_runtime_accepts_only_processor_display_label_drift(
         repo,
         "macbook_M3",
         expected_source_revision=measured,
-        runtime_auditor=lambda _revision, _root: _test_runtime(),
+        runtime_auditor=lambda _revision, _root: _test_runtime(measured),
     )
 
     assert recorded["processor"] == "Apple M3 Pro"
@@ -381,7 +383,7 @@ def test_active_runtime_accepts_only_processor_display_label_drift(
         repo,
         "macbook_M3",
         expected_source_revision=measured,
-        runtime_auditor=lambda _revision, _root: _test_runtime(),
+        runtime_auditor=lambda _revision, _root: _test_runtime(measured),
     ) == recorded
 
 
@@ -479,7 +481,8 @@ def test_environment_refresh_authenticates_runtime_without_dirtying_source(
             "native_extension": {"sha256": "b" * 64},
             "python_package_tree": {"sha256": "c" * 64},
             "candidate_build_identity": {
-                "candidate_fingerprint": "candidate-aarch64"
+                "candidate_fingerprint": "candidate-aarch64",
+                "source_revision": measured,
             },
             "native_target": {
                 "triple": "aarch64-apple-darwin",
@@ -532,6 +535,94 @@ def test_environment_refresh_authenticates_runtime_without_dirtying_source(
         "docs/performance_reports/macbook_M3/report_environment.tex",
     )
     assert (profile / ENVIRONMENT_JSON).is_file()
+
+
+def test_explicit_environment_recorder_supports_portable_release_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docs = tmp_path / "copied-campaign"
+    docs.mkdir()
+    monkeypatch.setattr(
+        workspace_module,
+        "_host_environment_payload",
+        lambda profile: {
+            "schema": ENVIRONMENT_SCHEMA,
+            "profile": profile,
+            "platform": "Linux 6.8.0; x86_64; AMD EPYC",
+            "machine": "x86_64",
+            "processor": "AMD EPYC",
+            "python": "3.12.6",
+            "python_implementation": "CPython",
+        },
+    )
+
+    class Numpy:
+        __version__ = "2.1.0"
+
+    monkeypatch.setattr(
+        workspace_module.importlib,
+        "import_module",
+        lambda name: Numpy() if name == "numpy" else None,
+    )
+    runtime = _test_runtime()
+    runtime["candidate_build_identity"] = {
+        "publishable": True,
+        "source_revision": "a" * 40,
+    }
+    runtime["candidate_build_identity_sha256"] = "d" * 64
+
+    recorded = record_authenticated_profile_environment(
+        docs,
+        "copied-campaign",
+        expected_source_revision="a" * 40,
+        active_runtime=runtime,
+    )
+
+    assert recorded["status"] == "authenticated"
+    assert recorded["profile"] == "copied-campaign"
+    assert recorded["source_revision"] == "a" * 40
+    assert recorded["candidate_fingerprint"] == f"release:{'d' * 64}"
+    assert json.loads((docs / ENVIRONMENT_JSON).read_text()) == recorded
+    tex = (docs / ENVIRONMENT_TEX).read_text(encoding="utf-8")
+    assert r"\renewcommand{\ReportProfileName}{copied-campaign}" in tex
+    assert "pending" not in tex
+
+    invalid = dict(runtime)
+    invalid["candidate_build_identity_sha256"] = "short"
+    with pytest.raises(ReportWorkspaceError, match="is not SHA-256"):
+        record_authenticated_profile_environment(
+            docs,
+            "copied-campaign",
+            expected_source_revision="a" * 40,
+            active_runtime=invalid,
+        )
+    assert json.loads((docs / ENVIRONMENT_JSON).read_text()) == recorded
+
+    wrong_source = dict(runtime)
+    wrong_source["candidate_build_identity"] = {
+        "publishable": True,
+        "source_revision": "b" * 40,
+    }
+    with pytest.raises(ReportWorkspaceError, match="expected source revision"):
+        record_authenticated_profile_environment(
+            docs,
+            "copied-campaign",
+            expected_source_revision="a" * 40,
+            active_runtime=wrong_source,
+        )
+    assert json.loads((docs / ENVIRONMENT_JSON).read_text()) == recorded
+
+    missing_source = dict(runtime)
+    missing_source["candidate_build_identity"] = {"publishable": True}
+    with pytest.raises(ReportWorkspaceError, match="expected source revision"):
+        record_authenticated_profile_environment(
+            docs,
+            "copied-campaign",
+            expected_source_revision="a" * 40,
+            active_runtime=missing_source,
+        )
+    assert json.loads((docs / ENVIRONMENT_JSON).read_text()) == recorded
 
 
 def test_pending_or_wrong_source_environment_fails_closed(
@@ -600,7 +691,8 @@ def test_active_runtime_must_still_match_recorded_environment(
             "native_extension": {"sha256": "b" * 64},
             "python_package_tree": {"sha256": "c" * 64},
             "candidate_build_identity": {
-                "candidate_fingerprint": "candidate-aarch64"
+                "candidate_fingerprint": "candidate-aarch64",
+                "source_revision": measured,
             },
             "native_target": {
                 "triple": "aarch64-apple-darwin",

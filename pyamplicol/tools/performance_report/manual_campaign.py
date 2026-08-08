@@ -96,6 +96,11 @@ from .timing import (
     evaluator_total_timing_record,
     recurrence_core_seconds_per_point,
 )
+from .workspace import (
+    ENVIRONMENT_JSON,
+    ENVIRONMENT_TEX,
+    record_authenticated_profile_environment,
+)
 
 PROFILE = "macbook_M3_manual"
 _ACTIVE_PROFILE = PROFILE
@@ -140,6 +145,7 @@ _FULL_SOURCE_REVISION = re.compile(r"[0-9a-f]{40}")
 _SAFE_OUTCOME_SLUG = re.compile(r"[a-z][a-z0-9_-]{0,63}")
 _SAFE_OUTCOME_CELL_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,127}")
 _PRESENTATION_FAILURE_KIND_PREFIX = "ManualCampaignOutcome:"
+_UNRECORDED_MEASUREMENT_NUMPY = "unavailable (not recorded by measurement)"
 _MAX_PRESENTATION_COMPLETED_AT_NS = (1 << 63) - 1
 _PRESENTATION_OUTCOME_KEYS = frozenset(
     {
@@ -2016,6 +2022,12 @@ class LightweightCurrent:
     reusable: bool
     reason: str
     record: CurrentRecord | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ProfileEnvironmentWitness:
+    active_runtime: Mapping[str, object]
+    host_environment: Mapping[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -8796,6 +8808,40 @@ def _stage_copied_profile_identity(staging_docs: Path, profile: str) -> None:
     tex_path.write_text(updated, encoding="utf-8")
 
 
+def _require_reusable_staged_environment(
+    staging_docs: Path,
+    profile: str,
+    *,
+    expected_source_revision: str,
+) -> None:
+    """Reject authenticated metadata from an older measurement-source epoch."""
+
+    environment_path = staging_docs / ENVIRONMENT_JSON
+    if not environment_path.exists():
+        # The atomic installer reports a missing report member below.  This
+        # helper is concerned only with preventing stale authentication reuse.
+        return
+    environment = _read_object(environment_path)
+    if environment is None:
+        raise ManualCampaignError(
+            "staged report environment metadata is malformed"
+        )
+    if environment.get("profile") != profile:
+        raise ManualCampaignError(
+            "staged report environment profile was not rebound"
+        )
+    status = environment.get("status")
+    source_revision = environment.get("source_revision")
+    if status == "pending_exact_runtime" and source_revision == "pending":
+        return
+    if status == "authenticated" and source_revision == expected_source_revision:
+        return
+    raise ManualCampaignError(
+        "no active-source runtime witness is available, and the staged report "
+        "environment is not authenticated for the active measurement source"
+    )
+
+
 def _install_report_snapshot(
     service: ReportService,
     staging_docs: Path,
@@ -8815,6 +8861,13 @@ def _install_report_snapshot(
                 service.paths.docs_dir / name,
             )
             for name in sorted(table_names)
+        ),
+        *(
+            (
+                staging_docs / name,
+                service.paths.docs_dir / name,
+            )
+            for name in (ENVIRONMENT_JSON, ENVIRONMENT_TEX)
         ),
         (
             staging_docs / "pyAmpliCol.pdf",
@@ -8856,6 +8909,116 @@ def _install_report_snapshot(
             raise
 
 
+def _active_environment_runtime_witness(
+    currents: Mapping[str, LightweightCurrent],
+    *,
+    source_revision: str,
+) -> _ProfileEnvironmentWitness | None:
+    """Select one consistent runtime witness from validated active currents."""
+
+    selected: _ProfileEnvironmentWitness | None = None
+    selected_identity: str | None = None
+    for cell_id in sorted(currents):
+        current = currents[cell_id]
+        if (
+            not current.reusable
+            or current.result.get("status") != ResultStatus.OK.value
+            or _measurement_source_revision(current.result) != source_revision
+        ):
+            continue
+        provenance = current.result.get("provenance")
+        runtime = (
+            provenance.get("runtime_identity")
+            if isinstance(provenance, Mapping)
+            else None
+        )
+        if runtime is None:
+            # Original AmpliCol results carry no pyAmpliCol runtime witness.
+            continue
+        if (
+            not isinstance(runtime, Mapping)
+            or runtime.get("source_revision") != source_revision
+        ):
+            raise ManualCampaignError(
+                f"{cell_id}: active-source runtime witness is malformed"
+            )
+        candidate = runtime.get("candidate_build_identity")
+        package_tree = runtime.get("python_package_tree")
+        native_extension = runtime.get("native_extension")
+        native_target = runtime.get("native_target")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (candidate, package_tree, native_extension, native_target)
+        ):
+            raise ManualCampaignError(
+                f"{cell_id}: active-source runtime witness is incomplete"
+            )
+        assert isinstance(candidate, Mapping)
+        if candidate.get("source_revision") != source_revision:
+            raise ManualCampaignError(
+                f"{cell_id}: active-source runtime build identity is malformed"
+            )
+        numpy_version = provenance.get("numpy")
+        if numpy_version is None:
+            numpy_version = _UNRECORDED_MEASUREMENT_NUMPY
+        host_environment = {
+            "platform": provenance.get("platform"),
+            "machine": provenance.get("machine"),
+            "processor": provenance.get("processor"),
+            "python": provenance.get("python"),
+            "python_implementation": provenance.get(
+                "python_implementation",
+                "CPython",
+            ),
+            "numpy": numpy_version,
+        }
+        if not all(
+            isinstance(host_environment[field], str) and bool(host_environment[field])
+            for field in (
+                "platform",
+                "machine",
+                "python",
+                "python_implementation",
+                "numpy",
+            )
+        ) or not isinstance(host_environment["processor"], str):
+            raise ManualCampaignError(
+                f"{cell_id}: active-source measurement-host witness is incomplete"
+            )
+        assert isinstance(package_tree, Mapping)
+        assert isinstance(native_extension, Mapping)
+        assert isinstance(native_target, Mapping)
+        fingerprint = candidate.get("candidate_fingerprint")
+        if fingerprint is None and candidate.get("publishable") is True:
+            fingerprint = runtime.get("candidate_build_identity_sha256")
+        projection = {
+            "source_revision": runtime.get("source_revision"),
+            "package_version": runtime.get("package_version"),
+            "python_package_tree_sha256": package_tree.get("sha256"),
+            "build_fingerprint": fingerprint,
+            "native_build_inputs_sha256": runtime.get("native_build_inputs_sha256"),
+            "native_extension_sha256": native_extension.get("sha256"),
+            "native_target": native_target.get("triple"),
+            "native_cpu_features": native_target.get("cpu_features"),
+            "measurement_host": host_environment,
+        }
+        identity = json.dumps(
+            projection,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        if selected_identity is not None and identity != selected_identity:
+            raise ManualCampaignError(
+                "active measurement-source currents disagree on their "
+                "authenticated runtime environment"
+            )
+        selected = _ProfileEnvironmentWitness(runtime, host_environment)
+        selected_identity = identity
+    return selected
+
+
 def _refresh_pdf(
     arguments: argparse.Namespace,
     *,
@@ -8895,6 +9058,10 @@ def _refresh_pdf(
         if scan_progress is not None:
             scan_progress.close()
     source_cohorts = _source_cohort_counts(currents)
+    environment_runtime = _active_environment_runtime_witness(
+        currents,
+        source_revision=source_policy.source_revision,
+    )
     publication_caches, merged = _merge_lightweight_snapshot(
         service,
         currents,
@@ -8914,6 +9081,20 @@ def _refresh_pdf(
             staging_docs,
             service.paths.docs_dir.name,
         )
+        if environment_runtime is not None:
+            record_authenticated_profile_environment(
+                staging_docs,
+                service.paths.docs_dir.name,
+                expected_source_revision=source_policy.source_revision,
+                active_runtime=environment_runtime.active_runtime,
+                host_environment=environment_runtime.host_environment,
+            )
+        else:
+            _require_reusable_staged_environment(
+                staging_docs,
+                service.paths.docs_dir.name,
+                expected_source_revision=source_policy.source_revision,
+            )
         _filter_report_sections(
             staging_docs / "pyAmpliCol.tex",
             removed_sections,

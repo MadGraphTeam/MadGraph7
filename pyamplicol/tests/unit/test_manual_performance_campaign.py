@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 import tools.performance_report.manual_campaign as manual_campaign
+import tools.performance_report.workspace as workspace_module
 from tools.performance_report.artifacts import LockCancelledError
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
@@ -3912,6 +3913,153 @@ def test_lease_publication_uses_runtime_revision_without_checkout_git(
     assert payload["source_revision"] == "a" * 40
 
 
+def _environment_witness_current(
+    tmp_path: Path,
+    *,
+    cell_id: str,
+    source_revision: str,
+    native_extension_sha256: str = "b" * 64,
+    numpy_version: str | None = None,
+) -> LightweightCurrent:
+    runtime = {
+        "source_revision": source_revision,
+        "package_version": "0.1.4",
+        "python_package_tree": {"sha256": "a" * 64},
+        "candidate_build_identity": {
+            "candidate_fingerprint": "candidate-test",
+            "source_revision": source_revision,
+            "publishable": False,
+        },
+        "candidate_build_identity_sha256": "c" * 64,
+        "native_build_inputs_sha256": "d" * 64,
+        "native_extension": {
+            "sha256": native_extension_sha256,
+            "package_version": "0.1.4",
+        },
+        "native_target": {
+            "triple": "aarch64-apple-darwin",
+            "cpu_features": ["neon"],
+        },
+    }
+    provenance = {
+        "report_source_revision": source_revision,
+        "platform": "MeasuredOS 1.0; witness",
+        "machine": "measured-machine",
+        "processor": "measured-processor",
+        "python": "3.11.9",
+        "runtime_identity": runtime,
+    }
+    if numpy_version is not None:
+        provenance["numpy"] = numpy_version
+    return LightweightCurrent(
+        cell_id=cell_id,
+        attempt_id=f"attempt-{cell_id}",
+        result_path=tmp_path / f"{cell_id}.json",
+        result={
+            "status": ResultStatus.OK.value,
+            "provenance": provenance,
+        },
+        complete=True,
+        reusable=True,
+        reason="reusable",
+    )
+
+
+def test_environment_witness_is_active_source_and_consistent(tmp_path: Path) -> None:
+    active_revision = "a" * 40
+    assert (
+        manual_campaign._active_environment_runtime_witness(
+            {},
+            source_revision=active_revision,
+        )
+        is None
+    )
+    historical = _environment_witness_current(
+        tmp_path,
+        cell_id="historical",
+        source_revision="b" * 40,
+    )
+    first = _environment_witness_current(
+        tmp_path,
+        cell_id="first",
+        source_revision=active_revision,
+    )
+    second = _environment_witness_current(
+        tmp_path,
+        cell_id="second",
+        source_revision=active_revision,
+    )
+
+    selected = manual_campaign._active_environment_runtime_witness(
+        {
+            historical.cell_id: historical,
+            first.cell_id: first,
+            second.cell_id: second,
+        },
+        source_revision=active_revision,
+    )
+
+    assert selected is not None
+    assert selected.active_runtime == first.result["provenance"]["runtime_identity"]
+    assert selected.host_environment == {
+        "platform": "MeasuredOS 1.0; witness",
+        "machine": "measured-machine",
+        "processor": "measured-processor",
+        "python": "3.11.9",
+        "python_implementation": "CPython",
+        "numpy": manual_campaign._UNRECORDED_MEASUREMENT_NUMPY,
+    }
+    legacy_environment = workspace_module._authenticated_environment_payload(
+        "portable-campaign",
+        expected_source_revision=active_revision,
+        active_runtime=selected.active_runtime,
+        host_environment=selected.host_environment,
+    )
+    assert "NumPy unavailable (not recorded by measurement)" in (
+        workspace_module._environment_tex(legacy_environment)
+    )
+    assert (
+        manual_campaign._active_environment_runtime_witness(
+            {historical.cell_id: historical},
+            source_revision=active_revision,
+        )
+        is None
+    )
+
+    conflicting = _environment_witness_current(
+        tmp_path,
+        cell_id="conflicting",
+        source_revision=active_revision,
+        native_extension_sha256="e" * 64,
+    )
+    with pytest.raises(ManualCampaignError, match="currents disagree"):
+        manual_campaign._active_environment_runtime_witness(
+            {
+                first.cell_id: first,
+                conflicting.cell_id: conflicting,
+            },
+            source_revision=active_revision,
+        )
+
+    for candidate_revision in (None, "b" * 40):
+        malformed = _environment_witness_current(
+            tmp_path,
+            cell_id=f"malformed-{candidate_revision}",
+            source_revision=active_revision,
+        )
+        runtime = malformed.result["provenance"]["runtime_identity"]
+        candidate = runtime["candidate_build_identity"]
+        if candidate_revision is None:
+            candidate.pop("source_revision")
+        else:
+            candidate["source_revision"] = candidate_revision
+        with pytest.raises(ManualCampaignError, match="build identity"):
+            manual_campaign._active_environment_runtime_witness(
+                {malformed.cell_id: malformed},
+                source_revision=active_revision,
+            )
+
+
 def test_read_only_views_use_recorded_measurement_source_epoch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5884,6 +6032,145 @@ def test_copied_campaign_rebinds_private_pdf_build_profile(tmp_path: Path) -> No
     )
 
 
+def test_staged_environment_without_witness_is_pending_or_same_source(
+    tmp_path: Path,
+) -> None:
+    environment_path = tmp_path / "report_environment.json"
+    profile = "portable-campaign"
+    active_revision = "a" * 40
+
+    for status, source_revision in (
+        ("pending_exact_runtime", "pending"),
+        ("authenticated", active_revision),
+    ):
+        environment_path.write_text(
+            json.dumps(
+                {
+                    "profile": profile,
+                    "status": status,
+                    "source_revision": source_revision,
+                }
+            ),
+            encoding="ascii",
+        )
+        manual_campaign._require_reusable_staged_environment(
+            tmp_path,
+            profile,
+            expected_source_revision=active_revision,
+        )
+
+    environment_path.write_text(
+        json.dumps(
+            {
+                "profile": profile,
+                "status": "authenticated",
+                "source_revision": "b" * 40,
+            }
+        ),
+        encoding="ascii",
+    )
+    with pytest.raises(ManualCampaignError, match="no active-source runtime witness"):
+        manual_campaign._require_reusable_staged_environment(
+            tmp_path,
+            profile,
+            expected_source_revision=active_revision,
+        )
+
+
+def test_refresh_installs_authenticated_active_source_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docs = tmp_path / "portable-campaign"
+    (docs / "results").mkdir(parents=True)
+    (docs / "pyAmpliCol.tex").write_text("report\n", encoding="ascii")
+    shutil.copy2(PROFILE / "report_environment.json", docs)
+    shutil.copy2(PROFILE / "report_environment.tex", docs)
+    service = ReportService(
+        manual_campaign._campaign_report_paths(ROOT, docs),
+        portable_current_results=True,
+    )
+    revision = "a" * 40
+    current = _environment_witness_current(
+        tmp_path,
+        cell_id="active-current",
+        source_revision=revision,
+        numpy_version="1.26.4-measurement",
+    )
+    real_import_module = workspace_module.importlib.import_module
+
+    def reject_renderer_numpy(name: str):
+        if name == "numpy":
+            raise AssertionError("portable refresh imported renderer NumPy")
+        return real_import_module(name)
+
+    monkeypatch.setattr(
+        workspace_module.importlib,
+        "import_module",
+        reject_renderer_numpy,
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_capture_lightweight_snapshot",
+        lambda *_args, **_kwargs: (
+            {current.cell_id: current},
+            {},
+            ((current.cell_id, current.attempt_id),),
+        ),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_merge_lightweight_snapshot",
+        lambda *_args, **_kwargs: ({}, 0),
+    )
+    monkeypatch.setattr(ReportService, "_render_tables", lambda *_args: {})
+    monkeypatch.setattr(ReportService, "_snapshot_files", lambda *_args: ())
+
+    def compile_staged(staging_docs: Path, **_kwargs: object) -> int:
+        environment = json.loads(
+            (staging_docs / "report_environment.json").read_text(encoding="ascii")
+        )
+        assert environment["status"] == "authenticated"
+        assert environment["profile"] == "portable-campaign"
+        assert environment["source_revision"] == revision
+        assert environment["platform"] == "MeasuredOS 1.0; witness"
+        assert environment["machine"] == "measured-machine"
+        assert environment["processor"] == "measured-processor"
+        assert environment["python"] == "3.11.9"
+        assert environment["python_implementation"] == "CPython"
+        assert environment["numpy"] == "1.26.4-measurement"
+        assert "pending" not in (staging_docs / "report_environment.tex").read_text(
+            encoding="utf-8"
+        )
+        (staging_docs / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n")
+        return 1
+
+    monkeypatch.setattr(manual_campaign, "_compile_pdf", compile_staged)
+
+    assert (
+        manual_campaign._refresh_pdf(
+            _parse("refresh-pdf", "--quiet", "--expected-page-count", "1"),
+            service=service,
+            source=manual_campaign.ReportSourceIdentity(
+                revision,
+                "b" * 40,
+                (),
+            ),
+            palette=manual_campaign.Palette(False),
+        )
+        == 0
+    )
+    installed = json.loads(
+        (docs / "report_environment.json").read_text(encoding="ascii")
+    )
+    assert installed["status"] == "authenticated"
+    assert installed["platform"] == "MeasuredOS 1.0; witness"
+    assert "pending" not in (docs / "report_environment.tex").read_text(
+        encoding="utf-8"
+    )
+    assert (docs / "pyAmpliCol.pdf").read_bytes() == b"%PDF-1.4\n"
+
+
 def test_manual_refresh_source_copy_excludes_only_top_level_campaign_state(
     tmp_path: Path,
 ) -> None:
@@ -6043,6 +6330,14 @@ def test_report_snapshot_install_is_atomic_and_rolls_back_on_failure(
             f"{prefix}-table\n",
             encoding="utf-8",
         )
+        (root / "report_environment.json").write_text(
+            f"{prefix}-environment-json\n",
+            encoding="ascii",
+        )
+        (root / "report_environment.tex").write_text(
+            f"{prefix}-environment-tex\n",
+            encoding="utf-8",
+        )
         (root / "pyAmpliCol.pdf").write_bytes(f"{prefix}-pdf".encode("ascii"))
     service = ReportService(
         ReportPaths.from_repo(
@@ -6054,19 +6349,19 @@ def test_report_snapshot_install_is_atomic_and_rolls_back_on_failure(
     )
     real_replace = os.replace
 
-    def fail_table_install(
+    def fail_pdf_install(
         source: os.PathLike[str],
         destination: os.PathLike[str],
     ) -> None:
         if (
-            Path(destination).name == "result_demo_table.tex"
+            Path(destination).name == "pyAmpliCol.pdf"
             and ".manual-" in Path(source).name
         ):
-            raise OSError("injected table install interruption")
+            raise OSError("injected PDF install interruption")
         return real_replace(source, destination)
 
-    monkeypatch.setattr(os, "replace", fail_table_install)
-    with pytest.raises(OSError, match="injected table install"):
+    monkeypatch.setattr(os, "replace", fail_pdf_install)
+    with pytest.raises(OSError, match="injected PDF install"):
         _install_report_snapshot(
             service,
             staging,
@@ -6075,6 +6370,12 @@ def test_report_snapshot_install_is_atomic_and_rolls_back_on_failure(
 
     assert (docs / "results/cache.json").read_text(encoding="ascii") == "old-cache\n"
     assert (docs / "result_demo_table.tex").read_text(encoding="utf-8") == "old-table\n"
+    assert (docs / "report_environment.json").read_text(encoding="ascii") == (
+        "old-environment-json\n"
+    )
+    assert (docs / "report_environment.tex").read_text(encoding="utf-8") == (
+        "old-environment-tex\n"
+    )
     assert (docs / "pyAmpliCol.pdf").read_bytes() == b"old-pdf"
 
 

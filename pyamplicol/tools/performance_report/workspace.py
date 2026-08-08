@@ -349,6 +349,54 @@ def _host_environment_payload(profile: str) -> dict[str, str]:
     }
 
 
+def _recorded_host_environment_payload(
+    profile: str,
+    host_environment: Mapping[str, object],
+) -> dict[str, str]:
+    required = {
+        "platform",
+        "machine",
+        "processor",
+        "python",
+        "python_implementation",
+        "numpy",
+    }
+    if set(host_environment) != required:
+        raise ReportWorkspaceError(
+            "recorded measurement-host environment has an invalid shape"
+        )
+    processor = host_environment.get("processor")
+    if not isinstance(processor, str):
+        raise ReportWorkspaceError(
+            "recorded measurement-host processor label must be a string"
+        )
+    return {
+        "schema": ENVIRONMENT_SCHEMA,
+        "profile": profile,
+        "platform": _required_text(
+            host_environment.get("platform"),
+            "recorded measurement-host platform",
+        ),
+        "machine": _required_text(
+            host_environment.get("machine"),
+            "recorded measurement-host machine",
+        ),
+        "processor": processor,
+        "python": _required_text(
+            host_environment.get("python"),
+            "recorded measurement-host Python version",
+        ),
+        "python_implementation": _required_text(
+            host_environment.get("python_implementation"),
+            "recorded measurement-host Python implementation",
+        ),
+        "numpy": _required_text(
+            host_environment.get("numpy"),
+            "recorded measurement-host NumPy version",
+        ),
+    }
+
+
 def _pending_environment_payload(profile: str) -> dict[str, str]:
     pending_host = "pending measurement-host authentication"
     return {
@@ -386,6 +434,7 @@ def _authenticated_environment_payload(
     *,
     expected_source_revision: str,
     active_runtime: Mapping[str, object],
+    host_environment: Mapping[str, object] | None = None,
 ) -> dict[str, str]:
     package_version = _required_text(
         active_runtime.get("package_version"),
@@ -424,6 +473,11 @@ def _authenticated_environment_payload(
         raise ReportWorkspaceError(
             "active runtime file and candidate identities must be objects"
         )
+    candidate_source_revision = candidate_identity.get("source_revision")
+    if candidate_source_revision != expected_source_revision:
+        raise ReportWorkspaceError(
+            "active runtime build identity differs from the expected source revision"
+        )
     native_extension_digest = _required_text(
         native_extension.get("sha256"),
         "active runtime native extension digest",
@@ -437,17 +491,36 @@ def _authenticated_environment_payload(
         for digest in (native_extension_digest, package_tree_digest)
     ):
         raise ReportWorkspaceError("active runtime file identity digest is not SHA-256")
+    raw_candidate_fingerprint = candidate_identity.get("candidate_fingerprint")
+    if (
+        raw_candidate_fingerprint is None
+        and candidate_identity.get("publishable") is True
+    ):
+        release_identity = _required_text(
+            active_runtime.get("candidate_build_identity_sha256"),
+            "active release runtime build-identity digest",
+        )
+        if re.fullmatch(r"[0-9a-f]{64}", release_identity) is None:
+            raise ReportWorkspaceError(
+                "active release runtime build-identity digest is not SHA-256"
+            )
+        raw_candidate_fingerprint = f"release:{release_identity}"
     candidate_fingerprint = _required_text(
-        candidate_identity.get("candidate_fingerprint"),
+        raw_candidate_fingerprint,
         "active runtime candidate fingerprint",
     )
-    numpy = importlib.import_module("numpy")
-    numpy_version = _required_text(
-        getattr(numpy, "__version__", None),
-        "active NumPy version",
-    )
+    if host_environment is None:
+        host_payload = _host_environment_payload(profile)
+        numpy = importlib.import_module("numpy")
+        numpy_version = _required_text(
+            getattr(numpy, "__version__", None),
+            "active NumPy version",
+        )
+    else:
+        host_payload = _recorded_host_environment_payload(profile, host_environment)
+        numpy_version = host_payload.pop("numpy")
     return {
-        **_host_environment_payload(profile),
+        **host_payload,
         "status": "authenticated",
         "source_revision": expected_source_revision,
         "pyamplicol": package_version,
@@ -788,6 +861,66 @@ def _read_environment_payload(path: Path) -> dict[str, str]:
     return raw
 
 
+def record_authenticated_profile_environment(
+    docs_dir: Path,
+    profile: str,
+    *,
+    expected_source_revision: str,
+    active_runtime: Mapping[str, object],
+    host_environment: Mapping[str, object] | None = None,
+) -> dict[str, str]:
+    """Record one already-authenticated runtime in an explicit report directory.
+
+    This is the destination-explicit write boundary shared by source-checkout
+    profiles and portable campaign publication.  It deliberately does not
+    authenticate ``active_runtime`` itself: callers must either use
+    :func:`refresh_profile_environment` or supply runtime evidence already
+    validated as part of a successful campaign measurement.
+    """
+
+    validated = validate_profile_name(profile)
+    if _GIT_SHA_RE.fullmatch(expected_source_revision) is None:
+        raise ReportWorkspaceError(
+            "profile environment source revision must be a full Git SHA"
+        )
+    destination = docs_dir.expanduser().resolve(strict=True)
+    if not destination.is_dir():
+        raise ReportWorkspaceError(
+            f"profile environment destination is not a directory: {destination}"
+        )
+    environment = _authenticated_environment_payload(
+        validated,
+        expected_source_revision=expected_source_revision,
+        active_runtime=active_runtime,
+        host_environment=host_environment,
+    )
+    json_path = destination / ENVIRONMENT_JSON
+    tex_path = destination / ENVIRONMENT_TEX
+    temporary_json = json_path.with_name(f".{json_path.name}.{uuid.uuid4().hex}")
+    temporary_tex = tex_path.with_name(f".{tex_path.name}.{uuid.uuid4().hex}")
+    expected_tex = _environment_tex(environment)
+    try:
+        temporary_json.write_text(_canonical_json(environment), encoding="ascii")
+        temporary_tex.write_text(expected_tex, encoding="utf-8")
+        temporary_json.replace(json_path)
+        temporary_tex.replace(tex_path)
+    finally:
+        temporary_json.unlink(missing_ok=True)
+        temporary_tex.unlink(missing_ok=True)
+    recorded = _read_environment_payload(json_path)
+    try:
+        recorded_tex = tex_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise ReportWorkspaceError(
+            f"profile environment TeX is unavailable: {tex_path}"
+        ) from error
+    if recorded != environment or recorded_tex != expected_tex:
+        raise ReportWorkspaceError(
+            "recorded profile environment differs from its authenticated payload"
+        )
+    return recorded
+
+
 def require_authenticated_profile_environment(
     repo_root: Path,
     profile: str,
@@ -863,24 +996,13 @@ def refresh_profile_environment(
             "installed pyAmpliCol runtime is not authenticated for the "
             "requested measurement source"
         ) from error
-    environment = _authenticated_environment_payload(
+    profile_dir = profile_docs_dir(root, validated)
+    record_authenticated_profile_environment(
+        profile_dir,
         validated,
         expected_source_revision=expected_source_revision,
         active_runtime=active_runtime,
     )
-    profile_dir = profile_docs_dir(root, validated)
-    json_path = profile_dir / ENVIRONMENT_JSON
-    tex_path = profile_dir / ENVIRONMENT_TEX
-    temporary_json = json_path.with_name(f".{json_path.name}.{uuid.uuid4().hex}")
-    temporary_tex = tex_path.with_name(f".{tex_path.name}.{uuid.uuid4().hex}")
-    try:
-        temporary_json.write_text(_canonical_json(environment), encoding="ascii")
-        temporary_tex.write_text(_environment_tex(environment), encoding="utf-8")
-        temporary_json.replace(json_path)
-        temporary_tex.replace(tex_path)
-    finally:
-        temporary_json.unlink(missing_ok=True)
-        temporary_tex.unlink(missing_ok=True)
     return require_authenticated_profile_environment(
         root,
         validated,
@@ -1187,6 +1309,7 @@ __all__ = [
     "initialize_profile",
     "load_profile_campaign_policy",
     "profile_docs_dir",
+    "record_authenticated_profile_environment",
     "refresh_profile_environment",
     "require_active_profile_environment",
     "require_authenticated_profile_environment",

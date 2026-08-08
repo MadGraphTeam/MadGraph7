@@ -5445,9 +5445,14 @@ def generate_artifact(
 
 
 def provenance_payload() -> dict[str, object]:
+    numpy_version = getattr(importlib.import_module("numpy"), "__version__", None)
+    if not isinstance(numpy_version, str) or not numpy_version:
+        raise RunnerError("measurement NumPy version is unavailable")
     return {
         "platform": platform.platform(),
         "python": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
+        "numpy": numpy_version,
         "machine": platform.machine(),
         "processor": platform.processor(),
     }
