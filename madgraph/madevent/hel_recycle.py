@@ -397,8 +397,16 @@ class HelicityRecycler():
         Amplitude.max_amp_num = 0
         self.last_category = None
         self.good_elements = good_elements
-        self.bad_amps = bad_amps
-        self.bad_amps_perhel = bad_amps_perhel
+        # Both are only ever asked "is this one in you?" -- bad_amps once per
+        # amplitude line, bad_amps_perhel once per (amplitude, helicity
+        # combination). As lists that is a linear scan every time, which was
+        # affordable while they held the handful of identically-zero
+        # amplitudes. The C-parity de-duplication now adds EVERY amplitude of
+        # every dropped mirror row: 128 x 28215 entries on g g > t t~ 4g and
+        # 128 x 126630 on g g > 6g, turning the scan into the dominant cost of
+        # the whole recycling step. Sets make the same question O(1).
+        self.bad_amps = set(bad_amps)
+        self.bad_amps_perhel = set(bad_amps_perhel)
 
         # Default file names
         self.input_file = 'matrix_orig.f'
