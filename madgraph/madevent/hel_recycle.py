@@ -631,6 +631,11 @@ class HelicityRecycler():
         # HELAS calls are never generated and only the representatives are
         # computed. The indices here are the optim's re-numbered helicities.
         self.template_dict['csym_reuse'] = '\n'
+        # The other half of that de-duplication, used by the standalone driver:
+        # marks each dropped partner's helicity row dead so the color stage
+        # skips it instead of summing colors over a row of zeros. Empty (every
+        # row live) unless the same pairs are supplied.
+        self.template_dict['csym_dead'] = '\n'
         # Optional IF/ENDIF around the AMP2 (multi-channel) and JAMP2
         # (colour-flow) accumulation of the helicity loop, so a config can
         # contribute to the |M|^2 sum without contributing to either weight.
@@ -1099,7 +1104,12 @@ class HelicityRecycler():
     _END_IF = re.compile(r'^\s*END\s*IF\b', re.IGNORECASE)
     _AMP_INIT = re.compile(r'^\s*AMP\s*\(\s*:\s*,\s*:\s*\)\s*=', re.IGNORECASE)
     _BLOCK_START = re.compile(r'^\s*(CALL\s|IF\s*\(\s*IAND)', re.IGNORECASE)
-    _BLOCK_END = re.compile(r'^\s*(JAMP\s*\(|DO\s+K\s*=\s*1\s*,\s*NCOMB)',
+    # What follows the helas calls: the color flows in the madevent templates
+    # (which write them out, or open a helicity loop over them), or -- for a
+    # driver that does something else entirely with AMP, as the standalone one
+    # does -- an explicit marker comment right after the last call.
+    _BLOCK_END = re.compile(r'^\s*(JAMP\s*\(|DO\s+K\s*=\s*1\s*,\s*NCOMB'
+                            r'|C\s+END OF RECYCLED HELAS BLOCK)',
                             re.IGNORECASE)
 
     def _group_statements(self, block):

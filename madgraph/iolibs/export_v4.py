@@ -5112,22 +5112,19 @@ C     crossing carried by FLAV_IDX moves across.
             return True
         return nfold >= self.blas_min_ncolor
 
-    @staticmethod
-    def get_blas_routine(prefix, nfold, ncomb):
-        """The color sum for every helicity at once. DSYMM is real, so the
-        two parts of JAMP go through separately; the color matrix is real and
-        symmetric so that is all it takes."""
-
-        return """
-      SUBROUTINE {p}GET_MATRIX_BATCH(JR,JI,NB,ANS)
-      IMPLICIT NONE
+    # The two batched color sums below differ only in what they do with the
+    # DSYMM output, so everything up to and including the two calls is written
+    # once: the head (down to the last shared argument), then the caller's own
+    # result declaration, then the body.
+    BLAS_BATCH_HEAD = """      IMPLICIT NONE
       INTEGER NFOLD, NCOMB
       PARAMETER (NFOLD={n})
       PARAMETER (NCOMB={c})
       DOUBLE PRECISION JR(NFOLD,NCOMB), JI(NFOLD,NCOMB)
       INTEGER NB
-      DOUBLE PRECISION ANS
-      INTEGER I,J,K,CFI
+"""
+
+    BLAS_BATCH_BODY = """      INTEGER I,J,K,CFI
       DOUBLE PRECISION, ALLOCATABLE, SAVE :: CFULL(:,:)
       DOUBLE PRECISION, ALLOCATABLE, SAVE :: TR(:,:), TI(:,:)
       LOGICAL FIRST
@@ -5160,7 +5157,18 @@ C       matrix with each entry counted once.
       ENDIF
       CALL DSYMM('L','U',NFOLD,NB,1D0,CFULL,NFOLD,JR,NFOLD,0D0,TR,NFOLD)
       CALL DSYMM('L','U',NFOLD,NB,1D0,CFULL,NFOLD,JI,NFOLD,0D0,TI,NFOLD)
-      ANS = 0D0
+"""
+
+    @classmethod
+    def get_blas_routine(cls, prefix, nfold, ncomb):
+        """The color sum for every helicity at once. DSYMM is real, so the
+        two parts of JAMP go through separately; the color matrix is real and
+        symmetric so that is all it takes."""
+
+        return ("\n      SUBROUTINE {p}GET_MATRIX_BATCH(JR,JI,NB,ANS)\n"
+                + cls.BLAS_BATCH_HEAD
+                + "      DOUBLE PRECISION ANS\n"
+                + cls.BLAS_BATCH_BODY + """      ANS = 0D0
       DO K = 1, NB
         DO I = 1, NFOLD
           ANS = ANS + TR(I,K)*JR(I,K) + TI(I,K)*JI(I,K)
@@ -5168,7 +5176,28 @@ C       matrix with each entry counted once.
       ENDDO
       ANS = ANS / DBLE({p}DENOM)
       END
-""".format(p=prefix, n=nfold, c=ncomb)
+""").format(p=prefix, n=nfold, c=ncomb)
+
+    @classmethod
+    def get_blas_vector_routine(cls, prefix, nfold, ncomb):
+        """The same batch, keeping one |M|^2 per column instead of adding them
+        up. The helicity-recycled MATRIX needs a value per helicity row (the
+        polarization filter and SMATRIXHEL select on it), so it cannot use the
+        scalar GET_MATRIX_BATCH."""
+
+        return ("\n      SUBROUTINE {p}GET_MATRIX_BATCHV(JR,JI,NB,TSB)\n"
+                + cls.BLAS_BATCH_HEAD
+                + "      DOUBLE PRECISION TSB(NB)\n"
+                + "      DOUBLE PRECISION T\n"
+                + cls.BLAS_BATCH_BODY + """      DO K = 1, NB
+        T = 0D0
+        DO I = 1, NFOLD
+          T = T + TR(I,K)*JR(I,K) + TI(I,K)*JI(I,K)
+        ENDDO
+        TSB(K) = T / DBLE({p}DENOM)
+      ENDDO
+      END
+""").format(p=prefix, n=nfold, c=ncomb)
 
     def get_color_fold_ampso(self, folding, ncolor):
         """Template replacements for a color sum over one line per reversal
@@ -8375,10 +8404,13 @@ C       so this also stays correct for split-order processes.
         block. The reuse indices are the OPTIM's positions (helicities are
         renumbered 1..len(good_hels) in the recycled file).
 
-        Returns (bad_amps_perhel, csym_reuse_text).
+        Returns (bad_amps_perhel, csym_reuse_text, csym_dead_text). The second
+        text marks the partner rows as dead so the color stage skips them: their
+        AMP row is all zeros, and summing colors over zeros is half the work at
+        a process where every row is paired.
         """
         if not csym_pairs:
-            return bad_amps_perhel, ''
+            return bad_amps_perhel, '', ''
         good_set = set(int(h) for h in good_hels)
         opt_index = dict((h, i + 1) for i, h in enumerate(sorted(good_set)))
         bad_set = set(bad_amps_perhel)
@@ -8390,10 +8422,98 @@ C       so this also stays correct for split-order processes.
                 bad_set.add((flip, amp))
             reuse.append((opt_index[rep], opt_index[flip]))
         if not reuse:
-            return bad_amps_perhel, ''
+            return bad_amps_perhel, '', ''
         text = '\n'.join('      TS(%d) = TS(%d)' % (flip, rep)
                          for rep, flip in sorted(reuse)) + '\n'
-        return sorted(bad_set), text
+        dead = '\n'.join('        HRDEAD(%d) = .TRUE.' % flip
+                         for _rep, flip in sorted(reuse)) + '\n'
+        return sorted(bad_set), text, dead
+
+    # How many helicity rows the color stage of the recycled MATRIX gathers at
+    # a time. AMP is helicity major, so the rows of one amplitude are adjacent
+    # and eight complex*16 are one 128 byte cache line: gathering a row on its
+    # own fetches one line per amplitude and uses 16 bytes of it, gathering
+    # eight fetches the same line once and uses all of it.
+    hel_recycling_gather_block = 8
+
+    def _hel_recycling_color_blocks(self, rd):
+        """The color stage of the recycled MATRIX: (declarations, body).
+
+        The amplitudes are gathered out of the helicity-major AMP into
+        contiguous per-row buffers and handed to the SHARED GET_JAMP -- the very
+        routine the standard output calls. The gather is what makes that
+        possible at all: read in place, every amplitude of a row sits NCOMB
+        entries from the next, and the color flows then cost a cache line per
+        amplitude read instead of a cache line per row.
+
+        The color sum goes through the batched BLAS-3 GET_MATRIX_BATCHV (every
+        live helicity is one column of a single right hand side) when BLAS is
+        available and the color matrix is big enough for the call to pay for
+        itself, and through the shared, folded GET_MATRIX one row at a time when
+        it is not. Either way the recycled build stops carrying its own copy of
+        the color sum, so it inherits the folding and everything else the color
+        side gains.
+        """
+        prefix = rd['proc_prefix']
+        nfold = int(rd['ncolorfold'])
+        blas = self.blas_wanted(nfold)
+        folding = getattr(self, 'jamp_folding', None)
+        reps = ([line + 1 for line in folding['representatives']] if folding
+                else list(range(1, int(rd['ncolor']) + 1)))
+        decl = [
+            "      INTEGER NHRBLK",
+            "      PARAMETER (NHRBLK=%d)" % self.hel_recycling_gather_block,
+            "      INTEGER HRL, HRNL",
+            # Dimensioned like the standard GET_JAMP's AMP: when the color flow
+            # definitions are emitted as operand tables, their temporaries are
+            # written past NGRAPHS into this same buffer. One lane per gathered
+            # row, and a lane is contiguous (fortran is column major).
+            "      COMPLEX*16 AMPK(%s,NHRBLK)" % rd['namp_dim'],
+            "      COMPLEX*16 JAMP(NCOLOR)",
+            "      SAVE AMPK"]
+        gather = [
+            "      DO KK = 1, NHRROW, NHRBLK",
+            "        HRNL = MIN(NHRBLK, NHRROW-KK+1)",
+            "        DO I = 1, NGRAPHS",
+            "          DO HRL = 1, HRNL",
+            "            AMPK(I,HRL) = AMP(HRROW(KK+HRL-1),I)",
+            "          ENDDO",
+            "        ENDDO",
+            "        DO HRL = 1, HRNL",
+            "          CALL %sGET_JAMP(AMPK(1,HRL), JAMP)" % prefix]
+        clear = ["      DO K = 1, NCOMB",
+                 "        TS(K) = 0D0",
+                 "      ENDDO"]
+        if not blas:
+            return '\n'.join(decl), '\n'.join(clear + gather + [
+                "          CALL %sGET_MATRIX(JAMP, TS(HRROW(KK+HRL-1)))" % prefix,
+                "        ENDDO",
+                "      ENDDO"])
+        decl += [
+            "      INTEGER NCOLORFOLD",
+            "      PARAMETER (NCOLORFOLD=%d)" % nfold,
+            # The batch wants the color flows helicity major, which is the one
+            # layout the recycled build has for free.
+            "      DOUBLE PRECISION JRB(NCOLORFOLD,NCOMB)",
+            "      DOUBLE PRECISION JIB(NCOLORFOLD,NCOMB)",
+            "      DOUBLE PRECISION TSB(NCOMB)",
+            "      SAVE JRB, JIB, TSB",
+            "      INTEGER COLREPB(NCOLORFOLD), IBH"] + \
+            self.get_int_data_lines("COLREPB", reps, var='IBH')
+        body = '\n'.join(gather + [
+            "          DO IBH = 1, NCOLORFOLD",
+            "            JRB(IBH,KK+HRL-1) = DBLE(JAMP(COLREPB(IBH)))",
+            "            JIB(IBH,KK+HRL-1) = DIMAG(JAMP(COLREPB(IBH)))",
+            "          ENDDO",
+            "        ENDDO",
+            "      ENDDO"] + clear + [
+            "      IF (NHRROW.GT.0) THEN",
+            "        CALL %sGET_MATRIX_BATCHV(JRB,JIB,NHRROW,TSB)" % prefix,
+            "        DO KK = 1, NHRROW",
+            "          TS(HRROW(KK)) = TSB(KK)",
+            "        ENDDO",
+            "      ENDIF"])
+        return '\n'.join(decl), body
 
     # Statements per chunk when the recycled helas block is split out of MATRIX
     # (see HelicityRecycler.split_helas_block). Also the threshold below which
@@ -8473,7 +8593,7 @@ C       so this also stays correct for split-order processes.
 
     def _run_hel_recycle(self, orig_path, driver_path, out_path,
                          good_hels, bad_amps, bad_amps_perhel, gauge,
-                         csym_reuse='', chunk=None):
+                         csym_reuse='', csym_dead='', chunk=None):
         """Run the madevent DAG rewriter to turn matrix_orig.f + template_matrix.f
         into the recycled matrix.f at out_path. good_hels/bad_amps/bad_amps_perhel
         are string lists in the gen_ximprove format; all empty bad_* + good_hels =
@@ -8483,6 +8603,8 @@ C       so this also stays correct for split-order processes.
                                                 bad_amps_perhel, gauge=gauge)
         if csym_reuse:
             recycler.template_dict['csym_reuse'] = csym_reuse
+        if csym_dead:
+            recycler.template_dict['csym_dead'] = csym_dead
         if chunk:
             recycler.chunk_file = chunk['file']
             recycler.chunk_stmts = chunk['stmts']
@@ -8517,6 +8639,16 @@ C       so this also stays correct for split-order processes.
         # Raw storage for the recycled P1N current wavefunction: the split
         # amplitude calls hand TMP to CombineAmp as a type(aloha) scratch.
         rd.setdefault('wavefunctionsize', 18)
+        rd['hr_color_decl'], rd['hr_color_sum'] = \
+            self._hel_recycling_color_blocks(rd)
+        # The recycled color stage needs the per-column batch, which the
+        # standard SMATRIX has no use for -- add it to the copy of the shared
+        # routines that only this output gets. Its NCOMB is the RECYCLED count
+        # (the caller's JRB/JIB are that wide), which only the rewriter knows,
+        # so it goes in as the ${ncomb} slot for the rewriter to fill.
+        if rd.get('blas_routine'):
+            rd['blas_routine'] += self.get_blas_vector_routine(
+                rd['proc_prefix'], int(rd['ncolorfold']), '${ncomb}')
 
         out_path = writer.name
         dirpath = os.path.dirname(out_path)
@@ -8684,13 +8816,14 @@ C       so this also stays correct for split-order processes.
             if not good_hels:
                 continue  # nothing measured -> keep the compute-all version
 
-            bad_amps_perhel, csym_reuse = self._hel_recycling_csym(
+            bad_amps_perhel, csym_reuse, csym_dead = self._hel_recycling_csym(
                 csym_pairs, good_hels, bad_amps_perhel, info['ngraphs'])
 
             self._run_hel_recycle(info['orig_path'], info['driver_path'],
                                   info['out_path'], good_hels, bad_amps,
                                   bad_amps_perhel, info['gauge'],
-                                  csym_reuse=csym_reuse, chunk=info.get('chunk'))
+                                  csym_reuse=csym_reuse, csym_dead=csym_dead,
+                                  chunk=info.get('chunk'))
             logger.info('hel_recycling: %s/%s good helicities, %s dead amplitudes'
                 ', %s C-parity pairs reused in %s', len(good_hels),
                 info['ncomb'], len(bad_amps),
