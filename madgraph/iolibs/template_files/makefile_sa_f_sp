@@ -30,12 +30,19 @@ $(PROG): $(LIBS) $(PROCESS) $(CHECK_SA) makefile
 $(PROG_SPLITORDERS): $(PROCESS) $(CHECK_SA_SPLITORDERS) makefile $(LIBS)
 	$(FC) $(FFLAGS) -o $(PROG) $(PROCESS) $(CHECK_SA_SPLITORDERS) $(LINKLIBS)
 
-# The helicity-recycled amplitude block is CALL-bound: its work happens inside
-# libdhelas (already built at -O2), so optimizing the call sequencing itself
-# buys nothing at runtime while costing minutes of compile time on a dense
-# process. Build it at -O0 (the last -O on the command line wins).
+# The recycled amplitude block gets its own flag so that the compile can be
+# bought back when it is what has to give. It follows the global flag by
+# default (AMP_FLAG is empty in make_opts) rather than being pinned at -O0:
+# pinning looked free only because the standalone default carries no -O at all,
+# and it is not free once the global flag is raised. g g > 5g, steady state per
+# phase space point at GLOBAL_FLAG=-O2: 19.0 ms with this file at -O0 against
+# 15.0 ms with it at -O2, i.e. the pin costs 27%. Unlike the un-recycled
+# amplitudes, this block is not a flat sequence of external CALLs -- split_amps
+# has replaced it with P1N_* plus CombineAmp array constructors, which the
+# optimizer does have something to do on. Same conclusion, and same default, as
+# AMP_FLAG on the madevent side.
 matrix_getamp.o: matrix_getamp.f
-	$(FC) $(FFLAGS) -O0 -c -o $@ $<
+	$(FC) $(FFLAGS) $(AMP_FLAG) -c -o $@ $<
 
 driver.f: nexternal.inc pmass.inc ngraphs.inc coupl.inc
 
