@@ -96,6 +96,10 @@ default_compiler= {'fortran': 'gfortran',
 # Overridable at output time with 'output madevent --amp_chunk_size=N' and, for
 # the helicity-recycled copy, with the 'amp_chunk_size' run_card parameter.
 # 0 (or a negative value) disables the split entirely.
+# 2000 was measured on the recycled matrix element of g g > 5g (14 MB, 386k
+# lines): serial compile 158 s at 500, 140 s at 1000, 111 s at 2000, 114 s at
+# 10000, so the curve is flat past 2000 while the peak memory of one file keeps
+# growing (70 / 115 / 204 / 779 MB).
 AMP_CHUNK_SIZE_DEFAULT = 2000
 
 

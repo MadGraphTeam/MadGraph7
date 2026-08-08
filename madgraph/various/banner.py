@@ -4607,7 +4607,7 @@ class RunCardLO(RunCard):
                        fct_mod=(self.make_clean, ('Source/DHELAS'),{}))
         self.add_param('matrix_flag', '', include=False, hidden=True, comment='fortran compilation flag	for the	matrix-element files, suggestion -O3',
                        fct_mod=(self.make_Ptouch, ('matrix'),{}))
-        self.add_param('amp_flag', '-O0', include=False, hidden=True, comment='fortran compilation flag for the amplitude (HELAS call) files split out of the matrix elements; it lands after matrix_flag. The optimiser has next to nothing to do on a flat sequence of external calls but is most of the compile time there, so -O0 is the default; the JAMP and colour blocks keep matrix_flag',
+        self.add_param('amp_flag', '', include=False, hidden=True, comment='fortran compilation flag for the amplitude (HELAS call) files split out of the matrix elements; it lands after matrix_flag. -O0 buys about 1.5x on their compile but costs 19%% of the run time at g g > t t~ 3g and 61%% at g g > 5g -- the helicity-recycled sequence is not the flat run of external calls the un-recycled one is -- so it is only worth setting when the compile itself is the problem',
                        fct_mod=(self.make_Ptouch, ('matrix'),{}))
         self.add_param('amp_chunk_size', 2000, include=False, hidden=True, comment='number of fortran statements per amplitude file when the helicity-recycled matrix element is split up; 0 keeps the unrolled call sequence inline in matrix<i>_optim.f')
         self.add_param('vector_size', 1, include='vector.inc', hidden=True, comment='lockstep size for parralelism run', 

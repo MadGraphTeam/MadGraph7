@@ -104,11 +104,11 @@ $(LIBDIR)libgammaUPC.$(libext):
 # Add source so that the compiler finds the DiscreteSampler module.
 $(MATRIX_CORE): %.o: %.f
 	$(FC) $(FFLAGS) $(MATRIX_FLAG) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
-# The amplitude chunks are a flat sequence of external CALLs, which the
-# optimiser has essentially nothing to do on (measured: 1.00-1.08x at -O2 over
-# -O0), while they are all of the compile time. AMP_FLAG lands after FFLAGS, so
-# the -O0 it defaults to wins over the GLOBAL_FLAG; the JAMP and colour blocks,
-# which are what -O does buy something on, stay in the matrix element itself.
+# The amplitude chunks carry their own flag, which lands after FFLAGS and so
+# wins over the GLOBAL_FLAG. It is empty by default: splitting the sequence up
+# is what makes it compilable, and dropping it to -O0 on top buys about 1.5x
+# more on the compile but costs 19% of the run time at g g > t t~ 3g and 61% at
+# g g > 5g. Set amp_flag in the run_card when the compile is the problem.
 $(AMPCHUNK): %.o: %.f
 	$(FC) $(FFLAGS) $(MATRIX_FLAG) $(AMP_FLAG) -c $< -I../../Source/ -I../../Source/PDF/gammaUPC
 %.o: %.f

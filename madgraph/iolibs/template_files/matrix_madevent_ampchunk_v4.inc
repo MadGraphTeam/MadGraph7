@@ -3,8 +3,9 @@ C
 %(process_lines)s
 C
 C     One slice of the HELAS call sequence of MATRIX%(proc_id)s, in a file
-C     of its own so that it compiles apart from -- and at a lower
-C     optimisation level than -- the JAMP and colour blocks.
+C     of its own: as one basic block inside one routine the sequence is
+C     what makes a high-multiplicity matrix element uncompilable, and
+C     split up it can also carry its own optimisation flag (AMP_FLAG).
 C     The slices run in order and share W and AMP by reference: a
 C     wavefunction slot is reused many times over the sequence, so a
 C     slot number does not identify a wavefunction and the whole

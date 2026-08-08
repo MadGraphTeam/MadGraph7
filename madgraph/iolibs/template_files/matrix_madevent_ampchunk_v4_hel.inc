@@ -3,10 +3,10 @@ C
 %(process_lines)s
 C
 C     One slice of the helicity-recycled HELAS call sequence of
-C     MATRIX%(proc_id)s, in a file of its own so that it compiles apart
-C     from -- and at a lower optimisation level than -- the JAMP and
-C     colour blocks. That unrolled sequence is where essentially all of
-C     the recycled matrix element lives.
+C     MATRIX%(proc_id)s, in a file of its own. That unrolled sequence is
+C     essentially the whole recycled matrix element, and as one basic
+C     block inside one routine it is what makes it uncompilable; split up
+C     it can also carry its own optimisation flag (AMP_FLAG).
 C     The slices run in order and share W, TMP and AMP by reference:
 C     hel_recycle reuses a wavefunction slot many times over the
 C     sequence (so a slot number does not identify a wavefunction), and
