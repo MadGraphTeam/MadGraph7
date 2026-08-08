@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes
+import io
 import os
 import signal
 import subprocess
@@ -291,9 +292,10 @@ class FakeClock:
 
 
 class FakeProcess:
-    def __init__(self, pid: int = 100) -> None:
+    def __init__(self, pid: int = 100, *, stderr: bytes | None = None) -> None:
         self.pid = pid
         self.returncode: int | None = None
+        self.stderr = None if stderr is None else io.BytesIO(stderr)
 
     def poll(self) -> int | None:
         return self.returncode
@@ -1282,39 +1284,17 @@ def test_supervisor_terminates_when_free_disk_reserve_is_crossed(
     assert signals == [signal.SIGTERM]
 
 
-@pytest.mark.parametrize(
-    ("script", "expected_returncode", "expected_signal"),
-    (
-        ("raise SystemExit(23)", 23, None),
-        (
-            "import os, signal; os.kill(os.getpid(), signal.SIGSEGV)",
-            -signal.SIGSEGV,
-            "SIGSEGV",
-        ),
-        (
-            "import os, signal; os.kill(os.getpid(), signal.SIGKILL)",
-            -signal.SIGKILL,
-            "SIGKILL",
-        ),
-    ),
-)
-def test_supervisor_preserves_worker_exit_and_decodes_signals(
-    script: str,
-    expected_returncode: int,
-    expected_signal: str | None,
-) -> None:
+def test_supervisor_preserves_nonzero_worker_exit() -> None:
     result = supervise_worker(
-        (sys.executable, "-c", script),
+        (sys.executable, "-c", "raise SystemExit(23)"),
         interval_seconds=0.01,
         capture_stderr=True,
     )
 
     assert result.reason == "worker_exit"
-    assert result.returncode == expected_returncode
-    assert result.signal_name == expected_signal
-    assert result.signal_number == (
-        None if expected_returncode >= 0 else -expected_returncode
-    )
+    assert result.returncode == 23
+    assert result.signal_name is None
+    assert result.signal_number is None
     assert result.pid is not None
     assert result.pid in result.member_pids
     assert result.started_at_utc is not None
@@ -1322,12 +1302,43 @@ def test_supervisor_preserves_worker_exit_and_decodes_signals(
     assert result.supervisor_stderr is None
 
 
+@pytest.mark.parametrize(
+    ("returncode", "expected_signal"),
+    (
+        (-signal.SIGSEGV, "SIGSEGV"),
+        (-signal.SIGKILL, "SIGKILL"),
+    ),
+)
+def test_supervisor_decodes_worker_signal_exit_without_crashing_a_child(
+    returncode: int,
+    expected_signal: str,
+) -> None:
+    process = FakeProcess()
+    process.returncode = returncode
+
+    result = supervise_worker(
+        ("worker",),
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+    )
+
+    assert result.reason == "worker_exit"
+    assert result.returncode == returncode
+    assert result.signal_name == expected_signal
+    assert result.signal_number == -returncode
+    assert result.pid == process.pid
+    assert result.member_pids == (process.pid,)
+
+
 def test_supervisor_retains_bounded_native_abort_stderr() -> None:
     marker = "native evaluator abort: synthetic fault"
-    script = f"import os; os.write(2, ({marker!r} + '\\n').encode()); os.abort()"
+    process = FakeProcess(stderr=f"{marker}\n".encode())
+    process.returncode = -signal.SIGABRT
+
     result = supervise_worker(
-        (sys.executable, "-c", script),
-        interval_seconds=0.01,
+        ("worker",),
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
         capture_stderr=True,
         stderr_limit_bytes=32,
     )
