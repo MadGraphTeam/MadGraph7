@@ -7950,7 +7950,16 @@ C       so this also stays correct for split-order processes.
                 "          ALLOCATE(JIB(%d,NCOMB))" % nfold,
                 "        ENDIF",
                 "        NBHEL = 0",
-                "        DO IHEL=1,NCOMB"] + blas_gate + [
+                "        DO IHEL=1,NCOMB",
+                # The batch has to honour the C-parity de-duplication the
+                # scalar loop below applies, or it evaluates every good
+                # helicity where that loop evaluates one per mirror pair --
+                # and GET_AMP, not the color sum, is what that costs.
+                # De-duplication is all-or-nothing per flavor, so every kept
+                # row is doubled by the same factor and one multiply on the
+                # total is exact (no per-column scaling, no sqrt(2)).
+                "          IF (DEDUP.AND.IHEL.GT.FLIP(IHEL)) CYCLE"] +
+                blas_gate + [
                 "            NBHEL = NBHEL + 1"] + blas_amp + [
                 "            CALL %sGET_JAMP(AMPB,JAMPB)" % prefix] +
                 flow_lines + [
@@ -7962,6 +7971,7 @@ C       so this also stays correct for split-order processes.
                 "        ENDDO",
                 "        IF (NBHEL.GT.0) THEN",
                 "          CALL %sGET_MATRIX_BATCH(JRB,JIB,NBHEL,ANS)" % prefix,
+                "          IF (DEDUP) ANS = ANS + ANS",
                 "        ENDIF",
                 "        BLASDONE = .TRUE.",
                 "      ENDIF"])
@@ -10308,7 +10318,12 @@ C       with every entry counted once.
             "    DOUBLE PRECISION BLASB(NCOMB), BLASP(NCOMB)",
             # BLAS_COLOR_SUM itself comes with run.inc, which SMATRIX has
             "    INTEGER BLASIDX(NCOMB), BLASNB, BLASGATE, IBH"])
-        select = shape['select'] % replace_dict
+        # The sweep must skip whatever the loop reading BLASB back will skip,
+        # or it evaluates a MATRIX call per C-parity partner for a BLASB entry
+        # nothing ever reads. The loop keeps the doubling, so only the wasted
+        # work goes away here.
+        select = '.NOT.(DEDUP.AND.IBH.GT.FLIP(IBH)) .AND. (%s)' \
+            % (shape['select'] % replace_dict)
         # One sweep over the helicities worth computing fills BLASB, either
         # helicity by helicity as before or, once the good helicities have
         # settled, as one batch; the loop below then only reads it back, so
