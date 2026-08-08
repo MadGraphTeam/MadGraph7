@@ -9648,6 +9648,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         chunk_size = self.opt.get('amp_chunk_size', AMP_CHUNK_SIZE_DEFAULT)
         calls = replace_dict['helas_calls'].split('\n')
+        # a re-output into the same directory (output -noclean) with a bigger
+        # chunk size, or none, must not leave live orphans behind: the makefile
+        # globs these and would compile and link whatever it finds
+        for stale in glob.glob('matrix%s_origamp*.f' % proc_id):
+            os.remove(stale)
         if chunk_size <= 0 or len(calls) <= chunk_size:
             return 0
 

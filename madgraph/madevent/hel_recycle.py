@@ -148,12 +148,21 @@ def splice_amp_chunks(path):
 
     directory = os.path.dirname(path) or '.'
     base = os.path.basename(path)[:-len('_orig.f')]
+    skipping = False
     with open(path) as input_file:
         for line in input_file:
+            if skipping:
+                # the call is long enough to be wrapped as soon as the flavor
+                # masks are threaded through it; its continuations must go with
+                # it, or they would be folded onto the last spliced statement
+                if _CHUNK_CONTINUATION_RE.match(line):
+                    continue
+                skipping = False
             match = AMP_CHUNK_CALL_RE.match(line)
             if not match:
                 yield line
                 continue
+            skipping = True
             chunk = os.path.join(
                 directory, '%s_origamp%s.f' % (base, match.group(1)))
             for chunk_line in read_amp_chunk_body(chunk):
