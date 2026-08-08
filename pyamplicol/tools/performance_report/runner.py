@@ -1009,11 +1009,13 @@ def _on_the_fly_compact_context(
             "on-the-fly report runtime compact selector context is invalid"
         )
     process_id = raw.get("process_id")
+    process_expression = raw.get("process_expression")
     selected_color_ids = raw.get("selected_color_ids")
     if (
         not isinstance(process_id, str)
         or not process_id
-        or raw.get("process_expression") != cell.process
+        or not isinstance(process_expression, str)
+        or process_expression.casefold() != cell.process.casefold()
         or raw.get("color_accuracy") != cell.measurement.accuracy.value
         or not isinstance(selected_color_ids, Sequence)
         or isinstance(selected_color_ids, (str, bytes))

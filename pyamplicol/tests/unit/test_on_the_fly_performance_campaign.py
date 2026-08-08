@@ -328,6 +328,8 @@ def test_otf_contracted_runtime_uses_compact_context_without_flow_selectors(
         and cell.workload is Workload.CONTRACTED
     )
 
+    process_expression = cell.process.upper()
+
     class Backend:
         @staticmethod
         def _on_the_fly_benchmark_context(
@@ -336,7 +338,7 @@ def test_otf_contracted_runtime_uses_compact_context_without_flow_selectors(
             assert requested == ()
             return {
                 "process_id": "contracted-otf",
-                "process_expression": cell.process,
+                "process_expression": process_expression,
                 "color_accuracy": accuracy.value,
                 "helicity_count": 4,
                 "color_count": 1,
@@ -345,6 +347,11 @@ def test_otf_contracted_runtime_uses_compact_context_without_flow_selectors(
 
     runtime = SimpleNamespace(execution_mode="on-the-fly", _backend=Backend())
     validate_runtime_contract(cell, runtime)
+
+    process_expression = "g g > g"
+    with pytest.raises(RunnerError, match="compact selector identity"):
+        validate_runtime_contract(cell, runtime)
+    process_expression = cell.process.upper()
 
     class DensePhysicsTrap:
         @property
