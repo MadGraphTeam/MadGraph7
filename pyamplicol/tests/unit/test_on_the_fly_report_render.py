@@ -279,6 +279,21 @@ def test_otf_contracted_best_mode_winner_is_in_row_mix_and_legend(
     assert r"\bestmodemix{r:0|c:0|e:0|o:1}" in tex
     assert "Summary mode counts use r|c|e|o" in tex
     assert "contracted cold-start contract" in tex
+    generation_summary = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r"\multicolumn{3}{@{}l}{\textbf{summary: generation}}")
+    )
+    assert generation_summary.count(
+        r"\matrixsummaryratio{ReportGreen}{0.500}"
+    ) == 4
+    assert (
+        generation_summary.count(
+            r"\matrixsummaryratiohighlight{ReportGreen}{0.500}"
+        )
+        == 1
+    )
+    assert "0.400" not in generation_summary
 
 
 def test_otf_amplicol_links_are_metric_and_workload_specific(
@@ -370,8 +385,16 @@ def test_otf_amplicol_links_are_metric_and_workload_specific(
         for line in best_lines
         if line.startswith(r"\multicolumn{3}{@{}l}{\textbf{summary: generation}}")
     )
-    assert r"\matrixsummaryratio{ReportGreen}{0.400}" in best_generation_summary
-    assert "0.500" not in best_generation_summary
+    assert best_generation_summary.count(
+        r"\matrixsummaryratio{ReportGreen}{0.500}"
+    ) == 4
+    assert (
+        best_generation_summary.count(
+            r"\matrixsummaryratiohighlight{ReportGreen}{0.500}"
+        )
+        == 1
+    )
+    assert "0.400" not in best_generation_summary
 
 
 def test_validation_summary_names_otf_recurrence_cross_mode() -> None:

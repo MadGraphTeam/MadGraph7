@@ -898,7 +898,7 @@ def test_canonical_n4_plan_keeps_bounded_acyclic_dependency_depth(
     )
     by_id = {item.cell.cell_id: item for item in planned}
 
-    assert len(planned) == len(by_id) == 1026
+    assert len(planned) == len(by_id) == 1042
     assert max(item.rank for item in planned) == 4
     for item in planned:
         dependency_ids = set(item.comparison_peer_ids)

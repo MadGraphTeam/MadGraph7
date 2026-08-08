@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import signal
 import subprocess
 import sys
@@ -16,6 +17,8 @@ from tools.performance_report.phase_state import (
     WorkerPhaseReporter,
 )
 from tools.performance_report.resources import (
+    DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES,
+    DEFAULT_MINIMUM_FREE_DISK_BYTES,
     DEFAULT_SAMPLE_INTERVAL_SECONDS,
     PROCESS_TREE_MEMORY_METRIC_ABI,
     ProcessRecord,
@@ -62,9 +65,7 @@ def test_linux_proc_parsers_and_snapshot_include_cpu_time(tmp_path: Path) -> Non
 
 
 def test_linux_process_identity_uses_one_stat_snapshot() -> None:
-    stat = (
-        "42 (worker (phase 2)) S 1 77 77 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 12345"
-    )
+    stat = "42 (worker (phase 2)) S 1 77 77 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 12345"
 
     assert _parse_linux_process_identity(stat) == _ProcessIdentity(
         birth_token=12345,
@@ -1126,6 +1127,8 @@ def test_supervisor_enforces_cap_on_first_recovered_probe_sample() -> None:
 
 def test_defaults_and_invalid_limits() -> None:
     assert DEFAULT_SAMPLE_INTERVAL_SECONDS == 1.0
+    assert DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES == 64 * 1024 * 1024
+    assert DEFAULT_MINIMUM_FREE_DISK_BYTES == 5 * 1024 * 1024 * 1024
     with pytest.raises(ValueError, match="timeout_seconds"):
         supervise_worker(("worker",), timeout_seconds=0)
     with pytest.raises(ValueError, match="max_rss_bytes"):
@@ -1141,6 +1144,142 @@ def test_defaults_and_invalid_limits() -> None:
         )
     with pytest.raises(ValueError, match="stderr_limit_bytes"):
         supervise_worker(("worker",), stderr_limit_bytes=0)
+    with pytest.raises(ValueError, match="output file limits"):
+        supervise_worker(("worker",), output_file_limits={Path("log"): 0})
+    with pytest.raises(ValueError, match="minimum_free_disk_bytes"):
+        supervise_worker(("worker",), minimum_free_disk_bytes=0)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
+def test_supervisor_terminates_runaway_append_at_output_cap(tmp_path: Path) -> None:
+    output = tmp_path / "runaway.log"
+    script = (
+        "import time\n"
+        "from pathlib import Path\n"
+        f"stream = Path({str(output)!r}).open('ab', buffering=0)\n"
+        "block = b'x' * 4096\n"
+        "while True:\n"
+        "    stream.write(block)\n"
+        "    time.sleep(0.0001)\n"
+    )
+
+    result = supervise_worker(
+        (sys.executable, "-c", script),
+        output_file_limits={output: 32 * 1024},
+        interval_seconds=1.0,
+        termination_grace_seconds=1.0,
+    )
+
+    assert result.reason == "output_limit"
+    assert result.returncode < 0
+    assert result.output_limit_path == str(output.resolve())
+    assert result.output_limit_bytes == 32 * 1024
+    assert result.observed_output_bytes is not None
+    assert result.observed_output_bytes > result.output_limit_bytes
+    # The safety reason bypasses the ordinary one-second teardown grace.
+    assert result.teardown_seconds < 1.0
+    assert output.stat().st_size < 8 * 1024 * 1024
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "expected_reason"),
+    ((0, "output_limit"), (23, "worker_exit")),
+)
+def test_exit_boundary_probes_output_without_hiding_worker_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exit_code: int,
+    expected_reason: str,
+) -> None:
+    output = tmp_path / "fast-writer.log"
+    output.write_bytes(b"x" * 33)
+    process = FakeProcess()
+    process.returncode = exit_code
+    # Keep the background guard dormant so this exercises the synchronous
+    # final probe after poll observes that the worker has already exited.
+    monkeypatch.setattr(
+        "tools.performance_report.resources.DEFAULT_STORAGE_SAFETY_INTERVAL_SECONDS",
+        60.0,
+    )
+
+    result = supervise_worker(
+        ("worker",),
+        output_file_limits={output: 32},
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        popen_factory=lambda *_args, **_kwargs: process,
+    )
+
+    assert result.reason == expected_reason
+    assert result.returncode == exit_code
+    assert result.output_limit_path == str(output.resolve())
+    assert result.output_limit_bytes == 32
+    assert result.observed_output_bytes == 33
+
+
+def test_storage_safety_precedes_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "cancel-race.log"
+    output.write_bytes(b"x" * 33)
+    process = FakeProcess()
+    signals: list[int] = []
+    monkeypatch.setattr(
+        "tools.performance_report.resources.DEFAULT_STORAGE_SAFETY_INTERVAL_SECONDS",
+        60.0,
+    )
+
+    def signal_tree(
+        _pgid: int | None,
+        _members: object,
+        selected_signal: int,
+    ) -> None:
+        signals.append(selected_signal)
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        output_file_limits={output: 32},
+        cancellation_requested=lambda: True,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "output_limit"
+    assert result.returncode == -signal.SIGTERM
+    assert signals == [signal.SIGTERM]
+
+
+def test_supervisor_terminates_when_free_disk_reserve_is_crossed(
+    tmp_path: Path,
+) -> None:
+    process = FakeProcess()
+    signals: list[int] = []
+
+    def signal_tree(
+        _pgid: int | None,
+        _members: object,
+        selected_signal: int,
+    ) -> None:
+        signals.append(selected_signal)
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        minimum_free_disk_bytes=10_000,
+        disk_probe_path=tmp_path,
+        disk_free_probe=lambda _path: 9_999,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        sleeper=lambda _duration: None,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "disk_space_limit"
+    assert result.minimum_free_disk_bytes == 10_000
+    assert result.observed_free_disk_bytes == 9_999
+    assert signals == [signal.SIGTERM]
 
 
 @pytest.mark.parametrize(
@@ -1185,11 +1324,7 @@ def test_supervisor_preserves_worker_exit_and_decodes_signals(
 
 def test_supervisor_retains_bounded_native_abort_stderr() -> None:
     marker = "native evaluator abort: synthetic fault"
-    script = (
-        "import os; "
-        f"os.write(2, ({marker!r} + '\\n').encode()); "
-        "os.abort()"
-    )
+    script = f"import os; os.write(2, ({marker!r} + '\\n').encode()); os.abort()"
     result = supervise_worker(
         (sys.executable, "-c", script),
         interval_seconds=0.01,

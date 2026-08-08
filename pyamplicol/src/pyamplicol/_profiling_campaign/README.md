@@ -160,11 +160,19 @@ terminal state participates. The retry flags conflict with `--force-refresh`.
 A retry filter with no matches exits successfully without replacing the
 existing campaign summary.
 
-By default, every heavy attempt payload is retained. Pass
-`run --cleanup-artifacts` to archive obsolete sealed attempts, retain their
-compact result, log, progress, and timeline diagnostics, and remove only their
-heavy evaluator payloads. Current artifacts and artifacts borrowed by an
-equivalent current remain protected.
+The default lifecycle is compact. Each completed attempt retains its sealed
+result and current pointer, provenance, commands, progress/timeline evidence,
+bounded log tails, and reusable outputs needed by currents or dependencies.
+Disposable copied AmpliCol, MadGraph, and build workspaces are removed after
+publication; cross-revision reuse relies on the sealed results, not those
+workspaces. Pass `run --retain-workspaces` only when full debug workspaces are
+needed. `--cleanup-artifacts` remains a compatibility spelling for the default
+compact policy.
+
+Two storage guards apply independently of process-tree memory supervision:
+`--attempt-output-limit` defaults to 67,108,864 bytes (64 MiB) per watched
+output/log file, and `--minimum-free-disk` defaults to 5,368,709,120 bytes
+(5 GiB) on the campaign artifact volume. Both options accept byte counts.
 
 Create independent campaigns with separate `profiling-campaign copy` commands.
 Every result artifact, worker lease, lock, and reproduction file remains below

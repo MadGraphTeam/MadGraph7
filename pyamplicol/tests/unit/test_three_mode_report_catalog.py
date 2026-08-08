@@ -336,18 +336,33 @@ def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> 
     )
 
 
-def test_z_catalog_adds_recurrence_and_corrects_eager_label() -> None:
+def test_z_catalog_includes_recurrence_eager_and_on_the_fly() -> None:
     variants = {variant.key: variant for variant in REPORT_CATALOG.z_variants}
 
     assert variants["eager_jit_o2"].label == "eager-DAG JIT O2"
     assert variants["recurrence_jit_o2"].label == "recurrence JIT O2"
     assert variants["recurrence_jit_o2"].jit_optimization_level == 2
+    assert variants["on_the_fly_jit_o2"].label == "on-the-fly JIT O2"
+    assert (
+        variants["on_the_fly_jit_o2"].execution_mode
+        is ExecutionMode.ON_THE_FLY
+    )
     assert (
         len(
             [
                 cell
                 for cell in REPORT_CATALOG.z_cells()
                 if cell.variant == "recurrence_jit_o2" and cell.n_final <= 4
+            ]
+        )
+        == 16
+    )
+    assert (
+        len(
+            [
+                cell
+                for cell in REPORT_CATALOG.z_cells()
+                if cell.variant == "on_the_fly_jit_o2" and cell.n_final <= 4
             ]
         )
         == 16
@@ -574,7 +589,7 @@ def test_contracted_n6_catalog_impact_is_scoped_to_multi_quark_families() -> Non
         and cell.measurement.accuracy is not Accuracy.LC
     )
 
-    assert len(REPORT_CATALOG.measurement_cells()) == 2162
+    assert len(REPORT_CATALOG.measurement_cells()) == 2198
     assert len(REPORT_CATALOG.matrix_cells()) == 1572
     assert len(REPORT_CATALOG.reference_cells()) == 364
     assert len(cells) == 48

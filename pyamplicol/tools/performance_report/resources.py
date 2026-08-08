@@ -7,6 +7,7 @@ import ctypes
 import math
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import threading
@@ -60,6 +61,9 @@ GENERATION_PHASE_EVIDENCE_ABI = "pyamplicol-report-generation-phase-evidence-v1"
 PROCESS_TREE_MEMORY_METRIC_ABI = "pyamplicol-process-tree-memory-metric-v1"
 MAX_CONSECUTIVE_MEMORY_PROBE_FAILURES = 3
 DEFAULT_SUPERVISOR_STDERR_LIMIT_BYTES = 64 * 1024
+DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES = 64 * 1024 * 1024
+DEFAULT_MINIMUM_FREE_DISK_BYTES = 5 * 1024 * 1024 * 1024
+DEFAULT_STORAGE_SAFETY_INTERVAL_SECONDS = 0.05
 _WORKER_IMPORT_ENVIRONMENT = frozenset(
     {
         "VIRTUAL_ENV",
@@ -130,6 +134,10 @@ TerminationReason = Literal[
     "validation_timeout",
     "memory_limit",
     "memory_probe_error",
+    "output_limit",
+    "output_probe_error",
+    "disk_space_limit",
+    "disk_probe_error",
     "phase_state_error",
 ]
 
@@ -191,6 +199,11 @@ class SupervisedResult:
     generation_phase: GenerationPhaseEvidence | None = None
     memory_limit_bytes: int | None = None
     memory_limit_reason: str | None = None
+    output_limit_path: str | None = None
+    output_limit_bytes: int | None = None
+    observed_output_bytes: int | None = None
+    minimum_free_disk_bytes: int | None = None
+    observed_free_disk_bytes: int | None = None
     pid: int | None = None
     member_pids: tuple[int, ...] = ()
     signal_number: int | None = None
@@ -269,6 +282,11 @@ Sleeper = Callable[[float], None]
 TreeSignaler = Callable[[int | None, Collection[int], int], None]
 ObservationCallback = Callable[[WorkerObservation], None]
 CancellationCheck = Callable[[], bool]
+DiskFreeProbe = Callable[[Path], int]
+
+
+def _disk_free_bytes(path: Path) -> int:
+    return int(shutil.disk_usage(path).free)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1195,6 +1213,9 @@ def supervise_worker(
     generation_guard_includes_preparation: bool = False,
     phase_channel: WorkerPhaseChannel | None = None,
     max_rss_bytes: int | None = None,
+    output_file_limits: Mapping[Path, int] | None = None,
+    minimum_free_disk_bytes: int | None = None,
+    disk_probe_path: Path | None = None,
     interval_seconds: float = DEFAULT_SAMPLE_INTERVAL_SECONDS,
     termination_grace_seconds: float = DEFAULT_TERMINATION_GRACE_SECONDS,
     phase_state_startup_grace_seconds: float = (
@@ -1214,8 +1235,9 @@ def supervise_worker(
     capture_stderr: bool = False,
     stderr_limit_bytes: int = DEFAULT_SUPERVISOR_STDERR_LIMIT_BYTES,
     process_identity_probe: ProcessIdentityProbe = _process_identity,
+    disk_free_probe: DiskFreeProbe = _disk_free_bytes,
 ) -> SupervisedResult:
-    """Run a worker and enforce wall, stage, and memory limits.
+    """Run a worker and enforce wall, stage, memory, and disk-safety limits.
 
     ``generation_timeout_seconds`` requires an authenticated phase channel.
     Missing, malformed, replayed, or incomplete phase evidence terminates the
@@ -1252,6 +1274,39 @@ def supervise_worker(
         raise ValueError("stage limits require an authenticated phase_channel")
     if max_rss_bytes is not None and max_rss_bytes <= 0:
         raise ValueError("max_rss_bytes must be positive when specified")
+    normalized_output_limits: tuple[tuple[Path, int], ...] = ()
+    if output_file_limits:
+        observed_limits: list[tuple[Path, int]] = []
+        for raw_path, raw_limit in output_file_limits.items():
+            if (
+                isinstance(raw_limit, bool)
+                or not isinstance(raw_limit, int)
+                or raw_limit <= 0
+            ):
+                raise ValueError("output file limits must be positive")
+            observed_limits.append(
+                (
+                    Path(os.path.abspath(Path(raw_path).expanduser())),
+                    int(raw_limit),
+                )
+            )
+        normalized_output_limits = tuple(
+            sorted(observed_limits, key=lambda item: os.fspath(item[0]))
+        )
+    if minimum_free_disk_bytes is not None and (
+        isinstance(minimum_free_disk_bytes, bool)
+        or not isinstance(minimum_free_disk_bytes, int)
+        or minimum_free_disk_bytes <= 0
+    ):
+        raise ValueError(
+            "minimum_free_disk_bytes must be a positive integer when specified"
+        )
+    if minimum_free_disk_bytes is not None and disk_probe_path is None:
+        disk_probe_path = working_directory or Path.cwd()
+    if disk_probe_path is not None:
+        disk_probe_path = disk_probe_path.expanduser().resolve(strict=True)
+        if not disk_probe_path.is_dir():
+            raise ValueError("disk_probe_path must be a directory")
     if interval_seconds <= 0:
         raise ValueError("interval_seconds must be positive")
     if termination_grace_seconds < 0:
@@ -1297,9 +1352,8 @@ def supervise_worker(
     if capture_stderr:
         popen_arguments["stderr"] = subprocess.PIPE
     process = popen_factory(tuple(command), **popen_arguments)
-    if (
-        process_identity_probe is _process_identity
-        and not isinstance(process, subprocess.Popen)
+    if process_identity_probe is _process_identity and not isinstance(
+        process, subprocess.Popen
     ):
         # Injected protocol fakes have no relationship to host PIDs. Focused
         # teardown tests opt in to an injected identity probe explicitly.
@@ -1330,6 +1384,20 @@ def supervise_worker(
     phase_state: WorkerPhaseState | None = None
     phase_error: str | None = None
     memory_limit_reason: str | None = None
+    output_limit_path: str | None = None
+    output_limit_bytes: int | None = None
+    observed_output_bytes: int | None = None
+    observed_free_disk_bytes: int | None = None
+    storage_stop = threading.Event()
+    storage_wakeup = threading.Event()
+    storage_lock = threading.Lock()
+    storage_violation: tuple[
+        TerminationReason,
+        str | None,
+        int | None,
+        int | None,
+        int | None,
+    ] | None = None
     consecutive_memory_probe_failures = 0
     pending_memory_probe_reason: str | None = None
     tree_termination_requested = False
@@ -1350,11 +1418,26 @@ def supervise_worker(
             return
         reason = selected_reason
         tree_termination_requested = True
+        # Once output or free-disk containment has fired, an uncooperative
+        # writer must not receive another multi-second window in which to fill
+        # the host volume.  The process still receives SIGTERM first, followed
+        # immediately by SIGKILL when it does not exit.
+        grace_seconds = (
+            0.0
+            if selected_reason
+            in {
+                "output_limit",
+                "output_probe_error",
+                "disk_space_limit",
+                "disk_probe_error",
+            }
+            else termination_grace_seconds
+        )
         teardown = _terminate_worker(
             process,
             monitor=monitor,
             process_identities=observed_process_identities,
-            grace_seconds=termination_grace_seconds,
+            grace_seconds=grace_seconds,
             signaler=signaler,
             clock=clock,
             sleeper=sleeper,
@@ -1364,6 +1447,137 @@ def supervise_worker(
         returncode = teardown.returncode
         teardown_escalated = teardown.escalated
         teardown_seconds = teardown.elapsed_seconds
+
+    def probe_storage_safety() -> tuple[
+        TerminationReason,
+        str | None,
+        int | None,
+        int | None,
+        int | None,
+    ] | None:
+        nonlocal observed_free_disk_bytes
+        for output_path, configured_limit in normalized_output_limits:
+            try:
+                output_size = output_path.stat().st_size
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return (
+                    "output_probe_error",
+                    os.fspath(output_path),
+                    configured_limit,
+                    None,
+                    None,
+                )
+            if output_size > configured_limit:
+                return (
+                    "output_limit",
+                    os.fspath(output_path),
+                    configured_limit,
+                    output_size,
+                    None,
+                )
+        if minimum_free_disk_bytes is None:
+            return None
+        assert disk_probe_path is not None
+        try:
+            observed_free_disk_bytes = disk_free_probe(disk_probe_path)
+            if (
+                isinstance(observed_free_disk_bytes, bool)
+                or not isinstance(observed_free_disk_bytes, int)
+                or observed_free_disk_bytes < 0
+            ):
+                raise ValueError("free-disk probe returned an invalid value")
+        except (OSError, ValueError, OverflowError):
+            return ("disk_probe_error", None, None, None, None)
+        if observed_free_disk_bytes < minimum_free_disk_bytes:
+            return (
+                "disk_space_limit",
+                None,
+                None,
+                None,
+                observed_free_disk_bytes,
+            )
+        return None
+
+    def record_storage_violation(
+        violation: tuple[
+            TerminationReason,
+            str | None,
+            int | None,
+            int | None,
+            int | None,
+        ],
+    ) -> None:
+        nonlocal storage_violation
+        with storage_lock:
+            if storage_violation is None:
+                storage_violation = violation
+        storage_wakeup.set()
+
+    def pending_storage_violation() -> tuple[
+        TerminationReason,
+        str | None,
+        int | None,
+        int | None,
+        int | None,
+    ] | None:
+        with storage_lock:
+            return storage_violation
+
+    def capture_storage_violation(
+        violation: tuple[
+            TerminationReason,
+            str | None,
+            int | None,
+            int | None,
+            int | None,
+        ],
+    ) -> TerminationReason:
+        nonlocal output_limit_path, output_limit_bytes
+        nonlocal observed_output_bytes, observed_free_disk_bytes
+        (
+            selected_reason,
+            output_limit_path,
+            output_limit_bytes,
+            observed_output_bytes,
+            violation_free_disk_bytes,
+        ) = violation
+        if violation_free_disk_bytes is not None:
+            observed_free_disk_bytes = violation_free_disk_bytes
+        return selected_reason
+
+    def apply_storage_violation(
+        violation: tuple[
+            TerminationReason,
+            str | None,
+            int | None,
+            int | None,
+            int | None,
+        ],
+    ) -> None:
+        selected_reason = capture_storage_violation(violation)
+        exit_code = process.poll()
+        if exit_code is not None and exit_code != 0:
+            classify_process_exit(exit_code, now_seconds=clock())
+            return
+        terminate(selected_reason)
+
+    def watch_storage_safety() -> None:
+        while not storage_stop.wait(DEFAULT_STORAGE_SAFETY_INTERVAL_SECONDS):
+            violation = probe_storage_safety()
+            if violation is not None:
+                record_storage_violation(violation)
+                return
+
+    storage_thread: threading.Thread | None = None
+    if normalized_output_limits or minimum_free_disk_bytes is not None:
+        storage_thread = threading.Thread(
+            target=watch_storage_safety,
+            name=f"worker-{process.pid}-storage-guard",
+            daemon=True,
+        )
+        storage_thread.start()
 
     def effective_generation_elapsed(
         state: WorkerPhaseState,
@@ -1480,14 +1694,47 @@ def supervise_worker(
         else:
             reason = zero_reason
 
+    def classify_process_exit_at_boundary(
+        exit_code: int,
+        *,
+        now_seconds: float,
+        zero_reason: TerminationReason = "completed",
+    ) -> None:
+        # A fast writer can cross its cap and exit between background storage
+        # samples.  A synchronous final probe keeps a clean exit from hiding
+        # that violation.  A genuine nonzero worker exit remains the primary
+        # outcome, while the storage evidence is still retained for diagnosis.
+        violation = pending_storage_violation() or probe_storage_safety()
+        if violation is not None:
+            selected_reason = capture_storage_violation(violation)
+            if exit_code == 0:
+                terminate(selected_reason)
+                return
+        classify_process_exit(
+            exit_code,
+            now_seconds=now_seconds,
+            zero_reason=zero_reason,
+        )
+
+    def wait_for_next_sample() -> None:
+        if storage_thread is None:
+            sleeper(interval_seconds)
+        else:
+            storage_wakeup.wait(timeout=interval_seconds)
+
     try:
         while True:
+            if (
+                violation := pending_storage_violation() or probe_storage_safety()
+            ) is not None:
+                apply_storage_violation(violation)
+                break
             if cancellation_requested is not None and cancellation_requested():
                 returncode = process.poll()
                 if returncode is None:
                     terminate("cancelled")
                 else:
-                    classify_process_exit(
+                    classify_process_exit_at_boundary(
                         returncode,
                         now_seconds=clock(),
                         zero_reason="cancelled",
@@ -1496,7 +1743,7 @@ def supervise_worker(
             if pending_memory_probe_reason is not None:
                 returncode = process.poll()
                 if returncode is not None:
-                    classify_process_exit(
+                    classify_process_exit_at_boundary(
                         returncode,
                         now_seconds=clock(),
                         zero_reason="memory_probe_error",
@@ -1528,14 +1775,17 @@ def supervise_worker(
                     )
             returncode = process.poll()
             if returncode is not None:
-                classify_process_exit(returncode, now_seconds=now_seconds)
+                classify_process_exit_at_boundary(
+                    returncode,
+                    now_seconds=now_seconds,
+                )
                 break
             if max_rss_bytes is not None and usage.memory_probe_reason is not None:
                 consecutive_memory_probe_failures += 1
                 pending_memory_probe_reason = usage.memory_probe_reason
                 returncode = process.poll()
                 if returncode is not None:
-                    classify_process_exit(
+                    classify_process_exit_at_boundary(
                         returncode,
                         now_seconds=now_seconds,
                         zero_reason="memory_probe_error",
@@ -1547,12 +1797,12 @@ def supervise_worker(
                 ):
                     terminate("memory_probe_error")
                     break
-                sleeper(interval_seconds)
+                wait_for_next_sample()
                 continue
             if pending_memory_probe_reason is not None:
                 returncode = process.poll()
                 if returncode is not None:
-                    classify_process_exit(
+                    classify_process_exit_at_boundary(
                         returncode,
                         now_seconds=now_seconds,
                         zero_reason="memory_probe_error",
@@ -1578,8 +1828,14 @@ def supervise_worker(
                 now_seconds = observe_phase(now_seconds)
                 if phase_error is not None:
                     returncode = process.poll()
-                    if returncode is not None and returncode != 0:
-                        reason = "worker_exit"
+                    if returncode is not None:
+                        classify_process_exit_at_boundary(
+                            returncode,
+                            now_seconds=now_seconds,
+                            zero_reason="phase_state_error",
+                        )
+                        if returncode == 0 and not tree_termination_requested:
+                            terminate("phase_state_error")
                     else:
                         terminate("phase_state_error")
                     break
@@ -1628,10 +1884,17 @@ def supervise_worker(
 
             returncode = process.poll()
             if returncode is not None:
-                classify_process_exit(returncode, now_seconds=now_seconds)
+                classify_process_exit_at_boundary(
+                    returncode,
+                    now_seconds=now_seconds,
+                )
                 break
-            sleeper(interval_seconds)
+            wait_for_next_sample()
     finally:
+        storage_stop.set()
+        storage_wakeup.set()
+        if storage_thread is not None:
+            storage_thread.join(timeout=1.0)
         if process.poll() is None and not tree_termination_requested:
             teardown = _terminate_worker(
                 process,
@@ -1663,9 +1926,7 @@ def supervise_worker(
                 identity_probe=process_identity_probe,
                 process_identities=observed_process_identities,
             )
-            teardown_escalated = (
-                teardown_escalated or descendant_teardown.escalated
-            )
+            teardown_escalated = teardown_escalated or descendant_teardown.escalated
             teardown_seconds += descendant_teardown.elapsed_seconds
 
     if returncode is None:
@@ -1724,6 +1985,11 @@ def supervise_worker(
         generation_phase=generation_phase,
         memory_limit_bytes=max_rss_bytes,
         memory_limit_reason=memory_limit_reason,
+        output_limit_path=output_limit_path,
+        output_limit_bytes=output_limit_bytes,
+        observed_output_bytes=observed_output_bytes,
+        minimum_free_disk_bytes=minimum_free_disk_bytes,
+        observed_free_disk_bytes=observed_free_disk_bytes,
         pid=process.pid,
         member_pids=tuple(sorted(observed_member_pids)),
         signal_number=signal_number,
@@ -1740,8 +2006,11 @@ def supervise_worker(
 
 
 __all__ = [
+    "DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES",
+    "DEFAULT_MINIMUM_FREE_DISK_BYTES",
     "DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS",
     "DEFAULT_SAMPLE_INTERVAL_SECONDS",
+    "DEFAULT_STORAGE_SAFETY_INTERVAL_SECONDS",
     "DEFAULT_SUPERVISOR_STDERR_LIMIT_BYTES",
     "DEFAULT_TERMINATION_GRACE_SECONDS",
     "GENERATION_PHASE_EVIDENCE_ABI",

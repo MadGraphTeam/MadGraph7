@@ -40,11 +40,20 @@ _REPRODUCTION_STAGES = ("prepare", "generate", "profile")
 _LOCATOR_POINTERS = (
     ("artifact", "path"),
     ("artifact", "log_path"),
+    # MadGraph retains its generated standalone tree as an ordinary artifact
+    # locator.  It is diagnostic/reusable campaign state, not numerical
+    # identity, and must be projected just like the enclosing artifact path.
+    ("artifact", "standalone"),
     # Both supported and scope-unavailable original-AmpliCol measurements
     # attach their authenticated structural proof at this artifact locator.
     ("artifact", "legacy_structural_proof"),
     ("provenance", "worker_log"),
     ("provenance", "repository"),
+    # MadGraph records the selected installation and model directory for
+    # diagnostics.  Neither path contributes to the sealed numerical result;
+    # installations outside the report/source roots are therefore redacted.
+    ("provenance", "installation"),
+    ("provenance", "model", "source_directory"),
     ("provenance", "requested_config", "model", "source"),
     ("provenance", "requested_config", "model", "cache_dir"),
     ("provenance", "effective_config", "model", "source"),

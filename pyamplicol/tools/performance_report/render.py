@@ -3508,12 +3508,32 @@ def _best_mode_summary_pair(
                 rf"{{{_tex_escape(display_label)}}}"
             )
         return r"\matrixna{ReportMuted}"
-    return _ratio_statistics_tex(
-        tuple(
-            (float(item.baseline[field]), float(item.candidate[field]))
-            for item in valid
-        )
-    )
+    timings: list[tuple[float, float]] = []
+    for item in valid:
+        candidate_value = _best_mode_summary_candidate_value(item, field)
+        assert candidate_value is not None
+        timings.append((float(item.baseline[field]), candidate_value))
+    return _ratio_statistics_tex(tuple(timings))
+
+
+def _best_mode_summary_candidate_value(
+    item: BestModeWorkload,
+    field: str,
+) -> float | None:
+    """Return the candidate value represented by a best-table primary token."""
+
+    if field == "generation_seconds" and item.mode is ExecutionMode.ON_THE_FLY:
+        generation = _positive_timing_value(item.candidate, field)
+        cold_warmup = _otf_cold_warmup_seconds(item.candidate)
+        if generation is None or cold_warmup is None:
+            return None
+        total = generation + cold_warmup
+        return total if math.isfinite(total) else None
+    value = item.candidate.get(field)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) and number >= 0.0 else None
 
 
 def _best_mode_summary_items(
@@ -3540,13 +3560,11 @@ def _best_mode_summary_items(
         and _ok(item.baseline)
         and _ok(item.candidate)
         and item.baseline.get(field) is not None
-        and item.candidate.get(field) is not None
+        and _best_mode_summary_candidate_value(item, field) is not None
         and unavailable_execution_timing_record(item.baseline, field) is None
         and unavailable_execution_timing_record(item.candidate, field) is None
         and math.isfinite(float(item.baseline[field]))
-        and math.isfinite(float(item.candidate[field]))
         and float(item.baseline[field]) > 0.0
-        and float(item.candidate[field]) >= 0.0
     )
     return joined, valid
 
@@ -3925,6 +3943,7 @@ def _z_setup(variant: ZVariant) -> str:
         "jit_o3": r"compiled JIT O3",
         "eager_jit_o2": r"eager-DAG JIT O2",
         "recurrence_jit_o2": r"recurrence JIT O2",
+        "on_the_fly_jit_o2": r"on-the-fly JIT O2",
     }
     return labels.get(variant.key, _tex_escape(variant.label))
 
@@ -3963,6 +3982,32 @@ def _z_value(
     if not comparable or not joined.comparison_linked or not _ok(joined.baseline):
         return rf"\matrixncabsolute{{{absolute}}}"
     return absolute + r"\," + _ratio(measurement, joined.baseline, field)
+
+
+def _z_generation_value(
+    joined: JoinedWorkload,
+    variant: ZVariant,
+    *,
+    reference: bool,
+    comparable: bool = True,
+    static_na: bool = False,
+) -> str:
+    """Render one Z-ladder generation cell without hiding OTF cold start."""
+
+    if (
+        not reference
+        and variant.execution_mode is ExecutionMode.ON_THE_FLY
+        and not static_na
+        and _ok(joined.candidate)
+    ):
+        return _otf_generation_pair_layout(joined.candidate, None).inline
+    return _z_value(
+        joined,
+        "generation_seconds",
+        reference=reference,
+        comparable=comparable,
+        static_na=static_na,
+    )
 
 
 def _z_evaluator_total(
@@ -4092,14 +4137,15 @@ def _z_block(
                 "jit_o3",
                 "eager_jit_o2",
                 "recurrence_jit_o2",
+                "on_the_fly_jit_o2",
             }:
                 lines.append(r"\rowcolor{ReportGreen!12}")
             row = (
                 str(n_final),
                 _z_setup(variant),
-                _z_value(
+                _z_generation_value(
                     selected,
-                    "generation_seconds",
+                    variant,
                     reference=reference,
                     static_na=selected_static_na,
                 ),
@@ -4115,9 +4161,9 @@ def _z_block(
                     reference=reference,
                     static_na=selected_static_na,
                 ),
-                _z_value(
+                _z_generation_value(
                     all_flow,
-                    "generation_seconds",
+                    variant,
                     reference=reference,
                     comparable=False,
                     static_na=all_flow_static_na,
@@ -4150,8 +4196,13 @@ def _z_block(
                 r"its status remains visible and successful pyAmpliCol values "
                 r"are absolute. Unverified diagnostics retain absolute clocks "
                 r"with a yellow marker, but never enter ratios or summaries. "
-                r"Each pyAmpliCol row reports separate topology-replay and "
-                r"all-flow-union generation and runtime measurements. "
+                r"Compiled, eager, and recurrence rows report separate "
+                r"topology-replay and all-flow-union generation and runtime "
+                r"measurements. On-the-fly uses one compact query-local "
+                r"process seed for both physical workloads. Its generation "
+                r"entry is the absolute \texttt{[G] G+W} pair: muted G is "
+                r"process-seed generation and G+W adds the first cold "
+                r"on-the-fly evaluation. "
                 r"Parenthesized values are candidate/reference ratios. "
                 r"All-flow generation shows the absolute pyAmpliCol value "
                 r"without a ratio because its setup boundary differs from the "

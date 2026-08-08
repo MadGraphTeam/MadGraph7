@@ -128,11 +128,11 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
         and edge.baseline.cell_id in measurable_ids
     )
 
-    assert len(declared_edges) == 1937
+    assert len(declared_edges) == 1973
     assert (
         len(declared_edges) == final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
     )
-    assert len(measurable_edges) == 1889
+    assert len(measurable_edges) == 1925
     assert sum(
         final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS.values()
     ) == len(measurable_edges)
@@ -164,7 +164,7 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
         if edge.candidate.cell_id in n4_measurable_ids
         and edge.baseline.cell_id in n4_measurable_ids
     )
-    assert len(n4_ids) == final_audit_module._EXPECTED_N4_CELL_COUNT == 1026
+    assert len(n4_ids) == final_audit_module._EXPECTED_N4_CELL_COUNT == 1042
     assert Counter(edge.kind for edge in n4_edges) == (
         final_audit_module._EXPECTED_N4_DIRECT_AGREEMENT_COUNTS
     )

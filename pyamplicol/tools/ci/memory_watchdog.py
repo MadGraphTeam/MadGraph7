@@ -84,6 +84,19 @@ class MemorySample:
 
 Snapshotter = Callable[[], dict[int, ProcessInfo]]
 PhysicalFootprintProbe = Callable[[Iterable[int]], dict[int, int]]
+PidExistsProbe = Callable[[int], bool]
+
+
+def _pid_exists(pid: int) -> bool:
+    """Return whether ``pid`` still exists without requiring signal authority."""
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _canonical_json_bytes(value: object) -> bytes:
@@ -309,7 +322,12 @@ def _parse_darwin_rusage_phys_footprint(text: bytes) -> int:
 class DarwinPhysicalFootprintProbe:
     """Read per-process physical footprints through Darwin ``libproc``."""
 
-    def __init__(self, library: object | None = None) -> None:
+    def __init__(
+        self,
+        library: object | None = None,
+        *,
+        pid_exists: PidExistsProbe = _pid_exists,
+    ) -> None:
         if library is None:
             library_name = (
                 ctypes.util.find_library("proc") or "/usr/lib/libproc.dylib"
@@ -333,6 +351,7 @@ class DarwinPhysicalFootprintProbe:
         )
         proc_pid_rusage.restype = ctypes.c_int
         self._proc_pid_rusage = proc_pid_rusage
+        self._pid_exists = pid_exists
 
     def __call__(self, pids: Iterable[int]) -> dict[int, int]:
         footprints: dict[int, int] = {}
@@ -365,6 +384,14 @@ class DarwinPhysicalFootprintProbe:
             else:  # pragma: no cover - the bounded loop always breaks
                 result = -1
             if result == 0 or error_number in {errno.ENOENT, errno.ESRCH}:
+                continue
+            if error_number in {errno.EACCES, errno.EPERM} and not self._pid_exists(
+                pid
+            ):
+                # A short-lived descendant can remain in the preceding ``ps``
+                # snapshot while Darwin reports EPERM as it exits.  Omitting it
+                # lets the sampler conservatively retain that member's last RSS
+                # instead of discarding the aggregate sample.
                 continue
             detail = (
                 os.strerror(error_number) if error_number else "unknown error"

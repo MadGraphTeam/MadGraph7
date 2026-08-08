@@ -168,6 +168,53 @@ def test_otf_plan_orders_lc_and_contracted_authorities(
         ExecutionMode.ON_THE_FLY,
     )
 
+    z_cells = tuple(
+        cell
+        for cell in REPORT_CATALOG.z_cells()
+        if cell.dataset_id == "z_builtin_sm"
+        and cell.n_final == 1
+        and cell.variant == "on_the_fly_jit_o2"
+    )
+    assert {cell.workload for cell in z_cells} == {
+        Workload.SELECTED_FLOW,
+        Workload.ALL_FLOW,
+    }
+    assert all(REPORT_CATALOG.static_na_reason(cell) is None for cell in z_cells)
+    z_selected = next(
+        cell for cell in z_cells if cell.workload is Workload.SELECTED_FLOW
+    )
+    z_plan = plan_campaign(
+        (z_selected,),
+        store=store,
+        settings=CampaignSettings(),
+    )
+    assert tuple(item.cell.measurement.execution_mode for item in z_plan) == (
+        ExecutionMode.RECURRENCE,
+        ExecutionMode.ON_THE_FLY,
+    )
+    assert z_plan[-1].baseline_cell_id == z_plan[0].cell.cell_id
+    z_all_flow = next(
+        cell for cell in z_cells if cell.workload is Workload.ALL_FLOW
+    )
+    z_all_plan = plan_campaign(
+        (z_all_flow,),
+        store=store,
+        settings=CampaignSettings(),
+    )
+    assert tuple(
+        (item.cell.workload, item.cell.measurement.execution_mode)
+        for item in z_all_plan
+    ) == (
+        (Workload.SELECTED_FLOW, ExecutionMode.RECURRENCE),
+        (Workload.SELECTED_FLOW, ExecutionMode.ON_THE_FLY),
+        (Workload.ALL_FLOW, ExecutionMode.RECURRENCE),
+        (Workload.ALL_FLOW, ExecutionMode.ON_THE_FLY),
+    )
+    assert z_all_plan[-1].baseline_cell_id == z_all_plan[-2].cell.cell_id
+    assert z_all_plan[-1].comparison_peer_ids == (
+        z_all_plan[1].cell.cell_id,
+    )
+
     ufo_full = next(
         cell
         for cell in _otf_cells()

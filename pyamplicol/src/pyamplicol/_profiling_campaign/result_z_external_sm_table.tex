@@ -50,6 +50,8 @@
 1 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 1 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+1 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
 2 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
@@ -62,6 +64,8 @@
 2 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 2 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+2 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
 3 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
@@ -74,10 +78,12 @@
 3 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 3 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+3 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator only when successful and exactly linked by stored same-point evidence, directly or through current recurrence. Otherwise its status remains visible and successful pyAmpliCol values are absolute. Unverified diagnostics retain absolute clocks with a yellow marker, but never enter ratios or summaries. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value without a ratio because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no dedicated authenticated evaluator-total timing. Authenticated accumulated warmed evaluator totals appear in the eval column with enough precision to remain distinct from wall time. Its parenthesized multiplier uses the original-AmpliCol wall measurement as denominator because the legacy reference has no separate evaluator-total clock. Recurrence rows retain the independently measured narrower recurrence core in detailed evidence; it is not relabeled as evaluator total. Neither evaluator total nor recurrence core is derived from wall time or from the other. Older entries without authenticated total evidence remain marked not exposed; it is not a missing measurement. user cap: native C++/ASM generation is not attempted above n=6 (native-backend-generation-cap-n6-v1).}
+\ReportTableNote{Original AmpliCol is the denominator only when successful and exactly linked by stored same-point evidence, directly or through current recurrence. Otherwise its status remains visible and successful pyAmpliCol values are absolute. Unverified diagnostics retain absolute clocks with a yellow marker, but never enter ratios or summaries. Compiled, eager, and recurrence rows report separate topology-replay and all-flow-union generation and runtime measurements. On-the-fly uses one compact query-local process seed for both physical workloads. Its generation entry is the absolute \texttt{[G] G+W} pair: muted G is process-seed generation and G+W adds the first cold on-the-fly evaluation. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value without a ratio because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no dedicated authenticated evaluator-total timing. Authenticated accumulated warmed evaluator totals appear in the eval column with enough precision to remain distinct from wall time. Its parenthesized multiplier uses the original-AmpliCol wall measurement as denominator because the legacy reference has no separate evaluator-total clock. Recurrence rows retain the independently measured narrower recurrence core in detailed evidence; it is not relabeled as evaluator total. Neither evaluator total nor recurrence core is derived from wall time or from the other. Older entries without authenticated total evidence remain marked not exposed; it is not a missing measurement. user cap: native C++/ASM generation is not attempted above n=6 (native-backend-generation-cap-n6-v1).}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -103,6 +109,8 @@
 4 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 4 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+4 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
 5 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
@@ -115,6 +123,8 @@
 5 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 5 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+5 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
 6 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
@@ -127,10 +137,12 @@
 6 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 6 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+6 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator only when successful and exactly linked by stored same-point evidence, directly or through current recurrence. Otherwise its status remains visible and successful pyAmpliCol values are absolute. Unverified diagnostics retain absolute clocks with a yellow marker, but never enter ratios or summaries. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value without a ratio because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no dedicated authenticated evaluator-total timing. Authenticated accumulated warmed evaluator totals appear in the eval column with enough precision to remain distinct from wall time. Its parenthesized multiplier uses the original-AmpliCol wall measurement as denominator because the legacy reference has no separate evaluator-total clock. Recurrence rows retain the independently measured narrower recurrence core in detailed evidence; it is not relabeled as evaluator total. Neither evaluator total nor recurrence core is derived from wall time or from the other. Older entries without authenticated total evidence remain marked not exposed; it is not a missing measurement. user cap: native C++/ASM generation is not attempted above n=6 (native-backend-generation-cap-n6-v1).}
+\ReportTableNote{Original AmpliCol is the denominator only when successful and exactly linked by stored same-point evidence, directly or through current recurrence. Otherwise its status remains visible and successful pyAmpliCol values are absolute. Unverified diagnostics retain absolute clocks with a yellow marker, but never enter ratios or summaries. Compiled, eager, and recurrence rows report separate topology-replay and all-flow-union generation and runtime measurements. On-the-fly uses one compact query-local process seed for both physical workloads. Its generation entry is the absolute \texttt{[G] G+W} pair: muted G is process-seed generation and G+W adds the first cold on-the-fly evaluation. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value without a ratio because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no dedicated authenticated evaluator-total timing. Authenticated accumulated warmed evaluator totals appear in the eval column with enough precision to remain distinct from wall time. Its parenthesized multiplier uses the original-AmpliCol wall measurement as denominator because the legacy reference has no separate evaluator-total clock. Recurrence rows retain the independently measured narrower recurrence core in detailed evidence; it is not relabeled as evaluator total. Neither evaluator total nor recurrence core is derived from wall time or from the other. Older entries without authenticated total evidence remain marked not exposed; it is not a missing measurement. user cap: native C++/ASM generation is not attempted above n=6 (native-backend-generation-cap-n6-v1).}
 \end{minipage}
 \clearpage
 \noindent\begin{minipage}{\linewidth}
@@ -156,6 +168,8 @@
 7 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 7 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+7 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
 8 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
@@ -168,6 +182,8 @@
 8 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 8 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+8 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \midrule[0.45pt]
 \rowcolor{refblue}
 9 & \AC{} reference & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixnotexposed{ReportMuted} \\
@@ -180,8 +196,10 @@
 9 & eager-DAG JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \rowcolor{ReportGreen!12}
 9 & recurrence JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
+\rowcolor{ReportGreen!12}
+9 & on-the-fly JIT O2 & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} & \matrixstatus{ReportMuted}{N/A} \\
 \bottomrule
 \end{tabular}
 \endgroup
-\ReportTableNote{Original AmpliCol is the denominator only when successful and exactly linked by stored same-point evidence, directly or through current recurrence. Otherwise its status remains visible and successful pyAmpliCol values are absolute. Unverified diagnostics retain absolute clocks with a yellow marker, but never enter ratios or summaries. Each pyAmpliCol row reports separate topology-replay and all-flow-union generation and runtime measurements. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value without a ratio because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no dedicated authenticated evaluator-total timing. Authenticated accumulated warmed evaluator totals appear in the eval column with enough precision to remain distinct from wall time. Its parenthesized multiplier uses the original-AmpliCol wall measurement as denominator because the legacy reference has no separate evaluator-total clock. Recurrence rows retain the independently measured narrower recurrence core in detailed evidence; it is not relabeled as evaluator total. Neither evaluator total nor recurrence core is derived from wall time or from the other. Older entries without authenticated total evidence remain marked not exposed; it is not a missing measurement. user cap: native C++/ASM generation is not attempted above n=6 (native-backend-generation-cap-n6-v1).}
+\ReportTableNote{Original AmpliCol is the denominator only when successful and exactly linked by stored same-point evidence, directly or through current recurrence. Otherwise its status remains visible and successful pyAmpliCol values are absolute. Unverified diagnostics retain absolute clocks with a yellow marker, but never enter ratios or summaries. Compiled, eager, and recurrence rows report separate topology-replay and all-flow-union generation and runtime measurements. On-the-fly uses one compact query-local process seed for both physical workloads. Its generation entry is the absolute \texttt{[G] G+W} pair: muted G is process-seed generation and G+W adds the first cold on-the-fly evaluation. Parenthesized values are candidate/reference ratios. All-flow generation shows the absolute pyAmpliCol value without a ratio because its setup boundary differs from the reference. The wall time is the common runtime observable. Not exposed means that a successful wall measurement has no dedicated authenticated evaluator-total timing. Authenticated accumulated warmed evaluator totals appear in the eval column with enough precision to remain distinct from wall time. Its parenthesized multiplier uses the original-AmpliCol wall measurement as denominator because the legacy reference has no separate evaluator-total clock. Recurrence rows retain the independently measured narrower recurrence core in detailed evidence; it is not relabeled as evaluator total. Neither evaluator total nor recurrence core is derived from wall time or from the other. Older entries without authenticated total evidence remain marked not exposed; it is not a missing measurement. user cap: native C++/ASM generation is not attempted above n=6 (native-backend-generation-cap-n6-v1).}
 \end{minipage}

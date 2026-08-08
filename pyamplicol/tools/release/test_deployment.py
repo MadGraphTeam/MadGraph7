@@ -254,18 +254,18 @@ with tempfile.TemporaryDirectory(prefix="pyamplicol-profiling-campaign-") as raw
         text=True,
     )
     assert dry_run.returncode == 0, (dry_run.stdout, dry_run.stderr)
-    assert "retained (default)" in dry_run.stdout
-    cleanup_dry_run = subprocess.run(
-        (*dry_run_command, "--cleanup-artifacts"),
+    assert "compact retention (default)" in dry_run.stdout
+    retained_dry_run = subprocess.run(
+        (*dry_run_command, "--retain-workspaces"),
         check=False,
         capture_output=True,
         text=True,
     )
-    assert cleanup_dry_run.returncode == 0, (
-        cleanup_dry_run.stdout,
-        cleanup_dry_run.stderr,
+    assert retained_dry_run.returncode == 0, (
+        retained_dry_run.stdout,
+        retained_dry_run.stderr,
     )
-    assert "cleanup enabled (--cleanup-artifacts)" in cleanup_dry_run.stdout
+    assert "full debug workspaces (--retain-workspaces)" in retained_dry_run.stdout
 print(json.dumps({"mode": mode, "version": version, "sdk_target": sdk.target}))
 """
 )

@@ -155,11 +155,19 @@ prerequisites.
 not a successful current and is automatically rerun against a later available
 recurrence or MadGraph authority.
 
-The default lifecycle retains every heavy attempt payload. Use
-`--cleanup-artifacts` to move obsolete sealed attempts into compact history,
-retaining metadata, results, logs, progress events, and phase timelines while
-removing only their heavy evaluator payloads. Every current artifact and any
-artifact borrowed by an equivalent current remains protected.
+The default lifecycle is compact. Each completed attempt retains its sealed
+result and current pointer, provenance, commands, progress/timeline evidence,
+bounded log tails, and reusable outputs needed by currents or dependencies.
+Disposable copied AmpliCol, MadGraph, and build workspaces are removed after
+publication; cross-revision reuse relies on the sealed results, not those
+workspaces. Use `--retain-workspaces` only when full debug workspaces are
+needed. `--cleanup-artifacts` remains a compatibility spelling for the default
+compact policy.
+
+Storage safety is separate from the process-tree RAM cap.
+`--attempt-output-limit` defaults to 67,108,864 bytes (64 MiB) per watched
+output/log file, while `--minimum-free-disk` reserves 5,368,709,120 bytes
+(5 GiB) on the campaign artifact volume. Both options accept byte counts.
 
 Running `pyamplicol profiling-campaign copy DEST --force` again resets only
 `DEST/campaign_artifacts`, the managed PDF, the campaign summary-ID directory,

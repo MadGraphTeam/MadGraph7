@@ -38,9 +38,9 @@ def test_installed_smoke_copies_and_dry_runs_the_profiling_campaign() -> None:
     assert '"scalar_contact"' in smoke
     assert '"--generation-engine"' in smoke
     assert '"compiled"' in smoke
-    assert '"retained (default)"' in smoke
-    assert '"--cleanup-artifacts"' in smoke
-    assert '"cleanup enabled (--cleanup-artifacts)"' in smoke
+    assert '"compact retention (default)"' in smoke
+    assert '"--retain-workspaces"' in smoke
+    assert '"full debug workspaces (--retain-workspaces)"' in smoke
 
 
 def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
@@ -54,10 +54,10 @@ def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
 
 def test_f64_minimal_deployment_requires_symbolica_to_be_absent() -> None:
     smoke = deployment._SYMBOLICA_ABSENT_F64_SMOKE
-    assert 'find_spec(unavailable) is None' in smoke
+    assert "find_spec(unavailable) is None" in smoke
     assert '("symbolica", "ufo_model_loader")' in smoke
-    assert "runtime.evaluate(expected[\"momenta\"])" in smoke
-    assert "runtime.evaluate_resolved(expected[\"momenta\"])" in smoke
+    assert 'runtime.evaluate(expected["momenta"])' in smoke
+    assert 'runtime.evaluate_resolved(expected["momenta"])' in smoke
     assert "resolved.total()" in smoke
     assert 'runtime.artifact_id == manifest["artifact_id"]' in smoke
     assert 'runtime.execution_mode == "compiled"' in smoke

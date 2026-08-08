@@ -390,6 +390,13 @@ Z_VARIANTS = (
         "jit",
         2,
     ),
+    ZVariant(
+        "on_the_fly_jit_o2",
+        "on-the-fly JIT O2",
+        ExecutionMode.ON_THE_FLY,
+        "jit",
+        2,
+    ),
 )
 
 STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT = (
@@ -627,7 +634,11 @@ class ReportCatalog:
                     if candidate.cell_id != cell.cell_id
                     and (
                         not directional_otf_artifact
-                        or candidate.workload is Workload.SELECTED_FLOW
+                        or (
+                            candidate.workload is Workload.SELECTED_FLOW
+                            and candidate.dataset_id == cell.dataset_id
+                            and candidate.variant == cell.variant
+                        )
                     )
                     and identity(candidate) == expected
                 ),
@@ -735,6 +746,19 @@ class ReportCatalog:
         otherwise model-generic recurrence measurements.
         """
 
+        if (
+            cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY
+            and cell.dataset_id.startswith("z_")
+        ):
+            return next(
+                candidate
+                for candidate in self.measurement_cells()
+                if candidate.dataset_id == cell.dataset_id
+                and candidate.process_key == cell.process_key
+                and candidate.n_final == cell.n_final
+                and candidate.workload is cell.workload
+                and candidate.variant == "recurrence_jit_o2"
+            )
         if cell.measurement.execution_mode is ExecutionMode.ON_THE_FLY and (
             self.dataset(cell.dataset_id).baseline.execution_mode
             is not ExecutionMode.MADGRAPH

@@ -1147,6 +1147,46 @@ def test_selected_flow_excludes_cold_generator_bootstrap_from_generation(
 
 
 @pytest.mark.parametrize(
+    ("process_key", "pdgs"),
+    (
+        ("dd_epem_jets", (1, -1, -11, 11)),
+        ("ud_epve_jets", (2, -1, -11, 12)),
+    ),
+)
+def test_massless_two_body_lepton_library_uses_supplied_physical_point(
+    process_key: str,
+    pdgs: tuple[int, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, api, executor = _adapter(FakeApi(pdgs))
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+
+    measurement = adapter.measure(
+        _cell(
+            Accuracy.LC,
+            Workload.SELECTED_FLOW,
+            process_key=process_key,
+            n_final=2,
+        ),
+        artifact_path=tmp_path / process_key,
+        settings=_settings(tmp_path / "repository"),
+    )
+
+    validate_measurement(measurement)
+    flattened = [" ".join(command) for command in executor.commands]
+    assert any("--amplicol_momenta_probe=10" in command for command in flattened)
+    assert not any("--seed=101" in command for command in flattened)
+
+
+@pytest.mark.parametrize(
     ("final_pdgs", "n_final", "expected_id"),
     (
         ((-11, 11, 23, 25), 4, "h:-1,+1,-1,+1,-1,+0"),

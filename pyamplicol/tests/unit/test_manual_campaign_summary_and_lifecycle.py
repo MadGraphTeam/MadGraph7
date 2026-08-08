@@ -950,7 +950,11 @@ def test_scheduler_runs_cleanup_after_each_cell(
 
 @pytest.mark.parametrize(
     ("extra_arguments", "cleanup_expected"),
-    (((), False), (("--cleanup-artifacts",), True)),
+    (
+        ((), True),
+        (("--cleanup-artifacts",), True),
+        (("--retain-workspaces",), False),
+    ),
 )
 def test_all_recycled_run_applies_selected_startup_cleanup_policy(
     tmp_path: Path,
@@ -1221,8 +1225,8 @@ def test_concurrent_summary_publications_are_each_coherent(tmp_path: Path) -> No
     assert not tuple(summary.parent.glob(".campaign_summary_ids.*"))
 
 
-def test_scheduler_cleanup_flag_defaults_off_and_invocation_is_validated() -> None:
-    assert CampaignSettings().remove_heavy_attempt_artifacts is False
+def test_scheduler_cleanup_flag_defaults_on_and_invocation_is_validated() -> None:
+    assert CampaignSettings().remove_heavy_attempt_artifacts is True
     settings = CampaignSettings(campaign_invocation_id="abc")
     assert settings.campaign_invocation_id == "abc"
     with pytest.raises(ValueError, match="campaign_invocation_id"):
@@ -1243,7 +1247,7 @@ def test_compact_attempt_inventory_excludes_only_heavy_artifact(tmp_path: Path) 
     assert "artifact/nested/data.bin" in _attempt_files(root)
 
 
-def test_manual_campaign_retains_artifacts_unless_cleanup_is_explicit() -> None:
+def test_manual_campaign_defaults_to_compact_artifacts() -> None:
     source = ReportSourceIdentity("a" * 40, "b" * 40, ())
     default_arguments = manual_campaign.build_parser().parse_args(("run", "--dry-run"))
     cleanup_arguments = manual_campaign.build_parser().parse_args(
@@ -1252,8 +1256,11 @@ def test_manual_campaign_retains_artifacts_unless_cleanup_is_explicit() -> None:
     fail_fast_cleanup_arguments = manual_campaign.build_parser().parse_args(
         ("run", "--dry-run", "--fail-fast", "--cleanup-artifacts")
     )
+    retained_arguments = manual_campaign.build_parser().parse_args(
+        ("run", "--dry-run", "--retain-workspaces")
+    )
 
-    assert not manual_campaign._campaign_settings(
+    assert manual_campaign._campaign_settings(
         default_arguments, source
     ).remove_heavy_attempt_artifacts
     assert not manual_campaign._campaign_settings(
@@ -1266,19 +1273,26 @@ def test_manual_campaign_retains_artifacts_unless_cleanup_is_explicit() -> None:
         fail_fast_cleanup_arguments,
         source,
     )
-    assert not fail_fast_settings.remove_heavy_attempt_artifacts
+    assert fail_fast_settings.remove_heavy_attempt_artifacts
     assert not fail_fast_settings.discard_cancelled_attempts
+    retained_settings = manual_campaign._campaign_settings(
+        retained_arguments,
+        source,
+    )
+    assert retained_settings.retain_workspaces
+    assert not retained_settings.remove_heavy_attempt_artifacts
 
 
 @pytest.mark.parametrize(
     ("extra_arguments", "expected"),
     (
-        ((), "retained (default)"),
-        (("--cleanup-artifacts",), "cleanup enabled (--cleanup-artifacts)"),
+        ((), "compact retention (default)"),
+        (("--cleanup-artifacts",), "compact retention (default)"),
         (
             ("--fail-fast", "--cleanup-artifacts"),
-            "retained (--fail-fast preserves failures and cancellations)",
+            "compact retention (default)",
         ),
+        (("--retain-workspaces",), "full debug workspaces (--retain-workspaces)"),
     ),
 )
 def test_dry_run_prints_effective_artifact_cleanup_policy(

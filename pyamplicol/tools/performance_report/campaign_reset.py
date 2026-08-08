@@ -37,9 +37,9 @@ SEED_SCHEMA = "pyamplicol-original-amplicol-seed-v1"
 CAMPAIGN_MARKER_SCHEMA = "pyamplicol-performance-campaign-epoch-v1"
 RESET_JOURNAL_SCHEMA = "pyamplicol-performance-campaign-reset-v1"
 BASELINE_GATE_SCHEMA = "pyamplicol-performance-baseline-gate-v1"
-EXPECTED_CATALOG_CELL_COUNT = 2162
+EXPECTED_CATALOG_CELL_COUNT = 2198
 EXPECTED_AMPLICOL_CELL_COUNT = 314
-EXPECTED_NON_AMPLICOL_CELL_COUNT = 1848
+EXPECTED_NON_AMPLICOL_CELL_COUNT = 1884
 _SUPPORTED_SEED_CATALOG_CARDINALITIES = frozenset(
     {
         (1646, 284, 1362),

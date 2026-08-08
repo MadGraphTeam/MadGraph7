@@ -70,6 +70,8 @@ from .models import (
 )
 from .phase_state import WorkerPhaseChannel
 from .resources import (
+    DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES,
+    DEFAULT_MINIMUM_FREE_DISK_BYTES,
     DEFAULT_SAMPLE_INTERVAL_SECONDS,
     DEFAULT_TERMINATION_GRACE_SECONDS,
     GenerationPhaseEvidence,
@@ -100,6 +102,7 @@ from .worker_harness import (
 
 _NATIVE_COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
 _NATIVE_COMPILER_GATE_SLOT_COUNT_ENV = "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT"
+_DIAGNOSTIC_TAIL_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +152,8 @@ class CampaignSettings:
     validation_time_limit_seconds: float | None = None
     max_rss_bytes: int | None = None
     campaign_max_rss_bytes: int | None = None
+    attempt_output_limit_bytes: int = DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES
+    minimum_free_disk_bytes: int = DEFAULT_MINIMUM_FREE_DISK_BYTES
     artifact_policy: ArtifactPolicy = ArtifactPolicy.REGENERATE
     missing_only: bool = False
     rerun: bool = False
@@ -163,7 +168,8 @@ class CampaignSettings:
     cancellation_requested: Callable[[], bool] | None = None
     manual_terminal_censors: bool = False
     discard_cancelled_attempts: bool = False
-    remove_heavy_attempt_artifacts: bool = False
+    remove_heavy_attempt_artifacts: bool = True
+    retain_workspaces: bool = False
     campaign_policy: CampaignPolicy = STRICT_POLICY
     report_profile: str | None = None
     study_contract_sha256: str | None = None
@@ -174,11 +180,7 @@ class CampaignSettings:
     multiplicity_wave_barrier: bool = False
 
     def __post_init__(self) -> None:
-        if (
-            self.workers < 1
-            or self.cell_cores < 1
-            or self.amplicol_build_jobs < 1
-        ):
+        if self.workers < 1 or self.cell_cores < 1 or self.amplicol_build_jobs < 1:
             raise ValueError(
                 "workers, cell_cores, and amplicol_build_jobs must be positive"
             )
@@ -221,6 +223,10 @@ class CampaignSettings:
             raise ValueError("max_rss_bytes must be positive")
         if self.campaign_max_rss_bytes is not None and self.campaign_max_rss_bytes <= 0:
             raise ValueError("campaign_max_rss_bytes must be positive")
+        if self.attempt_output_limit_bytes <= 0:
+            raise ValueError("attempt_output_limit_bytes must be positive")
+        if self.minimum_free_disk_bytes <= 0:
+            raise ValueError("minimum_free_disk_bytes must be positive")
         if (
             self.campaign_max_rss_bytes is not None
             and self.campaign_max_rss_bytes < self.workers
@@ -1355,7 +1361,7 @@ def validate_campaign_plan(
     cell_id = planned[0].cell.cell_id
     if cell_id not in frozenset(z_table_f_cell_ids()):
         raise StudyContractError(
-            f"cell {cell_id!r} is outside the contracted 28-cell Z-table F scope"
+            f"cell {cell_id!r} is outside the contracted 32-cell Z-table F scope"
         )
     baseline = catalog.validation_baseline_cell(planned[0].cell)
     baseline_required = validation_baseline_is_required(planned[0].cell, baseline)
@@ -1424,7 +1430,7 @@ def _resource_payload(
     if generation_phase is not None:
         payload["generation_phase"] = generation_phase.as_dict()
     if supervised is not None:
-        payload["supervisor"] = {
+        supervisor_payload: dict[str, object] = {
             "abi": "pyamplicol-report-worker-supervisor-v1",
             "reason": supervised.reason,
             "returncode": supervised.returncode,
@@ -1452,6 +1458,26 @@ def _resource_payload(
             "teardown_escalated": supervised.teardown_escalated,
             "teardown_seconds": supervised.teardown_seconds,
         }
+        if (
+            supervised.output_limit_path is not None
+            or supervised.output_limit_bytes is not None
+            or supervised.observed_output_bytes is not None
+        ):
+            supervisor_payload.update(
+                {
+                    "output_limit_path": supervised.output_limit_path,
+                    "output_limit_bytes": supervised.output_limit_bytes,
+                    "observed_output_bytes": supervised.observed_output_bytes,
+                }
+            )
+        if supervised.minimum_free_disk_bytes is not None:
+            supervisor_payload.update(
+                {
+                    "minimum_free_disk_bytes": (supervised.minimum_free_disk_bytes),
+                    "observed_free_disk_bytes": (supervised.observed_free_disk_bytes),
+                }
+            )
+        payload["supervisor"] = supervisor_payload
     return payload
 
 
@@ -1702,9 +1728,12 @@ class CampaignScheduler:
                     self.settings.validation_time_limit_seconds
                 ),
                 "memory_limit_bytes": self._effective_cell_rss_limit(),
-                "campaign_memory_limit_bytes": (
-                    self.settings.campaign_max_rss_bytes
+                "campaign_memory_limit_bytes": (self.settings.campaign_max_rss_bytes),
+                "attempt_output_limit_bytes": (
+                    self.settings.attempt_output_limit_bytes
                 ),
+                "minimum_free_disk_bytes": (self.settings.minimum_free_disk_bytes),
+                "retained_full_workspaces": self.settings.retain_workspaces,
                 "workers": self.settings.workers,
                 "cores_per_worker": self.settings.cell_cores,
                 "amplicol_build_jobs": self.settings.amplicol_build_jobs,
@@ -1892,6 +1921,115 @@ class CampaignScheduler:
             )
         shutil.rmtree(destination)
 
+    @staticmethod
+    def _retain_bounded_log(source: Path, destination: Path) -> None:
+        """Retain only a small tail from a potentially runaway diagnostic."""
+
+        if not source.exists():
+            return
+        if source.is_symlink() or not source.is_file():
+            raise RuntimeError(f"diagnostic log is not a regular file: {source}")
+        size = source.stat().st_size
+        if source == destination and size <= _DIAGNOSTIC_TAIL_BYTES:
+            return
+        header = (
+            f"[pyamplicol retained final log tail; original_bytes={size}]\n"
+        ).encode("ascii")
+        tail_bytes = max(_DIAGNOSTIC_TAIL_BYTES - len(header), 0)
+        with source.open("rb") as stream:
+            if size > tail_bytes:
+                stream.seek(size - tail_bytes)
+            tail = stream.read(tail_bytes)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open("wb") as stream:
+            stream.write(header)
+            stream.write(tail)
+
+    def _finalize_legacy_workspace(
+        self,
+        workspace: Path,
+        *,
+        diagnostic_path: Path,
+    ) -> None:
+        if self.settings.retain_workspaces:
+            return
+        if workspace.exists():
+            self._retain_bounded_log(
+                workspace / "Outputs" / "log_file.txt",
+                diagnostic_path,
+            )
+        self._remove_legacy_workspace(workspace)
+
+    def _finalize_worker_log(self, worker_log: Path) -> None:
+        if not self.settings.retain_workspaces:
+            self._retain_bounded_log(worker_log, worker_log)
+
+    def _compact_reference_artifact(
+        self,
+        cell: CellSpec,
+        artifact: Path,
+        result: dict[str, object],
+    ) -> None:
+        """Drop disposable reference builds while retaining reusable evidence."""
+
+        if self.settings.retain_workspaces or not artifact.exists():
+            return
+        if artifact.is_symlink() or not artifact.is_dir():
+            raise RuntimeError(
+                f"reference artifact is not a regular directory: {artifact}"
+            )
+        raw_artifact_record = result.get("artifact")
+        if not isinstance(raw_artifact_record, Mapping):
+            raise RuntimeError("successful reference result has no artifact record")
+        artifact_record = dict(raw_artifact_record)
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+            self._retain_bounded_log(artifact / "legacy.log", artifact / "legacy.log")
+            disposable = (artifact / "contracted-generated-library",)
+        elif cell.measurement.execution_mode is ExecutionMode.MADGRAPH:
+            self._retain_bounded_log(
+                artifact / "madgraph.log",
+                artifact / "madgraph.log",
+            )
+            disposable = (artifact / "standalone",)
+            # The complete standalone tree is intentionally disposable after
+            # its measurement and hashes are sealed.  Remove its path fields
+            # together with the tree so retained metadata never advertises a
+            # workspace that no longer exists.
+            artifact_record.pop("standalone", None)
+            artifact_record.pop("subprocess", None)
+        else:
+            return
+        removed: list[str] = []
+        for path in disposable:
+            if not path.exists():
+                continue
+            if path.is_symlink() or not path.is_dir():
+                raise RuntimeError(f"disposable workspace is not a directory: {path}")
+            shutil.rmtree(path)
+            removed.append(path.name)
+        artifact_record["workspace_retention"] = {
+            "schema": "pyamplicol-reference-workspace-retention-v1",
+            "full_workspaces_retained": False,
+            "removed": removed,
+        }
+        result["artifact"] = artifact_record
+
+    def _discard_terminal_artifact(self, artifact: Path, attempt_root: Path) -> None:
+        """Keep bounded reference diagnostics and remove an unusable payload."""
+
+        if self.settings.retain_workspaces or not artifact.exists():
+            return
+        if artifact.is_symlink() or not artifact.is_dir():
+            raise RuntimeError(
+                f"terminal artifact is not a regular directory: {artifact}"
+            )
+        for name in ("legacy.log", "madgraph.log"):
+            self._retain_bounded_log(
+                artifact / name,
+                attempt_root / f"{Path(name).stem}-artifact-tail.log",
+            )
+        shutil.rmtree(artifact)
+
     def _service_path_arguments(self) -> tuple[str, ...]:
         paths = self.service.paths
         return (
@@ -2071,6 +2209,11 @@ class CampaignScheduler:
                     command,
                     timeout_seconds=preflight_timeout,
                     max_rss_bytes=self._effective_cell_rss_limit(),
+                    output_file_limits={
+                        progress_path: self.settings.attempt_output_limit_bytes,
+                    },
+                    minimum_free_disk_bytes=(self.settings.minimum_free_disk_bytes),
+                    disk_probe_path=self.service.paths.artifact_root,
                     interval_seconds=(self.settings.resource_sample_interval_seconds),
                     termination_grace_seconds=self.settings.termination_grace_seconds,
                     cancellation_requested=self.settings.cancellation_requested,
@@ -2116,8 +2259,7 @@ class CampaignScheduler:
                         str(_worker_process_exit_error(supervised))
                         if supervised.reason == "worker_exit"
                         else (
-                            f"reason={supervised.reason}, "
-                            f"exit={supervised.returncode}"
+                            f"reason={supervised.reason}, exit={supervised.returncode}"
                         )
                     )
                     message = (
@@ -2248,7 +2390,15 @@ class CampaignScheduler:
                     record.attempt_id,
                     terminal_detail=_measurement_terminal_detail(result),
                 )
-        if supervised is not None and failure.reason == "worker_exit":
+        if supervised is not None and failure.reason in {
+            "worker_exit",
+            "memory_probe_error",
+            "output_limit",
+            "output_probe_error",
+            "disk_space_limit",
+            "disk_probe_error",
+            "phase_state_error",
+        }:
             resources = _resource_payload(
                 supervised.usage,
                 supervised.generation_phase,
@@ -2261,7 +2411,11 @@ class CampaignScheduler:
             )
             result = failure_measurement(
                 ResultStatus.ERROR,
-                _worker_process_exit_error(supervised),
+                (
+                    _worker_process_exit_error(supervised)
+                    if failure.reason == "worker_exit"
+                    else failure.detail
+                ),
                 resources=resources,
             )
             self._attach_manual_provenance(result, cell=cell)
@@ -2828,7 +2982,7 @@ class CampaignScheduler:
             )
             if reusable_record is not None:
                 artifact_use_lock = (
-                    "campaign-artifact-use-" f"{reusable_record.attempt_id}"
+                    f"campaign-artifact-use-{reusable_record.attempt_id}"
                 )
                 try:
                     lane_locks.enter_context(
@@ -3066,37 +3220,71 @@ class CampaignScheduler:
                         child_count=observation.usage.child_count,
                     )
 
-                supervised = supervise_worker(
-                    command,
-                    timeout_seconds=self.settings.timeout_seconds,
-                    generation_timeout_seconds=generation_timeout,
-                    profiling_timeout_seconds=(
-                        self.settings.profiling_time_limit_seconds
+                artifact_path = attempt.root / "artifact"
+                output_file_limits = {
+                    worker_log: self.settings.attempt_output_limit_bytes,
+                    worker_progress: self.settings.attempt_output_limit_bytes,
+                    artifact_path / "legacy.log": (
+                        self.settings.attempt_output_limit_bytes
                     ),
-                    validation_timeout_seconds=(
-                        self.settings.validation_time_limit_seconds
+                    artifact_path / "madgraph.log": (
+                        self.settings.attempt_output_limit_bytes
                     ),
-                    generation_guard_includes_preparation=True,
-                    phase_channel=phase_channel,
-                    max_rss_bytes=memory_limit_bytes,
-                    environment_overrides=_worker_environment_overrides(
-                        self.settings,
-                        self.service.paths.coordination_root,
-                    ),
-                    scrub_import_environment=(self.worker_harness_identity is not None),
-                    working_directory=(
-                        self.service.paths.repo_root
-                        if self.worker_harness_identity is not None
-                        else None
-                    ),
-                    interval_seconds=self.settings.resource_sample_interval_seconds,
-                    termination_grace_seconds=self.settings.termination_grace_seconds,
-                    observation_callback=observe_resources,
-                    cancellation_requested=self.settings.cancellation_requested,
-                    capture_stderr=True,
-                )
+                }
                 if legacy_workspace is not None:
-                    self._remove_legacy_workspace(legacy_workspace)
+                    output_file_limits[
+                        legacy_workspace / "Outputs" / "log_file.txt"
+                    ] = self.settings.attempt_output_limit_bytes
+                try:
+                    supervised = supervise_worker(
+                        command,
+                        timeout_seconds=self.settings.timeout_seconds,
+                        generation_timeout_seconds=generation_timeout,
+                        profiling_timeout_seconds=(
+                            self.settings.profiling_time_limit_seconds
+                        ),
+                        validation_timeout_seconds=(
+                            self.settings.validation_time_limit_seconds
+                        ),
+                        generation_guard_includes_preparation=True,
+                        phase_channel=phase_channel,
+                        max_rss_bytes=memory_limit_bytes,
+                        output_file_limits=output_file_limits,
+                        minimum_free_disk_bytes=(
+                            self.settings.minimum_free_disk_bytes
+                        ),
+                        disk_probe_path=self.service.paths.artifact_root,
+                        environment_overrides=_worker_environment_overrides(
+                            self.settings,
+                            self.service.paths.coordination_root,
+                        ),
+                        scrub_import_environment=(
+                            self.worker_harness_identity is not None
+                        ),
+                        working_directory=(
+                            self.service.paths.repo_root
+                            if self.worker_harness_identity is not None
+                            else None
+                        ),
+                        interval_seconds=(
+                            self.settings.resource_sample_interval_seconds
+                        ),
+                        termination_grace_seconds=(
+                            self.settings.termination_grace_seconds
+                        ),
+                        observation_callback=observe_resources,
+                        cancellation_requested=(
+                            self.settings.cancellation_requested
+                        ),
+                        capture_stderr=True,
+                    )
+                finally:
+                    if legacy_workspace is not None:
+                        self._finalize_legacy_workspace(
+                            legacy_workspace,
+                            diagnostic_path=attempt.path("legacy-generator-tail.log"),
+                        )
+                self._finalize_worker_log(worker_log)
                 generation_phase = supervised.generation_phase
                 resources = _resource_payload(
                     supervised.usage,
@@ -3249,6 +3437,10 @@ class CampaignScheduler:
                         "validation_timeout": ResultStatus.TIMEOUT,
                         "memory_limit": ResultStatus.MEMORY_LIMIT,
                         "memory_probe_error": ResultStatus.ERROR,
+                        "output_limit": ResultStatus.ERROR,
+                        "output_probe_error": ResultStatus.ERROR,
+                        "disk_space_limit": ResultStatus.ERROR,
+                        "disk_probe_error": ResultStatus.ERROR,
                         "phase_state_error": ResultStatus.ERROR,
                         "worker_exit": ResultStatus.ERROR,
                     }[supervised.reason]
@@ -3373,18 +3565,15 @@ class CampaignScheduler:
                         if isinstance(authority_state, Mapping)
                         else None
                     )
-                    should_reconcile = (
-                        late_authority is not None
-                        and (
-                            candidate_status == ResultStatus.UNVERIFIED.value
-                            or (
-                                isinstance(previous_selected, str)
+                    should_reconcile = late_authority is not None and (
+                        candidate_status == ResultStatus.UNVERIFIED.value
+                        or (
+                            isinstance(previous_selected, str)
                                 and planned.numerical_authority_cell_ids.index(
                                     late_authority[0]
                                 )
                                 < planned.numerical_authority_cell_ids.index(
                                     previous_selected
-                                )
                             )
                         )
                     )
@@ -3451,11 +3640,20 @@ class CampaignScheduler:
                         raise RuntimeError(
                             "policy censor state changed during validation"
                         )
+                if policy_state is PolicyMeasurementState.SUCCESS:
+                    self._compact_reference_artifact(cell, artifact_path, result)
+                    validate_measurement(
+                        result,
+                        expected_cell=cell,
+                        catalog=self.catalog,
+                    )
+                else:
+                    self._discard_terminal_artifact(artifact_path, attempt.root)
                 attempt.write_json("worker-result.json", result)
                 paths = _attempt_files(
                     attempt.root,
                     include_heavy_artifact=(
-                        policy_state is not None
+                        policy_state is PolicyMeasurementState.SUCCESS
                         or not self.settings.remove_heavy_attempt_artifacts
                     ),
                 )

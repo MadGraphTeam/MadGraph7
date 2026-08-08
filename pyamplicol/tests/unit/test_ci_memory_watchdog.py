@@ -311,9 +311,7 @@ def test_footprint_over_rss_terminates_with_stable_reason(
 
     assert returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
     assert (
-        "reason="
-        f"{watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}"
-        in stderr.getvalue()
+        f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}" in stderr.getvalue()
     )
     assert "rss=0.008 GiB" in stderr.getvalue()
     assert "physical_footprint=0.020 GiB" in stderr.getvalue()
@@ -596,10 +594,7 @@ def test_darwin_libproc_parsers_extract_identity_and_rss() -> None:
 
     assert watchdog._parse_darwin_bsdinfo(bytes(bsd)) == (123, 45, 67)
     assert watchdog._parse_darwin_taskinfo_rss(bytes(task)) == 987_654_321
-    assert (
-        watchdog._parse_darwin_rusage_phys_footprint(bytes(rusage))
-        == 1_234_567_890
-    )
+    assert watchdog._parse_darwin_rusage_phys_footprint(bytes(rusage)) == 1_234_567_890
     with pytest.raises(ValueError, match="incomplete Darwin proc_bsdinfo"):
         watchdog._parse_darwin_bsdinfo(b"short")
     with pytest.raises(ValueError, match="incomplete Darwin proc_taskinfo"):
@@ -633,7 +628,10 @@ def test_fake_darwin_libproc_handles_success_race_and_unexpected_error() -> None
     class FakeLibrary:
         proc_pid_rusage = FakeProcPidRusage()
 
-    probe = watchdog.DarwinPhysicalFootprintProbe(FakeLibrary())
+    probe = watchdog.DarwinPhysicalFootprintProbe(
+        FakeLibrary(),
+        pid_exists=lambda _pid: True,
+    )
 
     assert probe((1, 2)) == {1: 987_654_321}
     with pytest.raises(watchdog.ProbeError, match="Permission denied"):
@@ -702,6 +700,37 @@ def test_darwin_footprint_probe_accepts_exit_after_permission_race() -> None:
 
     assert probe((7,)) == {}
     assert library.proc_pid_rusage.calls == 2
+
+
+def test_darwin_footprint_probe_omits_exited_pid_after_permission_retries() -> None:
+    class FakeProcPidRusage:
+        argtypes: object = None
+        restype: object = None
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(
+            self,
+            _pid: int,
+            _flavor: int,
+            _buffer: object,
+        ) -> int:
+            self.calls += 1
+            ctypes.set_errno(errno.EPERM)
+            return -1
+
+    class FakeLibrary:
+        proc_pid_rusage = FakeProcPidRusage()
+
+    library = FakeLibrary()
+    probe = watchdog.DarwinPhysicalFootprintProbe(
+        library,
+        pid_exists=lambda pid: pid != 7,
+    )
+
+    assert probe((7,)) == {}
+    assert library.proc_pid_rusage.calls == 3
 
 
 def test_darwin_probe_constructor_rejects_missing_symbol() -> None:
@@ -836,13 +865,8 @@ time.sleep(30)
 
     assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
     assert "memory limit exceeded" in completed.stderr
-    assert (
-        f"reason={watchdog.RSS_LIMIT_REASON}" in completed.stderr
-        or (
-            "reason="
-            f"{watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}"
-            in completed.stderr
-        )
+    assert f"reason={watchdog.RSS_LIMIT_REASON}" in completed.stderr or (
+        f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}" in completed.stderr
     )
     assert marker.read_text(encoding="ascii") == "terminated"
     child_pid = int(pid_path.read_text(encoding="ascii"))

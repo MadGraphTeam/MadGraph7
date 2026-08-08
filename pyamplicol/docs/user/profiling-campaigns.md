@@ -261,21 +261,28 @@ not an authoritative successful current.
 
 ## Attempt retention and cleanup
 
-Heavy attempt payloads are retained by default. This keeps post-mortem logs,
-artifacts, and reproduction evidence available.
+Compact retention is the default. It keeps sealed results and current pointers,
+provenance, commands, progress/timeline evidence, bounded log tails, and outputs
+needed by currents or dependencies. Disposable copied AmpliCol, MadGraph, and
+build workspaces are removed after publication. Cross-revision reuse reads the
+sealed results rather than those workspaces.
 
-Pass `--cleanup-artifacts` to compact obsolete sealed attempts after a run:
+Pass `--retain-workspaces` only for a bounded debugging run that needs the full
+workspaces:
 
 ```console
 ./steer_performance_campaign.py run \
-  --cleanup-artifacts \
+  --retain-workspaces \
   --table matrix --process-id 1 --multiplicity 1 \
   --generation-engine recurrence --model built_in
 ```
 
-Compaction preserves compact results, logs, progress events, and phase
-timelines while removing only obsolete heavy evaluator payloads. Current
-artifacts and artifacts borrowed by an equivalent current remain protected.
+`--cleanup-artifacts` remains accepted as a compatibility spelling for the
+default compact policy. Independently, `--attempt-output-limit` defaults to
+67,108,864 bytes (64 MiB) per watched output/log file and
+`--minimum-free-disk` reserves 5,368,709,120 bytes (5 GiB) on the artifact
+volume. These storage guards complement, but do not replace, process-tree RAM
+supervision.
 
 ## Inspect and render
 
@@ -345,8 +352,8 @@ state.
 4. Use `--continue-across-revisions` when intentionally extending a campaign
    across source updates.
 5. Prefer selective retry flags over a broad force refresh.
-6. Keep heavy attempts until a problem is understood; compact them later with
-   `--cleanup-artifacts`.
+6. Keep compact attempts by default; use `--retain-workspaces` only for a
+   bounded debugging run.
 7. Never commit `campaign_artifacts/`, raw results, logs, locks, attempts, or
    LaTeX auxiliary files.
 

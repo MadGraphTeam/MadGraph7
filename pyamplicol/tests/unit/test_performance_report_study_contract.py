@@ -124,7 +124,7 @@ def test_study_contract_binds_source_wrapper_policy_and_exact_limits(
         ),
     }
     assert loaded["allowed_cell_ids"] == list(z_table_f_cell_ids())
-    assert len(loaded["allowed_cell_ids"]) == 28
+    assert len(loaded["allowed_cell_ids"]) == 32
     retained = loaded["retained_prior_evidence"]
     assert isinstance(retained, dict)
     assert retained["n_final"] == list(range(1, 8))
@@ -356,13 +356,13 @@ def test_study_audit_replays_f_policy_without_ordinary_mac_policy(
         for cell in service.catalog.measurement_cells()
         if cell.cell_id in allowed and cell.n_final == 8
     )
-    assert len(cells) == 14
+    assert len(cells) == 16
     measured_cells = tuple(
         cell
         for cell in cells
         if service.catalog.static_na_reason(cell) is None
     )
-    assert len(measured_cells) == 10
+    assert len(measured_cells) == 12
     phase = {
         "abi": "pyamplicol-report-generation-phase-evidence-v1",
         "phase_state_abi": "pyamplicol-report-worker-phase-state-v1",
@@ -426,9 +426,9 @@ def test_study_audit_replays_f_policy_without_ordinary_mac_policy(
     )
 
     assert audited["status"] == "ok"
-    assert audited["declared_cell_count"] == 14
+    assert audited["declared_cell_count"] == 16
     assert audited["static_na_cell_count"] == 4
-    assert audited["policy_state_counts"] == {"generation_limit": 10}
+    assert audited["policy_state_counts"] == {"generation_limit": 12}
     assert audited["campaign_policy"] == (
         MACBOOK_M3_Z_TABLE_F_POLICY.as_manifest()
     )

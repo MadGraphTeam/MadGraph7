@@ -15,14 +15,28 @@ appropriate, MadGraph.
 
 Think of a copied campaign as a self-contained electronic lab notebook. It
 contains the catalogue of measurements to make, the report sources, and a
-visible `campaign_artifacts/` directory in which every attempt, log, generated
-process output, and current result is recorded. The controller can stop and
-resume without turning a long scan into one fragile all-or-nothing job.
+visible `campaign_artifacts/` directory in which every attempt and current
+result is recorded, together with bounded diagnostics and any process output
+that must be retained. The controller can stop and resume without turning a
+long scan into one fragile all-or-nothing job.
 
-Here **current result** means the latest completed result that the controller
-would use in the report; it does not mean “a worker that is currently
-running.” A new attempt replaces that pointer only after its record is
-complete.
+The dashboard and report use a few precise words:
+
+| Word | Plain-language meaning |
+| --- | --- |
+| **cell** | One measurement question: one process, multiplicity, model, colour treatment, workload, and execution mode |
+| **controller** | The steering script that chooses cells, starts measurements, and records their outcome |
+| **worker** | One supervised operating-system process doing one cell at a time; a worker may itself be allowed several CPU cores |
+| **dependency** | Another cell whose numerical result is needed to validate the requested cell, such as recurrence or MadGraph |
+| **process output** | The generated directory that can later evaluate phase-space points, roughly like a MadGraph standalone-process directory; internal files may call it an `artifact` |
+| **current result** | The latest complete record that the next report will use, not a worker that happens to be running now |
+| **provenance** | The recorded origin of a number: source revision, settings, machine, phase-space point, and validation link |
+| **authenticated record** | A record whose identity and integrity fields the controller has checked; this is a data-integrity term, not a user login |
+| **precision lane** | One supported numerical route, such as `p16` (ordinary double precision) or `p200` (about 200 decimal digits); “lane” does not mean another physics approximation |
+
+A new attempt replaces a cell's current-result pointer only after the complete
+record has been written. An interrupted or half-written attempt therefore
+cannot silently become the number shown in the PDF.
 
 The campaign is deliberately broader than the ordinary `pyamplicol profile`
 command. `profile` times one process output that you already selected. The
@@ -111,14 +125,17 @@ This measures only the recurrence cell for `d d~ > Z`, at final-state
 multiplicity one. It is an installation check, not a representative estimate
 of the time needed for a broad high-multiplicity campaign.
 
-Release wheels omit the optional Ratatui dashboard bindings. Their campaigns
-continue headlessly, as though `--no-dashboard` had been supplied. A
-contributor installation prepared with those optional bindings can show the
+Release wheels omit the optional terminal-dashboard component (implemented
+with Ratatui). Their campaigns continue **headlessly**, meaning without the
+interactive dashboard, as though `--no-dashboard` had been supplied. A
+contributor installation prepared with that optional component can show the
 live coloured dashboard.
 
 ## Select the physics question, not individual shell jobs
 
-The campaign catalogue is a matrix. Useful selector dimensions include:
+The campaign catalogue is a matrix: each axis describes part of the physics or
+measurement question, and their allowed combinations define the cells. Useful
+selector dimensions include:
 
 | Selector | What it chooses | Examples |
 | --- | --- | --- |
@@ -126,7 +143,7 @@ The campaign catalogue is a matrix. Useful selector dimensions include:
 | `--process-id` | One of the numbered process families | `1`, or a catalogue key or quoted process |
 | `--multiplicity` | Number of final-state particles, `n` | `3 4` |
 | `--color-approximation` | Colour treatment | `lc`, `nlc`, `full` |
-| `--generation-mode` | LC layout or contracted workload | `non-union-flow`, `union-flow`, `contracted` |
+| `--generation-mode` | Physical workload/layout | `non-union-flow`, `union-flow`, `contracted` |
 | `--generation-engine` | Program or execution mode | `amplicol`, `recurrence`, `compiled`, `eager`, `on-the-fly` |
 | `--model` | Model preparation used by the cell | `built_in`, `sm_ufo` |
 | `--cell-id` / `--cell-id-file` | Exact canonical cells | IDs printed by `inspect` or the summary files |
@@ -148,17 +165,33 @@ means “multiplicity 3 **or** 4, recurrence **or** compiled, and built-in
 all of its applicable values. Use `--help` to see the exact current choices and
 aliases before scripting a large selection.
 
-By default, the controller also schedules the available numerical authority
-needed to accept each requested candidate. `--no-dependencies-added` suppresses
-optional independent-reference cells, but never removes unavoidable model,
-process, or selector prerequisites. It is useful for a narrow smoke test; a
-publication campaign normally keeps those independent checks.
+The campaign names map to the physical LC calls as follows:
+
+| Campaign name | Repeated request | Generated layout in recurrence/eager/compiled |
+| --- | --- | --- |
+| `non-union-flow` | one selected flow, summed over all helicities | `topology-replay` |
+| `union-flow` | all flows, one selected helicity | `all-flow-union` |
+| `contracted` | the requested axes already summed/contracted | used for NLC and full-colour campaign cells |
+
+OTF accepts the same two LC requests, but does not write either layout during
+generation. Its first selected request constructs the needed family in memory.
+This is why “engine” and “generation mode” are separate selectors: the former
+chooses *when and how* currents are prepared, while the latter chooses *which
+physics workload* is timed.
+
+By default, the controller also schedules the numerical reference needed to
+accept each requested candidate. The dashboard calls such a prerequisite a
+dependency. `--no-dependencies-added` suppresses optional independent-reference
+cells, but never removes unavoidable model, process, or selector prerequisites.
+It is useful for a narrow smoke test; a publication campaign normally keeps
+those independent checks.
 
 ### Resource controls
 
 The safe defaults are one worker, one core per worker, a one-hour
-generation/preparation limit, a one-hour whole-worker limit, and a decimal
-30 GB RAM cap for each supervised worker process tree. The main controls are:
+generation/preparation limit, a one-hour whole-worker limit, a decimal 30 GB
+RAM cap for each supervised worker process tree, a 64 MiB cap for each watched
+attempt-output stream, and a 5 GiB free-disk reserve. The main controls are:
 
 ```text
 --workers N
@@ -168,6 +201,8 @@ generation/preparation limit, a one-hour whole-worker limit, and a decimal
 --worker-wall-limit SECONDS
 --ram-limit BYTES
 --campaign-ram-limit BYTES
+--attempt-output-limit BYTES
+--minimum-free-disk BYTES
 --target-measurement-duration SECONDS
 --minimum-samples N
 --warmups N
@@ -180,7 +215,8 @@ which defaults to 1 even when pyAmpliCol receives more cores. Keep that serial
 default for the maintained legacy checkout: its generator Make target is not
 parallel-safe.
 
-`--ram-limit` is a cap for each worker tree. The optional
+`--ram-limit` is a cap for each worker tree—the worker plus every compiler or
+external program it starts. The optional
 `--campaign-ram-limit` is an aggregate ceiling: the controller conservatively
 divides it by the requested worker count and uses the smaller of that share and
 the per-worker cap. For example, ten workers with both limits set to decimal
@@ -194,12 +230,24 @@ the per-worker cap. For example, ten workers with both limits set to decimal
   --table matrix --multiplicity 1 2 3
 ```
 
+The controller measures the worker and all of its descendants as one memory
+tree. It guards resident RAM (RSS), and on macOS also checks the operating
+system's physical-footprint measure and uses whichever is larger. This RAM
+guard does **not** limit bytes written to disk: a runaway external-program log
+can fill a volume while the process remains well below its RAM ceiling.
+`--attempt-output-limit` therefore stops a worker when any watched attempt log
+or output file crosses its per-file limit; the default is 64 MiB (67,108,864
+bytes). `--minimum-free-disk` stops it when free space on the campaign-artifact
+volume falls below the reserve; the default is 5 GiB (5,368,709,120 bytes).
+Both cases are recorded as explicit errors rather than being mistaken for
+physics or timing results.
+
 Increase parallelism only when the machine has enough RAM for that many
 independent worker trees. `--fail-fast` changes validation scheduling into
-multiplicity waves and stops after the first terminal non-success, including a
-required mismatch, error, timeout, or authenticated resource cap. A legacy
-AmpliCol disagreement remains non-terminal because original AmpliCol is not a
-correctness authority.
+multiplicity waves and stops after the first final non-success, including a
+required mismatch, error, timeout, or supervisor-confirmed resource cap. A
+legacy AmpliCol disagreement remains a diagnostic rather than a stopping
+condition because original AmpliCol is not a correctness authority.
 
 ## What one campaign cell actually does
 
@@ -212,29 +260,30 @@ For an ordinary successful cell, the controller:
 4. evaluates a shared deterministic phase-space point;
 5. checks the resolved sum and the required cross-mode or MadGraph agreement;
 6. profiles the accepted workload in repeated timing chunks; and
-7. seals the attempt and makes it the cell's current result in one complete
-   replacement, so a half-written record cannot become current.
+7. seals the attempt (marks the record complete and no longer editable) and
+   makes it the cell's current result in one replacement.
 
-Independent processes can run in parallel. Dependencies are explicit: for
-example, recurrence is the correctness authority for matching compiled/eager
-views, while MadGraph standalone is the full-colour authority for the UFO-SM
-views. For LC on-the-fly cells through `n <= 4`, the matching recurrence cell
-checks the complete resolved component array; no compiled output is created
-merely to perform that gate.
+Independent cells can run in parallel. Dependencies are explicit: for example,
+the matching recurrence result checks compiled and eager results, while
+MadGraph standalone supplies the independent full-colour reference for UFO-SM
+results. For LC OTF cells through `n <= 4`, the matching recurrence cell checks
+every resolved helicity/flow component, not only their final sum; no compiled
+output is generated merely to perform that check.
 
 The common deterministic point matters. A timing ratio is published only when
-the candidate and denominator are linked to the intended same-point comparison
-and the required validation has passed. This prevents a visually plausible
-ratio from joining unrelated measurements.
+the candidate and denominator are explicitly linked to the same phase-space
+point and the required validation has passed. This prevents a visually
+plausible ratio from accidentally joining unrelated measurements.
 
 ## Watch, stop, and resume without losing completed work
 
 In the interactive dashboard, `Ctrl-C` stops the campaign safely. `Esc` first
 closes an open command drawer; otherwise it performs the same orderly stop. In
 headless mode, use `Ctrl-C`. The controller stops dispatch, terminates each
-supervised process tree with its configured grace period, preserves completed
-currents and compact interruption evidence, removes its live lease, writes the
-summary IDs, and exits with the conventional interrupted status (code 130).
+supervised worker and any child programs with its configured grace period,
+preserves completed current results and compact interruption evidence, marks
+the campaign as no longer live, writes the summary IDs, and exits with the
+conventional interrupted status (code 130).
 
 There is no supported “hold” or in-memory pause command. To pause a long scan,
 stop it orderly and later run the same command again. Compatible successful
@@ -243,7 +292,14 @@ a cell with no compatible successful current is attempted again. If an older
 successful current survived the interrupted attempt, the ordinary rerun reuses
 that result; add `--force-refresh` only when you intentionally require a fresh
 attempt. Historical results from another source revision participate only when
-you explicitly pass `--continue-across-revisions`.
+you explicitly pass `--continue-across-revisions`. Use that option only after
+checking that the intervening edits cannot change the generated physics,
+validation, or measured runtime path—for example, a report-layout-only change.
+Each reused result still records its original revision, so the PDF's provenance
+remains auditable rather than pretending that every cell came from one commit.
+Resume and cross-revision reuse follow the sealed `current.json` and result
+records; they do not depend on retaining a compiler or external-program build
+workspace.
 
 With dashboard bindings installed, another terminal can take a read-only
 snapshot of the newest live campaign:
@@ -253,10 +309,10 @@ snapshot of the newest live campaign:
   dashboard-snapshot --live --width 160 --height 48
 ```
 
-This reads compact coordination data; it cannot pause, resume, or stop the
-campaign. Use `--instance ID_OR_PREFIX` when several campaign invocations are
-active. Without the optional dashboard bindings, this subcommand explains how
-to install them rather than attaching to a wheel-owned headless run.
+This reads a small status record; it cannot pause, resume, or stop the campaign.
+Use `--instance ID_OR_PREFIX` when several campaign invocations are active.
+Without the optional dashboard bindings, this subcommand explains how to
+install them rather than attaching to a wheel-owned headless run.
 
 ### Replay failures or policy caps
 
@@ -296,47 +352,56 @@ untouched.
 
 ## What is retained as evidence
 
-The controller owns `campaign_artifacts/`. A cell normally retains a compact
-current pointer and one or more uniquely named attempt directories. Depending
-on the cell, an attempt can contain:
+The controller owns `campaign_artifacts/`. Here “artifact” means retained
+campaign evidence, not only a generated pyAmpliCol process output. A cell
+normally retains a tiny pointer to its current result and one or more uniquely
+named attempt directories. Depending on the cell, an attempt can contain:
 
-- a manifest describing the immutable attempt;
+- a manifest (an inventory identifying the completed attempt);
 - `result.json` and `worker-result.json`;
-- `worker.log`, streamed progress events, and a phase timeline;
+- a bounded `worker.log`, streamed progress events, and a phase timeline;
 - resource measurements and termination diagnostics; and
-- an `artifact/` payload containing the generated process output or external
-  reference workspace needed to reproduce the measurement.
+- when retained, an `artifact/` payload containing the generated process output
+  or an external-reference workspace used for the measurement.
 
-Prepared models, model caches, live coordination data, and publication staging
-also stay below the campaign directory. Treat their exact subdirectory names
-as controller internals; use `inspect`, the summary ID files, and the current
+Prepared models, reusable model data (“model caches”), live status data, and a
+temporary directory used while building the PDF (“publication staging”) also
+stay below the campaign directory. Treat their exact subdirectory names as
+controller internals; use `inspect`, the summary ID files, and the current
 result JSON rather than editing pointers by hand.
 
-By default, heavy payloads from every attempt are retained. If disk space is
-more important than reproducing obsolete attempts byte for byte, launch with:
+The default is **compact retention**. The controller keeps the result,
+provenance, commands, progress and phase records, resource diagnostics, and
+bounded final log tails. It keeps a generated pyAmpliCol process output when a
+current result still needs it. For original AmpliCol it keeps the small
+selected-flow library needed for replay and self-contained structural evidence,
+but removes the disposable checkout/build workspace; disposable MadGraph and
+other build workspaces are likewise removed after their measurements are
+sealed. Heavy payloads from obsolete, failed, or cancelled attempts are also
+removed. The old `--cleanup-artifacts` spelling is still accepted, but now
+names this default policy rather than enabling a more aggressive one.
+
+When diagnosing an external generator, opt in to complete workspaces for that
+run with:
 
 ```console
 ./steer_performance_campaign.py run \
-  --cleanup-artifacts \
+  --retain-workspaces \
   --workers 1 --table matrix --process-id 1 --multiplicity 1 \
   --color-approximation lc --generation-mode non-union-flow \
   --generation-engine recurrence --model built_in \
   --no-dependencies-added --no-dashboard
 ```
 
-This compacts obsolete, sealed, non-current attempts by removing their complete
-heavy `artifact/` directories. Those directories may contain a generated
-process output or an external-reference workspace, not only an evaluator.
-Compact metadata and any result, log, progress events, and timeline evidence
-present for the attempt remain. Current payloads and payloads borrowed by
-equivalent current results remain protected. During fail-fast termination,
-failed and cancelled attempts retain their full evidence.
+`--retain-workspaces` can consume disk quickly and is intended for a bounded
+debugging session. It does not disable the attempt-output or minimum-free-disk
+guards. Without it, a failed or fail-fast-cancelled attempt still retains the
+compact diagnostics needed to understand and replay the cell, but not an
+unbounded partial workspace.
 
-Temporary publication staging directories and live coordination leases are not
-historical evidence. Staging is removed when a refresh attempt ends, whether it
-succeeds or fails; the live lease is removed when the campaign invocation ends
-or is stopped orderly. Do not prune the campaign with broad shell cleanup
-commands.
+Temporary PDF-building directories and “live” markers are not historical
+evidence. They are removed when their operation ends, whether it succeeds or
+fails. Do not prune the campaign with broad shell cleanup commands.
 
 ### Reset or branch a campaign safely
 
@@ -365,13 +430,12 @@ snapshot:
 ./steer_performance_campaign.py refresh-pdf
 ```
 
-The controller captures a stable report snapshot containing authenticated
-current results and compact terminal presentation outcomes for cells without a
-current. It reads and validates that snapshot with a coloured progress display,
-renders the result JSON and generated table TeX in a fresh staging directory,
-runs LaTeX there, and atomically installs the new files and `pyAmpliCol.pdf`.
-A failed render leaves the previous published report in place, and its staging
-directory is removed.
+The controller first takes a stable snapshot—a read-only list of the complete
+current results that belong in this version of the report. It verifies their
+recorded origin and validation links, shows coloured progress, renders the JSON
+and table TeX in a fresh temporary directory, and runs LaTeX there. Only after
+all of that succeeds does it replace the published files and `pyAmpliCol.pdf`
+as one unit. A failed render therefore leaves the previous PDF in place.
 
 Unresolved LaTeX references and compilation errors are fatal. Overfull boxes
 are reported by interactive `refresh-pdf` so they can be reviewed. The final
@@ -408,30 +472,91 @@ screen. For example, the LC overview is
 tables are rendered from JSON caches below `results/`, such as
 `matrix_compiled_builtin_sm_lc.json` and `reference_amplicol_lc.json`.
 
-For a human-readable view of current coverage and status, use:
+For a human-readable view of current coverage and status, including OTF, use:
 
 ```console
 ./steer_performance_campaign.py inspect \
   --color-approximation lc \
-  --generation-engine recurrence compiled
+  --generation-engine recurrence compiled eager on-the-fly
 ```
 
-Add `--format json` for stable, uncoloured machine-readable output. Exact cell
-IDs in `inspect`, the current JSON, and `campaign_summary_ids/` connect a
+Add `--format json` for stable, uncoloured output suitable for scripts. Exact
+cell IDs in `inspect`, the current JSON, and `campaign_summary_ids/` connect a
 compact table status back to its retained attempt evidence. The PDF does not
-turn every timing into a clickable evidence link; the authenticated linkage is
-stored in the record's validation and provenance fields, including the shared
-point and reference relationship.
+turn every timing into a clickable evidence link; the result record stores the
+source/settings (“provenance”), shared point, and validation-reference link.
+
+### Wall, evaluator, and recurrence clocks
+
+The report keeps several clocks separate instead of renaming whichever number
+is available:
+
+- **Runtime** is the broad physics task of evaluating already generated output
+  at phase-space points. The **evaluator** is the loaded numerical calculator
+  that performs it.
+- **Wall time** is elapsed real time observed around the complete timed call.
+  It is available across implementations and is therefore the primary number
+  used to choose the fastest validated mode.
+- **Evaluator total** is a separately recorded accumulated clock inside the
+  complete warmed evaluator. Comparing it with wall time helps reveal time
+  spent in wrappers or in choosing and calling the numerical routine; it is
+  not copied from wall time.
+- **Recurrence core** is the still narrower time spent replaying recurrence
+  schedules. It is useful for diagnosing recurrence itself, but it is not a
+  complete evaluator clock and is never relabelled or used as another mode's
+  denominator.
+
+The muted bracketed `xS` in a Best-vs-AmpliCol runtime cell first compares
+compatible internal clocks that each implementation explicitly assigns to
+numerical execution, excluding its documented surrounding work. If those are
+unavailable, the table may use its explicitly documented evaluator-total
+versus legacy-direct fallback. Either way `xS` is diagnostic. The coloured
+outer `xW` is always the wall-time ratio and remains the performance
+conclusion.
+
+`JIT` in row labels means “just-in-time”: numerical machine code is prepared
+automatically for the current environment. `O2` and `O3` name compiler
+optimization levels; they do not denote perturbative orders.
+
+### The Z-gluon ladder also includes OTF
+
+The built-in-SM and UFO-SM Z tables follow
+
+```text
+d d~ -> Z + (n-1)g
+```
+
+through increasing final-state multiplicity. For each `n`, their setup rows now
+include compiled variants, eager, recurrence, **and on-the-fly JIT O2**, beside
+the original-AmpliCol reference. The two column groups remain the same physical
+workloads used throughout the report: selected flow with a helicity sum, and
+all flows at one helicity.
+
+An OTF generation cell in these detailed Z tables is printed as:
+
+```text
+[G] G+W
+```
+
+Both numbers are absolute seconds. `G` is generation of the compact process
+recipe; `G+W` adds the first cold evaluation of the complete campaign batch for
+that workload. The muted brackets separate generation alone without hiding the
+construction cost moved to first use. This `W` is not the public
+single-point `Runtime.warm_up(...)` call: the campaign deliberately measures
+its complete profiling batch. The adjacent `wall` column is the ordinary warm
+wall time per point. The `eval` column is shown only when the mode supplied a
+separately authenticated warmed evaluator-total clock; `not exposed` does not
+mean that wall timing failed.
 
 ## Read one real “Best vs AmpliCol” cell
 
-The following is a populated snapshot from one MacBook M3 campaign. It is a
-worked notation example, **not** a performance promise for another machine,
-compiler, source revision, or model preparation. Take process ID 1 at
-`n = 3`, which is
+The following is the process-ID 1, `n = 2` cell from the current authoritative
+campaign rendered for this release. It is a worked notation example, **not** a
+performance promise for another machine, compiler, source revision, or model
+preparation:
 
 ```text
-d d~ -> Z + (n-1)g  =  d d~ -> Z g g
+d d~ -> Z + (n-1)g  =  d d~ -> Z g
 ```
 
 The LC table contains two aligned workloads in the fixed order
@@ -439,79 +564,46 @@ The LC table contains two aligned workloads in the fixed order
 
 | Table row | Original AmpliCol | Best validated pyAmpliCol mode |
 | --- | --- | --- |
-| generation `[s]` | `2.19 | 0.000263` | `(c) x1.63 | 2.76 (c)` |
-| runtime `[microseconds/point]` | `0.461 | 0.328` | `([x1.64] x1.64) | ([x0.945] x0.945)` |
+| generation `[s]` | `3.66 | 0.000217` | `(o) ([x1.52] x1.52) | [5.57] 5.57 (o)` |
+| runtime `[microseconds/point]` | `0.209 | 0.172` | `([x2.46] x2.51) | ([x0.888] x1.04)` |
 
 Here is every visible entry:
 
-- `2.19` seconds is original AmpliCol's selected-flow process-library
+- `3.66` seconds is original AmpliCol's selected-flow process-library
   generation time.
-- `0.000263` seconds is original AmpliCol's direct all-flow setup time. This is
+- `0.000217` seconds is original AmpliCol's direct all-flow setup time. This is
   a different setup boundary from pyAmpliCol process generation.
-- `(c)` means the measured wall-time winner for that workload was **compiled
-  JIT O3**. The code is muted because it is a label, not a ratio. Current
-  tables use `(r)`, `(c)`, `(e)`, and, for eligible LC cells, `(o)` for
-  recurrence JIT O2, compiled JIT O3, eager-DAG JIT O2, and on-the-fly JIT O2.
-- `x1.63` is the selected-flow compiled generation time divided by the 2.19 s
-  AmpliCol library-generation time. The stored values were about 3.566 s and
-  2.185 s; the table prints three significant figures. It is orange because
-  the ratio is at least one but below two.
-- `2.76 (c)` is the absolute all-flow-union compiled generation time in
-  seconds. It is intentionally not divided by `0.000263`: process generation
-  and AmpliCol direct setup are not comparable operations. Absolute timings
-  are printed neutrally rather than given ratio colours.
-- `0.461 | 0.328` are original AmpliCol wall times in microseconds per point
+- `(o)` says that **on-the-fly JIT O2** had the smallest validated wall time
+  for that workload. The code is a label, not a ratio. The four possible codes
+  are `(r)`, `(c)`, `(e)`, and `(o)` for recurrence JIT O2, compiled JIT O3,
+  eager-DAG JIT O2, and on-the-fly JIT O2.
+- In `([x1.52] x1.52)`, the muted bracketed multiplier uses compact OTF
+  process-output generation `G` alone. The coloured outer multiplier uses
+  `G+W`, where `W` is construction and first evaluation of the selected family
+  on the complete campaign batch. Both are divided by the matching 3.66 s
+  AmpliCol library-generation time. They round to the same value here because
+  the stored `G` was about 5.565 s and `W` about 0.00362 s.
+- `[5.57] 5.57 (o)` is the all-flow OTF generation pair in absolute seconds:
+  muted `[G]` followed by `G+W`. It is intentionally not divided by
+  `0.000217`, because AmpliCol direct setup and pyAmpliCol process generation
+  are different operations.
+- `0.209 | 0.172` are original AmpliCol wall times in microseconds per point
   for the selected-flow and all-flow workloads, respectively.
-- In `([x1.64] x1.64)`, the muted bracketed `x1.64` is the supplementary
-  timing ratio. For this cell it divides compiled's authenticated
-  evaluator-total clock (about 0.759 microseconds per point) by original
-  AmpliCol's direct-execution clock (about 0.461 microseconds per point), the
-  defined legacy fallback because AmpliCol exposes no evaluator-total clock.
-  The outer `x1.64` independently divides candidate wall time by AmpliCol wall
-  time. The candidate wall time was also about 0.759 microseconds per point,
-  so compiled was roughly 1.64 times slower for this selected-flow workload;
-  the outer ratio is orange.
-- Likewise, `([x0.945] x0.945)` contains the evaluator-total/direct-execution
-  supplementary ratio and the primary wall ratio for the all-flow workload.
-  The candidate wall time was about 0.310 microseconds per point,
-  approximately 0.945 times the 0.328 baseline: compiled was slightly faster
-  there, so the outer ratio is green. Both bracketed supplementary ratios stay
-  muted because they are diagnostic clocks.
+- In `([x2.46] x2.51)`, the muted bracketed value compares the OTF
+  execution-attribution clock with AmpliCol's compatible direct-execution
+  clock. The coloured outer value independently compares wall time: about
+  0.526 microseconds per point divided by 0.209. The outer ratio is the primary
+  figure used to choose a winner; generation time is not.
+- Likewise, `([x0.888] x1.04)` contains the supplementary execution ratio and
+  the primary wall ratio for all flows at one helicity. The OTF wall time was
+  about 0.178 microseconds per point, versus about 0.172 for AmpliCol.
 
-The supplementary and wall ratios happen to round to the same value in this
-cell; they are still independently defined clocks. Mode selection uses the
-outer wall ratio, not the bracketed diagnostic ratio and not generation time.
-The overview does not print the candidate's absolute runtime, but it can be
-recovered from the matching detailed result or, approximately, by multiplying
-the displayed ratio by the displayed baseline.
-
-### How an OTF winner adds cold construction
-
-There is no OTF entry in the worked cell above: the older snapshot selected
-compiled from recurrence, compiled, and eager. It did not measure an OTF
-candidate for this choice, so the cell does not establish compiled-versus-OTF
-performance. In a current table, when OTF wins an eligible LC cell, its
-generation entry includes the cost of constructing its first selected family:
-
-```text
-selected flow: ([xG] x(G+W))
-all flows:      [G] G+W
-```
-
-- `G` is compact OTF process-output generation.
-- `W` is the first complete **campaign profiling batch** evaluation after the
-  output has been loaded.
-- For selected flow, both `G` and `G+W` are divided by the matching AmpliCol
-  library-generation time. The `G` ratio is muted; the normally coloured
-  `G+W` ratio is the cold-start comparison.
-- For all flows, `[G]` and `G+W` are absolute seconds because the AmpliCol setup
-  boundary is not comparable.
-
-In this table notation, `W` excludes artifact loading and the conventional
-benchmark warm-up calls. It is also not the same measurement contract as the
-public OTF `Runtime.warm_up(...)` API, which deliberately accepts exactly one
-double-precision point for one selected family. The campaign times the first
-complete batch needed by its profiling protocol.
+Muted supplementary ratios help diagnose where time is spent, but they never
+replace the outer wall ratio. In OTF generation notation, `W` excludes process
+output loading and the conventional benchmark warm-up calls. It is also not
+the public `Runtime.warm_up(...)` contract, which accepts exactly one
+double-precision point for one selected family; the campaign times the first
+complete batch required by its profiling protocol.
 
 ## Colours, `N/A`, caps, and failures
 
@@ -531,12 +623,12 @@ the measured scope. `static N/A` marks a catalogue limitation known without
 launching a worker, such as an original-AmpliCol surface outside its supported
 open-quark-line scope.
 
-A compact token such as `N out.[5d35ae]` is a digested terminal status, not a
+A compact token such as `N out.[5d35ae]` is a shortened final status, not a
 number or speed ratio. Use `inspect` or the relevant file under
 `campaign_summary_ids/` to recover the exact cell ID and outcome. `not exposed`
 has a different meaning: the wall measurement succeeded, but that mode did not
-provide the dedicated authenticated internal timing boundary requested by the
-detailed table. It is not a missing or failed wall measurement.
+provide the separately recorded internal clock requested by the detailed
+table. It is not a missing or failed wall measurement.
 
 Unverified, capped, unsupported, and validation-failed candidates do not enter
 “best” selection or performance summaries. A successful but unlinked candidate
@@ -545,17 +637,18 @@ is excluded from timing ratios, mode-mix counts, and ratio summaries.
 
 ## Read the summary rows
 
-Below each multiplicity block, the **mode mix** counts wall-time winners. In
-the same M3 snapshot, the `n = 3` LC block showed:
+Below each multiplicity block, the **mode mix** counts selected-flow wall-time
+winners that also have the valid AmpliCol link needed for the generation
+summary. The current authoritative `n = 2` LC block shows:
 
 ```text
-r:1 | c:7 | e:0
+r:0 | c:2 | e:0 | o:4
 ```
 
-Among the eight selected-flow winners with a valid AmpliCol denominator, one
-was recurrence, seven were compiled, and none was eager. The snapshot predates
-OTF's inclusion in this overview; current eligible LC tables can append `o` in
-the order `r | c | e | o`.
+Among the six eligible process families, no winner was recurrence, two were
+compiled, none was eager, and four were OTF. A zero is meaningful—it says that
+the mode was measured but did not win this particular group. The order is
+always `r | c | e | o`; it matches the four mode labels in the cells.
 
 Every five-number summary is ordered as:
 
@@ -570,19 +663,23 @@ time to summed baseline time, not the average of the individual ratios:
 weighted mean = sum(candidate times) / sum(baseline times)
 ```
 
-For `n = 3`, the same snapshot displayed:
+For `n = 2`, the same rendered campaign snapshot displays:
 
 | Summary row | `min | max | median | mean | weighted` |
 | --- | --- |
-| generation, selected-flow layout | `x1.03 | x2.58 | x1.63 | x1.68 | x1.65` |
-| runtime, selected flow and helicity sum | `x1.38 | x3.63 | x1.70 | x2.00 | x1.70` |
-| runtime, all flows and one helicity | `x0.779 | x1.30 | x0.973 | x1.00 | x0.920` |
+| generation, selected-flow workload | `x0.801 | x1.52 | x1.34 | x1.24 | x1.23` |
+| runtime, selected flow and helicity sum | `x2.00 | x4.12 | x2.46 | x2.89 | x2.65` |
+| runtime, all flows and one helicity | `x0.754 | x1.43 | x1.00 | x1.05 | x1.05` |
 
-The generation summary uses only the comparable selected-flow generation
-ratios; absolute all-flow generation is omitted. Runtime summaries use only
-the primary wall ratios, not the muted supplementary ratios, and keep the two
-LC workloads on separate lines. Structurally inapplicable, resource-limited,
+The generation summary uses only the comparable selected-flow **primary**
+generation ratios; for an OTF winner this is `G+W`, not the muted `G`-only
+ratio. Absolute all-flow generation is omitted. Runtime summaries use only the
+primary wall ratios, not the muted supplementary ratios, and keep the two LC
+workloads on separate lines. Structurally inapplicable, resource-limited,
 unsupported, unverified, unlinked, and validation-failed cells are excluded.
+This Best-vs summary follows the selected winner's primary token; a fixed-engine
+OTF table instead keeps its generation summary as the diagnostic `G`-only
+quantity while displaying both `G` and `G+W` in each row.
 
 The minimum answers “what was the best individual ratio?”, the maximum the
 worst, the median the middle process, and the arithmetic mean treats every
@@ -597,12 +694,13 @@ included candidate times and baseline times were each added together.
    required.
 3. Preview a narrow selector with `run --dry-run`.
 4. Confirm worker count, per-worker cores, wall-time limit, per-worker RAM cap,
-   and any aggregate campaign RAM cap before broadening the scan.
+   any aggregate campaign RAM cap, attempt-output cap, and free-disk reserve
+   before broadening the scan.
 5. Stop with `Ctrl-C` or dashboard `Esc`; resume by repeating the command.
 6. Use `inspect` and `campaign_summary_ids/` to understand non-successes before
    forcing a refresh.
-7. Keep full evidence by default, or request controller-managed
-   `--cleanup-artifacts` for obsolete attempts.
+7. Use compact retention by default. Add `--retain-workspaces` only for a
+   deliberate, disk-bounded debugging run.
 8. Run `refresh-pdf` only after the desired current cells are in place.
 9. Read ratios together with workload, mode code, validation status, and the
    machine/source identity; no timing number is universal.

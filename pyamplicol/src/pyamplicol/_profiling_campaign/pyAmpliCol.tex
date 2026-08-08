@@ -36,7 +36,7 @@
   colorlinks=true,
   linkcolor=ReportBlue,
   urlcolor=ReportBlue,
-  pdftitle={pyAmpliCol 0.1.0 Methodology and Performance Report},
+  pdftitle={pyAmpliCol 0.1.4 Methodology and Performance Report},
   pdfauthor={Rikkert Frederix, Valentin Hirschi, and Timea Vitos}
 }
 \sisetup{detect-all,scientific-notation=true,round-mode=figures,round-precision=3}
@@ -47,7 +47,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textcolor{ReportInk}{pyAmpliCol 0.1.0}}
+\fancyhead[L]{\textcolor{ReportInk}{pyAmpliCol 0.1.4}}
 \fancyhead[R]{\textcolor{ReportMuted}{Methodology and performance}}
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -95,10 +95,10 @@
   xrightmargin=0.5em
 }
 
-\title{\vspace{-1.4cm}\textbf{pyAmpliCol 0.1.0}\\[0.35em]
+\title{\vspace{-1.4cm}\textbf{pyAmpliCol 0.1.4}\\[0.35em]
   \Large Methodology and Performance Report}
 \author{Rikkert Frederix \and Valentin Hirschi \and Timea Vitos}
-\date{Release 0.1.0\\[0.25em]\small Measurement profile:
+\date{Release 0.1.4\\[0.25em]\small Measurement profile:
   \texttt{\ReportProfileName}}
 
 \begin{document}
@@ -106,10 +106,10 @@
 
 \begin{abstract}
 This report presents the physics coverage, numerical validation, and
-performance of \PAC{} 0.1.0. We compare compiled, eager, recurrence, and
-leading-colour on-the-fly evaluation for the built-in Standard Model, and the
-first three modes for the same model imported from UFO or serialized JSON,
-together with scalar-contact and scalar-gravity benchmarks. Every reported
+performance of \PAC{} 0.1.4. We compare compiled, eager, recurrence, and
+on-the-fly evaluation across the report's stated built-in Standard Model and
+UFO or serialized-JSON scopes, together with scalar-contact and scalar-gravity
+benchmarks. Every reported
 timing is associated with a documented software revision, hardware profile,
 numerical configuration, and validation reference appropriate to the
 corresponding data set.
@@ -377,19 +377,23 @@ not a required check.
 \section{Z-plus-Jets Evaluator Ladders}
 
 The dedicated $d\bar d\to Z+(n-1)g$ ladders compare the independent reference
-with compiled JIT O1, compiled JIT O3, ASM O3, C++ O3, eager-DAG JIT O2, and
-recurrence JIT O2 evaluator configurations. They retain
+with compiled JIT O1, compiled JIT O3, ASM O3, C++ O3, eager-DAG JIT O2,
+recurrence JIT O2, and on-the-fly JIT O2 evaluator configurations. They retain
 final-state multiplicities $n=1,\ldots,9$ for both the built-in model and
 the UFO-SM result set. Each row states its evaluator backend
 and optimization level explicitly; all other workload settings follow the
 benchmark contract above.
 
-The eager and recurrence rows start from the corresponding portable JIT O2
-prepared model. Each layout retains complete flow and helicity coverage; the
-selected-flow workload sums helicities, while the all-flow workload selects one
-helicity at runtime. Prepared-model creation is excluded from
-process-generation time. Every displayed \(Z\)-ladder timing ratio uses the
-matching original \AC{} workload as its denominator, while every
+The eager, recurrence, and on-the-fly rows start from the corresponding
+portable JIT O2 prepared model. Each layout retains complete flow and helicity
+coverage; the selected-flow workload sums helicities, while the all-flow
+workload selects one helicity at runtime. The on-the-fly row uses one compact
+query-local process seed for both workloads and builds the requested
+query-family union during its first evaluation. Its generation entry therefore
+shows \texttt{[G] G+W}, with the process-seed generation time muted and the cold
+first-evaluation cost included in the primary value. Prepared-model creation is
+excluded from process-generation time. Every displayed \(Z\)-ladder timing
+ratio uses the matching original \AC{} workload as its denominator, while every
 non-recurrence \PAC{} result is compared directly with the matching recurrence
 result at the stricter cross-mode tolerance. Built-in and UFO-SM recurrence
 results are likewise compared directly.

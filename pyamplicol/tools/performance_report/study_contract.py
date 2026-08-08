@@ -42,11 +42,11 @@ if TYPE_CHECKING:
 Z_TABLE_F_STUDY_CONTRACT_SCHEMA = "pyamplicol-z-table-f-study-contract-v1"
 Z_TABLE_F_STUDY_ID = "macbook-m3-z-table-f"
 Z_TABLE_F_CONTRACT_MINIMUM_N = 8
-Z_TABLE_F_CELL_COUNT = 28
+Z_TABLE_F_CELL_COUNT = 32
 Z_TABLE_F_PRIOR_EVIDENCE_ABI = (
     "pyamplicol-z-table-f-prior-evidence-snapshot-v1"
 )
-Z_TABLE_F_PRIOR_CELL_COUNT = 98
+Z_TABLE_F_PRIOR_CELL_COUNT = 112
 Z_TABLE_F_PRIOR_STATIC_NA_CELL_COUNT = 4
 Z_TABLE_F_SELECTION_ABI = "pyamplicol-explicit-single-cell-selection-v1"
 Z_TABLE_F_ATTEMPT_BINDING_ABI = (
@@ -213,7 +213,7 @@ def z_table_f_cell_ids() -> tuple[str, ...]:
     )
     if len(cell_ids) != Z_TABLE_F_CELL_COUNT:
         raise StudyContractError(
-            "contracted Z-table n8-n9 catalog census is not exactly 28 cells"
+            "contracted Z-table n8-n9 catalog census is not exactly 32 cells"
         )
     return cell_ids
 

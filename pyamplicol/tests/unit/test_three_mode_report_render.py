@@ -3306,8 +3306,8 @@ def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["required_measurement_count"] == 1026
-    assert evidence["rendered_required_measurement_count"] == 1026
+    assert evidence["required_measurement_count"] == 1042
+    assert evidence["rendered_required_measurement_count"] == 1042
     assert evidence["structurally_not_applicable_display_slot_count"] == 486
     assert evidence["not_exposed_display_slot_count"] == 16
     assert evidence["applicable_na_display_slot_count"] == 0
@@ -3324,8 +3324,8 @@ def test_visible_completeness_authenticates_catalog_static_na_slots(
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["declared_measurement_cell_count"] == 2162
-    assert evidence["required_measurement_count"] == 2128
+    assert evidence["declared_measurement_cell_count"] == 2198
+    assert evidence["required_measurement_count"] == 2164
     assert evidence["catalog_static_na_cell_count"] == 34
     assert evidence["rendered_catalog_static_na_cell_count"] == 34
     assert evidence["applicable_na_display_slot_count"] == 0
@@ -4199,13 +4199,43 @@ def test_two_z_ladders_use_single_line_mode_labels(reset_caches) -> None:
         assert "longtable" not in tex
         assert "eager-DAG JIT O2" in tex
         assert "recurrence JIT O2" in tex
+        assert "on-the-fly JIT O2" in tex
         assert "eager-DAG JIT O2\\\\" not in tex
         assert "recurrence JIT O2\\\\" not in tex
+        assert "on-the-fly JIT O2\\\\" not in tex
         assert r"\begin{minipage}{\linewidth}" in tex
         assert tex.index(r"\clearpage") < tex.index(r"\subsection{")
         assert tex.index(r"\subsection{") < tex.index(
             r"\noindent\begin{minipage}{\linewidth}"
         )
+
+
+def test_z_on_the_fly_row_keeps_cold_start_generation_pair(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(caches, "z_builtin_sm")
+    for workload in (Workload.SELECTED_FLOW, Workload.ALL_FLOW):
+        _set_ok(
+            candidate,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+            generation=1.0,
+            wall=2.0e-6,
+            execution=1.0e-6,
+            variant="on_the_fly_jit_o2",
+        )
+
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith("1 & on-the-fly JIT O2")
+    )
+
+    assert row.count(r"\bestmodecompactabsolute{1.00}{1.25}") == 2
+    assert r"\matrixstaticna{ReportMuted}" not in row
+    assert "one compact query-local process seed" in tex
+    assert r"absolute \texttt{[G] G+W} pair" in tex
 
 
 def test_dense_scalar_ladder_fits_narrower_columns(reset_caches) -> None:
@@ -4574,17 +4604,17 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
 
     assert r"\begin{tabular}{@{}l r r r l@{}}" in tex
     assert summary.expected_by_n == (
-        (1, 80),
-        (2, 250),
-        (3, 278),
-        (4, 418),
-        (5, 389),
-        (6, 219),
-        (7, 165),
-        (8, 165),
-        (9, 164),
+        (1, 84),
+        (2, 254),
+        (3, 282),
+        (4, 422),
+        (5, 393),
+        (6, 223),
+        (7, 169),
+        (8, 169),
+        (9, 168),
     )
-    assert summary.declared_total == 2162
+    assert summary.declared_total == 2198
     assert summary.static_na_by_n == (
         (1, 0),
         (2, 0),
@@ -4597,10 +4627,10 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (9, 10),
     )
     assert summary.static_na_total == 34
-    assert summary.expected_total == 2128
+    assert summary.expected_total == 2164
     assert summary.passed_total == 8
     assert summary.status_counts == (
-        ("not_available", 2120),
+        ("not_available", 2156),
         ("ok", 8),
         ("static-na", 34),
     )
@@ -4618,9 +4648,9 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 2
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "2162 & 34 & 8" in tex
-    assert "2162 declared cells" in tex
-    assert "2128 measurable cells" in tex
+    assert "2198 & 34 & 8" in tex
+    assert "2198 declared cells" in tex
+    assert "2164 measurable cells" in tex
     assert "34 catalog-authenticated static N/A" in tex
     assert "659 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex

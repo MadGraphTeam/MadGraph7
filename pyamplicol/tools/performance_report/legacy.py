@@ -1653,12 +1653,24 @@ class LegacyMeasurementAdapter:
             # carry genuinely distinct kinematics.  For a 2-to-1 process,
             # legacy gen23 leaves the sole final-state momentum at zero; that
             # makes its H_T/2 scale invalid, so use the supplied canonical
-            # physical point instead.
+            # physical point instead.  The same generator has a degenerate
+            # massless 2-to-2 lepton branch: its t range remains identically
+            # zero and it appends the diagnostic forever.  Massless fermion
+            # helicity zeros are chirality identities rather than accidental
+            # pointwise zeros, so the non-degenerate canonical point is the
+            # safe library-construction boundary for these two-body leptonic
+            # references as well.
             # Raw-color creation does not apply this filter and likewise keeps
             # its existing single-point path.
+            final_pdgs = context.source_pdgs[2:]
+            massless_two_body_leptons = (
+                n_final == 2
+                and len(final_pdgs) == 2
+                and all(11 <= abs(pdg) <= 16 for pdg in final_pdgs)
+            )
             generation_point_arguments = (
                 ("--amplicol_momenta_probe=10", "--amplicol_probe_quiet")
-                if raw_color or n_final == 1
+                if raw_color or n_final == 1 or massless_two_body_leptons
                 else ("--seed=101",)
             )
             momenta_directory = repository / "Utilities" / "ME_checks"

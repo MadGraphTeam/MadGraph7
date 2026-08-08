@@ -176,8 +176,10 @@ sums
 \(\sum_i T_{\mathrm{candidate},i}/\sum_i T_{\mathrm{baseline},i}\).
 Generation summaries use topology replay for LC and the contracted workload
 for NLC and full colour; the non-comparable LC all-flow generation quantity is
-omitted. On-the-fly generation summaries use \(G\); \(W\) remains visible in
-the per-cell cold-start pair. Runtime summaries use wall time only, with
+omitted. In the best-mode overview, an on-the-fly winner contributes its
+displayed primary \(G+W\) quantity, not the muted generation-only \(G\)
+diagnostic. Fixed-engine on-the-fly summaries retain their generation-only
+comparison. Runtime summaries use wall time only, with
 separate aligned LC topology-replay and all-flow lines. Structurally inapplicable,
 resource-limited, unsupported, and validation-failed cells do not contribute.
 

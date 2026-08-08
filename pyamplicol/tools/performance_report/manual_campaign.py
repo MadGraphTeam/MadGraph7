@@ -76,6 +76,10 @@ from .publisher import (
     _compile_pdf,
     _report_source_copy_ignore,
 )
+from .resources import (
+    DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES,
+    DEFAULT_MINIMUM_FREE_DISK_BYTES,
+)
 from .scheduler import (
     CampaignResult,
     CampaignScheduler,
@@ -265,8 +269,7 @@ def _campaign_report_paths(repo_root: Path, docs_dir: Path) -> ReportPaths:
     resolved_docs = literal_docs.resolve(strict=True)
     if resolved_docs != Path(os.path.abspath(literal_docs)):
         raise ManualCampaignError(
-            "campaign directory must not traverse a symbolic link: "
-            f"{literal_docs}"
+            f"campaign directory must not traverse a symbolic link: {literal_docs}"
         )
     artifact_root = resolved_docs / "campaign_artifacts"
     return ReportPaths.from_repo(
@@ -658,9 +661,7 @@ def _publish_campaign_summary_ids(
     fail_fast_failure_log: str | None = None,
 ) -> tuple[Path, dict[str, int]]:
     target = service.paths.docs_dir / "campaign_summary_ids"
-    publication_root = (
-        service.paths.coordination_root / "campaign-summary-publication"
-    )
+    publication_root = service.paths.coordination_root / "campaign-summary-publication"
     stage: Path | None = None
     backup: Path | None = None
     counts: dict[str, int] = {}
@@ -2843,12 +2844,9 @@ def _fresh_attempt_requested(arguments: argparse.Namespace) -> bool:
 
 
 def _artifact_cleanup_enabled(arguments: argparse.Namespace) -> bool:
-    """Keep every failure/cancellation payload when fail-fast is armed."""
+    """Compact disposable payloads unless full debug workspaces were requested."""
 
-    return bool(
-        getattr(arguments, "cleanup_artifacts", False)
-        and not getattr(arguments, "fail_fast", False)
-    )
+    return not bool(getattr(arguments, "retain_workspaces", False))
 
 
 def _selective_retry_category(
@@ -3396,9 +3394,7 @@ class DashboardState:
             - recycled_ids
             - selected_terminal_ids
         )
-        remaining_ids = (
-            selected - recycled_ids - selected_terminal_ids - static_na_ids
-        )
+        remaining_ids = selected - recycled_ids - selected_terminal_ids - static_na_ids
         dependency_only_ids = self.dependency_ids - selected
         active_ids = {worker.cell_id for worker in self.active}
         selected_active_ids = active_ids & selected
@@ -3791,9 +3787,9 @@ class LeaseManager:
                         and current.attempt_id == attempt_id
                     ):
                         label = policy_status_label(current.result) or label
-                    completed_at_ns = _optional_int(
-                        payload.get("completed_at_ns")
-                    ) or time.time_ns()
+                    completed_at_ns = (
+                        _optional_int(payload.get("completed_at_ns")) or time.time_ns()
+                    )
                     try:
                         _publish_presentation_outcome(
                             self.service,
@@ -3956,9 +3952,13 @@ def _fail_fast_report_value(value: object) -> str:
 
 
 def _fail_fast_report_line(label: str, value: object) -> str:
-    rendered = _fail_fast_report_value(value).replace("\r\n", "\n").replace(
-        "\r",
-        "\n",
+    rendered = (
+        _fail_fast_report_value(value)
+        .replace("\r\n", "\n")
+        .replace(
+            "\r",
+            "\n",
+        )
     )
     return f"{label}: " + rendered.replace("\n", "\n  ")
 
@@ -4018,9 +4018,10 @@ def _build_fail_fast_report(
     if attempt_root is not None:
         if worker_log_path is None and (attempt_root / "worker.log").is_file():
             worker_log_path = str(attempt_root / "worker.log")
-        if worker_progress_path is None and (
-            attempt_root / "worker-progress.jsonl"
-        ).is_file():
+        if (
+            worker_progress_path is None
+            and (attempt_root / "worker-progress.jsonl").is_file()
+        ):
             worker_progress_path = str(attempt_root / "worker-progress.jsonl")
     process_family_id = next(
         (
@@ -4433,9 +4434,7 @@ def _terminal_result_step(result: Mapping[str, object]) -> str | None:
     """Return one concise terminal reason from an already loaded current."""
 
     resources = result.get("resources")
-    supervisor = (
-        resources.get("supervisor") if isinstance(resources, Mapping) else None
-    )
+    supervisor = resources.get("supervisor") if isinstance(resources, Mapping) else None
     if (
         isinstance(supervisor, Mapping)
         and supervisor.get("reason") == "phase_state_error"
@@ -7352,6 +7351,20 @@ def _campaign_settings(
             if getattr(arguments, "campaign_ram_limit", None) is None
             else int(arguments.campaign_ram_limit)
         ),
+        attempt_output_limit_bytes=int(
+            getattr(
+                arguments,
+                "attempt_output_limit",
+                DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES,
+            )
+        ),
+        minimum_free_disk_bytes=int(
+            getattr(
+                arguments,
+                "minimum_free_disk",
+                DEFAULT_MINIMUM_FREE_DISK_BYTES,
+            )
+        ),
         artifact_policy=(
             ArtifactPolicy.REGENERATE
             if fresh_attempt
@@ -7373,6 +7386,7 @@ def _campaign_settings(
         manual_terminal_censors=True,
         discard_cancelled_attempts=False,
         remove_heavy_attempt_artifacts=_artifact_cleanup_enabled(arguments),
+        retain_workspaces=bool(getattr(arguments, "retain_workspaces", False)),
         report_profile=None,
         original_amplicol_repository=(
             arguments.original_amplicol
@@ -8087,14 +8101,9 @@ def _run_campaign(
                     (
                         palette.key("artifact cleanup"),
                         (
-                            "cleanup enabled (--cleanup-artifacts)"
+                            "compact retention (default)"
                             if _artifact_cleanup_enabled(arguments)
-                            else (
-                                "retained (--fail-fast preserves failures and "
-                                "cancellations)"
-                                if bool(getattr(arguments, "fail_fast", False))
-                                else "retained (default)"
-                            )
+                            else "full debug workspaces (--retain-workspaces)"
                         ),
                     ),
                 ),
@@ -8372,10 +8381,9 @@ def _run_campaign(
             palette=palette,
         )
         artifact_outcome = (
-            "cleanup of eligible obsolete heavy payloads was enabled by "
-            "--cleanup-artifacts"
+            "disposable workspaces were compacted (default)"
             if _artifact_cleanup_enabled(arguments)
-            else "all heavy attempt payloads were retained (default)"
+            else "full debug workspaces were retained (--retain-workspaces)"
         )
         print(
             palette.warning(
@@ -8388,9 +8396,8 @@ def _run_campaign(
         return 130
     if error_holder:
         partial_result = result_holder[0] if result_holder else None
-        if (
-            fail_fast_failure is not None
-            or _has_invocation_summary_evidence(partial_result, state)
+        if fail_fast_failure is not None or _has_invocation_summary_evidence(
+            partial_result, state
         ):
             _publish_completion_summary(
                 service,
@@ -9020,12 +9027,15 @@ remaining selectors are applied. Each completed run atomically refreshes
 `unverified.txt` needs no `--force-refresh`: those retained diagnostics are not
 successful currents, and a later recurrence authority or AmpliCol diagnostic
 dependency causes the selected cells to run and validate again automatically.
-By default every heavy attempt payload is retained. Use `--cleanup-artifacts`
-to archive obsolete sealed attempts, retain their compact metadata, results,
-logs, progress events, and timelines, and remove only their heavy payloads;
-live current/equivalent owners remain protected. Keyboard interruption leaves
-attempts sealed with compact diagnostics and retains their heavy payloads
-unless that explicit cleanup option is enabled.
+By default the controller retains results, provenance, commands, progress, and
+bounded log tails while removing disposable legacy/MadGraph/build workspaces
+and obsolete heavy payloads. Use `--retain-workspaces` only when a debugging
+session needs the full workspaces; output and free-disk safety limits still
+apply. `--cleanup-artifacts` remains an accepted compatibility spelling for
+the default. `--attempt-output-limit` defaults to 64 MiB per watched file and
+`--minimum-free-disk` reserves 5 GiB on the campaign artifact volume. Keyboard
+interruption and fail-fast leave attempts sealed with compact diagnostics
+rather than leaving unbounded partial workspaces behind.
 
 Where the report protocol permits, the controller parses, resolves, and
 dispatches the real public `pyamplicol generate` and `pyamplicol profile`
@@ -9224,8 +9234,7 @@ def _selector_parent() -> argparse.ArgumentParser:
         action="append",
         metavar="ENGINE",
         help=(
-            "Engine: amplicol, recurrence, compiled, eager, or on-the-fly "
-            "(alias otf)."
+            "Engine: amplicol, recurrence, compiled, eager, or on-the-fly (alias otf)."
         ),
     )
     parent.add_argument(
@@ -9372,6 +9381,28 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     resources.add_argument(
+        "--attempt-output-limit",
+        type=_positive_int,
+        default=DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum size of each supervised attempt log/output stream "
+            f"(default: {DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES} bytes). A breach "
+            "terminates that worker tree and records an error."
+        ),
+    )
+    resources.add_argument(
+        "--minimum-free-disk",
+        type=_positive_int,
+        default=DEFAULT_MINIMUM_FREE_DISK_BYTES,
+        metavar="BYTES",
+        help=(
+            "Minimum free bytes reserved on the campaign artifact volume "
+            f"(default: {DEFAULT_MINIMUM_FREE_DISK_BYTES}). Crossing the "
+            "reserve terminates the active worker tree and records an error."
+        ),
+    )
+    resources.add_argument(
         "--worker-wall-limit",
         type=_positive_finite_float,
         default=DEFAULT_WORKER_WALL_LIMIT_SECONDS,
@@ -9396,8 +9427,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help=(
             "Grace after SIGTERM before a remaining process tree is killed; "
-            "cancelled attempts are then sealed with compact diagnostics. Their "
-            "heavy payloads are retained unless --cleanup-artifacts is enabled."
+            "cancelled attempts are then sealed with compact diagnostics. "
+            "Output/free-disk breaches escalate immediately for host safety."
         ),
     )
     resources.add_argument(
@@ -9482,9 +9513,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Create a fresh generation+measurement attempt even when a "
             "complete current exists (including one accepted through "
-            "--continue-across-revisions). Complete heavy attempt payloads are "
-            "retained by default; pass --cleanup-artifacts to compact obsolete "
-            "sealed attempts after preserving their diagnostics."
+            "--continue-across-revisions). Disposable workspaces are compacted "
+            "after preserving bounded diagnostics by default."
         ),
     )
     behavior.add_argument(
@@ -9513,11 +9543,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--cleanup-artifacts",
         action="store_true",
         help=(
-            "Explicitly compact obsolete sealed attempts by retaining metadata, "
-            "results, logs, progress events, and timelines while removing only "
-            "their heavy payload directories. By default every heavy attempt "
-            "payload is retained; live current and equivalent-cell artifact "
-            "owners are always preserved."
+            "Compatibility spelling for the default compact-retention policy: "
+            "preserve results, provenance, progress, and bounded diagnostics "
+            "while removing disposable build/reference workspaces."
+        ),
+    )
+    behavior.add_argument(
+        "--retain-workspaces",
+        action="store_true",
+        help=(
+            "Opt in to retaining full legacy, MadGraph, build, failed, and "
+            "obsolete attempt workspaces for debugging. Output and free-disk "
+            "safety limits remain enforced."
         ),
     )
     behavior.add_argument(
@@ -9526,12 +9563,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Stop new dispatch after the first terminal non-success, cancel "
             "other live workers, complete multiplicities in n=1, n=2, ... "
-            "waves, retain every failed/cancelled attempt payload, "
-            "exit nonzero, and atomically write "
+            "waves, retain bounded failed/cancelled diagnostics, exit "
+            "nonzero, and atomically write "
             "campaign_summary_ids/fail_fast_failure.log with exact diagnostic "
             "and reproduction paths. Cancelled outcomes caused by the stop are "
             "not treated as a second failure. With --dry-run no report is "
-            "created; this option overrides --cleanup-artifacts for the run."
+            "created."
         ),
     )
     behavior.add_argument(

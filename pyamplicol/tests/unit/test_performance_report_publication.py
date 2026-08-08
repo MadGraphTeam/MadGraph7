@@ -130,8 +130,13 @@ def test_projection_changes_only_explicit_unhashed_locators_and_preserves_digest
         "artifact": {
             "path": str(paths.artifact_root / "cells/a/attempts/b/artifact"),
             "log_path": str(paths.artifact_root / "cells/a/attempts/b/legacy.log"),
+            "standalone": str(
+                paths.artifact_root / "cells/a/attempts/b/artifact/standalone"
+            ),
         },
         "provenance": {
+            "installation": "/opt/local/MG5_aMC",
+            "model": {"source_directory": "/opt/local/MG5_aMC/models/sm"},
             "requested_config": {
                 "model": {
                     "source": str(paths.repo_root / "models/sm.json"),
@@ -161,11 +166,18 @@ def test_projection_changes_only_explicit_unhashed_locators_and_preserves_digest
     assert str(portable["artifact"]["path"]).startswith(  # type: ignore[index]
         "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
     )
+    assert str(portable["artifact"]["standalone"]).startswith(  # type: ignore[index]
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
+    )
     provenance = portable["provenance"]
     assert isinstance(provenance, dict)
     assert str(provenance["worker_log"]).startswith(
         "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
     )
+    assert provenance["installation"] == "${LOCAL_PATH_REDACTED}"
+    assert provenance["model"] == {
+        "source_directory": "${LOCAL_PATH_REDACTED}"
+    }
     assert _canonical_bytes(provenance["runtime_identity"]) == runtime_before
     assert (
         _canonical_bytes(

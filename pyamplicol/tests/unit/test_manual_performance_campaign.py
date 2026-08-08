@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -321,7 +322,7 @@ def test_campaign_command_holds_shared_destination_lock(
 
 
 def test_catalog_and_fresh_profile_are_complete_but_measurement_empty() -> None:
-    assert len(REPORT_CATALOG.measurement_cells()) == 2162
+    assert len(REPORT_CATALOG.measurement_cells()) == 2198
     assert PROFILE.is_dir()
     assert not (PROFILE / "pyAmpliCol.pdf").exists()
     assert not any(PROFILE.rglob("current.json"))
@@ -363,7 +364,7 @@ def test_selector_repetition_wildcard_aliases_and_intersection() -> None:
 
     all_arguments = _parse("inspect", "--table", "*", "--model", "all")
     _all_selection, all_cells = selection_from_arguments(all_arguments)
-    assert len(all_cells) == 2162
+    assert len(all_cells) == 2198
 
 
 def test_variant_filter_keeps_unvaried_matrix_rows_in_a_broad_selection() -> None:
@@ -488,8 +489,11 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "--continue-across-revisions",
         "--cell-id-file",
         "--cleanup-artifacts",
+        "--retain-workspaces",
+        "--attempt-output-limit",
+        "--minimum-free-disk",
         "`unverified.txt` needs no `--force-refresh`",
-        "every heavy attempt payload is retained",
+        "bounded log tails",
         "sealed with compact diagnostics",
         "--no-dependencies-added",
         "--list-sections",
@@ -516,15 +520,22 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.generation_time_limit == 3600.0
     assert arguments.ram_limit == 30_000_000_000
     assert arguments.campaign_ram_limit is None
+    assert arguments.attempt_output_limit == 64 * 1024 * 1024
+    assert arguments.minimum_free_disk == 5 * 1024 * 1024 * 1024
     assert arguments.worker_wall_limit == 3600.0
     assert arguments.no_color is False
     assert arguments.force_refresh is False
     assert arguments.continue_across_revisions is False
     assert arguments.no_dependencies_added is False
     assert arguments.cleanup_artifacts is False
+    assert arguments.retain_workspaces is False
     assert arguments.madgraph is None
     assert _parse("run", "--no-dependencies-added").no_dependencies_added is True
     assert _parse("run", "--cleanup-artifacts").cleanup_artifacts is True
+    assert manual_campaign._artifact_cleanup_enabled(arguments) is True
+    retained = _parse("run", "--retain-workspaces")
+    assert retained.retain_workspaces is True
+    assert manual_campaign._artifact_cleanup_enabled(retained) is False
     assert _parse("run", "--continue-across-revisions").continue_across_revisions
     source = manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ())
     settings = manual_campaign._campaign_settings(
@@ -622,6 +633,10 @@ def test_campaign_ram_limit_conservatively_caps_ten_workers_and_provenance(
 
     assert settings.max_rss_bytes == 30_000_000_000
     assert settings.campaign_max_rss_bytes == 30_000_000_000
+    assert settings.attempt_output_limit_bytes == 64 * 1024 * 1024
+    assert settings.minimum_free_disk_bytes == 5 * 1024 * 1024 * 1024
+    assert settings.remove_heavy_attempt_artifacts is True
+    assert settings.retain_workspaces is False
     assert settings.effective_cell_rss_limit() == 3_000_000_000
     assert settings.effective_cell_rss_limit() * settings.workers == (
         settings.campaign_max_rss_bytes
@@ -715,6 +730,29 @@ def test_report_section_filter_changes_only_the_staged_master(tmp_path: Path) ->
         "scalar-ladders",
         "worked-zgg",
     )
+
+
+def test_report_template_identifies_current_release() -> None:
+    release = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))[
+        "workspace"
+    ]["package"]["version"]
+    source = (PROFILE / "pyAmpliCol.tex").read_text(encoding="utf-8")
+
+    for expected in (
+        f"pdftitle={{pyAmpliCol {release} Methodology and Performance Report}}",
+        f"{{pyAmpliCol {release}}}",
+        f"Release {release}",
+        rf"performance of \PAC{{}} {release}.",
+    ):
+        assert expected in source
+    normalized = " ".join(source.split())
+    assert (
+        "compiled, eager, recurrence, and on-the-fly evaluation across the "
+        "report's stated built-in Standard Model and UFO or serialized-JSON scopes"
+        in normalized
+    )
+    assert "leading-colour on-the-fly" not in normalized
+    assert "the first three modes" not in normalized
 
 
 def test_independently_removable_sections_leave_no_dangling_references() -> None:
@@ -1160,16 +1198,20 @@ def test_compiled_recipe_labels_both_private_timing_exceptions() -> None:
 
 
 def test_dry_run_is_compact_and_labels_each_recipe(
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
     cell_id = "matrix-compiled-builtin-sm-lc-n1-dd-z-jets-selected-flow"
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
 
     assert (
         campaign_main(
             ("run", "--dry-run", "--cell-id", cell_id),
             repo_root=ROOT,
+            docs_dir=docs_dir,
         )
         == 0
     )
@@ -1726,24 +1768,30 @@ def test_finished_failure_shows_authenticated_reason_and_keeps_attempt_id(
 
 
 def test_terminal_result_step_uses_generic_failure_message() -> None:
-    assert manual_campaign._terminal_result_step(
-        {
-            "status": ResultStatus.VALIDATION_FAILED.value,
-            "failure": {
+    assert (
+        manual_campaign._terminal_result_step(
+            {
+                "status": ResultStatus.VALIDATION_FAILED.value,
+                "failure": {
                 "kind": "MeasurementValidationError",
-                "message": "resolved component sum disagrees with total",
-            },
-        }
-    ) == "resolved component sum disagrees with total"
-    assert manual_campaign._terminal_result_step(
-        {
-            "status": ResultStatus.MEMORY_LIMIT.value,
-            "failure": {"kind": "ReportPolicyCensor", "message": "memory cap"},
+                    "message": "resolved component sum disagrees with total",
+                },
+            }
+        )
+        == "resolved component sum disagrees with total"
+    )
+    assert (
+        manual_campaign._terminal_result_step(
+            {
+                "status": ResultStatus.MEMORY_LIMIT.value,
+                "failure": {"kind": "ReportPolicyCensor", "message": "memory cap"},
             "provenance": {
-                "manual_campaign": {"memory_limit_bytes": 15_000_000_000}
-            },
-        }
-    ) == ">15GB"
+                    "manual_campaign": {"memory_limit_bytes": 15_000_000_000}
+                },
+            }
+        )
+        == ">15GB"
+    )
 
 
 def test_finished_failure_does_not_show_preserved_current_as_failed_attempt(
@@ -2443,11 +2491,14 @@ def test_presentation_success_tombstone_suppresses_failure_fallback(
     )
 
     assert merged == 0
-    assert _cache_measurement(
-        caches,
-        dataset_id=cell.dataset_id,
-        cell_id=cell.cell_id,
-    ) == empty_measurement()
+    assert (
+        _cache_measurement(
+            caches,
+            dataset_id=cell.dataset_id,
+            cell_id=cell.cell_id,
+        )
+        == empty_measurement()
+    )
 
 
 def test_presentation_outcome_publication_has_deterministic_last_writer(
@@ -2520,11 +2571,14 @@ def test_strict_source_marker_rejects_late_old_revision_writer(
         ),
     )
 
-    assert manual_campaign.lightweight_presentation_outcome(
-        service,
-        cell,
-        source_revision="b" * 40,
-    ) == active
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="b" * 40,
+        )
+        == active
+    )
 
 
 def test_cross_revision_marker_retains_global_outcome_ordering(
@@ -2553,12 +2607,15 @@ def test_cross_revision_marker_retains_global_outcome_ordering(
     manual_campaign._publish_presentation_outcome(service, active)
     manual_campaign._publish_presentation_outcome(service, historical)
 
-    assert manual_campaign.lightweight_presentation_outcome(
-        service,
-        cell,
-        source_revision="b" * 40,
-        accept_historical_source=True,
-    ) == historical
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="b" * 40,
+            accept_historical_source=True,
+        )
+        == historical
+    )
 
 
 def test_presentation_publication_requires_a_readable_source_marker(
@@ -2641,7 +2698,7 @@ def test_presentation_outcome_reader_rejects_timestamp_above_signed_64_bit(
     path = manual_campaign._presentation_outcome_path(service, cell.cell_id)
     path.parent.mkdir(parents=True)
     malformed = _presentation_outcome(cell.cell_id, status="error").as_dict()
-    malformed["completed_at_ns"] = (1 << 63)
+    malformed["completed_at_ns"] = 1 << 63
     path.write_text(json.dumps(malformed), encoding="utf-8")
 
     assert (
@@ -3303,9 +3360,7 @@ def test_run_campaign_recycle_paths_replace_failure_with_known_ok_tombstone(
         if mixed
         else ()
     )
-    outcomes = (
-        (CellOutcome(work_cell.cell_id, "ok", "completed"),) if mixed else ()
-    )
+    outcomes = (CellOutcome(work_cell.cell_id, "ok", "completed"),) if mixed else ()
     _stub_run_campaign_boundaries(
         monkeypatch,
         tmp_path,
@@ -3475,11 +3530,14 @@ def test_catalog_static_na_takes_precedence_over_presentation_outcome(
     )
 
     assert merged == 0
-    assert _cache_measurement(
-        caches,
-        dataset_id=cell.dataset_id,
-        cell_id=cell.cell_id,
-    ) == empty_measurement()
+    assert (
+        _cache_measurement(
+            caches,
+            dataset_id=cell.dataset_id,
+            cell_id=cell.cell_id,
+        )
+        == empty_measurement()
+    )
 
 
 @pytest.mark.parametrize(
@@ -4717,6 +4775,7 @@ def test_dashboard_snapshot_help_explains_synthetic_and_live_modes(
 
 
 def test_dashboard_snapshot_default_does_not_read_live_leases(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -4724,9 +4783,12 @@ def test_dashboard_snapshot_default_does_not_read_live_leases(
         raise AssertionError("deterministic snapshot read a live lease")
 
     monkeypatch.setattr(manual_campaign, "_live_dashboard_snapshot", forbidden)
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
     result = campaign_main(
         ("dashboard-snapshot", "--width", "80", "--height", "24"),
         repo_root=ROOT,
+        docs_dir=docs_dir,
     )
     assert result == 0
     output = capsys.readouterr().out
@@ -5334,18 +5396,21 @@ def test_worker_status_counters_include_dependency_only_rows_and_lease(
     finished = state.counters()
     assert finished["completed"] == 1
     assert finished["remaining"] == 0
-    assert sum(
-        finished[key]
-        for key in (
-            "recycled",
+    assert (
+        sum(
+            finished[key]
+            for key in (
+                "recycled",
             "completed",
             "capped",
             "failed",
             "unverified",
-            "static_na",
-            "remaining",
+                "static_na",
+                "remaining",
+            )
         )
-    ) == finished["selected"]
+        == finished["selected"]
+    )
     assert finished["dependency_completed"] == 1
     assert finished["dependency_issues"] == 3
 

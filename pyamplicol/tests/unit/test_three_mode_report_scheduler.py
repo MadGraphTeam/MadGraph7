@@ -816,11 +816,7 @@ def test_z_worker_uses_amplicol_only_as_optional_diagnostic(
                 else (recurrence_record, recurrence_state)
             )
         record = dependency_records.get(cell.cell_id)
-        return (
-            None
-            if record is None
-            else (record, PolicyMeasurementState.SUCCESS)
-        )
+        return None if record is None else (record, PolicyMeasurementState.SUCCESS)
 
     def supervise(command: Sequence[str], **_kwargs: object) -> SupervisedResult:
         captured.extend(command)
@@ -856,11 +852,14 @@ def test_z_worker_uses_amplicol_only_as_optional_diagnostic(
     assert captured[captured.index("--baseline-json") + 1] == str(
         expected_baseline.result_path
     )
-    assert tuple(
-        captured[index + 1]
-        for index, value in enumerate(captured)
-        if value == "--expected-authority-cell-id"
-    ) == target.numerical_authority_cell_ids
+    assert (
+        tuple(
+            captured[index + 1]
+            for index, value in enumerate(captured)
+            if value == "--expected-authority-cell-id"
+        )
+        == target.numerical_authority_cell_ids
+    )
     if recurrence_state is PolicyMeasurementState.SUCCESS:
         assert captured[captured.index("--selected-authority-cell-id") + 1] == (
             recurrence.cell_id
@@ -964,11 +963,14 @@ def test_z_worker_runs_when_every_numerical_authority_is_unavailable(
     assert len(launched) == 1
     command = launched[0]
     assert "--baseline-json" not in command
-    assert tuple(
-        command[index + 1]
-        for index, value in enumerate(command)
-        if value == "--expected-authority-cell-id"
-    ) == target.numerical_authority_cell_ids
+    assert (
+        tuple(
+            command[index + 1]
+            for index, value in enumerate(command)
+            if value == "--expected-authority-cell-id"
+        )
+        == target.numerical_authority_cell_ids
+    )
     assert "--selected-authority-cell-id" not in command
 
 
@@ -1721,8 +1723,7 @@ def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
     three_line_item = three_line_plan[0]
     assert three_line_item.baseline_cell_id is None
     assert three_line_item.optional_baseline_cell_id == (
-        "reference-amplicol-full-n6-"
-        f"{three_line_key.replace('_', '-')}-contracted"
+        f"reference-amplicol-full-n6-{three_line_key.replace('_', '-')}-contracted"
     )
 
     four_line_plan = plan_campaign(
@@ -2312,8 +2313,13 @@ def test_scheduler_never_publishes_first_failed_worker_result(
 
     assert outcome.status == ResultStatus.ERROR.value
     assert service.store.load_current(target.cell_id, missing_ok=True) is None
-    attempt_roots = tuple(
-        (service.paths.artifact_root / "cells").glob(f"*/attempts/{outcome.detail}")
+    attempt_roots = (
+        *(
+            service.paths.artifact_root / "cells"
+        ).glob(f"*/attempts/{outcome.detail}"),
+        *(
+            service.paths.artifact_root / "attempt-history"
+        ).glob(f"*/{outcome.detail}"),
     )
     assert len(attempt_roots) == 1
     manifest = json.loads(
@@ -2629,6 +2635,14 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
     assert command[command.index("--worker-wall-limit") + 1] == "90.0"
     assert command[command.index("--memory-limit-bytes") + 1] == "30000000000"
     assert captured["max_rss_bytes"] == 30_000_000_000
+    output_limits = captured["output_file_limits"]
+    assert isinstance(output_limits, Mapping)
+    assert len(output_limits) == 4
+    assert set(output_limits.values()) == {64 * 1024 * 1024}
+    assert Path(command[command.index("--log-path") + 1]) in output_limits
+    assert Path(command[command.index("--progress-jsonl") + 1]) in output_limits
+    assert captured["minimum_free_disk_bytes"] == 5 * 1024 * 1024 * 1024
+    assert captured["disk_probe_path"] == service.paths.artifact_root
     assert command[command.index("--profiling-time-limit") + 1] == "60.0"
     assert command[command.index("--validation-time-limit") + 1] == "30.0"
 
@@ -2691,6 +2705,7 @@ def test_scheduler_persists_abrupt_worker_exit_diagnostics_with_empty_worker_log
                 (),
             ),
             campaign_invocation_id="manual-invocation-7",
+            remove_heavy_attempt_artifacts=False,
         ),
     )
     monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
@@ -2788,10 +2803,13 @@ def test_scheduler_persists_and_forwards_exact_phase_state_failure(
 
     assert outcome.status == ResultStatus.ERROR.value
     assert outcome.terminal_detail == phase_error
-    attempt_roots = tuple(
-        (service.paths.artifact_root / "cells").glob(
-            f"*/attempts/{outcome.detail}"
-        )
+    attempt_roots = (
+        *(
+            service.paths.artifact_root / "cells"
+        ).glob(f"*/attempts/{outcome.detail}"),
+        *(
+            service.paths.artifact_root / "attempt-history"
+        ).glob(f"*/{outcome.detail}"),
     )
     assert len(attempt_roots) == 1
     result = json.loads(
