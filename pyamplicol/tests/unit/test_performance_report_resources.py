@@ -13,6 +13,11 @@ from pathlib import Path
 
 import pytest
 
+from tools.ci import memory_watchdog
+from tools.ci.memory_watchdog import (
+    ProbeError as WatchdogProbeError,
+)
+from tools.ci.memory_watchdog import ProcessInfo as WatchdogProcessInfo
 from tools.performance_report.phase_state import (
     WorkerPhaseChannel,
     WorkerPhaseReporter,
@@ -156,6 +161,66 @@ def test_ps_parser_and_platform_fallback_are_injectable(tmp_path: Path) -> None:
     )
     assert records[12].rss_bytes == 1536 * 1024
     assert commands == [("ps", "-axo", "pid=,ppid=,rss=")]
+
+
+def test_darwin_snapshot_uses_native_inventory_and_preserves_tree_rss() -> None:
+    def reject_ps(_command: Sequence[str]) -> object:
+        raise AssertionError("Darwin resource monitoring must not execute ps")
+
+    records = process_snapshot(
+        "Darwin",
+        ps_runner=reject_ps,
+        darwin_snapshotter=lambda: {
+            10: WatchdogProcessInfo(10, 1, 10, 100, 1.0),
+            11: WatchdogProcessInfo(11, 10, 10, 200, 2.0),
+            12: WatchdogProcessInfo(12, 11, 12, 300, 3.0),
+            20: WatchdogProcessInfo(20, 1, 20, 900, 9.0),
+        },
+    )
+
+    sample = ProcessTreeSampler(10).sample(records)
+
+    assert sample.rss_bytes == 600
+    assert sample.cpu_seconds == 6.0
+    assert sample.child_count == 2
+    assert sample.member_pids == (10, 11, 12)
+    assert sample.guard_bytes == 600
+
+
+def test_darwin_native_snapshot_failures_remain_fail_closed() -> None:
+    def fail_native() -> dict[int, WatchdogProcessInfo]:
+        raise WatchdogProbeError("libproc denied")
+
+    with pytest.raises(ResourceProbeError, match="libproc denied"):
+        process_snapshot("Darwin", darwin_snapshotter=fail_native)
+    with pytest.raises(ResourceProbeError, match="yielded no records"):
+        process_snapshot("Darwin", darwin_snapshotter=dict)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires Darwin libproc")
+def test_darwin_native_snapshot_observes_current_process() -> None:
+    def reject_ps(_command: Sequence[str]) -> object:
+        raise AssertionError("Darwin resource monitoring must not execute ps")
+
+    records = process_snapshot("Darwin", ps_runner=reject_ps)
+
+    assert records[os.getpid()].rss_bytes > 0
+    assert records[os.getpid()].cpu_seconds is not None
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires Darwin libproc")
+def test_darwin_rss_remains_available_without_cpu_timebase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_timebase() -> tuple[int, int]:
+        raise WatchdogProbeError("synthetic timebase failure")
+
+    monkeypatch.setattr(memory_watchdog, "_darwin_mach_timebase", fail_timebase)
+
+    records = process_snapshot("Darwin")
+
+    assert records[os.getpid()].rss_bytes > 0
+    assert records[os.getpid()].cpu_seconds is None
 
 
 def test_process_tree_aggregates_descendants_and_tracks_reparenting() -> None:

@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 import tools.performance_report.manual_campaign as manual_campaign
+from tools.ci.memory_watchdog import ProcessInfo as WatchdogProcessInfo
 from tools.performance_report.manual_campaign import (
     DashboardState,
     LeaseManager,
@@ -26,25 +26,20 @@ from tools.performance_report.service import ReportPaths, ReportService
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_darwin_process_snapshot_reports_truthful_tree_cpu_time() -> None:
-    output = " 100 1 1024 00:01.25\n 101 100 2048 1:02:03.50\n"
+def test_darwin_process_snapshot_reports_native_tree_rss() -> None:
+    def reject_ps(_command: tuple[str, ...]) -> object:
+        raise AssertionError("Darwin resource monitoring must not execute ps")
 
-    @dataclass
-    class Completed:
-        returncode: int = 0
-        stdout: str = output
-        stderr: str = ""
-
-    commands: list[tuple[str, ...]] = []
-
-    def run_ps(command: tuple[str, ...]) -> Completed:
-        commands.append(tuple(command))
-        return Completed()
-
-    records = process_snapshot("Darwin", ps_runner=run_ps)
+    records = process_snapshot(
+        "Darwin",
+        ps_runner=reject_ps,
+        darwin_snapshotter=lambda: {
+            100: WatchdogProcessInfo(100, 1, 100, 1024 * 1024, 1.25),
+            101: WatchdogProcessInfo(101, 100, 100, 2048 * 1024, 3_723.5),
+        },
+    )
     sample = ProcessTreeSampler(100).sample(records)
 
-    assert commands == [("ps", "-axo", "pid=,ppid=,rss=,time=")]
     assert records[100].cpu_seconds == 1.25
     assert records[101].cpu_seconds == 3_723.5
     assert sample.cpu_seconds == 3_724.75
@@ -194,6 +189,7 @@ def test_dashboard_cli_propagates_color_policy(
     arguments: tuple[str, ...],
     environment_color: str | None,
     expected: bool,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -208,8 +204,10 @@ def test_dashboard_cli_propagates_color_policy(
         return [] if kwargs["cells"] else "frame"
 
     monkeypatch.setattr(manual_campaign, "render_dashboard_frame", capture)
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
 
-    assert manual_campaign.main(arguments, repo_root=ROOT) == 0
+    assert manual_campaign.main(arguments, repo_root=ROOT, docs_dir=docs_dir) == 0
     capsys.readouterr()
     assert observed == [expected]
 

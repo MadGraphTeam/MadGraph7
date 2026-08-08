@@ -32,6 +32,12 @@ try:
     from tools.ci.memory_watchdog import (
         ProbeError as WatchdogProbeError,
     )
+    from tools.ci.memory_watchdog import (
+        ProcessInfo as WatchdogProcessInfo,
+    )
+    from tools.ci.memory_watchdog import (
+        _darwin_libproc_snapshot as _watchdog_darwin_libproc_snapshot,
+    )
 except ModuleNotFoundError as error:
     if error.name not in {"tools", "tools.ci", "tools.ci.memory_watchdog"}:
         raise
@@ -44,6 +50,12 @@ except ModuleNotFoundError as error:
     )
     from ._memory_watchdog import (
         ProbeError as WatchdogProbeError,
+    )
+    from ._memory_watchdog import (
+        ProcessInfo as WatchdogProcessInfo,
+    )
+    from ._memory_watchdog import (
+        _darwin_libproc_snapshot as _watchdog_darwin_libproc_snapshot,
     )
 
 from .phase_state import (
@@ -274,6 +286,7 @@ class WorkerProcess(Protocol):
 
 
 Snapshotter = Callable[[], Mapping[int, ProcessRecord]]
+DarwinSnapshotter = Callable[[], Mapping[int, WatchdogProcessInfo]]
 PhysicalFootprintProbe = Callable[[Collection[int]], Mapping[int, int]]
 PsRunner = Callable[[Sequence[str]], CompletedProcessLike]
 PopenFactory = Callable[..., WorkerProcess]
@@ -502,11 +515,36 @@ def _darwin_ps_snapshot(
     return records
 
 
+def _darwin_native_snapshot(
+    *,
+    snapshotter: DarwinSnapshotter = _watchdog_darwin_libproc_snapshot,
+) -> dict[int, ProcessRecord]:
+    """Collect a Darwin process snapshot through ``libproc`` only."""
+
+    try:
+        native_records = snapshotter()
+    except WatchdogProbeError as error:
+        raise ResourceProbeError(str(error)) from error
+    records = {
+        pid: ProcessRecord(
+            pid=record.pid,
+            ppid=record.ppid,
+            rss_bytes=record.rss_bytes,
+            cpu_seconds=record.cpu_seconds,
+        )
+        for pid, record in native_records.items()
+    }
+    if not records:
+        raise ResourceProbeError("Darwin libproc process probe yielded no records")
+    return records
+
+
 def process_snapshot(
     system: str | None = None,
     *,
     proc_root: Path = Path("/proc"),
     ps_runner: PsRunner = _default_ps_runner,
+    darwin_snapshotter: DarwinSnapshotter = _watchdog_darwin_libproc_snapshot,
 ) -> dict[int, ProcessRecord]:
     """Collect one process snapshot on Linux or macOS."""
 
@@ -517,7 +555,7 @@ def process_snapshot(
         except ResourceProbeError:
             return _ps_snapshot(runner=ps_runner)
     if host == "Darwin":
-        return _darwin_ps_snapshot(runner=ps_runner)
+        return _darwin_native_snapshot(snapshotter=darwin_snapshotter)
     raise ResourceProbeError(f"unsupported host for resource monitoring: {host!r}")
 
 

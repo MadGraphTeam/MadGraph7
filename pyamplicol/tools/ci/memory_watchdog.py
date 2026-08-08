@@ -71,6 +71,7 @@ class ProcessInfo:
     ppid: int
     pgid: int
     rss_bytes: int
+    cpu_seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,6 +309,51 @@ def _parse_darwin_taskinfo_rss(text: bytes) -> int:
     return struct.unpack_from("=Q", text, 8)[0]
 
 
+def _parse_darwin_taskinfo_cpu_seconds(
+    text: bytes,
+    *,
+    timebase_numer: int,
+    timebase_denom: int,
+) -> float:
+    """Return cumulative user and system CPU seconds from ``proc_taskinfo``."""
+
+    if len(text) < 32:
+        raise ValueError("incomplete Darwin proc_taskinfo CPU record")
+    if timebase_numer <= 0 or timebase_denom <= 0:
+        raise ValueError("invalid Darwin Mach timebase")
+    user_ticks = struct.unpack_from("=Q", text, 16)[0]
+    system_ticks = struct.unpack_from("=Q", text, 24)[0]
+    return (user_ticks + system_ticks) * timebase_numer / timebase_denom / 1e9
+
+
+class _MachTimebaseInfo(ctypes.Structure):
+    _fields_ = (("numer", ctypes.c_uint32), ("denom", ctypes.c_uint32))
+
+
+def _darwin_mach_timebase(library: object | None = None) -> tuple[int, int]:
+    """Return the Mach absolute-time nanosecond conversion ratio."""
+
+    if library is None:
+        try:
+            library = ctypes.CDLL(None)
+        except OSError as error:
+            raise ProbeError(f"cannot load Darwin Mach runtime: {error}") from error
+    try:
+        mach_timebase_info = library.mach_timebase_info  # type: ignore[attr-defined]
+    except AttributeError as error:
+        raise ProbeError(f"cannot load mach_timebase_info: {error}") from error
+    mach_timebase_info.argtypes = (ctypes.POINTER(_MachTimebaseInfo),)
+    mach_timebase_info.restype = ctypes.c_int
+    timebase = _MachTimebaseInfo()
+    result = mach_timebase_info(ctypes.byref(timebase))
+    if result != 0 or timebase.numer <= 0 or timebase.denom <= 0:
+        raise ProbeError(
+            "Darwin mach_timebase_info failed "
+            f"(result={result}, numer={timebase.numer}, denom={timebase.denom})"
+        )
+    return int(timebase.numer), int(timebase.denom)
+
+
 def _parse_darwin_rusage_phys_footprint(text: bytes) -> int:
     """Return ``ri_phys_footprint`` from Darwin ``rusage_info_v0`` bytes."""
 
@@ -422,6 +468,13 @@ def _darwin_libproc_snapshot() -> dict[int, ProcessInfo]:
     )
     library.proc_pidinfo.restype = ctypes.c_int
 
+    try:
+        timebase = _darwin_mach_timebase()
+    except ProbeError:
+        # CPU time is optional telemetry. Process inventory and RSS remain
+        # authoritative when the host cannot expose the Mach timebase.
+        timebase = None
+
     estimated_count = library.proc_listallpids(None, 0)
     if estimated_count <= 0:
         raise ProbeError("Darwin libproc process enumeration failed")
@@ -466,7 +519,15 @@ def _darwin_libproc_snapshot() -> dict[int, ProcessInfo]:
             continue
         if record_pid != pid:
             continue
-        records[pid] = ProcessInfo(pid, ppid, pgid, rss_bytes)
+        cpu_seconds = None
+        if timebase is not None:
+            with suppress(ValueError):
+                cpu_seconds = _parse_darwin_taskinfo_cpu_seconds(
+                    task_buffer.raw[:task_size],
+                    timebase_numer=timebase[0],
+                    timebase_denom=timebase[1],
+                )
+        records[pid] = ProcessInfo(pid, ppid, pgid, rss_bytes, cpu_seconds)
     if not records:
         raise ProbeError("Darwin libproc process probe yielded no records")
     return records

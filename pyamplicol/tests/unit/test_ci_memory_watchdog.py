@@ -582,25 +582,76 @@ def test_main_uses_rss_only_on_non_darwin(
     assert captured["limit_bytes"] == 32 * watchdog.MIB
 
 
-def test_darwin_libproc_parsers_extract_identity_and_rss() -> None:
+def test_darwin_libproc_parsers_extract_identity_rss_and_cpu() -> None:
     bsd = bytearray(136)
     struct.pack_into("=I", bsd, 12, 123)
     struct.pack_into("=I", bsd, 16, 45)
     struct.pack_into("=I", bsd, 100, 67)
     task = bytearray(96)
     struct.pack_into("=Q", task, 8, 987_654_321)
+    struct.pack_into("=Q", task, 16, 4_000_000_000)
+    struct.pack_into("=Q", task, 24, 2_000_000_000)
     rusage = bytearray(96)
     struct.pack_into("=Q", rusage, 72, 1_234_567_890)
 
     assert watchdog._parse_darwin_bsdinfo(bytes(bsd)) == (123, 45, 67)
     assert watchdog._parse_darwin_taskinfo_rss(bytes(task)) == 987_654_321
+    assert watchdog._parse_darwin_taskinfo_cpu_seconds(
+        bytes(task),
+        timebase_numer=1,
+        timebase_denom=2,
+    ) == 3.0
     assert watchdog._parse_darwin_rusage_phys_footprint(bytes(rusage)) == 1_234_567_890
     with pytest.raises(ValueError, match="incomplete Darwin proc_bsdinfo"):
         watchdog._parse_darwin_bsdinfo(b"short")
     with pytest.raises(ValueError, match="incomplete Darwin proc_taskinfo"):
         watchdog._parse_darwin_taskinfo_rss(b"short")
+    with pytest.raises(ValueError, match="incomplete Darwin proc_taskinfo CPU"):
+        watchdog._parse_darwin_taskinfo_cpu_seconds(
+            b"short", timebase_numer=1, timebase_denom=1
+        )
+    with pytest.raises(ValueError, match="invalid Darwin Mach timebase"):
+        watchdog._parse_darwin_taskinfo_cpu_seconds(
+            bytes(task), timebase_numer=1, timebase_denom=0
+        )
     with pytest.raises(ValueError, match="incomplete Darwin rusage_info_v0"):
         watchdog._parse_darwin_rusage_phys_footprint(b"short")
+
+
+def test_darwin_mach_timebase_is_validated() -> None:
+    class FakeMachTimebaseInfo:
+        argtypes: object = None
+        restype: object = None
+
+        def __init__(self, *, result: int = 0, numer: int = 125, denom: int = 3):
+            self.result = result
+            self.numer = numer
+            self.denom = denom
+
+        def __call__(self, pointer: object) -> int:
+            info = ctypes.cast(
+                pointer,
+                ctypes.POINTER(watchdog._MachTimebaseInfo),
+            ).contents
+            info.numer = self.numer
+            info.denom = self.denom
+            return self.result
+
+    class FakeLibrary:
+        def __init__(self, function: FakeMachTimebaseInfo) -> None:
+            self.mach_timebase_info = function
+
+    assert watchdog._darwin_mach_timebase(
+        FakeLibrary(FakeMachTimebaseInfo())
+    ) == (125, 3)
+    with pytest.raises(watchdog.ProbeError, match="mach_timebase_info failed"):
+        watchdog._darwin_mach_timebase(
+            FakeLibrary(FakeMachTimebaseInfo(result=5))
+        )
+    with pytest.raises(watchdog.ProbeError, match="mach_timebase_info failed"):
+        watchdog._darwin_mach_timebase(
+            FakeLibrary(FakeMachTimebaseInfo(denom=0))
+        )
 
 
 def test_fake_darwin_libproc_handles_success_race_and_unexpected_error() -> None:
