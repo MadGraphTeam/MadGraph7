@@ -1783,7 +1783,9 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         replace_dict['madE_update_answer'] = '   allMEs[iproc*nprocesses + ievt] *= multi_chanel_num/multi_chanel_denom;'
 
         replace_dict['nb_channel'] = len(self.multi_channel_map)
-        replace_dict['nb_color'] = max(1, len(self.matrix_elements[0].get('color_basis')))
+        # same meaning as in edit_coloramps: the number of color flows, which
+        # is not the size of the color basis when the color sum runs on the DDM one
+        replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
 
         replace_dict['cpp_blas_helicity_loop'] = ''
         replace_dict['cpp_blas_helicity_loop_end'] = ''
@@ -2111,7 +2113,11 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         replace_dict['nb_channel'] = len(self.active_color_map)
         # here I can do the conversion in between the active color map and true, false, and obtain a C++ compatible thing immediately
         replace_dict['nb_diag'] = nb_diag
-        nb_color = max(1, len(self.color_basis))
+        # icolamp is the mask of the color flows allowed for a config, and the
+        # selection walks it over ncolor_flow entries, so it is dimensioned on
+        # the flow basis -- which is larger than the color basis itself when
+        # the color sum runs on the DDM one
+        nb_color = max(1, len(self.color_flow_basis))
         replace_dict['nb_color'] = nb_color
         # AV extra formatting (e.g. gg_tt was "{{true,true};,{true,false};,{false,true};};")
         ###misc.sprint(replace_dict['is_LC'])

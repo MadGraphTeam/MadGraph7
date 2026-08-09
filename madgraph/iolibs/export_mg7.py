@@ -25,6 +25,13 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.process = self.amplitude.get("process")
         self.legs = self.process.get("legs_with_decays")
         self.color_basis = self.matrix_element.get("color_basis")
+        # The basis a color flow is picked among: always the trace one, which
+        # is the color basis itself unless the color sum runs on the DDM basis.
+        # Everything indexing a color flow -- the color_flows table, the
+        # active_colors masks, icolamp -- has to use this one and not the
+        # (smaller) basis of the color sum.
+        self.color_flow_basis = self.color_basis.get_flow_basis() \
+                                if self.color_basis else self.color_basis
         self.set_topology()
         self.set_flavor_indices()
         self.set_active_flavors()
@@ -104,9 +111,12 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
     def set_channels_colors_map(self):
         if self.color_basis:
+            # active_colors ends up in the icolamp mask, which is walked over
+            # the color flows, so it must be indexed on the flow basis
+            flow_basis = self.color_flow_basis
             diag_jamps = defaultdict(list)
-            for ijamp, col_basis_elem in enumerate(sorted(self.color_basis.keys())):
-                for diag_tuple in self.color_basis[col_basis_elem]:
+            for ijamp, col_basis_elem in enumerate(sorted(flow_basis.keys())):
+                for diag_tuple in flow_basis[col_basis_elem]:
                     diag_jamps[diag_tuple[0]].append(ijamp)
 
         sym_indices, sym_perms, _ = find_symmetry(
@@ -208,7 +218,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             # Get the list of color flows. This is about color flows, so
             # always the trace basis, even when the color sum runs on the DDM
             # one.
-            color_flow_dicts = self.color_basis.get_flow_basis().\
+            color_flow_dicts = self.color_flow_basis.\
                                color_flow_decomposition(repr_dict, n_initial)
             # And output them properly
             color_flows = [
