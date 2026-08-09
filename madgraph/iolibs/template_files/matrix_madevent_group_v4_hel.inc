@@ -255,6 +255,7 @@ C
     INTEGER DENOM, CF_INDEX
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_hel_decl)s
+${hr_gather_decl}
 %(color_fold_decl)s
 %(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
@@ -304,9 +305,10 @@ C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
 %(flavor_mask_setup)s%(blas_hel_setup)s
     AMP(:,:) = (0d0,0d0)
 ${helas_calls}
+C     END OF RECYCLED HELAS BLOCK
 
     JAMP(:,:)  = (0d0,0d0)
-    DO K = 1, NCOMB
+    DO ${hr_gather_open}
 ${jamp_lines}
 %(color_fold_gather)s%(blas_hel_gather)s
 %(jampflow_lines)s
@@ -341,7 +343,7 @@ ${jamp_lines}
     	  enddo
         Enddo
     ${dead_row_endif}
-    ENDDO ! K%(blas_hel_finish)s
+    ENDDO ! ${hr_gather_close}%(blas_hel_finish)s
 
     END
 

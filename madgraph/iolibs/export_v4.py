@@ -8433,7 +8433,10 @@ C       so this also stays correct for split-order processes.
     # a time. AMP is helicity major, so the rows of one amplitude are adjacent
     # and eight complex*16 are one 128 byte cache line: gathering a row on its
     # own fetches one line per amplitude and uses 16 bytes of it, gathering
-    # eight fetches the same line once and uses all of it.
+    # eight fetches the same line once and uses all of it. Measured here, color
+    # stage of g g > 5g against the block size, 1/2/4/8/16/32/64 ->
+    # 3.2/2.8/2.4/2.3/2.3/2.7/2.5 ms. Kept in step with hel_recycle.GATHER_BLOCK,
+    # which madevent's own color stage uses.
     hel_recycling_gather_block = 8
 
     def _hel_recycling_color_blocks(self, rd):

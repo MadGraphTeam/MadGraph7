@@ -38,6 +38,26 @@ def get_num_lines(file_path):
 # shipped stand-alone as bin/internal/hel_recycle.py). See the comment there.
 AMP_CHUNK_SIZE_DEFAULT = 2000
 
+# How many helicity rows the color stage gathers out of AMP at a time when it
+# gathers at all (see HelicityRecycler.set_gather_lines). AMP is helicity major,
+# so the rows of one amplitude are the adjacent entries and eight complex*16 are
+# one 128 byte cache line: gathering a row on its own fetches one line per
+# amplitude and uses 16 bytes of it, gathering eight fetches the same line once
+# and uses all of it. Kept in step with the exporter's
+# hel_recycling_gather_block, which the standalone color stage uses.
+GATHER_BLOCK = 8
+
+# ... and the size of AMP, in bytes, above which gathering pays at all. Below
+# it the rows sharing a cache line are visited close enough together that the
+# hardware already gets the reuse the gather is after, so the copy is a second
+# pass over AMP for nothing. Measured on the color stage of the recycled matrix
+# element, gathered against read in place: g g > g g g (AMP 14 kB) +35%,
+# g g > g g g g (408 kB) +56%, g g > t t~ g g g (3.9 MB) -21%. A micro-benchmark
+# of the same access pattern puts the crossover near 1.5 MB. Most madevent
+# processes are far below that, so this leaves the plain loop alone for all but
+# the largest matrix elements.
+GATHER_MIN_BYTES = 2 * 1024 ** 2
+
 # The markers the exporter puts around the HELAS block of an amplitude-chunk
 # file, so that the unrolling below can read the calls back out of it.
 AMP_CHUNK_BEGIN = 'HELAS CALLS BEGIN'
@@ -658,6 +678,19 @@ class HelicityRecycler():
 
         self.old_out_name = ''
         self.loop_var = 'K'
+        # The color stage reads AMP in place, over a plain loop on the helicity
+        # rows -- what it always did. set_gather_lines replaces that with the
+        # gathered form where it pays; anything that does not go through it
+        # (another caller, the zero matrix element) keeps what is set here.
+        #
+        # The two loop holes sit inside a literal DO/ENDDO pair in the template
+        # so that the exporter's fortran writer still sees the helicity loop and
+        # indents its body: hr_gather_open is what follows the DO, and
+        # hr_gather_close what follows the ENDDO's comment marker.
+        self.amp_gather = False
+        self.template_dict['hr_gather_decl'] = ''
+        self.template_dict['hr_gather_open'] = '%s = 1, NCOMB' % self.loop_var
+        self.template_dict['hr_gather_close'] = self.loop_var
 
         self.all_hel = []
         self.hel_filt = True
@@ -665,6 +698,10 @@ class HelicityRecycler():
         # statements per matrix<i>_optimamp<k>.f; 0 keeps the unrolled sequence
         # inline in matrix<i>_optim.f as it always was
         self.amp_chunk_size = AMP_CHUNK_SIZE_DEFAULT
+        # rows gathered at a time, and the size of AMP the gather starts paying
+        # at; see set_gather_lines
+        self.gather_block = GATHER_BLOCK
+        self.gather_min_bytes = GATHER_MIN_BYTES
 
     def set_input(self, file):
         if 'born_matrix' in file:
@@ -724,21 +761,32 @@ class HelicityRecycler():
 
     # string manipulation
 
+    # Contiguous per-row copy of AMP the color flows read from when the stage
+    # gathers, and the index of the row inside the gathered block. Both are
+    # declared by set_gather_lines below and only ever appear together.
+    AMP_GATHER = 'AMPK'
+    GATHER_LANE = 'HRL'
+
     def add_amp_index(self, matchobj):
-        old_pat = matchobj.group()
-        new_pat = old_pat.replace('AMP(', 'AMP( %s,' % self.loop_var)
-        
-        #new_pat = f'{self.loop_var},{old_pat[:-1]}{old_pat[-1]}'
-        return new_pat
+        # The recycled AMP is helicity major -- that is the layout the rewritten
+        # helas block WRITES, one CombineAmp filling one amplitude for a whole
+        # set of rows at once -- so a read of row K is AMP(K,i). Where the stage
+        # gathers, the row has already been copied out contiguously and the read
+        # becomes AMPK(i,HRL) instead.
+        args = matchobj.group()[len('AMP('):-1]
+        if self.amp_gather:
+            return '%s(%s,%s)' % (self.AMP_GATHER, args, self.GATHER_LANE)
+        return 'AMP( %s,%s)' % (self.loop_var, args)
 
     def add_indices(self, line):
-        '''Add loop_var index to amp and output variable. 
-           Also update name of output variable.'''
-        # Doesnt work if the AMP arguments contain brackets.
+        '''Point the amplitude reads at the gathered row and update the name of
+           the output variable.'''
         # The character in front is looked at rather than eaten, so that an
         # AMP( opening the statement is indexed too -- which is what a line
-        # like "AMP(31) = AMP(31) + AMP(1)" needs.
-        new_line = re.sub(r'(?<![A-Za-z0-9_])AMP\(.*?\)',
+        # like "AMP(31) = AMP(31) + AMP(1)" needs. One level of brackets is
+        # allowed inside the argument: with the color flow definitions emitted
+        # as operand tables the index is itself a table lookup.
+        new_line = re.sub(r'(?<![A-Za-z0-9_])AMP\((?:[^()]|\([^()]*\))*\)',
                           self.add_amp_index, line)
         new_line = re.sub(r'MATRIX\d+', 'TS(K)', new_line)
         return new_line
@@ -1056,6 +1104,85 @@ class HelicityRecycler():
         os.symlink(input_file, self.output_file)
 
 
+    _NGRAPHS_RE = re.compile(r'^\s*PARAMETER\s*\(\s*NGRAPHS\s*=\s*(\d+)\s*\)',
+                             re.IGNORECASE)
+
+    def template_ngraphs(self):
+        """NGRAPHS of the driver template, or 0 when it does not say.
+
+        The exporter fills it in, so it is there before anything is parsed --
+        which is what the gather decision below needs, since the color flow
+        lines are rewritten as they are read."""
+
+        try:
+            with open(self.template_file) as fsock:
+                for line in fsock:
+                    found = self._NGRAPHS_RE.match(line)
+                    if found:
+                        return int(found.group(1))
+        except IOError:
+            pass
+        return 0
+
+    def set_gather_lines(self):
+        """Decide how the color stage reads the amplitudes, and fill the holes
+        of the driver template that say so.
+
+        AMP is helicity major -- that is the layout the rewritten helas block
+        WRITES, one CombineAmp filling one amplitude for a whole set of rows at
+        once, so a column of AMP is what it produces. Reading a row back out of
+        it walks NGRAPHS entries that are NCOMB apart, i.e. one cache line per
+        amplitude, where the unrecycled matrix element reads AMP contiguously.
+
+        The cure is to copy the row into a contiguous buffer first, NHRBLK rows
+        at a time so that the copy itself reads whole lines. But the rows that
+        share a line are also visited within NHRBLK iterations of each other, so
+        below a certain size the hardware already gets that reuse for free and
+        the copy is a second pass over AMP for nothing. Hence the size gate, see
+        GATHER_MIN_BYTES: most madevent processes are below it and keep the very
+        loop the template has always carried, unchanged."""
+
+        ngraphs = self.template_ngraphs()
+        ncomb = len(self.good_elements)
+        self.amp_gather = bool(ngraphs) and \
+            ngraphs * ncomb * 16 >= self.gather_min_bytes
+        if not self.amp_gather:
+            return
+
+        buf, lane = self.AMP_GATHER, self.GATHER_LANE
+        # Each block continues a line the template already indented, so its
+        # first entry carries no indentation of its own.
+        self.template_dict['hr_gather_decl'] = '\n'.join([
+            'INTEGER NHRBLK',
+            '      PARAMETER (NHRBLK=%d)' % self.gather_block,
+            '      INTEGER KB, HRNL, %s' % lane,
+            # One lane per gathered row, and a lane is contiguous (fortran is
+            # column major). Deliberately NOT saved: it has to follow the same
+            # storage class as AMP, which is a plain local. SMATRIX1_MULTI
+            # carries an !$OMP PARALLEL over the matrix element and the link
+            # line already passes -fopenmp; the day FFLAGS does too, gfortran
+            # makes the locals automatic and thread private -- and an explicit
+            # SAVE would be the one thing left shared between the threads.
+            '      COMPLEX*16 %s(NGRAPHS,NHRBLK)' % buf])
+        # The template's own DO opens the block loop; the row loop is nested
+        # inside it and K, which every rewritten line still uses, becomes the
+        # row of the block being read rather than a loop variable.
+        self.template_dict['hr_gather_open'] = '\n'.join([
+            'KB = 1, NCOMB, NHRBLK',
+            '        HRNL = MIN(NHRBLK, NCOMB-KB+1)',
+            '        DO I = 1, NGRAPHS',
+            '          DO %s = 1, HRNL' % lane,
+            '            %s(I,%s) = AMP(KB+%s-1,I)' % (buf, lane, lane),
+            '          ENDDO',
+            '        ENDDO',
+            '        DO %s = 1, HRNL' % lane,
+            '          %s = KB + %s - 1' % (self.loop_var, lane)])
+        # ... and the template's own ENDDO closes the row loop, so only the
+        # block loop is left to close here.
+        self.template_dict['hr_gather_close'] = '\n'.join([
+            lane,
+            '      ENDDO ! KB'])
+
     def generate_output_file(self):
         if not self.good_elements:
             misc.sprint("No helicity", self.input_file)
@@ -1063,6 +1190,9 @@ class HelicityRecycler():
             return
 
         atexit.register(self.clean_up)
+        # before read_orig: it rewrites the color flow lines as it reads them,
+        # and how they spell an amplitude is what this decides
+        self.set_gather_lines()
         self.read_orig()
         # Two chunkers live here, one per backend, and exactly one of them
         # fires for any given matrix element. write_amp_chunks is madevent's:
