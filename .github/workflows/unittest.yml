@@ -469,7 +469,7 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
-
+      - uses: ./.github/actions/restore_ufomodel
       # Runs a set of commands using the runners shell
       - name: test one of the test test_is_uptodate test_write_cplusplus_error test_write_cplusplus_line test_write_cplusplus_special_syntax test_multiple_if_statement test_single_if_statement test_remove_routine test_write_fortran_error test_write_fortran_line test_UFOExpressionParserPythonIF test_parse_fortran_IfElseStruct test_parse_fortran_IfElseStruct_MP test_parse_fortran_fct test_parse_fortran_fct_MP test_parse_special_fortran_fct test_error_interaction_save test_error_particle_save test_interaction_save test_particle_save test_fail_on_process_cc_file_uu_six test_write_match_go_process_cc_file
         run: |
@@ -665,7 +665,7 @@ jobs:
     # Tests in tests/unit_tests not previously bound to any CI job:
     # color algebra, base/diagram object merging, miscellaneous I/O and drawing
     # Includes test_fks_ppzz_in_RS using the restored RS UFO model cache.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -681,7 +681,7 @@ jobs:
 
   unittest_30:
     # Uncovered unit tests in tests/unit_tests/various/test_lhe_parser.py
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -695,7 +695,7 @@ jobs:
 
   unittest_31:
     # Uncovered unit tests in tests/unit_tests/various/test_process_checks.py
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -709,7 +709,7 @@ jobs:
 
   unittest_32:
     # Uncovered unit tests in tests/unit_tests/various/test_import_ufo.py
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -723,7 +723,7 @@ jobs:
 
   unittest_33:
     # Uncovered unit tests in tests/unit_tests/fks/test_ewsudakov.py
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:

@@ -464,6 +464,15 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > --nb_run=0  Masking check: skip the timing table and instead")
         logger.info("                print the matrix-element value per flavor after N SMATRIX calls.")
         logger.info("")
+        logger.info("Launch on FKS Born building-block standalone output (output standalone --fks):",'$MG:BOLD')
+        logger.info(" o Example: launch PROC_FKS_sm_0 --energy=500",'$MG:color:GREEN')
+        logger.info(" > Builds and runs 'check_fks', printing the Born, spin-correlated Born")
+        logger.info("   and color/charge-linked Borns for one phase-space point.")
+        logger.info(" > You will be asked whether you want to edit the param_card, unless")
+        logger.info("   the -f option is specified.")
+        logger.info(" > --energy=E   sqrt(s) of the phase-space point (default: built-in)")
+        logger.info(" > --timings=N --nb_run=Y   time N Born re-evaluations over Y runs")
+        logger.info("")
         logger.info("Launch on aMC@NLO output:",'$MG:BOLD')
         logger.info(" > launch <dir_path> <mode> <options>",'$MG:color:BLUE')
         logger.info(" o Example: launch MyProc aMC@NLO -f -p",'$MG:color:GREEN')
@@ -1530,6 +1539,8 @@ This will take effect only in a NEW terminal
             return 'pythia8'
         elif not os.path.isdir(os.path.join(path, 'SubProcesses')):
             raise self.InvalidCmd('%s : Not a valid directory' % path)
+        if os.path.isfile(pjoin(subproc_path, 'check_sa_fks_mode')):
+            return 'amcatnlo_fks_sa'
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
         elif os.path.isfile(pjoin(subproc_path, 'madmatrix.mk')):
@@ -1963,6 +1974,11 @@ This will take effect only in a NEW terminal
 
         if self._export_format in ['NLO', 'ewsudsa']:
             name_dir = lambda i: 'PROCNLO_%s_%s' % \
+                                    (self._curr_model['name'], i)
+            auto_path = lambda i: pjoin(self.writing_dir,
+                                               name_dir(i))
+        elif self._export_format == 'NLO_SA':
+            name_dir = lambda i: 'PROC_FKS_%s_%s' % \
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
@@ -7904,6 +7920,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         options = options.__dict__
         # args is now MODE PATH
 
+        if args[0] == 'amcatnlo_fks_sa':
+            # the FKS Born building-block check: ExtLauncher.run() first offers
+            # to edit the param_card (skipped under -f), then launch_program()
+            # builds and runs the lightweight check_fks (honouring --energy /
+            # --timings / --nb_run).
+            ext_program = launch_ext.FKSSALauncher(self, args[1],
+                                            options=self.options, **options)
+            ext_program.run()
+            os.chdir(start_cwd) #ensure to go to the initial path
+            # ensure that MG options are not changed!
+            for key, value in current_options.items():
+                self.options[key] = value
+            return
+
         if args[0] == 'standalone_mg7':
             class ext_program:
                 @staticmethod
@@ -10202,8 +10232,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
             
 
-        if self._export_format in ['NLO', 'ewsudsa']:
-            ## write fj_lhapdf_opts file            
+        if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
+            ## write fj_lhapdf_opts file
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
             opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
@@ -10853,6 +10883,9 @@ _launch_parser.add_option("", "--timings", default=0, type='int',
                             help="[standalone] Number of SMATRIX calls per flavor per run for timing analysis (0=disabled)")
 _launch_parser.add_option("", "--nb_run", default=1, type='int',
                             help="[standalone] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
+_launch_parser.add_option("", "--energy", default=0, type='float',
+                            help="[FKS standalone] sqrt(s) of the phase-space point (0=built-in default)")
+                           
 
 #===============================================================================
 # Interface for customize question.

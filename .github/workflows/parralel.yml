@@ -421,7 +421,7 @@ jobs:
 
   test_short_check_eejjj_lo_lhapdf:
     # e+ e- > p p p [real=QCD] at LO with pdlabel='lhapdf'.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -437,7 +437,7 @@ jobs:
 
   test_short_split_evt_gen_zeroev:
     # p p > e+ e- [real=QCD] with split event generation when a channel has zero events.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -453,7 +453,7 @@ jobs:
 
   test_short_check_ppwy:
     # p p > w+ y [QCD] using the loop_smgrav model (spin-2 graviton wavefunction).
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -469,7 +469,7 @@ jobs:
 
   test_short_launch_amcatnlo_name:
     # p p > e+ ve [QCD] launched via aMC@NLO with an explicit run name.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -485,7 +485,7 @@ jobs:
 
   test_short_calculate_xsect_script:
     # Cross-section computation driven by bin/calculate_xsect for p p > e+ ve [QCD].
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -506,7 +506,7 @@ jobs:
   # ---------------------------------------------------------------------------
 
   test_short_ML5_sm_vs_stored_ML5:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -521,7 +521,7 @@ jobs:
 
 
   test_short_ML5_sm_vs_stored_ML4:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -543,7 +543,7 @@ jobs:
 
   test_short_generate_events_nlo_hw6_stdhep:
     # NLO event generation, showered with HERWIG6, output as StdHEP.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -560,7 +560,7 @@ jobs:
 
   test_short_generate_events_nlo_hw6_split:
     # NLO event generation split into multiple HERWIG6 shower sub-jobs.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -577,7 +577,7 @@ jobs:
 
   test_short_generate_events_nlo_py6_stdhep:
     # NLO event generation, showered with PYTHIA6 (PYTHIA6Q), output as StdHEP.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -594,7 +594,7 @@ jobs:
 
   test_short_generate_events_nlo_py6pt_stdhep:
     # NLO event generation, showered with PYTHIA6PT, output as StdHEP.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -611,7 +611,7 @@ jobs:
 
   test_short_check_generate_events_nlo_py6pt_fsr:
     # Negative test: PYTHIA6PT must refuse to shower a process with final-state radiation.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -629,7 +629,7 @@ jobs:
   test_short_generate_events_shower_scripts:
     # Exercises bin/generate_events + bin/shower with HERWIG6 hep and top output,
     # including nsplit_jobs > 1 splitting.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -646,7 +646,7 @@ jobs:
 
   test_short_generate_events_name:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -664,7 +664,7 @@ jobs:
 
   test_decay_comparator_mssm:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -680,7 +680,7 @@ jobs:
 
   test_decay_comparator_heft:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -696,7 +696,7 @@ jobs:
 
   test_decay_comparator_nmssm1:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -712,7 +712,7 @@ jobs:
 
   test_decay_comparator_nmssm2:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -728,7 +728,7 @@ jobs:
 
   test_decay_comparator_nmssm3:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -744,7 +744,7 @@ jobs:
 
   test_ML5_uux_ddx:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -760,7 +760,7 @@ jobs:
 
   test_long_sm_vs_stored_ML5_sqso_ddx_ddx_WEIGHTEDgt6:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -776,7 +776,7 @@ jobs:
 
   test_long_sm_vs_stored_ML5_gg_zccx:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -792,7 +792,7 @@ jobs:
 
   test_long_sm_vs_stored_HCR_uxu_zz_QED:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -808,7 +808,7 @@ jobs:
 
   test_long_sm_vs_stored_HCR_uxu_zz_QCD:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:

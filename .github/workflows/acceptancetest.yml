@@ -1234,6 +1234,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py -pA TestMLMReweight
 
+  acceptancetest_fks_standalone:
+    # FKS Born building-block standalone output ('output standalone --fks'):
+    # hardcoded-value regression and consistency vs a plain aMC@NLO output.
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      - name: test FKS Born building-block standalone (value + vs aMC@NLO)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo -pA -t0 -l INFO
 
   acceptancetest_density:
     # The type of runner that the job will run on
