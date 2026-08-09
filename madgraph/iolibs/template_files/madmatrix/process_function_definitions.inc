@@ -816,7 +816,7 @@ namespace mg5amcCpu
       fptype_sv jamp2_sv[ncolor_flow] = { 0 };
       assert( allJamp2s != nullptr ); // sanity check
       using J2_ACCESS = DeviceAccessJamp2;
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
         jamp2_sv[icolC] = J2_ACCESS::kernelAccessIcolConst( allJamp2s, icolC );
       // NB (see #877): in the array channel2iconfig, the input index uses C indexing (channelId -1), the output index uses F indexing (iconfig)
       // NB (see #917): mgOnGpu::channel2iconfig returns an int (which may be -1), not an unsigned int!
@@ -831,9 +831,9 @@ namespace mg5amcCpu
         printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%%d (invalid SDE iconfig=%%d\n > nconfig=%%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
         assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
       }
-      fptype targetamp[ncolor] = { 0 };
+      fptype targetamp[ncolor_flow] = { 0 };
       // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
         if( icolC == 0 )
           targetamp[icolC] = 0;
@@ -843,9 +843,9 @@ namespace mg5amcCpu
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       //printf( "sigmaKin: ievt=%%4d rndcol=%%f\n", ievt, allrndcol[ievt] );
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
-        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor - 1] ) )
+        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
           allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
           //printf( "sigmaKin: ievt=%%d icol=%%d\n", ievt, icolC+1 );

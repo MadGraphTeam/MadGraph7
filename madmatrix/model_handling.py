@@ -1788,7 +1788,9 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         replace_dict['madE_update_answer'] = '   allMEs[iproc*nprocesses + ievt] *= multi_chanel_num/multi_chanel_denom;'
 
         replace_dict['nb_channel'] = len(self.multi_channel_map)
-        replace_dict['nb_color'] = max(1, len(self.matrix_elements[0].get('color_basis')))
+        # same meaning as in edit_coloramps: the number of color flows, which
+        # is not the size of the color basis when the color sum runs on the DDM one
+        replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
 
         # Crossing-symmetry hole (per-event denominator); identity fill when off.
         replace_dict.update(self.get_madmatrix_crossing_dict(self.matrix_elements[0]))
@@ -2209,7 +2211,11 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         replace_dict['nb_channel'] = len(self.active_color_map)
         # here I can do the conversion in between the active color map and true, false, and obtain a C++ compatible thing immediately
         replace_dict['nb_diag'] = nb_diag
-        nb_color = max(1, len(self.color_basis))
+        # icolamp is the mask of the color flows allowed for a config, and the
+        # selection walks it over ncolor_flow entries, so it is dimensioned on
+        # the flow basis -- which is larger than the color basis itself when
+        # the color sum runs on the DDM one
+        nb_color = max(1, len(self.color_flow_basis))
         replace_dict['nb_color'] = nb_color
         # AV extra formatting (e.g. gg_tt was "{{true,true};,{true,false};,{false,true};};")
         ###misc.sprint(replace_dict['is_LC'])
@@ -2980,6 +2986,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # optimisation finds, instead of one line per (color flow, amplitude) pair
     # (see build_jamp_plan). Toggled by --jamp_optim=True|False.
     jamp_optim = True
+    # Look for those sub-expressions by whole orbits of the permutations
+    # leaving the color basis invariant (see JampOptimiser). Toggled by
+    # --jamp_orbit=True|False.
+    jamp_orbit = True
     # Class structure information
     #  - object
     #  - dict(object) [built-in]
@@ -3220,7 +3230,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 pieces.append('%s %s%s' % ('-' if sign < 0 else '+', factor, name))
         return '%s %s %s;' % (target, '=' if assign else '+=', ' '.join(pieces))
 
-    def build_jamp_plan(self, color_amplitudes):
+    def build_jamp_plan(self, matrix_element, color_amplitudes):
         """Work out how the color flows are built from shared sub-expressions,
         and return (ntmp, captures, combines, final):
           - captures[n] are the lines to write while amplitude n sits in
@@ -3237,7 +3247,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         all_element = self.jamp_matrix(color_amplitudes)
         if not all_element:
             return None
-        new_mat, defs = self.optimise_jamp_matrix(all_element)
+        new_mat, defs = self.optimise_jamp_matrix(all_element,
+                                                  matrix_element=matrix_element)
         if not defs:
             return None
         order, ready = self.jamp_definition_order(defs)
@@ -3324,7 +3335,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 color[namp][njamp] = coeff
         # Color flows through shared sub-expressions (None to write them out
         # one (color flow, amplitude) pair at a time, as before)
-        jamp_plan = self.build_jamp_plan(color_amplitudes)
+        jamp_plan = self.build_jamp_plan(matrix_element, color_amplitudes)
         self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
         if jamp_plan is not None:
             _ntmp, jamp_captures, jamp_combines, jamp_final = jamp_plan
