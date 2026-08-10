@@ -17853,10 +17853,12 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
                'export_format':cmd._export_format,
                'mp': False,
                'sa_symmetry':False,
-               # --use_crossing of the generate/add process command: when off,
-               # the standalone matrix.f is written without any crossing
-               # machinery (see ProcessExporterFortranSA.write_matrix_element_v4).
-               'use_crossing': getattr(cmd, '_use_crossing', True),
+               # --use_crossing of the generate/add process command, and of the
+               # output command for this output: when off, the standalone
+               # matrix.f is written without any crossing machinery (see
+               # ProcessExporterFortranSA.write_matrix_element_v4).
+               'use_crossing': getattr(cmd, '_use_crossing', True)
+                               and getattr(cmd, '_output_use_crossing', True),
                'model': cmd._curr_model.get('name'),
                'v5_model': False if cmd._model_v4_path else True,
                'running': cmd._curr_model.get('running_elements'),

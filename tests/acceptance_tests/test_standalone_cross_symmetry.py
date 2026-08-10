@@ -1886,8 +1886,12 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
         if os.path.isdir(self.tmpdir):
             shutil.rmtree(self.tmpdir)
 
-    def _output(self, fmt, name, options='', process=PROC_QG_QG, setup=()):
-        """Run generate+output for `fmt`; returns the output directory."""
+    def _output(self, fmt, name, options='', process=PROC_QG_QG, setup=(),
+                out_options=''):
+        """Run generate+output for `fmt`; returns the output directory.
+
+        `options` goes on the generate line, `out_options` on the output line.
+        """
         out = pjoin(self.tmpdir, name)
         cmd = cmd_interface.MasterCmd()
         cmd.no_notification()
@@ -1896,7 +1900,7 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
             cmd.exec_cmd(line)
         cmd.exec_cmd('import model sm')
         cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
-        cmd.exec_cmd('output %s %s -f' % (fmt, out))
+        cmd.exec_cmd(('output %s %s -f %s' % (fmt, out, out_options)).strip())
         return out
 
     @staticmethod
@@ -1955,6 +1959,39 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
             with self.subTest(format=fmt):
                 self._output(fmt, 'ok_%s' % fmt,
                              options='--use_crossing=False')
+
+    def test_folding_output_expands_when_crossing_turned_off(self):
+        """--use_crossing=False on the output line must stay a COMPLETE output.
+
+        The generation folds the crossed subprocesses onto their base and the
+        standalone backends reach them through the base's crossing-aware
+        SMATRIX/sigmaKin. Dropping that machinery at output time therefore has to
+        put the folded subprocesses back, or the output silently loses those
+        partonic contributions -- the exact trap the flag is documented never to
+        spring. q q > q q (q = u d u~ d~) really does fold: it collapses to one
+        directory with crossing on.
+        """
+        setup = ('define q = u d u~ d~',)
+        proc = 'q q > q q'
+        for fmt in ('standalone', 'standalone_mg7'):
+            with self.subTest(format=fmt):
+                on = self._output(fmt, 'fold_on_%s' % fmt, process=proc,
+                                  setup=setup)
+                gen_off = self._output(fmt, 'fold_gen_%s' % fmt, process=proc,
+                                       setup=setup,
+                                       options='--use_crossing=False')
+                out_off = self._output(fmt, 'fold_out_%s' % fmt, process=proc,
+                                       setup=setup,
+                                       out_options='--use_crossing=False')
+                self.assertEqual(self._subprocesses(gen_off),
+                                 self._subprocesses(out_off),
+                                 '%s: --use_crossing=False on the output line '
+                                 'kept the crossings folded' % fmt)
+                # Guard the guard: both sides would agree if nothing ever folded.
+                self.assertLess(len(self._subprocesses(on)),
+                                len(self._subprocesses(out_off)),
+                                '%s: expected %s to fold crossings with the '
+                                'crossing on' % (fmt, proc))
 
     def test_supported_outputs_accept_crossing(self):
         """Outputs that DO implement crossing must not be caught.
@@ -2208,8 +2245,12 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             shutil.rmtree(self.tmpdir)
 
     # ------------------------------------------------------------------
-    def _output_standalone_mg7(self, process, name, options=''):
-        """Write the standalone_mg7 output for `process`, return its P* dir."""
+    def _output_standalone_mg7(self, process, name, options='',
+                               out_options=''):
+        """Write the standalone_mg7 output for `process`, return its P* dir.
+
+        `options` goes on the generate line, `out_options` on the output line.
+        """
         outdir = pjoin(self.tmpdir, name)
         cmd = cmd_interface.MasterCmd()
         cmd.no_notification()
@@ -2218,7 +2259,8 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('set apply_flavor_grouping True')
         cmd.exec_cmd('import model sm')
         cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
-        cmd.exec_cmd('output standalone_mg7 %s -f' % outdir)
+        cmd.exec_cmd(('output standalone_mg7 %s -f %s'
+                      % (outdir, out_options)).strip())
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
@@ -2374,6 +2416,36 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             self._me(on_dir, self.IDENTITY), self._me(off_dir, self.IDENTITY),
             delta=self.tolerance * abs(self._me(off_dir, self.IDENTITY)),
             msg='the uncrossed ME changed when the crossing machinery was emitted')
+
+    def test_use_crossing_false_on_the_output_line(self):
+        """--use_crossing=False on the OUTPUT line must reach the exporter.
+
+        The flag used to be read by the generate command only, so passing it to
+        `output` was silently a no-op: the whole crossing machinery (preamble,
+        per-crossing good-helicity tables, NSF-blended external calls, the
+        cNGoodMaxCross loop bound) was emitted anyway. Writing the same source
+        as the generate-time flag is the sharpest statement of the fix, since
+        that build is the one covered by the tests above.
+        """
+        gen_dir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_genoff',
+                                              options='--use_crossing=False')
+        out_dir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_outoff',
+                                              out_options='--use_crossing=False')
+        out_src = self._cpp_source(out_dir)
+        self.assertEqual(self._cpp_source(gen_dir), out_src,
+                         '--use_crossing=False writes a different source on the '
+                         'output line than on the generate line')
+        # Guard the guard: an exporter that never emits the machinery would
+        # satisfy the equality above with both sides broken.
+        on_src = self._cpp_source(
+            self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_defaulton'))
+        for token in ('spincol_cross', 'cross_perm_ic', 'ident_cross',
+                      'cNGoodMaxCross'):
+            self.assertIn(token, on_src,
+                          '%s should be emitted with crossing on' % token)
+            self.assertNotIn(token, out_src,
+                             '%s must NOT survive --use_crossing=False on the '
+                             'output line' % token)
 
 
 class TestCrossingPartition(unittest.TestCase):
