@@ -212,8 +212,8 @@ c      density matrix helicity index value for particle
 
 c     The value of alphas is 0 to keep the value of the param_card
 c     The value of mu_r2 is set to 0 but it is a dummy variable at tree-level anyway
-       call %(prefix)sGET_DENSITY(P,  POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, 0d0, 0d0, INTER)
-       
+%(density_call)s
+
        SOL=0
        DO I=1, N_COMB
           DO J = I, N_COMB

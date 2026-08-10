@@ -32,7 +32,7 @@ $(PROG): $(LIBS) $(PROCESS) $(CHECK_SA) makefile
 	$(FC) $(FFLAGS) -o $(PROG) $(PROCESS) $(CHECK_SA) $(LINKLIBS)
 
 $(PROG_SPLITORDERS): $(PROCESS) $(CHECK_SA_SPLITORDERS) makefile $(LIBS)
-	$(FC) $(FFLAGS) -o $(PROG) $(PROCESS) $(CHECK_SA_SPLITORDERS) $(LINKLIBS)
+	$(FC) $(FFLAGS) -o $(PROG_SPLITORDERS) $(PROCESS) $(CHECK_SA_SPLITORDERS) $(LINKLIBS)
 
 # The recycled amplitude block gets its own flag so that the compile can be
 # bought back when it is what has to give. It follows the global flag by

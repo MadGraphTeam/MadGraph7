@@ -229,7 +229,7 @@ C     are zero.
 
       INTEGER     NCOLOR, NJAMP
       PARAMETER (NCOLOR=%(ncolor)d)
-      COMPLEX*16  JAMP(NCOLOR), ONEJAMP
+      COMPLEX*16  JAMP(NCOLOR), LNJAMP(NCOLOR), ONEJAMP
       COMMON/%(proc_prefix)sJAMP/JAMP,LNJAMP
 
 	ONEJAMP = JAMP(njamp+1) ! +1 since njamp start at zero (c convention)

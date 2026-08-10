@@ -41,7 +41,20 @@ C
       INTEGER FLAVOR(NEXTERNAL, MAXFLAVOR)
       INTEGER PDG_FOR_FLAVOR(NEXTERNAL,MAXFLAVOR)
       INTEGER FLAV_IDX
-      INTEGER GET_FLAVOR_INDEX
+      INTEGER MG5_0_GET_FLAVOR_INDEX
+C     Signed per-leg PDG of a crossed process (filled by GET_PDG_FOR_FLAVOR),
+C     the two crossing-partner loop indices, and the number of flavor
+C     combinations; used only by the crossing-symmetry demonstration below.
+      INTEGER XPDG(NEXTERNAL)
+      INTEGER FLIP1, FLIP2, NFLAV
+C     Per-leg loop index and the two match flags of the crossing demonstration.
+      INTEGER XCK
+      LOGICAL XCVALID, XCMATCH
+C     Representative signed-PDG signatures of the crossed subprocesses folded
+C     into this matrix element; a crossing is demonstrated when its runtime PDG
+C     (GET_PDG_FOR_FLAVOR) matches one of them.
+      INTEGER XCSIG(NEXTERNAL, (NEXTERNAL+1)*(NEXTERNAL+1))
+      INTEGER XCNSIG, XCS
 C
 C     EXTERNAL
 C
@@ -125,15 +138,17 @@ c     Now we can call the matrix element!
 c
       do I=1, MAXFLAVOR
       IF(unique_flavor.gt.0.and.unique_flavor.ne.I) CYCLE
-      FLAV_IDX = GET_FLAVOR_INDEX(FLAVOR(1,I))
+      FLAV_IDX = MG5_0_GET_FLAVOR_INDEX(FLAVOR(1,I))
       do J=1, NB_TRY
-      CALL SMATRIX(P,FLAV_IDX, MATELEM)
+      CALL MG5_0_SMATRIX(P,FLAV_IDX, MATELEM)
       enddo
 c
       write(*,*) "PDG", PDG_FOR_FLAVOR(:,I)
       write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)
       write (*,*) "-----------------------------------------------------------------------------"
       enddo
+
+
 
       if (.false.)then
          do I=1, MAXFLAVOR
@@ -167,7 +182,7 @@ c         write (*,'(i2,1x,5e15.7)') i, P(0,i),P(1,i),P(2,i),P(3,i),
 c     .dsqrt(dabs(DOT(p(0,i),p(0,i))))
 c      enddo
 c
-c      CALL SMATRIX(P,MATELEM)
+c      CALL MG5_0_SMATRIX(P,MATELEM)
 c
 c      write (*,*) "-------------------------------------------------"
 c      write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)   
@@ -206,8 +221,9 @@ c      density matrix helicity index value for particle
 
 c     The value of alphas is 0 to keep the value of the param_card
 c     The value of mu_r2 is set to 0 but it is a dummy variable at tree-level anyway
-       call GET_DENSITY(P,  POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, 0d0, 0d0, INTER)
-       
+       WRITE(*,*) 'no density matrix in this output'
+       INTER = (0d0, 0d0)
+
        SOL=0
        DO I=1, N_COMB
           DO J = I, N_COMB
