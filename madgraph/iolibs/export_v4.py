@@ -2747,14 +2747,23 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'slot': [place[representative[i]] + 1
                          for i in range(nb_color)]}
 
-    def get_color_data_lines(self, matrix_element, n=128):
+    def get_color_data_lines(self, matrix_element, n=128, plain=False):
         """Return the color matrix definition lines for this matrix element. Split
-        rows in chunks of size n."""
+        rows in chunks of size n.
+
+        Two of the forms written here are not plain DATA the reader can simply
+        sum over: the compressed encoding leaves the entries to be rebuilt at
+        run time by INIT_CF, and the folded form writes one row per JAMP
+        reversal pair. Both need the template being written to agree -- an
+        INIT_CF call for the first, the JFOLD/COLREP gather for the second --
+        and this method is shared by every fortran exporter, several of which
+        write into templates carrying neither. Those callers pass plain=True
+        and get every entry of the upper triangle written out."""
 
         if not matrix_element.get('color_matrix'):
             return ["DATA %(proc_prefix)sDenom/1/", "DATA %(proc_prefix)sCF/1/"]
 
-        if self.get_color_matrix_encoding(matrix_element):
+        if not plain and self.get_color_matrix_encoding(matrix_element):
             # the entries are rebuilt at run time by INIT_CF, only the overall
             # denominator is still needed here
             denominator = max(matrix_element.get('color_matrix').\
@@ -2762,7 +2771,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             return ["DATA %%(proc_prefix)sDenom/%(denom)i/" % \
                                                        {'denom': denominator}]
 
-        folding = self.get_jamp_folding(matrix_element)
+        folding = None if plain else self.get_jamp_folding(matrix_element)
         if folding:
             denominator, folded = self.jamp_folded_color_matrix(
                         matrix_element, folding['reverse'], folding['sign'])
@@ -6590,13 +6599,14 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         Infinity).
 
         This covers the exporters whose matrix element get_matrix_template
-        describes: standalone, matchbox and the MadLoop born_matrix.f. It does
-        not reach the FKS born, which is written from born_fks.inc -- also
-        without the gather -- through a path of its own; the answer here is
-        only right for it by accident (its split-orders borns are reported as
-        the split-orders template, which has no gather either). madevent is a
-        separate class and keeps the mother's method: its templates do read a
-        folded matrix.
+        describes: standalone, matchbox and the MadLoop born_matrix.f (written
+        through write_bornmatrix, which is write_matrix_element_v4). It says
+        nothing about the files the FKS exporter fills itself -- born.f,
+        born_hel.f, matrix_<i>.f, born_cnt_<i>.f -- which come from templates
+        of their own with no gather; those ask for the matrix written out in
+        full instead, see get_fks_color_data_lines. madevent is a separate
+        class and keeps the mother's method: its templates do read a folded
+        matrix.
         """
         if not self.matrix_template_provides(matrix_element,
                                              '%(color_fold_gather)s'):

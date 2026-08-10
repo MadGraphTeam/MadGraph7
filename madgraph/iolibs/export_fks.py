@@ -1961,6 +1961,32 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     #===========================================================================
+    # get_fks_color_data_lines
+    #===========================================================================
+    def get_fks_color_data_lines(self, matrix_element):
+        """The color matrix written out in full, for the templates this
+        exporter fills itself.
+
+        born_fks.inc, born_fks_hel.inc, the four split-orders templates (born,
+        bhel, real, cnt) and the sudakov goldstone one all declare
+        CF(NCOLOR*(NCOLOR+1)/2) and sum it straight, and none of them carries
+        an INIT_CF call. Neither of the two compact forms get_color_data_lines
+        can otherwise choose -- one row per JAMP reversal pair, or the entries
+        rebuilt at run time -- can be read back from them, so every entry of
+        the upper triangle is written.
+
+        The gate on ProcessExporterFortranSA does not cover these files:
+        get_matrix_template describes what write_matrix_element_v4 writes, and
+        it happens to answer no-fold for them only because an aMC@NLO process
+        always carries split orders (amcatnlo_interface fills them with every
+        coupling order of the model), so it reports the split-orders template.
+        Asking here instead of relying on that leaves the one path that does go
+        through write_matrix_element_v4 -- the MadLoop born_matrix.f, via
+        write_bornmatrix -- free to keep both forms."""
+
+        return self.get_color_data_lines(matrix_element, plain=True)
+
+    #===========================================================================
     # write_split_me_fks
     #===========================================================================
     def write_split_me_fks(self, writer, matrix_element, fortran_model,
@@ -2058,7 +2084,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['hel_avg_factor'] = matrix_element.get_hel_avg_factor()
 
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
 
         if self.opt['export_format']=='standalone_msP':
@@ -2684,7 +2710,7 @@ Parameters              %(params)s\n\
         replace_dict['ncolor'] = ncolor
     
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
     
         # Extract helas calls
@@ -2785,7 +2811,7 @@ Parameters              %(params)s\n\
         replace_dict['ncolor'] = ncolor
     
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
    
         # Extract amp2 lines
@@ -3220,7 +3246,7 @@ Parameters              %(params)s\n\
         replace_dict['ncolor'] = ncolor
 
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines)
 
         # Extract helas calls of the base  matrix element
