@@ -6502,6 +6502,12 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     # which contribute zero for the current input flavor are skipped at
     # runtime. Set to False to revert to the unconditional emission.
     use_flavor_mask = True
+    # When True, write the per-subprocess f2py wrapper (and the makefile rules
+    # building matrix2py from it). It is written against the entry points of
+    # the default matrix template, so an exporter whose template carries a
+    # different API has to turn it off rather than ship a file that cannot be
+    # compiled.
+    write_f2py_interface = True
 
     def __init__(self, *args,**opts):
         """add the format information compare to standard init"""
@@ -6518,6 +6524,85 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # recorded_crossing_codes.
         self.crossing_records = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
+
+    def get_proc_prefix(self, matrix_element, default=''):
+        """The prefix the entry points of this matrix element carry.
+
+        The drivers written next to matrix.f (check_sa.f,
+        check_sa_born_splitOrders.f) call those entry points by name, so they
+        have to be given the very prefix write_matrix_element_v4 used --
+        which is *not* always the one the caller passed in (matchbox derives
+        its own). Both go through here so they cannot drift apart.
+        """
+        return default
+
+    def get_matrix_template(self, matrix_element):
+        """The template write_matrix_element_v4 writes this matrix element from.
+
+        Also asked by the drivers, which have to know which entry points the
+        file they link against actually contains: only the default template
+        carries the full standalone API, and the msP/msF, split-orders and
+        matchbox variants each carry a subset (see matrix_template_provides).
+        --hel_recycling is deliberately not special-cased: it rewrites
+        SMATRIX/MATRIX but appends every other routine verbatim from
+        self.matrix_template, so the answer is the same.
+        """
+        if self.opt['export_format'] == 'standalone_msP':
+            return 'matrix_standalone_msP_v4.inc'
+        if self.opt['export_format'] == 'standalone_msF':
+            return 'matrix_standalone_msF_v4.inc'
+        if matrix_element.get('processes')[0].get('split_orders'):
+            if self.opt['export_format'] in ('madloop_matchbox', 'matchbox'):
+                return 'matrix_standalone_matchbox_splitOrders_v4.inc'
+            return 'matrix_standalone_splitOrders_v4.inc'
+        return self.matrix_template
+
+    def matrix_template_provides(self, matrix_element, marker):
+        """True when the matrix element file carries the routine named by
+        *marker*, i.e. when the template it is written from mentions it.
+
+        Nothing but the linker knows this for sure, and it only says so once
+        the driver is already broken -- and it never gets the chance, because
+        this exporter's `make` never compiles what it writes. Reading the
+        template is the next best thing, and it is the same string the writer
+        substitutes into.
+        """
+        template = self.get_matrix_template(matrix_element)
+        if template not in self._matrix_template_cache:
+            self._matrix_template_cache[template] = open(
+                pjoin(_file_path, 'iolibs', 'template_files', template)).read()
+        return marker in self._matrix_template_cache[template]
+
+    # template name -> text, so the lookup above costs one read per output
+    _matrix_template_cache = {}
+
+    def get_jamp_folding(self, matrix_element):
+        """Only fold the color sum for a template that knows it is folded.
+
+        get_color_data_lines writes the folded color matrix -- one row per
+        reversal pair, off-diagonal entries doubled -- for whatever template is
+        in use, but reading it back needs the JFOLD gather that only the
+        default standalone template has. Everything else here sums
+        CF(1..NCOLOR*(NCOLOR+1)/2) straight, so a folded matrix silently loses
+        the pairs it merged (matchbox g g > g g came out 47.68 instead of
+        55.18) or, when the declaration is not oversized, runs off the end of
+        CF (the split-orders template with `set color_basis trace` returned
+        Infinity).
+
+        This covers the exporters whose matrix element get_matrix_template
+        describes: standalone, matchbox and the MadLoop born_matrix.f. It does
+        not reach the FKS born, which is written from born_fks.inc -- also
+        without the gather -- through a path of its own; the answer here is
+        only right for it by accident (its split-orders borns are reported as
+        the split-orders template, which has no gather either). madevent is a
+        separate class and keeps the mother's method: its templates do read a
+        folded matrix.
+        """
+        if not self.matrix_template_provides(matrix_element,
+                                             '%(color_fold_gather)s'):
+            return None
+        return super(ProcessExporterFortranSA, self).get_jamp_folding(
+                                                                matrix_element)
 
     def copy_template(self, model):
         """Additional actions needed for setup of Template
@@ -6700,14 +6785,18 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                            pjoin(self.dir_path, 'Source', 'PDF'))
             self.write_pdf_opendata()
             
-        if self.prefix_info: 
+        if not self.write_f2py_interface:
+            # no f2py_matrix_wrapper.f was written, so there is nothing for the
+            # matrix2py rules below to build
+            pass
+        elif self.prefix_info:
             self.write_f2py_splitter()
             self.write_f2py_makefile(self.model)
             self.write_f2py_check_sa(matrix_elements,
                             pjoin(self.dir_path,'SubProcesses','check_sa.py'))
         else:
             # create a single makefile to compile all the subprocesses
-            text = '''\n# For python linking (require f2py part of numpy)\nifeq ($(origin MENUM),undefined)\n  MENUM=2\nendif\n''' 
+            text = '''\n# For python linking (require f2py part of numpy)\nifeq ($(origin MENUM),undefined)\n  MENUM=2\nendif\n'''
             deppython = ''
             for Pdir in os.listdir(pjoin(self.dir_path,'SubProcesses')):
                 if os.path.isdir(pjoin(self.dir_path, 'SubProcesses', Pdir)):
@@ -7158,10 +7247,15 @@ C       so this also stays correct for split-order processes.
         fsock.write(text)
         fsock.close()
 
+        # The drivers call the matrix element by name, so they need the prefix
+        # write_matrix_element_v4 will actually use -- which for matchbox is
+        # not the one passed in here.
+        driver_prefix = self.get_proc_prefix(matrix_element, proc_prefix)
+
         #important to put that first
         if self.format == 'standalone':
             filename2 = pjoin(dirpath, 'check_sa.f')
-            self.write_check_sa(writers.FortranWriter(filename2), matrix_element, proc_prefix)
+            self.write_check_sa(writers.FortranWriter(filename2), matrix_element, driver_prefix)
 
 
         replace_dict = self.write_matrix_element_v4(
@@ -7172,16 +7266,18 @@ C       so this also stays correct for split-order processes.
             return_replace_dict=True)
         calls = replace_dict.get('return_value', 0)
 
-        self.write_f2py_matrix_wrapper(
-            writers.FortranWriter(pjoin(dirpath, 'f2py_matrix_wrapper.f')),
-                                  replace_dict=replace_dict)
+        if self.write_f2py_interface:
+            self.write_f2py_matrix_wrapper(
+                writers.FortranWriter(pjoin(dirpath, 'f2py_matrix_wrapper.f')),
+                                      replace_dict=replace_dict)
 
-        # Python convenience wrapper letting callers pass either a FLAVOR array
-        # or a single flavor index to the f2py matrix2py module (dispatches to
-        # the array or *_idx Fortran entry point). Static helper, copied as-is.
-        shutil.copy(pjoin(_file_path, 'iolibs', 'template_files',
-                          'f2py_flavor_dispatch.py'),
-                    pjoin(dirpath, 'flavor_dispatch.py'))
+            # Python convenience wrapper letting callers pass either a FLAVOR
+            # array or a single flavor index to the f2py matrix2py module
+            # (dispatches to the array or *_idx Fortran entry point). Static
+            # helper, copied as-is.
+            shutil.copy(pjoin(_file_path, 'iolibs', 'template_files',
+                              'f2py_flavor_dispatch.py'),
+                        pjoin(dirpath, 'flavor_dispatch.py'))
 
 
         if self.opt['export_format'] == 'standalone_msP':
@@ -7240,7 +7336,7 @@ C       so this also stays correct for split-order processes.
         filename = pjoin(dirpath, 'check_sa.f')
         self.write_check_sa(writers.FortranWriter(filename),
                            matrix_element,
-                           proc_prefix=proc_prefix)        
+                           proc_prefix=driver_prefix)
 
 
         linkfiles = ['coupl.inc']
@@ -7420,6 +7516,11 @@ C       so this also stays correct for split-order processes.
             # Set lowercase/uppercase Fortran code
             writers.FortranWriter.downcase = False
 
+        # Where the matrix element is being written, so that the files that
+        # belong beside it (the split-orders driver, nsqso_born.inc) land there
+        # too. Empty -- i.e. the current directory -- when the caller passed a
+        # bare filename, which is what MadLoop does after chdir'ing.
+        me_dir = os.path.dirname(writer.name) if writer else ''
 
         if 'sa_symmetry' not in self.opt:
             self.opt['sa_symmetry']=False
@@ -7643,15 +7744,23 @@ C       so this also stays correct for split-order processes.
             # that explicitely writes out the contribution from each squared order.
             # The original driver still works and is compiled with 'make' while
             # the splitOrders one is compiled with 'make check_sa_born_splitOrders'
-            check_sa_writer=writers.FortranWriter('check_sa_born_splitOrders.f')
+            # It goes next to the matrix element it calls, not into whatever
+            # directory MG5 happens to be running from: MadLoop chdir's into the
+            # subprocess first (so me_dir is empty there and nothing changes),
+            # the standalone exporters do not.
+            check_sa_writer=writers.FortranWriter(
+                pjoin(me_dir, 'check_sa_born_splitOrders.f'))
             self.write_check_sa_splitOrders(squared_orders,split_orders,
-              nexternal,ninitial,proc_prefix,check_sa_writer)
+              nexternal,ninitial,
+              self.get_proc_prefix(matrix_element, proc_prefix),
+              check_sa_writer)
 
         if write:
-            writers.FortranWriter('nsqso_born.inc').writelines(
+            nsqso = pjoin(me_dir, 'nsqso_born.inc')
+            writers.FortranWriter(nsqso).writelines(
                 """INTEGER NSQSO_BORN
                    PARAMETER (NSQSO_BORN=%d)"""%replace_dict['nSqAmpSplitOrders'])
-            files.cp('nsqso_born.inc', '..')
+            files.cp(nsqso, pjoin(me_dir, '..'))
 
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
 
@@ -7789,13 +7898,10 @@ C       so this also stays correct for split-order processes.
             replace_dict['blas_branch'] = ""
             replace_dict['blas_routine'] = ""
 
-        matrix_template = self.matrix_template
-        if self.opt['export_format']=='standalone_msP' :
-            matrix_template = 'matrix_standalone_msP_v4.inc'
-        elif self.opt['export_format']=='standalone_msF':
-            matrix_template = 'matrix_standalone_msF_v4.inc'
-        elif self.opt['export_format']=='matchbox':
-            replace_dict["proc_prefix"] = 'MG5_%i_' % matrix_element.get('processes')[0].get('id')
+        matrix_template = self.get_matrix_template(matrix_element)
+        if self.opt['export_format']=='matchbox':
+            replace_dict["proc_prefix"] = self.get_proc_prefix(matrix_element,
+                                                               proc_prefix)
             replace_dict["color_information"] = self.get_color_string_lines(matrix_element)
 
         if len(split_orders)>0:
@@ -7805,9 +7911,6 @@ C       so this also stays correct for split-order processes.
                   " Only the total ME will be computed.", self.opt['export_format'])
             elif  self.opt['export_format'] in ['madloop_matchbox', 'matchbox']:
                 replace_dict["color_information"] = self.get_color_string_lines(matrix_element)
-                matrix_template = "matrix_standalone_matchbox_splitOrders_v4.inc"
-            else:
-                matrix_template = "matrix_standalone_splitOrders_v4.inc"
         process = matrix_element.get('processes')[0]
         sym_data = self._get_broken_symmetry_data(process, ninitial)
         self._fill_broken_sym_replace_dict(replace_dict, sym_data)
@@ -8670,6 +8773,15 @@ C       so this also stays correct for split-order processes.
                     for proc in matrix_element.get('processes'))
         if not use_crossing:
             return ''
+        # GET_PDG_FOR_FLAVOR is what turns a FLAV_IDX back into a process, and
+        # only the default template has a hole for it -- the split-orders and
+        # matchbox variants carry no crossing machinery at all. Emitting the
+        # block against those leaves the driver unlinkable (or, when the block
+        # happens to be gated off, relying on the compiler to drop a call to a
+        # symbol that does not exist).
+        if not self.matrix_template_provides(matrix_element,
+                                             '%(flavor_pdg_function)s'):
+            return ''
 
         # NFLAV as matrix.f computes it, so CROSS*NFLAV+flav decodes correctly.
         # It is assigned to a local NFLAV here so the loop body reads generically
@@ -8792,7 +8904,26 @@ C       so this also stays correct for split-order processes.
                     'dens_pos': 'if(nincoming.eq.2) then \n       POS(1) = 3 \n        else \n       POS(1) =1 \n        endif',
                         'dens_allow_hel': 'ALLOW_HEL(1) = +1 \n       ALLOW_HEL(2) = -1'}
 
-        if 'density' in self.cmd_options:
+        # GET_DENSITY only exists in the templates that write one. Where it does
+        # not, the driver still compiles get_density_matrix (it is a routine of
+        # this file, not of matrix.f), so the call has to go -- an undefined
+        # symbol there is enough to stop the whole driver from linking.
+        has_density = self.matrix_template_provides(matrix_element,
+                                                    'GET_DENSITY')
+        if has_density:
+            replace_dict['density_call'] = (
+                '       call %sGET_DENSITY(P,  POS, N_CHANGING, ALLOW_HEL,'
+                ' N_COMB, FLAVOR, 0d0, 0d0, INTER)' % proc_prefix)
+        else:
+            replace_dict['density_call'] = (
+                "       WRITE(*,*) 'no density matrix in this output'\n"
+                '       INTER = (0d0, 0d0)')
+
+        if 'density' in self.cmd_options and not has_density:
+            logger.warning('--density is not available for the %s output: its '
+                           'matrix element has no GET_DENSITY entry point.',
+                           self.opt.get('export_format', 'current'))
+        elif 'density' in self.cmd_options:
             replace_dict['use_density'] = '.true.'
             changing = [int(i) for i in self.cmd_options['density'].split(',')]
             replace_dict['dens_nchanging'] = len(changing)
@@ -8901,7 +9032,11 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
 
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'matchbox', 'mp': False,
-                        'sa_symmetry': True}
+                        'sa_symmetry': True,
+                        # dropped when this dict was written out in full rather
+                        # than derived from the mother's; without it the class
+                        # cannot even be constructed without explicit options
+                        'output_options':{}}
 
     #specific template of the born
            
@@ -8914,6 +9049,21 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
     # Inherits from the standalone exporter but writes its own template, which
     # has no crossing machinery: the capability does not carry over.
     supports_crossing = False
+
+    # The matchbox templates carry neither the f2py entry points (GET_value,
+    # IS_BORN_HEL_SELECTED) nor the density stack the generated wrapper calls,
+    # and Herwig links the Fortran directly, so no python interface is written.
+    write_f2py_interface = False
+
+    def get_proc_prefix(self, matrix_element, default=''):
+        """Matchbox names every routine after the process id, ignoring the
+        --prefix the caller may have passed; write_matrix_element_v4 does the
+        same, and the drivers must agree with it. madloop_matchbox is exempt:
+        it supplies its own prefix from the MadLoop rep_dict."""
+
+        if self.opt['export_format'] != 'matchbox':
+            return default
+        return 'MG5_%i_' % matrix_element.get('processes')[0].get('id')
 
     def color_data_prefix(self, replace_dict):
         """CF and DENOM are plain locals of each routine in the matchbox

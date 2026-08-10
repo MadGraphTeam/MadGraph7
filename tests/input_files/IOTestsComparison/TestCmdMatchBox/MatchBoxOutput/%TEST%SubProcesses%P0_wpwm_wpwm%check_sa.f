@@ -41,7 +41,7 @@ C
       INTEGER FLAVOR(NEXTERNAL, MAXFLAVOR)
       INTEGER PDG_FOR_FLAVOR(NEXTERNAL,MAXFLAVOR)
       INTEGER FLAV_IDX
-      INTEGER GET_FLAVOR_INDEX
+      INTEGER MG5_0_GET_FLAVOR_INDEX
 C     Signed per-leg PDG of a crossed process (filled by GET_PDG_FOR_FLAVOR),
 C     the two crossing-partner loop indices, and the number of flavor
 C     combinations; used only by the crossing-symmetry demonstration below.
@@ -138,9 +138,9 @@ c     Now we can call the matrix element!
 c
       do I=1, MAXFLAVOR
       IF(unique_flavor.gt.0.and.unique_flavor.ne.I) CYCLE
-      FLAV_IDX = GET_FLAVOR_INDEX(FLAVOR(1,I))
+      FLAV_IDX = MG5_0_GET_FLAVOR_INDEX(FLAVOR(1,I))
       do J=1, NB_TRY
-      CALL SMATRIX(P,FLAV_IDX, MATELEM)
+      CALL MG5_0_SMATRIX(P,FLAV_IDX, MATELEM)
       enddo
 c
       write(*,*) "PDG", PDG_FOR_FLAVOR(:,I)
@@ -148,41 +148,7 @@ c
       write (*,*) "-----------------------------------------------------------------------------"
       enddo
 
-      if(.false.) then
-      write (*,*)
-      write (*,*) " Crossed processes (folded into this matrix element):"
-      write (*,*)
-      NFLAV = 1
-      XCNSIG = 0
-C         FLIP1/FLIP2 pick which legs sit in the two initial slots;
-C         1..NEXTERNAL spans every crossing (FLIP1=1,FLIP2=2 = base).
-      DO FLIP1=1,NEXTERNAL
-        DO FLIP2=1,NEXTERNAL
-          DO J=1,NFLAV
-            I = FLIP1*(NEXTERNAL+1) + FLIP2
-            FLAV_IDX = I*NFLAV+J
-            CALL GET_PDG_FOR_FLAVOR(FLAV_IDX, XPDG)
-C           Applicable here iff its PDG signature is not all-zero,
-C           skipping the identity (base process, shown above).
-            XCVALID = .FALSE.
-            DO XCK=1,NEXTERNAL
-              IF (XPDG(XCK).NE.0) XCVALID = .TRUE.
-            ENDDO
-            IF (FLIP1.EQ.1 .AND. FLIP2.EQ.2) XCVALID = .FALSE.
-            IF (.NOT.XCVALID) CYCLE
-            CALL SMATRIX(P, FLAV_IDX, MATELEM)
-            write (*,*) 'FLAV_IDX', FLAV_IDX
-            write (*,*) '   PDG            E              px              py              pz'
-            DO XCK=1,NEXTERNAL
-              write (*,'(1X,I6,4(1X,E15.7))') XPDG(XCK),
-     &          P(0,XCK), P(1,XCK), P(2,XCK), P(3,XCK)
-            ENDDO
-            write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)
-            write (*,*) "-----------------------------------------------------------------------------"
-          ENDDO
-        ENDDO
-      ENDDO
-      endif
+
 
       if (.false.)then
          do I=1, MAXFLAVOR
@@ -216,7 +182,7 @@ c         write (*,'(i2,1x,5e15.7)') i, P(0,i),P(1,i),P(2,i),P(3,i),
 c     .dsqrt(dabs(DOT(p(0,i),p(0,i))))
 c      enddo
 c
-c      CALL SMATRIX(P,MATELEM)
+c      CALL MG5_0_SMATRIX(P,MATELEM)
 c
 c      write (*,*) "-------------------------------------------------"
 c      write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)   
@@ -255,8 +221,9 @@ c      density matrix helicity index value for particle
 
 c     The value of alphas is 0 to keep the value of the param_card
 c     The value of mu_r2 is set to 0 but it is a dummy variable at tree-level anyway
-       call GET_DENSITY(P,  POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, 0d0, 0d0, INTER)
-       
+       WRITE(*,*) 'no density matrix in this output'
+       INTER = (0d0, 0d0)
+
        SOL=0
        DO I=1, N_COMB
           DO J = I, N_COMB
