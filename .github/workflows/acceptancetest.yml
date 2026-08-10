@@ -1389,3 +1389,25 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_vs_standalone_LI1 -pA -t0 -l INFO
 
+  acceptancetest_standalone_mg7_openmp:
+    # The CPU sigmaKin loop of the madmatrix backend is an
+    # 'omp parallel for default( none )', so every variable it uses must be
+    # listed in its shared() clause or the generated CPPProcess.cc does not
+    # compile at all. Three of them were missing. Nothing noticed, because no
+    # build ever turns OpenMP on: it is opt-in (USEOPENMP=1, #758) and
+    # madmatrix.mk force-disables it on Darwin. This job compiles the generated
+    # file with OpenMP explicitly, so the shared() clause stays complete.
+    # Needs only a C++ compiler (no madspace, no heptools).
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: test one of the test test_standalone_mg7_openmp
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_mg7_openmp -pA -t0 -l INFO
+
