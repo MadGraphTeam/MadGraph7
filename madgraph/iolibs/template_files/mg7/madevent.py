@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
 import resource
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Locate the madspace installation bundled alongside MadGraph.
 # madgraph/__init__.py lives one level below the MadGraph root, so .parents[1]
@@ -402,6 +403,97 @@ class MadgraphProcess:
         for subproc_id, meta in enumerate(self.subprocess_data):
             self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
 
+        verbosity = resolve_verbosity(self.run_card["run"]["verbosity"])
+        devices = self.run_card["run"]["devices"]
+        if not isinstance(devices, list):
+            devices = [devices]
+
+        box = None
+        detailed_compile_view = False
+        completed_compile_count = 0
+        if verbosity == "pretty":
+            terminal_size = shutil.get_terminal_size(fallback=(91, 24))
+            available_rows = max(1, terminal_size.lines - 6)
+            detailed_compile_view = len(self.subprocesses) <= available_rows
+            box_width = min(91, terminal_size.columns)
+            title = (
+                "Compiling subprocesses for device"
+                + "s" * (len(devices) > 1)
+                + " '"
+                + "', '".join(devices)
+                + "'"
+            )
+
+            if detailed_compile_view:
+                box = ms.PrettyBox(
+                    title,
+                    len(self.subprocesses),
+                    [0],
+                    box_width=box_width,
+                )
+                for subproc in self.subprocesses:
+                    box.set_row(subproc.id, [f"{subproc.name}..."])
+            else:
+                box = ms.PrettyBox(
+                    title,
+                    3,
+                    [16, 0],
+                    box_width=box_width,
+                )
+                box.set_column(
+                    0,
+                    ["Progress:", "Remaining:", "Last completed:"],
+                )
+                box.set_column(
+                    1,
+                    [
+                        f"0 / {len(self.subprocesses)}",
+                        str(len(self.subprocesses)),
+                        "-",
+                    ],
+                )
+            box.print_first()
+
+        max_workers = self.run_card["run"]["cpu_thread_pool_size"] if self.run_card["run"]["cpu_thread_pool_size"] > 0 else None
+        with ThreadPoolExecutor(max_workers = max_workers) as executor:
+            futures = {
+                executor.submit(subproc.compile): subproc
+                for subproc in self.subprocesses
+            }
+            for future in as_completed(futures):
+                subproc = futures[future]
+                future.result()
+                completed_compile_count += 1
+
+                if verbosity == "pretty":
+                    if detailed_compile_view:
+                        box.set_row(
+                            subproc.id,
+                            [f"{subproc.name}...done!"],
+                        )
+                    else:
+                        subprocess_count = len(self.subprocesses)
+                        progress_width = max(5, box_width - 32)
+                        progress = ms.format_progress(
+                            completed_compile_count / subprocess_count,
+                            progress_width,
+                        )
+                        box.set_column(
+                            1,
+                            [
+                                f"{completed_compile_count} / {subprocess_count} "
+                                f"{progress}",
+                                str(subprocess_count - completed_compile_count),
+                                subproc.name,
+                            ],
+                        )
+                    box.print_update()
+                elif verbosity == "log":
+                    logger.info(f"Compiling subprocess {subproc.name}...done!")
+
+        for subproc in self.subprocesses:
+            subproc.load_matrix_element()
+
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
         for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
@@ -604,7 +696,7 @@ class MadgraphProcess:
             phasespace = subproc.build_madnis(phasespace)
             if len(self.subprocesses) > 1:
                 status_func = lambda *args: self.update_madnis_status_multi(
-                    subproc.subproc_id, *args
+                    subproc.id, *args
                 )
             else:
                 status_func = self.update_madnis_status_single
@@ -956,32 +1048,10 @@ class MadgraphSubprocess:
     def __init__(self, process: MadgraphProcess, meta: dict, subproc_id: int):
         self.process = process
         self.meta = meta
-        self.subproc_id = subproc_id
+        self.name = os.path.basename(meta["path"].rstrip("/"))
+        self.id = subproc_id
         self.multi_channel_data = None
-
-        api_path_format = self.meta["me_path"]
-        subproc_path = self.meta["path"]
-        devices = self.process.run_card["run"]["devices"]
-        api_paths = []
-        if not isinstance(devices, list):
-            devices = [devices]
-        for device in devices:
-            subproc_dir = os.path.dirname(subproc_path)
-            # 'cppauto' resolve quick fix
-            resolved = device
-            if device == "cppauto":
-                out = subprocess.run(
-                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
-                    cwd=subproc_path, capture_output=True, text=True,
-                ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
-                if match:
-                    resolved = match.group(1)
-            api_path = api_path_format.format(device=resolved)
-            if not os.path.isfile(api_path):
-                logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
-            api_paths.append(api_path)
+        self.api_paths = []
 
         self.incoming_masses = [
             self.process.get_mass(pid) for pid in clean_pids(self.meta["incoming"])
@@ -1022,10 +1092,43 @@ class MadgraphSubprocess:
             particle_count=self.particle_count, **self.process.scale_kwargs
         )
 
+    def compile(self):
+        api_path_format = self.meta["me_path"]
+        subproc_path = self.meta["path"]
+        devices = self.process.run_card["run"]["devices"]
+        verbosity = resolve_verbosity(self.process.run_card["run"]["verbosity"])
+
+        import time
+        import random
+        time.sleep(random.randint(0,10))
+
+        if not isinstance(devices, list):
+            devices = [devices]
+
+        for device in devices:
+            # 'cppauto' resolve quick fix
+            resolved = device
+            if device == "cppauto":
+                out = subprocess.run(
+                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
+                    cwd=subproc_path, capture_output=True, text=True,
+                ).stdout
+                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
+                if match:
+                    resolved = match.group(1)
+            api_path = api_path_format.format(device=resolved)
+
+            if not os.path.isfile(api_path):
+                if verbosity == "log":
+                    logger.info(f"Compiling subprocess {self.name} for device '{device}'")
+                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
+            self.api_paths.append(api_path)
+
+    def load_matrix_element(self):
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_element = None
         else:
-            for context, api_path in zip(self.process.contexts, api_paths):
+            for context, api_path in zip(self.process.contexts, self.api_paths):
                 self.matrix_element = context.load_matrix_element(
                     api_path, self.process.param_card_path
                 )
@@ -1147,7 +1250,7 @@ class MadgraphSubprocess:
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
                 )
-                prefix = f"subproc{self.subproc_id}.channel{channel_id}"
+                prefix = f"subproc{self.id}.channel{channel_id}"
                 if topo_count > 1:
                     prefix += f".subchan{topo_index}"
                 discrete_before, discrete_after = self.build_discrete(
@@ -1201,7 +1304,7 @@ class MadgraphSubprocess:
             cuts=self.cuts,
             leptonic=self.process.leptonic,
         )
-        prefix = f"subproc{self.subproc_id}.flat"
+        prefix = f"subproc{self.id}.flat"
         discrete_before, discrete_after = self.build_discrete(
             1, len(self.meta["flavors"]), prefix
         )
@@ -1303,7 +1406,7 @@ class MadgraphSubprocess:
         madnis_args = self.process.run_card["madnis"]
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
-            prefix = f"subproc{self.subproc_id}.channel{channel_id}"
+            prefix = f"subproc{self.id}.channel{channel_id}"
             cond_dim = 0
 
             discrete_before = channel.discrete_before
@@ -1418,7 +1521,7 @@ class MadgraphSubprocess:
             hidden_dim=madnis_args["cwnet_hidden_dim"],
             layers=madnis_args["cwnet_layers"],
             activation=self.activation(madnis_args["cwnet_activation"]),
-            prefix=f"subproc{self.subproc_id}.cwnet",
+            prefix=f"subproc{self.id}.cwnet",
         )
         cwnet.initialize_globals(self.process.contexts[0])
         return cwnet
