@@ -176,6 +176,7 @@ C ----------
 	  END
  
       SUBROUTINE %(proc_prefix)sMATRIX(P,NHEL,IC,RES)
+      use model_object
 C  
 %(info_lines)s
 C
@@ -184,6 +185,7 @@ c for the point with external lines W(0:6,NEXTERNAL)
 C  
 %(process_lines)s
 C  
+      use aloha_object
       IMPLICIT NONE
 C  
 C CONSTANTS
@@ -217,9 +219,16 @@ C
       COMPLEX*16 JAMP(NCOLOR,NAMPSO), LNJAMP(NCOLOR,NAMPSO)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
       COMMON/%(proc_prefix)sJAMP/JAMP,LNJAMP  
-      COMPLEX*16 W(18,NWAVEFUNCS)
+      type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
+C     The HELAS calls below take FLAVOR, which the block that follows
+C     rebuilds from FLAV_IDX. None of the entry points of this template
+C     carries a flavor argument, so FLAV_IDX is pinned to the first column
+C     of the table: the canonical flavor of this matrix element, which is
+C     the one these routines used before FLAVOR reached the HELAS layer.
+      INTEGER FLAV_IDX
+      INTEGER FLAVOR(NEXTERNAL)
 %(flavor_mask_decl)s
 C
 C FUNCTION
@@ -236,6 +245,7 @@ C
 C ----------
 C BEGIN CODE
 C ----------
+      FLAV_IDX = 1
 %(flavor_mask_setup)s
 %(helas_calls)s
 %(jamp_lines)s
@@ -289,6 +299,7 @@ C ----------
       
 
        SUBROUTINE %(proc_prefix)sBORN(P,NHEL)
+      use model_object
 C  
 %(info_lines)s
 C
@@ -297,6 +308,7 @@ c for the point with external lines W(0:6,NEXTERNAL)
 C  
 %(process_lines)s
 C  
+      use aloha_object
       IMPLICIT NONE
 C  
 C CONSTANTS
@@ -325,13 +337,19 @@ C LOCAL VARIABLES
 C  
       INTEGER I,J,M,N
       COMPLEX*16 ZTEMP
-c      REAL*8 CF(NCOLOR,NCOLOR)
+      INTEGER CF(NCOLOR*(NCOLOR+1)/2)
+      INTEGER CF_INDEX, DENOM
       COMPLEX*16 AMP(NGRAPHS)
       COMPLEX*16 JAMP(NCOLOR,NAMPSO), LNJAMP(NCOLOR,NAMPSO)
+      COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
       COMMON/%(proc_prefix)sJAMP/JAMP,LNJAMP
-      COMPLEX*16 W(18,NWAVEFUNCS)
+      type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
+C     See the matching comment in MATRIX above: FLAV_IDX is pinned to the
+C     canonical flavor because BORN takes no flavor argument either.
+      INTEGER FLAV_IDX
+      INTEGER FLAVOR(NEXTERNAL)
 %(flavor_mask_decl)s
 
 C  
@@ -350,6 +368,7 @@ C ----------
       ENDDO	
 
 
+      FLAV_IDX = 1
 %(flavor_mask_setup)s
 %(helas_calls)s
 %(jamp_lines)s
