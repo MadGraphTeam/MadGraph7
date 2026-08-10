@@ -584,6 +584,7 @@ class MadgraphProcess:
             optimizer_context=opt_context,
             training_args=training_args,
             verbosity=verbosity,
+            status_file=self.status_file,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
