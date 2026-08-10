@@ -19,6 +19,8 @@ import copy
 import fractions
 import os
 import re
+import shutil
+import tempfile
 import tests.IOTests as IOTests
 from tests import test_manager
 
@@ -944,10 +946,12 @@ class DDMColorFlowMG7Test(unittest.TestCase):
     basis changes how the jamps are computed, never which color flows exist,
     so none of it may depend on the mode."""
 
-    def get_exporter(self, ids, ddm):
+    def get_exporter(self, ids, ddm, cls=None):
         """The mg7 exporter for the all-gluon process with npar = len(ids),
-        built with or without the DDM color basis."""
+        built with or without the DDM color basis. `cls` selects a subclass
+        (the madmatrix one shares this constructor)."""
 
+        cls = cls if cls else export_mg7.OneProcessExporterMG7
         color_amp.set_ddm_basis(ddm, with_flow=ddm)
         try:
             model = import_ufo.import_model('sm')
@@ -957,7 +961,7 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             amplitude = diagram_generation.Amplitude(
                 base_objects.Process({'legs': legs, 'model': model}))
             matrix_element = helas_objects.HelasMatrixElement(amplitude)
-            return export_mg7.OneProcessExporterMG7(
+            return cls(
                 matrix_element, helas_call_writer.CPPUFOHelasCallWriter(model))
         finally:
             color_amp.set_ddm_basis(False)
@@ -985,3 +989,32 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             for active_colors in ddm.active_color_map:
                 self.assertTrue(active_colors)
                 self.assertLess(max(active_colors), nflow)
+
+    def test_ddm_coloramps_is_written_and_mode_independent(self):
+        """coloramps.h bakes the canonical color flow code of each flow, which
+        has to be decomposed on the flow basis: asking the DDM basis itself
+        raises (its elements are products of f's and have no single flow
+        each). That left a 0 byte coloramps.h and no CPPProcess.cc at all for
+        every all-gluon process, silently and with a zero exit code."""
+
+        import madmatrix.model_handling as model_handling
+
+        written = {}
+        for npar in (4, 5):
+            for ddm in (False, True):
+                exporter = self.get_exporter(
+                    [21] * npar, ddm=ddm,
+                    cls=model_handling.OneProcessExporterMadMatrix)
+                exporter.path = tempfile.mkdtemp()
+                try:
+                    exporter.edit_coloramps()
+                    with open(pjoin(exporter.path, 'coloramps.h')) as stream:
+                        written[(npar, ddm)] = stream.read()
+                finally:
+                    shutil.rmtree(exporter.path)
+                self.assertTrue(written[(npar, ddm)])
+                self.assertIn('colorflowcode_valid = true',
+                              written[(npar, ddm)])
+            # switching the color basis changes how the jamps are computed,
+            # never which color flows exist
+            self.assertEqual(written[(npar, True)], written[(npar, False)])

@@ -2222,7 +2222,9 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
 
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_coloramps')
         template = open(pjoin(self.template_path,'madmatrix','coloramps.h'),'r').read()
-        ff = open(pjoin(self.path, 'coloramps.h'),'w')
+        # NB: coloramps.h is opened only once the whole content is built, so a
+        # failure below cannot leave a truncated (0 byte) header behind -- which
+        # then looks like a silently skipped process at build time.
         # The following five lines from OneProcessExporterCPP.get_sigmaKin_lines (using OneProcessExporterCPP.get_icolamp_lines)
         replace_dict={}
 
@@ -2287,7 +2289,11 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
             repr_dict = {leg.get("number"):
                          self.model.get_particle(leg.get("id")).get_color()
                          * (-1) ** (1 + leg.get("state")) for leg in legs}
-            color_flow_dicts = self.color_basis.color_flow_decomposition(
+            # This is about colour FLOWS, so always the trace basis: with the
+            # DDM basis the elements are products of f's and have no single
+            # flow each (color_flow_decomposition raises on it). get_flow_basis
+            # returns the basis itself when the colour sum is not on DDM.
+            color_flow_dicts = self.color_flow_basis.color_flow_decomposition(
                 repr_dict, n_initial)
             codes, _slots = self.get_color_code_tables(color_flow_dicts, legs)
         if codes is None:
@@ -2300,6 +2306,7 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
             replace_dict['colorflowcode_lines'] = '\n'.join(
                 '    %d, // colour flow %d' % (c, i)
                 for i, c in enumerate(codes))
+        ff = open(pjoin(self.path, 'coloramps.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 

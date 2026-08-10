@@ -2141,9 +2141,19 @@ class EasterEgg(object):
         from madgraph import MG5DIR
         import madgraph.interface.madgraph_interface as madgraph_interface
         to_add = []
-        ff = open(pjoin(MG5DIR,'input','authors.md'), 'r')
+        # input/authors.md is written by bin/create_release.py and is therefore
+        # absent from a git checkout. This banner is purely cosmetic and runs on
+        # the crash path (EasterEgg('error')), so a missing or malformed file
+        # must never raise here.
+        author_path = pjoin(MG5DIR,'input','authors.md')
+        if not os.path.exists(author_path):
+            return ""
+        ff = open(author_path, 'r')
         for line in ff:
-            author, fdate = line.split()
+            data = line.split()
+            if len(data) != 2:
+                continue
+            author, fdate = data
             year, month, day = [int(i) for i in fdate.split('-')]
             if (day, month) == date:
                 to_add.append((author, year))

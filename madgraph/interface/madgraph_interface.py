@@ -528,6 +528,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
         logger.info("      --mask=False: [madevent|standalone] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --use_crossing=False: [standalone|standalone_mg7] write this output without the crossing machinery; the crossed subprocesses folded onto their base at generation are written back as their own directories (same as generate --use_crossing=False).")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone MYRUN -f",'$MG:color:GREEN')
@@ -2744,7 +2745,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=']):
+                                                 '--mask=False', '--prefix=', '--use_crossing=False']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -3324,6 +3325,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _second_exporter = None
     # UI flag --use_crossing (default on); see do_add.
     _use_crossing = True
+    # Same flag on the output line, for the output being written (see do_output).
+    # do_output sets it on every call, so it can never leak to the next output.
+    _output_use_crossing = True
     _done_export = False
     _curr_decaymodel = None
 
@@ -3422,6 +3426,32 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         
         return value
 
+    def pop_use_crossing_flag(self, args):
+        """Remove --use_crossing[=True|False] from `args` and return its value.
+
+        Returns None when the flag is absent, so the caller keeps its own
+        default. Shared by do_add (where the flag decides whether the crossed
+        subprocesses are folded onto their base at generation) and by do_output
+        (where it decides whether this output keeps them folded).
+        """
+        value = None
+        for arg in args[:]:
+            if arg == '--use_crossing':
+                value = True
+            elif arg.startswith('--use_crossing='):
+                given = arg.split('=', 1)[1]
+                if given.lower() in ['true', 't', '1', 'yes', 'on']:
+                    value = True
+                elif given.lower() in ['false', 'f', '0', 'no', 'off']:
+                    value = False
+                else:
+                    raise self.InvalidCmd('--use_crossing expects True or '
+                                          'False, got \'%s\'' % given)
+            else:
+                continue
+            args.remove(arg)
+        return value
+
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
     def do_add(self, line):
@@ -3462,21 +3492,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # Crossing symmetry is used by default. --use_crossing (bare) or
         # --use_crossing=True keep it on, --use_crossing=False turns it off.
         # --standalone does not affect it.
-        use_crossing = True
-        for arg in args[:]:
-            if arg == '--use_crossing':
-                use_crossing = True
-                args.remove(arg)
-            elif arg.startswith('--use_crossing='):
-                value = arg.split('=', 1)[1]
-                if value.lower() in ['true', 't', '1', 'yes', 'on']:
-                    use_crossing = True
-                elif value.lower() in ['false', 'f', '0', 'no', 'off']:
-                    use_crossing = False
-                else:
-                    raise self.InvalidCmd('--use_crossing expects True or '
-                                          'False, got \'%s\'' % value)
-                args.remove(arg)
+        use_crossing = self.pop_use_crossing_flag(args)
+        if use_crossing is None:
+            use_crossing = True
         # Crossed subprocesses are ALWAYS kept (merge_crossing=False, the
         # historical 3.x default): use_crossing only decides later, at the
         # exporter stage, whether they collapse into a single extended-FLAV_IDX
@@ -5186,8 +5204,13 @@ This implies that with decay chains:
         self._uses_polarization = False
         self._uses_density_matrix = False
         self._uses_quarkonia = False
-        # Reset the --use_crossing choice (a new process definition starts)
+        # Reset the --use_crossing choice (a new process definition starts).
+        # The output-line one is set by every do_output, but the loop/aMC@NLO
+        # interfaces have their own do_output which does not, so give it the
+        # same lifetime as the generate-line flag rather than leaving the last
+        # output's choice behind.
         self._use_crossing = True
+        self._output_use_crossing = True
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir
@@ -9878,6 +9901,17 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         """Main commands: Initialize a new Template or reinitialize one"""
 
         args = self.split_arg(line)
+
+        # --use_crossing=False on the output line: write THIS output without the
+        # crossing machinery, whatever the generation chose. The exporters read
+        # it through _use_crossing (see Export{V4,CPP}Factory) and the crossings
+        # folded onto their base at generation are expanded back into explicit
+        # subprocesses (_output_folds_crossings), so the output stays complete --
+        # it is exactly the generate --use_crossing=False output. Set on every
+        # do_output, so it never leaks to the next one.
+        output_use_crossing = self.pop_use_crossing_flag(args)
+        self._output_use_crossing = output_use_crossing is not False
+
         # Check Argument validity
         self._export_plugin = None
         self.check_output(args)
@@ -10130,6 +10164,17 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         # Reset _export_dir, so we don't overwrite by mistake later
         self._export_dir = None
 
+    def _output_folds_crossings(self):
+        """True if the output being written consumes the recorded crossings.
+
+        Only the folding-capable standalone backends do, and only when this
+        output asked for the crossing machinery: --use_crossing=False on the
+        output line drops that machinery, so the crossings have to come back as
+        explicit subprocesses just like for a non-folding backend.
+        """
+        return self._export_format in self._crossing_folding_formats and \
+            getattr(self, '_output_use_crossing', True)
+
     def _crossing_needs_expansion(self, amps):
         """True if `amps` carry folded crossings the current output cannot read.
 
@@ -10139,7 +10184,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         subprocesses, and expanding is always safe: it just reproduces the
         complete unmerged (--use_crossing=False) output.
         """
-        if self._export_format in self._crossing_folding_formats:
+        if self._output_folds_crossings():
             return False
         return any(amp.get('crossed_processes') for amp in amps
                    if 'crossed_processes' in amp)
@@ -10315,8 +10360,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             [amp for amp in self._curr_amps
              if not isinstance(amp, diagram_generation.DecayChainAmplitude)])
 
-        dc_crossed = self._export_format not in \
-            self._crossing_folding_formats and \
+        dc_crossed = not self._output_folds_crossings() and \
             any(a.get('crossed_processes')
                 for dc in dc_amps for a in dc.get('amplitudes')
                 if 'crossed_processes' in a)
@@ -10494,9 +10538,9 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     # backend needs the crossings back as integration units, and
                     # reconstructing is also the safe default for any format that
                     # does not implement folding (it just reproduces the complete
-                    # unmerged output).
-                    if self._export_format not in \
-                            self._crossing_folding_formats:
+                    # unmerged output) -- or for a folding backend told to write
+                    # this output without the machinery (--use_crossing=False).
+                    if not self._output_folds_crossings():
                         # DecayAmplitude / DecayChainAmplitude are Amplitude
                         # subclasses that override default_setup with their own
                         # key set and do NOT carry crossed_processes (e.g. the
