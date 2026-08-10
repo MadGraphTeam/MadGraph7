@@ -3923,9 +3923,12 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
 
     opt = dict(cmd.options)
     opt['output_options'] = cmd_options
-    # --use_crossing of the generate/add process command (default on). Only the
-    # standalone_cpp exporter honors it; the others ignore this key.
-    opt['use_crossing'] = getattr(cmd, '_use_crossing', True)
+    # --use_crossing of the generate/add process command, and of the output
+    # command for this output (both default on). Only the exporters that set
+    # supports_crossing (standalone_cpp, standalone_mg7/madmatrix) read this
+    # key; the others ignore it.
+    opt['use_crossing'] = getattr(cmd, '_use_crossing', True) \
+                          and getattr(cmd, '_output_use_crossing', True)
     cformat = cmd._export_format
     
     if cformat == 'pythia8':
