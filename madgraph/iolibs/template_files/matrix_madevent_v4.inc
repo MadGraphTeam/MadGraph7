@@ -79,6 +79,7 @@ C   scanning, and the random-helicity branch bumps NTRY without a full sum).
 C   CSYMBAD/NCSCAN live in a COMMON block (zero-initialised, like NTRY above) so
 C   write_good_hel/read_good_hel can persist the verdict across jobs.
     INTEGER FLIP(NCOMB), JHEL, KHEL
+    REAL*8 TSMAX
     LOGICAL HELSAME, DEDUP
     INTEGER CSYMBAD(MAXFLAVPERPROC), NCSCAN(MAXFLAVPERPROC)
     COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
@@ -205,11 +206,25 @@ C            the DS grid pick both members), and count it once more in ANS.
 C       Scan phase: this pass evaluated every row, so it can test the pairing.
 C       A single mismatching pair (parity/C/polarization breaking) permanently
 C       disables the de-duplication for the whole flavor.
+C       A pair of rows that are BOTH numerically zero differ only by roundoff,
+C       and a purely RELATIVE test on that noise fails at random -- one such
+C       pair then vetoes every real pair, because the verdict is all-or-nothing.
+C       Measured on g g > t t~: rows 1/16 and 4/13 sit at |M|^2 ~ 1e-30 while
+C       the scan maximum is ~1.5e+02, and the de-duplication never engaged.
+C       So also require the difference to be significant against TSMAX, the
+C       largest |M|^2 of this scan point: a row that far down cannot bias the
+C       helicity sum whichever way it is paired, while a genuine parity
+C       violation still shows up at the relative level.
         IF (NCSCAN(IFLAV).LT.20) THEN
           NCSCAN(IFLAV)=NCSCAN(IFLAV)+1
+          TSMAX=0D0
+          DO I=1,NCOMB
+            IF (DABS(TS(I)).GT.TSMAX) TSMAX=DABS(TS(I))
+          ENDDO
           DO I=1,NCOMB
             IF (FLIP(I).GT.I) THEN
-              IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))) THEN
+              IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))
+     &            .AND.DABS(TS(I)-TS(FLIP(I))).GT.1D-12*TSMAX) THEN
                 CSYMBAD(IFLAV)=1
               ENDIF
             ENDIF

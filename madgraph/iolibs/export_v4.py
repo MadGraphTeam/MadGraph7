@@ -8756,8 +8756,9 @@ C       so this also stays correct for split-order processes.
         """Fortran block for check_sa.f demonstrating the crossed matrix elements.
 
         Returns '' when crossing is not active for this matrix element (flag
-        off, or an s-channel constraint disables it), so the driver is
-        unchanged. Otherwise it scans every crossing of the base -- FLIP1 and
+        off, or an s-channel constraint disables it) AND when no crossed
+        subprocess was folded into it, so the driver is unchanged and no dead
+        block is produced. Otherwise it scans every crossing of the base -- FLIP1 and
         FLIP2 each range over 1..NEXTERNAL, choosing which two legs sit in the
         initial slots -- and, for each, evaluates the crossed matrix element and
         prints the momenta actually used next to their signed PDGs.
@@ -8793,19 +8794,29 @@ C       so this also stays correct for split-order processes.
                                              '%(flavor_pdg_function)s'):
             return ''
 
+        # Gate the demo on the generated DATA, not on the flag. The block is
+        # only ever worth running for the crossings that were actually FOLDED
+        # into this matrix element (merge_crossing='record'): those partonic
+        # contributions have no directory of their own, so this driver is the
+        # only place they are exercised. With nothing folded in, the block used
+        # to be emitted anyway behind IF(.FALSE.) -- dead fortran that still
+        # costs a full _build_flav_table_flat (i.e. a compute_flavor_masks pass
+        # over every wavefunction of the matrix element) to produce, which is
+        # the whole crossing cost of an output like g g > t t~ 4 g.
+        #
+        # This drops no crossing: matrix.f keeps the complete machinery, so
+        # every crossing the module can be ASKED for stays callable through
+        # SMATRIX / GET_PDG_FOR_FLAVOR exactly as before. Only the printout
+        # that was already switched off disappears.
+        crossed = matrix_element.get('crossed_processes') \
+            if 'crossed_processes' in matrix_element else None
+        if not crossed:
+            return ''
+
         # NFLAV as matrix.f computes it, so CROSS*NFLAV+flav decodes correctly.
         # It is assigned to a local NFLAV here so the loop body reads generically
-        # (FLAV_IDX = I*NFLAV+J) instead of a bare literal. The loop is gated
-        # behind IF(.FALSE.) unless crossed subprocesses were folded into this ME
-        # (merge_crossing='record'): then those partonic contributions have no
-        # directory of their own and this driver is the only place they are
-        # exercised, so the demo is enabled to actually evaluate them.
+        # (FLAV_IDX = I*NFLAV+J) instead of a bare literal.
         n_table, _ = self._build_flav_table_flat(matrix_element)
-        if not matrix_element.get('crossed_processes'):
-            # Nothing folded in: keep the dormant example (present but disabled).
-            loop_gate = '.false.'
-        else:
-            loop_gate = '.true.'
         sigs, complete = self._crossed_signatures(matrix_element)
 
         sep = ('            write (*,*) "-------------------------------------'
@@ -8835,7 +8846,7 @@ C       so this also stays correct for split-order processes.
         ]
 
         lines = [
-            '      if(%s) then' % loop_gate,
+            '      if(.true.) then',
             '      write (*,*)',
             '      write (*,*) " Crossed processes (folded into this matrix'
             ' element):"',

@@ -4015,6 +4015,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         #   _flavor_populated      -- the valid_flavors store is up to date
         #   _flavor_allow_trimming -- a per-leg flavor restriction is active
         #   _flavor_trimmed        -- restricted-flavor diagram trimming has run
+        #   _flavor_epoch          -- bumped whenever the store or the diagram
+        #                             list is rebuilt; invalidates the masks
+        #   _flavor_mask_cache     -- token of the last compute_flavor_masks()
+        #                             pass, or None if the masks are not current
         self._flavor_populated = False
         self._flavor_allow_trimming = False
         self._flavor_trimmed = False
@@ -4025,6 +4029,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         self.quartic_current_sums = None
         # Slots the current sums were given by reuse_outdated_wavefunctions
         self.quartic_sum_me_ids = None
+        self._flavor_epoch = 0
+        self._flavor_mask_cache = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -5681,6 +5687,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             proc._excluded_flavors = excluded
         # force a repopulate: allowed_flavors and everything derived from it
         # (masks, pdg tables, coupling classes) must be rebuilt.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
         self._flavor_populated = False
         self['allowed_flavors'] = []
         self['allowed_flavors_pdgs'] = []
@@ -5710,6 +5717,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             return
         if model is None:
             model = self.get('processes')[0].get('model')
+
+        # The store below is what the flavor masks are read from, so rebuilding
+        # it retires any masks computed against the previous one.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
 
         # reset the per-diagram store (this is the authoritative source)
         for diag in self.get('diagrams'):
@@ -6007,6 +6018,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         debug = False
 
+        # Diagrams are about to be dropped and the survivors renumbered, so any
+        # mask set computed against the untrimmed ME is retired here.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
+
         # store which diagram
         dropped_wfct = {}
         def_wfct = set()
@@ -6060,6 +6075,53 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             raise self.NoFlavorError("No diagram left after trimming for flavor! \n Please check the diagram generated and change the QCD/QED restriction to allow more diagrams to be generated.")
 
 
+    def _clear_flavor_tags(self, objects):
+        """Drop the temporary 'flavortag' key from `objects` (wavefunctions and
+        amplitudes).
+
+        The tag is written by check_flavor()/get_coupling_for_flv() while they
+        walk the diagram and neither removes it afterwards, so it outlives the
+        computation that produced it.  It must not: replace_single_wavefunction
+        iterates old_wf.keys() and looks each one up on the new wavefunction, so
+        a leftover tag turns into a lookup on a key the replacement does not
+        have.  compute_flavor_masks() runs this on BOTH its paths -- the masks
+        can be reused from the cache, a stale tag never can.
+        """
+        for obj in objects:
+            try:
+                del obj['flavortag']
+            except Exception:
+                pass
+
+    def _flavor_mask_token(self, allowed_flavors, all_wfs, all_amps):
+        """Fingerprint of everything the flavor masks are derived from.
+
+        A cached mask set stays usable for exactly as long as this is unchanged.
+        It pins three things:
+
+        - `_flavor_epoch`, bumped by every routine that rebuilds the per-diagram
+          valid_flavors store or the allowed-flavor list (populate_flavor_
+          validity, set_excluded_flavors) or drops diagrams from the ME
+          (remove_diagrams_without_flavor).  That store is what the diagram masks
+          are read from, so a rebuild must not be served from the cache.
+        - the shape of the object graph, so any structural rewrite of the ME
+          forces a recompute.
+        - the amplitude NUMBERS, because guard_amp_number is one of them and the
+          helas call writer turns it straight into a bit index.  The C++/
+          madmatrix exporter renumbers amplitudes onto its single rolling
+          amp_sv slot while emitting calls, so the guards that hold inside that
+          window are not the ones that hold outside it and the two must not be
+          confused for each other.
+
+        It is built from the flat views the caller already has, so it costs no
+        traversal of its own.
+        """
+        return (getattr(self, '_flavor_epoch', 0),
+                len(allowed_flavors),
+                len(self.get('diagrams')),
+                len(all_wfs),
+                tuple(amp.get('number') for amp in all_amps))
+
     def compute_flavor_masks(self):
         """Compute per-diagram, per-amplitude and per-wavefunction flavor
         bitmasks. Bit i of a mask is set iff the object contributes for
@@ -6071,6 +6133,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         Returns the list of allowed-flavor tuples used to define the bit order
         (same object as self.get_external_flavors()). Returns [] if the ME has
         no merged-particle flavor variants (single flavor / nothing to mask).
+
+        Memoized.  A single `output` asks for the masks of one matrix element
+        four to six times (the flavor table, the pdg tables, the mask blocks,
+        the crossing rows), and step 2 below is an ancestor walk over every
+        wavefunction of every amplitude -- millions of visits for a process like
+        g g > t t~ 4g, repeated identically each time.  The masks are left ON the
+        objects, so a cache hit has nothing to re-apply; see _flavor_mask_token
+        for what keeps a hit honest.
         """
 
         if not self.get('processes'):
@@ -6078,6 +6148,27 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         allowed_flavors = self.get_external_flavors()
         if not allowed_flavors:
             return []
+
+        # The two flat views, taken once and reused for every step below.
+        # Same content and order as get_all_wavefunctions()/get_all_amplitudes(),
+        # flattened with a comprehension rather than their sum(..., []): that
+        # re-copies the accumulator once per diagram, so on a large matrix
+        # element one such rebuild costs about as much as the mask pass it
+        # feeds -- which would leave a cache hit nearly as dear as a miss.
+        diagrams = self.get('diagrams')
+        all_wfs = [wf for diag in diagrams for wf in diag.get('wavefunctions')]
+        all_amps = [amp for diag in diagrams for amp in diag.get('amplitudes')]
+
+        token = self._flavor_mask_token(allowed_flavors, all_wfs, all_amps)
+        if getattr(self, '_flavor_mask_cache', None) == token:
+            # Every mask, valid_flavors set and guard_amp_number this method
+            # writes is still on the objects from the computing call, and the
+            # token says nothing they are derived from has moved since.  Only
+            # step 3 still has to run: whatever ran in between may have re-tagged
+            # the objects (get_external_flavors_with_iden goes through
+            # get_coupling_for_flv, which tags and does not clean up).
+            self._clear_flavor_tags(all_wfs + all_amps)
+            return allowed_flavors
 
         # 1) Per-diagram mask, derived purely from the precomputed flavor store.
         # populate_flavor_validity() (triggered by get_external_flavors above)
@@ -6104,34 +6195,32 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # wavefunction contributes to exactly one amplitude, the call writer can
         # reuse that amplitude guard for the wavefunction call.
         wf_amp_sinks = {}
-        for diag in self.get('diagrams'):
-            for wf in diag.get('wavefunctions'):
-                wf['flavor_mask'] = 0
-                wf.pop('guard_amp_number', None)
+        for wf in all_wfs:
+            wf['flavor_mask'] = 0
+            wf.pop('guard_amp_number', None)
 
-        for diag in self.get('diagrams'):
-            for amp in diag.get('amplitudes'):
-                amp_mask = amp['flavor_mask']
-                if amp_mask == 0:
+        for amp in all_amps:
+            amp_mask = amp['flavor_mask']
+            if amp_mask == 0:
+                continue
+            amp_num = amp.get('number')
+            stack = list(amp.get('mothers'))
+            seen = set()
+            while stack:
+                wf = stack.pop()
+                wf_id = id(wf)
+                if wf_id in seen:
                     continue
-                amp_num = amp.get('number')
-                stack = list(amp.get('mothers'))
-                seen = set()
-                while stack:
-                    wf = stack.pop()
-                    wf_id = id(wf)
-                    if wf_id in seen:
-                        continue
-                    seen.add(wf_id)
-                    if amp_num is not None:
-                        wf_amp_sinks.setdefault(wf_id, set()).add(amp_num)
-                    existing = wf['flavor_mask'] if 'flavor_mask' in wf else 0
-                    new_mask = existing | amp_mask
-                    if new_mask != existing:
-                        wf['flavor_mask'] = new_mask
-                    stack.extend(wf.get('mothers'))
+                seen.add(wf_id)
+                if amp_num is not None:
+                    wf_amp_sinks.setdefault(wf_id, set()).add(amp_num)
+                existing = wf['flavor_mask'] if 'flavor_mask' in wf else 0
+                new_mask = existing | amp_mask
+                if new_mask != existing:
+                    wf['flavor_mask'] = new_mask
+                stack.extend(wf.get('mothers'))
 
-        for wf in self.get_all_wavefunctions():
+        for wf in all_wfs:
             sinks = wf_amp_sinks.get(id(wf))
             if sinks and len(sinks) == 1:
                 wf['guard_amp_number'] = next(iter(sinks))
@@ -6139,7 +6228,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # Mirror the wavefunction masks into per-wavefunction 'valid_flavors'
         # sets so HelasWavefunction.has_flavor() answers consistently with the
         # bitmasks (a wf contributes for flavor f iff bit f of its mask is set).
-        for wf in self.get_all_wavefunctions():
+        for wf in all_wfs:
             mask = wf['flavor_mask'] if 'flavor_mask' in wf else 0
             wf.valid_flavors = set(flavor for flav_idx, flavor
                                    in enumerate(allowed_flavors)
@@ -6148,12 +6237,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # 3) Clean up the 'flavortag' side effect left by diag.check_flavor on
         # wavefunctions and amplitudes. Same cleanup pattern as
         # get_external_flavors.
-        for wfct in self.get_all_wavefunctions() + self.get_all_amplitudes():
-            try:
-                del wfct['flavortag']
-            except Exception:
-                pass
+        self._clear_flavor_tags(all_wfs + all_amps)
 
+        self._flavor_mask_cache = token
         return allowed_flavors
 
     def flavor_mask_is_trivial(self):
