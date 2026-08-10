@@ -408,6 +408,23 @@ class MadgraphProcess:
         if not isinstance(devices, list):
             devices = [devices]
 
+        # Resolve cppauto once using a representative subprocess, then reuse the
+        # resolved backend for the common library and every subprocess build.
+        self.cppauto_resolved = "cppauto"
+        if "cppauto" in devices and self.subprocesses:
+            result = subprocess.run(
+                ["make", "-n", "BACKEND=cppauto", "detect-backend"],
+                cwd=self.subprocesses[0].meta["path"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            match = re.search(r"BACKEND=(\S+) \(was cppauto\)", result.stdout)
+            if match is None:
+                raise RuntimeError("Could not deduce the backend for cppauto")
+            self.cppauto_resolved = match.group(1)
+            logger.info("Device 'cppauto' deduced as '%s'", self.cppauto_resolved)
+
         # Build the common library serially before subprocess builds start.
         # The common library is the same for each subprocess, so we need to build
         # it serially to avoid any race in src/
@@ -415,17 +432,18 @@ class MadgraphProcess:
         if self.subprocesses:
             common_build_path = self.subprocesses[0].meta["path"]
             for device in devices:
-                logger.info(
-                    "Compiling common library for device '%s'...", device
-                )
+                device = self.cppauto_resolved if device == "cppauto" else device
+                logger.info("Compiling common library for device '%s'...", device)
                 misc.compile(
-                    arg=[f"BACKEND={device}", "USEBUILDDIR=1", "commonlib"],
+                    arg=[
+                        f"BACKEND={device}",
+                        "USEBUILDDIR=1",
+                        "commonlib",
+                    ],
                     cwd=common_build_path,
                     mode="cpp",
                 )
-                logger.info(
-                    "Compiling common library for device '%s'...done!", device
-                )
+                logger.info("Compiling common library for device '%s'...done!", device)
 
         box = None
         detailed_compile_view = False
@@ -435,12 +453,17 @@ class MadgraphProcess:
             available_rows = max(1, terminal_size.lines - 6)
             detailed_compile_view = len(self.subprocesses) <= available_rows
             box_width = min(91, terminal_size.columns)
+            device_labels = [
+                f"'{device}' -> '{self.cppauto_resolved}'"
+                if device == "cppauto"
+                else f"'{device}'"
+                for device in devices
+            ]
             title = (
                 "Compiling subprocesses for device"
-                + "s" * (len(devices) > 1)
-                + " '"
-                + "', '".join(devices)
-                + "'"
+                + "s" * (len(device_labels) > 1)
+                + " "
+                + ", ".join(device_labels)
             )
 
             if detailed_compile_view:
@@ -1114,29 +1137,29 @@ class MadgraphSubprocess:
     def compile(self):
         api_path_format = self.meta["me_path"]
         subproc_path = self.meta["path"]
-        devices = self.process.run_card["run"]["devices"]
         verbosity = resolve_verbosity(self.process.run_card["run"]["verbosity"])
-
+        devices = self.process.run_card["run"]["devices"]
         if not isinstance(devices, list):
             devices = [devices]
 
         for device in devices:
-            # 'cppauto' resolve quick fix
-            resolved = device
-            if device == "cppauto":
-                out = subprocess.run(
-                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
-                    cwd=subproc_path, capture_output=True, text=True,
-                ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
-                if match:
-                    resolved = match.group(1)
-            api_path = api_path_format.format(device=resolved)
+            device = (
+                self.process.cppauto_resolved if device == "cppauto" else device
+            )
+            api_path = api_path_format.format(device=device)
 
             if not os.path.isfile(api_path):
                 if verbosity == "log":
-                    logger.info(f"Compiling subprocess {self.name} for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path, mode = "cpp")
+                    logger.info(
+                        "Compiling subprocess %s for device '%s'",
+                        self.name,
+                        device,
+                    )
+                misc.compile(
+                    arg=[f"BACKEND={device}", "USEBUILDDIR=1"],
+                    cwd=subproc_path,
+                    mode="cpp",
+                )
             self.api_paths.append(api_path)
 
     def load_matrix_element(self):
