@@ -2493,6 +2493,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # only touched from inside csym_selected_row, which is a function call
             # and therefore outside the construct's scope. Both are written once in
             # the serial getGoodHel/setGoodHel and only read here.
+            'csym_page_decl': '',
             'csym_omp_shared': ', cCsymOk',
             # Snapshot the running |M|^2 sum before this helicity's contribution is
             # added, so csym_weight can add the very same contribution a second time.
@@ -2742,6 +2743,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "                                              : ( lngood > 0 ? lngood - 1 : 0 )];\n"
             "    return selected_hel_code( lbase, flavor_id );\n"
             "  }\n"
+            "\n"
+            "  // Same, for a lane whose crossing is C-parity de-duplicated: the row it\n"
+            "  // evaluated stands for a PAIR counted twice, so the representative and\n"
+            "  // its mirror must come out at equal rate or the event helicity\n"
+            "  // distribution is biased while |M|^2 stays perfectly correct. The fair\n"
+            "  // coin is recycled from the selection variate -- given that the\n"
+            "  // (unnormalised) CDF landed in [lo,hi), rnd is uniform there, so its\n"
+            "  // position inside the bin is an independent U(0,1) -- so no extra random\n"
+            "  // number is drawn and the stream shared with the integrator is intact.\n"
+            "  __device__ inline int selected_hel_code_lane_csym( int ighel, unsigned int flavor_id,\n"
+            "                                                    fptype rnd, fptype lo, fptype hi )\n"
+            "  {\n"
+            "    const int lcross = (int)( flavor_id / nmaxflavor );\n"
+            "    const int lngood = cNGoodPerCross[lcross];\n"
+            "    int lbase = cGoodHelOfCross[lcross][( ighel < lngood ) ? ighel\n"
+            "                                        : ( lngood > 0 ? lngood - 1 : 0 )];\n"
+            "    if( cCsymOkCross[lcross] ) {\n"
+            "      const fptype _w = hi - lo;\n"
+            "      if( _w > (fptype)0 && !( ( rnd - lo ) < (fptype)0.5 * _w ) ) lbase = cFlip[lbase];\n"
+            "    }\n"
+            "    return selected_hel_code( lbase, flavor_id );\n"
+            "  }\n"
             "#endif\n"
         ) % {'xnhstate': arr(hnstate),
              'maxhel': maxhel, 'xstates': arr(states_flat)}
@@ -2804,9 +2827,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # to the crossed code for the event's crossing (the crossed mapping
             # itself is unvalidated at runtime, see selected_hel_code).
             'selected_hel_code_1':
-                'selected_hel_code_lane( ighel, iflavorVec[ievt] )',
+                'selected_hel_code_lane_csym( ighel, iflavorVec[ievt], allrndhel[ievt] * _ctot, _clo, _chi )',
             'selected_hel_code_2':
-                'selected_hel_code_lane( ighel, iflavorVec[ievt2] )',
+                'selected_hel_code_lane_csym( ighel, iflavorVec[ievt2], allrndhel[ievt2] * _ctot, _clo, _chi )',
             # (A) Per-lane helicity: the C++ good-hel loop runs once over the
             # per-crossing good-hel count; each lane uses its crossing's ighel-th
             # good helicity (the union is never materialised on the hot path).
@@ -2830,6 +2853,40 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '      int _n = 0;\n'
                 '      for( int _h = 0; _h < ncomb; _h++ ) if( _gpc[_c][_h] ) { cGoodHelOfCross[_c][_n] = _h; _n++; }\n'
                 '      cNGoodPerCross[_c] = _n;\n'
+                '      // Per-crossing C-parity verdict: the validating scan ran, no pair\n'
+                '      // mismatched for THIS crossing, and every good row of this crossing\n'
+                '      // sits in a distinct pair whose partner is also good for it.\n'
+                '      bool _ok = cCsymScanned && !cCsymBadCross[_c] && _n > 0;\n'
+                '      for( int _h = 0; _h < ncomb && _ok; _h++ )\n'
+                '        if( _gpc[_c][_h] && ( cFlip[_h] == _h || !_gpc[_c][cFlip[_h]] ) ) _ok = false;\n'
+                '#ifdef MGONGPU_NOCSYM\n'
+                '      _ok = false; // ablation knob: force the full helicity sum\n'
+                '#endif\n'
+                '      cCsymOkCross[_c] = _ok;\n'
+                '    }\n'
+                '    // ALL-OR-NOTHING ACROSS CROSSINGS, and not for a physics reason:\n'
+                '    // reducing only some of them would leave cNGoodPerCross non-uniform,\n'
+                '    // and the lanes of a SHORTER crossing would then reach the\n'
+                '    // ighel >= cNGoodPerCross padding row (_hr = -1 in calculate_jamps).\n'
+                '    // That row yields NaN rather than 0 -- its zeroed wavefunctions give a\n'
+                '    // 0/0 propagator, and for a VALID crossing the per-event denominator\n'
+                '    // multiplies instead of assigning 0, so the NaN reaches the output.\n'
+                '    // Pre-existing hazard (reproduce with -DMGONGPU_NOCSYM by shortening\n'
+                '    // one crossing\'s list by hand), latent today only because every\n'
+                '    // crossing happens to have the same good-hel count. Keeping the\n'
+                '    // verdict uniform preserves that invariant exactly.\n'
+                '    bool _allok = cCsymScanned;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ )\n'
+                '      if( cNGoodPerCross[_c] > 0 && !cCsymOkCross[_c] ) _allok = false;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) {\n'
+                '      if( !_allok ) { cCsymOkCross[_c] = false; continue; }\n'
+                '      if( !cCsymOkCross[_c] ) continue;\n'
+                '      int _r = 0;\n'
+                '      for( int _g = 0; _g < cNGoodPerCross[_c]; _g++ )\n'
+                '        if( cGoodHelOfCross[_c][_g] < cFlip[cGoodHelOfCross[_c][_g]] )\n'
+                '          { cGoodHelOfCross[_c][_r] = cGoodHelOfCross[_c][_g]; _r++; }\n'
+                '      for( int _g = _r; _g < ncomb; _g++ ) cGoodHelOfCross[_c][_g] = 0;\n'
+                '      cNGoodPerCross[_c] = _r;\n'
                 '    }\n'
                 '    cNGoodMaxCross = 0;\n'
                 '    for( int _c = 0; _c < cNcross; _c++ ) if( cNGoodPerCross[_c] > cNGoodMaxCross ) cNGoodMaxCross = cNGoodPerCross[_c];\n',
@@ -2841,33 +2898,114 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             'sigmakin_perlane_decl': '',
             'sigmakin_ihel_expr': '0',
             'calc_jamps_ihlane_arg': ', ighel',
-            # C-parity good-helicity de-duplication is NOT YET implemented under
-            # crossing. The symmetry itself does hold: a crossing acts on a
-            # helicity row as a slot permutation plus a per-leg sign flip, and
-            # global negation commutes with both, so mirror(crossed row) ==
+            # ---- C-parity de-duplication, PER CROSSING ----
+            # The symmetry holds under crossing: a crossing acts on a helicity
+            # row as a slot permutation plus a per-leg sign flip, and global
+            # negation commutes with both, so mirror(crossed row) ==
             # crossed(mirror row) and each crossing's good-hel set is closed
-            # under the mirror. Verified exactly (reldiff 0 on every row) for
-            # u u~ > g g at extended flavor ids 1, 3, 4, 5, 6 and 21.
-            # What blocks it is the SIMD shape of this path: the loop bound is
-            # cNGoodMaxCross and lanes of ONE page may carry DIFFERENT crossings,
-            # each reading its own cGoodHelOfCross[cr][ighel]. "Is this iteration
-            # a skippable partner row?" is therefore a per-LANE question, and a
-            # kernel call can only be skipped when every lane agrees.
-            # Enabling it means reducing each per-crossing list to its own
-            # representatives (halving cNGoodPerCross[cr], hence cNGoodMaxCross),
-            # a per-lane weight of 2 and a per-lane cFlip for the 50/50 -- plus
-            # per-crossing validation. Until then every csym hole is empty here,
-            # leaving the validated crossing path byte-for-byte unchanged.
-            'csym_statics': '',
-            'csym_gh_flip': '',
-            'csym_gh_record': '',
-            'csym_gh_check': '',
+            # under the mirror (verified exactly, reldiff 0 on every row, for
+            # u u~ > g g at extended flavor ids 1, 3, 4, 5, 6 and 21).
+            # What makes this harder than the uncrossed path is that lanes of ONE
+            # SIMD page may carry DIFFERENT crossings, so the verdict, the weight
+            # and the 50/50 are all per crossing and applied PER LANE.
+            # NB emitted right after goodhel_percross_statics (the template
+            # concatenates the two holes), so cNcross is already in scope.
+            'csym_statics':
+                '\n#ifndef MGONGPUCPP_GPUIMPL\n'
+                '  static int cFlip[ncomb];            // C-parity partner: every helicity negated\n'
+                '  static bool cCsymScanned;           // the validating scan actually ran\n'
+                '  static bool cCsymBadCross[cNcross]; // per crossing: a pair mismatched\n'
+                '  static bool cCsymOkCross[cNcross];  // per crossing: de-duplication on\n'
+                '#endif',
+            'csym_gh_flip':
+                '    fptype me_scan[ncomb][neppV]; // per-hel |M|^2 of this scan page, for the C-parity test\n'
+                '    cCsymScanned = false;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) { cCsymBadCross[_c] = false; cCsymOkCross[_c] = false; }\n'
+                '    for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '      cFlip[_h] = _h;\n'
+                '      for( int _j = 0; _j < ncomb; _j++ ) {\n'
+                '        bool _same = true;\n'
+                '        for( int _k = 0; _k < npar; _k++ ) if( cHel[_j][_k] != -cHel[_h][_k] ) _same = false;\n'
+                '        if( _same ) { cFlip[_h] = _j; break; }\n'
+                '      }\n'
+                '    }\n',
+            'csym_gh_record':
+                '        for( int _ie = 0; _ie < neppV; ++_ie ) me_scan[ihel][_ie] = allMEs[ievt00 + _ie];\n',
+            # Latch per CROSSING (iflav encodes cross*nmaxflavor + flav) so one
+            # parity-violating crossing cannot disable the others. Same absolute
+            # floor as the uncrossed path: a relative test alone compares the
+            # roundoff noise of two numerically-zero rows against itself.
+            'csym_gh_check':
+                '      { fptype _mmax = (fptype)0.;\n'
+                '        for( int _h = 0; _h < ncomb; _h++ )\n'
+                '          for( int _ie = 0; _ie < neppV; ++_ie ) {\n'
+                '            const fptype _v = me_scan[_h][_ie] < (fptype)0. ? -me_scan[_h][_ie] : me_scan[_h][_ie];\n'
+                '            if( _v > _mmax ) _mmax = _v;\n'
+                '          }\n'
+                '        const int _cr = iflav / nmaxflavor;\n'
+                '        for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '          if( cFlip[_h] > _h ) {\n'
+                '            for( int _ie = 0; _ie < neppV; ++_ie ) {\n'
+                '              const fptype _a = me_scan[_h][_ie];\n'
+                '              const fptype _b = me_scan[cFlip[_h]][_ie];\n'
+                '              fptype _d = _a - _b; if( _d < (fptype)0. ) _d = -_d;\n'
+                '              fptype _aa = _a < (fptype)0. ? -_a : _a;\n'
+                '              fptype _bb = _b < (fptype)0. ? -_b : _b;\n'
+                '              if( _d > (fptype)1e-6 * ( _aa + _bb ) && _d > (fptype)1e-12 * _mmax ) cCsymBadCross[_cr] = true;\n'
+                '            }\n'
+                '          }\n'
+                '        }\n'
+                '      }\n'
+                '      cCsymScanned = true;\n',
             'csym_pairbuild': '',
-            'csym_me_before': '',
-            'csym_weight': '',
-            'csym_sel_1': '',
-            'csym_sel_2': '',
-            'csym_omp_shared': '',
+            # Per-lane doubling: the crossing is a per-event property, so build a
+            # 0/1 vector once per page rather than per helicity.
+            'csym_page_decl':
+                '      fptype_sv _csymExtra{}; // per lane: 1 where this lane\'s crossing is de-duplicated\n'
+                '      for( int _ie = 0; _ie < neppV; _ie++ ) {\n'
+                '        const int _cr = (int)( iflavorVec[ievt00 + _ie] / nmaxflavor );\n'
+                '        reinterpret_cast<fptype*>( &_csymExtra )[_ie] = cCsymOkCross[_cr] ? (fptype)1. : (fptype)0.;\n'
+                '      }\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '      fptype_sv _csymExtra2{};\n'
+                '      for( int _ie = 0; _ie < neppV; _ie++ ) {\n'
+                '        const int _cr = (int)( iflavorVec[ievt00 + neppV + _ie] / nmaxflavor );\n'
+                '        reinterpret_cast<fptype*>( &_csymExtra2 )[_ie] = cCsymOkCross[_cr] ? (fptype)1. : (fptype)0.;\n'
+                '      }\n'
+                '#endif\n',
+            'csym_me_before':
+                '        const fptype_sv _me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '        const fptype_sv _me2before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '#endif\n',
+            'csym_weight':
+                '        {\n'
+                '          fptype_sv& _me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '          _me1 = _me1 + ( MEs_ighel[ighel] - _me1before ) * _csymExtra;\n'
+                '          MEs_ighel[ighel] = _me1;\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '          fptype_sv& _me2 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '          _me2 = _me2 + ( MEs_ighel2[ighel] - _me2before ) * _csymExtra2;\n'
+                '          MEs_ighel2[ighel] = _me2;\n'
+                '#endif\n'
+                '        }\n',
+            'csym_sel_1':
+                '            fptype _clo = (fptype)0;\n'
+                '#if defined MGONGPU_CPPSIMD\n'
+                '            const fptype _ctot = MEs_ighel[cNGoodMaxCross - 1][ieppV];\n'
+                '            const fptype _chi = MEs_ighel[ighel][ieppV];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel[ighel - 1][ieppV];\n'
+                '#else\n'
+                '            const fptype _ctot = MEs_ighel[cNGoodMaxCross - 1];\n'
+                '            const fptype _chi = MEs_ighel[ighel];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel[ighel - 1];\n'
+                '#endif\n',
+            'csym_sel_2':
+                '            fptype _clo = (fptype)0;\n'
+                '            const fptype _ctot = MEs_ighel2[cNGoodMaxCross - 1][ieppV];\n'
+                '            const fptype _chi = MEs_ighel2[ighel][ieppV];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel2[ighel - 1][ieppV];\n',
+            'csym_omp_shared': ', cCsymOkCross',
         }
 
 #------------------------------------------------------------------------------------
