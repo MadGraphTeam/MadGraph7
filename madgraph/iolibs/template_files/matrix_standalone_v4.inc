@@ -109,6 +109,7 @@ C     C-parity partner. Crossed flavours therefore keep the full helicity sum.
       INTEGER FLIP(NCOMB), JHEL, KHEL, NTRY_CSYM(NFLAV)
       LOGICAL CSYM(NFLAV), HELSAME, DEDUP
       REAL*8 TSTORE(NCOMB)
+      REAL*8 TSMAX
       DATA FLIP/NCOMB*0/
       DATA CSYM/NNTRY_FLAV*.TRUE./
       DATA NTRY_CSYM/NNTRY_FLAV*0/
@@ -252,6 +253,17 @@ C     scan point permanently invalidates the pair (robust, like the zero-filter)
       IF (USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV
      &    .AND.NTRY_CSYM(FLAV_USE).LT.20
      &    .AND.POLARIZATIONS(0,0).EQ.-1) THEN
+C     A pair of rows that are BOTH numerically zero differ only by roundoff,
+C     and a purely RELATIVE test on that noise fails at random -- one such pair
+C     then vetoes every real pair, because the verdict is all-or-nothing.
+C     Measured on g g > t t~: rows 1/16 and 4/13 sit at |M|^2 ~ 1e-30 while the
+C     scan maximum is ~3e+02, and the de-duplication never engaged. So also
+C     require the difference to be significant against TSMAX, the largest
+C     |M|^2 of this scan point.
+        TSMAX=0D0
+        DO IHEL=1,NCOMB
+          IF (ABS(TSTORE(IHEL)).GT.TSMAX) TSMAX=ABS(TSTORE(IHEL))
+        ENDDO
         DO IHEL=1,NCOMB
           IF (FLIP(IHEL).EQ.IHEL) THEN
 C           Self-paired row: no distinct partner, so the loop cannot be
@@ -259,7 +271,9 @@ C           halved uniformly -- refuse the reuse for this flavor.
             CSYM(FLAV_USE)=.FALSE.
           ELSE IF (FLIP(IHEL).GT.IHEL) THEN
             IF (ABS(TSTORE(IHEL)-TSTORE(FLIP(IHEL))).GT.
-     &          1D-6*(ABS(TSTORE(IHEL))+ABS(TSTORE(FLIP(IHEL))))) THEN
+     &          1D-6*(ABS(TSTORE(IHEL))+ABS(TSTORE(FLIP(IHEL))))
+     &          .AND.ABS(TSTORE(IHEL)-TSTORE(FLIP(IHEL))).GT.
+     &          1D-12*TSMAX) THEN
               CSYM(FLAV_USE)=.FALSE.
             ENDIF
           ENDIF

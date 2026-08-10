@@ -97,6 +97,7 @@ C       it above the threshold without ever scanning. CSYMBAD/NCSCAN sit in a
 C       COMMON block (zero-initialised, like NTRY) so the good-hel file can
 C       carry the verdict across jobs.
         INTEGER FLIP(NCOMB), JHEL, KHEL
+        REAL*8 TSMAX
         LOGICAL HELSAME, DEDUP
         INTEGER CSYMBAD(MAXFLAVPERPROC,MAXSPROC)
         INTEGER NCSCAN(MAXFLAVPERPROC,MAXSPROC)
@@ -227,11 +228,25 @@ C           count it once more in ANS.
 C     Scan phase: drop the C-parity pairing of any row whose fully flipped
 C     partner gave a different |M|^2 (parity/C/polarization breaking). One
 C     mismatch at any scan point permanently invalidates the pair.
+C       A pair of rows that are BOTH numerically zero differ only by roundoff,
+C       and a purely RELATIVE test on that noise fails at random -- one such
+C       pair then vetoes every real pair, because the verdict is all-or-nothing.
+C       Measured on g g > t t~: rows 1/16 and 4/13 sit at |M|^2 ~ 1e-30 while
+C       the scan maximum is ~1.5e+02, and the de-duplication never engaged.
+C       So also require the difference to be significant against TSMAX, the
+C       largest |M|^2 of this scan point: a row that far down cannot bias the
+C       helicity sum whichever way it is paired, while a genuine parity
+C       violation still shows up at the relative level.
       IF (%(me_csym_cross_ok)s.AND.NCSCAN(%(me_flav_key)s,%(proc_id)s).LT.20) THEN
         NCSCAN(%(me_flav_key)s,%(proc_id)s)=NCSCAN(%(me_flav_key)s,%(proc_id)s)+1
+        TSMAX=0D0
+        DO I=1,NCOMB
+          IF (DABS(TS(I)).GT.TSMAX) TSMAX=DABS(TS(I))
+        ENDDO
         DO I=1,NCOMB
           IF (FLIP(I).GT.I) THEN
-            IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))) THEN
+            IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))
+     &          .AND.DABS(TS(I)-TS(FLIP(I))).GT.1D-12*TSMAX) THEN
               CSYMBAD(%(me_flav_key)s,%(proc_id)s)=1
             ENDIF
           ENDIF
