@@ -408,6 +408,25 @@ class MadgraphProcess:
         if not isinstance(devices, list):
             devices = [devices]
 
+        # Build the common library serially before subprocess builds start.
+        # The common library is the same for each subprocess, so we need to build
+        # it serially to avoid any race in src/
+        # Use a representative subprocess
+        if self.subprocesses:
+            common_build_path = self.subprocesses[0].meta["path"]
+            for device in devices:
+                logger.info(
+                    "Compiling common library for device '%s'...", device
+                )
+                misc.compile(
+                    arg=[f"BACKEND={device}", "USEBUILDDIR=1", "commonlib"],
+                    cwd=common_build_path,
+                    mode="cpp",
+                )
+                logger.info(
+                    "Compiling common library for device '%s'...done!", device
+                )
+
         box = None
         detailed_compile_view = False
         completed_compile_count = 0
@@ -1098,10 +1117,6 @@ class MadgraphSubprocess:
         devices = self.process.run_card["run"]["devices"]
         verbosity = resolve_verbosity(self.process.run_card["run"]["verbosity"])
 
-        import time
-        import random
-        time.sleep(random.randint(0,10))
-
         if not isinstance(devices, list):
             devices = [devices]
 
@@ -1121,7 +1136,7 @@ class MadgraphSubprocess:
             if not os.path.isfile(api_path):
                 if verbosity == "log":
                     logger.info(f"Compiling subprocess {self.name} for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
+                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path, mode = "cpp")
             self.api_paths.append(api_path)
 
     def load_matrix_element(self):
