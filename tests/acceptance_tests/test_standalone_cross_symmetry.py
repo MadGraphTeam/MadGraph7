@@ -74,6 +74,9 @@ pjoin = os.path.join
 # The two processes are each other's crossing under (I=0, J=3).
 PROC_QQ_GG = 'u u~ > g g'
 PROC_QG_QG = 'u g > u g'
+# The crossed partner that `g g > q q~` reaches with cross 3 (slot 1 <-> slot 2),
+# used by the madmatrix tests that need the crossing to be a RECORDED one.
+PROC_GQX_GQX = 'g u~ > g u~'
 
 # A CHIRAL pair: the W+ couples only to a left-handed u and a right-handed d~, so
 # every external quark is 100% polarized and the per-leg density matrix diagonal
@@ -2191,6 +2194,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
     """
 
     CROSS_2_3 = 3       # cross = I*(NEXTERNAL+1)+J = 0*5+3 = 3, id = cross*NFLAV+flav
+    CROSS_TO_QQ_GG = 23 # the crossing taking g g > q q~ to q q~ > g g
     IDENTITY = 0
     OVERLAP = 2 * (NEXTERNAL + 1) + 1  # cross=11 (I=2,J=1): overlapping swap -> invalid
     tolerance = 1e-9
@@ -2208,14 +2212,21 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             shutil.rmtree(self.tmpdir)
 
     # ------------------------------------------------------------------
-    def _output_standalone_mg7(self, process, name, options=''):
-        """Write the standalone_mg7 output for `process`, return its P* dir."""
+    def _output_standalone_mg7(self, process, name, options='', color_basis=None):
+        """Write the standalone_mg7 output for `process`, return its P* dir.
+
+        color_basis is only passed when the caller compares this output against
+        another one number-by-number: the colour sum is accumulated in a
+        different order in each basis, so mixing bases moves the last few digits
+        (~1e-7 relative) and swamps the 1e-9 tolerance."""
         outdir = pjoin(self.tmpdir, name)
         cmd = cmd_interface.MasterCmd()
         cmd.no_notification()
         cmd.exec_cmd('set automatic_html_opening False')
         cmd.exec_cmd('set group_subprocesses False')
         cmd.exec_cmd('set apply_flavor_grouping True')
+        if color_basis:
+            cmd.exec_cmd('set color_basis %s' % color_basis)
         cmd.exec_cmd('import model sm')
         cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
         cmd.exec_cmd('output standalone_mg7 %s -f' % outdir)
@@ -2260,9 +2271,16 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             1)
         with open(check, 'w') as fsock:
             fsock.write(src)
+        # FPTYPE=d, not the makefile default: the default is 'm' (mixed), whose
+        # colour algebra runs in single precision, so two evaluations of the
+        # same |M|^2 that accumulate in a different order (a crossed base vs the
+        # crossed process computed on its own) part company at ~1e-7 relative --
+        # a hundredfold above the 1e-9 tolerance these tests compare at.
+        build_env = dict(os.environ, FPTYPE='d')
         with open(os.devnull, 'w') as devnull:
             rc = subprocess.call(['make', '-j2', 'check_sa.exe'], cwd=pdir,
-                                  stdout=devnull, stderr=subprocess.STDOUT)
+                                  stdout=devnull, stderr=subprocess.STDOUT,
+                                  env=build_env)
         if rc != 0:
             self.skipTest('madmatrix build toolchain unavailable (make failed)')
 
@@ -2283,12 +2301,66 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         """First-event ME for a single (uniform) flavor id."""
         return self._event_mes(pdir, flavor_id)[0]
 
+    def _output_folded_gg_qqx(self, name):
+        """Write a multiprocess in which `g g > q q~` is the FOLDED base of its
+        crossings, and return that P* dir.
+
+        The good-helicity scan only visits the crossings this ME actually
+        records (cross_recorded / _scanned_crossings), so a crossed matrix
+        element can only be asked for on a base that folded it in. A bare
+        `generate u u~ > g g` records nothing, so the crossings below have to
+        come from a real multiparticle expansion: `pq pq > pq pq` with
+        pq = g u u~ folds `g u~ > g u~` (cross 3) and `u u~ > g g` (cross 23)
+        onto the `g g > q q~` base -- the same two directions the standalone
+        references below compute on their own.
+
+        The trace basis is forced because the sibling all-gluon dir of this
+        multiprocess cannot be written with the DDM default (unrelated to
+        crossing: color_flow_decomposition has no single flow per DDM element).
+        """
+        outdir = pjoin(self.tmpdir, name)
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('set group_subprocesses False')
+        cmd.exec_cmd('set apply_flavor_grouping True')
+        cmd.exec_cmd('set color_basis trace')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('define pq = g u u~')
+        cmd.exec_cmd('generate pq pq > pq pq')
+        cmd.exec_cmd('output standalone_mg7 %s -f' % outdir)
+
+        subproc_root = pjoin(outdir, 'SubProcesses')
+        pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
+                 if d.startswith('P') and 'gg_QQx' in d
+                 and os.path.isdir(pjoin(subproc_root, d))]
+        self.assertEqual(len(pdirs), 1,
+                         'expected exactly one folded g g > q q~ dir, got %s'
+                         % pdirs)
+        demo = pjoin(pdirs[0], 'crossing_demo.dat')
+        self.assertTrue(os.path.exists(demo),
+                        'no crossing was folded onto %s' % pdirs[0])
+        with open(demo) as fsock:
+            recorded = [int(tok) for tok in fsock.read().split()]
+        for wanted in (self.CROSS_2_3, self.CROSS_TO_QQ_GG):
+            self.assertIn(wanted, recorded,
+                          'crossing %d is not recorded in %s (got %s); the '
+                          'good-hel scan would not have scanned it'
+                          % (wanted, demo, recorded))
+        return pdirs[0]
+
     # ------------------------------------------------------------------
-    def test_qq_gg_crossed_gives_qg_qg(self):
-        """u u~ > g g crossed by (I=0,J=3) equals u g > u g at the same momenta
-        (both 2->2 massless -> identical RAMBO momenta for the same seed)."""
-        crossed = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg')
-        reference = self._output_standalone_mg7(PROC_QG_QG, 'qgqg')
+    def test_gg_qqx_crossed_gives_qg_qg(self):
+        """g g > q q~ crossed by (I=0,J=3) equals g u~ > g u~ at the same momenta
+        (both 2->2 massless -> identical RAMBO momenta for the same seed).
+
+        The base must be one that FOLDED this crossing in: the good-hel scan
+        only visits recorded crossings, so a bare `generate u u~ > g g` (which
+        records none) can no longer be driven with an arbitrary crossing code.
+        See _output_folded_gg_qqx."""
+        crossed = self._output_folded_gg_qqx('ggqqx')
+        reference = self._output_standalone_mg7(PROC_GQX_GQX, 'gqxgqx',
+                                                color_basis='trace')
         self._patch_and_build(crossed)
         self._patch_and_build(reference)
 
@@ -2299,31 +2371,36 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         self.assertAlmostEqual(
             crossed_val, reference_val,
             delta=self.tolerance * abs(reference_val),
-            msg='u u~ > g g crossed (%r) != u g > u g identity (%r)'
+            msg='g g > q q~ crossed (%r) != g u~ > g u~ identity (%r)'
             % (crossed_val, reference_val))
         # Non-vacuous: the crossing must move the answer.
         self.assertNotAlmostEqual(
             crossed_val, identity_val, places=6,
             msg='crossed value equals the identity value; crossing had no effect')
 
-    def test_qg_qg_crossed_gives_qq_gg(self):
-        """The reverse: u g > u g crossed by (I=0,J=3) equals u u~ > g g."""
-        crossed = self._output_standalone_mg7(PROC_QG_QG, 'qgqg_rev')
-        reference = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_rev')
+    def test_gg_qqx_crossed_gives_qq_gg(self):
+        """The other recorded direction: g g > q q~ crossed to u u~ > g g."""
+        crossed = self._output_folded_gg_qqx('ggqqx_rev')
+        reference = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_rev',
+                                                color_basis='trace')
         self._patch_and_build(crossed)
         self._patch_and_build(reference)
+        reference_val = self._me(reference, self.IDENTITY)
         self.assertAlmostEqual(
-            self._me(crossed, self.CROSS_2_3), self._me(reference, self.IDENTITY),
-            delta=self.tolerance * abs(self._me(reference, self.IDENTITY)),
-            msg='u g > u g crossed != u u~ > g g identity')
+            self._me(crossed, self.CROSS_TO_QQ_GG), reference_val,
+            delta=self.tolerance * abs(reference_val),
+            msg='g g > q q~ crossed != u u~ > g g identity')
 
     def test_per_event_different_cross(self):
         """THE point of the SIMD port: within ONE SIMD page, events carrying
         DIFFERENT crossings (but the same reduced flavor) each get their own
         crossed matrix element. Feed identical momenta to every event, alternate
         the crossing per event (even -> identity, odd -> cross 2<->3) and check
-        each lane independently."""
-        pdir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_perevent')
+        each lane independently.
+
+        Both codes used here are RECORDED crossings of the folded base, which is
+        what the good-hel scan covers (see _output_folded_gg_qqx)."""
+        pdir = self._output_folded_gg_qqx('ggqqx_perevent')
         self._patch_and_build(pdir)
         identity_val = self._me(pdir, self.IDENTITY)
         crossed_val = self._me(pdir, self.CROSS_2_3)

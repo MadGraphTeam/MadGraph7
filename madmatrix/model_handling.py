@@ -2073,6 +2073,55 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
             ids.append(pdg_to_id[hit])
         return ids
 
+    def _scanned_crossings(self, matrix_element):
+        """Crossing codes the good-helicity scan has to visit.
+
+        A crossing code is only ever carried by an event if this ME actually
+        RECORDED that crossed subprocess (merge_crossing='record'), so the scan
+        needs the recorded codes and nothing else. Enumerating every code that
+        is merely structurally applicable instead costs a full ncomb-helicity
+        scan per code -- 48 of them for g g > t t~ g g g, which records none at
+        all -- and every one past the recorded set builds a cGoodHelOfCross row
+        no event can ever index. See the runtime guard in _crossing_preamble for
+        what happens if an unrecorded code does show up.
+
+        The identity (0) is always included: it is the base process itself.
+
+        NB this is deliberately NOT _folded_crossing_flavorids. That one answers
+        a different question -- one representative id per crossed subprocess,
+        mirror pairs collapsed -- which is what a demo wants and what a scan must
+        not use: the runtime may hand us EITHER member of a mirror pair, and a
+        collapsed partner would hit the guard and abort. Here every reachable
+        entry matching a recorded process in either orientation is kept."""
+        crossings = set([0])
+        crossed = matrix_element.get('crossed_processes')
+        if not crossed:
+            return sorted(crossings)
+        import madgraph.iolibs.export_v4 as export_v4
+        Fort = export_v4.ProcessExporterFortran
+        merged = matrix_element.get('processes')[0].get('model').get(
+            'merged_particles')
+        entries = Fort.compute_crossing_pdg_entries(self, matrix_element)
+
+        def leg_matches(leg_id, pdg):
+            a = abs(leg_id)
+            if a in merged:
+                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
+            return pdg == leg_id
+
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        for (proc, _bp, _xp) in crossed:
+            legs = [l.get('id') for l in proc.get('legs')]
+            orients = [legs]
+            if ninitial == 2:
+                orients.append([legs[1], legs[0]] + legs[2:])
+            for (_index, cross, _flav0, pdg) in entries:
+                if any(len(pdg) == len(orient) and
+                       all(leg_matches(L, P) for L, P in zip(orient, pdg))
+                       for orient in orients):
+                    crossings.add(cross)
+        return sorted(crossings)
+
     def edit_crossing_demo(self):
         """Write crossing_demo.dat (the folded-crossing flavor ids) into the P*
         directory so the shared check_sa.exe can demonstrate each crossed
@@ -2661,6 +2710,7 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         # signed PDG per (flavor, leg) and its charge conjugate, from which
         # flavorPDG rebuilds the crossed PDGs at runtime (see flavorpdg_body).
         n_flavors, pdg_flat, antipdg_flat = Fort._build_flav_pdg_tables(self, me)
+        scanned_crossings = set(self._scanned_crossings(me))
 
         def arr(vals):
             return '{ ' + ', '.join(str(v) for v in vals) + ' }'
@@ -2690,6 +2740,19 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
             "    if ( xj != 0 && xj != 2 )\n"
             "    { int t = perm[1]; perm[1] = perm[xj - 1]; perm[xj - 1] = t; ic[1] = -ic[1]; ic[xj - 1] = -ic[xj - 1]; }\n"
             "    return true;\n"
+            "  }\n"
+            "  // Crossing codes this ME actually RECORDED (merge_crossing='record'),\n"
+            "  // i.e. the only ones an event can ever carry. cross_perm_ic above\n"
+            "  // answers whether a code is structurally APPLICABLE, which is a much\n"
+            "  // weaker statement: g g > t t~ g g g has 48 applicable codes and 0\n"
+            "  // recorded ones. The good-helicity scan walks THIS set (one full\n"
+            "  // ncomb-helicity scan per code), and calculate_jamps checks incoming\n"
+            "  // events against it. The identity is always in.\n"
+            "  __device__ inline bool cross_recorded( int cross )\n"
+            "  {\n"
+            "    constexpr int ncross = ( npar + 1 ) * ( npar + 1 );\n"
+            "    static const bool recorded[ncross] = %(cross_recorded)s;\n"
+            "    return cross >= 0 && cross < ncross && recorded[cross];\n"
             "  }\n"
             "  // Initial-state spin*color average of the crossed process: product of\n"
             "  // the per-leg spin*color (spincol_part, conjugation invariant) over\n"
@@ -2742,6 +2805,8 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         ) % {'spincol_part': arr(tables['spincol_part']),
              'ids_base': arr(tables['ids_base']),
              'antipid_base': arr(tables['antipid_base']),
+             'cross_recorded': arr(['true' if c in scanned_crossings else 'false'
+                                    for c in range(ncross)]),
              'ninitial': ninitial}
 
         # Per-leg helicity states used to re-encode a crossed helicity config
@@ -2900,12 +2965,22 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
 
         return {
             'crossing_decl': crossing_decl,
-            # Good-helicity UNION now also spans crossings: sample every valid
-            # extended flavor id (skip spincol==0) so cGoodHel covers the crossed
-            # helicity rows too. A helicity that vanishes for a given event's
-            # crossing simply contributes 0 at run time.
+            # Good-helicity UNION now also spans crossings: sample every
+            # RECORDED extended flavor id (see cross_recorded; spincol==0 is
+            # still skipped) so cGoodHel covers the crossed helicity rows too. A
+            # helicity that vanishes for a given event's crossing simply
+            # contributes 0 at run time.
+            #
+            # The loop still counts to ncross*nflav but the two gates below cost
+            # nothing on a skipped code, whereas each code that gets through
+            # costs a full ncomb-helicity calculate_jamps scan. Scanning all
+            # APPLICABLE codes rather than the recorded ones was a 46x one-off
+            # startup cost on g g > t t~ g g g (48 applicable, 0 recorded), which
+            # check_sa's `perf 1 32 8` reports as a 4.2x matrix-element slowdown
+            # because it amortises the scan over 8 iterations.
             'goodhel_scan_count': str(ncross * nflav),
             'goodhel_scan_skip':
+                '      if ( !cross_recorded( iflav / nmaxflavor ) ) continue;\n'
                 '      if ( spincol_cross( iflav / nmaxflavor ) == 0 ) continue;\n    ',
             'sigmakin_denominator': sigmakin_denominator,
             'flavorpdg_body': flavorpdg_body,
@@ -3666,6 +3741,32 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
+        // GUARD: the good-helicity scan only builds a cGoodHelOfCross row for the
+        // crossings this ME records, so a code outside that set would find an
+        // empty row, mask every helicity in the per-lane blend below, and hand
+        // back a SILENTLY ZERO |M|^2 -- an event quietly lost, not a crash. Fail
+        // loudly instead. (_ighel < 0 is the good-helicity scan itself, which
+        // runs before the table exists and is gated by cross_recorded already.)
+        //
+        // A structurally INVALID code (an overlapping swap, spincol_cross == 0)
+        // is deliberately NOT an error: the per-event denominator already
+        // ASSIGNS 0 for it, which is the documented contract. Only an
+        // APPLICABLE-but-unrecorded code is the ambiguous, dangerous case.
+        //
+        // Order matters: cross_recorded is a table lookup but spincol_cross runs
+        // cross_perm_ic, and this sits in the per-helicity path (ncomb calls per
+        // page). Short-circuiting on the recorded test keeps spincol_cross off
+        // the hot path for every event that has a recorded crossing, i.e. all
+        // of them outside the error case.
+        if( _ighel >= 0 && !cross_recorded( xcr ) && spincol_cross( xcr ) != 0 )
+        {
+          std::cerr << "ERROR! calculate_jamps: event " << ( ievt0 + ieppV )
+                    << " carries crossing code " << xcr
+                    << ", which this process does not record: no good-helicity row was"
+                    << " scanned for it and its matrix element would be silently zero."
+                    << std::endl;
+          std::abort();
+        }
         int xperm[npar], xic[npar];
         cross_perm_ic( xcr, xperm, xic );
         for( int s = 0; s < npar; ++s )
