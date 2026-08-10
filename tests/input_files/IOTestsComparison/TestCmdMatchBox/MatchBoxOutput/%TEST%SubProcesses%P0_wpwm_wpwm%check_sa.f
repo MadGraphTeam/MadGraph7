@@ -42,6 +42,19 @@ C
       INTEGER PDG_FOR_FLAVOR(NEXTERNAL,MAXFLAVOR)
       INTEGER FLAV_IDX
       INTEGER GET_FLAVOR_INDEX
+C     Signed per-leg PDG of a crossed process (filled by GET_PDG_FOR_FLAVOR),
+C     the two crossing-partner loop indices, and the number of flavor
+C     combinations; used only by the crossing-symmetry demonstration below.
+      INTEGER XPDG(NEXTERNAL)
+      INTEGER FLIP1, FLIP2, NFLAV
+C     Per-leg loop index and the two match flags of the crossing demonstration.
+      INTEGER XCK
+      LOGICAL XCVALID, XCMATCH
+C     Representative signed-PDG signatures of the crossed subprocesses folded
+C     into this matrix element; a crossing is demonstrated when its runtime PDG
+C     (GET_PDG_FOR_FLAVOR) matches one of them.
+      INTEGER XCSIG(NEXTERNAL, (NEXTERNAL+1)*(NEXTERNAL+1))
+      INTEGER XCNSIG, XCS
 C
 C     EXTERNAL
 C
@@ -134,6 +147,42 @@ c
       write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)
       write (*,*) "-----------------------------------------------------------------------------"
       enddo
+
+      if(.false.) then
+      write (*,*)
+      write (*,*) " Crossed processes (folded into this matrix element):"
+      write (*,*)
+      NFLAV = 1
+      XCNSIG = 0
+C         FLIP1/FLIP2 pick which legs sit in the two initial slots;
+C         1..NEXTERNAL spans every crossing (FLIP1=1,FLIP2=2 = base).
+      DO FLIP1=1,NEXTERNAL
+        DO FLIP2=1,NEXTERNAL
+          DO J=1,NFLAV
+            I = FLIP1*(NEXTERNAL+1) + FLIP2
+            FLAV_IDX = I*NFLAV+J
+            CALL GET_PDG_FOR_FLAVOR(FLAV_IDX, XPDG)
+C           Applicable here iff its PDG signature is not all-zero,
+C           skipping the identity (base process, shown above).
+            XCVALID = .FALSE.
+            DO XCK=1,NEXTERNAL
+              IF (XPDG(XCK).NE.0) XCVALID = .TRUE.
+            ENDDO
+            IF (FLIP1.EQ.1 .AND. FLIP2.EQ.2) XCVALID = .FALSE.
+            IF (.NOT.XCVALID) CYCLE
+            CALL SMATRIX(P, FLAV_IDX, MATELEM)
+            write (*,*) 'FLAV_IDX', FLAV_IDX
+            write (*,*) '   PDG            E              px              py              pz'
+            DO XCK=1,NEXTERNAL
+              write (*,'(1X,I6,4(1X,E15.7))') XPDG(XCK),
+     &          P(0,XCK), P(1,XCK), P(2,XCK), P(3,XCK)
+            ENDDO
+            write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)
+            write (*,*) "-----------------------------------------------------------------------------"
+          ENDDO
+        ENDDO
+      ENDDO
+      endif
 
       if (.false.)then
          do I=1, MAXFLAVOR
