@@ -17,6 +17,7 @@ import subprocess
 import unittest
 import os
 import re
+import shlex
 import shutil
 import sys
 import logging
@@ -1403,6 +1404,110 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
+
+    def _openmp_compile_base(self, proc_dir):
+        """(base command, OpenMP flags) for compiling CPPProcess.cc in proc_dir.
+
+        The base command is the one the generated makefile itself would run,
+        read back from ``make -n`` with the ``-c <src>`` and ``-o <obj>`` pairs
+        stripped, so this test keeps following the real build flags (backend,
+        fptype, include paths, ...) instead of duplicating them.
+
+        The OpenMP flags are probed rather than assumed: gcc and a full clang
+        take plain -fopenmp, while Apple clang only understands
+        ``-Xpreprocessor -fopenmp`` together with the homebrew libomp headers.
+        Returns ``(base, None)`` when no OpenMP-capable C++ compiler is found.
+        """
+        make = subprocess.Popen(['make', '-n'], cwd=proc_dir,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        dry_run = make.communicate()[0].decode('utf-8', 'replace')
+        compile_line = [l for l in dry_run.splitlines() if '-c CPPProcess.cc' in l]
+        self.assertTrue(compile_line,
+                        'make -n did not show how to compile CPPProcess.cc:\n%s'
+                        % dry_run)
+        base = shlex.split(compile_line[0])
+        for flag in ('-o', '-c'):
+            pos = base.index(flag)
+            del base[pos:pos + 2]
+
+        probe = pjoin(self.tmpdir, 'omp_probe.cc')
+        with open(probe, 'w') as fsock:
+            fsock.write('#ifndef _OPENMP\n'
+                        '#error OpenMP is not enabled\n'
+                        '#endif\n'
+                        'int main() { int s = 0;\n'
+                        '#pragma omp parallel for reduction(+:s)\n'
+                        '  for (int i = 0; i < 8; ++i) s += i;\n'
+                        '  return s == 28 ? 0 : 1; }\n')
+        candidates = [['-fopenmp'], ['-Xpreprocessor', '-fopenmp']]
+        for prefix in ('/opt/homebrew/opt/libomp', '/usr/local/opt/libomp'):
+            candidates.append(['-Xpreprocessor', '-fopenmp',
+                               '-I%s/include' % prefix])
+        devnull = open(os.devnull, 'w')
+        for flags in candidates:
+            cmd = base + flags + ['-c', probe, '-o', probe + '.o']
+            if subprocess.call(cmd, cwd=proc_dir,
+                               stdout=devnull, stderr=devnull) == 0:
+                return base, flags
+        return base, None
+
+    def test_standalone_mg7_openmp(self):
+        """The standalone_mg7 (madmatrix) CPPProcess.cc must compile with OpenMP.
+
+        The CPU branch of sigmaKin runs the event-page loop under
+        ``#pragma omp parallel for default( none )``, so *every* variable the
+        loop body touches has to be named in the shared() clause -- anything
+        missing is a hard compile error, not a warning. Three sigmaKin
+        arguments used inside the loop (iflavorVec, allrnddiagram and
+        allDiagramIdsOut) were absent from it, so the generated code did not
+        build at all once OpenMP was on.
+
+        Nothing caught that, because nothing ever builds this path: OpenMP is
+        opt-in via USEOPENMP=1 (#758), madmatrix.mk force-disables it on Darwin,
+        and no CI job sets it. This test therefore does not go through
+        USEOPENMP: it compiles the generated file directly with whatever OpenMP
+        flags this compiler accepts, which keeps it meaningful on macOS too.
+        """
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('output standalone_mg7 %s -f' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertTrue(dirs, 'standalone_mg7 produced no subprocess directory')
+        proc_dir = pjoin(proc_root, dirs[0])
+
+        base, omp_flags = self._openmp_compile_base(proc_dir)
+        if omp_flags is None:
+            self.skipTest('no OpenMP-capable C++ compiler on this machine')
+
+        obj = pjoin(self.tmpdir, 'CPPProcess_omp.o')
+        build = subprocess.Popen(base + omp_flags +
+                                 ['-c', 'CPPProcess.cc', '-o', obj],
+                                 cwd=proc_dir, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
+        log = build.communicate()[0].decode('utf-8', 'replace')
+        self.assertEqual(build.returncode, 0,
+                         'CPPProcess.cc does not compile with OpenMP (%s):\n%s'
+                         % (' '.join(omp_flags), log))
+
+        # Guard against the test going vacuous: if the parallel region were ever
+        # compiled out, the object would carry no OpenMP runtime call and the
+        # shared() clause above would no longer be exercised.
+        try:
+            symbols = subprocess.check_output(['nm', obj],
+                                              stderr=subprocess.STDOUT)
+            symbols = symbols.decode('utf-8', 'replace')
+        except (OSError, subprocess.CalledProcessError):
+            symbols = None    # no usable nm: keep the compile check only
+        if symbols is not None:
+            self.assertTrue('GOMP_parallel' in symbols or
+                            'kmpc_fork_call' in symbols,
+                            'CPPProcess.o has no OpenMP runtime call, so the '
+                            'parallel sigmaKin loop was not compiled')
 
     def test_standalone_cpp(self):
         """test that standalone cpp is working"""
