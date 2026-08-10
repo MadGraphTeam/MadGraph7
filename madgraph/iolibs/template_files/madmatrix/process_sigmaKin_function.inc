@@ -96,7 +96,7 @@
     // - shared: as the name says
     // - private: give each thread its own copy, without initialising
     // - firstprivate: give each thread its own copy, and initialise with value from outside
-#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2
+#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2%(csym_omp_shared)s
 #define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
@@ -116,10 +116,10 @@
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (for the second neppV page)
 #endif
-%(csym_me_decl)s      for( int ighel = 0; ighel < %(sigmakin_hel_bound)s; ighel++ )
+      for( int ighel = 0; ighel < %(sigmakin_hel_bound)s; ighel++ )
       {
 %(sigmakin_perlane_decl)s        const int ihel = %(sigmakin_ihel_expr)s;
-%(csym_skip)s        cxtype_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
+%(csym_me_before)s        cxtype_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
         // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
         bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
         calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00%(calc_jamps_ihlane_arg)s );
@@ -128,7 +128,7 @@
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         MEs_ighel2[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
-%(csym_record)s      }
+%(csym_weight)s      }
       // Event-by-event random choice of helicity #403
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
@@ -145,7 +145,7 @@
 #endif
           if( okhel )
           {
-            const int ihelF = %(selected_hel_code_1)s; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+%(csym_sel_1)s            const int ihelF = %(selected_hel_code_1)s; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
             allselhel[ievt] = ihelF;
             //printf( "sigmaKin: ievt=%%4d ihel=%%4d\n", ievt, ihelF );
             break;
@@ -159,7 +159,7 @@
           //printf( "sigmaKin: ievt=%%4d ighel=%%d MEs_ighel=%%f\n", ievt2, ighel, MEs_ighel2[ighel][ieppV] );
           if( allrndhel[ievt2] < ( MEs_ighel2[ighel][ieppV] / MEs_ighel2[%(sigmakin_hel_bound)s - 1][ieppV] ) )
           {
-            const int ihelF = %(selected_hel_code_2)s; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+%(csym_sel_2)s            const int ihelF = %(selected_hel_code_2)s; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
             allselhel[ievt2] = ihelF;
             //printf( "sigmaKin: ievt=%%4d ihel=%%4d\n", ievt2, ihelF );
             break;
