@@ -2494,7 +2494,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             # and therefore outside the construct's scope. Both are written once in
             # the serial getGoodHel/setGoodHel and only read here.
             'csym_page_decl': '',
-            'csym_omp_shared': ', cCsymOk',
+            'extra_omp_shared': ', cCsymOk',
             # Snapshot the running |M|^2 sum before this helicity's contribution is
             # added, so csym_weight can add the very same contribution a second time.
             'csym_me_before':
@@ -3005,7 +3005,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '            const fptype _ctot = MEs_ighel2[cNGoodMaxCross - 1][ieppV];\n'
                 '            const fptype _chi = MEs_ighel2[ighel][ieppV];\n'
                 '            if( ighel > 0 ) _clo = MEs_ighel2[ighel - 1][ieppV];\n',
-            'csym_omp_shared': ', cCsymOkCross',
+            'extra_omp_shared': ', cCsymOkCross, cNGoodMaxCross',
         }
 
 #------------------------------------------------------------------------------------

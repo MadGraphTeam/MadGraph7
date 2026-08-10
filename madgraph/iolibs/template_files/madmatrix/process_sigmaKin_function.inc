@@ -96,7 +96,7 @@
     // - shared: as the name says
     // - private: give each thread its own copy, without initialising
     // - firstprivate: give each thread its own copy, and initialise with value from outside
-#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2%(csym_omp_shared)s
+#define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2%(extra_omp_shared)s
 #define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, allDiagramIdsOut, allrnddiagram, iflavorVec, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
