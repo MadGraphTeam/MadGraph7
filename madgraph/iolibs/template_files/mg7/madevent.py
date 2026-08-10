@@ -425,33 +425,20 @@ class MadgraphProcess:
             self.cppauto_resolved = match.group(1)
             logger.info("Device 'cppauto' deduced as '%s'", self.cppauto_resolved)
 
-        # Build the common library serially before subprocess builds start.
-        # The common library is the same for each subprocess, so we need to build
-        # it serially to avoid any race in src/
-        # Use a representative subprocess
-        if self.subprocesses:
-            common_build_path = self.subprocesses[0].meta["path"]
-            for device in devices:
-                device = self.cppauto_resolved if device == "cppauto" else device
-                logger.info("Compiling common library for device '%s'...", device)
-                misc.compile(
-                    arg=[
-                        f"BACKEND={device}",
-                        "USEBUILDDIR=1",
-                        "commonlib",
-                    ],
-                    cwd=common_build_path,
-                    mode="cpp",
-                )
-                logger.info("Compiling common library for device '%s'...done!", device)
-
         box = None
         detailed_compile_view = False
         completed_compile_count = 0
+        subprocess_count = len(self.subprocesses)
+        compile_item_count = subprocess_count + bool(self.subprocesses)
+        compile_item_label = (
+            f"{subprocess_count} + commonlib"
+            if self.subprocesses
+            else str(subprocess_count)
+        )
         if verbosity == "pretty":
             terminal_size = shutil.get_terminal_size(fallback=(91, 24))
             available_rows = max(1, terminal_size.lines - 6)
-            detailed_compile_view = len(self.subprocesses) <= available_rows
+            detailed_compile_view = compile_item_count <= available_rows
             box_width = min(91, terminal_size.columns)
             device_labels = [
                 f"'{device}' -> '{self.cppauto_resolved}'"
@@ -469,12 +456,14 @@ class MadgraphProcess:
             if detailed_compile_view:
                 box = ms.PrettyBox(
                     title,
-                    len(self.subprocesses),
+                    compile_item_count,
                     [0],
                     box_width=box_width,
                 )
+                if self.subprocesses:
+                    box.set_row(0, ["commonlib..."])
                 for subproc in self.subprocesses:
-                    box.set_row(subproc.id, [f"{subproc.name}..."])
+                    box.set_row(subproc.id + 1, [f"{subproc.name}..."])
             else:
                 box = ms.PrettyBox(
                     title,
@@ -489,12 +478,57 @@ class MadgraphProcess:
                 box.set_column(
                     1,
                     [
-                        f"0 / {len(self.subprocesses)}",
-                        str(len(self.subprocesses)),
+                        f"0 / ({compile_item_label})",
+                        compile_item_label,
                         "-",
                     ],
                 )
             box.print_first()
+
+        def update_compile_status(item_id, name):
+            nonlocal completed_compile_count
+            completed_compile_count += 1
+
+            if verbosity == "pretty":
+                if detailed_compile_view:
+                    box.set_row(item_id, [f"{name}...done!"])
+                else:
+                    progress_label = (
+                        f"{completed_compile_count} / ({compile_item_label}) "
+                    )
+                    progress_width = max(
+                        5, box_width - 20 - len(progress_label)
+                    )
+                    progress = ms.format_progress(
+                        completed_compile_count / compile_item_count,
+                        progress_width,
+                    )
+                    box.set_column(
+                        1,
+                        [
+                            f"{progress_label}{progress}",
+                            str(compile_item_count - completed_compile_count),
+                            name,
+                        ],
+                    )
+                box.print_update()
+            elif verbosity == "log":
+                logger.info("Compiling subprocess %s...done!", name)
+
+        # Compile the common library as the first build item. Finishing this
+        # synchronous step is the barrier before subprocess workers are started.
+        if self.subprocesses:
+            if verbosity == "log":
+                logger.info("Compiling subprocess commonlib...")
+            common_build_path = self.subprocesses[0].meta["path"]
+            for device in devices:
+                device = self.cppauto_resolved if device == "cppauto" else device
+                misc.compile(
+                    arg=[f"BACKEND={device}", "USEBUILDDIR=1", "commonlib"],
+                    cwd=common_build_path,
+                    mode="cpp",
+                )
+            update_compile_status(0, "commonlib")
 
         max_workers = self.run_card["run"]["cpu_thread_pool_size"] if self.run_card["run"]["cpu_thread_pool_size"] > 0 else None
         with ThreadPoolExecutor(max_workers = max_workers) as executor:
@@ -505,33 +539,7 @@ class MadgraphProcess:
             for future in as_completed(futures):
                 subproc = futures[future]
                 future.result()
-                completed_compile_count += 1
-
-                if verbosity == "pretty":
-                    if detailed_compile_view:
-                        box.set_row(
-                            subproc.id,
-                            [f"{subproc.name}...done!"],
-                        )
-                    else:
-                        subprocess_count = len(self.subprocesses)
-                        progress_width = max(5, box_width - 32)
-                        progress = ms.format_progress(
-                            completed_compile_count / subprocess_count,
-                            progress_width,
-                        )
-                        box.set_column(
-                            1,
-                            [
-                                f"{completed_compile_count} / {subprocess_count} "
-                                f"{progress}",
-                                str(subprocess_count - completed_compile_count),
-                                subproc.name,
-                            ],
-                        )
-                    box.print_update()
-                elif verbosity == "log":
-                    logger.info(f"Compiling subprocess {subproc.name}...done!")
+                update_compile_status(subproc.id + 1, subproc.name)
 
         for subproc in self.subprocesses:
             subproc.load_matrix_element()
@@ -1142,6 +1150,9 @@ class MadgraphSubprocess:
         if not isinstance(devices, list):
             devices = [devices]
 
+        if verbosity == "log":
+            logger.info("Compiling subprocess %s...", self.name)
+
         for device in devices:
             device = (
                 self.process.cppauto_resolved if device == "cppauto" else device
@@ -1149,12 +1160,6 @@ class MadgraphSubprocess:
             api_path = api_path_format.format(device=device)
 
             if not os.path.isfile(api_path):
-                if verbosity == "log":
-                    logger.info(
-                        "Compiling subprocess %s for device '%s'",
-                        self.name,
-                        device,
-                    )
                 misc.compile(
                     arg=[f"BACKEND={device}", "USEBUILDDIR=1"],
                     cwd=subproc_path,
