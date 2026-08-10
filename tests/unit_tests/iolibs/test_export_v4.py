@@ -171,7 +171,45 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             content = open(pjoin(template_dir, template_name)).read()
             self.assertIn('%(flavor_mask_decl)s', content)
             self.assertIn('%(flavor_mask_setup)s', content)
- 
+
+    def test_splitorders_entry_points_agree_with_their_callers(self):
+        """The two split-orders templates (generic and matchbox) are compiled
+        against the same drivers: check_sa_splitOrders.f, written next to every
+        split-orders matrix element, and the MadLoop template, whose
+        loop_matrix.f calls into the born_matrix.f built from either one. F77
+        has no interface checking, so a signature that drifts from its caller
+        links happily and writes the result over the caller's third argument.
+        Pin the argument lists of the entry points those drivers call.
+        """
+        template_dir = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
+
+        def read(*parts):
+            return open(pjoin(template_dir, *parts)).read()
+
+        # The callee side: both templates take the flavor index in the same
+        # slot, so one driver can call either.
+        for template_name in ['matrix_standalone_splitOrders_v4.inc',
+                              'matrix_standalone_matchbox_splitOrders_v4.inc']:
+            content = read(template_name)
+            self.assertIn(
+                'SUBROUTINE %(proc_prefix)sSMATRIX_SPLITORDERS(P, FLAV_IDX, ANS)',
+                content)
+            self.assertIn(
+                'SUBROUTINE %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P,HEL, FLAV_IDX, ANS)',
+                content)
+
+        # The caller side. Both drivers pass an all-ones INTEGER array where
+        # FLAV_IDX is expected, which resolves to its first element: the
+        # canonical flavor. That is deliberate -- neither driver knows about
+        # merged flavors -- but the argument count has to line up.
+        self.assertIn(
+            'CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,FLAVOR,MATELEMS)',
+            read('check_sa_splitOrders.f'))
+        self.assertIn(
+            'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
+            read('loop_optimized', 'loop_matrix_standalone.inc'))
+
+
     @IOTests.createIOTest() 
     def testIO_export_matrix_element_v4_standalone(self):
         """target: matrix.f
