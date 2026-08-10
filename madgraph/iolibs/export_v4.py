@@ -5060,6 +5060,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         return (decl_block, setup_block, n_flavors, active_flavor_mask)
 
+    def color_data_prefix(self, replace_dict):
+        """The prefix the CF / DENOM DATA statements are written with. It has
+        to name the same variables the template declares, which for the
+        standalone templates are prefixed one per subprocess."""
+
+        return replace_dict['proc_prefix']
+
     #===========================================================================
     # write_matrix_element_v4
     #===========================================================================
@@ -5166,7 +5173,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
-        replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': replace_dict['proc_prefix']}
+        replace_dict['color_data_lines'] = "\n".join(color_data_lines) % \
+                            {'proc_prefix': self.color_data_prefix(replace_dict)}
         replace_dict['color_init_routine'] = "\n".join(
                 self.get_color_init_routine(matrix_element,
                                             replace_dict['proc_prefix']))
@@ -5465,6 +5473,15 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
     # matchbox needs the color flow information
     support_ddm_color_basis = False
     
+    def color_data_prefix(self, replace_dict):
+        """CF and DENOM are plain locals of each routine in the matchbox
+        templates rather than one prefixed set per subprocess, so the DATA
+        statements filling them must not carry the prefix either. Only
+        madloop_matchbox sees the difference: plain matchbox reaches here
+        before its own proc_prefix is set."""
+
+        return ''
+
     @staticmethod    
     def get_color_string_lines(matrix_element):
         """Return the color matrix definition lines for this matrix element. Split
@@ -5530,12 +5547,17 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
     
 
     def get_JAMP_lines(self, col_amps, JAMP_format="JAMP(%s)", AMP_format="AMP(%s)", split=-1,
-                       JAMP_formatLC=None, orbit=False):
+                       JAMP_formatLC=None, orbit=False, proc_prefix='',
+                       symmetry_source=None):
 
         """Adding leading color part of the colorflow. The leading color part
         needs the definitions written out, so the orbit recipes are not used
-        here."""
-        
+        here: orbit and the symmetry_source it reads the color basis symmetry
+        from are taken to keep the signature of the base class and go no
+        further (jamp_orbit_allowed already says no for this template, which
+        declares neither the tables nor INIT_JAMP). proc_prefix does reach the
+        base, since it names what is written out rather than how."""
+
         if not JAMP_formatLC:
             JAMP_formatLC= "LN%s" % JAMP_format
 
@@ -5553,7 +5575,8 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
         text, nb = super(ProcessExporterFortranMatchBox, self).get_JAMP_lines(col_amps,
                                             JAMP_format=JAMP_format,
                                             AMP_format=AMP_format,
-                                            split=-1)
+                                            split=-1,
+                                            proc_prefix=proc_prefix)
         
         
         # Filter the col_ampls to generate only those without any 1/NC terms
@@ -5569,7 +5592,8 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
         text2, nb2 = super(ProcessExporterFortranMatchBox, self).get_JAMP_lines(LC_col_amps,
                                             JAMP_format=JAMP_formatLC,
                                             AMP_format=AMP_format,
-                                            split=-1)
+                                            split=-1,
+                                            proc_prefix=proc_prefix)
         text += text2 
         
         return text, max(nb,nb2)
