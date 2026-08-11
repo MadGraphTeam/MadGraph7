@@ -2375,6 +2375,83 @@ class MadSpinInterface(extended_cmd.Cmd):
         return out
         
     
+    def batch_decay_densities(self, production, trials):
+        """boost and evaluate the decay densities of a set of trials at once.
+
+        trials is a list of decays dictionaries, all drawn against the same
+        production event. Returns one list of DensityMatrix per trial, in the
+        traversal order calculate_matrix_element_from_density walks
+        (for pdg in decays: for i in range(N)), ready to be handed back to it as
+        decay_densities -- or None when the batched path does not apply, in
+        which case the caller must keep the per-trial path.
+
+        The boost into the lab frame mutates the decay event in place, so it is
+        done here exactly once per event; passing the result to
+        calculate_matrix_element_from_density is what stops it boosting again.
+        """
+        if not trials:
+            return []
+        if self.generate_all.mode != 'density':
+            return None
+        if self.options['spinmode'] not in ('PA', 'onshell'):
+            # Outside the pole approximation the production and every decay are
+            # reshuffled *inside* calculate_matrix_element_from_density, so the
+            # momenta a density would need are not known before it runs.
+            return None
+        prod_static = getattr(production, '_ms_density_static', None)
+        if not prod_static:
+            # Populated by the first trial through the unbatched path; without
+            # it we do not know what to boost by or which helicities to ask for.
+            return None
+
+        decays_key = prod_static['decays_key']
+        init_part = prod_static['init_part']
+        helicities = prod_static['helicities']
+        nchanging = prod_static['nchanging']
+
+        # Flatten each trial into the traversal order, and check it presents the
+        # decay structure prod_static was built for -- the cache is only reused
+        # while decays_key holds, and the helicity slots are indexed by it.
+        flat = []
+        for decays in trials:
+            if tuple(decays.keys()) != decays_key:
+                return None
+            events = [dec for pdg in decays_key for dec in decays[pdg]]
+            if len(events) != nchanging:
+                return None
+            flat.append(events)
+
+        # One boost per decaying particle of the production event, shared by
+        # every trial: nothing moves the production between them here.
+        boosts = []
+        for part in init_part:
+            boost = -1 * lhe_parser.FourMomentum(part)
+            boost.E *= -1
+            boosts.append(boost)
+        for events in flat:
+            for slot, event in enumerate(events):
+                event.boost(boosts[slot])
+
+        # Slots that share a helicity structure share a fortran call: for
+        # t t~ both parents are spin 1/2, so the two slots of every trial go in
+        # together and the batch is 2 x the number of trials.
+        by_hel = {}
+        for slot in range(nchanging):
+            by_hel.setdefault(tuple(helicities[slot]), []).append(slot)
+
+        out = [[None] * nchanging for _ in flat]
+        for slots in by_hel.values():
+            allow_hel = helicities[slots[0]]
+            keys = [(t, slot) for t in range(len(flat)) for slot in slots]
+            densities = self.get_density_batch([flat[t][slot] for t, slot in keys],
+                                               position=[1],
+                                               allow_hel=allow_hel,
+                                               ncomb=len(allow_hel),
+                                               dimension=len(allow_hel))
+            for (t, slot), density in zip(keys, densities):
+                out[t][slot] = density
+        return out
+
     def get_maxwgt_for_onshell(self, orig_lhe, evt_decayfile, decay_dict):
         """determine the maximum weight for the onshell (or similar) strategy"""
         #print(f"decay_dict = {decay_dict} - length = {len(decay_dict)}")
@@ -2410,17 +2487,38 @@ class MadSpinInterface(extended_cmd.Cmd):
                 base_event = base_event[0]
             # Cache production density matrix
             density_matrix_prod = None
+            # The scan keeps every trial -- there is no accept/reject here -- so
+            # every decay set of this production event can be drawn up front and
+            # their densities evaluated in one batched fortran call rather than
+            # one call per trial. get_decay_from_file also refills the pools.
+            # Outside the pole approximation the decays are reshuffled *inside*
+            # the ME call, so their momenta are not known beforehand: there the
+            # draws stay lazy and the loop is exactly the one it always was.
+            npoints = self.options['max_weight_ps_point']
+            can_batch = (self.generate_all.mode == 'density' and
+                         self.options['spinmode'] in ('PA', 'onshell'))
+            all_decays = [self.get_decay_from_file(base_event, evt_decayfile, nevents-i)
+                          for _ in range(npoints)] if can_batch else None
+            decay_densities = None
             # Loop over decays
-            for j in range(self.options['max_weight_ps_point']):
-                decays = self.get_decay_from_file(base_event, evt_decayfile, nevents-i)   
-                #carefull base_event is modified by the following function 
+            for j in range(npoints):
+                decays = all_decays[j] if can_batch else \
+                    self.get_decay_from_file(base_event, evt_decayfile, nevents-i)
+                #carefull base_event is modified by the following function
                 if density_matrix_prod is None:
                     _, wgt, density_matrix_prod = self.get_onshell_evt_and_wgt(
                         base_event, decays, decay_dict, build_event=False)
                     #print(f"wgt1 = {wgt}")
+                    # This first trial populated production._ms_density_static,
+                    # which says what to boost by and which helicities to ask
+                    # for; the remaining trials then go in as one batch.
+                    if can_batch:
+                        decay_densities = self.batch_decay_densities(
+                            base_event, all_decays[j+1:])
                 else:
                     wgt = self.get_onshell_evt_and_wgt(
-                        base_event, decays, decay_dict, density_matrix_prod, build_event=False)[1]
+                        base_event, decays, decay_dict, density_matrix_prod, build_event=False,
+                        decay_densities=decay_densities[j-1] if decay_densities else None)[1]
                     #print(f"wgt2 = {wgt}")
                 #print(f"Event {i} , PS point {j}, wgt for max = {wgt}")
                 jac = 1
@@ -2461,11 +2559,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         return base_max_weight
 
             
-    def get_onshell_evt_and_wgt(self, production, decays, decay_dict, prod_density_cached=None, build_event=True):
+    def get_onshell_evt_and_wgt(self, production, decays, decay_dict, prod_density_cached=None,
+                                build_event=True, decay_densities=None):
         """ return the onshell wgt for the production event associated to the decays
             return also the full event with decay.
             Carefull this modifies production event (pass to the full one)
-            build_event: if False (density mode) compute weight without building event"""
+            build_event: if False (density mode) compute weight without building event
+            decay_densities: pre-computed decay density matrices (see
+                calculate_matrix_element_from_density); the decay events must
+                already have been boosted to the lab frame by the caller"""
         #print("\n\n\n\n\n======== debug get_onshell_evt_and_wgt =========")
         density_pole_approximation = self.options['spinmode'] in ['PA', 'onshell']
         density_do_reshuffle = self.options['spinmode'] == 'PA'
@@ -2536,9 +2638,9 @@ class MadSpinInterface(extended_cmd.Cmd):
                         gap += math.atan((max_mass**2-pole**2)/pole*width)
                         jac *= gap/math.pi 
             if prod_density_cached is None:
-                full_me, prod_density_cached, prod_diag, dec_diag = self.calculate_matrix_element_from_density(production, decays, decay_dict)
-            else:                
-                full_me, _, prod_diag, dec_diag = self.calculate_matrix_element_from_density(production, decays, decay_dict, prod_density_cached)
+                full_me, prod_density_cached, prod_diag, dec_diag = self.calculate_matrix_element_from_density(production, decays, decay_dict, decay_densities=decay_densities)
+            else:
+                full_me, _, prod_diag, dec_diag = self.calculate_matrix_element_from_density(production, decays, decay_dict, prod_density_cached, decay_densities=decay_densities)
             #print(f"full_me from density = {full_me}")
    
             full_event = None
@@ -2595,8 +2697,18 @@ class MadSpinInterface(extended_cmd.Cmd):
         return full_event, full_me/(production_me*decay_me)*jac, prod_density_cached
 
            
-    def calculate_matrix_element_from_density(self, production, decays, decay_dict, prod_density_cached=None):
-        """routine to return the matrix element from density matrices"""
+    def calculate_matrix_element_from_density(self, production, decays, decay_dict,
+                                              prod_density_cached=None,
+                                              decay_densities=None):
+        """routine to return the matrix element from density matrices
+
+        decay_densities, when given, holds one DensityMatrix per decaying
+        particle in the traversal order below (for pdg in decays: for i in
+        range(N)), already evaluated in the lab frame. The loop then skips both
+        the boost and the fortran call: the caller has done them, in one batched
+        call for a whole set of trials. The caller owns the boost in that case
+        -- it mutates the decay event in place and must happen exactly once.
+        """
 
         # ------------------------------------------------------------------
         # Load f2py module and build pdg2prefix map if needed (unchanged logic)
@@ -2819,19 +2931,23 @@ class MadSpinInterface(extended_cmd.Cmd):
             for i_decay_event in range(N):
                 current_decay_event = decay_event_list[i_decay_event]
 
-                # boost to lab frame using corresponding production particle momentum
-                part = init_part[decaying_idx + i_decay_event]
-                boost = -1 * lhe_parser.FourMomentum(part)
-                boost.E *= -1
-                current_decay_event.boost(boost)
+                if decay_densities is not None:
+                    # Boosted and evaluated by the caller, in one batched call.
+                    density_dec_tmp = decay_densities[decaying_idx + i_decay_event]
+                else:
+                    # boost to lab frame using corresponding production particle momentum
+                    part = init_part[decaying_idx + i_decay_event]
+                    boost = -1 * lhe_parser.FourMomentum(part)
+                    boost.E *= -1
+                    current_decay_event.boost(boost)
 
-                density_dec_tmp = self.get_density(
-                    current_decay_event,
-                    position=[1],
-                    allow_hel=helicities[decaying_idx + i_decay_event],
-                    ncomb=len(helicities[decaying_idx + i_decay_event]),
-                    dimension=len(helicities[decaying_idx + i_decay_event])
-                )
+                    density_dec_tmp = self.get_density(
+                        current_decay_event,
+                        position=[1],
+                        allow_hel=helicities[decaying_idx + i_decay_event],
+                        ncomb=len(helicities[decaying_idx + i_decay_event]),
+                        dimension=len(helicities[decaying_idx + i_decay_event])
+                    )
 
                 if density_dec is None:
                     density_dec = density_dec_tmp
@@ -2951,13 +3067,96 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                         alphas=event.aqcd,
                                                         scale2=event.scale**2)
         #print(f"density_array = {density_array}") 
-        density_matrix = madspin.DensityMatrix(density_array, 
-                                               n_changing, 
-                                               allow_hel, 
+        density_matrix = madspin.DensityMatrix(density_array,
+                                               n_changing,
+                                               allow_hel,
                                                dimension)
         return density_matrix
 
-   
+
+    def get_density_batch(self, events, position, allow_hel, ncomb, dimension):
+        """get_density for a list of events sharing one helicity structure.
+
+        The density itself is cheap -- 4 us of fortran against 8 us of python
+        preparing its arguments and 3 us building the DensityMatrix -- so the
+        win here is not the fortran loop but paying the f2py entry, the
+        argument marshalling and the numpy conversions once for the whole
+        list. POS and ALLOW_HEL describe the helicity structure and are shared
+        by construction; everything else is per point, because a decay pool
+        mixes flavours and nothing guarantees the points share a scale.
+
+        Returns one DensityMatrix per event, in input order.
+        """
+        import numpy as np
+
+        n_changing = len(position)
+        if n_changing == 0:
+            raise ValueError("Error in get_density_batch: 'position' must contain at least one position index")
+        if len(allow_hel) % n_changing != 0:
+            raise ValueError("Error in get_density_batch: inconsistent 'allow_hel' and 'position' lengths")
+
+        merged_map = self._revert_merged or None
+        merged_particles = self.model.get('merged_particles') or {}
+
+        # Same derivation as get_density, per event. One fortran call carries a
+        # single NEXT, so the points are grouped by external multiplicity: a
+        # decay pool can hold 1 -> 2 and 1 -> 3 channels for the same parent.
+        momenta = [None] * len(events)
+        pdgs = [None] * len(events)
+        groups = {}
+        for k, event in enumerate(events):
+            orig_order = getattr(event, '_ms_orig_order_for_density', None)
+            if orig_order is None:
+                _, orig_order, _, _ = self.get_pdir(event)
+                event._ms_orig_order_for_density = orig_order
+            try:
+                p = event.get_momenta(orig_order, merged_map=merged_map)
+            except Exception:
+                # Safety fallback for unusual event structures.
+                all_p = event.get_all_momenta(orig_order, merged_map=merged_map)
+                assert len(all_p) == 1, "Error: get_density_batch can only be called for single phase-space points"
+                p = all_p[0]
+            pdg_template = list(orig_order[0]) + list(orig_order[1])
+            need_raw_pdg = (self._revert_merged and
+                            any(abs(pid) in merged_particles for pid in pdg_template))
+            momenta[k] = p
+            pdgs[k] = event.get_pdg(p) if need_raw_pdg else pdg_template
+            groups.setdefault((len(p), len(pdgs[k])), []).append(k)
+
+        out = [None] * len(events)
+        for (next_, npdg), idx in groups.items():
+            nbatch = len(idx)
+            # (0:3, next, nbatch) fortran-ordered. get_momenta hands back one
+            # (E,px,py,pz) tuple per particle, so the transpose that
+            # invert_momenta walks in python per point is the array layout here.
+            P = np.empty((4, next_, nbatch), dtype=float, order='F')
+            all_pdgs = np.empty((npdg, nbatch), dtype=np.int32, order='F')
+            alphas = np.empty(nbatch, dtype=float)
+            scale2 = np.empty(nbatch, dtype=float)
+            for c, k in enumerate(idx):
+                P[:, :, c] = np.asarray(momenta[k], dtype=float).T
+                all_pdgs[:, c] = pdgs[k]
+                alphas[c] = events[k].aqcd
+                scale2[c] = events[k].scale ** 2
+            # PY_GET_DENSITY_BATCH(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS,
+            #                      SCALE2, NBATCH, NEXT)
+            inter = self.f2py_module.py_get_density_batch(pdgs=all_pdgs,
+                                                          procid=-1,
+                                                          p=P,
+                                                          pos=position,
+                                                          allow_hel=allow_hel,
+                                                          alphas=alphas,
+                                                          scale2=scale2,
+                                                          nbatch=nbatch,
+                                                          next=next_)
+            for c, k in enumerate(idx):
+                out[k] = madspin.DensityMatrix(inter[:, c],
+                                               n_changing,
+                                               allow_hel,
+                                               dimension)
+        return out
+
+
     def get_inter_value(self,event,nhel):
         """routine to return all the possible inter for an event"""
         
