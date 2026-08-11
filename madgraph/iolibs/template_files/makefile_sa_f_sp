@@ -11,8 +11,7 @@ PROG   = check
 # Keep this distinct from PDIR (basename) which is used for dylib naming below.
 PDIR_FULL:=$(shell dirname $(realpath --no-symlinks $(firstword matrix.f)))
 PROG_SPLITORDERS = check_sa_born_splitOrders
-BLASLIBS =
-LINKLIBS =  -L$(LIBDIR) -ldhelas -lmodel $(BLASLIBS)
+LINKLIBS =  -L$(LIBDIR) -ldhelas -lmodel
 LIBS = $(LIBDIR)/libdhelas.$(libext) $(LIBDIR)/libmodel.$(libext)
 LIBS_SHARED = $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext)
 PROCESS=  matrix.o

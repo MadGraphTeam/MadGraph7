@@ -1490,6 +1490,9 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
     single_process_template = pjoin('madmatrix', 'process_matrix.inc')
     blas_color_sum_template = pjoin('madmatrix', 'color_sum_blas.inc')
     blas_helicity_loop_template = pjoin('madmatrix', 'color_sum_blas_loop.inc')
+    # Below this many colors the SYMM call is not worth setting up and the
+    # scalar sum wins (see cpp_blas_wanted_for)
+    blas_min_ncolor = 100
     support_multichannel = False
     multichannel_var = ',fptype& multi_chanel_num, fptype& multi_chanel_denom'
     imaginary_unit = "cxtype(0,1)"
@@ -2016,19 +2019,66 @@ class OneProcessExporterMadMatrix(export_v4.ColorReflectionFolding,
         ff.write(template % replace_dict)
         ff.close()
 
+    _blas_available = None
+    _blas_flags = ''
+
+    @classmethod
+    def blas_is_available(cls):
+        """Whether a BLAS carrying SYMM can be linked, asked once. The probe
+        goes through gfortran, which is the compiler MG5 already knows it has;
+        the flags it settles on are the ones the C++ link line needs too."""
+
+        if cls._blas_available is None:
+            import subprocess, tempfile, shutil
+            probe = ("      PROGRAM P\n"
+                     "      DOUBLE PRECISION A(1,1),B(1,1),C(1,1)\n"
+                     "      A=1D0\n      B=1D0\n      C=0D0\n"
+                     "      CALL DSYMM('L','U',1,1,1D0,A,1,B,1,0D0,C,1)\n"
+                     "      END\n")
+            work = tempfile.mkdtemp()
+            cls._blas_available = False
+            cls._blas_flags = ''
+            try:
+                src = os.path.join(work, 'p.f')
+                open(src, 'w').write(probe)
+                for flags in ('-framework Accelerate', '-lblas'):
+                    try:
+                        out = subprocess.call(
+                            ['gfortran', src, '-o', os.path.join(work, 'p')]
+                            + flags.split(),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+                    except OSError:
+                        break
+                    if out == 0:
+                        cls._blas_available = True
+                        cls._blas_flags = flags
+                        break
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+        return cls._blas_available
+
+    @classmethod
+    def blas_available_flags(cls):
+        """What a BLAS carrying SYMM needs on the link line, empty when there
+        is none. This only asks whether one is there; whether a given process
+        takes it is cpp_blas_wanted_for."""
+
+        if not cls.blas_is_available():
+            return ''
+        return cls._blas_flags
+
     # AV - new method
     @classmethod
     def cpp_blas_wanted_for(cls, ncolor):
         """Whether the C++ color sum goes through a host BLAS: only when one
         carrying SYMM can be linked, and when the color matrix is big enough
-        that the call is worth setting up. Both the probe and the threshold are
-        the ones the Fortran color sum already uses. With BLAS off nothing is
-        written out, so color_sum.cc and CPPProcess.cc are character for
-        character the files written before any of this existed."""
-        from madgraph.iolibs.export_v4 import ProcessExporterFortran
-        if not ProcessExporterFortran.blas_is_available():
+        that the call is worth setting up. With BLAS off nothing is written
+        out, so color_sum.cc and CPPProcess.cc are character for character the
+        files written before any of this existed."""
+        if not cls.blas_is_available():
             return False
-        return ncolor >= ProcessExporterFortran.blas_min_ncolor
+        return ncolor >= cls.blas_min_ncolor
 
     def cpp_blas_wanted(self):
         return self.cpp_blas_wanted_for(

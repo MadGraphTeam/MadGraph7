@@ -173,9 +173,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         that process is written out (see cpp_blas_wanted); this only settles
         whether one could be linked at all."""
 
-        from madgraph.iolibs.export_v4 import ProcessExporterFortran
         replace_dict = super().get_makefile_replace_dict(model)
-        flags = ProcessExporterFortran.blas_available_flags()
+        flags = self.oneprocessclass.blas_available_flags()
         replace_dict['cpp_blas_default'] = 'hasBlas' if flags else 'hasNoBlas'
         replace_dict['cpp_blas_libflags'] = flags
         return replace_dict

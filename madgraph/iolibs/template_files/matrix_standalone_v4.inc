@@ -113,7 +113,6 @@ C     FUNCTIONS
 C
       LOGICAL %(proc_prefix)sIS_BORN_HEL_SELECTED
       INTEGER %(proc_prefix)sBROKEN_SYM
-%(blas_decl)s
 c----------
 c   Check if helreset mode is on
 c---------
@@ -159,9 +158,8 @@ C     For this reason, we simply remove the filterin when there is only three ex
         ENDDO
       ENDIF
       ANS = 0D0
-%(blas_branch)s
           DO IHEL=1,NCOMB
-             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.IHEL%(blas_guard)s) THEN
+             IF (USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL) THEN
                 IF (GOODHEL(IHEL,FLAV_IDX) .OR. NTRY(FLAV_IDX) .LT. 20.OR.USERHEL.NE.-1) THEN
                     IF(NTRY(FLAV_IDX).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
@@ -438,7 +436,6 @@ C     changes the order the terms are summed in.
 
 
 
-%(blas_routine)s
       SUBROUTINE %(proc_prefix)sGET_INTER(JAMP_1,JAMP_2, INTER)
 
 CF2PY INTENT(OUT) :: INTER
