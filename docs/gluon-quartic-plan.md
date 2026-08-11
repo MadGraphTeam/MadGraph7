@@ -489,6 +489,83 @@ from six gluons on.
 and seven, in both backends. With the flag off, `matrix.f` and `CPPProcess.cc`
 are byte-identical to before any of this.
 
+## Full sweep -- speed, memory and generation time
+
+All three modes against the flag off, on the same machine, for both series.
+Timings are the minimum of five runs of the shipped `check` driver looping
+`SMATRIX` on a fixed phase space point; the minimum matters, because a single
+run carries about 3% of noise and most of the effects here are smaller than
+that. The floor of the method is 0.6%, measured on `g g > t t~`, where `off`
+and `speed` produce a byte-identical `matrix.f` and still time 3.975 against
+4.000 us. `|M|^2` agrees to 8.5e-15 or better on every row.
+
+*slots* is `NWAVEFUNCS`, the length of the wavefunction array, `TYPE(ALOHA)
+W(NWAVEFUNCS)` -- not the number of wavefunctions computed, since
+`reuse_outdated_wavefunctions` frees an entry as soon as its last reader has
+run (898 wavefunction calls live in 268 slots at seven gluons). One entry is
+104 bytes, measured with `storage_size`: four `complex*16`, `P(0:3)` and
+`flv_index`, padded. One amplitude is 16 bytes.
+
+**`g g > N g`**
+
+| process | mode | generate | matrix.f | matrix.o | slots | W array | amps decl | amps computed | AMP array | per call | speed |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| g g > 2g | off | 1.8 s | 27 kB | 16 kB | 5 | 0.5 kB | 6 | 6 | 0.1 kB | 5.48 us | - |
+|  | speed | 1.6 s | 27 kB | 17 kB | 5 | 0.5 kB | 6 | 6 | 0.1 kB | 5.52 us | -1% |
+|  | slots | 1.8 s | 27 kB | 17 kB | 5 | 0.5 kB | 6 | 6 | 0.1 kB | 5.55 us | -1% |
+| g g > 3g | off | 1.9 s | 40 kB | 28 kB | 12 | 1.2 kB | 45 | 45 | 0.7 kB | 86.75 us | - |
+|  | speed | 1.8 s | 39 kB | 29 kB | 19 | 1.9 kB | 45 | 38 | 0.7 kB | 87.25 us | -1% |
+|  | slots | 1.9 s | 40 kB | 29 kB | 12 | 1.2 kB | 45 | 45 | 0.7 kB | 93.25 us | -7% |
+| g g > 4g | off | 3.0 s | 181 kB | 141 kB | 51 | 5.2 kB | 510 | 510 | 8.0 kB | 2.37 ms | - |
+|  | speed | 2.4 s | 166 kB | 147 kB | 78 | 7.9 kB | 510 | 450 | 8.0 kB | 2.24 ms | +5% |
+|  | slots | 2.4 s | 168 kB | 153 kB | 54 | 5.5 kB | 510 | 510 | 8.0 kB | 2.36 ms | +0% |
+| g g > 5g | off | 37.1 s | 3.3 MB | 5.8 MB | 268 | 27.2 kB | 7245 | 7245 | 113.2 kB | 140.75 ms | - |
+|  | speed | 19.4 s | 2.5 MB | 3.6 MB | 259 | 26.3 kB | 7245 | 6813 | 113.2 kB | 133.25 ms | +5% |
+|  | slots | 18.3 s | 2.6 MB | 3.5 MB | 199 | 20.2 kB | 7245 | 7245 | 113.2 kB | 135.50 ms | +4% |
+
+**`g g > t t~ N g`**
+
+| process | mode | generate | matrix.f | matrix.o | slots | W array | amps decl | amps computed | AMP array | per call | speed |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| g g > t t~ | off | 1.7 s | 26 kB | 16 kB | 5 | 0.5 kB | 3 | 3 | 0.0 kB | 4.00 us | - |
+|  | speed | 1.6 s | 26 kB | 16 kB | 5 | 0.5 kB | 3 | 3 | 0.0 kB | 4.00 us | +0% |
+|  | slots | 1.6 s | 26 kB | 16 kB | 5 | 0.5 kB | 3 | 3 | 0.0 kB | 4.10 us | -2% |
+| g g > t t~ g | off | 2.1 s | 31 kB | 20 kB | 12 | 1.2 kB | 18 | 18 | 0.3 kB | 30.25 us | - |
+|  | speed | 1.9 s | 31 kB | 20 kB | 12 | 1.2 kB | 18 | 15 | 0.3 kB | 29.92 us | +1% |
+|  | slots | 1.8 s | 31 kB | 21 kB | 12 | 1.2 kB | 18 | 18 | 0.3 kB | 30.50 us | -1% |
+| g g > t t~ 2g | off | 2.4 s | 68 kB | 51 kB | 26 | 2.6 kB | 159 | 159 | 2.5 kB | 377.00 us | - |
+|  | speed | 2.3 s | 65 kB | 49 kB | 35 | 3.6 kB | 159 | 126 | 2.5 kB | 350.00 us | +7% |
+|  | slots | 2.3 s | 66 kB | 53 kB | 29 | 2.9 kB | 159 | 159 | 2.5 kB | 390.00 us | -3% |
+| g g > t t~ 3g | off | 6.4 s | 576 kB | 479 kB | 121 | 12.3 kB | 1890 | 1890 | 29.5 kB | 9.60 ms | - |
+|  | speed | 5.3 s | 473 kB | 414 kB | 213 | 21.6 kB | 1890 | 1551 | 29.5 kB | 8.87 ms | +8% |
+|  | slots | 5.2 s | 487 kB | 460 kB | 141 | 14.3 kB | 1890 | 1890 | 29.5 kB | 9.73 ms | -1% |
+
+Two things worth reading off the amplitude columns.
+
+**The AMP array never shrinks.** It is declared `COMPLEX*16 AMP(NGRAPHS)` at
+the full diagram count whatever the mode, so all three builds allocate 113 kB
+at seven gluons and `speed` leaves 432 entries written by nobody. The
+amplitude memory is identical everywhere; only the number computed moves. So
+the optimisation saves memory only in the W array, and only in `slots` mode.
+
+**`slots` mode computes every amplitude** -- `amps computed` equals `amps
+decl` on all eight of its rows. With no current sums nothing is skipped, so it
+does the same amplitude work as the baseline *plus* the folds, and buys only a
+shorter JAMP block and a shorter W array. That is why it is slower than off
+almost everywhere rather than a wash: strictly more arithmetic for less
+memory. `speed` is the opposite, skipping amplitudes outright (450 of 510,
+6813 of 7245, 1551 of 1890), which is where its 5-8% comes from, and paying in
+slots -- 121 to 213 at `g g > t t~ 3g`.
+
+**What it is actually good for.** Generation time and code size, more than
+speed. `g g > 5 g` generates in 19.4 s rather than 37.1 s, a 48% cut and
+reproducible: 385 seed diagrams unrolled is cheaper than 2485 generated. Its
+`matrix.o` goes 5.8 MB to 3.6 MB. Runtime is a steady 5-8% above six particles
+and nothing at all below, and the `t t~` series gains more than the pure gluon
+one at equal particle count, +8% at `t t~ 3g` against +5% at `4g`. Peak RSS is
+flat except at seven gluons, because the wavefunction store is a stack frame
+and the code image dominates.
+
 ## The diagram order — measured, and worth a lot
 
 `reuse_outdated_wavefunctions` is a linear scan allocator over lifetimes taken
