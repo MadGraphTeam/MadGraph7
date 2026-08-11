@@ -1602,7 +1602,7 @@ def build_selector_cmd():
 
         def do_compute_widths(self, line):
             # The interactive card editor delegates 'auto' width computation to
-            # the mother interface. Reuse the runtime helper (mg5_aMC subprocess
+            # the mother interface. Reuse the runtime helper (madgraph subprocess
             # + the model stored at output time). ``line`` looks like
             # "<pdgs> --path=<param_card> [--nlo]"; we only need the card path.
             m = re.search(r'--path=(\S+)', line or "")
@@ -2085,7 +2085,7 @@ def run_lhe_postprocessing(process) -> None:
 
 
 def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat")) -> None:
-    """Fill any width set to ``auto`` in the param_card, using mg5_aMC and the
+    """Fill any width set to ``auto`` in the param_card, using madgraph and the
     model stored at output time (``SubProcesses/model.txt``), and write the
     result back into the card. A no-op when the card has no ``auto`` width.
 
@@ -2128,9 +2128,9 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
                 "current model, which may be inconsistent with the matrix "
                 "element.", model)
 
-    mg5 = str(_MG_ROOT / "bin" / "mg5_aMC")
+    mg5 = str(_MG_ROOT / "bin" / "madgraph")
     if not os.path.exists(mg5):
-        logger.warning("Cannot find mg5_aMC at %s; 'auto' widths not computed.", mg5)
+        logger.warning("Cannot find madgraph at %s; 'auto' widths not computed.", mg5)
         return
 
     import tempfile

@@ -803,7 +803,7 @@ class ProcCard(list):
         '#*                                                          *\n' + \
         '#*               Command File for MadGraph5_aMC@NLO         *\n' + \
         '#*                                                          *\n' + \
-        '#*     run as ./bin/mg5_aMC  filename                       *\n' + \
+        '#*     run as ./bin/madgraph  filename                      *\n' + \
         '#*                                                          *\n' + \
         '#************************************************************\n'
     

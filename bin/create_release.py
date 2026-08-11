@@ -351,7 +351,7 @@ except:
     pass
 shutil.rmtree(path.join(filepath, '.git'))
 for data in glob.glob(path.join(filepath, 'bin', '*')):
-    if not data.endswith('mg5') and not data.endswith('mg5_aMC'):
+    if not data.endswith('mg5') and not data.endswith('madgraph'):
         if 'compile.py' not in data:
             os.remove(data)
         else:

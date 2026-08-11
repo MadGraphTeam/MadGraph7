@@ -427,7 +427,7 @@ jobs:
 #            cd $GITHUB_WORKSPACE
 #            echo "install lhapdf6" > cmd
 #            echo "install pythia8" >> cmd
-#            ./bin/mg5_aMC cmd
+#            ./bin/madgraph cmd
 #
 #      # Runs a set of commands using the runners shell
 
@@ -448,7 +448,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
             echo "install RunningCoupling" > cmd
-            ./bin/mg5_aMC cmd
+            ./bin/madgraph cmd
             ./tests/test_manager.py test_eft_running_nlo -pA -t0 -l INFO
 
 
@@ -735,7 +735,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             echo "set acknowledged_v3.1_syntax True --global" > cmd
-            ./bin/mg5_aMC cmd
+            ./bin/madgraph cmd
             ./tests/test_manager.py test_amcatnlo_from_file -pA -t0 -l INFO
 
 

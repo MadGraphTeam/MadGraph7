@@ -14,7 +14,7 @@ physical flavor combinations. Every standalone entry point therefore takes a
 ## 1. Generate the standalone output
 
 ```
-mg5_aMC
+madgraph
 > generate p p > j j QCD=0
 > output standalone /path/to/MYPROC --prefix=int
 ```
@@ -134,7 +134,7 @@ name-mangling/prefix.
 active), instead of a timing table:
 
 ```
-mg5_aMC
+madgraph
 > launch /path/to/MYPROC --timings=21 --nb_run=0
 ```
 

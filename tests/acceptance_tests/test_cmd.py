@@ -2656,7 +2656,7 @@ set boost_choice [6, -6]
         command_card.write(text)
         command_card.close()
 
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          pjoin(self.out_dir+'_density0', '..', 'mg5_cmd.txt')])
 
         lhe_path = pjoin(self.out_dir+'_density0','Events','run_01','unweighted_events.lhe.gz')
@@ -2719,7 +2719,7 @@ set boost_choice [6, -6]
 
         
         logfile = 'test_density_mode_ttbar.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
 
@@ -2791,7 +2791,7 @@ set use_syst False
         command_card.close()
 
         logfile = 'test_density_mode_ttbar1.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          pjoin(self.tmpdir, 'mg5_cmd.txt')], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
 
@@ -2812,7 +2812,7 @@ set boost_choice [6, -6]
         command_card_rwgt.close()
 
         logfile = 'test_density_mode_ttbar2.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd_rwgt.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
         
         #The lhe file has been reweighted, now we read density_check, the density matrix to compare to the reference
@@ -2868,7 +2868,7 @@ set use_syst False
 
 
         logfile = 'test_density_mode_wpwm1.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd2.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
 
@@ -2892,7 +2892,7 @@ set axis_referential [-1, -2]
         command_card_rwgt.close()
 
         logfile = 'test_density_mode_wpwm2.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd_rwgt2.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
         
         #The lhe file has been reweighted, now we read density_check, the density matrix to compare to the reference
@@ -2969,7 +2969,7 @@ set run_card use_syst False
         command_card.close()
 
         logfile = 'test_density_mode_decay11.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
 
@@ -2991,7 +2991,7 @@ set boost_choice [5, -6]
         command_card_rwgt.close()
 
         logfile = 'test_density_mode_decay12.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd_rwgt.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
         
         #The lhe file has been reweighted, now we read density_check, the density matrix to compare to the reference
@@ -3063,7 +3063,7 @@ set run_card use_syst False
         command_card.close()
 
         logfile = 'test_density_mode_decay21.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
 
@@ -3085,7 +3085,7 @@ set boost_choice [24, -6]
         command_card_rwgt.close()
 
         logfile = 'test_density_mode_decay22.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd_rwgt.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
         
         #The lhe file has been reweighted, now we read density_check, the density matrix to compare to the reference
@@ -3145,7 +3145,7 @@ set run_card use_syst False
         command_card.close()
 
         logfile = 'test_density_mode_ttbar1.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
 
@@ -3167,7 +3167,7 @@ set boost_choice [6, -6] pt [0, 0]
         command_card_rwgt.close()
 
         logfile = 'test_density_mode_ttbar2.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd_rwgt.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
         
 

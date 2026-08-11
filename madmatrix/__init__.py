@@ -40,7 +40,7 @@ else:
     new_cluster = {}
 
     # 3. Define a new interface (allows adding/modifying MG5 command).
-    #    This can be activated via ./bin/mg5_aMC --mode=PLUGINNAME.
+    #    This can be activated via ./bin/madgraph --mode=PLUGINNAME.
     #    Put None if no dedicated command are required
     if PLUGIN_NAME.rsplit('.',1)[0] == 'MG5aMC_PLUGIN':
         import madgraph.interface.master_interface as interface

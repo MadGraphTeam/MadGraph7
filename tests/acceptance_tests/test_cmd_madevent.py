@@ -208,7 +208,7 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     # exec_cmd bypasses the history, so the proc_card would miss the model /
     # generate / output lines and MadSpin (which reads 'generate' from the
     # banner) would abort with "no generate line". This mirrors how a real user
-    # drives the output (bin/mg5_aMC command file / interactive session).
+    # drives the output (bin/madgraph command file / interactive session).
     for c in setup_cmds:
         mg.run_cmd(c)
     mg.run_cmd('output mg7 %s' % run_dir)
@@ -341,7 +341,7 @@ class TestMECmdShell(unittest.TestCase):
 
         #if not os.path.exists(pjoin(MG5DIR, 'MadAnalysis')):
         #    print("install MadAnalysis")
-        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','mg5_aMC')],
+        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','madgraph')],
         #                     stdin=subprocess.PIPE,
         #                     stdout=stdout,stderr=stderr)
         #    out = p.communicate('install MadAnalysis4'.encode())
@@ -2153,7 +2153,7 @@ C
             stdout=devnull
             stderr=devnull
 
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          #cwd=pjoin(self.path),
                         stdout=stdout,stderr=stdout)
@@ -2389,7 +2389,7 @@ class TestMEfromfile(unittest.TestCase):
             devnull =open(os.devnull,'w')
             stdout=devnull
             stderr=devnull
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'mg5_cmd')],
                          #cwd=self.path,
                         stdout=stdout, stderr=stderr)
@@ -2472,7 +2472,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -2553,7 +2553,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2629,7 +2629,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2715,7 +2715,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2774,7 +2774,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
         
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -2835,7 +2835,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
         
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -2917,7 +2917,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2947,7 +2947,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2978,7 +2978,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -3008,7 +3008,7 @@ class TestMEfromfile(unittest.TestCase):
         fsock.write(open(pjoin(_file_path, 'input_files','test_mssm_generation')).read() %
                     {'dir_name': self.run_dir, 'mg5_path':pjoin(_file_path, os.path.pardir)})
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'test_mssm_generation')],
                          #cwd=pjoin(self.path),
                         stdout=stdout,stderr=stdout)
@@ -3086,7 +3086,7 @@ class TestMEfromfile(unittest.TestCase):
             stdout= None
 
 
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(_file_path,  os.path.pardir, 'tests', 'input_files','rivet_contur_test.cmd')],
                          cwd=pjoin(self.path),
                          stdout=stdout,stderr=stdout)
@@ -3144,7 +3144,7 @@ set draw_rivet_plots True
             devnull =open(os.devnull,'w')
             stdout=devnull
             stderr=devnull
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'mg5_cmd')],
                          #cwd=self.path,
                          stdout=stdout, stderr=stderr)

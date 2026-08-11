@@ -461,7 +461,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
             echo "install RunningCoupling" > cmd
-            ./bin/mg5_aMC cmd
+            ./bin/madgraph cmd
             ./tests/test_manager.py test_eft_running -pA -t0 -l INFO
 
 

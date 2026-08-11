@@ -922,7 +922,7 @@ class TestCmdLoop(unittest.TestCase):
         command_card.close()
 
         logfile = 'test_density_vs_LI_standalone1.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                         '/tmp/mg5_cmd.txt'])
         
         lhe_path = pjoin(self.out_dir, "Events/run_01/unweighted_events.lhe.gz")
@@ -969,7 +969,7 @@ class TestCmdLoop(unittest.TestCase):
         # command_card_bis.close()
 
         # logfile = 'test_density_vs_LI_standalone.log'
-        # subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        # subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
         #                 '/tmp/mg5_cmd_bis.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
         
 

@@ -1132,7 +1132,7 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
         pass
 
     if sys.platform == "darwin" and options.nosleep:
-        logging.getLogger('madgraph').warning("launching caffeinate to prevent idle sleep when MG5aMC is running. Run './bin/mg5_aMC -s' to prevent this.")
+        logging.getLogger('madgraph').warning("launching caffeinate to prevent idle sleep when MG5aMC is running. Run './bin/madgraph -s' to prevent this.")
         pid = os.getpid()
         subprocess.Popen(['caffeinate', '-i', '-w', str(pid)])
         

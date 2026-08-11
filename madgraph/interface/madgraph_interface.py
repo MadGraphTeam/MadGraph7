@@ -6655,7 +6655,7 @@ This implies that with decay chains:
                     logger.warning('Default installation of Madanalys5 failed.')
                     logger.warning("MG5aMC will now attempt to reinstall it with the options '--no_MA5_further_install --no_root_in_MA5'.")
                     logger.warning("This will however limit MA5 applicability for hadron-level analysis.")
-                    logger.warning("If you would like to prevent MG5aMC to re-attempt MA5 installation, start MG5aMC with './bin/mg5_aMC --debug'.")
+                    logger.warning("If you would like to prevent MG5aMC to re-attempt MA5 installation, start MG5aMC with './bin/madgraph --debug'.")
                     for option in ['--no_MA5_further_install', '--no_root_in_MA5', '--force']:
                         if option not in add_options:
                             add_options.append(option)
@@ -7160,7 +7160,7 @@ MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
 import os
 import sys
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
-exe_path = os.path.join(root_path,'bin','mg5_aMC')
+exe_path = os.path.join(root_path,'bin','madgraph')
 sys.argv.pop(0)
 os.system('%s  -tt %s %s --mode={0}' %(sys.executable, str(exe_path) , ' '.join(sys.argv) ))
 '''.format(name,'' if pyvers == 2 else pyvers)                    
@@ -7169,7 +7169,7 @@ os.system('%s  -tt %s %s --mode={0}' %(sys.executable, str(exe_path) , ' '.join(
 import os
 import sys
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
-exe_path = os.path.join(root_path,'bin','mg5_aMC')
+exe_path = os.path.join(root_path,'bin','madgraph')
 sys.argv.pop(0)
 os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executable, str(exe_path) , ' '.join(sys.argv) ))
 '''.format(name,'' if pyvers == 2 else pyvers)                     
