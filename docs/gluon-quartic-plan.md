@@ -595,6 +595,67 @@ the 0.6% floor) and never negative, at an unchanged slot count.
 Above the threshold nothing changes: `auto` at six legs generates a
 byte-identical `matrix.f` to `speed`.
 
+## Recycling the AMP array
+
+`reuse_outdated_wavefunctions` recycles the wavefunctions; the amplitudes were
+not recycled at all. `AMP` was declared `COMPLEX*16 AMP(NGRAPHS)` at the full
+diagram count in every mode, so seven gluons allocated 113 kB of it and
+`speed` left 432 entries written by nobody.
+
+`HelasMatrixElement.get_amplitude_slots` now does for AMP what
+`reuse_outdated_wavefunctions` does for W. The enabling change is *where the
+merges are written*: they used to be emitted in one block at the very end,
+which kept every source alive to the end, and each is now written as soon as
+both of its amplitudes exist. Once `AMP(t) = AMP(t) + AMP(s)` has run, `s` is
+free.
+
+| process | mode | AMP entries | AMP | W slots | W | total per call |
+|---|---|---|---|---|---|---|
+| `g g > g g g` | off | 45 | 0.7 kB | 12 | 1.2 kB | 1.9 kB |
+| | auto | 16 | 0.2 kB | 12 | 1.2 kB | 1.5 kB (-24%) |
+| | speed | 24 | 0.4 kB | 19 | 1.9 kB | 2.3 kB (+20%) |
+| | slots | 16 | 0.2 kB | 12 | 1.2 kB | 1.5 kB (-24%) |
+| `g g > g g g g` | off | 510 | 8.0 kB | 51 | 5.2 kB | 13.1 kB |
+| | speed | 316 | 4.9 kB | 78 | 7.9 kB | 12.9 kB (-2%) |
+| | slots | **106** | 1.7 kB | 54 | 5.5 kB | 7.1 kB (**-46%**) |
+| `g g > t t~ g g` | off | 159 | 2.5 kB | 26 | 2.6 kB | 5.1 kB |
+| | speed | 109 | 1.7 kB | 35 | 3.6 kB | 5.3 kB (+3%) |
+| | slots | 106 | 1.7 kB | 29 | 2.9 kB | 4.6 kB (-10%) |
+| `g g > 5 g` | off | 7245 | 113.2 kB | 268 | 27.2 kB | 140.4 kB |
+| | speed | 5869 | 91.7 kB | 259 | 26.3 kB | 118.0 kB (-16%) |
+| | slots | **946** | 14.8 kB | 199 | 20.2 kB | **35.0 kB (-75%)** |
+
+**`slots` reaches the floor and `speed` does not**, and the reason is the
+diagram order rather than anything about the allocator. Only (2n-5)!! of the
+amplitudes are read by the JAMPs -- 105 at six gluons, 945 at seven -- and
+everything else is a merge source which could in principle share a handful of
+entries. `speed` emits every seed before its unrollings, so a source is born
+early and its target arrives late and the entry cannot be reclaimed in
+between: 5869 rather than 945. Reversing that order puts each source next to
+its target, so `slots` lands on 946 and 106, one above the floor.
+
+That changes the `slots` case rather a lot. It used to buy 23% of the
+wavefunction store and cost 6% more arithmetic; it now buys **75% of the whole
+per-call working set** at seven gluons, which is the number that matters on a
+gpu, where this is per thread.
+
+**It buys no time.** Measured at `g g > g g g g`, minimum of five: `speed`
+2247 -> 2260 us and `slots` 2347 -> 2373 us across the change, both inside the
+0.6% floor and if anything marginally the wrong way -- the arrays were already
+cache resident at this size, and the merges are now interleaved rather than
+batched. This is a memory optimisation, not a speed one.
+
+`NGRAPHS` only ever dimensioned `AMP` inside `matrix.f`, so it simply becomes
+the entry count; `ngraphs.inc` keeps the diagram count. Everything reading AMP
+afterwards goes through the same map: the JAMPs through
+`ProcessExporterFortran.map_color_amplitudes`, and AMP2 through
+`get_amplitude_slot_map`. AMP2 was the one to check, since multichannel reads
+individual amplitudes -- it reads only the merge *targets*, which are the
+entries that stay put, so it is unaffected. Verified on a madevent output at
+six gluons: 316 entries written, 316 read, none read that is never written.
+
+`|M|^2` is unchanged on every row.
+
 ## The diagram order — measured, and worth a lot
 
 `reuse_outdated_wavefunctions` is a linear scan allocator over lifetimes taken

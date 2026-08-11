@@ -4385,6 +4385,41 @@ class TestSeedRule(unittest.TestCase):
             self.assertTrue(seeded(nfinal, 'slots'))
             self.assertFalse(seeded(nfinal, False))
 
+    def test_amplitude_slots(self):
+        """The AMP array is recycled: an amplitude summed into another frees
+        its entry, and the entries have to be reusable without two live
+        amplitudes ever sharing one"""
+
+        import madgraph.core.helas_objects as helas_objects
+
+        madgraph.merge_quartic_vertices = 'speed'
+        amplitude = diagram_generation.Amplitude(base_objects.Process(
+            {'legs':base_objects.LegList(
+                [base_objects.Leg({'id':21, 'state':False})] * 2 +
+                [base_objects.Leg({'id':21, 'state':True})] * 4),
+             'model':self.base_model}))
+        element = helas_objects.HelasMatrixElement(amplitude)
+        slots, nslots, folds_at = element.get_amplitude_slots()
+
+        self.assertEqual(element.get_number_of_amplitudes(), 510)
+        self.assertTrue(nslots < 510)
+        self.assertEqual(max(slots.values()), nslots)
+        self.assertEqual(min(slots.values()), 1)
+
+        # replay the emission and check no entry is written while it still
+        # holds something with a reader to come
+        folded = set(element.get_quartic_current_sums()[2])
+        order = [a.get('number') for d in element.get('diagrams')
+                 for a in d.get('amplitudes') if a.get('number') not in folded]
+        self.assertEqual(len(order), len(slots))
+        live = {}
+        for i, number in enumerate(order):
+            self.assertNotIn(slots[number], live)
+            live[slots[number]] = number
+            for target, source, coeff in folds_at.get(i, []):
+                self.assertIn(slots[source], live)
+                del live[slots[source]]
+
     def test_seed_inactive_by_default(self):
         """Nothing changes unless madgraph.merge_quartic_vertices is set"""
 

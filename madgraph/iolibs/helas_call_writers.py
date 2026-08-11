@@ -242,6 +242,12 @@ class HelasCallWriter(base_objects.PhysicsObject):
             after.setdefault(max(cubic.get('number'), quartic.get('number')),
                              []).append(i)
 
+        # The AMP array is recycled the same way, where the writer knows how
+        # to. A merge is written as soon as both of its amplitudes are there,
+        # which is what frees the source's entry, see get_amplitude_slots.
+        amp_slots = self.get_amplitude_slots(matrix_element)
+        position = [0]
+
         res = []
         written = set()
         for diagram in matrix_element.get('diagrams'):
@@ -264,12 +270,48 @@ class HelasCallWriter(base_objects.PhysicsObject):
                 if amplitude.get('number') in folded:
                     # summed into another amplitude through a current sum
                     continue
-                res.append(self.get_amplitude_call_on_sums(
-                    amplitude, uses.get(amplitude.get('number')), slots))
+                res.append(self.get_amplitude_call_on_slot(
+                    amplitude, uses.get(amplitude.get('number')), slots,
+                    amp_slots))
+                if amp_slots is not None:
+                    res.extend(self.get_amplitude_merge_lines_at(
+                        amp_slots, position[0]))
+                    position[0] += 1
 
-        res.extend(self.get_amplitude_merge_lines(matrix_element))
+        if amp_slots is None:
+            res.extend(self.get_amplitude_merge_lines(matrix_element))
 
         return res
+
+    def get_amplitude_slots(self, matrix_element):
+        """The recycled AMP array, or None to leave AMP indexed by amplitude
+        number. Only the Fortran writer has an AMP array to recycle."""
+
+        return None
+
+    def get_amplitude_call_on_slot(self, amplitude, substitution, slots,
+                                   amp_slots):
+        """The amplitude call, written into its recycled AMP entry.
+
+        The slot is swapped onto the amplitude's number and put straight back,
+        the same way get_amplitude_call_on_sums does it for the mothers: the
+        call is formatted from `out`, which is that number."""
+
+        if amp_slots is None:
+            return self.get_amplitude_call_on_sums(amplitude, substitution,
+                                                   slots)
+        number = amplitude.get('number')
+        amplitude.set('number', amp_slots[0][number])
+        try:
+            return self.get_amplitude_call_on_sums(amplitude, substitution,
+                                                   slots)
+        finally:
+            amplitude.set('number', number)
+
+    def get_amplitude_merge_lines_at(self, amp_slots, position):
+        """The merges due just after this amplitude. Fortran only."""
+
+        return []
 
     def get_quartic_current_sums(self, matrix_element):
         """The current sums to write out. Only the Fortran writer knows how to
@@ -1125,6 +1167,32 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             else:
                 res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
                            (target, target, float(coeff), source))
+        return res
+
+    def get_amplitude_slots(self, matrix_element):
+        """The recycled AMP array, see
+        HelasMatrixElement.get_amplitude_slots."""
+
+        if not matrix_element.get_quartic_amplitude_merges():
+            return None
+        return matrix_element.get_amplitude_slots()
+
+    def get_amplitude_merge_lines_at(self, amp_slots, position):
+        """The merges whose two amplitudes are both there as of this
+        position, written into the slots they were given."""
+
+        slots, nslots, folds_at = amp_slots
+        res = []
+        for target, source, coeff in folds_at.get(position, []):
+            args = (slots[target], slots[target], slots[source])
+            if coeff == 1:
+                res.append('AMP(%d) = AMP(%d) + AMP(%d)' % args)
+            elif coeff == -1:
+                res.append('AMP(%d) = AMP(%d) - AMP(%d)' % args)
+            else:
+                res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
+                           (slots[target], slots[target], float(coeff),
+                            slots[source]))
         return res
 
     def get_quartic_current_sums(self, matrix_element):

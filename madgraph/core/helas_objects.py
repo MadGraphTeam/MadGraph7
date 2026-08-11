@@ -4004,6 +4004,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         self.quartic_current_sums = None
         # Slots the current sums were given by reuse_outdated_wavefunctions
         self.quartic_sum_me_ids = None
+        # Cache for get_amplitude_slots(), the recycled AMP array
+        self.amplitude_slots = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -6292,6 +6294,62 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 for wf in diagram.get('wavefunctions')]
         base = max(used or [0])
         return [base + 1 + isum for isum in range(len(sums))]
+
+    def get_amplitude_slots(self):
+        """Recycle the AMP array the way reuse_outdated_wavefunctions recycles
+        the wavefunctions.
+
+        Returns (slots, nslots, folds_at) where slots maps an amplitude number
+        onto its entry in AMP, nslots is how many entries that needs, and
+        folds_at maps a position in the emission order onto the merges to
+        write out just after it.
+
+        An amplitude read by the JAMPs -- or by AMP2, which reads the same
+        ones, being the targets -- has to stay put until the end. A merge
+        source does not: once `AMP(t) = AMP(t) + AMP(s)` has run, its entry is
+        free. Writing each merge as soon as both of its amplitudes exist,
+        rather than all of them at the end, is what makes those entries worth
+        reclaiming. It only reclaims the gap between the two, so this is far
+        from the (2n-5)!! floor -- closing that would want the amplitudes
+        emitted in a different order, which is the wavefunction slot trade one
+        level down.
+        """
+
+        if self.amplitude_slots is not None:
+            return self.amplitude_slots
+
+        folded = set(self.get_quartic_current_sums()[2])
+        order = [amplitude.get('number')
+                 for diagram in self.get('diagrams')
+                 for amplitude in diagram.get('amplitudes')
+                 if amplitude.get('number') not in folded]
+        position = dict((number, i) for i, number in enumerate(order))
+
+        # each merge is written as soon as both of its amplitudes are there
+        folds_at = {}
+        dies_at = {}
+        for source, (target, coeff) in \
+                sorted(self.get_quartic_amplitude_merges().items()):
+            if source in folded or source not in position \
+               or target not in position:
+                continue
+            at = max(position[source], position[target])
+            folds_at.setdefault(at, []).append((target, source, coeff))
+            dies_at.setdefault(at, []).append(source)
+
+        slots, free, nslots = {}, [], 0
+        for i, number in enumerate(order):
+            if free:
+                slots[number] = free.pop()
+            else:
+                nslots += 1
+                slots[number] = nslots
+            # whatever this position's merges consume is free again after them
+            for source in dies_at.get(i, []):
+                free.append(slots[source])
+
+        self.amplitude_slots = (slots, nslots, folds_at)
+        return self.amplitude_slots
 
     def compute_quartic_current_sums(self):
         """Work out the current sums, see get_quartic_current_sums."""
