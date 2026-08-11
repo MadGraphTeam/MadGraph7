@@ -2515,14 +2515,17 @@ class MadSpinInterface(extended_cmd.Cmd):
             nb_prod_final = sum(1 for p in production if int(p.status) == 1)
             if nb_prod_final > 1 and (not density_pole_approximation or
                     density_do_reshuffle):
+                # decay_dict holds [width, mass, color, spin] per pdg, read from
+                # the same param card at the start of the run. Asking the banner
+                # again on every trial cost ~10% of the decay loop -- 4 lookups
+                # per trial, each walking the card -- for values that cannot
+                # change.
+                bw_cut = self.options['BW_cut']
+                if bw_cut < 0:
+                    bw_cut = 15
                 for pdg in decays:
                     for dec in decays[pdg]:
-                        pole = self.banner.get('param', 'mass', abs(pdg)).value
-                        width = self.banner.get('param', 'decay', abs(pdg)).value 
-                        if self.options['BW_cut'] <0: 
-                           bw_cut = 15
-                        else:
-                           bw_cut = self.options['BW_cut']     
+                        width, pole = decay_dict[pdg][0], decay_dict[pdg][1]
                         min_mass = pole - bw_cut * width
                         max_mass = min(pole + bw_cut * width,full_dqrts) 
                         dec[0].new_mass = lhe_parser.Event.generate_random_mass(pole, width, min_mass, max_mass)
@@ -3049,6 +3052,16 @@ class MadSpinInterface(extended_cmd.Cmd):
         # the lookup with KeyError, e.g. ((-2, 2), (21, 23)) when the table
         # is keyed by ((-81, 81), (21, 23)).
         tag, order = event.get_tag_and_order(self._revert_merged or None)
+        # The answer is a property of the flavour tag alone, and a run sees only
+        # a handful of tags while calling this once per decaying particle per
+        # trial (123k times for 10k events).
+        event_tag = tag
+        try:
+            return self._pdir_cache[event_tag]
+        except AttributeError:
+            self._pdir_cache = {}
+        except KeyError:
+            pass
         try:
             orig_order = self.all_me[tag]['order']
         except Exception:
@@ -3063,6 +3076,9 @@ class MadSpinInterface(extended_cmd.Cmd):
         pdir = self.all_me[tag]['pdir']
         prefix, pos = self.pdg2prefix[tuple(list(orig_order[0]) + list(orig_order[1]))]
         #misc.sprint(f"get_pdir: pdir = {pdir} , orig_order = {orig_order} , prefix = {prefix}")
+        # Cache under the tag we were asked about, not the anti-particle tag the
+        # fallback above may have rewritten it to.
+        self._pdir_cache[event_tag] = (pdir, orig_order, prefix, pos)
         return pdir,orig_order, prefix, pos
 
     model_init = True
