@@ -24,6 +24,7 @@ import os
 import random
 import re
 import shutil
+import subprocess
 import sys
 import time
 import glob
@@ -83,6 +84,8 @@ class MadSpinOptions(banner.ConfigFile):
         self.add_param('density_tolerance', 1E-4, comment='Tolerance for deviation between density and full ME')
         self.add_param('decay_event_mult', 1E0, comment='Produce more events than needed so that MadSpin does not have to regenerate decay events')
         self.add_param('density_keep_jacobian', False, comment='keep track of the phase-space volume change related to the offshell reshuffling')
+        self.add_param('decay_generator', 'mg7', allowed=['mg7', 'madevent'],
+                       comment='which backend generates the decay-event pools: mg7 (madmatrix/madspace) or the legacy Fortran madevent')
 
     ############################################################################
     ##  Special post-processing of the options                                ## 
@@ -1413,6 +1416,71 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.mg5cmd._curr_model = self.model
         self.mg5cmd.process_model()
 
+    @property
+    def decay_generator(self):
+        """Backend used to produce the decay-event pools.
+
+        Gridpack mode stays on Fortran madevent: it drives the decay directory
+        through run.sh, which the mg7 output does not provide.
+        """
+        generator = self.options['decay_generator']
+        if generator == 'mg7' and self.options['ms_dir']:
+            logger.info('gridpack mode: generating decay events with madevent '
+                        'rather than mg7')
+            return 'madevent'
+        return generator
+
+    def generate_events_mg7(self, decay_dir, nb_event):
+        """Run the mg7 (madmatrix/madspace) generator in ``decay_dir``.
+
+        Returns ``(event_file, partial_width)``. The partial width is read back
+        from the LHE <init> block, which for a 1 -> n process carries a width in
+        GeV rather than a cross section in pb.
+        """
+        run_card_path = pjoin(decay_dir, 'Cards', 'run_card.toml')
+        run_card = banner.RunCardMG7(run_card_path)
+        run_card['generation']['events'] = int(nb_event)
+        # The pool is consumed event by event; there is nothing to shower or
+        # analyse here, so keep the launcher to the integration itself.
+        run_card['run']['output_format'] = 'lhe'
+        run_card.write(run_card_path)
+        with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
+            fsock.write(self.banner['slha'])
+
+        events_dir = pjoin(decay_dir, 'Events')
+        before = set(misc.glob('*', events_dir)) if os.path.isdir(events_dir) else set()
+        # Run out of process: the launcher chdirs, installs signal handlers and
+        # holds its own madspace context, none of which should land in MadSpin's
+        # interpreter next to the f2py matrix elements.
+        log_path = pjoin(decay_dir, 'mg7_generation.log')
+        with open(log_path, 'w') as logfile:
+            returncode = misc.call(
+                [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'), '-f'],
+                cwd=decay_dir, stdout=logfile, stderr=subprocess.STDOUT)
+        if returncode:
+            raise self.InvalidCmd(
+                'the mg7 decay generator failed in %s (exit %s); see %s'
+                % (decay_dir, returncode, log_path))
+        after = set(misc.glob('*', events_dir)) if os.path.isdir(events_dir) else set()
+        new_runs = sorted(after - before)
+        if not new_runs:
+            raise self.InvalidCmd(
+                'the mg7 decay generator produced no run directory in %s' % events_dir)
+        run_dir = new_runs[-1]
+
+        for name in ('events.lhe.gz', 'events.lhe'):
+            lhe_path = pjoin(run_dir, name)
+            if os.path.exists(lhe_path):
+                break
+        else:
+            raise self.InvalidCmd(
+                'the mg7 decay generator produced no LHE file in %s' % run_dir)
+
+        event_file = lhe_parser.EventFile(lhe_path)
+        width = event_file.get_banner().get_cross()
+        event_file.seek(0)
+        return event_file, width
+
     def generate_events(self, pdg, nb_event, mg5, restrict_file=None, cumul=False,
                         output_width=False):
         """generate new events for this particle
@@ -1443,6 +1511,10 @@ class MadSpinInterface(extended_cmd.Cmd):
             if restrict_file and i not in restrict_file:
                 continue
             decay_dir = pjoin(self.path_me, "decay_%s_%s" %(str(pdg).replace("-","x"),i))
+            # Pin the output format explicitly rather than relying on MG5's
+            # default: the directory is driven below by the matching runner, so
+            # the two must agree.
+            output_format = self.decay_generator
             if not os.path.exists(decay_dir):
                 if cumul:
                     mg5.exec_cmd("generate %s" % proc)
@@ -1451,16 +1523,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                         if restrict_file and j not in restrict_file:
                             raise Exception # Do not see how this can happen
                         mg5.exec_cmd("add process %s" % proc2)
-                    # Force the Fortran madevent output: the decay directory is
-                    # driven below through MadEventCmdShell, so it must have the
-                    # madevent structure regardless of MG5's default output mode
-                    # (which is 'mg7' in MadGraph7).
-                    mg5.exec_cmd("output madevent %s -f" % decay_dir)
+                    mg5.exec_cmd("output %s %s -f" % (output_format, decay_dir))
                 else:
                     misc.sprint(proc)
                     mg5.exec_cmd("generate %s" % proc)
-                    mg5.exec_cmd("output madevent %s -f" % decay_dir)
-                
+                    mg5.exec_cmd("output %s %s -f" % (output_format, decay_dir))
+
                 options = dict(mg5.options)
                 if self.options['ms_dir']:
                     # we are in gridpack mode -> create it
@@ -1511,6 +1579,15 @@ class MadSpinInterface(extended_cmd.Cmd):
                         misc.call(['tar', '-xzpvf', 'run_01_gridpack.tar.gz'], cwd=decay_dir,stdout=devnull, stderr=-2)
                         devnull.close()
             # Now generate the events
+            if self.decay_generator == 'mg7':
+                # mg7 delivers exactly the requested number of events, so ask
+                # for what is needed rather than madevent's 0.8x undershoot.
+                out[i], pwidth = self.generate_events_mg7(decay_dir, nb_event)
+                if output_width:
+                    width = width + pwidth if cumul else width * pwidth
+                if cumul:
+                    break
+                continue
             if not self.options['ms_dir']:
                 if decay_dir in self.me_int:
                         me5_cmd = self.me_int[decay_dir]
