@@ -497,6 +497,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   - For MadLoop and aMC@NLO runs, there is only one mode and")
         logger.info("     it is set by default.")
         logger.info("   - If mode is madevent, create a MadEvent process directory.")
+        logger.info("   - If mode is standalone, create a Standalone directory")
+        logger.info("     using the MadMatrix (C++/CUDA) matrix elements.")
         logger.info("   - If mode is standalone_fortran, create a Fortran Standalone directory")
         logger.info("   - If mode is matrix, output the matrix.f files for all")
         logger.info("     generated processes in directory \"path\".")
@@ -1540,9 +1542,10 @@ This will take effect only in a NEW terminal
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
         elif os.path.isfile(pjoin(subproc_path, 'madmatrix.mk')):
-            # standalone_mg7 writes SubProcesses/madmatrix.mk explicitly
-            # (the regular mg7 export does not).
-            return 'standalone_mg7'
+            # the `standalone` (madmatrix) export writes
+            # SubProcesses/madmatrix.mk explicitly (the regular mg7 export
+            # does not).
+            return 'standalone'
         elif os.path.isfile(pjoin(card_path, 'run_card.toml')):
             return 'mg7'
         elif os.path.isdir(src_path):
@@ -1824,7 +1827,7 @@ This will take effect only in a NEW terminal
             # Check for special directory treatment
             if path == 'auto' and self._export_format in \
                      ['madevent', 'standalone_fortran', 'standalone_cpp', 'matchbox_cpp',
-                      'matchbox', 'plugin', 'me7', 'mg7', 'mg7_v5', 'standalone_mg7']:
+                      'matchbox', 'plugin', 'me7', 'mg7', 'mg7_v5', 'standalone']:
                 self.get_default_path()
                 if '-noclean' not in args and os.path.exists(self._export_dir):
                     args.append('-noclean')
@@ -1989,7 +1992,7 @@ This will take effect only in a NEW terminal
                                     (self._curr_model['name'], i)
                 auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
-            elif self._export_format == 'standalone_mg7':
+            elif self._export_format == 'standalone':
                 name_dir = lambda i: 'PROCMG7_SA_%s_%s' % \
                                     (self._curr_model['name'], i)
                 auto_path = lambda i: pjoin(self.writing_dir,
@@ -2605,8 +2608,12 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         mode = self.find_launch_mode(args)
 
-        if mode and mode.startswith('standalone') and mode != 'standalone_mg7':
-            # standalone outputs are run through SALauncher/MadLoopLauncher:
+        if mode and mode.startswith('standalone') and mode != 'standalone':
+            # NB: `mode != 'standalone'` deliberately EXCLUDES the plain
+            # `standalone` (madmatrix) output, which is launched through its own
+            # bin/generate_events, not through SALauncher.  It is not a typo:
+            # every *other* standalone_* mode (standalone_fortran, _cpp, _msP,
+            # _msF, _rw) is run through SALauncher/MadLoopLauncher, for which
             # only force + the timing analysis options are relevant.
             opt = ['-f', '--force', '--timings=', '--nb_run=']
             out['Options'] = self.list_completion(text, opt, line)
@@ -3147,7 +3154,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'matrix', 'standalone_rw']
     _export_formats = _v4_export_formats + ['standalone_cpp', 'aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
-                                            'standalone_mg7']
+                                            'standalone']
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -3343,7 +3350,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
         self._v4_export_formats = ['madevent', 'standalone_fortran','standalone_msP','standalone_msF',
                                    'matrix', 'standalone_rw']
-        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'mg7_v5', 'mg7', 'standalone_mg7']
+        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'mg7_v5', 'mg7', 'standalone']
         self._nlo_modes_for_completion = ['all','virt','real']
 
     def do_quit(self, line):
@@ -7911,7 +7918,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         options = options.__dict__
         # args is now MODE PATH
 
-        if args[0] == 'standalone_mg7':
+        if args[0] == 'standalone':
             class ext_program:
                 @staticmethod
                 def run():
@@ -9656,7 +9663,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         config['matchbox'] =       {'check': True, 'exporter': 'v4',  'output': 'Template'}
         config['mg7_v5'] =         {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['mg7'] =            {'check': True, 'exporter': 'cpp', 'output': 'Template'}
-        config['standalone_mg7'] = {'check': True, 'exporter': 'cpp', 'output': 'Template'}
+        config['standalone'] =     {'check': True, 'exporter': 'cpp', 'output': 'Template'}
 
         if self._export_format == 'plugin':
             options = {'check': self._export_plugin.check, 'exporter':self._export_plugin.exporter, 'output':self._export_plugin.output}
@@ -10260,7 +10267,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         run) plus a ready-to-use citations.bib and a citations.md summary.
         """
         runnable = ['madevent', 'standalone_fortran', 'standalone_cpp', 'NLO',
-                    'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone_mg7']
+                    'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone']
         if self._export_format not in runnable or not self._export_dir:
             return
         try:
@@ -10286,13 +10293,13 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             polarization=getattr(self, '_uses_polarization', False),
             taudecay=getattr(self, '_uses_taudecay', False))
 
-        # MadSpace + MadNIS: used by the mg7 / standalone_mg7 integration engine
-        if self._export_format in ('mg7', 'mg7_v5', 'standalone_mg7'):
+        # MadSpace + MadNIS: used by the mg7 / standalone integration engine
+        if self._export_format in ('mg7', 'mg7_v5', 'standalone'):
             pairs += [('Heimel:2026hgp',
                        'phase-space integration with MadSpace'),
                       ('Heimel:2023ngj',
                        'normalising flows for integration (MadNIS)')]
-            if self._export_format == 'standalone_mg7':
+            if self._export_format == 'standalone':
                 pairs.append(('Hagebock:2025jyk',
                                'data-parallel matrix-element evaluation (MadMatrix)'))
 

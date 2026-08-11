@@ -3041,8 +3041,8 @@ class TestMEfromfile(unittest.TestCase):
         """mg7 (madspace) cross-section for MSSM p p > go go, pinned to the
         madevent reference from test_generation_from_file_1.
 
-        standalone_mg7 reproduces the per-flavor |M|^2 for p p > go go
-        (test_standalone_mg7_mssm_gogo, ~1e-4) and the madspace integrator now
+        the standalone (madmatrix) export reproduces the per-flavor |M|^2 for
+        p p > go go (test_madmatrix_mssm_gogo, ~1e-4) and the madspace integrator now
         lands on the madevent cross-section as well, so this pins the mg7 result
         to the madevent reference (run_01 of test_generation_from_file_1).
 

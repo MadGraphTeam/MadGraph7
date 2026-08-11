@@ -378,7 +378,7 @@ class UFOModelConverterCPP(object):
 
     def _assert_flv_couplings_supported(self, params):
         """Refuse, with a clear and actionable message, the merged-flavor
-        coupling structures the C++ (mg7/standalone_mg7) backend cannot yet
+        coupling structures the C++ (mg7/standalone) backend cannot yet
         generate correctly, instead of crashing or emitting wrong/uncompilable
         code.
 
@@ -404,7 +404,7 @@ class UFOModelConverterCPP(object):
                 if nb_merged in (1, 2):
                     continue
                 raise InvalidCmd(
-                    "merged-flavor C++ output (mg7/standalone_mg7) does not yet "
+                    "merged-flavor C++ output (mg7/standalone) does not yet "
                     "support this process: flavor coupling %s connects %d "
                     "merged-flavor legs; only one or two are supported. Use "
                     "'output madevent' or 'output standalone_fortran' for this process. "
@@ -3477,7 +3477,7 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     elif cformat == 'mg7':
         from madmatrix.output import ProcessExporterMadMatrix
         return ProcessExporterMadMatrix(cmd._export_dir, opt)
-    elif cformat == 'standalone_mg7':
+    elif cformat == 'standalone':
         from madmatrix.output import ProcessExporterMadMatrixStandalone
         return ProcessExporterMadMatrixStandalone(cmd._export_dir, opt)
     else:

@@ -11612,6 +11612,11 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         if format in ['madevent']:
             opt['madanalysis5'] = cmd.options['madanalysis5_path']
             
+        # Every standalone_* format that reaches the *v4* factory is
+        # Fortran-family (standalone_fortran, standalone_msP/msF/rw). The plain
+        # `standalone` (MadMatrix) and `standalone_cpp` are declared with
+        # exporter 'cpp' in MadGraphCmd.do_output and go to ExportCPPFactory
+        # instead, so they never get here despite matching the prefix.
         if format == 'matrix' or format.startswith('standalone'):
             return ProcessExporterFortranSA(cmd._export_dir, opt, format=format)
         

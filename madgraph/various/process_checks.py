@@ -4084,7 +4084,7 @@ def check_language(process_definition, param_card=None, options=None,
     cpp_compiler     = (hasattr(cmd, 'options') and
                         cmd.options.get('cpp_compiler'))     or 'g++'
 
-    # MG7 (standalone_mg7 / madmatrix) availability: needs the madmatrix
+    # MG7 (standalone / madmatrix) availability: needs the madmatrix
     # package, a C++ compiler and make.  Its check_sa.exe "matrix" mode
     # evaluates the same phase-space point as the Fortran/C++ drivers and
     # prints the per-flavor PDG / matrix-element lines in the same format.
@@ -4277,7 +4277,7 @@ def check_language(process_definition, param_card=None, options=None,
     # tuple.  All individual-flavor procs share the same matrix element code.
     sa_f_output_cache   = {}
     sa_cpp_output_cache = {}
-    # Cache of MG7 (standalone_mg7) check_sa.exe matrix-mode output text.
+    # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
     sa_mg7_output_cache = {}
 
     energy_str = str(energy)
@@ -4402,7 +4402,7 @@ def check_language(process_definition, param_card=None, options=None,
 
             out_cpp_text = sa_cpp_output_cache.get(sa_key)
 
-        # ── MG7 SA (standalone_mg7 / madmatrix) ──────────────────────────────
+        # ── MG7 SA (standalone / madmatrix) ─────────────────────────────────
         out_mg7_text = None
         if has_mg7:
             if sa_key not in sa_mg7_output_cache:
@@ -4410,7 +4410,7 @@ def check_language(process_definition, param_card=None, options=None,
                 parent_mg7 = tempfile.mkdtemp(prefix='mg5_langcheck_mg7_')
                 sa_dir_mg7 = pjoin(parent_mg7, 'sa_mg7')
                 try:
-                    opt_mg7 = {'export_format': 'standalone_mg7',
+                    opt_mg7 = {'export_format': 'standalone',
                                'mp': False, 'v5_model': True,
                                'cpp_compiler': cpp_compiler,
                                'output_options': {}}

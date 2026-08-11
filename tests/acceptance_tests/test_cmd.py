@@ -1241,19 +1241,19 @@ class TestCmdShell2(unittest.TestCase,
             self.assertTrue(saw_nonzero,
                             'all matrix elements vanished for %s' % proc)
 
-    def test_standalone_mg7_goodhel_filter(self):
-        """The standalone_mg7 (cudacpp) good-helicity filter must reproduce the
+    def test_madmatrix_goodhel_filter(self):
+        """The standalone (madmatrix/cudacpp) good-helicity filter must reproduce the
         per-flavor matrix element of every flavor served by a merged matrix
         element.
 
-        standalone_mg7 computes a single global good-helicity list once, as the
+        the standalone (madmatrix) export computes a single global good-helicity list once, as the
         union over all flavor combinations (see sigmaKin_getGoodHel). A
         flavor-blind filter -- one that seeds the good helicities from only the
         flavor(s) of the first sampled events -- would drop a helicity that
         vanishes for the seeding flavor but contributes for another merged
         flavor, giving a too-small |M|^2 for that other flavor.
 
-        We compare the standalone_mg7 per-flavor values (check_sa.exe 'matrix'
+        We compare the standalone (madmatrix) per-flavor values (check_sa.exe 'matrix'
         mode) against the Fortran standalone ones, which
         test_standalone_goodhel_filter independently validates as
         filter-invariant. ``u u~ > j j QCD=0`` is a single merged matrix element
@@ -1285,7 +1285,7 @@ class TestCmdShell2(unittest.TestCase,
             values = []
             for d in dirs:
                 proc_dir = pjoin(proc_root, d)
-                # standalone uses 'make check' + ./check; standalone_mg7 ships a
+                # standalone_fortran uses 'make check' + ./check; standalone ships a
                 # UMAMI check_sa.exe whose 'matrix' mode == the Fortran driver.
                 target = ['make', 'check'] if output_format == 'standalone_fortran' \
                     else ['make']
@@ -1303,7 +1303,7 @@ class TestCmdShell2(unittest.TestCase,
 
         self.do('import model sm')
         self.do('generate u u~ > j j QCD=0')
-        mg7 = get_values('standalone_mg7', './check_sa.exe')
+        mg7 = get_values('standalone', './check_sa.exe')
         standalone = get_values('standalone_fortran', './check', build_source=True)
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for u u~ > j j')
@@ -1349,7 +1349,7 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(me_groups)
         self.assertAlmostEqual(float(me_groups.group('value')), 6.4739191,5)
 
-        # Cross-check standalone_mg7 (madmatrix) against standalone_cpp for this
+        # Cross-check standalone (madmatrix) against standalone_cpp for this
         # massive BSM process. The Fortran/C++ ./check auto-bumps the CM energy
         # to 2*total_mass for the heavy gluinos, but check_sa.exe does not, so
         # evaluate BOTH at the same explicit above-threshold energy.
@@ -1362,7 +1362,7 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(cpp_me)
 
         shutil.rmtree(self.out_dir)
-        self.do('output standalone_mg7 %s -f' % self.out_dir)
+        self.do('output standalone %s -f' % self.out_dir)
         mg7_root = os.path.join(self.out_dir, 'SubProcesses')
         mg7_cand = [d for d in os.listdir(mg7_root)
                     if d.endswith('_gg_gogo') and
@@ -1376,7 +1376,7 @@ class TestCmdShell2(unittest.TestCase,
                         stdout=open(mg7_log, 'w'), stderr=subprocess.STDOUT,
                         cwd=mg7_dir, shell=True)
         mg7_me = me_re.search(open(mg7_log).read())
-        self.assertTrue(mg7_me, 'standalone_mg7 produced no matrix element')
+        self.assertTrue(mg7_me, 'standalone (madmatrix) produced no matrix element')
         self._assert_me_lists_close([float(mg7_me.group('value'))],
                                     [float(cpp_me.group('value'))])
 
@@ -1440,7 +1440,7 @@ class TestCmdShell2(unittest.TestCase,
         (|x-y| <= atol + rtol*max(|x|,|y|)).
 
         Backends print with different precision (standalone_cpp 7 sig figs vs
-        standalone_mg7 full double) and may emit the per-flavour values in a
+        standalone (madmatrix) full double) and may emit the per-flavour values in a
         different order, so compare sorted rather than index-by-index / exact.
         `atol` lets callers treat numerically-tiny (vanishing-flavour) values as
         zero, where the different floating-point arithmetic of the Fortran vs
@@ -1454,11 +1454,11 @@ class TestCmdShell2(unittest.TestCase,
                                  'matrix-element mismatch: %s vs %s' % (x, y))
 
     def test_standalone_cpp_fd_output_consistency(self):
-        """test standalone_mg7 in FD gauge against standalone
+        """test the standalone (madmatrix) output in FD gauge against standalone_fortran
 
-        The standalone_mg7 (madmatrix) matrix elements must agree with the
+        The standalone (madmatrix) matrix elements must agree with the
         Fortran standalone ones, both in FD gauge and in unitary gauge (and FD
-        vs unitary, i.e. gauge invariance). standalone_mg7 ships a UMAMI-based
+        vs unitary, i.e. gauge invariance). madmatrix ships a UMAMI-based
         check_sa.exe whose 'matrix' mode is by design identical to the Fortran
         check driver; the per-flavour values are compared as sorted multisets
         (the backends may order flavours differently and print at different
@@ -1484,12 +1484,12 @@ class TestCmdShell2(unittest.TestCase,
                                 cwd=os.path.join(self.out_dir, 'Source'))
             for oneproc in directories:
                 logfile = os.path.join(proc_dir, oneproc, 'check.log')
-                # standalone uses 'make check' + ./check; standalone_mg7 ships a
+                # standalone_fortran uses 'make check' + ./check; standalone ships a
                 # UMAMI check_sa.exe whose 'matrix' mode == the Fortran driver.
                 if output_format == 'standalone_fortran':
                     target = ['make', 'check']
                     check_exe = './check %s' % energy
-                elif output_format == 'standalone_mg7':
+                elif output_format == 'standalone':
                     target = ['make']
                     check_exe = './check_sa.exe %s' % energy
                 else:
@@ -1509,7 +1509,7 @@ class TestCmdShell2(unittest.TestCase,
                 values.extend(float(value) for value in me_groups)
             return values
 
-        standalone_mg7 = get_values('standalone_mg7')
+        madmatrix = get_values('standalone')
         shutil.rmtree(self.out_dir)
         standalone = get_values('standalone_fortran')
 
@@ -1517,7 +1517,7 @@ class TestCmdShell2(unittest.TestCase,
         # floating-point noise floor, where the Fortran and cudacpp backends
         # differ; only require agreement above an absolute floor (the original
         # cpp-vs-standalone check used assertAlmostEqual, equally lenient here).
-        self._assert_me_lists_close(standalone_mg7, standalone, atol=1e-7)
+        self._assert_me_lists_close(madmatrix, standalone, atol=1e-7)
 
         self.do('set gauge unitary')
         self.do('generate _quark _quark > h _quark _quark _quark _anti_quark  QCD=0')
@@ -1525,24 +1525,24 @@ class TestCmdShell2(unittest.TestCase,
         energy = '1000'
 
         shutil.rmtree(self.out_dir)
-        standalone_mg7_no_fd = get_values('standalone_mg7')
+        madmatrix_no_fd = get_values('standalone')
         shutil.rmtree(self.out_dir)
         standalone_no_fd = get_values('standalone_fortran')
 
-        self._assert_me_lists_close(standalone_mg7_no_fd, standalone_no_fd,
+        self._assert_me_lists_close(madmatrix_no_fd, standalone_no_fd,
                                     atol=1e-7)
         # gauge invariance: unitary-gauge values must also match the FD ones.
-        self._assert_me_lists_close(standalone_mg7_no_fd, standalone, atol=1e-7)
+        self._assert_me_lists_close(madmatrix_no_fd, standalone, atol=1e-7)
 
-    def test_standalone_mg7_vs_cpp(self):
-        """Cross-check that standalone_mg7 (madmatrix) reproduces the
+    def test_madmatrix_vs_cpp(self):
+        """Cross-check that standalone (madmatrix) reproduces the
         standalone_cpp matrix elements for p p > e+ e- QCD=0.
 
         Uses a massless final state so both check drivers evaluate the same
         default 1000 GeV phase-space point (no energy auto-bump mismatch), and
         compares the per-flavour matrix elements as sorted multisets (the two
         backends may emit them in a different order and at different printed
-        precision). standalone_mg7 ships a UMAMI-based check_sa.exe whose
+        precision). madmatrix ships a UMAMI-based check_sa.exe whose
         'matrix' mode is by design identical to the Fortran/C++ check drivers.
         """
         energy = '1000'
@@ -1577,12 +1577,12 @@ class TestCmdShell2(unittest.TestCase,
         self.do('import model sm')
         self.do('generate p p > e+ e- QCD=0')
         cpp = get_values('standalone_cpp', './check')
-        mg7 = get_values('standalone_mg7', './check_sa.exe')
+        mg7 = get_values('standalone', './check_sa.exe')
         self._assert_me_lists_close(mg7, cpp)
 
-    def test_standalone_mg7_mssm_single_leg(self):
+    def test_madmatrix_mssm_single_leg(self):
         """Single-merged-leg flavored couplings must give the same per-flavor
-        |M|^2 in standalone_mg7 (madmatrix) as in the Fortran standalone.
+        |M|^2 in standalone (madmatrix) as in the Fortran standalone.
 
         p p > n1 n1 QCD=0 is a t-channel-squark process with single-merged-leg
         vertices (one merged light quark + an unmerged neutralino + a squark)
@@ -1627,15 +1627,15 @@ class TestCmdShell2(unittest.TestCase,
 
         self.do('import model MSSM_SLHA2')
         self.do('generate p p > n1 n1 QCD=0')
-        mg7 = get_values('standalone_mg7', './check_sa.exe')
+        mg7 = get_values('standalone', './check_sa.exe')
         standalone = get_values('standalone_fortran', './check', build_source=True)
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for p p > n1 n1')
         self._assert_me_lists_close(mg7, standalone, rtol=1e-4)
 
-    def test_standalone_mg7_mssm_gogo(self):
+    def test_madmatrix_mssm_gogo(self):
         """Dependent (event-by-event, running-alphas) flavored couplings must
-        give the same per-flavor |M|^2 in standalone_mg7 (madmatrix) as in the
+        give the same per-flavor |M|^2 in standalone (madmatrix) as in the
         Fortran standalone.
 
         MSSM 'p p > go go' has single-merged-leg squark/gluino-quark vertices
@@ -1645,7 +1645,7 @@ class TestCmdShell2(unittest.TestCase,
         addressable as fixed value[] pointers, so they are gathered event-by-
         event into cDPF_* / flvCOUPs_dep (Step 3 of
         docs/mg7_merged_flavor_mssm_design.md). This is the dependent-coupling
-        counterpart of test_standalone_mg7_mssm_single_leg (independent flavored
+        counterpart of test_madmatrix_mssm_single_leg (independent flavored
         couplings) and the consistency check matching test_madevent_mssm_gogo.
 
         The energy (sqrt(s)) is chosen above the gluino-pair threshold (Mgo ~
@@ -1688,7 +1688,7 @@ class TestCmdShell2(unittest.TestCase,
 
         self.do('import model MSSM_SLHA2')
         self.do('generate p p > go go')
-        mg7 = get_values('standalone_mg7', './check_sa.exe')
+        mg7 = get_values('standalone', './check_sa.exe')
         standalone = get_values('standalone_fortran', './check', build_source=True)
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for p p > go go')
@@ -1698,7 +1698,7 @@ class TestCmdShell2(unittest.TestCase,
         """The Fortran madevent output supports MSSM 'p p > go go' (merged-flavor
         squark/gluino vertices with single-merged-leg / event-by-event flavored
         couplings). The mg7/madmatrix C++ output now also supports it and is
-        checked to agree per-flavor in test_standalone_mg7_mssm_gogo; this acts
+        checked to agree per-flavor in test_madmatrix_mssm_gogo; this acts
         as the madevent counterpart.
         """
         self.do('import model MSSM_SLHA2')

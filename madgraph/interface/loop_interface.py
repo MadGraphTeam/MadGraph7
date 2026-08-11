@@ -93,7 +93,16 @@ class CheckLoop(mg_interface.CheckValidForCmd):
     def check_output(self, args, default='standalone_fortran'):
         """ Check the arguments of the output command in the context
         of the Loop interface."""
-       
+
+        # `standalone` is the MadMatrix (C++/CUDA) export, which MadLoop does
+        # not support. Reject it here: otherwise the generic check_output would
+        # not recognise it as a format and would silently use it as the output
+        # *path*. The MadLoop standalone output is `standalone_fortran`.
+        if args and args[0] == 'standalone':
+            raise self.InvalidCmd(
+                "'output standalone' (MadMatrix) is not available for MadLoop; "
+                "use 'output standalone_fortran' instead.")
+
         mg_interface.MadGraphCmd.check_output(self,args, default=default)
 
         if self._export_format not in self.supported_ML_format:
