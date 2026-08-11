@@ -203,6 +203,34 @@ def _ordered_phases(seconds):
     return known + rest
 
 
+# The LHE timers are nested, so they must not simply be added up:
+#   next_event_readline_total          EventFile.next_event, the whole read
+#     next_event_readline_event_parse    the Event() built inside it
+#   event_parse_total                  every Event(), including those above
+#     event_parse_particle_block
+#       particle_parse_total
+#     event_parse_tag_block
+#     event_parse_assign_mother
+# Only the two roots count, and event_parse_total must have the part already
+# covered by next_event_readline_event_parse taken out of it.
+_LHE_NESTED = {
+    'next_event_readline_event_parse',
+    'event_parse_particle_block',
+    'particle_parse_total',
+    'event_parse_tag_block',
+    'event_parse_assign_mother',
+}
+
+
+def lhe_exclusive_seconds(lhe_timers):
+    """Wall time actually spent in the LHE parser, without double counting."""
+    def secs(key):
+        return lhe_timers.get(key, (0.0, 0))[0]
+    direct_event_parse = max(
+        0.0, secs('event_parse_total') - secs('next_event_readline_event_parse'))
+    return secs('next_event_readline_total') + direct_event_parse
+
+
 def derived_phases(seconds):
     """Return ``seconds`` plus the derived net rows for nested phases."""
     out = dict(seconds)
@@ -264,12 +292,15 @@ def format_record(record, baseline=None):
 
     lhe = record.get('lhe_timers') or {}
     if lhe:
-        lhe_total = sum(v[0] for v in lhe.values())
-        lines.append('    LHE parser: %.2f s total (%.1f%% of wall)'
-                     % (lhe_total, 100. * lhe_total / total if total else 0.))
+        lines.append('    LHE parser: %.2f s (%.1f%% of wall)'
+                     % (lhe_exclusive_seconds(lhe),
+                        100. * lhe_exclusive_seconds(lhe) / total if total else 0.))
         for key, (secs, calls) in sorted(lhe.items(), key=lambda kv: -kv[1][0]):
-            lines.append('      %-26s %10.2f s over %d call(s)'
-                         % (key, secs, calls))
+            marker = '  ' if key in _LHE_NESTED else '* '
+            lines.append('      %s%-24s %10.2f s over %d call(s)'
+                         % (marker, key, secs, calls))
+        lines.append('      (* counted in the total; the rest are nested '
+                     'inside a starred timer)')
     return '\n'.join(lines)
 
 
