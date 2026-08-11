@@ -1452,8 +1452,11 @@ class MadSpinInterface(extended_cmd.Cmd):
         # Run out of process: the launcher chdirs, installs signal handlers and
         # holds its own madspace context, none of which should land in MadSpin's
         # interpreter next to the f2py matrix elements.
+        # Append rather than truncate: a pool refill reruns the launcher in the
+        # same directory, and overwriting would throw away the log of the run
+        # that did the matrix-element compile.
         log_path = pjoin(decay_dir, 'mg7_generation.log')
-        with open(log_path, 'w') as logfile:
+        with open(log_path, 'a') as logfile, self._phase('decay_mg7_launch'):
             returncode = misc.call(
                 [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'), '-f'],
                 cwd=decay_dir, stdout=logfile, stderr=subprocess.STDOUT)
@@ -1475,6 +1478,20 @@ class MadSpinInterface(extended_cmd.Cmd):
         else:
             raise self.InvalidCmd(
                 'the mg7 decay generator produced no LHE file in %s' % run_dir)
+
+        # The launcher reports how long the integration itself took; the rest of
+        # the subprocess wall time is interpreter start-up plus the one-off
+        # matrix-element compile, which is what dominates a decay directory.
+        info_path = pjoin(run_dir, 'info.json')
+        if os.path.exists(info_path):
+            try:
+                with open(info_path) as fsock:
+                    run_times = json.load(fsock).get('run_times', {})
+                self._add_phase('decay_mg7_integrate',
+                                sum(stage.get('wall_time_sec', 0.)
+                                    for stage in run_times.values()))
+            except (ValueError, AttributeError) as error:
+                logger.debug('could not read %s: %s', info_path, error)
 
         event_file = lhe_parser.EventFile(lhe_path)
         width = event_file.get_banner().get_cross()
@@ -1516,17 +1533,20 @@ class MadSpinInterface(extended_cmd.Cmd):
             # the two must agree.
             output_format = self.decay_generator
             if not os.path.exists(decay_dir):
-                if cumul:
-                    mg5.exec_cmd("generate %s" % proc)
-                    for j,proc2 in enumerate(self.list_branches[name][1:]):
-                        misc.sprint(proc2)
-                        if restrict_file and j not in restrict_file:
-                            raise Exception # Do not see how this can happen
-                        mg5.exec_cmd("add process %s" % proc2)
-                    mg5.exec_cmd("output %s %s -f" % (output_format, decay_dir))
-                else:
-                    misc.sprint(proc)
-                    mg5.exec_cmd("generate %s" % proc)
+                # Amplitude generation and code writing, paid once per decay
+                # directory (a pool refill reuses it).
+                with self._phase('decay_me_generate'):
+                    if cumul:
+                        mg5.exec_cmd("generate %s" % proc)
+                        for j,proc2 in enumerate(self.list_branches[name][1:]):
+                            misc.sprint(proc2)
+                            if restrict_file and j not in restrict_file:
+                                raise Exception # Do not see how this can happen
+                            mg5.exec_cmd("add process %s" % proc2)
+                    else:
+                        misc.sprint(proc)
+                        mg5.exec_cmd("generate %s" % proc)
+                with self._phase('decay_me_output'):
                     mg5.exec_cmd("output %s %s -f" % (output_format, decay_dir))
 
                 options = dict(mg5.options)

@@ -169,6 +169,10 @@ def run_benchmark(benchmark, label, workdir, nevents, seed, spinmode,
 # up without touching this table.
 _PHASE_ORDER = [
     'decay_event_generation',
+    'decay_me_generate',
+    'decay_me_output',
+    'decay_mg7_launch',
+    'decay_mg7_integrate',
     'me_generation',
     'max_weight_scan',
     'decay_loop',
@@ -182,6 +186,14 @@ _PHASE_ORDER = [
 # "<parent> (net)" row so the columns still add up to something meaningful.
 _NESTED_IN = {
     'decay_event_refill': 'decay_loop',
+    # Amplitude generation and code writing happen once, when the decay
+    # directory is created, so they sit inside the initial generation pass.
+    'decay_me_generate': 'decay_event_generation',
+    'decay_me_output': 'decay_event_generation',
+    # ... whereas the launcher runs again for every pool refill, so its time is
+    # split between decay_event_generation and decay_event_refill and cannot be
+    # nested under either.
+    'decay_mg7_integrate': 'decay_mg7_launch',
 }
 
 

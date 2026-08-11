@@ -1,4 +1,5 @@
 import argparse
+import concurrent.futures
 import os
 import sys
 import time
@@ -258,6 +259,18 @@ class MadgraphProcess:
 
     def init_backend(self) -> None:
         ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+
+    @property
+    def build_jobs(self) -> int:
+        """How many make jobs to use when compiling the matrix elements.
+
+        A user who caps cpu_thread_pool_size has told us their CPU budget, so
+        honour it; otherwise take the machine.
+        """
+        pool_size = self.run_card["run"]["cpu_thread_pool_size"]
+        if pool_size and pool_size > 0:
+            return int(pool_size)
+        return os.cpu_count() or 1
 
     def init_event_dir(self) -> None:
         run_name = self.run_card["run"]["run_name"]
@@ -520,9 +533,45 @@ class MadgraphProcess:
         self.event_generator = None
 
     def init_subprocesses(self) -> None:
+        self.compile_subprocesses()
         self.subprocesses = []
         for subproc_id, meta in enumerate(self.subprocess_data):
             self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+
+    def compile_subprocesses(self) -> None:
+        """Build every matrix-element library that is missing, several at once.
+
+        One subprocess has only a handful of translation units, so `make -j`
+        inside it cannot fill a large machine however high the job count. The
+        subprocesses are independent, so build them concurrently instead and
+        split the job budget between them -- that fills the machine without
+        oversubscribing it. Threads are fine here: the work happens in `make`
+        subprocesses, not under the GIL.
+        """
+        devices = self.run_card["run"]["devices"]
+        if not isinstance(devices, list):
+            devices = [devices]
+        pending = []
+        for meta in self.subprocess_data:
+            for device in devices:
+                _, needs_build = resolve_api_path(
+                    meta["path"], meta["me_path"], device)
+                if needs_build:
+                    pending.append((meta["path"], device))
+        if len(pending) < 2:
+            return
+
+        jobs_each = max(1, self.build_jobs // len(pending))
+        logger.info("compiling %d subprocesses, %d at a time with -j%d",
+                    len(pending), len(pending), jobs_each)
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=len(pending)) as pool:
+            futures = [pool.submit(build_subprocess, path, device, jobs_each)
+                       for path, device in pending]
+            for future in concurrent.futures.as_completed(futures):
+                # Surface a failure here rather than as a confusing missing-.so
+                # error when the subprocess is constructed.
+                future.result()
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
@@ -1087,6 +1136,29 @@ _MERGED_PID_REPRESENTATIVE = {
 }
 
 
+def resolve_api_path(subproc_path: str, api_path_format: str, device: str):
+    """Return ``(api_path, needs_build)`` for one subprocess and device."""
+    resolved = device
+    if device == "cppauto":
+        out = subprocess.run(
+            ["make", "-n", "BACKEND=cppauto", "detect-backend"],
+            cwd=subproc_path, capture_output=True, text=True,
+        ).stdout
+        match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
+        if match:
+            resolved = match.group(1)
+    api_path = api_path_format.format(device=resolved)
+    return api_path, not os.path.isfile(api_path)
+
+
+def build_subprocess(subproc_path: str, device: str, jobs: int) -> None:
+    """Compile one subprocess's matrix-element library with ``jobs`` make jobs."""
+    logger.info("Compiling subprocess %s, for device '%s'",
+                os.path.dirname(subproc_path), device)
+    misc.compile(arg=[f"BACKEND={device}", "USEBUILDDIR=1"],
+                 cwd=subproc_path, nb_core=jobs)
+
+
 def clean_pids(pids: list[int]) -> list[int]:
     pids_out = []
     for pid in pids:
@@ -1118,21 +1190,12 @@ class MadgraphSubprocess:
         if not isinstance(devices, list):
             devices = [devices]
         for device in devices:
-            subproc_dir = os.path.dirname(subproc_path)
-            # 'cppauto' resolve quick fix
-            resolved = device
-            if device == "cppauto":
-                out = subprocess.run(
-                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
-                    cwd=subproc_path, capture_output=True, text=True,
-                ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
-                if match:
-                    resolved = match.group(1)
-            api_path = api_path_format.format(device=resolved)
-            if not os.path.isfile(api_path):
-                logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
+            api_path, needs_build = resolve_api_path(
+                subproc_path, api_path_format, device)
+            if needs_build:
+                # compile_subprocesses builds everything up front; reaching here
+                # means that pass did not cover this one, so build it now.
+                build_subprocess(subproc_path, device, self.process.build_jobs)
             api_paths.append(api_path)
 
         self.incoming_masses = [
@@ -2224,7 +2287,12 @@ def run_lhe_postprocessing(process) -> None:
         return
     log = logging.getLogger('madevent')
 
-    if cfg.get('systematics'):
+    if cfg.get('systematics') and getattr(process, 'is_decay', False):
+        # Scale and PDF variations are a beam quantity. A decay has neither, so
+        # systematics can only fail here ("not supported for pdlabel=none") --
+        # and it is not free: MadSpin reruns the launcher for every pool refill.
+        log.info("decay mode: skipping systematics (no beams to vary)")
+    elif cfg.get('systematics'):
         try:
             _run_systematics(lhe_path, cfg, log)
         except Exception as error:
