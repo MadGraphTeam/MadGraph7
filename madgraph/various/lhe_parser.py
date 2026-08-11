@@ -2787,11 +2787,31 @@ class Event(list):
         # change sign of three-component due to helas convention
         pboost.px *=-1
         pboost.py *=-1
-        pboost.pz *=-1 
-        for p in self:
-            b= FourMomentum(p).boost(pboost)
-            p.E, p.px, p.py, p.pz = b.E, b.px, b.py, b.pz 
-        
+        pboost.pz *=-1
+
+        # Inline of FourMomentum.boost for the whole event. The boost vector is
+        # the same for every particle, so its norm and mass are loop invariant,
+        # and working on floats avoids building two FourMomentum objects per
+        # particle -- MadSpin calls this once per decay per accept/reject trial,
+        # which was millions of throwaway objects on a 100k-event run. The
+        # arithmetic is kept in the same order as FourMomentum.boost, so the
+        # result is bit-for-bit what it was.
+        bpx, bpy, bpz, bE = pboost.px, pboost.py, pboost.pz, pboost.E
+        pnorm = bpx**2 + bpy**2 + bpz**2
+        if pnorm:
+            mass = math.sqrt(max(bE**2 - bpx**2 - bpy**2 - bpz**2, 0))
+            for p in self:
+                px, py, pz, E = p.px, p.py, p.pz, p.E
+                s3product = px * bpx + py * bpy + pz * bpz
+                lf = (E + (bE - mass) * s3product / pnorm) / mass
+                p.E = (E * bE + s3product) / mass
+                p.px = px + bpx * lf
+                p.py = py + bpy * lf
+                p.pz = pz + bpz * lf
+        else:
+            for p in self:
+                p.E, p.px, p.py, p.pz = bE, bpx, bpy, bpz
+
         return self
             
     def check(self):
