@@ -3265,14 +3265,17 @@ class ProcessExporterMG7(ProcessExporterCPP):
         with open(file_name, 'w') as f:
             json.dump(self.process_info, f)
 
-        # Generate Cards/run_card.toml from the template, filling in
-        # process-dependent defaults (mirrors the LO run_card.dat logic).
-        self.create_run_card(matrix_elements, history)
-
         # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
         # post-processing driver (get_characteristics) so that the madevent
         # tool interface can run on this directory.
+        # NB: this must come *before* create_run_card: it is what fills in
+        # self.proc_characteristic, and the run_card defaults are derived from
+        # it (e.g. ninitial == 1 -> a decay, which gets no cuts at all).
         self.create_proc_characteristics(matrix_elements)
+
+        # Generate Cards/run_card.toml from the template, filling in
+        # process-dependent defaults (mirrors the LO run_card.dat logic).
+        self.create_run_card(matrix_elements, history)
 
         # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
         # Point it at the MG5 install so tool paths (pythia8, etc.) and the

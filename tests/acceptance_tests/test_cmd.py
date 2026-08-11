@@ -4295,6 +4295,51 @@ P1_qq_wp_wp_lvl
         self.assertIn('ninitial = 1', characteristics)
         self.assertIn('nexternal = 4', characteristics)
 
+    def test_output_mg7_decay_run_card_has_no_cuts(self):
+        """`output mg7` of a decay must ship a run card without any cut.
+
+        A partial width is inclusive, so any kinematic cut biases it low: the
+        hadron-collider defaults (ptj/ptl/eta/dR) used to survive into a decay
+        directory and cost ~3% on the t > b w+, w+ > e+ ve width. The card is
+        written at output time, so the emitted [cuts] section is what has to be
+        empty -- the user still sees exactly what is run, and can add a cut back
+        by hand. A collision must keep its defaults untouched.
+        """
+        import madgraph.various.banner as banner_mod
+
+        def cuts_of(path):
+            card = banner_mod.RunCardMG7(path, consistency=False)
+            return card['cuts']
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate t > b w+, w+ > e+ ve')
+        self.do('output mg7 %s' % self.out_dir)
+
+        # both the working card and the "set <param> default" reference
+        for name in ('run_card.toml', 'run_card_default.toml'):
+            cuts = cuts_of(pjoin(self.out_dir, 'Cards', name))
+            self.assertEqual(dict(cuts), {},
+                             '%s of a 1 -> n decay must carry no cut, got %s'
+                             % (name, dict(cuts)))
+
+        # the Breit-Wigner cutoff is a sampling range for the off-shell
+        # propagators, not a cut on the final state: it must survive.
+        card = banner_mod.RunCardMG7(pjoin(self.out_dir, 'Cards',
+                                           'run_card.toml'), consistency=False)
+        self.assertEqual(card['phasespace']['bw_cutoff'], 15)
+
+        # a 2 -> n collision keeps the standard cuts
+        shutil.rmtree(self.out_dir)
+        self.do('generate p p > t t~')
+        self.do('output mg7 %s' % self.out_dir)
+        cuts = cuts_of(pjoin(self.out_dir, 'Cards', 'run_card.toml'))
+        self.assertEqual(cuts['jet-pt']['min'], 20.0)
+        self.assertEqual(cuts['lepton-pt']['min'], 10.0)
+        self.assertEqual(cuts['jet-eta_abs']['max'], 5.0)
+
     @test_manager.bypass_for_py3
     def test_madevent_triplet_diquarks(self):
         """Test MadEvent output of triplet diquarks"""

@@ -7114,9 +7114,13 @@ class RunCardMG7(RunCard):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
 
-        # 1 -> N decay: no cuts at all
+        # 1 -> N decay: no cuts at all. A partial width is an inclusive
+        # quantity, so any kinematic cut biases it low (the collider defaults
+        # cost ~3% on t > b w+, w+ > e+ ve). The Breit-Wigner cutoff in
+        # [phasespace] is deliberately left alone: it is a sampling range for
+        # the off-shell propagators, not a cut on the final state.
         if proc_characteristic and proc_characteristic['ninitial'] == 1:
-            self.dynamic_sections['cuts'] = collections.OrderedDict()
+            self.remove_all_cut()
 
         # site/user defaults win (this has to be LAST, like the LO run_card)
         if self.default_run_card and os.path.exists(self.default_run_card):
