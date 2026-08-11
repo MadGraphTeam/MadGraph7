@@ -3967,6 +3967,14 @@ def _crossing_build_f2py(pdir, env):
     ``F2PY="<python> -m numpy.f2py"`` which always resolves to the running
     interpreter's f2py.  A plain ``make matrix2py.so`` is tried first so a
     working system f2py is still honoured.
+
+    Success is that the module IMPORTS, not that a file appeared. f2py can fail
+    to build anything and still exit 0 (it does exactly that when handed a link
+    flag its meson backend does not parse), and the makefile touches the bare
+    .so unconditionally to give make a timestamp -- so "the target exists" is
+    not evidence of anything. Taking it as evidence turned a hard build failure
+    into a check_crossing that silently returned no comparison at all, instead
+    of the build_failed that makes the caller skip.
     """
     for f2py in (None, '%s -m numpy.f2py' % sys.executable):
         for stale in glob.glob(pjoin(pdir, 'matrix2py*.so')):
@@ -3980,8 +3988,34 @@ def _crossing_build_f2py(pdir, env):
         with open(os.devnull, 'w') as devnull:
             ret = subprocess.call(cmd, cwd=pdir, stdout=devnull,
                                   stderr=devnull, env=env)
-        if ret == 0 and glob.glob(pjoin(pdir, 'matrix2py*.so')):
+        if ret == 0 and glob.glob(pjoin(pdir, 'matrix2py*.so')) \
+           and _crossing_f2py_importable(pdir, env):
             return True
+    return False
+
+
+def _crossing_f2py_importable(pdir, env):
+    """True when ``import matrix2py`` actually succeeds inside *pdir*.
+
+    Run out of process: the module is a compiled extension, it is rebuilt per
+    directory under the same name, and a failed dlopen must not be able to hurt
+    the interpreter driving the check.
+    """
+    probe = ('import sys\n'
+             'sys.path.insert(0, %r)\n'
+             'import matrix2py\n'
+             'print("CROSSIMPORT_OK")\n' % pdir)
+    try:
+        proc = subprocess.Popen([sys.executable, '-c', probe],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, cwd=pdir, env=env)
+        output = proc.communicate()[0].decode()
+    except OSError:
+        return False
+    if 'CROSSIMPORT_OK' in output:
+        return True
+    logger.debug("matrix2py built in %s but does not import:\n%s"
+                 % (pdir, output))
     return False
 
 
