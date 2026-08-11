@@ -4892,12 +4892,13 @@ class IOTestFDGauge(IOTests.IOTestManager):
 
     @IOTests.createIOTest()
     def testIO_FDgauge_standalone_fortran(self):
-        r""" target: FD_fortran/Source/DHELAS/[.*\.f$]
-             target: -FD_fortran/Source/DHELAS/aloha_functions.f
+        r""" target: FD_fortran/Source/DHELAS/FFV6M_3.f
         """
-        # aloha_functions.f is the verbatim FD template (aloha_functions_fd.f),
-        # not generated code: it is vetoed to keep the reference to what the
-        # writers produce.
+        # One file rather than the whole DHELAS: FFV6M_3.f carries both of the
+        # things FD gauge does to an offshell routine -- the propagator factor
+        # written into the body (q, the gauge direction, js1/js2 and the update
+        # of the 5 components) and a combination merged into a single
+        # expression (FFV6_2M_3) -- so it moves whenever either changes.
         self.generate_fd('standalone', pjoin(self.IOpath, 'FD_fortran'))
 
     @IOTests.createIOTest()
