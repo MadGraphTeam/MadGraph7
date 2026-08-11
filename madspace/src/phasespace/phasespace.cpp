@@ -134,7 +134,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             NamedVector<Type> in{
                 {"random",
                  batch_float_array(
-                     3 * topology.outgoing_masses().size() - (leptonic ? 4 : 2)
+                     PhaseSpaceMapping::random_dim_for(topology, leptonic)
                  )}
             };
             // Opt-in discrete channel: only declared when the t-channel strategy
@@ -148,7 +148,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             return in;
         }(),
-        {{"momenta", batch_four_vec_array(topology.outgoing_masses().size() + 2)},
+        {{"momenta",
+          batch_four_vec_array(
+              topology.outgoing_masses().size() + topology.incoming_masses().size()
+          )},
          {"x1", batch_float},
          {"x2", batch_float}},
         permutations.size() > 1
@@ -156,14 +159,19 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             : NamedVector<Type>{}
     ),
     _topology(topology),
-    _cuts(cuts.value_or(Cuts(topology.outgoing_masses().size() + 2))),
+    _cuts(cuts.value_or(Cuts(
+        topology.outgoing_masses().size() + topology.incoming_masses().size()
+    ))),
     _pi_factors(
         std::pow(2 * PI, 4 - 3 * static_cast<int>(topology.outgoing_masses().size()))
     ),
     _sqrt_s_lab(cm_energy),
     _leptonic(leptonic),
+    // A decay has no beams to sample momentum fractions for: the root
+    // virtuality is fixed at the decaying particle's mass (passed as
+    // cm_energy) and there is no boost into a lab frame.
     _map_luminosity(
-        !leptonic &&
+        !leptonic && !topology.is_decay() &&
         (_topology.t_propagator_count() == 0 ||
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
@@ -479,7 +487,15 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             },
             [&](std::monostate) {
                 auto [p1, p2] = fb.com_p_in(sqrt_s_hat);
-                p_ext = {p1, p2};
+                if (_topology.is_decay()) {
+                    // Single incoming particle, at rest in the frame the decay
+                    // products are generated in: p_in = (M, 0, 0, 0), which is
+                    // exactly the sum of the two back-to-back beam momenta
+                    // com_p_in builds for sqrt(s_hat) = M.
+                    p_ext = {fb.add(p1, p2)};
+                } else {
+                    p_ext = {p1, p2};
+                }
             }
         },
         _t_mapping
@@ -570,7 +586,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     for (auto [decay_index, mass, momentum] :
          zip(_topology.outgoing_indices(),
              _topology.outgoing_masses(),
-             std::span(p_ext.begin() + 2, p_ext.end()))) {
+             std::span(
+                 p_ext.begin() + _topology.incoming_masses().size(), p_ext.end()
+             ))) {
         auto& data = decay_data.at(decay_index);
         data.mass = mass;
         data.mass2 = mass * mass;

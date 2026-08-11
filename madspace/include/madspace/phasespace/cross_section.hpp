@@ -20,7 +20,12 @@ public:
         const nested_vector2<me_int_t>& pid_options = {},
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf1 = std::monostate{},
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2 = std::monostate{},
-        bool input_momentum_fraction = true
+        bool input_momentum_fraction = true,
+        // Decay of a single incoming particle instead of a collision: the
+        // differential rate is |M|^2 / (2 M) with M = cm_energy, in GeV, rather
+        // than a hadronic cross section in pb. There are no beams, hence no
+        // momentum fractions and no PDFs.
+        bool decay = false
     );
 
     const nested_vector2<me_int_t>& pid_options() const { return _pid_options; }
@@ -43,6 +48,7 @@ private:
     double _e_cm;
     std::variant<std::monostate, EnergyScale, CachedScale> _energy_scale;
     bool _input_momentum_fraction;
+    bool _decay;
 };
 
 } // namespace madspace
