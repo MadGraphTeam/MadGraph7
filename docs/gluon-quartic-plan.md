@@ -567,6 +567,44 @@ gains more than the pure gluon one at equal particle count, +9% at
 `t t~ 2g` against +4% at `4g`. Peak RSS is flat except at seven gluons,
 because the wavefunction store is a stack frame and the code image dominates.
 
+**How far it generalises.** Both series above are gluon-rich, so a third
+process was measured as a check: `u u~ > z g g g g`, seven legs like
+`g g > t t~ 3g` but with a Z and a quark line, so most of its diagrams have no
+four gluon vertex at all. (`q` is not a defined multiparticle, hence `u u~`.)
+
+| process | mode | generate | matrix.f | matrix.o | W slots | AMP entries | amps computed | per call | speed | total/call |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `g g > t t~ 3g` | off | 6.2 s | 576 kB | 479 kB | 121 | 1890 | 1890 | 9.63 ms | - | 41.8 kB |
+| | speed | 4.9 s | 463 kB | 408 kB | 213 | 1159 | 1551 | 8.97 ms | +7% | 39.7 kB (-5%) |
+| | slots | 5.0 s | 493 kB | 466 kB | 141 | 946 | 1890 | 9.93 ms | -3% | **29.1 kB (-30%)** |
+| `u u~ > z 4g` | off | 2.9 s | 135 kB | 115 kB | 76 | 516 | 516 | 1.58 ms | - | 15.8 kB |
+| | speed | 2.3 s | 127 kB | 110 kB | 85 | 391 | 450 | 1.51 ms | +4% | 14.7 kB (-7%) |
+| | slots | 2.3 s | 132 kB | 117 kB | 84 | 384 | 516 | 1.65 ms | -5% | 14.5 kB (-8%) |
+
+**The payoff tracks the quartic fraction, exactly.** In `slots` mode the AMP
+entry count is `total amplitudes - merge sources`, to within one, on every
+process measured:
+
+| | amplitudes | merge sources | AMP in `slots` | saving |
+|---|---|---|---|---|
+| `g g > 5 g` | 7245 | 6300 (87%) | 946 | -87% |
+| `g g > g g g g` | 510 | 405 (79%) | 106 | -79% |
+| `g g > t t~ 3g` | 1890 | 945 (50%) | 946 | -50% |
+| `u u~ > z 4g` | 516 | 132 (**26%**) | 384 | -26% |
+
+So `u u~ > z 4g` is the weakest case measured, and predictably: there is
+simply little to merge. Runtime follows at +4% rather than +7 to +9%, and the
+working set at -8% rather than -30 or -75%.
+
+It is also the one process where **`slots` does not reduce the wavefunctions
+either** -- 84 against off's 76, worse -- which breaks the pattern from the
+gluon-rich processes, where reversing the order always recovered them. On this
+topology `slots` is the worst of the three: 5% slower than off and larger in
+W, for an AMP count it barely wins over `speed`, 384 against 391. `speed`
+still behaves, +4% with generation down 21% and a smaller source and object,
+which is also what the `auto` gate picks at seven legs.
+
+
 ## The multiplicity gate
 
 The sweep says the full merging turns over at six external legs, and the same
