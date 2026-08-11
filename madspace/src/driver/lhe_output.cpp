@@ -200,10 +200,16 @@ void LHECompleter::init_propagator_data(
     resonant_prop_indices.clear();
     resonant_prop_indices.resize(decay_count, -1);
 
+    // The permutation runs over all external legs, incoming first, so the
+    // outgoing ones start at the incoming count -- 2 for a collision, 1 for a
+    // decay. Getting this wrong silently reads another particle's color flow.
     for (auto [index, mass, perm_index] :
          zip(topo.outgoing_indices(),
              topo.outgoing_masses(),
-             std::span(permutation.begin() + 2, permutation.end()))) {
+             std::span(
+                 permutation.begin() + topo.incoming_masses().size(),
+                 permutation.end()
+             ))) {
         e_min.at(index) = mass;
         momentum_masks.at(index) = 1 << perm_index;
         for (std::size_t i = 0; std::size_t color_index : colors) {
