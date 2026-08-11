@@ -4893,12 +4893,18 @@ class IOTestFDGauge(IOTests.IOTestManager):
     @IOTests.createIOTest()
     def testIO_FDgauge_standalone_fortran(self):
         r""" target: FD_fortran/Source/DHELAS/FFV6M_3.f
+             target: FD_fortran/Source/DHELAS/VVV1_0.f
         """
-        # One file rather than the whole DHELAS: FFV6M_3.f carries both of the
-        # things FD gauge does to an offshell routine -- the propagator factor
-        # written into the body (q, the gauge direction, js1/js2 and the update
-        # of the 5 components) and a combination merged into a single
-        # expression (FFV6_2M_3) -- so it moves whenever either changes.
+        # Two files rather than the whole DHELAS, chosen to cover what FD gauge
+        # does that no other gauge does:
+        #  - FFV6M_3.f: the propagator factor written into the body of an
+        #    offshell routine (q, the gauge direction, js1/js2 and the update of
+        #    the 5 components), and a combination merged into one expression
+        #    (FFV6_2M_3);
+        #  - VVV1_0.f: the combinations assembled out of structures that act on
+        #    different spins (VVV1_VVS1_VSV2_VSS1_0 and
+        #    VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0), which only exist because a
+        #    massive vector and its Goldstone are the same wavefunction here.
         self.generate_fd('standalone', pjoin(self.IOpath, 'FD_fortran'))
 
     @IOTests.createIOTest()
