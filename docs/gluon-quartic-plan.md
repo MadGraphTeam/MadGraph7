@@ -566,6 +566,35 @@ one at equal particle count, +8% at `t t~ 3g` against +5% at `4g`. Peak RSS is
 flat except at seven gluons, because the wavefunction store is a stack frame
 and the code image dominates.
 
+## The multiplicity gate
+
+The sweep says the full merging turns over at six external legs, and the same
+sweep says it costs slots below that. So `auto` gates on it:
+`Amplitude.generate_diagrams` only takes the seed rule when the process has
+`madgraph.merge_quartic_min_legs` legs or more, six by measurement. `speed`
+and `slots` asked for by name are unconditional -- that is how you get the
+merging on a small process anyway.
+
+What is left below the threshold is not nothing, and this was worth measuring
+rather than assuming. The *amplitude* merges do not need the seed rule: they
+are found from the colour algebra by `unroll_quartic_vertices`, so they still
+apply, and they shrink the JAMP block without touching the wavefunctions:
+
+| `g g > g g g` | slots | JAMP temporaries | per call |
+|---|---|---|---|
+| off | 12 | 72 | 87.75 us |
+| `auto` (merges only) | 12 | 42 | **84.25 us**, +4.0% |
+| `speed` (full) | 19 | 42 | 87.25 us, -1% |
+
+So below the threshold `auto` is *better* than both -- it keeps the JAMP fold,
+which is free, and drops the reordering, which is what costs the seven extra
+slots. At four and five legs elsewhere it is neutral rather than positive
+(`g g > g g` 5.47 -> 5.48 us, `g g > t t~ g` 30.33 -> 30.42 us, both inside
+the 0.6% floor) and never negative, at an unchanged slot count.
+
+Above the threshold nothing changes: `auto` at six legs generates a
+byte-identical `matrix.f` to `speed`.
+
 ## The diagram order — measured, and worth a lot
 
 `reuse_outdated_wavefunctions` is a linear scan allocator over lifetimes taken

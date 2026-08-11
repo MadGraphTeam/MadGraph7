@@ -1113,10 +1113,13 @@ class Amplitude(base_objects.PhysicsObject):
         # share a line -- and the seed is what is left over.
         # Left off for a decay chain, whose identity vertex is kept rather
         # than glued in, and for loop amplitudes, whose diagram set is not the
-        # one the unrolling reasons about.
+        # one the unrolling reasons about. 'auto' also leaves it off below
+        # merge_quartic_min_legs, where it is measured to buy nothing.
         self.seed_forbidden_cubic_ids = frozenset()
         if madgraph.merge_quartic_vertices and not self.has_loop_process() \
-           and not process.get('is_decay_chain'):
+           and not process.get('is_decay_chain') \
+           and (madgraph.merge_quartic_vertices != 'auto' or
+                len(process.get('legs')) >= madgraph.merge_quartic_min_legs):
             self.seed_forbidden_cubic_ids = get_unrollable_cubic_ids(model)
 
 

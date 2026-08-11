@@ -9172,8 +9172,9 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         logger.info(" > speed  : fewest amplitude calls (best on cpu)")
         logger.info(" > slots  : smallest wavefunction store (for gpu, where")
         logger.info(" >          that store is per thread); costs the sums")
-        logger.info(" > auto   : slots when the matrix elements go to a gpu")
-        logger.info(" >          backend, speed otherwise, decided per output")
+        logger.info(" > auto   : below 6 legs only the amplitude merges, which")
+        logger.info(" >          are free; above, slots when the matrix elements")
+        logger.info(" >          go to a gpu backend and speed otherwise")
 
     def set2_merge_quartic_vertices(self, args, log=True):
         """Sum the four gluon contributions into the cubic amplitude carrying

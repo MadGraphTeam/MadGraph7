@@ -4327,11 +4327,16 @@ class TestSeedRule(unittest.TestCase):
                     for diagram in amplitude.get('diagrams')]
 
         speed, slots, auto = tags('speed'), tags('slots'), tags('auto')
-        self.assertEqual(auto, speed)
         self.assertEqual(slots, speed[::-1])
         # and it is a reordering, nothing gained or lost
         self.assertEqual(sorted(slots), sorted(speed))
         self.assertEqual(len(set(speed)), len(speed))
+        # 'auto' only takes that order once the process is big enough to pay
+        # for it, and otherwise leaves the generation order alone
+        if len(initial) + len(final) >= madgraph.merge_quartic_min_legs:
+            self.assertEqual(auto, speed)
+        else:
+            self.assertEqual(auto, tags(False))
 
     def test_auto_order_gg_ggg(self):
         self.check_auto_order([21, 21], [21, 21, 21])
@@ -4345,7 +4350,9 @@ class TestSeedRule(unittest.TestCase):
 
         import madgraph.core.helas_objects as helas_objects
 
-        for mode, wanted in (('auto', 7), ('speed', 7), ('slots', 0)):
+        # five legs, so below merge_quartic_min_legs: 'auto' does not seed and
+        # so has no sums, while asking for 'speed' by name still does
+        for mode, wanted in (('auto', 0), ('speed', 7), ('slots', 0)):
             madgraph.merge_quartic_vertices = mode
             amplitude = diagram_generation.Amplitude(base_objects.Process(
                 {'legs':base_objects.LegList(
@@ -4354,6 +4361,29 @@ class TestSeedRule(unittest.TestCase):
                  'model':self.base_model}))
             element = helas_objects.HelasMatrixElement(amplitude)
             self.assertEqual(len(element.get_quartic_current_sums()[0]), wanted)
+
+    def test_auto_multiplicity_gate(self):
+        """'auto' leaves the seed rule off below merge_quartic_min_legs, where
+        it is measured not to pay for itself, and takes it above"""
+
+        def seeded(nfinal, mode):
+            madgraph.merge_quartic_vertices = mode
+            amplitude = diagram_generation.Amplitude(base_objects.Process(
+                {'legs':base_objects.LegList(
+                    [base_objects.Leg({'id':21, 'state':False})] * 2 +
+                    [base_objects.Leg({'id':21, 'state':True})] * nfinal),
+                 'model':self.base_model}))
+            return bool(amplitude.seed_forbidden_cubic_ids)
+
+        threshold = madgraph.merge_quartic_min_legs
+        for nfinal in (2, 3, 4):
+            wanted = (2 + nfinal) >= threshold
+            self.assertEqual(seeded(nfinal, 'auto'), wanted)
+            # asking for it by name is unconditional, that being the way to
+            # get the merging on a small process
+            self.assertTrue(seeded(nfinal, 'speed'))
+            self.assertTrue(seeded(nfinal, 'slots'))
+            self.assertFalse(seeded(nfinal, False))
 
     def test_seed_inactive_by_default(self):
         """Nothing changes unless madgraph.merge_quartic_vertices is set"""

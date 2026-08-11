@@ -72,12 +72,30 @@ else:
 #              alive. Trades 6% more amplitude calls for 23% fewer
 #              wavefunction slots at seven gluons, which is the trade a gpu
 #              wants when occupancy is the limit.
-#   'auto'  -- generate as for 'speed', and let each output pick: 'slots' when
-#              the matrix elements go to a gpu backend, 'speed' otherwise. The
-#              interface resolves it to one of the two above before anything
-#              reads it again, so only the generation ever sees 'auto'.
+#   'auto'  -- decide per process. Below merge_quartic_min_legs external legs
+#              only the amplitude merges are taken, which shrink the JAMP
+#              block for free; the seed rule -- and with it the reordering,
+#              the current sums and the slots they cost -- is left off, since
+#              below that size it does not pay for itself. At or above it,
+#              generate as for 'speed' and let each output pick 'slots' when
+#              the matrix elements go to a gpu backend and 'speed' otherwise.
+#              The interface resolves the second half before anything reads it
+#              again, so only the generation ever sees 'auto'.
+# 'speed' and 'slots' are unconditional -- they are the way to ask for the
+# merging on a small process anyway.
 # Off by default: several consumers read the diagram or amplitude structure
 # rather than the result, see "Why this is not the default" in
 # docs/gluon-quartic-plan.md.
 merge_quartic_vertices = False
+
+# External legs an 'auto' process needs before the seed rule is worth it.
+# Measured on g g > N g and g g > t t~ N g, both of which turn over at six:
+# five legs and below the full merging is inside the noise or slightly
+# negative (-1% at g g > g g g, which also pays 12 -> 19 wavefunction slots),
+# six and above it is a steady 5-8% with the source and the object file
+# shrinking too. The amplitude merges alone, which is what is left below the
+# threshold, are +4% at g g > g g g and neutral at four and five legs
+# elsewhere, at the same slot count -- never a loss. See "Full sweep" in
+# docs/gluon-quartic-plan.md.
+merge_quartic_min_legs = 6
         
