@@ -28,6 +28,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import collections
+import json
 import logging
 import math
 import os
@@ -106,11 +107,18 @@ class MadSpinResult(object):
 
     def __init__(self, config, lhe_path, log_path, wall_seconds,
                  BR, BR_err, efficiency, nevents_in,
-                 cross_out=None, cross_in=None):
+                 cross_out=None, cross_in=None,
+                 phase_seconds=None, phase_counts=None, lhe_timers=None):
         self.config = config
         self.lhe_path = lhe_path
         self.log_path = log_path
         self.wall_seconds = wall_seconds
+        # Per-phase wall time / occurrence counts as reported by MadSpin
+        # itself (see MadSpinInterface._log_phase_timings), plus the optional
+        # LHE-parser breakdown when MG_LHE_TIMERS was set for the run.
+        self.phase_seconds = dict(phase_seconds or {})
+        self.phase_counts = dict(phase_counts or {})
+        self.lhe_timers = dict(lhe_timers or {})
         self.BR = BR
         self.BR_err = BR_err
         self.efficiency = efficiency
@@ -170,6 +178,44 @@ _RE_AVG_TRIAL = re.compile(
 _RE_WRITTEN = re.compile(
     r'Total number of events written:\s*(\d+)\s*/\s*(\d+)'
 )
+# MadSpin logs through madgraph's ColorFormatter, which emits ANSI escapes
+# unconditionally -- also into a redirected file. Strip them before matching.
+_RE_ANSI = re.compile(r'\x1b\[[0-9;]*m')
+# Machine-readable per-phase wall times emitted by
+# MadSpinInterface._log_phase_timings at the end of every run. The greedy
+# ``.*`` stops at the last '}' on the line, i.e. the end of the JSON payload,
+# so trailing formatter decoration does not matter.
+_RE_PHASES = re.compile(r'MadSpin phase timings:\s*(\{.*\})')
+# Optional LHE parser timers (only present when MG_LHE_TIMERS is set):
+#   "  Event.__init__: 1.234567s total over 42 call(s) (avg 0.029394s)"
+_RE_LHE_TIMER = re.compile(
+    r'^\s+(\S+):\s*([0-9.eE+-]+)s total over (\d+) call\(s\)', re.MULTILINE
+)
+
+
+def parse_phase_timings(text):
+    """Return ``(seconds, counts)`` dicts from a MadSpin log, or ``({}, {})``.
+
+    Uses the last occurrence so a log holding several runs reports the last one.
+    """
+    payload = None
+    for match in _RE_PHASES.finditer(_RE_ANSI.sub('', text)):
+        payload = match.group(1)
+    if payload is None:
+        return {}, {}
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return {}, {}
+    return data.get('seconds', {}), data.get('counts', {})
+
+
+def parse_lhe_timers(text):
+    """Return ``{key: (seconds, calls)}`` from the LHE parser timing summary."""
+    out = {}
+    for match in _RE_LHE_TIMER.finditer(_RE_ANSI.sub('', text)):
+        out[match.group(1)] = (float(match.group(2)), int(match.group(3)))
+    return out
 
 
 def _parse_log(text):
@@ -285,23 +331,51 @@ class MadSpinFactory(object):
         # plain unweighted_events.lhe here).
         lines.append('output madevent %s' % self.proc_dir)
         lines.append('launch %s' % self.proc_dir)
+        # ``launch`` opens ONE menu that takes both the tool switches and the
+        # ``set <card parameter>`` lines; ``done`` closes it and starts the run.
+        # Putting the set lines after a first ``done`` (as this used to) meant
+        # they were never executed -- the run had already started, so nevents,
+        # iseed and the beam energies silently kept their run_card defaults.
         lines.append('madspin=OFF')  # MadSpin runs separately, mode by mode
         lines.append('shower=OFF')
         lines.append('detector=OFF')
         lines.append('analysis=OFF')
-        lines.append('done')  # end card edit menu
         lines.append('set nevents %d' % self.nevents)
         lines.append('set iseed %d' % self.seed)
+        # Systematics needs lhapdf's python bindings, which are an optional
+        # (and, on some interpreters, broken) dependency; MadSpin does not use
+        # the reweighting information, so keep the whole step out of the run.
         lines.append('set use_syst False')
+        lines.append('set systematics_program none')
         for key, val in self.extra_run_card.items():
             lines.append('set %s %s' % (key, val))
-        lines.append('done')  # end second card edit menu (after card adjustments)
+        lines.append('done')  # close the menu -> start the run
         with open(script_path, 'w') as fp:
             fp.write('\n'.join(lines) + '\n')
+
+    def _existing_production(self):
+        """Return an already-generated production LHE under ``proc_dir``, if any.
+
+        Only reachable when the caller passed an explicit ``base_dir`` (the
+        default tempdir is fresh every time). This is what lets a benchmark
+        re-time MadSpin repeatedly without paying for the production run again.
+        """
+        for name in ('unweighted_events.lhe.gz', 'unweighted_events.lhe'):
+            candidate = pjoin(self.proc_dir, 'Events', 'run_01', name)
+            if os.path.exists(candidate):
+                return candidate
+        return None
 
     def produce_events(self):
         """Run mg5_aMC once; cache the LHE file path."""
         if self.events_file:
+            return self.events_file
+
+        cached = self._existing_production()
+        if cached:
+            _logger.info('%s: reusing production sample %s', self.name, cached)
+            self.events_file = cached
+            self.cross_in = _read_lhe_cross(self.events_file)
             return self.events_file
 
         script_path = pjoin(self.base_dir, 'mg5_script.dat')
@@ -329,7 +403,11 @@ class MadSpinFactory(object):
             log_text = fp.read()
         for marker in ('NoDiagramException',
                        'command not executed: output',
-                       'command not executed: launch'):
+                       'command not executed: launch',
+                       # A command that raised leaves the rest of the script
+                       # unexecuted, so the run_card 'set' lines silently do not
+                       # apply and the sample is not the one that was asked for.
+                       'interrupted with error'):
             if marker in log_text:
                 raise RuntimeError(
                     'mg5_aMC aborted mid-script for factory %s '
@@ -449,6 +527,8 @@ class MadSpinFactory(object):
         BR, accepted, trials, efficiency = _parse_log(log_text)
         if efficiency is None and accepted is not None and trials:
             efficiency = float(accepted) / float(trials)
+        phase_seconds, phase_counts = parse_phase_timings(log_text)
+        lhe_timers = parse_lhe_timers(log_text)
 
         # Always read the decayed banner's cross-section -- this is the
         # physics-observable we want to compare across modes.
@@ -476,6 +556,9 @@ class MadSpinFactory(object):
             nevents_in=self.nevents,
             cross_out=cross_out,
             cross_in=getattr(self, 'cross_in', None),
+            phase_seconds=phase_seconds,
+            phase_counts=phase_counts,
+            lhe_timers=lhe_timers,
         )
         self._results[config.label] = result
         return result

@@ -16,6 +16,8 @@
 from __future__ import division
 from __future__ import absolute_import
 import collections
+import contextlib
+import json
 import logging
 import math
 import os
@@ -192,12 +194,67 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.err_branching_ratio = 0
         self.me_run_name = "" # Events diretory name where to stotre the events (used by madevent) not use internally
         self.all_iden = {}
-        
+        # Wall-clock accounting per run phase (see _phase / _log_phase_timings).
+        # Always collected: the granularity is one entry per phase, not per
+        # event, so the overhead is irrelevant next to the phases themselves.
+        self._phase_times = collections.defaultdict(float)
+        self._phase_counts = collections.defaultdict(int)
+        # Which bucket generate_events charges its wall time to. The main
+        # pre-generation pass charges 'decay_event_generation'; the mid-loop
+        # pool refills in get_decay_from_file retarget it to
+        # 'decay_event_refill' so the two are told apart.
+        self._gen_phase = 'decay_event_generation'
+
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path)
-            
-    
+
+    # ------------------------------------------------------------------
+    # Phase timing
+    # ------------------------------------------------------------------
+    def _add_phase(self, name, dt, count=1):
+        """Charge ``dt`` seconds (and ``count`` occurrences) to phase ``name``."""
+        self._phase_times[name] += dt
+        self._phase_counts[name] += count
+
+    def _add_count(self, name, count):
+        """Record a pure counter (no wall time), e.g. events or trials."""
+        self._phase_counts[name] += count
+
+    @contextlib.contextmanager
+    def _phase(self, name):
+        """Context manager charging its body's wall time to phase ``name``."""
+        start = time.time()
+        try:
+            yield
+        finally:
+            self._add_phase(name, time.time() - start)
+
+    def _log_phase_timings(self):
+        """Emit one machine-readable line with the per-phase wall times.
+
+        Kept as a single JSON payload on a fixed prefix so benchmark drivers
+        can pull the whole split out of a log with one regex, without having
+        to track the wording of the individual human-readable timing lines.
+        """
+        if not self._phase_times:
+            return
+        payload = {
+            'seconds': {k: round(v, 4) for k, v in sorted(self._phase_times.items())},
+            'counts': {k: v for k, v in sorted(self._phase_counts.items())},
+        }
+        logger.critical('MadSpin phase timings: %s', json.dumps(payload, sort_keys=True))
+
+    def _finish_run(self):
+        """End-of-run reporting: total wall time, the phase split, and the
+        optional LHE parser timers."""
+        if getattr(self, '_run_start', None) is not None:
+            self._add_phase('total', time.time() - self._run_start)
+            self._run_start = None
+        self._log_phase_timings()
+        self._log_lhe_timers()
+
+
     def setup_for_pure_decay(self):
         """this is for spinmode=none -> simple decay
            We go here if they are no banner.
@@ -715,9 +772,12 @@ class MadSpinInterface(extended_cmd.Cmd):
         """end of the configuration launched the code"""
         
         (options, args) = self.parse_launch(line)
+        self._run_start = time.time()
+        self._phase_times.clear()
+        self._phase_counts.clear()
         if getattr(lhe_parser, "_ENABLE_LHE_TIMERS", False):
             lhe_parser.reset_lhe_timers()
-        
+
         if options.name:
             self.me_run_name = options.name # Only use by MG5aMC
         else:
@@ -736,25 +796,25 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         if spinmode in ["none"]:
             out = self.run_bridge(line)
-            self._log_lhe_timers()
+            self._finish_run()
             return out
         elif spinmode.startswith("onshell"):
             if spinmode == "onshell_v1":
                 out = self.run_onshell(line)
             else:
                 out = self.run_onshell(line, density_method=True)
-            self._log_lhe_timers()
+            self._finish_run()
             return out
         elif spinmode == "PA":
             out = self.run_onshell(line, density_method=True)
-            self._log_lhe_timers()
+            self._finish_run()
             return out
         elif spinmode == "madspin_v1":
             # legacy MadSpin / decay-chain path: fall through to decay_all_events below
             pass
         elif spinmode == "madspin":
             out = self.run_onshell(line, density_method=True)
-            self._log_lhe_timers()
+            self._finish_run()
             return out
         elif spinmode == "bridge":
             raise Exception("Bridge mode not available.")
@@ -763,7 +823,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         
         if self.options['ms_dir'] and os.path.exists(pjoin(self.options['ms_dir'], 'madspin.pkl')):
             out = self.run_from_pickle()
-            self._log_lhe_timers()
+            self._finish_run()
             return out
         
     
@@ -813,12 +873,16 @@ class MadSpinInterface(extended_cmd.Cmd):
             
         time_me_generation = time.time()
         self.update_status('generating Madspin matrix element')
-        generate_all = madspin.decay_all_events(self, self.banner, self.events_file, 
+        generate_all = madspin.decay_all_events(self, self.banner, self.events_file,
                                                     self.options)
-        logger.critical(f"Time for ME: {time.time()-time_me_generation:.2f} sec")        
+        time_me_generation = time.time() - time_me_generation
+        logger.critical(f"Time for ME: {time_me_generation:.2f} sec")
+        self._add_phase('me_generation', time_me_generation)
         self.update_status('running MadSpin')
-        generate_all.run()
-                        
+        with self._phase('decay_loop'):
+            generate_all.run()
+
+
         self.branching_ratio = generate_all.branching_ratio
         self.cross = generate_all.cross
         self.error = generate_all.error
@@ -863,7 +927,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 misc.call(['tar','-czpf','RunMaterial.tar.gz','RunMaterial'], 
                                                                     cwd=run_dir)
                 shutil.rmtree(pjoin(run_dir,'RunMaterial'))
-        self._log_lhe_timers()
+        self._finish_run()
 
     def run_from_pickle(self):
         import madgraph.iolibs.save_load_object as save_load_object
@@ -1519,6 +1583,11 @@ class MadSpinInterface(extended_cmd.Cmd):
                 break
         time_gen_dec = time.time()-time_gen_dec
         logger.critical(f"Time for decay event generation = {time_gen_dec:.1f} sec")
+        # Charge to whichever bucket the caller selected (pre-generation pass
+        # vs. mid-loop refill) and record how many decay events were asked for,
+        # so a benchmark can tell "slow generator" from "generated too many".
+        self._add_phase(self._gen_phase, time_gen_dec)
+        self._add_count('%s_events_requested' % self._gen_phase, nb_event)
         if not output_width:
             return out
         else:
@@ -1767,9 +1836,20 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.all_matrix = {}
         time_me_generation = time.time() - time_me_generation
         logger.critical(f"Time ME generation: {time_me_generation:.2f} sec")
+        self._add_phase('me_generation', time_me_generation)
 
         #4. determine the maxwgt
+        # This phase is not free: it probes Nevents_for_max_weight production
+        # events with max_weight_ps_point decay trials each (75 x 400 = 30000
+        # trials by default), each consuming decay events and a density ME call.
+        time_maxwgt = time.time()
         maxwgt = self.get_maxwgt_for_onshell(orig_lhe, evt_decayfile, decay_dict)
+        time_maxwgt = time.time() - time_maxwgt
+        logger.critical(f"Time for max-weight scan = {time_maxwgt:.2f} sec")
+        # The refills triggered from inside the scan were charged to
+        # decay_event_refill by generate_events; keep max_weight as the
+        # inclusive number and let the benchmark subtract if it wants to.
+        self._add_phase('max_weight_scan', time_maxwgt)
 
         #5. generate the decay (for each production event)
 
@@ -1889,10 +1969,17 @@ class MadSpinInterface(extended_cmd.Cmd):
             output_lhe.write_events(full_evt)
 
         output_lhe.write('</LesHouchesEvents>\n')
+        # The accept/reject loop proper (decay-pool reads, density MEs,
+        # reshuffling, event writing). Refills triggered from inside it were
+        # charged separately by generate_events.
+        self._add_phase('decay_loop', time.time() - start)
         # Log unweighting efficiency (can be turned off)
         n_processed = curr_event + 1
         n_written = n_processed - nb_loose_skip
         eff = float(n_written) / nb_try if nb_try else 0.0
+        self._add_count('unweighting_trials', nb_try)
+        self._add_count('events_written', n_written)
+        self._add_count('events_processed', n_processed)
         logger.critical(
             "MadSpin unweight efficiency: %.4f (%d written / %d trials, %.2f trials/event)",
             eff, n_written, nb_try, (1.0 / eff if eff else float("inf"))
@@ -1921,24 +2008,25 @@ class MadSpinInterface(extended_cmd.Cmd):
         # routine) and the decayed output, matching the legacy MadSpin path
         # so downstream code (banners, crossx.html) finds the *.lhe.gz files
         # it expects.
-        try:
-            output_lhe.close()
-        except Exception:
-            pass
-        try:
-            input_evt_path = self.events_file.name
-            if input_evt_path.endswith('.lhe') and os.path.exists(input_evt_path):
-                misc.gzip(input_evt_path)
-        except Exception as exc:
-            logger.warning('Could not re-gzip MadSpin input file %s: %s',
-                           getattr(self.events_file, 'name', '?'), exc)
-        try:
-            decayed_path = output_lhe.name
-            if decayed_path.endswith('.lhe') and os.path.exists(decayed_path):
-                misc.gzip(decayed_path)
-        except Exception as exc:
-            logger.warning('Could not gzip MadSpin decayed output %s: %s',
-                           output_lhe.name, exc)
+        with self._phase('output_gzip'):
+            try:
+                output_lhe.close()
+            except Exception:
+                pass
+            try:
+                input_evt_path = self.events_file.name
+                if input_evt_path.endswith('.lhe') and os.path.exists(input_evt_path):
+                    misc.gzip(input_evt_path)
+            except Exception as exc:
+                logger.warning('Could not re-gzip MadSpin input file %s: %s',
+                               getattr(self.events_file, 'name', '?'), exc)
+            try:
+                decayed_path = output_lhe.name
+                if decayed_path.endswith('.lhe') and os.path.exists(decayed_path):
+                    misc.gzip(decayed_path)
+            except Exception as exc:
+                logger.warning('Could not gzip MadSpin decayed output %s: %s',
+                               output_lhe.name, exc)
         logger.info('Done so far. output written in %s' % output_lhe.name)
         logger.critical(f"Time for decay = {time.time()-start:.2f} sec")
 
@@ -2064,8 +2152,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                         burn = max(1.0, float(same_pdg) / float(nb_decay))
                     needed = int(math.ceil(1.10 * burn * nb_remain / eff))
                     needed = min(200000, max(needed, 1000))
-                    with misc.MuteLogger(["madgraph", "madevent", "ALOHA", "cmdprint"], [50,50,50,50]):
-                        new_file = self.generate_events(particle.pdg, needed, self.mg5cmd, [decay_file_nb])
+                    self._gen_phase = 'decay_event_refill'
+                    try:
+                        with misc.MuteLogger(["madgraph", "madevent", "ALOHA", "cmdprint"], [50,50,50,50]):
+                            new_file = self.generate_events(particle.pdg, needed, self.mg5cmd, [decay_file_nb])
+                    finally:
+                        self._gen_phase = 'decay_event_generation'
                     evt_decayfile[particle.pdg].update(new_file)
                     decay_file = evt_decayfile[particle.pdg][decay_file_nb]
                     continue

@@ -48,7 +48,10 @@ except Exception as error:
 
 
 logger = logging.getLogger("madgraph.lhe_parser")
-_ENABLE_LHE_TIMERS = False
+# Parsing/writing timers. Off by default (the perf_counter calls are not free
+# on the per-particle path); set MG_LHE_TIMERS=1 in the environment to collect
+# them. MadSpin prints the summary through _log_lhe_timers at the end of a run.
+_ENABLE_LHE_TIMERS = os.environ.get('MG_LHE_TIMERS', '') not in ('', '0', 'false', 'False')
 _LHE_TIMERS = collections.defaultdict(float)
 _LHE_TIMER_COUNTS = collections.defaultdict(int)
 
