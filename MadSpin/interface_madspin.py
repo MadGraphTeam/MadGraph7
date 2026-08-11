@@ -1832,8 +1832,9 @@ class MadSpinInterface(extended_cmd.Cmd):
                 shutil.rmtree(name)
 
         self.events_file.close()
-        if self.events_file.name.endswith('.gz'):
-            misc.gunzip(self.events_file.name)
+        # Read the input where it is: EventFile handles a gzipped file itself.
+        # Unpacking it here only to repack identical content at the end of the
+        # run cost 6 s on a 100k-event sample, and the file is never written to.
         orig_lhe = lhe_parser.EventFile(self.events_file.name)
         if self.options['fixed_order']:
             orig_lhe.eventgroup = True
@@ -2052,7 +2053,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         #5. generate the decay (for each production event)
 
         orig_lhe.seek(0)
-        output_lhe = lhe_parser.EventFile(orig_lhe.name.replace('.lhe', '_decayed.lhe'), 'w')
+        # Name the output after the input with any .gz stripped: now that the
+        # input is read in place, orig_lhe.name may carry it, and appending
+        # _decayed to that would ask EventFile to write a gzip stream here
+        # instead of the plain file the gzip step below expects.
+        input_base = orig_lhe.name
+        if input_base.endswith('.gz'):
+            input_base = input_base[:-3]
+        output_lhe = lhe_parser.EventFile(
+            input_base.replace('.lhe', '_decayed.lhe'), 'w')
         if self.options['fixed_order']:
             output_lhe.eventgroup = True
         
@@ -2202,10 +2211,10 @@ class MadSpinInterface(extended_cmd.Cmd):
             self.efficiency = br_correction
         else:
             self.efficiency = 1 # to let me5 to write the correct number of events
-        # Re-gzip the input events file (gunzipped at the start of this
-        # routine) and the decayed output, matching the legacy MadSpin path
-        # so downstream code (banners, crossx.html) finds the *.lhe.gz files
-        # it expects.
+        # Gzip the decayed output, matching the legacy MadSpin path so
+        # downstream code (banners, crossx.html) finds the *.lhe.gz file it
+        # expects. The input is left exactly as it was found: it is read in
+        # place, gzipped or not, and never modified.
         with self._phase('output_gzip'):
             try:
                 output_lhe.close()
@@ -2214,9 +2223,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             try:
                 input_evt_path = self.events_file.name
                 if input_evt_path.endswith('.lhe') and os.path.exists(input_evt_path):
+                    # Only reachable when the caller handed us a plain .lhe;
+                    # downstream still expects to find it gzipped.
                     misc.gzip(input_evt_path)
             except Exception as exc:
-                logger.warning('Could not re-gzip MadSpin input file %s: %s',
+                logger.warning('Could not gzip MadSpin input file %s: %s',
                                getattr(self.events_file, 'name', '?'), exc)
             try:
                 decayed_path = output_lhe.name
