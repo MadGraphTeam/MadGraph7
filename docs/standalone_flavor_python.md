@@ -16,7 +16,7 @@ physical flavor combinations. Every standalone entry point therefore takes a
 ```
 madgraph
 > generate p p > j j QCD=0
-> output standalone /path/to/MYPROC --prefix=int
+> output standalone_fortran /path/to/MYPROC --prefix=int
 ```
 
 This writes one subprocess directory per group, e.g.

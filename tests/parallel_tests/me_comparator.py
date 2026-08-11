@@ -443,7 +443,7 @@ class MG5Runner(MG4Runner):
         for i, proc in enumerate(proc_list):
             v5_string += 'add process ' + proc + ' ' + couplings + \
                          '@%i' % i + '\n'
-        v5_string += "output standalone %s -f\n" % \
+        v5_string += "output standalone_fortran %s -f\n" % \
                      os.path.join(self.mg4_path, self.temp_dir_name)
 
         return v5_string
@@ -466,7 +466,7 @@ class MG5_UFO_Runner(MG5Runner):
         for i, proc in enumerate(proc_list):
             v5_string += 'add process ' + proc + ' ' + couplings + \
                          '@%i' % i + '\n'
-        v5_string += "output standalone %s -f\n" % \
+        v5_string += "output standalone_fortran %s -f\n" % \
                      os.path.join(self.mg4_path, self.temp_dir_name)
         misc.sprint("proc_card.dat content:\n%s" % v5_string)
         return v5_string
@@ -496,7 +496,7 @@ class MG5_UFO_gauge_Runner(MG5Runner):
         for i, proc in enumerate(proc_list):
             v5_string += 'add process ' + proc + ' ' + couplings + \
                          '@%i' % i + '\n'
-        v5_string += "output standalone %s -f\n" % \
+        v5_string += "output standalone_fortran %s -f\n" % \
                      os.path.join(self.mg4_path, self.temp_dir_name)
                      
         v5_string += 'set complex_mass_scheme False \n'
@@ -546,7 +546,7 @@ class MG5OldRunner(MG5Runner):
             v5_string = "import model %s \n" % model
             proc_card_file.write(v5_string)
             proc_card_file.write(self.pass_proc)
-            proc_card_file.write("\n output standalone %s -f\n" % dir_name)
+            proc_card_file.write("\n output standalone_fortran %s -f\n" % dir_name)
         proc_card_file.close()
 
         logging.info("proc_card.dat file for %i processes successfully created in %s" % \
@@ -592,7 +592,7 @@ class MG5_UFO_OldRunner(MG5OldRunner):
         for i, proc in enumerate(proc_list):
             v5_string += 'add process ' + proc + ' ' + couplings + \
                          '@%i' % i + '\n'
-        v5_string += "output standalone %s -f\n" % \
+        v5_string += "output standalone_fortran %s -f\n" % \
                      os.path.join(self.mg4_path, self.temp_dir_name)
 
         return v5_string

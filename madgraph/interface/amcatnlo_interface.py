@@ -145,7 +145,7 @@ class CheckFKS(mg_interface.CheckValidForCmd):
         else:
             self._export_format = 'NLO'
 
-        forbidden_formats = ['madevent', 'standalone']
+        forbidden_formats = ['madevent', 'standalone_fortran']
         
 
         if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:

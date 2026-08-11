@@ -90,7 +90,7 @@ class CheckLoop(mg_interface.CheckValidForCmd):
         
         mg_interface.MadGraphCmd.check_add(self,args)
     
-    def check_output(self, args, default='standalone'):
+    def check_output(self, args, default='standalone_fortran'):
         """ Check the arguments of the output command in the context
         of the Loop interface."""
        
@@ -389,7 +389,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
 
 class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
           
-    supported_ML_format = ['standalone', 'standalone_rw', 'matchbox'] 
+    supported_ML_format = ['standalone_fortran', 'standalone_rw', 'matchbox'] 
     
     def __init__(self, mgme_dir = '', *completekey, **stdin):
         """ Special init tasks for the Loop Interface """
@@ -412,7 +412,7 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._v4_export_formats = []
-        self._export_formats = [ 'matrix', 'standalone' ]
+        self._export_formats = [ 'matrix', 'standalone_fortran' ]
         self._nlo_modes_for_completion = ['virt']
         self.validate_model()
         # Set where to look for CutTools installation.
@@ -502,11 +502,11 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
                      noclean, output_type=output_type, group_subprocesses=False,
                      cmd_options=line_options)
 
-        if self._export_format in ['standalone', 'matchbox']:
+        if self._export_format in ['standalone_fortran', 'matchbox']:
             self._curr_exporter.copy_template(self._curr_model)
 
         if self._export_format == "standalone_rw":
-            self._export_format = "standalone"
+            self._export_format = "standalone_fortran"
             self._curr_exporter.copy_template(self._curr_model)
             self._export_format = "standalone_rw"
 

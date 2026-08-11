@@ -637,7 +637,7 @@ class TestCmdLoop(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate g g > h  [sqrvirt=QCD]')
-        self.run_cmd(f'output standalone {short_path} --density=1,2 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
+        self.run_cmd(f'output standalone_fortran {short_path} --density=1,2 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
         self.run_cmd(f'launch {short_path} -f ')
 
         devnull = open(os.devnull,'w')    
@@ -695,7 +695,7 @@ class TestCmdLoop(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate g g > w+ w-  [sqrvirt=QCD]')
-        self.run_cmd(f'output standalone {short_path} --density=3,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
+        self.run_cmd(f'output standalone_fortran {short_path} --density=3,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
         self.run_cmd(f'launch {short_path} -f ')
 
         devnull = open(os.devnull,'w')    
@@ -760,7 +760,7 @@ class TestCmdLoop(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate p p > h j  [sqrvirt=QCD]')
-        self.run_cmd(f'output standalone {short_path} --density=2,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
+        self.run_cmd(f'output standalone_fortran {short_path} --density=2,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
         self.run_cmd(f'launch {short_path} -f ')
 
         # the result of the run is stored inside the file result.dat
@@ -950,7 +950,7 @@ class TestCmdLoop(unittest.TestCase):
 
         # self.do('import model loop_sm')
         # self.do('generate g g > w+ w-  [sqrvirt=QCD]')
-        # self.run_cmd(f'output standalone {short_path2} --density=3,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
+        # self.run_cmd(f'output standalone_fortran {short_path2} --density=3,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
         # path_PS_card = pjoin(short_path2, "SubProcesses/P0_gg_wpwm/PS.input")
         # with open(path_PS_card, 'w') as psinput:
         #     psinput.write(str(p_all[0]).strip("[],") + "\n")

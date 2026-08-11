@@ -542,7 +542,7 @@ class TestCmdShell2(unittest.TestCase,
         self.do('set group_subprocesses False')
         self.do('import model sm')
         self.do('generate e+ e- > e+ e-')
-        self.do('output standalone %s' % self.out_dir)
+        self.do('output standalone_fortran %s' % self.out_dir)
         self.do('set group_subprocesses True')
         self.assertTrue(os.path.exists(self.out_dir))
         self.assertTrue(os.path.isfile(os.path.join(self.out_dir, 'lib', 'libdhelas.a')))
@@ -561,7 +561,7 @@ class TestCmdShell2(unittest.TestCase,
         path = os.path.join(MG5DIR, 'tests', 'input_files', 'sm_with_custom_propa')
         self.do('import model %s' % path)
         self.do('generate g g > t t~')
-        self.do('output standalone %s ' % self.out_dir)        
+        self.do('output standalone_fortran %s ' % self.out_dir)        
         
         files = ['aloha_file.inc', 'aloha_functions.f','FFV1_0.f', 'FFV1_1.f',
                  'FFV1_2.f', 'makefile', 'VVV1PV2_1.f'] 
@@ -615,7 +615,7 @@ class TestCmdShell2(unittest.TestCase,
 
         self.do('import model sm')
         self.do('generate e+ e- > e+ e-')
-        self.do('output standalone %s ' % self.out_dir)
+        self.do('output standalone_fortran %s ' % self.out_dir)
         # Check that the needed ALOHA subroutines are generated
         files = ['FFV6_3.f', 'aloha_object.mod', 'FFV2_3.f', 'aloha_file.inc', 'makefile', 'FFV6_0.f', 'FFV1P0_3.f', 'FFV2_0.f', 'FFV1_0.f', 'aloha_functions.f']
         for f in files:
@@ -673,7 +673,7 @@ class TestCmdShell2(unittest.TestCase,
         self.do('set apply_flavor_grouping False')
         self.do('import model sm')
         self.do('generate e+ e- > e+ e-')
-        self.do('output standalone %s ' % self.out_dir)
+        self.do('output standalone_fortran %s ' % self.out_dir)
         # Check that the needed ALOHA subroutines are generated
         files = ['aloha_file.inc', 
                  #'FFS1C1_2.f', 'FFS1_0.f',
@@ -745,7 +745,7 @@ class TestCmdShell2(unittest.TestCase,
         model_path = pjoin(MG5DIR, 'tests', 'input_files', 'loop_smgrav')
         self.do('import model %s' % model_path)
         self.do('generate p p > w+ y')
-        self.do('output standalone %s ' % self.out_dir)
+        self.do('output standalone_fortran %s ' % self.out_dir)
 
         # Pin down whichever P*_udx_wpy directory the exporter chose
         # (depends on flavor-grouping defaults).
@@ -796,7 +796,7 @@ class TestCmdShell2(unittest.TestCase,
             shutil.rmtree(self.out_dir)
 
         self.do('generate p p  > w+ w- j j  QCD=0')
-        self.do('output standalone %s ' % self.out_dir)
+        self.do('output standalone_fortran %s ' % self.out_dir)
 
         sub_root = os.path.join(self.out_dir, 'SubProcesses')
         proc_candidates = [d for d in os.listdir(sub_root)
@@ -873,7 +873,7 @@ class TestCmdShell2(unittest.TestCase,
             self.do('import model sm')
             self.do('define q = u d')
             self.do('generate u q > Z u q QCD=0')
-            output_cmd = 'output standalone %s' % self.out_dir
+            output_cmd = 'output standalone_fortran %s' % self.out_dir
             if mask_flag:
                 output_cmd += ' ' + mask_flag
             self.do(output_cmd + ' -f')
@@ -1017,7 +1017,7 @@ class TestCmdShell2(unittest.TestCase,
             #                 'mask for %s should be all-on' % (zero_flavor,))
 
         # ---- Fortran standalone -------------------------------------
-        self.do('output standalone %s -f' % self.out_dir)
+        self.do('output standalone_fortran %s -f' % self.out_dir)
         proc_dir = find_qqx(pjoin(self.out_dir, 'SubProcesses'))
 
         check_f = pjoin(proc_dir, 'check_sa.f')
@@ -1207,7 +1207,7 @@ class TestCmdShell2(unittest.TestCase,
             if define_cmd:
                 self.do(define_cmd)
             self.do('generate %s' % proc)
-            self.do('output standalone %s -f' % self.out_dir)
+            self.do('output standalone_fortran %s -f' % self.out_dir)
             subprocess.call(['make'], stdout=devnull, stderr=devnull,
                             cwd=pjoin(self.out_dir, 'Source'))
             sub_root = pjoin(self.out_dir, 'SubProcesses')
@@ -1287,7 +1287,7 @@ class TestCmdShell2(unittest.TestCase,
                 proc_dir = pjoin(proc_root, d)
                 # standalone uses 'make check' + ./check; standalone_mg7 ships a
                 # UMAMI check_sa.exe whose 'matrix' mode == the Fortran driver.
-                target = ['make', 'check'] if output_format == 'standalone' \
+                target = ['make', 'check'] if output_format == 'standalone_fortran' \
                     else ['make']
                 subprocess.call(target, stdout=devnull, stderr=devnull,
                                 cwd=proc_dir)
@@ -1304,7 +1304,7 @@ class TestCmdShell2(unittest.TestCase,
         self.do('import model sm')
         self.do('generate u u~ > j j QCD=0')
         mg7 = get_values('standalone_mg7', './check_sa.exe')
-        standalone = get_values('standalone', './check', build_source=True)
+        standalone = get_values('standalone_fortran', './check', build_source=True)
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
@@ -1426,7 +1426,7 @@ class TestCmdShell2(unittest.TestCase,
         original = get_values()
         #step 1 standalone output
         shutil.rmtree(self.out_dir)
-        self.do('output standalone %s -f' % self.out_dir)
+        self.do('output standalone_fortran %s -f' % self.out_dir)
         shutil.rmtree(self.out_dir)            
         self.do('output standalone_cpp %s -f' % self.out_dir)     
         new = get_values()
@@ -1478,7 +1478,7 @@ class TestCmdShell2(unittest.TestCase,
             proc_dir = os.path.join(self.out_dir, 'SubProcesses')
             directories = sorted([d for d in os.listdir(proc_dir) if d.startswith('P')])
             self.assertTrue(directories)
-            if output_format == 'standalone':
+            if output_format == 'standalone_fortran':
                 subprocess.call(['make'],
                                 stdout=devnull, stderr=devnull,
                                 cwd=os.path.join(self.out_dir, 'Source'))
@@ -1486,7 +1486,7 @@ class TestCmdShell2(unittest.TestCase,
                 logfile = os.path.join(proc_dir, oneproc, 'check.log')
                 # standalone uses 'make check' + ./check; standalone_mg7 ships a
                 # UMAMI check_sa.exe whose 'matrix' mode == the Fortran driver.
-                if output_format == 'standalone':
+                if output_format == 'standalone_fortran':
                     target = ['make', 'check']
                     check_exe = './check %s' % energy
                 elif output_format == 'standalone_mg7':
@@ -1511,7 +1511,7 @@ class TestCmdShell2(unittest.TestCase,
 
         standalone_mg7 = get_values('standalone_mg7')
         shutil.rmtree(self.out_dir)
-        standalone = get_values('standalone')
+        standalone = get_values('standalone_fortran')
 
         # atol: this process's matrix elements are O(1e-20), i.e. at the
         # floating-point noise floor, where the Fortran and cudacpp backends
@@ -1527,7 +1527,7 @@ class TestCmdShell2(unittest.TestCase,
         shutil.rmtree(self.out_dir)
         standalone_mg7_no_fd = get_values('standalone_mg7')
         shutil.rmtree(self.out_dir)
-        standalone_no_fd = get_values('standalone')
+        standalone_no_fd = get_values('standalone_fortran')
 
         self._assert_me_lists_close(standalone_mg7_no_fd, standalone_no_fd,
                                     atol=1e-7)
@@ -1611,7 +1611,7 @@ class TestCmdShell2(unittest.TestCase,
             values = []
             for d in dirs:
                 proc_dir = os.path.join(proc_root, d)
-                target = ['make', 'check'] if output_format == 'standalone' \
+                target = ['make', 'check'] if output_format == 'standalone_fortran' \
                     else ['make']
                 subprocess.call(target, stdout=devnull, stderr=devnull,
                                 cwd=proc_dir)
@@ -1628,7 +1628,7 @@ class TestCmdShell2(unittest.TestCase,
         self.do('import model MSSM_SLHA2')
         self.do('generate p p > n1 n1 QCD=0')
         mg7 = get_values('standalone_mg7', './check_sa.exe')
-        standalone = get_values('standalone', './check', build_source=True)
+        standalone = get_values('standalone_fortran', './check', build_source=True)
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for p p > n1 n1')
         self._assert_me_lists_close(mg7, standalone, rtol=1e-4)
@@ -1672,7 +1672,7 @@ class TestCmdShell2(unittest.TestCase,
             values = []
             for d in dirs:
                 proc_dir = os.path.join(proc_root, d)
-                target = ['make', 'check'] if output_format == 'standalone' \
+                target = ['make', 'check'] if output_format == 'standalone_fortran' \
                     else ['make']
                 subprocess.call(target, stdout=devnull, stderr=devnull,
                                 cwd=proc_dir)
@@ -1689,7 +1689,7 @@ class TestCmdShell2(unittest.TestCase,
         self.do('import model MSSM_SLHA2')
         self.do('generate p p > go go')
         mg7 = get_values('standalone_mg7', './check_sa.exe')
-        standalone = get_values('standalone', './check', build_source=True)
+        standalone = get_values('standalone_fortran', './check', build_source=True)
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for p p > go go')
         self._assert_me_lists_close(mg7, standalone, rtol=1e-4)
@@ -1721,7 +1721,7 @@ class TestCmdShell2(unittest.TestCase,
             shutil.rmtree(self.out_dir)
 
         self.do('generate p p > j t t~ ')
-        self.do('output standalone %s --density=4,5 -f' % self.out_dir)
+        self.do('output standalone_fortran %s --density=4,5 -f' % self.out_dir)
         devnull = open(os.devnull,'w')
     
         logfile = os.path.join(self.out_dir,'SubProcesses', 'P0_gg_gttx',
@@ -1770,7 +1770,7 @@ class TestCmdShell2(unittest.TestCase,
         ### check case with polarization vectors
         ########################################################################
         self.do('generate u u~ > z{0} z{T} g')
-        self.do('output standalone %s --density=3,4,5 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s --density=3,4,5 -f ' % self.out_dir)
         devnull = open(os.devnull,'w')
     
         logfile = os.path.join(self.out_dir,'SubProcesses', 'P0_uux_z0zTg',
@@ -1827,7 +1827,7 @@ class TestCmdShell2(unittest.TestCase,
         ### check Z > t t~ case
         ######################################################################## 
         self.do('generate z > b b~')
-        self.do('output standalone %s --density=1 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s --density=1 -f ' % self.out_dir)
         devnull = open(os.devnull,'w')
     
         logfile = os.path.join(self.out_dir,'SubProcesses', 'P0_z_bbx',
@@ -1879,7 +1879,7 @@ class TestCmdShell2(unittest.TestCase,
         ### check case with interference computation
         ######################################################################## 
         self.do('generate u u~ > t t~ QCD^2==2')
-        self.do('output standalone %s --density=3,4 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s --density=3,4 -f ' % self.out_dir)
         devnull = open(os.devnull,'w')
     
         logfile = os.path.join(self.out_dir,'SubProcesses', 'P0_uux_ttx',
@@ -1937,12 +1937,12 @@ class TestCmdShell2(unittest.TestCase,
         # testing case u u~ > z z, z > e+ e-
         ############################################################################
         self.do('generate u u~ > z z')
-        self.do('output standalone %s_prod --density=3,4 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s_prod --density=3,4 -f ' % self.out_dir)
         self.do('generate u u~ > z z, z > e+ e-')
-        self.do('output standalone %s_full -f ' % self.out_dir) 
+        self.do('output standalone_fortran %s_full -f ' % self.out_dir) 
         self.do('generate z > e+ e- --standalone') # --standalone allow mix 2>1 and 2>2 processes
-        self.do('output standalone %s_dec1 --density=1 -f ' % self.out_dir)
-        self.do('output standalone %s_dec2 --density=1 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s_dec1 --density=1 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s_dec2 --density=1 -f ' % self.out_dir)
         # Read a test event for u u~ > z z, z > e+ e-
         
 
@@ -2077,12 +2077,12 @@ class TestCmdShell2(unittest.TestCase,
         # testing case d d~ > z z, z > e+ e-
         ############################################################################
         self.do('generate d d~ > z z')
-        self.do('output standalone %s_prod --prefix=int --density=3,4 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s_prod --prefix=int --density=3,4 -f ' % self.out_dir)
         self.do('generate d d~ > z z, z > e+ e-')
-        self.do('output standalone %s_full -f ' % self.out_dir) 
+        self.do('output standalone_fortran %s_full -f ' % self.out_dir) 
         self.do('generate z > e+ e- --standalone') # --standalone allow mix 2>1 and 2>2 processes
-        self.do('output standalone %s_dec1 --density=1 -f ' % self.out_dir)
-        self.do('output standalone %s_dec2 --density=1 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s_dec1 --density=1 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s_dec2 --density=1 -f ' % self.out_dir)
         # Read a test event for u u~ > z z, z > e+ e-
         text_lhe = """<event>
         8      1 +9.3182000e+00 1.00474800e+02 7.54677100e-03 1.27930100e-01
@@ -2497,12 +2497,12 @@ class TestCmdShell2(unittest.TestCase,
         # testing case d d~ > z z, z > e+ e-
         ############################################################################
         self.do('generate d d~ > z z')
-        self.do('output standalone %s_prod --prefix=int --density=3,4 -f ' % self.out_dir)
+        self.do('output standalone_fortran %s_prod --prefix=int --density=3,4 -f ' % self.out_dir)
         self.do('generate d d~ > z z, z > e+ e-')
-        #self.do('output standalone %s_full -f ' % self.out_dir) 
+        #self.do('output standalone_fortran %s_full -f ' % self.out_dir) 
         #self.do('generate z > e+ e- --standalone') # --standalone allow mix 2>1 and 2>2 processes
-        #self.do('output standalone %s_dec1 --density=1 -f ' % self.out_dir)
-        #self.do('output standalone %s_dec2 --density=1 -f ' % self.out_dir)
+        #self.do('output standalone_fortran %s_dec1 --density=1 -f ' % self.out_dir)
+        #self.do('output standalone_fortran %s_dec2 --density=1 -f ' % self.out_dir)
         # Read a test event for u u~ > z z, z > e+ e-
         text_lhe = """<event>
         8      1 +9.3182000e+00 1.00474800e+02 7.54677100e-03 1.27930100e-01
@@ -3265,7 +3265,7 @@ set boost_choice [6, -6] pt [0, 0]
 
         self.do('import model heft', force=True)
         self.do('generate g g > h g g')
-        self.do('output standalone %s ' % self.out_dir)
+        self.do('output standalone_fortran %s ' % self.out_dir)
 
         devnull = open(os.devnull,'w')
         # Check that the Model and Aloha output compile
@@ -3771,7 +3771,7 @@ C
         self.do('import model sm --noprefix')
         self.do('set complex_mass_scheme')
         self.do('generate e+ e- > e+ e-')
-        self.do('output standalone %s ' % self.out_dir)
+        self.do('output standalone_fortran %s ' % self.out_dir)
         misc.compile(cwd=os.path.join(self.out_dir,'SubProcesses', 'P0_epem_epem'))
         p = subprocess.Popen(['./check'], cwd=os.path.join(self.out_dir,'SubProcesses', 'P0_epem_epem'),
                             stdout=subprocess.PIPE)
@@ -3787,7 +3787,7 @@ C
         self.do('import model sm')
         self.do('set complex_mass_scheme')
         self.do('generate e+ e- > e+ e-')
-        self.do('output standalone %s -f' % self.out_dir)
+        self.do('output standalone_fortran %s -f' % self.out_dir)
         misc.compile(cwd=os.path.join(self.out_dir,'SubProcesses', 'P0_epem_epem'))
         p = subprocess.Popen(['./check'], cwd=os.path.join(self.out_dir,'SubProcesses', 'P0_epem_epem'),
                             stdout=subprocess.PIPE)
@@ -3806,7 +3806,7 @@ C
         self.do('import model sm --noprefix')
         self.do('set complex_mass_scheme')
         self.do('generate e+ e- > e+ e-')
-        self.do('output standalone %s ' % self.out_dir)
+        self.do('output standalone_fortran %s ' % self.out_dir)
         subdir = os.path.join(self.out_dir, 'SubProcesses', 'P0_epem_epem')
         misc.compile(cwd=subdir)
         p = subprocess.Popen(['./check'], cwd=subdir, stdout=subprocess.PIPE)
@@ -3821,7 +3821,7 @@ C
         self.do('import model sm')
         self.do('set complex_mass_scheme')
         self.do('generate e+ e- > e+ e-')
-        self.do('output standalone %s -f' % self.out_dir)
+        self.do('output standalone_fortran %s -f' % self.out_dir)
         subdir = os.path.join(self.out_dir, 'SubProcesses', 'P0_epem_epem')
         misc.compile(cwd=subdir)
         p = subprocess.Popen(['./check'], cwd=subdir, stdout=subprocess.PIPE)
@@ -4393,7 +4393,7 @@ P1_qq_wp_wp_lvl
 
         for command in commands:
             self.do(command)
-        self.do('output standalone %s -f' % self.out_dir)
+        self.do('output standalone_fortran %s -f' % self.out_dir)
         Pdir = None
         for pdir in misc.glob('P*', pjoin(self.out_dir, 'SubProcesses')):
             Pdir = pdir

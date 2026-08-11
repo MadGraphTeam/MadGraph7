@@ -497,7 +497,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   - For MadLoop and aMC@NLO runs, there is only one mode and")
         logger.info("     it is set by default.")
         logger.info("   - If mode is madevent, create a MadEvent process directory.")
-        logger.info("   - If mode is standalone, create a Standalone directory")
+        logger.info("   - If mode is standalone_fortran, create a Fortran Standalone directory")
         logger.info("   - If mode is matrix, output the matrix.f files for all")
         logger.info("     generated processes in directory \"path\".")
         logger.info("   - If mode is standalone_cpp, create a standalone C++")
@@ -521,14 +521,14 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      -nojpeg: no jpeg diagrams will be generated.")
         logger.info("      --noeps=True: no jpeg and eps diagrams will be generated.")
         logger.info("      -name: the postfix of the main file in pythia8 mode.")
-        logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone(default:False)] allows a more efficient code computing the color-factor.")
+        logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
-        logger.info("      --mask=False: [madevent|standalone] disable flavor-mask optimization for grouped/merged flavors (default:True).")
-        logger.info("      --prefix=int|proc: [standalone] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
+        logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
-        logger.info("       output standalone MYRUN -f",'$MG:color:GREEN')
+        logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
         logger.info("       output pythia8 ../pythia8/ -name qcdprocs",'$MG:color:GREEN')
 
     def help_check(self):
@@ -1447,6 +1447,13 @@ This will take effect only in a NEW terminal
                 elif self._done_export[1].startswith(mode):
                     args.append(self._done_export[1])
                     args.append(self._done_export[0])
+                elif mode == 'standalone_fortran' and self._done_export[1] in \
+                        ('standalone_msP', 'standalone_msF', 'standalone_rw'):
+                    # find_output_type cannot tell the Fortran standalone
+                    # variants apart on disk: they all report
+                    # 'standalone_fortran'. Accept the recorded format.
+                    args.append(self._done_export[1])
+                    args.append(self._done_export[0])
                 else:
                     raise self.InvalidCmd('%s not valid directory for launch' % self._done_export[0])
                 return
@@ -1545,7 +1552,7 @@ This will take effect only in a NEW terminal
         elif os.path.isfile(pjoin(bin_path,'aMCatNLO')):
             return 'aMC@NLO'
         elif os.path.isdir(card_path):
-            return 'standalone'
+            return 'standalone_fortran'
 
         raise self.InvalidCmd('%s : Not a valid directory' % path)
 
@@ -1816,7 +1823,7 @@ This will take effect only in a NEW terminal
                     raise self.InvalidCmd('%s is not allowed in the output path' % char)
             # Check for special directory treatment
             if path == 'auto' and self._export_format in \
-                     ['madevent', 'standalone', 'standalone_cpp', 'matchbox_cpp',
+                     ['madevent', 'standalone_fortran', 'standalone_cpp', 'matchbox_cpp',
                       'matchbox', 'plugin', 'me7', 'mg7', 'mg7_v5', 'standalone_mg7']:
                 self.get_default_path()
                 if '-noclean' not in args and os.path.exists(self._export_dir):
@@ -1940,7 +1947,7 @@ This will take effect only in a NEW terminal
     def get_default_path(self):
         """Set self._export_dir to the default (\'auto\') path"""
 
-        if self._export_format in ['madevent', 'standalone']:
+        if self._export_format in ['madevent', 'standalone_fortran']:
             # Detect if this script is launched from a valid copy of the Template,
             # if so store this position as standard output directory
             if 'TemplateVersion.txt' in os.listdir('.'):
@@ -2719,7 +2726,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                     return self.aloha_complete_output(text, line, begidx, endidx)
                 except Exception as error:
                     print(error)
-            if 'standalone' in args:
+            if 'standalone_fortran' in args:
                 possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=']
 
             # Directory continuation
@@ -3136,7 +3143,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
     _install_opts.extend(_advanced_install_opts)
 
-    _v4_export_formats = ['madevent', 'standalone', 'standalone_msP','standalone_msF',
+    _v4_export_formats = ['madevent', 'standalone_fortran', 'standalone_msP','standalone_msF',
                           'matrix', 'standalone_rw']
     _export_formats = _v4_export_formats + ['standalone_cpp', 'aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
@@ -3334,7 +3341,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
-        self._v4_export_formats = ['madevent', 'standalone','standalone_msP','standalone_msF',
+        self._v4_export_formats = ['madevent', 'standalone_fortran','standalone_msP','standalone_msF',
                                    'matrix', 'standalone_rw']
         self._export_formats = self._v4_export_formats + ['standalone_cpp', 'mg7_v5', 'mg7', 'standalone_mg7']
         self._nlo_modes_for_completion = ['all','virt','real']
@@ -9639,7 +9646,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         config = {}
         config['madevent'] =       {'check': True,  'exporter': 'v4',  'output':'Template'}
         config['matrix'] =         {'check': False, 'exporter': 'v4',  'output':'dir'}
-        config['standalone'] =     {'check': True, 'exporter': 'v4',  'output':'Template'}
+        config['standalone_fortran'] = {'check': True, 'exporter': 'v4',  'output':'Template'}
         config['standalone_msF'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_msP'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_rw'] =  {'check': False, 'exporter': 'v4',  'output':'Template'}
@@ -10237,7 +10244,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         # into its final citations.bib.
         self.write_generation_citations()
 
-        if self._export_format in ['madevent', 'standalone', 'standalone_cpp', 'matchbox', 'mg7']:
+        if self._export_format in ['madevent', 'standalone_fortran', 'standalone_cpp', 'matchbox', 'mg7']:
             logger.info('Output to directory ' + self._export_dir + ' done.')
 
         if self._export_format in ['madevent', 'NLO']:
@@ -10252,7 +10259,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         routines.  Writes citations.log (machine-readable, collected by every
         run) plus a ready-to-use citations.bib and a citations.md summary.
         """
-        runnable = ['madevent', 'standalone', 'standalone_cpp', 'NLO',
+        runnable = ['madevent', 'standalone_fortran', 'standalone_cpp', 'NLO',
                     'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone_mg7']
         if self._export_format not in runnable or not self._export_dir:
             return
@@ -10850,9 +10857,9 @@ _launch_parser.add_option("-R", "--reweight", default=False, action='store_true'
 _launch_parser.add_option("-M", "--madspin", default=False, action='store_true',
                             help="Run the madspin package")
 _launch_parser.add_option("", "--timings", default=0, type='int',
-                            help="[standalone] Number of SMATRIX calls per flavor per run for timing analysis (0=disabled)")
+                            help="[standalone_fortran] Number of SMATRIX calls per flavor per run for timing analysis (0=disabled)")
 _launch_parser.add_option("", "--nb_run", default=1, type='int',
-                            help="[standalone] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
+                            help="[standalone_fortran] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
 
 #===============================================================================
 # Interface for customize question.

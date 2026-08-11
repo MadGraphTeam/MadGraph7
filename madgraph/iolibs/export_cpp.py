@@ -395,7 +395,7 @@ class UFOModelConverterCPP(object):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
 
-        The Fortran 'madevent'/'standalone' output supports the remaining cases.
+        The Fortran 'madevent'/'standalone_fortran' output supports the remaining cases.
         See docs/mg7_merged_flavor_mssm_design.md.
         """
         for coupl in params:
@@ -407,7 +407,7 @@ class UFOModelConverterCPP(object):
                     "merged-flavor C++ output (mg7/standalone_mg7) does not yet "
                     "support this process: flavor coupling %s connects %d "
                     "merged-flavor legs; only one or two are supported. Use "
-                    "'output madevent' or 'output standalone' for this process. "
+                    "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
 

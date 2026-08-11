@@ -5127,7 +5127,7 @@ class decay_all_events_onshell(decay_all_events):
         # remove decay with 0 branching ratio.
         #mgcmd.remove_pointless_decay(self.banner.param_card)
         #
-        commandline = 'output standalone %s --prefix=int' % pjoin(path_me, ms_me_subdir)
+        commandline = 'output standalone_fortran %s --prefix=int' % pjoin(path_me, ms_me_subdir)
         logger.info(commandline)
         mgcmd.exec_cmd(commandline, precmd=True)
         logger.info('Done %.4g' % (time.time()-start))

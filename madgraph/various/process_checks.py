@@ -4314,7 +4314,7 @@ def check_language(process_definition, param_card=None, options=None,
                 parent_f  = tempfile.mkdtemp(prefix='mg5_langcheck_f_')
                 sa_dir_f  = pjoin(parent_f, 'sa_f')
                 try:
-                    opt_f = {'sa_symmetry': False, 'export_format': 'standalone',
+                    opt_f = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                              'mp': False, 'v5_model': True,
                              'output_options': {'noeps': 'True'}}
                     exporter_f = export_v4.ProcessExporterFortranSA(sa_dir_f, opt_f)

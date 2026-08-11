@@ -3364,7 +3364,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             self.format = opts['format']
             del opts['format']
         else:
-            self.format = 'standalone'
+            self.format = 'standalone_fortran'
 
         self.prefix_info = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
@@ -3919,7 +3919,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fsock.close()
 
         #important to put that first
-        if self.format == 'standalone':
+        if self.format == 'standalone_fortran':
             filename2 = pjoin(dirpath, 'check_sa.f')
             self.write_check_sa(writers.FortranWriter(filename2), matrix_element, proc_prefix)
 
@@ -3993,7 +3993,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             plot.draw()
 
         linkfiles = ['check_sa.f', 'coupl.inc']
-        if self.format == 'standalone':
+        if self.format == 'standalone_fortran':
             linkfiles = ['coupl.inc']
 
 
@@ -4400,7 +4400,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     #===========================================================================
     def write_check_sa(self, writer, matrix_element, proc_prefix=''):
 
-        if self.format != 'standalone':
+        if self.format != 'standalone_fortran':
             return
 
         # Density-mode defaults (overridden if 'density' is in cmd_options).
@@ -8660,7 +8660,7 @@ class UFO_model_to_mg4(object):
                 text = open(path).read()
                 text = text.replace('madevent','aMCatNLO').replace('../vector.inc', '')
                 open(path, 'w').writelines(text)
-        elif self.opt['export_format'] in ['standalone', 'standalone_msP','standalone_msF',
+        elif self.opt['export_format'] in ['standalone_fortran', 'standalone_msP','standalone_msF',
                                   'madloop','madloop_optimized', 'standalone_rw', 
                                   'madweight','matchbox','madloop_matchbox', 'plugin']:
             cp( MG5DIR + '/models/template_files/fortran/makefile_standalone', 
