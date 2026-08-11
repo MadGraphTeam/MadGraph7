@@ -4249,6 +4249,52 @@ P1_qq_wp_wp_lvl
             self.assertFalse(has(d), '%s should not survive the regenerate' % d)
 
 
+    def test_output_mg7_decay_subprocess_metadata(self):
+        """`output mg7` of a decay must describe one initial leg, not two.
+
+        The exporter used to hard-code two initial legs and offset the outgoing
+        ones by 3, so a 1 -> n process silently produced
+        incoming = [pdg, None] and lost its first outgoing particle (it landed
+        on outgoing[-1], overwriting the last one). MadSpin generates its decay
+        matrix elements exactly this way, so pin the metadata down.
+        """
+        import json
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        # Without this the leptons come out as merged-particle ids (-82, 83)
+        # rather than their pdgs, which says nothing about the leg ordering.
+        # It has to precede the model import, which is what builds the merges.
+        self.do('set apply_flavor_grouping False')
+        self.do('import model sm')
+        self.do('set group_subprocesses False')
+        self.do('generate t > b w+, w+ > e+ ve')
+        self.do('output mg7 %s' % self.out_dir)
+
+        with open(pjoin(self.out_dir, 'SubProcesses',
+                        'subprocesses.json')) as fsock:
+            subprocesses = json.load(fsock)
+        self.assertEqual(len(subprocesses), 1)
+        subproc = subprocesses[0]
+
+        self.assertEqual(subproc['incoming'], [6])
+        # The b is the first outgoing leg: it is the one the old offset dropped.
+        self.assertEqual(subproc['outgoing'], [5, -11, 12])
+        # No beam pair, so no beam-swapped mirror configuration.
+        self.assertFalse(any(flav['mirror'] for flav in subproc['flavors']))
+        # The channel topology must hang off the single incoming line i0.
+        edges = set(edge for channel in subproc['channels']
+                    for vertex in channel['vertices'] for edge in vertex)
+        self.assertIn('i0', edges)
+        self.assertNotIn('i1', edges)
+
+        with open(pjoin(self.out_dir, 'SubProcesses',
+                        'proc_characteristics')) as fsock:
+            characteristics = fsock.read()
+        self.assertIn('ninitial = 1', characteristics)
+        self.assertIn('nexternal = 4', characteristics)
+
     @test_manager.bypass_for_py3
     def test_madevent_triplet_diquarks(self):
         """Test MadEvent output of triplet diquarks"""
