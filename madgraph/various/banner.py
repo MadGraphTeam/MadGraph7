@@ -4599,7 +4599,6 @@ class RunCardLO(RunCard):
         self.add_param('hel_filtering', True,  hidden=True, include=False, comment='filter in advance the zero helicities when doing helicity per helicity optimization.')
         self.add_param('hel_splitamp', True, hidden=True, include=False, comment='decide if amplitude aloha call can be splitted in two or not when doing helicity per helicity optimization.')
         self.add_param('hel_zeroamp', True, hidden=True, include=False, comment='decide if zero amplitude can be removed from the computation when doing helicity per helicity optimization.')
-        self.add_param('blas_color_sum', True, hidden=True, comment='sum the color at every helicity in one batched BLAS-3 call --only where the code was generated with such a call, i.e. a large enough color basis and a BLAS to link against--')
         self.add_param('SDE_strategy', 1, allowed=[1,2], fortran_name="sde_strat", comment="decide how Multi-channel should behaves \"1\" means full single diagram enhanced (hep-ph/0208156), \"2\" use the product of the denominator")
         self.add_param('global_flag', '-O', include=False, hidden=True, comment='global fortran compilation flag, suggestion -fbound-check',
                        fct_mod=(self.make_clean, ('Source'),{}))
