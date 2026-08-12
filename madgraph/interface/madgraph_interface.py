@@ -1251,6 +1251,11 @@ class CheckValidForCmd(cmd.CheckCmd):
             # particle is meaningful there. The virtual has no boost yet, so
             # the modes including it are still refused; see
             # docs/nlo_polarisation_boost_plan.md.
+            # Born (M1) and real + counterterms (M2) are boosted and
+            # validated. The virtual is wired (binothlha_frame) but NOT
+            # enabled: check_poles fails on a polarised boosted run, with
+            # the MadFKS pole coefficients ~50-60x the OLP's. Until that
+            # is understood the modes including the virtual stay refused.
             frame_supported = nlo_mode in ('loonly', 'real')
             if 'noborn' in process or 'sqrvirt' in process \
                                                       or frame_supported:

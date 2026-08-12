@@ -219,6 +219,49 @@ c**************************************************************************
       end
 
 
+      subroutine binothlha_frame(p_in, born_wgt, virt_wgt)
+c**************************************************************************
+c     Virtual in the me_frame rest frame.
+c
+c     BinothLHA hands its argument straight to sloopmatrix_thres, and takes
+c     born_wgt from the caller rather than recomputing it, so boosting the
+c     momenta here is enough to put the virtual in the same frame as the
+c     Born that bornsoftvirtual already boosted.
+c
+c     Two MadLoop settings interact with an imposed frame, both via the
+c     HELAS branch at exactly zero momentum that a one-leg me_frame sits on
+c     (see boost_to_me_frame):
+c
+c       - NRotations_DP / NRotations_QP re-evaluate the loop at a rotated
+c         phase-space point and expect |M|^2 back unchanged. That holds for
+c         fixed helicities in general, but NOT for a particle at rest,
+c         whose polarisation axis is the frame z axis rather than its own
+c         momentum, so a rotation of the momenta does not carry the axis
+c         with it. Both default to 0, so the rotation test is off unless a
+c         user turns it on; if they do, a polarised run will see spurious
+c         instability. Keep them at 0.
+c       - ImprovePSPoint (default 2) shifts momenta to restore exact
+c         onshellness, which can move the deliberately-zeroed leg off zero.
+c         The shift is along z, so the momentum direction stays on the axis
+c         and eps_L comes back along +-z, differing at most by a sign that
+c         cancels in |M|^2. Checked to be harmless by check_poles rather
+c         than assumed.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_in(0:3,nexternal-1)
+      double precision born_wgt, virt_wgt
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call BinothLHA(p_f, born_wgt, virt_wgt)
+
+      return
+      end
+
+
       subroutine sborn_sf_frame(p_in, m, n, wgt)
 c**************************************************************************
 c     Colour-linked Born in the me_frame rest frame.

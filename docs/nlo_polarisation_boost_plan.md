@@ -11,7 +11,7 @@ Status:
 | M1 `[LOonly=QCD]` | **done** — Born boosted, validated against LO madevent |
 | M2 step 0 | **done** — ISR and FSR emission azimuth carried covariantly |
 | M2 rest | **done** — reals + counterterms boosted, azimuthal wiring in, `test_soft_col_limits` passes, `[real=QCD]` enabled |
-| M3 `[QCD]` | not started — virtual |
+| M3 `[QCD]` | **wired, gate FAILS** — `binothlha_frame` in place but `check_poles` does not cancel; `[QCD]` stays refused |
 | M4 | not started — unblock the guard for `[QCD]`, docs |
 
 `[LOonly=QCD]` and `[real=QCD]` accept a polarised massive particle today;
@@ -785,7 +785,49 @@ either way. The discriminating processes are those whose `me_frame` system
 recoils already at Born level: **`p p > z{0} j`** and **`p p > z{0} z{0} j`**,
 restricted to gluon-initiated channels (see the scope narrowing above).
 
-### M3 — `[QCD]`: virtual
+### M3 — `[QCD]`: virtual — **WIRED, GATE FAILS**
+
+`binothlha_frame` boosts the momenta handed to `BinothLHA`, which passes them
+straight to `sloopmatrix_thres` and takes `born_wgt` from the caller rather
+than recomputing it, so one call site covers the virtual.
+
+`check_poles` on `p p > z{0} j [QCD]` with `me_frame=[3]`: **poles do not
+cancel**, 20 miscancellations. `test_ME` is clean on the same run (0 FAILED,
+40 PASSED), so M2 is unaffected and this is purely the virtual. `[QCD]` and the
+other modes including the virtual stay refused at parse time.
+
+The pole coefficients say it is not a normalisation:
+
+    COEFFICIENT DOUBLE POLE:  MadFKS -3.23e-3  OLP -4.88e-5   ratio 66
+    COEFFICIENT DOUBLE POLE:  MadFKS -5.13e-3  OLP -9.43e-5   ratio 54
+    COEFFICIENT SINGLE POLE:  MadFKS -4.06e-3  OLP -7.56e-5   ratio 54
+
+MadFKS builds its poles from the boosted Born; the OLP's come from MadLoop. The
+ratio is O(50-60) and *not* constant, so MadLoop is evaluating a different
+polarisation state rather than the same one with a wrong factor.
+
+Two MadLoop settings were suspected and both are now **excluded by test**:
+
+- `NRotations_DP`/`NRotations_QP` re-evaluate the loop at a rotated PS point and
+  expect `|M|^2` unchanged -- which fails for a particle at rest, whose axis is
+  the frame z axis and does not rotate with the momenta. But both **default to
+  0**, so the rotation test never runs. Latent hazard, not this bug. Keep them
+  at 0 for polarised runs.
+- `ImprovePSPoint` (default 2) deforms the PS point to restore exact
+  onshellness and could move the deliberately-zeroed leg off zero. Setting it
+  to `-1` (no deformation in double precision) **does not fix it**: still 20
+  miscancellations, ratio still ~58.
+
+So the cause is elsewhere and needs the instrumentation that solved M2, not
+more reasoning -- print what MadLoop actually receives and which quantisation
+axis it ends up using, and compare against the Born. Worth checking first
+whether MadLoop applies the polarisation restriction at all in the same way the
+tree-level Born does (`loop_exporters.py:1552` restores `hel_avg_factor` for
+polarised matrix elements, which is the only sign this path was ever
+considered).
+
+Original plan for this milestone:
+
 
 Boost `p_born` before `Call BinothLHA(p_born,…)` (`fks_singular.f:7087`).
 MadLoop already handles polarised MEs (`loop_exporters.py:1552` restores the
