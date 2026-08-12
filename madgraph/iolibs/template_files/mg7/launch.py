@@ -713,10 +713,18 @@ class MadgraphProcess:
             )
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
+            lhe_path = os.path.join(self.run_path, "events.lhe")
             self.event_generator.combine_to_lhe(
-                os.path.join(self.run_path, "events.lhe"), self.lhe_completer,
+                lhe_path, self.lhe_completer,
                 self.build_lhe_meta(),
             )
+            # Ship the LHE compressed by default. These files are large and
+            # very compressible, madevent has always stored its events
+            # gzipped, and every consumer here already accepts either form
+            # (see _find_event_file). misc.gzip replaces events.lhe with
+            # events.lhe.gz, and switches to an external multithreaded tool
+            # above 256 MB.
+            misc.gzip(lhe_path)
         else:
             raise ValueError("Unknown output format")
         self.save_gridpack()
