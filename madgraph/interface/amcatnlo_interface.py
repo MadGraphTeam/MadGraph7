@@ -145,7 +145,14 @@ class CheckFKS(mg_interface.CheckValidForCmd):
         else:
             self._export_format = 'NLO'
 
-        forbidden_formats = ['madevent', 'standalone', 'standalone_fortran']
+        # Elsewhere `standalone` names the MadMatrix (C++/CUDA) export. Here it
+        # is accepted as an alias for `standalone_fortran`, so that it is
+        # reported as a forbidden *format* below rather than being silently
+        # taken as the output path.
+        if args and args[0] == 'standalone':
+            args[0] = 'standalone_fortran'
+
+        forbidden_formats = ['madevent', 'standalone_fortran']
         
 
         if not hasattr(self, '_fks_multi_proc') or not self._fks_multi_proc:
