@@ -693,7 +693,9 @@ class FKSHelasProcess(object):
             self.real_processes = []
             self.extra_cnt_me_list = []
             self.perturbation = fksproc.perturbation
-            self.charges_born = fksproc.get_charges() 
+            self.charges_born = fksproc.get_charges()
+            # user numbering of the born legs, for me_frame (frame_info.inc)
+            self.user_leg_order = fksproc.user_leg_order
             real_amps_new = []
 
             for extra_cnt in fksproc.extra_cnt_amp_list:
