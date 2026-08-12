@@ -1100,6 +1100,8 @@ c Set all to negative values and exit
 
       double complex xij_aor
       common/cxij_aor/xij_aor
+      double precision xij_kperp(0:3)
+      common/cxij_kperp/xij_kperp
 
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -1175,6 +1177,7 @@ c set cm stuff to values to make the program crash if not set elsewhere
 c if collinear counterevent will not be generated, the following
 c quantity will stay zero
       if (.not.only_event_phsp) xij_aor=(0.d0,0.d0)
+      if (.not.only_event_phsp) xij_kperp(0:3)=0d0
 c
 c These will correspond to the vegas x's for the FKS variables xi_i,
 c y_ij and phi_i (changing this also requires changing folding parameters)
@@ -1389,6 +1392,8 @@ c
 
       double complex xij_aor
       common/cxij_aor/xij_aor
+      double precision xij_kperp(0:3)
+      common/cxij_kperp/xij_kperp
 
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -1474,6 +1479,7 @@ c set cm stuff to values to make the program crash if not set elsewhere
 c if collinear counterevent will not be generated, the following
 c quantity will stay zero
       if (.not.only_event_phsp) xij_aor=(0.d0,0.d0)
+      if (.not.only_event_phsp) xij_kperp(0:3)=0d0
 
       ! if we do not do event projection, we first generate y/xi FKS
       ! and p_i_fks, then the other momenta
@@ -1908,6 +1914,8 @@ c common blocks
       common/cgenps_fks/veckn_ev,veckbarn_ev,xp0jfks
       double complex xij_aor
       common/cxij_aor/xij_aor
+      double precision xij_kperp(0:3)
+      common/cxij_kperp/xij_kperp
       logical softtest,colltest
       common/sctests/softtest,colltest
       double precision xi_i_fks_fix,y_ij_fks_fix
@@ -2082,6 +2090,13 @@ c Collinear limit of <ij>/[ij]. See innerpin.m.
      &     (icountevts.eq.1.and.xij_aor.eq.0) )then
          resAoR0=-exp( 2*idir*ximag*phi_i_fks )
          xij_aor=resAoR0
+c Emission direction transverse to the beam axis. xij_aor above is a 0/0
+c limit of <ij>/[ij], so it cannot be recomputed in another frame; this
+c vector carries the same azimuthal information covariantly and can be.
+         xij_kperp(0)=0d0
+         xij_kperp(1)=cosphi_i_fks
+         xij_kperp(2)=sinphi_i_fks
+         xij_kperp(3)=0d0
       endif
 c
 c Phase-space factor for (xii,yij,phii) * (tau,ycm)
@@ -2119,6 +2134,8 @@ c common blocks
       common/cgenps_fks/veckn_ev,veckbarn_ev,xp0jfks
       double complex xij_aor
       common/cxij_aor/xij_aor
+      double precision xij_kperp(0:3)
+      common/cxij_kperp/xij_kperp
       logical softtest,colltest
       common/sctests/softtest,colltest
       double precision xi_i_fks_fix,y_ij_fks_fix
@@ -2714,6 +2731,8 @@ c common blocks
       common/cgenps_fks/veckn_ev,veckbarn_ev,xp0jfks
       double complex xij_aor
       common/cxij_aor/xij_aor
+      double precision xij_kperp(0:3)
+      common/cxij_kperp/xij_kperp
       logical softtest,colltest
       common/sctests/softtest,colltest
       double precision xi_i_fks_fix,y_ij_fks_fix
@@ -3098,6 +3117,13 @@ c Collinear limit of <ij>/[ij]. See innerpin.m.
      &     (icountevts.eq.1.and.xij_aor.eq.0) )then
          resAoR0=-exp( 2*idir*ximag*phi_i_fks )
          xij_aor=resAoR0
+c Emission direction transverse to the beam axis. xij_aor above is a 0/0
+c limit of <ij>/[ij], so it cannot be recomputed in another frame; this
+c vector carries the same azimuthal information covariantly and can be.
+         xij_kperp(0)=0d0
+         xij_kperp(1)=cosphi_i_fks
+         xij_kperp(2)=sinphi_i_fks
+         xij_kperp(3)=0d0
       endif
 c
 c Phase-space factor for (xii,yij,phii) * (tau,ycm)

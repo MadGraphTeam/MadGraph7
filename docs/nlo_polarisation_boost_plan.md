@@ -294,6 +294,49 @@ LOonly result must be `me_frame`-independent.
 
 ### M2 — `[real=QCD]`: reals + counterterms (the hard milestone)
 
+**Step 0 (ISR half) DONE.** The azimuthal factor can now be rebuilt covariantly.
+
+`genps_fks.f` stores `xij_kperp` (common `/cxij_kperp/`) next to `xij_aor` at
+both ISR generation sites (`generate_momenta_initial`,
+`generate_momenta_initial_noevpr`), zeroed wherever `xij_aor` is zeroed.
+`azifact_from_kperp` in `boost_to_frame.f` rebuilds `-exp(2 i psi)` from the
+mother direction and that vector.
+
+The reconstruction turned out cleaner than the plan assumed. Using the standard
+helicity basis of the mother direction,
+
+    e1 = ( cos(th)cos(ph), cos(th)sin(ph), -sin(th) )
+    e2 = (       -sin(ph),       cos(ph),        0  )
+
+reproduces **both** incoming legs with no `idir` bookkeeping at all:
+
+    j_fks=1, n=+z : psi = phi_i      -> -exp( 2 i phi_i)
+    j_fks=2, n=-z : psi = pi - phi_i -> -exp(-2 i phi_i)
+
+because the doubled angle turns the basis flip into a harmless 2 pi. This is
+*why* B3 is right that the `R_y(pi)` flip must be deleted rather than boosted:
+it was only ever compensating for a basis convention that the psi form handles
+by construction.
+
+Validated at Lambda=1 against `-exp(2 idir i phi_i)` over 37 azimuths on both
+beams: worst deviation 2.4e-16, i.e. one ulp. Exact bit-identity is not
+reachable through this route (`(a+ib)^2` vs `exp(2 i phi)` differ in the last
+ulp), so the shipped code keeps using `xij_aor` whenever the boost is trivial
+and only takes the covariant route when a frame is actually requested --
+unpolarised runs stay bit-identical by construction rather than by measurement.
+
+A longitudinal boost leaves the reconstruction *exactly* unchanged (0.0, not
+just small), confirming the plan's prediction that a longitudinal-only
+`me_frame` is a genuine null and therefore a useful intermediate test.
+
+**Still to do in step 0:** the FSR half. `generate_momenta_massless_final`
+stores `xij_aor = -exp(2i(phi_mother+phi_i))` but no `xij_kperp` yet; the
+mother's own azimuth cancels against the `getaziangles` factor in
+`sborncol_fsr`, leaving the same `exp(2 i phi_i)`, so the same treatment should
+apply -- but B4 (whether FSR counter-events also collapse onto the `vtiny`
+branch) must be settled first, since that decides whether the `xij_aor` path or
+the spinor path is the one that actually runs.
+
 `[real=QCD]` gives the full FKS subtraction without virtuals — everything hard,
 nothing MadLoop.
 

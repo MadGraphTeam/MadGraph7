@@ -40,6 +40,97 @@ c**************************************************************************
       end
 
 
+      subroutine azifact_from_kperp(pmother, kperp, azifact)
+c**************************************************************************
+c     Rebuild the collinear limit of <ij>/[ij] from the emission direction.
+c
+c     The counterterms need -exp(2 i psi), with psi the azimuth of the
+c     emission about the mother, measured in the HELAS transverse basis of
+c     the mother direction. The generator stores that limit as xij_aor, but
+c     xij_aor is a 0/0 limit of <ij>/[ij]: a boost maps exactly-parallel
+c     null vectors onto exactly-parallel null vectors, so the degeneracy
+c     survives in every frame and xij_aor can never be recomputed after a
+c     boost. The azimuthal information has to be carried covariantly
+c     instead, which is what xij_kperp is for.
+c
+c     Basis, for a mother direction n = (sin(th)cos(ph), sin(th)sin(ph),
+c     cos(th)):
+c         e1 = ( cos(th)cos(ph), cos(th)sin(ph), -sin(th) )
+c         e2 = (        -sin(ph),      cos(ph),        0  )
+c     which is the standard helicity basis; for n = +z it is (x,y) and for
+c     n = -z it is (-x,y).
+c
+c     This reproduces both incoming legs with no idir bookkeeping:
+c       j_fks=1, n=+z : psi = phi_i        -> -exp( 2 i phi_i)
+c       j_fks=2, n=-z : psi = pi - phi_i   -> -exp(-2 i phi_i)
+c     the doubled angle turning the basis flip into a harmless 2 pi. The
+c     R_y(pi) rotation the old ISR code applied for j_fks=2 is therefore
+c     not needed here -- and it must not be reinstated, since after a boost
+c     it no longer maps the mother onto +z.
+c
+c     input:  pmother(0:3)  mother 4-momentum (only its direction is used)
+c             kperp(0:3)    emission direction transverse to the mother
+c     output: azifact       -exp(2 i psi)
+c**************************************************************************
+      implicit none
+      double precision pmother(0:3), kperp(0:3)
+      double complex azifact
+      double precision n(3), e1(3), e2(3)
+      double precision rn, cth, sth, cph, sph, a, b, norm2
+      double complex ximag
+      parameter (ximag=(0d0,1d0))
+      integer i
+
+      rn=sqrt(pmother(1)**2+pmother(2)**2+pmother(3)**2)
+      if (rn.eq.0d0) then
+         write (*,*) 'ERROR in azifact_from_kperp: mother at rest'
+         stop 1
+      endif
+      do i=1,3
+         n(i)=pmother(i)/rn
+      enddo
+
+      cth=n(3)
+      sth=sqrt(max(1d0-cth**2,0d0))
+      if (sth.ne.0d0) then
+         cph=n(1)/sth
+         sph=n(2)/sth
+      else
+c        mother on the beam axis: its azimuth is undefined, take phi=0.
+c        Same convention as getaziangles().
+         cph=1d0
+         sph=0d0
+      endif
+
+      e1(1)= cth*cph
+      e1(2)= cth*sph
+      e1(3)=-sth
+      e2(1)=-sph
+      e2(2)= cph
+      e2(3)= 0d0
+
+      a=0d0
+      b=0d0
+      do i=1,3
+         a=a+kperp(i)*e1(i)
+         b=b+kperp(i)*e2(i)
+      enddo
+
+c     -exp(2 i psi) with psi=atan2(b,a), written without trigonometry so
+c     that only the component of kperp transverse to the mother enters.
+      norm2=a**2+b**2
+      if (norm2.eq.0d0) then
+         write (*,*) 'ERROR in azifact_from_kperp: the emission'
+         write (*,*) 'direction is parallel to the mother, so its'
+         write (*,*) 'azimuth is undefined.'
+         stop 1
+      endif
+      azifact=-(dcmplx(a,b)**2)/norm2
+
+      return
+      end
+
+
       subroutine sborn_frame(p_in, ans_summed)
 c**************************************************************************
 c     Evaluate the Born in the frame selected by me_frame.
