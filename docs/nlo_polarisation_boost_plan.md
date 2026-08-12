@@ -218,7 +218,60 @@ Original task list, for reference:
 **Gate:** `frame_id=6` (default) reproduces current NLO results bit-for-bit on
 an unpolarised `p p > z j [QCD]`. Nothing else changes yet.
 
-### M1 — `[LOonly=QCD]`: Born boost only
+### M1 — `[LOonly=QCD]`: Born boost only — **DONE**
+
+Gate met. `p p > z{0} j`, matched PDF (nn23lo1), fixed scales (91.188), ptj 30,
+etaj 4.0:
+
+| | LO madevent | NLO LOonly | |
+|---|---|---|---|
+| unpolarised (control) | 6966 +- 6 | 6964 +- 18 | 0.03% |
+| `z{0}`, Z rest frame `me_frame=[3]` | 1370 +- 1.7 | 1366 +- 3.1 | 1.1 sigma |
+| `z{0}`, partonic c.m. `me_frame=[1,2]` | 974.8 +- 1.0 | 977.3 +- 2.3 | 1.0 sigma |
+
+The unpolarised control matters as much as the polarised rows: it proves the
+PDF/scale/cut/channel matching is right, so a polarised disagreement cannot be
+blamed on setup. The frame dependence is large (40%) and both codes reproduce
+it.
+
+Null test, `p p > z{0} z{0} [LOonly=QCD]`: `me_frame=[3,4]` gives
+0.5392 +- 0.0016 pb and `me_frame=[1,2]` gives 0.5401 +- 0.0017 pb (0.4 sigma).
+At Born level the ZZ system *is* the partonic c.m., so the boost must be the
+identity and the answer must not depend on `me_frame` -- it does not.
+
+Incidentally this also confirms `nhel` is a variance knob, not a correctness
+one, for polarised LO: `nhel=1` gives 1369 +- 1.7 against `nhel=0`'s
+1370 +- 1.7. `help_polarization` currently implies `nhel=1` is required.
+
+Converted call sites (all three reachable with `abrv='born'`):
+`compute_born` (`fks_singular.f:37`), `include_multichannel_enhance`
+(`:1505` and the cache-isolated `:1550`), and `bornsoftvirtual` (`:6896`,
+not reachable in LOonly but converted for M3).
+
+Guard relaxed for `LOonly` only (`madgraph_interface.py:1240`), including the
+massive-particle rejection; `[QCD]` and the other NLO modes are still refused.
+
+Two things learned the hard way; record them before touching M2.
+
+**The fixed-order Born does not come from `bornsoftvirtual`.** It comes from
+`compute_born` (`fks_singular.f:1`, the first routine in the file), called from
+`driver_mintFO.f:445`, which does its own `call sborn(p_born,wgt_c)` and then
+`add_wgt(2,...)`. `bornsoftvirtual` (`:494`) jumps straight to label 549 when
+`abrv='born'` and leaves `amp_split_wgtnstmp` at zero, so its `add_wgt(3,...)`
+contributes nothing. Converting only `bornsoftvirtual` therefore changed the
+answer without ever boosting the Born that is actually integrated. Both sites
+are now converted.
+
+**B5 is not hypothetical.** With only `bornsoftvirtual` converted, the run did
+not simply stay unboosted: it moved by ~3% (974.8 -> 946.7). Two callers of
+`SBORN` disagreed about the frame within one event, and they share both the
+`amp_split` common and the `calculatedBorn`/`savemom` cache, so the second
+caller either reused amplitudes from the other frame or thrashed the cache.
+This is exactly the failure mode D1 predicts, and it is silent -- no crash, no
+warning, just a wrong number. Every `SBORN` caller reachable in a given mode
+must be converted together, or none.
+
+Original task list:
 
 `[LOonly=QCD]` generates a fake FKS config with no reals and no virtuals
 (`export_fks.py:3676`), so this milestone touches exactly one ME call and zero
@@ -444,8 +497,16 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   event must agree on boosted vs. unboosted. A cheap crash, and a cheap
   self-check — this is the mechanical argument for D1 (caller-side boost).
 - **B6 — no guard against a lightlike/null `me_frame` sum** in `boost_to_frame`
-  (`Template/LO/SubProcesses/genps.f:1761`). Pre-existing at LO; do not
-  replicate it into the NLO port.
+  (`Template/LO/SubProcesses/genps.f:1761`). Pre-existing at LO; not replicated
+  into the NLO port: `get_me_frame_boost` stops with a diagnostic instead.
+- **B7 — the event-writing path still calls the unboosted Born.**
+  `add_write_info.f:278` calls `sborn(p_born,...)` directly. It is not reached
+  by the fixed-order modes (`calculate_xsect LO/NLO`), so M1 is unaffected, but
+  it *is* reached when generating events (`aMC@LO`, `aMC@NLO`). Until it is
+  converted, polarised event generation would write weights computed in the
+  partonic c.m. while the cross section used the me_frame rest frame. Convert
+  it together with the M2 call sites, or refuse event generation for polarised
+  runs until then.
 
 ## 6. Risk
 

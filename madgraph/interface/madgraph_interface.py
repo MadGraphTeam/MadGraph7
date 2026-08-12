@@ -1238,13 +1238,18 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Polarization restriction can not be used in forbidding particles')
             
         if '[' in process and '{' in process:
-            valid = False
-            if 'noborn' in process or 'sqrvirt' in process:
-                valid = True
+            # LOonly evaluates the Born alone, and the NLO output now boosts it
+            # to the frame chosen by me_frame in the run_card, so a polarized
+            # massive particle is meaningful there. The remaining NLO modes
+            # still lack the boost of the real, of the counterterms and of the
+            # virtual; see docs/nlo_polarisation_boost_plan.md.
+            loonly = 'loonly' in process.lower()
+            if 'noborn' in process or 'sqrvirt' in process or loonly:
+                pass
             else:
                 raise self.InvalidCmd('Polarization restriction can not be used for NLO processes')
 
-            # below are the check when [QCD] will be valid for computation            
+            # below are the check when [QCD] will be valid for computation
             order = process.split('[')[1].split(']')[0]
             if '=' in order:
                 order = order.split('=')[1]
@@ -1254,8 +1259,9 @@ class CheckValidForCmd(cmd.CheckCmd):
             def check(p):
                 if p.get('color') != 1:
                     raise self.InvalidCmd('Polarization restriction can not be used for color charged particles')
-                elif p.get('mass') != 'ZERO':
-                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles') 
+                elif p.get('mass') != 'ZERO' and not loonly:
+                    # massive polarization needs a frame; only LOonly has one
+                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles')
  
 
 

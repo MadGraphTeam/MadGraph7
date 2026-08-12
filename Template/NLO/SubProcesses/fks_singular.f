@@ -34,7 +34,9 @@ c to the list of weights using the add_wgt subroutine
       call cpu_time(tBefore)
       if (f_b.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
-      call sborn(p_born,wgt_c)
+c Born of the n-body contribution, evaluated in the me_frame rest frame
+c (identity unless the run_card asks for a frame; see boost_to_frame.f).
+      call sborn_frame(p_born,wgt_c)
       do iamp=1, amp_split_size
         if (amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
@@ -1500,7 +1502,10 @@ c f_* multiplication factors for Born and nbody
 c Compute the multi-channel enhancement factor 'enhance'.
       enhance=1.d0
       if (p_born(0,1).gt.0d0) then
-         call sborn(p_born,wgt_c)
+c Must use the same frame as every other SBORN call in this event: the
+c amplitudes are cached against (E,p_z) and shared. The multi-channel
+c weights stay a partition of unity in any frame, so this is free.
+         call sborn_frame(p_born,wgt_c)
       elseif(p_born(0,1).lt.0d0)then
          enhance=0d0
       endif
@@ -1543,7 +1548,9 @@ c use the Born computed with those as the mapping.
             pas(0:3,nexternal)=0d0
             pas(0:3,1:nexternal-1)=p_born_used(0:3,1:nexternal-1)
             call set_alphas(pas)
-            call sborn(p_born_used,wgt_c)
+c Own frame, rebuilt from p_born_used: this is a different kinematic
+c configuration. Cache-isolated by the calculatedBorn resets around it.
+            call sborn_frame(p_born_used,wgt_c)
             call set_alphas(p_ev)
             calculatedBorn=.false.
          elseif(p_born_used(0,1).lt.0d0)then
@@ -6891,7 +6898,9 @@ c entering this function
          stop
       endif
 
-      call sborn(p_born,wgt1)
+c Born of the n-body contribution, evaluated in the me_frame rest frame
+c (identity unless the run_card asks for a frame; see boost_to_frame.f).
+      call sborn_frame(p_born,wgt1)
 
 c Born contribution:
       bsv_wgt=wgt1

@@ -40,6 +40,40 @@ c**************************************************************************
       end
 
 
+      subroutine sborn_frame(p_in, ans_summed)
+c**************************************************************************
+c     Evaluate the Born in the frame selected by me_frame.
+c
+c     The frame is rebuilt from the momenta actually passed in, so each
+c     kinematic configuration (the Born of the n-body contribution, and in
+c     later milestones each counter-event separately) gets its own boost.
+c     Reusing one frame across configurations breaks the cancellation of the
+c     collinear pole -- see docs/nlo_polarisation_boost_plan.md, D3.
+c
+c     The boost is applied to a local copy: /pborn/ is read by the event
+c     record, the cuts and the scales, none of which want the ME frame.
+c
+c     Every caller of SBORN within one event must agree on whether it passes
+c     boosted or unboosted momenta: SBORN caches its amplitudes against
+c     (E, p_z) and that cache is shared with sborn_sf, born_hel and
+c     extra_cnt. Mixing the two silently returns amplitudes from the wrong
+c     frame.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_in(0:3,nexternal-1)
+      double precision ans_summed
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call sborn(p_f, ans_summed)
+
+      return
+      end
+
+
       subroutine get_frame_mask_born(ids)
 c**************************************************************************
 c     Mask over the nexternal-1 Born legs selected by me_frame.
