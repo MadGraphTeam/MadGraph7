@@ -6647,14 +6647,18 @@ class RunCardMG7(RunCard):
         'dparameter', 'lhaid', 'iseed', 'python_seed',
     }
 
-    # mg7 dynamical_scale_choice name -> legacy integer code
-    # NOTE: mapping to confirm; only relevant for a dynamical-scale run (fixed
-    # scales, the mg7 default, are handled through the event scale directly).
+    # mg7 dynamical_scale_choice name -> legacy integer code. This is the
+    # inverse of _LO_DYNSCALE_MAP below and must stay consistent with it, and
+    # with the legacy codes documented on the LO run_card's
+    # dynamical_scale_choice: 1 = sum of transverse energy, 2 = HT (sum of
+    # transverse mass), 3 = HT/2, 4 = partonic centre-of-mass energy.
+    # Only consulted for a dynamical-scale run; a fixed-scale run returns -1
+    # before reaching here and is handled through the event scale directly.
     _dyn_scale_legacy = {
         'partonic_energy': 4,
         'transverse_mass': 2,
         'half_transverse_mass': 3,
-        'transverse_energy': 3,
+        'transverse_energy': 1,
     }
 
     def _legacy_compat(self, key):
