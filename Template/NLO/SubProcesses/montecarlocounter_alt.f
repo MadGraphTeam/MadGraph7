@@ -1372,7 +1372,7 @@ c
       
 c
 C BORN
-      call sborn(p_born,wgt_born)
+      call sborn_frame(p_born,wgt_born)
       do iord = 1, nsplitorders
         if (.not.split_type(iord).or.(iord.ne.qed_pos.and.iord.ne.qcd_pos)) cycle
         born(iord)=dble(ans_cnt(1,iord))
@@ -1405,12 +1405,12 @@ c might flip when rotating the momenta.
             p_born_rot(3,i)=-p_born(3,i)
           enddo
           calculatedBorn=.false.
-          call sborn(p_born_rot,wgt_born)
-          if (iextra_cnt.gt.0) call extra_cnt(p_born_rot, iextra_cnt, ans_extra_cnt)
+          call sborn_frame(p_born_rot,wgt_born)
+          if (iextra_cnt.gt.0) call extra_cnt_frame(p_born_rot, iextra_cnt, ans_extra_cnt)
           calculatedBorn=.false.
         else
-          call sborn(p_born,wgt_born)
-          if (iextra_cnt.gt.0) call extra_cnt(p_born, iextra_cnt, ans_extra_cnt)
+          call sborn_frame(p_born,wgt_born)
+          if (iextra_cnt.gt.0) call extra_cnt_frame(p_born, iextra_cnt, ans_extra_cnt)
         endif
 
         do iord = 1, nsplitorders

@@ -221,7 +221,7 @@ c initialization
           enddo
 
           CALL UPDATE_AS_PARAM()
-          call sborn(p_born, born)
+          call sborn_frame(p_born, born)
           ! extra initialisation calls: skip the first point
           ! as well as any other points which is used for initialization
           ! (according to the return code)

@@ -2645,7 +2645,7 @@ c Assign flow on statistical basis
             endif
          else
              ! use the born-bars
-            call sborn(p_born,dummy)
+            call sborn_frame(p_born,dummy)
             wgt1=0.d0
             do i=1,max_bcol
                wgt1=wgt1+jamp2(i)
@@ -2923,12 +2923,12 @@ c might flip when rotating the momenta.
             p_born_rot(3,i)=-p_born(3,i)
          enddo
          calculatedBorn=.false.
-         call sborn(p_born_rot,wgt_born)
-         if (iextra_cnt.gt.0) call extra_cnt(p_born_rot, iextra_cnt, ans_extra_cnt)
+         call sborn_frame(p_born_rot,wgt_born)
+         if (iextra_cnt.gt.0) call extra_cnt_frame(p_born_rot, iextra_cnt, ans_extra_cnt)
          calculatedBorn=.false.
       else
-         call sborn(p_born,wgt_born)
-         if (iextra_cnt.gt.0) call extra_cnt(p_born, iextra_cnt, ans_extra_cnt)
+         call sborn_frame(p_born,wgt_born)
+         if (iextra_cnt.gt.0) call extra_cnt_frame(p_born, iextra_cnt, ans_extra_cnt)
       endif
 
       do iord = 1, nsplitorders

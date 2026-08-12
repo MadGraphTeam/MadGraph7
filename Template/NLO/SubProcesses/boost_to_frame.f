@@ -165,6 +165,76 @@ c**************************************************************************
       end
 
 
+      subroutine sborn_sf_frame(p_in, m, n, wgt)
+c**************************************************************************
+c     Colour-linked Born in the me_frame rest frame.
+c
+c     SBORN_SF reads the amplitudes SBORN left in the shared cache, so it
+c     must be handed exactly the momenta the matching sborn_frame call was
+c     handed, or it silently returns amplitudes from the other frame.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_in(0:3,nexternal-1)
+      integer m, n
+      double precision wgt
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call sborn_sf(p_f, m, n, wgt)
+
+      return
+      end
+
+
+      subroutine extra_cnt_frame(p_in, icnt, cnts)
+c**************************************************************************
+c     Extra g/a -> q qbar counterterm Born in the me_frame rest frame.
+c     Same cache as SBORN, so the same rule applies.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      double precision p_in(0:3,nexternal-1)
+      integer icnt
+      double complex cnts(2,nsplitorders)
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call extra_cnt(p_f, icnt, cnts)
+
+      return
+      end
+
+
+      subroutine smatrix_real_frame(p_in, wgt)
+c**************************************************************************
+c     Real-emission matrix element in the me_frame rest frame.
+c
+c     nexternal legs, so the mask is the real one; it is derived from the
+c     Born mask and i_fks of the current FKS configuration.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_in(0:3,nexternal)
+      double precision wgt
+      double precision p_f(0:3,nexternal)
+      integer ids(nexternal)
+      integer nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
+
+      call get_frame_mask_real(nFKSprocess, ids)
+      call boost_to_me_frame(p_in, nexternal, ids, p_f)
+      call smatrix_real(p_f, wgt)
+
+      return
+      end
+
+
       subroutine get_frame_mask_born(ids)
 c**************************************************************************
 c     Mask over the nexternal-1 Born legs selected by me_frame.

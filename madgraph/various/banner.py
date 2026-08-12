@@ -6151,9 +6151,23 @@ class RunCardNLO(RunCard):
 
         # polarization: rest-frame in which to evaluate the matrix-element.
         # Same encoding as at LO (see mapid in cluster.f): bit n of frame_id is
-        # set for each leg n listed in me_frame. The default [1,2] gives
-        # frame_id=6, which the fortran treats as "no boost".
-        self['frame_id'] = sum(2**(n) for n in self['me_frame'])
+        # set for each leg n listed in me_frame.
+        #
+        # frame_id=0 selects no leg at all, which the fortran reads as "skip
+        # the boost". That is the right default here, and it is not the same
+        # as the LO default: at LO the momenta reach the matrix element in the
+        # lab frame, so me_frame=[1,2] is a real boost to the partonic c.m.,
+        # whereas MadFKS already works in a frame close to it. Close, but not
+        # equal -- the real emission lives in a frame boosted along z, since
+        # its two initial momenta carry different energies -- so honouring
+        # [1,2] literally would apply a longitudinal boost to every unpolarised
+        # run. That is an identity for |M|^2 but not bit for bit, and it is
+        # enough to send the adaptive grids down a different path. So the boost
+        # runs only when a frame was actually asked for.
+        if 'me_frame' in self.user_set:
+            self['frame_id'] = sum(2**(n) for n in self['me_frame'])
+        else:
+            self['frame_id'] = 0
 
         # set the pdg_for_cut fortran parameter
         pdg_to_cut = set(list(self['pt_min_pdg'].keys()) +list(self['pt_max_pdg'].keys())+

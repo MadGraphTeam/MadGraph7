@@ -478,6 +478,73 @@ nothing MadLoop.
    and `montecarlocounter_alt.f:1445-1533`. `sreal_deg` (`fks_singular.f:5844`)
    has no azimuthal term — it needs the boost for the ordinary Born only.
 
+**Step 1 (the B5 sweep) DONE.** Every ME entry point now goes through a frame
+wrapper, so the boost is a pure function of the momenta passed in.
+
+That is what makes B5 go away *structurally* rather than by inspection: two
+callers that pass the same momenta necessarily get the same boost, and two
+callers that pass different momenta were already required to reset the cache
+between them. No reachability argument is needed, which matters because the
+reachability argument is exactly what I got wrong twice in M1.
+
+Wrappers in `boost_to_frame.f`: `sborn_frame`, `sborn_sf_frame`,
+`extra_cnt_frame`, `smatrix_real_frame` (the last uses the *real* mask, derived
+from the Born one and `i_fks` of the current FKS configuration).
+
+43 call sites converted:
+
+| file | sites |
+|---|---|
+| `fks_singular.f` | 30 |
+| `montecarlocounter.f` | 5 |
+| `montecarlocounter_alt.f` | 5 |
+| `add_write_info.f` | 1 (this retires **B7**) |
+| `check_poles.f` | 1 |
+| `test_soft_col_limits.f` | 1 |
+
+Deliberately **not** converted, and why: the EW Sudakov paths
+(`check_sudakov*.f`, `ewsudakov_functions_dummy.f`,
+`sa_ewsudakov_dummyfcts.f`) are a separate feature, and `symmetry_fks_v3.f` is
+`gensym`, a separate executable whose Born calls only seed the integration
+grid. Neither shares a process with the integration, so neither can trip the
+cache.
+
+**The sweep also exposed a wrong default, worth recording.** With all 43 sites
+converted, unpolarised `p p > z j [QCD]` moved from 2.854e+04 to 2.834e+04
++- 1.9e+02 -- only 0.74 sigma, but the two previous runs had been *bit*
+identical, so the pipeline is deterministic and a change meant a real change.
+
+Cause: MadFKS does not hand the matrix elements momenta in their own partonic
+c.m. `shy_lbst = -xi_i_fks*yijdir/bstfact` is non-zero for any real emission,
+so `xp(0,1) != xp(0,2)` (`genps_fks.f:3074-3082`) and the real event lives in a
+frame boosted along z. Honouring `me_frame=[1,2]` literally therefore applies a
+genuine longitudinal boost to every configuration -- an identity for `|M|^2`,
+but not bit for bit, and enough to send the VEGAS grids down a different path.
+
+Confirmed by control: the same build with `me_frame=[0]` (`frame_id=1`, every
+mask empty, boost skipped) reproduces 2.854e+04 +- 1.9e+02 exactly. So the
+sweep itself is sound and the whole shift came from the boost.
+
+The semantics were right -- boosting to the initial-parton rest frame is what
+`[1,2]` means at LO, and the M1 cross-check agreed with LO at 1.0 sigma -- but
+the *default* was wrong: an unpolarised run must not pay for machinery it never
+asked for. `frame_id` is now 0, meaning "skip", unless `me_frame` actually
+appears in the run_card:
+
+| case | frame_id | |
+|---|---|---|
+| unpolarised (no `me_frame` in the card) | 0 | boost skipped, bit-identical |
+| polarised, default | 6 | partonic c.m., as at LO |
+| polarised, `me_frame=[3]` | 8 | Z rest frame |
+
+The LO path is untouched: there the momenta really do arrive in the lab frame,
+so `[1,2]` has always been a meaningful boost and still is.
+
+**Still to do in M2:** the azimuthal wiring -- switch `sborncol_isr` and
+`sborncol_fsr` onto `azifact_from_kperp` when the boost is non-trivial, call
+`getaziangles` on the boosted mother instead of the ISR hardcode, and delete
+the `R_y(pi)` flip. That is the package that must land as a unit.
+
 **Recommended order within M2:**
 
 0. Refactor the ISR azimuthal factor to the `psi`-form at `Lambda=1` (the
@@ -577,21 +644,18 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   `y_ij_fks`). And `shybst = O(1-y) -> 0` in the FSR collinear limit, because
   it vanishes iff the mother is massless and `m_mother^2 = 2 E_i E_j (1-y)`.
   So FSR inherits the D3 equivariance property. See the M2 step 0 section.
-- **B5 — `SBORN` momentum-cache coherence.** The cache hard-`stop`s on an
-  `(E, p_z)` mismatch (`born_fks.inc:85-98`), so every `SBORN` caller within an
-  event must agree on boosted vs. unboosted. A cheap crash, and a cheap
-  self-check — this is the mechanical argument for D1 (caller-side boost).
+- **B5 — RESOLVED structurally.** Rather than argue about which callers are
+  reachable, every ME entry point was routed through a frame wrapper, making
+  the boost a pure function of the momenta passed. Callers that share momenta
+  then agree by construction. Worth stressing that this was not a theoretical
+  hazard: in M1 a partial conversion produced a silent 3% shift once and the
+  `momenta not the same in Born` stop once. See M2 step 1.
 - **B6 — no guard against a lightlike/null `me_frame` sum** in `boost_to_frame`
   (`Template/LO/SubProcesses/genps.f:1761`). Pre-existing at LO; not replicated
   into the NLO port: `get_me_frame_boost` stops with a diagnostic instead.
-- **B7 — the event-writing path still calls the unboosted Born.**
-  `add_write_info.f:278` calls `sborn(p_born,...)` directly. It is not reached
-  by the fixed-order modes (`calculate_xsect LO/NLO`), so M1 is unaffected, but
-  it *is* reached when generating events (`aMC@LO`, `aMC@NLO`). Until it is
-  converted, polarised event generation would write weights computed in the
-  partonic c.m. while the cross section used the me_frame rest frame. Convert
-  it together with the M2 call sites, or refuse event generation for polarised
-  runs until then.
+- **B7 — RESOLVED.** `add_write_info.f:278` now goes through `sborn_frame`
+  like everything else, so polarised event generation cannot write weights
+  computed in a different frame from the cross section.
 
 ## 6. Risk
 
