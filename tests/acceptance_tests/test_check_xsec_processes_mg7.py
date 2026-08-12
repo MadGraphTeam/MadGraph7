@@ -24,10 +24,11 @@ tests). Each test:
      ``_anti_quark`` merged-flavor particles are used directly from the sm
      model),
   2. ``output mg7``s it,
-  3. edits ``Cards/run_card.toml`` -- fixed scale is already the template
-     default (mu = 91.188 GeV, e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed); here
-     we only set the event count and, for the hadronic tt~ decays, neutralise
-     the jet cuts (see CLAUDE.md),
+  3. edits ``Cards/run_card.toml`` -- it pins the fixed scale the references
+     were generated with (mu = 91.188 GeV, e_cm = 13000 GeV,
+     NNPDF23_lo_as_0130_qed), since the template now defaults to the dynamical
+     HT/2 scale; it also sets the event count and, for the hadronic tt~ decays,
+     neutralises the jet cuts (see CLAUDE.md),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
   5. asserts the relative difference to the reference stays within a tolerance.
@@ -135,9 +136,11 @@ def _mg7_datadir_or_skip(test):
 def _edit_run_card(toml_path, events, disable_jet_cuts):
     """Set the event count and (optionally) neutralise the jet cuts.
 
-    Fixed renormalisation/factorisation scales are already the template
-    default; we only force them back on if a template change ever flipped
-    them, to keep the reference configuration honest."""
+    The reference cross-sections were produced with FIXED scales
+    (mu = 91.188 GeV). The run_card.toml template now defaults to the
+    dynamical HT/2 scale instead, so these replacements are what pins the
+    configuration back to the one the references were generated with. They
+    are load-bearing: drop them and every reference value below goes stale."""
     t = open(toml_path).read()
     t = t.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     t = t.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')

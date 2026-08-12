@@ -6477,8 +6477,12 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'e_cm', 13000.0)
         self.add_toml_param('beam', 'leptonic', False)
         self.add_toml_param('beam', 'pdf', "NNPDF23_lo_as_0130_qed")
-        self.add_toml_param('beam', 'fixed_ren_scale', True)
-        self.add_toml_param('beam', 'fixed_fact_scale', True)
+        # Default to the dynamical scale set by dynamical_scale_choice below
+        # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
+        # / fact_scale values. Those fixed values are kept as the fallback used
+        # when a user turns either of these back on.
+        self.add_toml_param('beam', 'fixed_ren_scale', False)
+        self.add_toml_param('beam', 'fixed_fact_scale', False)
         self.add_toml_param('beam', 'ren_scale', 91.188)
         self.add_toml_param('beam', 'fact_scale1', 91.188)
         self.add_toml_param('beam', 'fact_scale2', 91.188)

@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference cross-sections (pb) for systematic MG7 testing. Source of truth: #28. Reference runs used fixed scale (mu = 91.188 GeV, the run_card.toml default), e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed, 1M events.",
+  "_comment": "Reference cross-sections (pb) for systematic MG7 testing. Source of truth: #28. Reference runs used fixed scale (mu = 91.188 GeV, pinned by the test; the run_card.toml default is now dynamical HT/2), e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed, 1M events.",
   "defines": [],
   "sections": {
     "3jets": [
