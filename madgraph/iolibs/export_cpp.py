@@ -3461,8 +3461,6 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     
     if cformat == 'pythia8':
         return ProcessExporterPythia8(cmd._export_dir, opt)
-    elif cformat == 'standalone_cpp':
-        return  ProcessExporterCPP(cmd._export_dir, opt)
     elif cformat == 'matchbox_cpp':
         return  ProcessExporterMatchbox(cmd._export_dir, opt)
     elif cformat == 'mg7_v5':

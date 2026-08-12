@@ -502,8 +502,6 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   - If mode is standalone_fortran, create a Fortran Standalone directory")
         logger.info("   - If mode is matrix, output the matrix.f files for all")
         logger.info("     generated processes in directory \"path\".")
-        logger.info("   - If mode is standalone_cpp, create a standalone C++")
-        logger.info("     directory in \"path\".")
         logger.info("   - If mode is pythia8, output all files needed to generate")
         logger.info("     the processes using Pythia 8. The files are written in")
         logger.info("     the Pythia 8 directory (default).")
@@ -1525,7 +1523,7 @@ This will take effect only in a NEW terminal
 
     def find_output_type(self, path):
         """ identify the type of output of a given directory:
-        valid output: madevent/standalone/standalone_cpp"""
+        valid output: madevent/standalone/standalone_fortran/mg7/..."""
 
         card_path = pjoin(path,'Cards')
         bin_path = pjoin(path,'bin')
@@ -1549,7 +1547,13 @@ This will take effect only in a NEW terminal
         elif os.path.isfile(pjoin(card_path, 'run_card.toml')):
             return 'mg7'
         elif os.path.isdir(src_path):
-            return 'standalone_cpp'
+            # Catch-all for the C++-family standalone trees, i.e. anything
+            # written by a ProcessExporterCPP descendant that ships a src/
+            # directory and is not one of the more specific cases above --
+            # today that is `matchbox_cpp` and `mg7_v5`.  This is not a
+            # user-facing `output` format name; it only has to start with
+            # 'standalone' so that do_launch routes it to the SALauncher.
+            return 'standalone_cpp_family'
         elif os.path.isdir(mw_path):
             return 'madweight'
         elif os.path.isfile(pjoin(bin_path,'aMCatNLO')):
@@ -1778,6 +1782,12 @@ This will take effect only in a NEW terminal
         if args and args[0] == 'pythia8':
             raise self.InvalidCmd('output pythia8 is no longer supported; please use a different output mode')
 
+        if args and args[0] == 'standalone_cpp':
+            raise self.InvalidCmd('output standalone_cpp is no longer supported; '
+                                  'use \'standalone\' for the MadMatrix (C++/CUDA) '
+                                  'standalone or \'standalone_fortran\' for the '
+                                  'Fortran one')
+
         if args and args[0] in self._export_formats:
             self._export_format = args.pop(0)
         elif args:
@@ -1826,7 +1836,7 @@ This will take effect only in a NEW terminal
                     raise self.InvalidCmd('%s is not allowed in the output path' % char)
             # Check for special directory treatment
             if path == 'auto' and self._export_format in \
-                     ['madevent', 'standalone_fortran', 'standalone_cpp', 'matchbox_cpp',
+                     ['madevent', 'standalone_fortran', 'matchbox_cpp',
                       'matchbox', 'plugin', 'me7', 'mg7', 'mg7_v5', 'standalone']:
                 self.get_default_path()
                 if '-noclean' not in args and os.path.exists(self._export_dir):
@@ -1991,24 +2001,13 @@ This will take effect only in a NEW terminal
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
         elif self._export_format.startswith('standalone'):
-            if self._export_format == 'standalone_cpp':
-                name_dir = lambda i: 'PROC_SA_CPP_%s_%s' % \
-                                    (self._curr_model['name'], i)
-                auto_path = lambda i: pjoin(self.writing_dir,
-                                               name_dir(i))
-            elif self._export_format == 'standalone':
-                # As above: the madmatrix standalone is the default standalone,
-                # so it takes the plain PROC_SA_ prefix and shares the namespace
-                # with the Fortran standalone in the else branch.
-                name_dir = lambda i: 'PROC_SA_%s_%s' % \
-                                    (self._curr_model['name'], i)
-                auto_path = lambda i: pjoin(self.writing_dir,
-                                               name_dir(i))
-            else:
-                name_dir = lambda i: 'PROC_SA_%s_%s' % \
-                                    (self._curr_model['name'], i)
-                auto_path = lambda i: pjoin(self.writing_dir,
-                                               name_dir(i))                
+            # The madmatrix standalone is the default standalone, so it takes
+            # the plain PROC_SA_ prefix and shares the auto-name namespace with
+            # the Fortran standalone (and its msP/msF/rw variants).
+            name_dir = lambda i: 'PROC_SA_%s_%s' % \
+                                (self._curr_model['name'], i)
+            auto_path = lambda i: pjoin(self.writing_dir,
+                                           name_dir(i))
         elif self._export_format in ['matchbox_cpp', 'matchbox']:
             name_dir = lambda i: 'PROC_MATCHBOX_%s_%s' % \
                                     (self._curr_model['name'], i)
@@ -3159,7 +3158,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
     _v4_export_formats = ['madevent', 'standalone_fortran', 'standalone_msP','standalone_msF',
                           'matrix', 'standalone_rw']
-    _export_formats = _v4_export_formats + ['standalone_cpp', 'aloha',
+    _export_formats = _v4_export_formats + ['aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
                                             'standalone']
     _set_options = ['group_subprocesses',
@@ -3357,7 +3356,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
         self._v4_export_formats = ['madevent', 'standalone_fortran','standalone_msP','standalone_msF',
                                    'matrix', 'standalone_rw']
-        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'mg7_v5', 'mg7', 'standalone']
+        self._export_formats = self._v4_export_formats + ['mg7_v5', 'mg7', 'standalone']
         self._nlo_modes_for_completion = ['all','virt','real']
 
     def do_quit(self, line):
@@ -9664,7 +9663,6 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         config['standalone_msF'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_msP'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_rw'] =  {'check': False, 'exporter': 'v4',  'output':'Template'}
-        config['standalone_cpp'] = {'check': False, 'exporter': 'cpp', 'output': 'Template'}
         config['pythia8'] =        {'check': False, 'exporter': 'cpp', 'output':'dir'}
         config['matchbox_cpp'] =   {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['matchbox'] =       {'check': True, 'exporter': 'v4',  'output': 'Template'}
@@ -10258,7 +10256,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         # into its final citations.bib.
         self.write_generation_citations()
 
-        if self._export_format in ['madevent', 'standalone_fortran', 'standalone_cpp', 'matchbox', 'mg7']:
+        if self._export_format in ['madevent', 'standalone_fortran', 'matchbox', 'mg7']:
             logger.info('Output to directory ' + self._export_dir + ' done.')
 
         if self._export_format in ['madevent', 'NLO']:
@@ -10273,7 +10271,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         routines.  Writes citations.log (machine-readable, collected by every
         run) plus a ready-to-use citations.bib and a citations.md summary.
         """
-        runnable = ['madevent', 'standalone_fortran', 'standalone_cpp', 'NLO',
+        runnable = ['madevent', 'standalone_fortran', 'NLO',
                     'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone']
         if self._export_format not in runnable or not self._export_dir:
             return
@@ -10847,7 +10845,7 @@ _draw_parser.add_option("", "--generate_only", default=False, action='store_true
                           help="forbid to display the generate file and only generate the eps file")
 # LAUNCH PROGRAM
 _launch_usage = "launch [DIRPATH] [options]\n" + \
-         "-- execute the madevent/standalone/standalone_cpp/pythia8/NLO output present in DIRPATH\n" + \
+         "-- execute the madevent/standalone/standalone_fortran/pythia8/NLO output present in DIRPATH\n" + \
          "   By default DIRPATH is the latest created directory \n" + \
          "   (for pythia8, it should be the Pythia 8 main directory) \n" + \
          "   Example: launch PROC_sm_1 --name=run2 \n" + \

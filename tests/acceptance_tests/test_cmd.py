@@ -921,8 +921,10 @@ class TestCmdShell2(unittest.TestCase,
         """Acceptance test for the per-flavor masking optimization.
 
         Generates p p > j j QCD=0 and, for the q q~ > q q~ subprocess,
-        exercises both the Fortran (standalone) and C++ (standalone_cpp)
-        backends. The check_sa driver is patched to also evaluate two
+        exercises both the Fortran (standalone_fortran) and scalar C++
+        (export_cpp.ProcessExporterCPP, driven through its internal API by
+        _output_standalone_cpp) backends.
+        The check_sa driver is patched to also evaluate two
         non-representative flavors -- s c~ > s c~ (flavor 3 4 3 4) and
         s c~ > c c~ (flavor 3 4 4 4) -- and the matrix-element source is
         patched to print the runtime flavor mask that gates the HELAS
@@ -1060,8 +1062,7 @@ class TestCmdShell2(unittest.TestCase,
         assert_backend(run_check(proc_dir), (3, 4, 3, 4), (3, 4, 4, 4))
 
         # ---- C++ standalone -----------------------------------------
-        shutil.rmtree(self.out_dir)
-        self.do('output standalone_cpp %s -f' % self.out_dir)
+        self._output_standalone_cpp(self.out_dir, force=True)
         proc_dir = find_qqx(pjoin(self.out_dir, 'SubProcesses'))
 
         def extend_flavor_2d_array(text, name, dim_old, dim_new, extra_rows):
@@ -1310,17 +1311,22 @@ class TestCmdShell2(unittest.TestCase,
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
     def test_standalone_cpp(self):
-        """test that standalone cpp is working"""
+        """test that the scalar C++ standalone exporter is working
+
+        `output standalone_cpp` is no longer a user-facing format, so the C++
+        arm drives export_cpp.ProcessExporterCPP through its internal API
+        (_output_standalone_cpp) instead of the command.
+        """
 
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
         self.do('import model MSSM_SLHA2-full')
         self.do('generate g g > go go QED=2')
-        self.do('output standalone_cpp %s ' % self.out_dir)
+        self._output_standalone_cpp(self.out_dir)
         devnull = open(os.devnull,'w')
 
-        # Locate the subprocess directory: the merge shortened the standalone_cpp
+        # Locate the subprocess directory: the merge shortened the C++
         # directory name (e.g. P0_Sigma_MSSM_SLHA2_full_gg_gogo -> P1_gg_gogo),
         # so discover it rather than hard-coding the number/prefix.
         proc_root = os.path.join(self.out_dir, 'SubProcesses')
@@ -1414,11 +1420,11 @@ class TestCmdShell2(unittest.TestCase,
 
         #step 0 cpp output
         self.do('generate p p > t t~, t > b mu+ vm, t~ > b~ mu- vm~')
-        self.do('output standalone_cpp %s ' % self.out_dir)
+        self._output_standalone_cpp(self.out_dir)
         devnull = open(os.devnull,'w')
 
-        # Discover the subprocess directories: the merge shortened the
-        # standalone_cpp directory names (e.g. P0_Sigma_sm_gg_bmupvmbxmumvmx ->
+        # Discover the subprocess directories: the merge shortened the C++
+        # directory names (e.g. P0_Sigma_sm_gg_bmupvmbxmumvmx ->
         # P1_gg_bmupvmbxmumvmx), so list them rather than hard-coding.
         def get_values():
             proc_root = os.path.join(self.out_dir, 'SubProcesses')
@@ -1452,19 +1458,76 @@ class TestCmdShell2(unittest.TestCase,
         #step 1 standalone output
         shutil.rmtree(self.out_dir)
         self.do('output standalone_fortran %s -f' % self.out_dir)
-        shutil.rmtree(self.out_dir)            
-        self.do('output standalone_cpp %s -f' % self.out_dir)     
+        self._output_standalone_cpp(self.out_dir, force=True)
         new = get_values()
         
         for i,_ in enumerate(original):
             self.assertEqual(original[i], new[i])
+
+    def _output_standalone_cpp(self, out_dir, force=False):
+        """Write a scalar C++ standalone output for the processes currently
+        held by the interface, driving export_cpp.ProcessExporterCPP through
+        its internal API.
+
+        `output standalone_cpp` is no longer a user-facing format, but the
+        exporter class itself is very much alive: it is the base class of the
+        madmatrix (`standalone`) export, and `check language` drives it exactly
+        this way (see madgraph/various/process_checks.py and
+        tests/unit_tests/various/test_process_checks.py).  Going through the API
+        keeps the scalar-C++ coverage of these tests without the command.
+        """
+        import madgraph.iolibs.export_cpp as export_cpp
+        import madgraph.iolibs.helas_call_writers as helas_call_writers
+        import madgraph.core.helas_objects as helas_objects
+
+        cmd = self.cmd
+        model = cmd._curr_model
+
+        if force and os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+
+        opt = dict(cmd.options)
+        opt['output_options'] = {}
+        opt.update({'sa_symmetry': False, 'export_format': 'standalone_cpp',
+                    'mp': False, 'v5_model': True})
+        exporter = export_cpp.ProcessExporterCPP(out_dir, opt)
+
+        # Reuse the helas objects the interface already built, exactly like
+        # do_output does: building a second HelasMultiProcess from the same
+        # _curr_amps does NOT give the same matrix elements back (decay chains
+        # in particular are lost), so the cache is what makes repeated exports
+        # of one `generate` consistent.
+        multi_me = cmd._curr_matrix_elements
+        if not isinstance(multi_me, helas_objects.HelasMultiProcess) or \
+                not multi_me.get_matrix_elements():
+            # do_output sets this global from the exporter before building the
+            # helas objects; mirror it.
+            helas_objects.HelasMatrixElement.enumerate_all_flavors = \
+                not getattr(exporter, 'use_flavor_mask', True)
+            multi_me = helas_objects.HelasMultiProcess(cmd._curr_amps)
+            for uid, me in enumerate(multi_me.get_matrix_elements()):
+                me.get('processes')[0].set('uid', uid + 1)
+            cmd._curr_matrix_elements = multi_me
+        matrix_elements = multi_me.get_matrix_elements()
+        self.assertTrue(matrix_elements, 'no matrix element to export')
+
+        cpp_writer = helas_call_writers.CPPUFOHelasCallWriter(model)
+        exporter.copy_template(model)
+        for me_number, me in enumerate(matrix_elements):
+            exporter.generate_subprocess_directory(me, cpp_writer, me_number)
+        exporter.convert_model(model, multi_me.get_used_lorentz(),
+                               multi_me.get_used_couplings())
+        # ProcessExporterCPP.finalize() ignores its arguments and compiles src.
+        exporter.finalize({'matrix_elements': matrix_elements}, '',
+                          cmd.options, ['nojpeg'])
+        return out_dir
 
     def _assert_me_lists_close(self, a, b, rtol=1e-5, atol=0.0):
         """Assert two matrix-element value lists agree as multisets (sorted),
         within a combined relative/absolute tolerance
         (|x-y| <= atol + rtol*max(|x|,|y|)).
 
-        Backends print with different precision (standalone_cpp 7 sig figs vs
+        Backends print with different precision (the scalar C++ one 7 sig figs vs
         standalone (madmatrix) full double) and may emit the per-flavour values in a
         different order, so compare sorted rather than index-by-index / exact.
         `atol` lets callers treat numerically-tiny (vanishing-flavour) values as
@@ -4625,7 +4688,7 @@ P1_qq_wp_wp_lvl
 
         self.do('import model sm')
         self.do('generate e+ e- > e+ e- @2')
-        self.do('output standalone_cpp %s' % self.out_dir)
+        self._output_standalone_cpp(self.out_dir)
 
         # Check that all needed src files are generated
         files = ['HelAmps_sm.h', 'HelAmps_sm.cc', 'Makefile',
@@ -4643,7 +4706,7 @@ P1_qq_wp_wp_lvl
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                'lib', 'libmodel_sm.a')))
 
-        # Locate the subprocess directory: the merge shortened the standalone_cpp
+        # Locate the subprocess directory: the merge shortened the C++
         # directory name (P2_Sigma_sm_epem_epem -> P2_epem_epem), so discover it.
         proc_root = os.path.join(self.out_dir, 'SubProcesses')
         candidates = [d for d in os.listdir(proc_root)
