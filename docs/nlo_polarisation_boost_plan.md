@@ -625,6 +625,25 @@ print the boost 4-vector taken for the real and for the reduced Born at the
 same counter-event and compare them directly. D3 already asks for exactly that
 assertion; it should be added as a runtime check rather than a one-off.
 
+**Run `p p > z z` first.** It reportedly worked in the past with only a boost,
+and it isolates the question: the `Q` term is non-zero only for a *vector*
+mother (`m_type.eq.8`), and for the Born `q q~ > z z` every ISR mother is a
+quark, so `Q` vanishes identically and the azimuthal phase never enters.
+`p p > z z [real=QCD]` with `me_frame=[3,4]` is therefore a clean probe of
+boost consistency with the whole phase machinery out of the picture:
+
+- if it **fails** too, the bug is purely frame/boost consistency and the
+  azimuthal work is not implicated at all;
+- if it **passes**, attention goes back to the phase -- and the soft-test
+  failure on `z{0} j` then needs its own explanation, since soft has no
+  azimuthal factor.
+
+Note this also revises the M2 gate advice given earlier in this document. The
+scope narrowing there ("only gluon-mother ISR configurations are affected")
+was written as a warning that a quark-mother process would pass with a wrong
+phase. That is exactly what makes `p p > z z` *useful* here: it is a null for
+the phase and therefore a pure test of everything else.
+
 **Recommended order within M2:**
 
 0. Refactor the ISR azimuthal factor to the `psi`-form at `Lambda=1` (the
