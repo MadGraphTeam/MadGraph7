@@ -10,12 +10,18 @@ Status:
 | M0 plumbing | **done** — run_card option, frame bookkeeping, boost routine, all inert |
 | M1 `[LOonly=QCD]` | **done** — Born boosted, validated against LO madevent |
 | M2 step 0 | **done** — ISR and FSR emission azimuth carried covariantly |
-| M2 rest | **partly done** — reals + counterterms boosted, azimuthal wiring written but the gate FAILS; `[real=QCD]` stays refused |
+| M2 rest | **done** — reals + counterterms boosted, azimuthal wiring in, `test_soft_col_limits` passes, `[real=QCD]` enabled |
 | M3 `[QCD]` | not started — virtual |
-| M4 | not started — unblock the guard, docs |
+| M4 | not started — unblock the guard for `[QCD]`, docs |
 
-Only `[LOonly=QCD]` accepts a polarised massive particle today; `[QCD]`,
-`[real=QCD]` and the rest are still refused at parse time.
+`[LOonly=QCD]` and `[real=QCD]` accept a polarised massive particle today;
+`[QCD]` and the other modes that include the virtual are still refused at parse
+time.
+
+Fixed along the way, and **live at LO on its own**: the `me_frame` boost left
+the selected leg at rest only to rounding, and HELAS switches quantisation axis
+at exactly zero. See M2 step 2. It shifts the shipped LO polarised
+cross-section by 1.8% (5 sigma).
 
 ## 1. Assessment of the existing implementation
 
@@ -578,7 +584,8 @@ Re-validated after this change -- unpolarised 2.854e+04 +- 1.9e+02 (baseline),
 the M1 numbers. The skip reproduces the boost exactly for `[LOonly=QCD]`, as it
 must: with no emission `shy_lbst=0` and the Born really is in the partonic c.m.
 
-**Step 2 (azimuthal wiring) written, but the M2 gate FAILS. Not enabled.**
+**Step 2 (azimuthal wiring) DONE. The M2 gate PASSES and `[real=QCD]` is
+enabled.**
 
 `azifact_me_frame` rebuilds the frame from the same Born momenta the matching
 `sborn_frame` call gets, boosts the mother and `xij_kperp` together, and
@@ -587,62 +594,165 @@ boosted branch and, there, apply neither the `cphi_mother=1` shortcut, the
 `R_y(pi)` flip, nor `getaziangles` -- the psi form carries all of them (**B3**).
 The legacy branch is untouched, so unpolarised runs stay bit-identical.
 
-`test_ME` on `p p > z{0} j [real=QCD]` with `me_frame=[3]`: **soft 0.48,
-collinear 0.37, FAILED**. `[real=QCD]` is therefore still refused at parse
-time; only `[LOonly=QCD]` is enabled.
+It first failed the gate: `test_ME` on `p p > z{0} j [real=QCD]` with
+`me_frame=[3]` gave soft 0.48, collinear 0.37. The section below is the
+diagnosis. It was *not* a frame-consistency bug and the azimuthal work was
+never implicated.
 
-What is known:
+### The failure: the quantisation axis was decided by rounding
 
-| test | frame | result |
-|---|---|---|
-| unpolarised `[QCD]`, regression | skipped | 2.854e+04, PASSES |
-| (A) polarised `[real=QCD]`, no frame | skipped | **PASSES** |
-| (B) unpolarised `[real=QCD]`, `me_frame=[3]` | boosted | **PASSES** |
-| polarised `[real=QCD]`, `me_frame=[3]` | boosted | **FAILS** |
+**Root cause.** For a one-leg `me_frame` selection -- `me_frame=[3]`, "the Z
+rest frame", which is the standard way to ask for Z polarisation -- the boost
+puts that leg at rest, and *there the boost has to be exactly right rather than
+right to rounding*.
 
-So it needs polarised *and* boosted together. Note (B) is weaker evidence than
-it looks: for an unpolarised ME the boost is a physical no-op, so (B) only
-shows the boost does not crash or corrupt momenta -- it cannot test frame
-*consistency* between the real and the Born. (A) is the informative one: the
-polarised subtraction is sound when nothing is boosted.
+HELAS changes convention at exactly zero. `vxxxxx` (`aloha_functions.f`) builds
+the polarisation vectors of a massive vector from
 
-Ruled out so far:
+    pp = min(|p(0)|, sqrt(p(1)^2+p(2)^2+p(3)^2))
 
-- *Not the azimuthal phase alone.* The **soft** test fails too, and the soft
-  counterterm is eikonal x colour-linked Born with no azimuthal factor.
-- *Not the real/Born leg mapping.* Checked directly against the shipped
-  `fks_info.inc`: for every FKS configuration of `P0_ddx_z0g`, including the
-  `i_fks=4` ones, `get_frame_mask_real` selects PDG 23 in the real.
-- *Not localised to ISR or FSR.* Failures are uniform across every
-  configuration and every P dir, `j_fks` initial and final alike.
+and branches on `pp.eq.rZero`: at exactly zero it uses the **z axis** of the
+current frame as the quantisation axis, and otherwise it uses the **momentum
+direction**, giving `eps_L = (pp/m, E*p/(m*pp))`.
 
-That pattern -- systematic, both limits, both splittings, only when the ME is
-frame-sensitive -- says the real and the counterterm Born are being evaluated
-in frames that differ by a *finite* amount rather than by O(xi)/O(1-y).
+`boostx` does not reach `p=0` exactly. With `q=(E,-P)` and `p=P` it forms
+`p(i)+q(i)*lf` where `lf` is 1 only up to the rounding of `(q(0)-m)+p(0)`, so
+the residual is a few `1d-14` pointing in a direction that is pure noise.
+Whether it rounds to zero is a coin flip, decided independently for the real
+and for the reduced Born. Every configuration that misses zero gets `eps_L`
+pointed along rounding noise instead of along z, and the subtraction is then
+comparing two different observables.
 
-Next diagnostic, and it should be instrumentation rather than more reasoning:
-print the boost 4-vector taken for the real and for the reduced Born at the
-same counter-event and compare them directly. D3 already asks for exactly that
-assertion; it should be added as a runtime check rather than a one-off.
+**Evidence.** Instrumented `boost_to_me_frame` to print `|p|` of the selected
+leg after the boost, alongside the soft-limit ratio table, on
+`p p > z{0} z{0} [real=QCD]` with `me_frame=[3]`. One-to-one, no intermediate
+values:
 
-**Run `p p > z z` first.** It reportedly worked in the past with only a boost,
-and it isolates the question: the `Q` term is non-zero only for a *vector*
-mother (`m_type.eq.8`), and for the Born `q q~ > z z` every ISR mother is a
-quark, so `Q` vanishes identically and the azimuthal phase never enters.
-`p p > z z [real=QCD]` with `me_frame=[3,4]` is therefore a clean probe of
-boost consistency with the whole phase machinery out of the picture:
+| residual `|p_Z|` after the boost | soft ratio |
+|---|---|
+| 0 (exact) | 0.9033, 0.9901, 0.9990, 0.9999, 1.0000, 1.0000, 1.0000 |
+| 2.95e-14 | 0.0021716, 0.0021716, 0.0021716 |
 
-- if it **fails** too, the bug is purely frame/boost consistency and the
-  azimuthal work is not implicated at all;
-- if it **passes**, attention goes back to the phase -- and the soft-test
-  failure on `z{0} j` then needs its own explanation, since soft has no
-  azimuthal factor.
+The Born landed on exact zero for every point sampled; the real missed it 30%
+of the time. A factor 460 in `|M|^2`, from a 3e-14 momentum.
 
-Note this also revises the M2 gate advice given earlier in this document. The
-scope narrowing there ("only gluon-mother ISR configurations are affected")
-was written as a warning that a quark-mother process would pass with a wrong
-phase. That is exactly what makes `p p > z z` *useful* here: it is a null for
-the phase and therefore a pure test of everything else.
+**Fix** (`boost_to_me_frame`, `Template/NLO/SubProcesses/boost_to_frame.f`):
+when the selection is a single leg, zero that leg's 3-momentum exactly after
+boosting. This imposes the defining property of the frame instead of hoping
+for it, and removes the choice. Only `nsel=1` needs it -- with two or more
+selected legs it is their *sum* that is at rest, no individual leg sits on the
+branch point, and the residual of the sum never reaches HELAS.
+
+### `p p > z z` was the right thing to run first
+
+It was decisive, but not in either of the two ways this document predicted.
+`me_frame=[3]` on `p p > z{0} z{0} [real=QCD]` reproduces the `z{0} j` symptom
+exactly -- soft 0.55/0.68, collinear 0.54/0.57, uniform -- and there every ISR
+mother is a quark, so `Q` vanishes identically and the azimuthal phase is
+provably not involved. That reduced the search to the boost itself on a process
+that builds in a quarter of the time.
+
+The `me_frame=[3,4]` spelling suggested in the previous revision would have been
+a much weaker probe: it fails only a split-order soft test (0.43/0.30) while the
+summed test passes, and for a *different*, purely numerical reason -- see below.
+
+**What the D3 instrumentation actually showed.** The boost 4-vectors were
+printed for the real and for the reduced Born at the same counter-event, as D3
+asks. They converge cleanly: on `me_frame=[3,4]` the real's boost runs
+`(553.24, -13.00, 25.52, ...)` down to `(552.50, -1.2e-8, 2.4e-8, ...)` against
+the Born's constant `(552.50, 0, 0, ...)`, i.e. the transverse part vanishes
+like xi exactly as D3 requires. **The working hypothesis of a finite frame
+mismatch was wrong**, and so was the reasoning that led to it. There is no need
+for a permanent D3 assertion: the property holds, and the thing that broke was
+downstream of it.
+
+### A second, independent finding: the same bug is live at LO
+
+`boost_to_frame` (`Template/LO/SubProcesses/genps.f:1759`) has the identical
+defect, and `me_frame` is a *shipped* LO feature. Measured on LO madevent,
+`p p > z{0} j`, `me_frame=[3]`, nn23lo1, fixed scales 91.188, ptj 20, etaj 5:
+
+| | cross-section |
+|---|---|
+| before the fix | 1399 +- 3.4 pb |
+| after the fix | 1424 +- 3.8 pb |
+
+1.8%, 5 sigma. So a fraction of LO events had been getting a rounding-noise
+polarisation axis all along. The same fix is applied there.
+
+This also matters for M1: that milestone's gate is NLO `[LOonly=QCD]` against
+LO madevent, so fixing only the NLO side would have made the two disagree.
+Re-validated with both fixed, same cuts and PDF: LO madevent 1424 +- 3.8 vs
+NLO `[LOonly=QCD]` 1427 +- 3.0, **0.6 sigma**.
+
+### A precision floor, and the betamin guard
+
+Separately, `me_frame=[3,4]` on `p p > z{0} z{0}` failed the *split-order* soft
+test at 0.43/0.30 while the summed test passed. That one is not physics.
+
+That selection is the whole Born final state, so its boost degenerates to the
+identity as xi -> 0. Applying a near-identity boost is actively harmful: it
+tilts the incoming partons off the beam axis by O(beta), and the HELAS massless
+spinors are built from `sqrt(p(0)+p(3))`. On the axis that sum is exactly zero
+and the exact branch is taken; tilted by beta it is `E*beta^2/2`, computed as a
+difference of two numbers of size E, hence carrying absolute error `ulp(E)` and
+relative error `2*eps/beta^2`. Measured down the soft scan, `p(0)+p(3)` of the
+boosted incoming leg and the deviation of the ratio from 1:
+
+| `p(0)+p(3)` | 3.3e-9 | 3.3e-11 | 3.4e-13 | 0 | 0 | 0 |
+|---|---|---|---|---|---|---|
+| ratio - 1 | 9e-6 | 6.5e-4 | 2.1e-2 | 2e-6 | 4e-7 | 2e-6 |
+
+Exactly `1/beta^2` while `p(0)+p(3)` is a few ulp, clean again once it
+underflows to exactly zero.
+
+Balancing what the boost delivers (O(beta)) against what it costs
+(`30*2*eps/beta^2`, the 30 measured above) gives `beta* = 2.4e-5`.
+`get_me_frame_boost` now skips the boost below `betamin=1d-4`, one safety
+decade above that. Scanned: `1d-5` is not enough (0.16 still failing), `1d-4`
+and `1d-3` both give 0.01. This costs no physics -- it fires only where the
+selected system is at rest to one part in 10^4, which never happens in an
+integration, only in the artificial deep-soft scan of `test_soft_col_limits`.
+Confirmed neutral: the `[real=QCD]` cross-section is 2.604e+03 +- 2.8e+01 pb
+without the guard and 2.600e+03 +- 2.2e+01 pb with it, 0.1 sigma.
+
+### Gate results
+
+`p p > z{0} j [real=QCD]`, `me_frame=[3]`, nn23lo1, fixed scales -- the
+process this document names as the **discriminating** one, and the one whose
+gluon-initiated channels exercise the azimuthal `Q` term:
+
+| | test_ME |
+|---|---|
+| before | 268 FAILED of 512 test lines, all 12 P dirs |
+| after | **0 FAILED of 512**, worst failure fraction 0.08 against a 0.30 threshold |
+
+`calculate_xsect NLO` then runs end to end: **2.600e+03 +- 2.2e+01 pb**.
+
+`p p > z{0} z{0} [real=QCD]`, all frames, `P0_ddx_z0z0`:
+
+| `me_frame` | frame_id | before | after |
+|---|---|---|---|
+| none | 0 | passes (0.01) | passes (0.01), unchanged |
+| `[3]` | 8 | FAILS 0.55/0.68 | passes, worst 0.08 |
+| `[3,4]` | 24 | FAILS 0.43/0.30 | passes, worst 0.01 |
+
+Unpolarised runs are untouched **by construction**, not by measurement:
+`frame_id=0` makes every mask empty, `get_me_frame_boost` returns `trivial` on
+`nsel=0` before reaching either new branch, and `boost_to_me_frame` returns
+before the `nsel=1` block.
+
+The guard at `madgraph_interface.py` now accepts `real` alongside `loonly`.
+
+### One thing that was checked and left alone
+
+The "exactly the whole final state" skip in `get_me_frame_boost` is
+multiplicity-dependent, so it does not mean the same thing for the Born and for
+the real: `me_frame=[3,4]` on `p p > z z` is the whole Born final state but only
+two of three real legs. That asymmetry looked like the bug and is not: removing
+the skip leaves the failure fractions **bit-identical**, because `p_born` is
+handed to us in the Born partonic c.m., so the zero-3-momentum test catches the
+same case anyway. Reverted, and the reason recorded in the source.
 
 **Recommended order within M2:**
 
@@ -755,6 +865,16 @@ marker. Run via `./tests/test_manager.py`, not pytest.
 - **B7 — RESOLVED.** `add_write_info.f:278` now goes through `sborn_frame`
   like everything else, so polarised event generation cannot write weights
   computed in a different frame from the cross section.
+- **B8 — RESOLVED, and it was the M2 blocker.** A one-leg `me_frame` left that
+  leg at rest only to rounding, and HELAS `vxxxxx` picks the quantisation axis
+  from the momentum direction unless the 3-momentum is *exactly* zero. Fixed in
+  both `boost_to_me_frame` (NLO) and `boost_to_frame` (LO). See M2 step 2.
+- **B9 — mitigated, not eliminated.** A boost whose velocity degenerates to
+  zero tilts the beams just enough to wreck `sqrt(p(0)+p(3))` in the HELAS
+  massless spinors, without reaching the exact on-axis branch. Guarded by
+  `betamin=1d-4` in `get_me_frame_boost`. The underlying fragility lives in
+  HELAS and is not fixed; anything else that boosts an on-axis beam by a tiny
+  amount will hit it. See M2 step 2.
 
 ## 6. Risk
 

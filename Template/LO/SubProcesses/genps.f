@@ -1771,7 +1771,8 @@ C     -----------------------------------------
 
       integer ids(nexternal)
       integer i,j
-      logical trivial_boost 
+      integer nsel, isel
+      logical trivial_boost
 
 c     uncompress
       call mapid(frame_id, ids)
@@ -1807,12 +1808,41 @@ c     find the boost momenta --sum of particles--
             enddo
          endif
       enddo
-      do j=1,3	
+      do j=1,3
           Pboost(j) = -1 * Pboost(j)
-      enddo	    
+      enddo
       do i=1, nexternal
          call boostx(p1(0,i), pboost, p2(0,i))
-      enddo   
+      enddo
+
+c     A frame built from a single leg puts that leg at rest, and there the
+c     boost has to be exactly right rather than right to rounding. HELAS
+c     changes convention at exactly zero: vxxxxx builds the polarisation
+c     vectors of a massive vector along the z axis when pp.eq.0d0 and along
+c     the momentum direction otherwise. boostx only reaches p=0 up to the
+c     rounding of lf (it forms p(i)+q(i)*lf with lf=1 up to the rounding of
+c     (q(0)-m)+p(0)), so the residual is a few 1d-14 with a noise direction,
+c     and whether it rounds to zero varies event by event. Every event that
+c     misses zero gets its longitudinal polarisation vector pointed along
+c     rounding noise instead of along z.
+c     This was found through the NLO port, where it breaks the FKS
+c     subtraction outright: see docs/nlo_polarisation_boost_plan.md, M2, and
+c     the same fix in Template/NLO/SubProcesses/boost_to_frame.f.
+c     Only a one-leg selection needs this: with two or more selected legs it
+c     is their sum that is at rest, no single leg sits on the branch point.
+      nsel = 0
+      isel = 0
+      do i=1, nexternal
+         if (ids(i).eq.1) then
+            nsel = nsel + 1
+            isel = i
+         endif
+      enddo
+      if (nsel.eq.1) then
+         p2(1,isel) = 0d0
+         p2(2,isel) = 0d0
+         p2(3,isel) = 0d0
+      endif
       return
       end
 

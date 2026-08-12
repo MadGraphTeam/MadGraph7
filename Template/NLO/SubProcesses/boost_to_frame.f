@@ -410,6 +410,8 @@ c**************************************************************************
       integer i, j
       integer nsel, nini, nfin
       double precision m2, pvec2
+      double precision betamin
+      parameter (betamin=1d-4)
       include 'nexternal.inc'
 
       pboost(0:3)=0d0
@@ -439,6 +441,15 @@ c     how frame_id=0 (or a mask that misses this configuration) shows up.
 
 c     Exactly the initial state, or exactly the whole final state: both name
 c     the partonic c.m.. Skip rather than boost -- see the header.
+c
+c     Note the second of these is multiplicity-dependent and therefore does
+c     not mean the same thing for the Born and for the real: me_frame=[3,4]
+c     on p p > z z is the whole Born final state, but in the real the same
+c     two legs are only two of three. It was checked that this asymmetry is
+c     *not* what makes that configuration fail -- removing the skip leaves
+c     the failure fractions bit-identical, because p_born is handed to us in
+c     the Born partonic c.m. and so the zero-3-momentum test below catches
+c     the same case anyway. The skip is kept for parity with LO.
       if (nfin.eq.0 .and. nini.eq.nincoming) then
          trivial=.true.
          return
@@ -452,6 +463,45 @@ c     the partonic c.m.. Skip rather than boost -- see the header.
 
 c     Already at rest: skip, so the default costs nothing and changes nothing.
       if (pvec2.eq.0d0) then
+         trivial=.true.
+         return
+      endif
+
+c     At rest to well below the precision the matrix elements can use:
+c     skip too, because below betamin the boost costs more accuracy than
+c     it delivers.
+c
+c     What it delivers is O(beta): that is how much a boost of velocity
+c     beta moves a polarised |M|^2. What it costs is a loss of precision
+c     in the incoming legs. Before the boost they are exactly on the beam
+c     axis, so p(0)+p(3) of the backward one is exactly zero and the HELAS
+c     massless spinors -- built from sqrt(p(0)+p(3)) and pt/sqrt(p(0)+p(3))
+c     -- take their exact on-axis branch. The boost tilts them by O(beta),
+c     making p(0)+p(3) = E*beta^2/2, and that is computed as a difference
+c     of two numbers of size E, so it carries an absolute error ulp(E) and
+c     a relative error 2*eps/beta^2. Small beta is the dangerous end.
+c
+c     Measured on p p > z{0} z{0} [real=QCD] with me_frame=[3,4], whose
+c     boost degenerates to the identity as xi->0. Down the soft scan
+c     p(0)+p(3) of the boosted incoming leg runs
+c         3.3d-9, 3.3d-11, 3.4d-13, 0, 0, 0
+c     and the deviation of the soft ratio from 1 runs
+c         9d-6,   6.5d-4,  2.1d-2,  2d-6, 4d-7, 2d-6,
+c     i.e. it grows like 1/beta^2 exactly while p(0)+p(3) is a few ulp,
+c     and goes clean again once it underflows to exactly zero.
+c
+c     Balancing cost against benefit, 30*2*eps/beta^2 = beta (the factor 30
+c     is the measured prefactor above), gives beta* = 2.4d-5. betamin is set
+c     one safety decade above that. It was checked that 1d-5 is not enough
+c     -- the split-order soft test still fails 0.16 -- and that 1d-4 and
+c     1d-3 both give 0.01.
+c
+c     This costs no physics: it fires only where the selected system is at
+c     rest to one part in 10^4, which in a real integration never happens.
+c     It is reached only in the artificial deep-soft/collinear scan of
+c     test_soft_col_limits, and there only for a frame that degenerates to
+c     the partonic c.m. in the limit being scanned.
+      if (pvec2 .lt. (betamin*pboost(0))**2) then
          trivial=.true.
          return
       endif
@@ -495,7 +545,7 @@ c**************************************************************************
       integer ids(npart)
       double precision pboost(0:3)
       logical trivial
-      integer i
+      integer i, nsel, isel
 
       call get_me_frame_boost(p, npart, ids, pboost, trivial)
 
@@ -509,6 +559,44 @@ c**************************************************************************
       do i=1,npart
          call boostx(p(0,i), pboost, p_out(0,i))
       enddo
+
+c     A selection made of a single leg puts that leg at rest, and there
+c     the boost has to be *exactly* right, not right to rounding.
+c
+c     HELAS switches convention at exactly zero: vxxxxx builds the
+c     polarisation vectors of a massive vector along the z axis when
+c     pp.eq.0d0, and along the momentum direction otherwise. boostx
+c     reaches p=0 only up to a relative rounding of order 1d-16 -- it
+c     forms p(i)+q(i)*lf with lf=1 up to the rounding of (q(0)-m)+p(0),
+c     so the residual is a few 1d-14 in absolute value and its direction
+c     is pure noise. When that residual happens not to round to zero,
+c     eps_L points along the noise instead of along z and |M|^2 changes
+c     by orders of magnitude.
+c
+c     Whether it rounds to zero is decided independently for the real
+c     and for the reduced Born, so the two are then evaluated with
+c     different quantisation axes and the subtraction stops cancelling.
+c     Measured on p p > z{0} z{0} [real=QCD] with me_frame=[3]: the
+c     soft/collinear ratio is 1 to 1d-7 whenever the residual is exactly
+c     zero and 2.2d-3 whenever it is 3d-14, with no intermediate values.
+c
+c     Imposing the defining property of the frame removes the choice.
+c     Only nsel=1 needs it: with two or more selected legs it is their
+c     *sum* that is at rest, no individual leg sits at the branch point,
+c     and the residual of the sum never reaches HELAS.
+      nsel=0
+      isel=0
+      do i=1,npart
+         if (ids(i).eq.1) then
+            nsel=nsel+1
+            isel=i
+         endif
+      enddo
+      if (nsel.eq.1) then
+         p_out(1,isel)=0d0
+         p_out(2,isel)=0d0
+         p_out(3,isel)=0d0
+      endif
 
       return
       end

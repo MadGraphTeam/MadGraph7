@@ -1251,11 +1251,7 @@ class CheckValidForCmd(cmd.CheckCmd):
             # particle is meaningful there. The virtual has no boost yet, so
             # the modes including it are still refused; see
             # docs/nlo_polarisation_boost_plan.md.
-            # 'real' is NOT enabled: the boost is wired through the reals and
-            # the counterterms, but test_ME still fails on a polarised boosted
-            # run (soft ~0.4, collinear ~0.37, uniformly across every FKS
-            # configuration). Until that is understood the mode stays refused.
-            frame_supported = nlo_mode in ('loonly',)
+            frame_supported = nlo_mode in ('loonly', 'real')
             if 'noborn' in process or 'sqrvirt' in process \
                                                       or frame_supported:
                 pass
