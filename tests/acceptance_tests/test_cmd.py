@@ -1349,17 +1349,42 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(me_groups)
         self.assertAlmostEqual(float(me_groups.group('value')), 6.4739191,5)
 
-        # Cross-check standalone (madmatrix) against standalone_cpp for this
-        # massive BSM process. The Fortran/C++ ./check auto-bumps the CM energy
+        # Cross-check standalone (madmatrix) against standalone_fortran for
+        # this massive BSM process. The Fortran ./check auto-bumps the CM energy
         # to 2*total_mass for the heavy gluinos, but check_sa.exe does not, so
         # evaluate BOTH at the same explicit above-threshold energy.
         energy = '5000'
-        cpp_e_log = os.path.join(proc_dir, 'check_e.log')
+
+        shutil.rmtree(self.out_dir)
+        self.do('output standalone_fortran %s -f' % self.out_dir)
+        subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                        cwd=os.path.join(self.out_dir, 'Source'))
+        f_root = os.path.join(self.out_dir, 'SubProcesses')
+        f_cand = [d for d in os.listdir(f_root)
+                  if d.endswith('_gg_gogo') and
+                  os.path.isdir(os.path.join(f_root, d))]
+        self.assertEqual(len(f_cand), 1,
+                         'expected one gg_gogo Fortran subprocess, got %s'
+                         % f_cand)
+        f_dir = os.path.join(f_root, f_cand[0])
+        subprocess.call(['make', 'check'], stdout=devnull, stderr=devnull,
+                        cwd=f_dir)
+        # Same hard-coded reference at the auto-bumped default energy.
+        f_log = os.path.join(f_dir, 'check.log')
+        subprocess.call('./check',
+                        stdout=open(f_log, 'w'), stderr=subprocess.STDOUT,
+                        cwd=f_dir, shell=True)
+        f_default = me_re.search(open(f_log).read())
+        self.assertTrue(f_default,
+                        'standalone_fortran produced no matrix element')
+        self.assertAlmostEqual(float(f_default.group('value')), 6.4739191, 5)
+        # Reference value at the explicit above-threshold energy.
+        f_e_log = os.path.join(f_dir, 'check_e.log')
         subprocess.call('./check %s' % energy,
-                        stdout=open(cpp_e_log, 'w'), stderr=subprocess.STDOUT,
-                        cwd=proc_dir, shell=True)
-        cpp_me = me_re.search(open(cpp_e_log).read())
-        self.assertTrue(cpp_me)
+                        stdout=open(f_e_log, 'w'), stderr=subprocess.STDOUT,
+                        cwd=f_dir, shell=True)
+        f_me = me_re.search(open(f_e_log).read())
+        self.assertTrue(f_me)
 
         shutil.rmtree(self.out_dir)
         self.do('output standalone %s -f' % self.out_dir)
@@ -1378,7 +1403,7 @@ class TestCmdShell2(unittest.TestCase,
         mg7_me = me_re.search(open(mg7_log).read())
         self.assertTrue(mg7_me, 'standalone (madmatrix) produced no matrix element')
         self._assert_me_lists_close([float(mg7_me.group('value'))],
-                                    [float(cpp_me.group('value'))])
+                                    [float(f_me.group('value'))])
 
     
     def test_standalone_cpp_output_consistency(self):
@@ -1534,24 +1559,27 @@ class TestCmdShell2(unittest.TestCase,
         # gauge invariance: unitary-gauge values must also match the FD ones.
         self._assert_me_lists_close(madmatrix_no_fd, standalone, atol=1e-7)
 
-    def test_madmatrix_vs_cpp(self):
+    def test_madmatrix_vs_fortran(self):
         """Cross-check that standalone (madmatrix) reproduces the
-        standalone_cpp matrix elements for p p > e+ e- QCD=0.
+        standalone_fortran matrix elements for p p > e+ e- QCD=0.
 
         Uses a massless final state so both check drivers evaluate the same
         default 1000 GeV phase-space point (no energy auto-bump mismatch), and
         compares the per-flavour matrix elements as sorted multisets (the two
         backends may emit them in a different order and at different printed
         precision). madmatrix ships a UMAMI-based check_sa.exe whose
-        'matrix' mode is by design identical to the Fortran/C++ check drivers.
+        'matrix' mode is by design identical to the Fortran check driver.
         """
         energy = '1000'
         devnull = open(os.devnull, 'w')
 
-        def get_values(output_format, check_exe):
+        def get_values(output_format, check_exe, build_source=False):
             if os.path.isdir(self.out_dir):
                 shutil.rmtree(self.out_dir)
             self.do('output %s %s' % (output_format, self.out_dir))
+            if build_source:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=os.path.join(self.out_dir, 'Source'))
             proc_root = os.path.join(self.out_dir, 'SubProcesses')
             dirs = sorted(d for d in os.listdir(proc_root)
                           if d.startswith('P') and
@@ -1562,7 +1590,12 @@ class TestCmdShell2(unittest.TestCase,
                                re.IGNORECASE)
             for d in dirs:
                 proc_dir = os.path.join(proc_root, d)
-                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                # standalone_fortran uses 'make check' + ./check; standalone
+                # ships a UMAMI check_sa.exe whose 'matrix' mode == the Fortran
+                # driver.
+                target = ['make', 'check'] \
+                    if output_format == 'standalone_fortran' else ['make']
+                subprocess.call(target, stdout=devnull, stderr=devnull,
                                 cwd=proc_dir)
                 log = os.path.join(proc_dir, 'check.log')
                 subprocess.call('%s %s' % (check_exe, energy),
@@ -1576,9 +1609,11 @@ class TestCmdShell2(unittest.TestCase,
 
         self.do('import model sm')
         self.do('generate p p > e+ e- QCD=0')
-        cpp = get_values('standalone_cpp', './check')
+        fortran = get_values('standalone_fortran', './check', build_source=True)
+        self.assertTrue(any(v != 0.0 for v in fortran),
+                        'all matrix elements vanished for p p > e+ e- QCD=0')
         mg7 = get_values('standalone', './check_sa.exe')
-        self._assert_me_lists_close(mg7, cpp)
+        self._assert_me_lists_close(mg7, fortran)
 
     def test_madmatrix_mssm_single_leg(self):
         """Single-merged-leg flavored couplings must give the same per-flavor
