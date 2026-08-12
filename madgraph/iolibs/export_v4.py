@@ -2634,6 +2634,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             replace_dict['jampflow_decl'] = ''
             replace_dict['jampflow_lines'] = ''
             replace_dict['jamp_flow'] = 'JAMP'
+            replace_dict['ncolor_flow_name'] = 'NCOLOR'
+            replace_dict['jampflow_decl_tail'] = ''
+            replace_dict['jampflow_lines_tail'] = ''
             return ncolor
 
         ncolor_flow = max(1, len(flow_basis))
@@ -2652,6 +2655,19 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                              '    COMPLEX*16 JAMPF(NCOLOR_FLOW,NAMPSO)'
         replace_dict['jampflow_lines'] = '\n'.join(lines)
         replace_dict['jamp_flow'] = 'JAMPF'
+        replace_dict['ncolor_flow_name'] = 'NCOLOR_FLOW'
+        # matrix_madevent_group_v4.inc declares NCOLOR_FLOW itself and gives the
+        # two keys above a line of their own. matrix_madevent_v4.inc instead
+        # appends the *_tail keys to the end of a line it already writes, so
+        # that a matrix element staying on the trace basis (every process with a
+        # quark line) comes out byte for byte as before this basis existed.
+        replace_dict['jampflow_decl_tail'] = '\n'.join([
+                             '',
+                             '    INTEGER NCOLOR_FLOW',
+                             '    PARAMETER (NCOLOR_FLOW=%d)' % ncolor_flow,
+                             replace_dict['jampflow_decl']])
+        replace_dict['jampflow_lines_tail'] = \
+                             '\n' + replace_dict['jampflow_lines']
 
         logger.debug('Color sum on %d DDM structures, color flow on %d trace '
                      'structures (%d Kleiss-Kuijf terms)',
@@ -6706,6 +6722,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     matrix_file = "matrix_madevent_v4.inc"
     jamp_fold = True
     jamp_orbit = True
+    # The color sum runs on the DDM basis for a fully adjoint process; the color
+    # flow written into the events still needs the trace one, rebuilt from the
+    # DDM JAMPs through the Kleiss-Kuijf relations.
+    support_ddm_color_basis = True
+    ddm_needs_flow_basis = True
     # AMP is indexed by helicity once the matrix element is rewritten for
     # helicity recycling, so the definitions cannot sit at the end of it
     jamp_gather = True
@@ -7831,9 +7852,13 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         """Write the coloramps.inc file for MadEvent"""
 
         lines = self.get_icolamp_lines(mapconfigs, matrix_element, 1)
+        # ICOLAMP is indexed on color flows, so it must be sized on the flow
+        # basis: on the DDM basis that is not the one the color sum runs on.
+        color_basis = matrix_element.get('color_basis')
+        nflow = len(list(color_basis.get_flow_basis().keys())) if color_basis \
+                else 0
         lines.insert(0, "logical icolamp(%d,%d,1)" % \
-                        (max(len(list(matrix_element.get('color_basis').keys())), 1),
-                         len(mapconfigs)))
+                        (max(nflow, 1), len(mapconfigs)))
 
 
         # Write the file
