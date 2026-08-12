@@ -40,6 +40,60 @@ c**************************************************************************
       end
 
 
+      subroutine azifact_me_frame(p_born_in, imother, azifact, boosted)
+c**************************************************************************
+c     Collinear azimuthal factor -exp(2 i psi), evaluated in the me_frame.
+c
+c     The frame is rebuilt from the very momenta the matching Born call is
+c     given, so the spin-correlated Born and the phase multiplying it are
+c     guaranteed to live in the same frame. That is the whole point: the
+c     Born is boosted inside sborn_frame, and if the phase were left in the
+c     partonic c.m. the Q term would be wrong.
+c
+c     The mother and the stored emission direction are boosted together.
+c     xij_kperp is orthogonal to the mother (k.p = 0 in the frame it was
+c     built in), and orthogonality is preserved by the boost, so projecting
+c     the boosted vector onto the helicity basis of the boosted mother
+c     recovers the azimuth correctly.
+c
+c     boosted=.false. means no frame was requested (or the selection is one
+c     of the partonic-c.m. spellings). azifact is then left untouched and
+c     the caller must keep its legacy value, so that runs without a frame
+c     stay bit-identical.
+c
+c     input:  p_born_in(0:3,nexternal-1)  Born momenta of this configuration
+c             imother                     position of the mother in them
+c     output: azifact, boosted
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_born_in(0:3,nexternal-1)
+      integer imother
+      double complex azifact
+      logical boosted
+      double precision pboost(0:3), pm(0:3), kp(0:3)
+      integer ids(nexternal-1)
+      logical trivial
+      double precision xij_kperp(0:3)
+      common/cxij_kperp/xij_kperp
+
+      call get_frame_mask_born(ids)
+      call get_me_frame_boost(p_born_in, nexternal-1, ids, pboost,
+     &                        trivial)
+      if (trivial) then
+         boosted=.false.
+         return
+      endif
+
+      call boostx(p_born_in(0,imother), pboost, pm)
+      call boostx(xij_kperp, pboost, kp)
+      call azifact_from_kperp(pm, kp, azifact)
+      boosted=.true.
+
+      return
+      end
+
+
       subroutine azifact_from_kperp(pmother, kperp, azifact)
 c**************************************************************************
 c     Rebuild the collinear limit of <ij>/[ij] from the emission direction.

@@ -4752,6 +4752,7 @@ C ap and Q contain the QCD(1) and QED(2) Altarelli-Parisi kernel
       TYPE(ALOHA) W1,W2,W3,W4
       double complex Wij_angle,Wij_recta
       double complex azifact
+      logical me_boosted
 
 c Particle types (=color/charges) of i_fks, j_fks and fks_mother
       integer i_type,j_type,m_type
@@ -4827,6 +4828,17 @@ C check if any extra_cnt is needed
             wgt1(2)=0d0
          elseif (m_type.eq.8.or.ch_m.eq.0d0) then
 c Insert <ij>/[ij] which is not included by sborn()
+            imother_fks=min(i_fks,j_fks)
+            call azifact_me_frame(p_born,imother_fks,azifact,me_boosted)
+            if (me_boosted) then
+c Same as the ISR case, up to the conjugation that distinguishes a timelike
+c from a spacelike splitting: psi is measured in the helicity basis of the
+c boosted mother, so the getaziangles factor of the legacy branch below is
+c already accounted for and must not be applied again.
+               wgt1(2) = -azifact * wgt1(2)
+               amp_split_cnt(1:amp_split_size,2,iord) = -azifact
+     $              *amp_split_cnt(1:amp_split_size,2,iord)
+            else
             if (1d0-y_ij_fks.lt.vtiny)then
                azifact=xij_aor
             else
@@ -4847,7 +4859,6 @@ c Insert <ij>/[ij] which is not included by sborn()
                azifact=Wij_angle/Wij_recta
             endif
 c Insert the extra factor due to Madgraph convention for polarization vectors
-            imother_fks=min(i_fks,j_fks)
             call getaziangles(p_born(0,imother_fks),
      #                       cphi_mother,sphi_mother)
             wgt1(2) = -(cphi_mother-ximag*sphi_mother)**2 *
@@ -4855,6 +4866,7 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
             amp_split_cnt(1:amp_split_size,2,iord) = -(cphi_mother-ximag
      $           *sphi_mother)**2 *amp_split_cnt(1:amp_split_size,2
      $           ,iord) * azifact
+            endif
          else
             write(*,*) 'FATAL ERROR in sborncol_fsr',i_type,j_type,i_fks
      $           ,j_fks
@@ -4927,6 +4939,7 @@ C ap and Q contain the QCD(1) and QED(2) Altarelli-Parisi kernel
       TYPE(ALOHA) W1,W2,W3,W4
       double complex Wij_angle,Wij_recta
       double complex azifact
+      logical me_boosted
 
       double precision zero,vtiny
       parameter (zero=0d0)
@@ -5010,6 +5023,19 @@ C check if any extra_cnt is needed
            amp_split_cnt_local(1:amp_split_size,2,iord)=dcmplx(0d0,0d0)
         else
 c Insert <ij>/[ij] which is not included by sborn()
+           call azifact_me_frame(p_born_used,j_fks,azifact,me_boosted)
+           if (me_boosted) then
+c In the me_frame the mother is no longer on the beam axis, so neither the
+c cphi_mother=1 shortcut nor the R_y(pi) flip of the legacy branch below is
+c valid any more -- both only ever compensated for the mother lying along
+c +-z. azifact_me_frame returns -exp(2 i psi) with psi measured in the
+c helicity basis of the boosted mother, which carries both effects by
+c construction. Do not reinstate either here.
+              wgt1(2) = -dconjg(azifact) * wgt1(2)
+              amp_split_cnt_local(1:amp_split_size,2,iord) =
+     $             -dconjg(azifact)
+     $             *amp_split_cnt_local(1:amp_split_size,2,iord)
+           else
            if (1d0-y_ij_fks.lt.vtiny)then
               azifact=xij_aor
            else
@@ -5018,17 +5044,17 @@ c Insert <ij>/[ij] which is not included by sborn()
                  pj(i)=p(i,j_fks)
               enddo
               if(j_fks.eq.2 .and. nincoming.eq.2)then
-c Rotation according to innerpin.m. Use rotate_invar() if a more 
+c Rotation according to innerpin.m. Use rotate_invar() if a more
 c general rotation is needed
                  pi(1)=-pi(1)
                  pi(3)=-pi(3)
                  pj(1)=-pj(1)
                  pj(3)=-pj(3)
               endif
-              CALL IXXXXX(pi ,ZERO ,+1,+1,1,W1)        
-              CALL OXXXXX(pj ,ZERO ,-1,+1,1,W2)        
-              CALL IXXXXX(pi ,ZERO ,-1,+1,1,W3)        
-              CALL OXXXXX(pj ,ZERO ,+1,+1,1,W4)        
+              CALL IXXXXX(pi ,ZERO ,+1,+1,1,W1)
+              CALL OXXXXX(pj ,ZERO ,-1,+1,1,W2)
+              CALL IXXXXX(pi ,ZERO ,-1,+1,1,W3)
+              CALL OXXXXX(pj ,ZERO ,+1,+1,1,W4)
               Wij_angle=(0d0,0d0)
               Wij_recta=(0d0,0d0)
               do i=1,4
@@ -5046,6 +5072,7 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
      $          +ximag*sphi_mother)**2
      $          *amp_split_cnt_local(1:amp_split_size,2,iord) *
      $          dconjg(azifact)
+           endif
         endif
         if (iord.eq.qcd_pos) then
             wgt=wgt+dble(wgt1(1)*ap(1)+wgt1(2)*Q(1))

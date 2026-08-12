@@ -1238,13 +1238,26 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Polarization restriction can not be used in forbidding particles')
             
         if '[' in process and '{' in process:
-            # LOonly evaluates the Born alone, and the NLO output now boosts it
-            # to the frame chosen by me_frame in the run_card, so a polarized
-            # massive particle is meaningful there. The remaining NLO modes
-            # still lack the boost of the real, of the counterterms and of the
-            # virtual; see docs/nlo_polarisation_boost_plan.md.
-            loonly = 'loonly' in process.lower()
-            if 'noborn' in process or 'sqrvirt' in process or loonly:
+            # Which NLO mode was asked for, taken from inside the brackets so
+            # that a stray 'real' elsewhere in the process cannot match.
+            nlo_mode = process.split('[')[1].split(']')[0]
+            if '=' in nlo_mode:
+                nlo_mode = nlo_mode.split('=')[0]
+            nlo_mode = nlo_mode.strip().lower()
+
+            # LOonly evaluates the Born alone; 'real' adds the real emission
+            # and the full set of FKS counterterms. Both are boosted to the
+            # frame chosen by me_frame in the run_card, so a polarized massive
+            # particle is meaningful there. The virtual has no boost yet, so
+            # the modes including it are still refused; see
+            # docs/nlo_polarisation_boost_plan.md.
+            # 'real' is NOT enabled: the boost is wired through the reals and
+            # the counterterms, but test_ME still fails on a polarised boosted
+            # run (soft ~0.4, collinear ~0.37, uniformly across every FKS
+            # configuration). Until that is understood the mode stays refused.
+            frame_supported = nlo_mode in ('loonly',)
+            if 'noborn' in process or 'sqrvirt' in process \
+                                                      or frame_supported:
                 pass
             else:
                 raise self.InvalidCmd('Polarization restriction can not be used for NLO processes')
@@ -1259,8 +1272,9 @@ class CheckValidForCmd(cmd.CheckCmd):
             def check(p):
                 if p.get('color') != 1:
                     raise self.InvalidCmd('Polarization restriction can not be used for color charged particles')
-                elif p.get('mass') != 'ZERO' and not loonly:
-                    # massive polarization needs a frame; only LOonly has one
+                elif p.get('mass') != 'ZERO' and not frame_supported:
+                    # massive polarization needs a frame; only the modes whose
+                    # matrix elements are boosted have one
                     raise self.InvalidCmd('Polarization restriction can not be used for massive particles')
  
 

@@ -9,8 +9,8 @@ Status:
 |---|---|
 | M0 plumbing | **done** — run_card option, frame bookkeeping, boost routine, all inert |
 | M1 `[LOonly=QCD]` | **done** — Born boosted, validated against LO madevent |
-| M2 step 0 | **done** — ISR and FSR emission azimuth carried covariantly, still inert |
-| M2 rest | not started — reals, counterterms, the azimuthal wiring |
+| M2 step 0 | **done** — ISR and FSR emission azimuth carried covariantly |
+| M2 rest | **partly done** — reals + counterterms boosted, azimuthal wiring written but the gate FAILS; `[real=QCD]` stays refused |
 | M3 `[QCD]` | not started — virtual |
 | M4 | not started — unblock the guard, docs |
 
@@ -578,10 +578,52 @@ Re-validated after this change -- unpolarised 2.854e+04 +- 1.9e+02 (baseline),
 the M1 numbers. The skip reproduces the boost exactly for `[LOonly=QCD]`, as it
 must: with no emission `shy_lbst=0` and the Born really is in the partonic c.m.
 
-**Still to do in M2:** the azimuthal wiring -- switch `sborncol_isr` and
-`sborncol_fsr` onto `azifact_from_kperp` when the boost is non-trivial, call
-`getaziangles` on the boosted mother instead of the ISR hardcode, and delete
-the `R_y(pi)` flip. That is the package that must land as a unit.
+**Step 2 (azimuthal wiring) written, but the M2 gate FAILS. Not enabled.**
+
+`azifact_me_frame` rebuilds the frame from the same Born momenta the matching
+`sborn_frame` call gets, boosts the mother and `xij_kperp` together, and
+returns `-exp(2 i psi)`. Both `sborncol_isr` and `sborncol_fsr` use it in their
+boosted branch and, there, apply neither the `cphi_mother=1` shortcut, the
+`R_y(pi)` flip, nor `getaziangles` -- the psi form carries all of them (**B3**).
+The legacy branch is untouched, so unpolarised runs stay bit-identical.
+
+`test_ME` on `p p > z{0} j [real=QCD]` with `me_frame=[3]`: **soft 0.48,
+collinear 0.37, FAILED**. `[real=QCD]` is therefore still refused at parse
+time; only `[LOonly=QCD]` is enabled.
+
+What is known:
+
+| test | frame | result |
+|---|---|---|
+| unpolarised `[QCD]`, regression | skipped | 2.854e+04, PASSES |
+| (A) polarised `[real=QCD]`, no frame | skipped | **PASSES** |
+| (B) unpolarised `[real=QCD]`, `me_frame=[3]` | boosted | **PASSES** |
+| polarised `[real=QCD]`, `me_frame=[3]` | boosted | **FAILS** |
+
+So it needs polarised *and* boosted together. Note (B) is weaker evidence than
+it looks: for an unpolarised ME the boost is a physical no-op, so (B) only
+shows the boost does not crash or corrupt momenta -- it cannot test frame
+*consistency* between the real and the Born. (A) is the informative one: the
+polarised subtraction is sound when nothing is boosted.
+
+Ruled out so far:
+
+- *Not the azimuthal phase alone.* The **soft** test fails too, and the soft
+  counterterm is eikonal x colour-linked Born with no azimuthal factor.
+- *Not the real/Born leg mapping.* Checked directly against the shipped
+  `fks_info.inc`: for every FKS configuration of `P0_ddx_z0g`, including the
+  `i_fks=4` ones, `get_frame_mask_real` selects PDG 23 in the real.
+- *Not localised to ISR or FSR.* Failures are uniform across every
+  configuration and every P dir, `j_fks` initial and final alike.
+
+That pattern -- systematic, both limits, both splittings, only when the ME is
+frame-sensitive -- says the real and the counterterm Born are being evaluated
+in frames that differ by a *finite* amount rather than by O(xi)/O(1-y).
+
+Next diagnostic, and it should be instrumentation rather than more reasoning:
+print the boost 4-vector taken for the real and for the reduced Born at the
+same counter-event and compare them directly. D3 already asks for exactly that
+assertion; it should be added as a runtime check rather than a one-off.
 
 **Recommended order within M2:**
 
