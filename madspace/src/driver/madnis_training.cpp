@@ -822,6 +822,8 @@ void MultiMadnisTraining::train() {
     for (std::size_t subproc_index = 0; subproc_index < _training_args.size();
          ++subproc_index) {
         auto& args = _training_args.at(subproc_index);
+        _generator_context->reset_cache();
+        _optimizer_context->reset_cache();
         MadnisTraining subproc(
             _generator_context,
             _optimizer_context,

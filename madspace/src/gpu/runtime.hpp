@@ -6,6 +6,7 @@
 #include "madspace/driver/tensor.hpp"
 
 #include <memory>
+#include <map>
 
 namespace madspace {
 namespace gpu {

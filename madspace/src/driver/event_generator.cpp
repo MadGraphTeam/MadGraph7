@@ -43,6 +43,9 @@ EventGenerator::EventGenerator(
     _status_file(status_file) {}
 
 void EventGenerator::survey() {
+    for (auto& context : _contexts) {
+        context->reset_cache();
+    }
     reset_start_time();
     bool done = false;
     std::size_t min_iters = _config.survey_min_iters;
@@ -140,6 +143,7 @@ void EventGenerator::generate() {
 
     std::size_t target_job_count = 0;
     for (auto& context : _contexts) {
+        context->reset_cache();
         target_job_count += 2 * context->thread_pool().thread_count();
     }
     std::size_t channel_index = 0;

@@ -35,6 +35,10 @@ public:
         std::shared_ptr<StatusFile> status_file = nullptr,
         const GeneratorConfig& config = default_config
     );
+    EventGenerator(EventGenerator&&) = default;
+    EventGenerator& operator=(EventGenerator&&) = default;
+    EventGenerator(const EventGenerator&) = delete;
+    EventGenerator& operator=(const EventGenerator&) = delete;
     void survey();
     void generate();
     void combine_to_compact_npy(const std::string& file_name);

@@ -38,6 +38,10 @@ public:
         const std::string& name,
         const std::optional<ObservableHistograms>& histograms
     );
+    ChannelEventGenerator(ChannelEventGenerator&&) = default;
+    ChannelEventGenerator& operator=(ChannelEventGenerator&&) = default;
+    ChannelEventGenerator(const ChannelEventGenerator&) = delete;
+    ChannelEventGenerator& operator=(const ChannelEventGenerator&) = delete;
 
     const GeneratorStatus& status() const { return _status; }
     const RunningIntegral& cross_section() const { return _cross_section; }

@@ -83,14 +83,7 @@ public:
         }
     }
     ~ThreadResource() {
-        if (_pool) {
-            if (_destructor) {
-                for (auto& item : _resources) {
-                    _destructor.value()(item);
-                }
-            }
-            _pool->remove_listener(_listener_id);
-        }
+        reset();
     }
     ThreadResource(ThreadResource&& other) noexcept :
         _pool(std::move(other._pool)),
@@ -101,6 +94,7 @@ public:
     }
 
     ThreadResource& operator=(ThreadResource&& other) noexcept {
+        reset();
         _pool = std::move(other._pool);
         _resources = std::move(other._resources);
         _listener_id = std::move(other._listener_id);
@@ -112,6 +106,16 @@ public:
     ThreadResource& operator=(const ThreadResource&) = delete;
     T& get() { return _resources.at(ThreadPool::thread_index()); }
     const T& get() const { return _resources.at(ThreadPool::thread_index()); }
+    void reset() {
+        if (_pool) {
+            if (_destructor) {
+                for (auto& item : _resources) {
+                    _destructor.value()(item);
+                }
+            }
+            _pool->remove_listener(_listener_id);
+        }
+    }
 
 private:
     ThreadPool* _pool = nullptr;

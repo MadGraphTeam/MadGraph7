@@ -533,7 +533,11 @@ class MadgraphProcess:
         verbosity = resolve_verbosity(run_args["verbosity"])
         madnis_phasespaces = []
         training_args = []
+        self.event_generator = None
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            for channel in phasespace.channels:
+                channel.event_generator = None
+
             config = ms.MadnisConfig()
             config.learning_rate = subproc.madnis_settings["lr"]
             config.batches = subproc.madnis_settings["train_batches"]
@@ -593,6 +597,8 @@ class MadgraphProcess:
             phasespace.channels = [
                 phasespace.channels[index] for index in active_channels
             ]
+        del madnis_training
+        del opt_context
         self.phasespaces = madnis_phasespaces
         for context in self.contexts[1:]:
             context.copy_globals_from(self.contexts[0])

@@ -1842,7 +1842,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
         check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
     }
     update_pool_size_cache(mem_pool.total_sizes(), false);
-    update_cached_tensors(mem_pool.reset(main_stream), false);
+    //update_cached_tensors(mem_pool.reset(main_stream), false);
     TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
@@ -1911,7 +1911,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
     }
     update_pool_size_cache(mem_pool.total_sizes(), false);
-    update_cached_tensors(mem_pool.reset(main_stream), false);
+    //update_cached_tensors(mem_pool.reset(main_stream), false);
     TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
@@ -1986,7 +1986,7 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
         check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
     }*/
     update_pool_size_cache(mem_pool.total_sizes(), true);
-    update_cached_tensors(mem_pool.reset(main_stream), true);
+    //update_cached_tensors(mem_pool.reset(main_stream), true);
     check_error(gpuStreamSynchronize(main_stream));
     return {
         {local_grads.begin(), local_grads.begin() + _input_count},
@@ -1999,16 +1999,16 @@ GpuRuntime::load_pool_size_cache(bool backward) {
     auto cache = backward ? _pool_size_cache_backward.load() : _pool_size_cache.load();
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>> ret;
     if (cache) {
-        auto& thread_prev_caches =
-            backward ? _prev_caches_backward.get() : _prev_caches.get();
+        //auto& thread_prev_caches =
+            //backward ? _prev_caches_backward.get() : _prev_caches.get();
         for (auto [pool_index, size] : *cache) {
-            Tensor new_cache;
-            if (pool_index < thread_prev_caches.size()) {
+            Tensor new_cache = _context->cached_tensor(size);
+            /*if (pool_index < thread_prev_caches.size()) {
                 Tensor& prev_cache = thread_prev_caches.at(pool_index);
                 if (prev_cache && prev_cache.is_only_reference()) {
                     new_cache = prev_cache;
                 }
-            }
+            }*/
             ret.push_back(
                 {pool_index,
                  size,
@@ -2030,9 +2030,7 @@ void GpuRuntime::update_pool_size_cache(
     for (auto [pool_index, size] : total_sizes) {
         auto& cache_size = (*new_cache)[pool_index];
         if (size > cache_size) {
-            // if the cache needs to be resized, add some padding to prevent frequent
-            // resizing
-            cache_size = size * 4 / 3;
+            cache_size = size;
         }
     }
     if (backward) {
