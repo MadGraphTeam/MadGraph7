@@ -320,12 +320,28 @@ c     pboost is (E, -Pvec) of the sum of the selected momenta, i.e. exactly
 c     the argument boostx() wants in order to express a momentum given in
 c     the current frame in the rest frame of that system.
 c
-c     trivial is returned .true. when the boost is the identity by
-c     construction, so that callers can skip it and stay bit-identical to a
-c     run with no frame selection at all. Two cases:
+c     trivial is returned .true. when the boost should be skipped rather
+c     than applied. Applying an identity boost is not free: it is a
+c     multiply-and-add through boostx that perturbs the momenta in the last
+c     bits, which is enough to move an adaptive integration. The LO code
+c     avoids exactly this, in two places -- the call site skips frame_id=6
+c     (auto_dsig_v4.inc) and boost_to_frame() skips the all-final-state
+c     selection (genps.f) -- and this routine folds both in.
+c
+c     Four cases:
 c       - nothing selected;
-c       - the selected system has exactly zero 3-momentum (the default
-c         me_frame=[1,2] in the partonic c.m., where MadFKS already works).
+c       - the selection is exactly the initial state;
+c       - the selection is exactly the whole final state;
+c       - the selected system already has exactly zero 3-momentum.
+c
+c     The middle two are both "the partonic c.m.". Note they are *not*
+c     identity boosts here the way they are at LO: MadFKS works in a frame
+c     boosted along z (the two initial momenta carry different energies),
+c     so honouring them literally would apply a real longitudinal boost. It
+c     would also not be infrared safe -- a frame defined from the initial
+c     state jumps between the real emission and the reduced Born, because
+c     their momentum fractions differ by a finite amount even in the
+c     singular limit. Skipping is both the safe and the meaningful choice.
 c
 c     input:  p(0:3,npart)  momenta of this configuration
 c             ids(npart)    0/1 mask, see mapid_frame
@@ -338,14 +354,22 @@ c**************************************************************************
       integer ids(npart)
       logical trivial
       integer i, j
-      integer nsel
+      integer nsel, nini, nfin
       double precision m2, pvec2
+      include 'nexternal.inc'
 
       pboost(0:3)=0d0
       nsel=0
+      nini=0
+      nfin=0
       do i=1,npart
          if (ids(i).eq.1) then
             nsel=nsel+1
+            if (i.le.nincoming) then
+               nini=nini+1
+            else
+               nfin=nfin+1
+            endif
             do j=0,3
                pboost(j)=pboost(j)+p(j,i)
             enddo
@@ -355,6 +379,17 @@ c**************************************************************************
 c     Nothing selected: nothing to do. Do not treat this as an error, it is
 c     how frame_id=0 (or a mask that misses this configuration) shows up.
       if (nsel.eq.0) then
+         trivial=.true.
+         return
+      endif
+
+c     Exactly the initial state, or exactly the whole final state: both name
+c     the partonic c.m.. Skip rather than boost -- see the header.
+      if (nfin.eq.0 .and. nini.eq.nincoming) then
+         trivial=.true.
+         return
+      endif
+      if (nini.eq.0 .and. nfin.eq.npart-nincoming) then
          trivial=.true.
          return
       endif

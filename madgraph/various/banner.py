@@ -5867,7 +5867,7 @@ class RunCardNLO(RunCard):
         self.add_param('systematics_arguments', [''], include=False, hidden=True, comment='Choose the argment to pass to the systematics command. like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
 
         #frame in which to evaluate the matrix-element (polarization)
-        self.add_param("me_frame", [1,2], hidden=True, include=False, comment="choose lorentz frame where to evaluate the matrix-element [for non lorentz invariant matrix-element/polarization]:\n  the entries are the leg numbers of the process as written by the user; the rest-frame of their momentum sum is used.\n  [1,2] means the partonic center of mass (i.e. no boost)")
+        self.add_param("me_frame", [1,2], hidden=True, include=False, comment="choose lorentz frame where to evaluate the matrix-element [for non lorentz invariant matrix-element/polarization]:\n  the entries are the leg numbers of the process as written by the user; the rest-frame of their momentum sum is used.\n  [1,2] (the initial state) and the full final state both mean the partonic center of mass, and are skipped rather than applied.\n  Define the frame from final-state particles only: a frame built from the initial state is not infrared safe at NLO.")
         self.add_param('frame_id', 6, system=True)
 
         #technical
@@ -5928,8 +5928,27 @@ class RunCardNLO(RunCard):
         
     def check_validity(self):
         """check the validity of the various input"""
-        
+
         super(RunCardNLO, self).check_validity()
+
+        # me_frame built out of initial-state legs is not infrared safe at NLO:
+        # the real emission and the reduced Born carry different momentum
+        # fractions, by a finite amount even in the singular limit, so the
+        # frame jumps across that limit and the subtraction stops cancelling.
+        # Selecting exactly the initial state (or, equivalently, exactly the
+        # whole final state) is the partonic c.m. and is simply skipped; any
+        # other use of an initial-state leg is a genuine mistake.
+        if 'me_frame' in self.user_set:
+            initial = [n for n in self['me_frame'] if n in (1, 2)]
+            if initial and len(self['me_frame']) > len(initial):
+                raise InvalidRunCard(
+                    'me_frame %s mixes initial-state legs with final-state '
+                    'ones. A frame defined using the initial state is not '
+                    'infrared safe at NLO: the real emission and the reduced '
+                    'Born have different momentum fractions even in the '
+                    'collinear limit, so the frame is discontinuous there. '
+                    'Define the frame from final-state particles only.'
+                    % self['me_frame'])
 
         # if heavy ion mode use for one beam, forbid lpp!=1
         if self['lpp1'] not in [1,2]:

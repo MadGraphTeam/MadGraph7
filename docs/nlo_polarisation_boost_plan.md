@@ -540,6 +540,44 @@ appears in the run_card:
 The LO path is untouched: there the momenta really do arrive in the lab frame,
 so `[1,2]` has always been a meaningful boost and still is.
 
+**Skip the identity boost structurally, as LO does.** Applying a boost that is
+mathematically the identity is not free -- it goes through `boostx` and
+perturbs the momenta in the last bits, which is enough to move an adaptive
+integration. LO avoids this in *two* places, and the NLO port now folds in
+both:
+
+- the call site skips `frame_id=6` outright (`auto_dsig_v4.inc:183`);
+- `boost_to_frame()` skips the all-final-state selection (`genps.f:1782`),
+  whose comment says of the initial-state case: *"1 1 0 0 0 .... should not go
+  within this function"*.
+
+`get_me_frame_boost` now returns `trivial` for four cases: nothing selected,
+exactly the initial state, exactly the whole final state, and an already-at-
+rest system. Relying on the last one alone (as the first version did) is not
+enough at NLO, because the tilde frame means it never fires.
+
+**`me_frame` must not be built from the initial state at NLO -- it is not
+infrared safe.** This is a stronger statement than the numerical one above and
+it constrains what the feature may *accept*, not just what it skips. The real
+emission and the reduced Born carry momentum fractions that differ by a finite
+amount even in the singular limit, so a frame defined from the initial state is
+discontinuous across that limit and the subtraction stops cancelling. No
+azimuthal fix can repair it -- this is the same failure mode as the
+equivariance discussion in D3, but caused by the frame *definition* rather than
+by the mapping.
+
+Consequently `RunCardNLO.check_validity` rejects an `me_frame` that mixes
+initial-state legs with final-state ones. `[1,2]` and the full final state stay
+accepted, since they merely name the partonic c.m. and are skipped. Frames
+should be defined from final-state particles only, which is what the physics
+wants anyway: the polarised system (the Z, the ZZ pair) is a set of final-state
+spectators, present unchanged in both the real and the Born.
+
+Re-validated after this change -- unpolarised 2.854e+04 +- 1.9e+02 (baseline),
+`z{0} j` Z-frame 1366 +- 3.1 and partonic c.m. 977.3 +- 2.3, both identical to
+the M1 numbers. The skip reproduces the boost exactly for `[LOonly=QCD]`, as it
+must: with no emission `shy_lbst=0` and the Born really is in the partonic c.m.
+
 **Still to do in M2:** the azimuthal wiring -- switch `sborncol_isr` and
 `sborncol_fsr` onto `azifact_from_kperp` when the boost is non-trivial, call
 `getaziangles` on the boosted mother instead of the ISR hardcode, and delete
