@@ -2,7 +2,7 @@ name: Install LHAPDF PDF set
 description: >
   Make an LHAPDF PDF grid available to the mg7 (madspace) runtime and export
   LHAPDF_DATA_PATH so it is found. The mg7 runtime reads the grid file directly
-  (mg7/madevent.py: ms.PdfGrid on $LHAPDF_DATA_PATH/<set>/<set>_0000.dat), so it
+  (mg7/launch.py: ms.PdfGrid on $LHAPDF_DATA_PATH/<set>/<set>_0000.dat), so it
   only needs the grid data -- not the LHAPDF C++ library and not a pre-baked
   HEPTools cache. The set is installed with the lhapdf-management pip package
   into a cached, writable directory, so the download happens at most once.
