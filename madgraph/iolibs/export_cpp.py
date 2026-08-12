@@ -3187,13 +3187,6 @@ class ProcessExporterMG7(ProcessExporterCPP):
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp'],
                      'Cards': []}
-    #from_template_simd = [
-    #    s+"mg7/api.h",
-    #    s+"mg7/simd/api_simd.cpp",
-    #    s+"mg7/simd/cudacpp.mk",
-    #    s+"mg7/simd/Makefile",
-    #]
-    #to_link_simd = ["api.h", "api_simd.cpp", "cudacpp.mk", "Makefile"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
