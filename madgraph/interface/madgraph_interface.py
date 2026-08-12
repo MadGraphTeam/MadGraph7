@@ -1977,7 +1977,11 @@ This will take effect only in a NEW terminal
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
         elif self._export_format in ['mg7', 'mg7_v5']:
-            name_dir = lambda i: 'PROCMG7_%s_%s' % \
+            # mg7 is the default output format, so it takes the plain PROC_
+            # prefix.  This deliberately shares a namespace with madevent
+            # below: auto_path() picks the first free index, so the two never
+            # collide on disk, they just interleave.
+            name_dir = lambda i: 'PROC_%s_%s' % \
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
@@ -1993,7 +1997,10 @@ This will take effect only in a NEW terminal
                 auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
             elif self._export_format == 'standalone':
-                name_dir = lambda i: 'PROCMG7_SA_%s_%s' % \
+                # As above: the madmatrix standalone is the default standalone,
+                # so it takes the plain PROC_SA_ prefix and shares the namespace
+                # with the Fortran standalone in the else branch.
+                name_dir = lambda i: 'PROC_SA_%s_%s' % \
                                     (self._curr_model['name'], i)
                 auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
