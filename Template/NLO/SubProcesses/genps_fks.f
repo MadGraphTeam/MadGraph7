@@ -2366,6 +2366,19 @@ c$$$       &          sinphi_i_fks*tan(th_mother_fks/2.d0)*
 c$$$       &          exp( 2*ximag*(phi_mother_fks+phi_i_fks) )
 c$$$          xij_aor=resAoR0+resAoR5*sqrt(1-y_ij_fks)
          xij_aor=resAoR0
+c Emission direction transverse to the mother, carried covariantly so the
+c azimuth can be rebuilt in another frame (xij_aor cannot be: it is a 0/0
+c limit of <ij>/[ij]). The emission is generated about a +z mother, so its
+c transverse direction is (cos(phi_i),sin(phi_i),0); rotate_invar maps that
+c onto the mother's actual orientation, and since it takes x,y onto the
+c helicity basis vectors e1,e2 the azimuth of the result is again phi_i.
+         xij_kperp(0)=0d0
+         xij_kperp(1)=cosphi_i_fks
+         xij_kperp(2)=sinphi_i_fks
+         xij_kperp(3)=0d0
+         call rotate_invar(xij_kperp,xij_kperp,
+     &                     costh_mother_fks,sinth_mother_fks,
+     &                     cosphi_mother_fks,sinphi_mother_fks)
       endif
 c
 c Phase-space factor for (xii,yij,phii)

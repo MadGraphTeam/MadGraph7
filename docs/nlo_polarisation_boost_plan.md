@@ -1,7 +1,21 @@
 # Polarised cross-sections at NLO: frame-boost implementation plan
 
-Status: **not started.** This document records the assessment of the existing
-(dead) polarised-NLO code and the plan to make `p p > z{0} z{0} j [QCD]` work.
+This document records the assessment of the existing (dead) polarised-NLO code
+and the plan to make `p p > z{0} z{0} j [QCD]` work.
+
+Status:
+
+| milestone | state |
+|---|---|
+| M0 plumbing | **done** — run_card option, frame bookkeeping, boost routine, all inert |
+| M1 `[LOonly=QCD]` | **done** — Born boosted, validated against LO madevent |
+| M2 step 0 | **done** — ISR and FSR emission azimuth carried covariantly, still inert |
+| M2 rest | not started — reals, counterterms, the azimuthal wiring |
+| M3 `[QCD]` | not started — virtual |
+| M4 | not started — unblock the guard, docs |
+
+Only `[LOonly=QCD]` accepts a polarised massive particle today; `[QCD]`,
+`[real=QCD]` and the rest are still refused at parse time.
 
 ## 1. Assessment of the existing implementation
 
@@ -329,13 +343,40 @@ A longitudinal boost leaves the reconstruction *exactly* unchanged (0.0, not
 just small), confirming the plan's prediction that a longitudinal-only
 `me_frame` is a genuine null and therefore a useful intermediate test.
 
-**Still to do in step 0:** the FSR half. `generate_momenta_massless_final`
-stores `xij_aor = -exp(2i(phi_mother+phi_i))` but no `xij_kperp` yet; the
-mother's own azimuth cancels against the `getaziangles` factor in
-`sborncol_fsr`, leaving the same `exp(2 i phi_i)`, so the same treatment should
-apply -- but B4 (whether FSR counter-events also collapse onto the `vtiny`
-branch) must be settled first, since that decides whether the `xij_aor` path or
-the spinor path is the one that actually runs.
+**Step 0 (FSR half) DONE, and B4 is resolved -- both parts favourably.**
+
+*Which branch runs.* The same one as ISR. `sreal` dispatches to
+`sborncol_fsr`/`sborncol_isr` on `pmass(j_fks)` and `j_fks<=nincoming`, but the
+collinear and soft-collinear counter-events pass the literal `one` for
+`y_ij_fks` (`fks_singular.f:793`, `:904`) in both cases. So FSR also always
+takes `azifact = xij_aor`, and its `IXXXXX`/`OXXXXX` branch is live only in the
+sliver `vtiny=1e-8 <= 1-y < tiny=1e-6` -- never during `colltest`, where
+`tiny=1d-12`.
+
+*Equivariance.* Holds for FSR too. The spectator boost has
+`shybst = -(shat-sumrec^2)/(2 sumrec sqrt(shat))` with
+`recoil = p_total - p_mother`, which in the partonic c.m. vanishes exactly when
+`E_m = |p_m|`, i.e. for a massless mother. Since
+`m_mother^2 = 2 E_i E_j (1-y) -> 0`, `shybst = O(1-y) -> 0` in the collinear
+limit. So the reduced Born and the real event share a frame in the singular
+region and there is no residual rotation of the polarisation axes.
+
+*The FSR reconstruction needs no new machinery.* The emission is generated
+about a `+z` mother as `(cos(phi_i),sin(phi_i),0)` and then passed through
+`rotate_invar`, which is `R_z(phi) R_y(theta)` and therefore maps `x,y` onto
+exactly the `e1,e2` of the helicity basis above. So the rotated vector has
+azimuth `phi_i` again, and the *same* `azifact_from_kperp` serves both cases.
+The only difference is a conjugation, which is just spacelike vs timelike
+splitting:
+
+    ISR net factor = -dconjg( azifact_from_kperp(mother, kperp) )
+    FSR net factor = -        azifact_from_kperp(mother, kperp)
+
+Checked at Lambda=1 against the shipped `-(cphi_m - i sphi_m)^2 * xij_aor` over
+672 configurations of `(theta_m, phi_m, phi_i)`: worst deviation 1.4e-15.
+
+This also retires the worry that FSR would need its own analysis: the two
+cases differ by a conjugation, not by structure.
 
 `[real=QCD]` gives the full FKS subtraction without virtuals — everything hard,
 nothing MadLoop.
@@ -531,10 +572,11 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   `sum 2**(N-1)` is stale; fix the comment.
 - **B3 — the `R_y(pi)` flip must be deleted, not boosted**, and
   `montecarlocounter.f:3000-3006` must not keep double-encoding it.
-- **B4 — FSR equivariance unconfirmed.** D3 is established for ISR only;
-  confirm `shybst -> 0` in the FSR collinear limit (`genps_fks.f:2324-2339`).
-  Also establish whether FSR counter-events collapse onto the `vtiny` branch
-  the way ISR ones do.
+- **B4 — RESOLVED, both parts.** FSR counter-events do collapse onto the
+  `vtiny` branch, exactly like ISR (they are handed the literal `one` for
+  `y_ij_fks`). And `shybst = O(1-y) -> 0` in the FSR collinear limit, because
+  it vanishes iff the mother is massless and `m_mother^2 = 2 E_i E_j (1-y)`.
+  So FSR inherits the D3 equivariance property. See the M2 step 0 section.
 - **B5 — `SBORN` momentum-cache coherence.** The cache hard-`stop`s on an
   `(E, p_z)` mismatch (`born_fks.inc:85-98`), so every `SBORN` caller within an
   event must agree on boosted vs. unboosted. A cheap crash, and a cheap
