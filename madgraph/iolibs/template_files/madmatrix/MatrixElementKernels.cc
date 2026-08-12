@@ -466,8 +466,8 @@ namespace mg5amcGpu
     m_pHelDenominators.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
 #ifndef MGONGPU_HAS_NO_BLAS
     // Create the "many-helicity" super-buffer of temporary buffers for the cuBLAS/hipBLAS intermediate
-    // results in color_sum_blas, and for the jamps gathered onto the ncolorfold color flows the color
-    // sum is folded onto (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
+    // results in color_sum_blas, and in mixed precision mode for the converted jamps too
+    // (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
     if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( blasColorSumTmpSize( nGoodHel, nevt ) ) );
 #endif
     // Return the number of good helicities

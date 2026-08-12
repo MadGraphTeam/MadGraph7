@@ -29,32 +29,19 @@ namespace mg5amcCpu
 
 #ifdef MGONGPUCPP_GPUIMPL
 #ifndef MGONGPU_HAS_NO_BLAS
-  // The BLAS color sum multiplies the jamps gathered onto the ncolorfold color flows the sum
-  // runs over (see color_sum_blas): does that gather need a buffer of its own? Not when it is
-  // the identity because the color basis does not fold, and there is no fptype2 conversion to
-  // do either - there the jamps are read where compute_jamps already wrote them, exactly as
-  // the color sum did before it was folded.
-  constexpr bool
-  blasColorSumNeedsJampBuffer()
-  {
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-    return true; // mixed precision mode: the jamps must be converted from double to float
-#else
-    return CPPProcess::ncolorfold < CPPProcess::ncolor;
-#endif
-  }
-
   // The size of the ghelAllBlasTmp scratch buffer color_sum_blas needs, in fptype2 elements:
-  // one fptype2[ncolorfold*nx2*nhel*nevt] buffer for the BLAS intermediate results, one more
-  // for the gathered jamps if they need one, and in mixed precision mode one fptype2[nhel*nevt]
-  // buffer for the MEs, which are fptype elsewhere. This is the one place the size is defined:
-  // both the allocation (MatrixElementKernels.cc) and the reset (color_sum_gpu) come here.
+  // one fptype2[ncolor*nx2*nhel*nevt] buffer for the BLAS intermediate results and, in mixed
+  // precision mode only, one more for the jamps converted from double to float plus one
+  // fptype2[nhel*nevt] buffer for the MEs, which are fptype elsewhere. This is the one place
+  // the size is defined: both the allocation (MatrixElementKernels.cc) and the reset
+  // (color_sum_gpu) come here.
   constexpr std::size_t
   blasColorSumTmpSize( const int nhel, const int nevt )
   {
-    std::size_t nfptype2PerEvent = ( blasColorSumNeedsJampBuffer() ? 2 : 1 ) * CPPProcess::ncolorfold * mgOnGpu::nx2;
+    std::size_t nfptype2PerEvent = CPPProcess::ncolor * mgOnGpu::nx2;
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-    nfptype2PerEvent += 1; // the fptype2 matrix elements
+    nfptype2PerEvent *= 2;  // the jamps converted to float need a buffer of their own
+    nfptype2PerEvent += 1;  // the fptype2 matrix elements
 #endif
     return nfptype2PerEvent * (std::size_t)nhel * (std::size_t)nevt;
   }
