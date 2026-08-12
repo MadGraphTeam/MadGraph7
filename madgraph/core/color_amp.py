@@ -1030,25 +1030,6 @@ def permute_immutable(struct, perm):
     return tuple(res)
 
 
-def reverse_immutable(struct):
-    """Reverse every color object of an immutable color basis key, bringing the
-    result back to the canonical form. A trace is cyclic, so it is rotated onto
-    its smallest index afterwards. Returns None for anything which is not built
-    of traces alone, which is where the reversal has a meaning of its own."""
-
-    res = []
-    for name, indices in struct:
-        if name != 'Tr':
-            return None
-        indices = tuple(reversed(indices))
-        if len(indices) > 1:
-            start = min(range(len(indices)), key=indices.__getitem__)
-            indices = indices[start:] + indices[:start]
-        res.append((name, indices))
-    res.sort()
-    return tuple(res)
-
-
 class ColorBasisSymmetry(object):
     """Permutations of the external color indices which map a color basis (or a
     pair of color bases, for an asymmetric color matrix) onto itself.

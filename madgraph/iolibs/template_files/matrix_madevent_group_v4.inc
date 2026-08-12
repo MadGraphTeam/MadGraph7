@@ -296,9 +296,8 @@ C
     include 'genps.inc'
     include 'nexternal.inc'
     include 'maxamps.inc'
-    INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
+    INTEGER    NWAVEFUNCS,     NCOLOR
     PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
-    PARAMETER (NCOLORFOLD=%(ncolorfold)d)
     INTEGER    NCOLOR_FLOW
     PARAMETER (NCOLOR_FLOW=%(ncolor_flow)d)
     REAL*8     ZERO
@@ -327,11 +326,10 @@ C
     COMPLEX*16 ZTEMP
 %(jamp_tmp_decl)s
 %(jamp_decl)s
-    INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1)/2)
+    INTEGER CF(NCOLOR*(NCOLOR+1)/2)
     INTEGER DENOM, CF_INDEX
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
-%(color_fold_decl)s
 %(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
@@ -372,7 +370,6 @@ C
 C COLOR DATA
 C  
 %(color_data_lines)s
-%(color_fold_index)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -404,19 +401,18 @@ JAMP(:,:) = (0d0,0d0)
       ENDDO
     endif	
 
-%(color_fold_gather)s
     MATRIX%(proc_id)s = 0.D0 
 	DO M = 1, NAMPSO
       CF_INDEX = 0
-      DO I = 1, NCOLORFOLD
+      DO I = 1, NCOLOR
         ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLORFOLD
+        DO J = I, NCOLOR
           CF_INDEX = CF_INDEX + 1
-          ZTEMP = ZTEMP + CF(CF_INDEX)*%(color_fold_array)s(J,M)
+          ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
         ENDDO
 		DO N = 1, NAMPSO
 		  %(select_configs_if)s
-             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(%(color_fold_array)s(I,N))
+             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(JAMP(I,N))
 	      %(select_configs_endif)s
 		ENDDO
       ENDDO

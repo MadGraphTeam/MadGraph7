@@ -222,178 +222,9 @@ class VirtualExporter(object):
         return
 
 #===============================================================================
-# ColorReflectionFolding
-#===============================================================================
-class ColorReflectionFolding(object):
-    """Reversing every color basis element maps the basis onto itself, and for
-    a pure gluon process the two flows of a pair only differ by one overall
-    sign. Half the color flows then carry nothing of their own and |M|^2 can be
-    summed over one flow per pair, against a color matrix folded onto them.
-
-    Shared by the fortran exporters and by the madmatrix (C++/GPU) one, which
-    only differ in when a folding is worth taking (jamp_fold_worthwhile)."""
-
-    # sum |M|^2 over one color flow per reversal pair instead of over every one
-    # Folding the color matrix onto one line per reversal pair only works
-    # where the template sums over NCOLORFOLD. get_color_data_lines is shared
-    # by every fortran exporter, so this stays off unless the template agrees.
-    jamp_fold = False
-
-    # Above this many entries the folded color matrix is not written out but
-    # rebuilt at run time, which only the sign +1 case can do (see
-    # jamp_fold_worthwhile).
-    color_fold_max_written = 300000
-
-    @staticmethod
-    def jamp_color_rows(matrix_element):
-        """The color coefficient of every amplitude, one dictionary per color
-        basis line. Same numbers get_JAMP_lines works from."""
-
-        rows = []
-        powers = {}
-        for coeff_list in matrix_element.get_color_amplitudes():
-            row = {}
-            for coefficient, amp in coeff_list:
-                if not coefficient:
-                    continue
-                try:
-                    power = powers[coefficient[3]]
-                except KeyError:
-                    power = fractions.Fraction(3) ** coefficient[3]
-                    powers[coefficient[3]] = power
-                value = (1j if coefficient[2] else 1) * coefficient[0] * \
-                        coefficient[1] * power
-                row[amp] = row.get(amp, 0) + value
-            rows.append(dict((amp, complex(v)) for amp, v in row.items() if v))
-        return rows
-
-    def get_jamp_reflection(self, matrix_element):
-        """Reversing every color basis element maps the basis onto itself, and
-        for a pure gluon process the color coefficients of a line and of its
-        reverse differ by one overall sign, so half the color flows carry no
-        information of their own:
-
-            JAMP[reverse(i)] = sign * JAMP[i]
-
-        Return (reverse, sign) or None. The relation is read off the color
-        coefficients themselves rather than assumed, so a process where it does
-        not hold -- a quark line, where reversing does not commute with the
-        fermion flow -- simply gets None."""
-
-        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
-            return None
-        color_basis = matrix_element.get('color_basis')
-        if not color_basis or len(color_basis) < 2:
-            return None
-        keys = sorted(color_basis.keys())
-        position = dict((key, i) for i, key in enumerate(keys))
-
-        reverse = []
-        for key in keys:
-            other = color_amp.reverse_immutable(key)
-            if other is None or other not in position:
-                return None
-            reverse.append(position[other])
-        if any(reverse[reverse[i]] != i for i in range(len(keys))):
-            return None
-
-        columns = self.jamp_color_rows(matrix_element)
-
-        sign = None
-        for i in range(len(keys)):
-            here, there = columns[i], columns[reverse[i]]
-            if set(here) != set(there):
-                return None
-            for amp, value in here.items():
-                ratio = there[amp] / value
-                if ratio not in (1, -1):
-                    return None
-                if sign is None:
-                    sign = int(ratio.real)
-                elif sign != int(ratio.real):
-                    return None
-        if sign is None:
-            return None
-        return reverse, sign
-
-    @staticmethod
-    def jamp_reflection_representatives(reverse):
-        """One line per pair, and for every line the pair it belongs to."""
-
-        representatives = [i for i in range(len(reverse)) if i <= reverse[i]]
-        slot = {}
-        for index, line in enumerate(representatives):
-            slot[line] = index
-            slot[reverse[line]] = index
-        return representatives, slot
-
-    def jamp_fold_worthwhile(self, sign, nb_pairs):
-        """Whether a folding is taken once it has been found.
-
-        With sign +1 every line of a pair enters with the same weight, so the
-        permutations leaving the color basis invariant carry over to the pairs
-        unchanged and the folded matrix can still be rebuilt at run time from
-        one line per orbit. With sign -1 a permutation may send a line onto its
-        own partner, which flips the weight, and the rebuilt form would need a
-        sign of its own; there the folded matrix is written out instead, which
-        is only affordable while it stays small."""
-
-        return sign > 0 or \
-            nb_pairs * (nb_pairs + 1) // 2 <= self.color_fold_max_written
-
-    def get_jamp_folding(self, matrix_element):
-        """Whether to sum |M|^2 over one line per reversal pair, and the
-        (reverse, sign, representatives, slot) that goes with it."""
-
-        if not self.jamp_fold:
-            return None
-        found = self.get_jamp_reflection(matrix_element)
-        if not found:
-            return None
-        reverse, sign = found
-        representatives, slot = self.jamp_reflection_representatives(reverse)
-        if not self.jamp_fold_worthwhile(sign, len(representatives)):
-            return None
-        return {'reverse': reverse, 'sign': sign,
-                'representatives': representatives, 'slot': slot}
-
-    def jamp_folded_color_matrix(self, matrix_element, reverse, sign):
-        """The color matrix over one line per reversal pair. Summing |M|^2 over
-        the pairs instead of over every line gives the same number, since the
-        two lines of a pair only differ by the overall sign:
-
-            C'[a][b] = sum over the two lines of a and the two of b, each
-                       weighted by its sign relative to the line kept
-
-        Returns (denominator, rows) with rows[a][b] integer, a and b indexing
-        the representatives."""
-
-        color_matrix = matrix_element.get('color_matrix')
-        representatives, _slot = self.jamp_reflection_representatives(reverse)
-        denominator = max(color_matrix.get_line_denominators())
-        full = [color_matrix.get_line_numerators(i, denominator)
-                for i in range(len(reverse))]
-
-        def pair(a):
-            return [(a, 1)] if reverse[a] == a else [(a, 1), (reverse[a], sign)]
-
-        rows = []
-        for a in representatives:
-            row = []
-            for b in representatives:
-                total = 0
-                for i, ci in pair(a):
-                    for j, cj in pair(b):
-                        total += ci * cj * full[i][j]
-                assert int(total) == total
-                row.append(int(total))
-            rows.append(row)
-        return denominator, rows
-
-#===============================================================================
 # ProcessExporterFortran
 #===============================================================================
-class ProcessExporterFortran(ColorReflectionFolding, VirtualExporter,
+class ProcessExporterFortran(VirtualExporter,
                              jamp_optimiser.JampOptimiser):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
@@ -404,9 +235,6 @@ class ProcessExporterFortran(ColorReflectionFolding, VirtualExporter,
                         'output_options':{}
                         }
     grouped_mode = False
-    # jamp_fold (sum |M|^2 over one color flow per reversal pair) comes from
-    # ColorReflectionFolding and stays off unless the template sums over
-    # NCOLORFOLD: get_color_data_lines is shared by every fortran exporter.
     # jamp_optim, myjamp_count and jamp_integer_walk come from JampOptimiser,
     # and so does the orbit equivariant optimisation itself: jamp_orbit,
     # jamp_greedy_tail and jamp_compare_max_size. What is left here is how the
@@ -2263,49 +2091,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
 
-    @staticmethod
-    def jamp_fold_spanning_tree(permutations, size):
-        """Same walk as ColorBasisSymmetry.spanning_tree, over an index set
-        given directly as permutations rather than as color basis keys."""
-
-        keep = []
-        parent_uf = list(range(size))
-
-        def find(x):
-            while parent_uf[x] != x:
-                parent_uf[x] = parent_uf[parent_uf[x]]
-                x = parent_uf[x]
-            return x
-
-        for perm in permutations:
-            used = False
-            for i, j in enumerate(perm):
-                ri, rj = find(i), find(j)
-                if ri != rj:
-                    parent_uf[ri] = rj
-                    used = True
-            if used:
-                keep.append(perm)
-
-        representative = [-1] * size
-        parent = [None] * size
-        representatives = []
-        for start in range(size):
-            if representative[start] != -1:
-                continue
-            representatives.append(start)
-            representative[start] = start
-            queue = collections.deque([start])
-            while queue:
-                current = queue.popleft()
-                for local, perm in enumerate(keep):
-                    image = perm[current]
-                    if representative[image] == -1:
-                        representative[image] = start
-                        parent[image] = (current, local)
-                        queue.append(image)
-        return representatives, representative, parent, keep
-
     def get_color_matrix_encoding(self, matrix_element):
         """Describe the color matrix by one line per orbit of the index
         permutations leaving the color basis invariant, plus the permutations
@@ -2329,25 +2114,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         if not symmetry.has_symmetry():
             return None
 
-        folding = self.get_jamp_folding(matrix_element)
-        if folding and folding['sign'] < 0:
-            # The rebuilt form cannot carry the weight a permutation picks up
-            # when it sends a line onto its own partner. The sum runs over the
-            # folded matrix either way, so there is no falling back to the
-            # unfolded encoding here: it has to be written out instead.
-            return None
-        if folding:
-            # reversing commutes with permuting the indices, so a permutation
-            # of the lines is also a permutation of the pairs
-            slot = folding['slot']
-            nb_color = len(folding['representatives'])
-            induced = [[slot[perm[line]]
-                        for line in folding['representatives']]
-                       for perm in symmetry.generators1]
-            representatives, representative, parent, gens = \
-                    self.jamp_fold_spanning_tree(induced, nb_color)
-        else:
-            representatives, representative, parent, gens = \
+        representatives, representative, parent, gens = \
                                                     symmetry.spanning_tree()
 
         # Writing the entries out is well trodden and the compressed form
@@ -2360,17 +2127,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             return None
 
         place = dict((line, index) for index, line in enumerate(representatives))
-        if folding:
-            denominator, folded = self.jamp_folded_color_matrix(
-                        matrix_element, folding['reverse'], folding['sign'])
-            rows = [folded[line] for line in representatives]
-        else:
-            denominator = max(color_matrix.get_line_denominators())
-            rows = []
-            for line in representatives:
-                num_list = color_matrix.get_line_numerators(line, denominator)
-                assert all(int(i) == i for i in num_list)
-                rows.append([int(i) for i in num_list])
+        denominator = max(color_matrix.get_line_denominators())
+        rows = []
+        for line in representatives:
+            num_list = color_matrix.get_line_numerators(line, denominator)
+            assert all(int(i) == i for i in num_list)
+            rows.append([int(i) for i in num_list])
 
         return {'denom': denominator,
                 'nb_color': nb_color,
@@ -2397,26 +2159,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                                     get_line_denominators())
             return ["DATA %%(proc_prefix)sDenom/%(denom)i/" % \
                                                        {'denom': denominator}]
-
-        folding = self.get_jamp_folding(matrix_element)
-        if folding:
-            denominator, folded = self.jamp_folded_color_matrix(
-                        matrix_element, folding['reverse'], folding['sign'])
-            ret_list = ["DATA %%(proc_prefix)sDenom/%(denom)i/" %
-                        {'denom': denominator}]
-            cf_index = 0
-            for index in range(len(folded)):
-                row = folded[index]
-                for k in range(index, len(row), n):
-                    chunk = row[k:k + n]
-                    ret_list.append(
-                        "DATA (%%(proc_prefix)sCF(i),i=%3r,%3r) /%s/" %
-                        (cf_index + 1, cf_index + len(chunk),
-                         ','.join("%i" % ((1 if (k == index and pos == 0)
-                                           else 2) * int(v))
-                                  for pos, v in enumerate(chunk))))
-                    cf_index += len(chunk)
-            return ret_list
 
         ret_list = []
         my_cs = color.ColorString()
@@ -3208,29 +2950,6 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 res_list.append(" %s = %s" %(name, '+'.join(jamp_res[i])))
 
         return res_list, len(defs)
-
-    def get_color_fold_ampso(self, folding, ncolor):
-        """Template replacements for a color sum over one line per reversal
-        pair, where JAMP carries a second index for the split orders. Without a
-        folding the sum is left on JAMP itself, so nothing is copied."""
-
-        if not folding:
-            return {'ncolorfold': ncolor,
-                    'color_fold_decl': '',
-                    'color_fold_index': '',
-                    'color_fold_gather': '',
-                    'color_fold_array': 'JAMP'}
-        lines = [line + 1 for line in folding['representatives']]
-        return {
-            'ncolorfold': len(lines),
-            'color_fold_decl': (
-                "    COMPLEX*16 JFOLD(NCOLORFOLD,NAMPSO)\n"
-                "    INTEGER COLREP(NCOLORFOLD)\n"
-                "    INTEGER ICF"),
-            'color_fold_index': "\n".join(
-                self.get_int_data_lines("COLREP", lines, var='ICF')),
-            'color_fold_gather': "    JFOLD(:,:) = JAMP(COLREP(:),:)",
-            'color_fold_array': 'JFOLD'}
 
     def jamp_orbit_recipes(self, defs, nb_amp):
         """Describe the definitions by one recipe per orbit: the amplitude
@@ -4537,7 +4256,6 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     f2py_wrapper_all ="f2py_wrapper_all.inc"
     f2py_matrix_splitter = "f2py_splitter.py"
     jamp_optim = True
-    jamp_fold = True
     jamp_orbit = True
     default_vector_size = 0
     # standalone only squares the amplitude, so it can use the DDM basis. It
@@ -5439,29 +5157,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # Extract ncolor
         ncolor = max(1, len(matrix_element.get('color_basis')))
         replace_dict['ncolor'] = ncolor
-        # |M|^2 is summed over one color flow per reversal pair when the basis
-        # allows it, so the color matrix is only over those
-        folding = self.get_jamp_folding(matrix_element)
-        self.jamp_folding = folding
-        nfold = len(folding['representatives']) if folding else ncolor
-        replace_dict['ncolorfold'] = nfold
-        replace_dict['ncolortriang'] = nfold * (nfold + 1) // 2
-        replace_dict['color_fold_index'] = '\n'.join(
-            self.get_int_data_lines("COLREP",
-                                    [i + 1 for i in folding['representatives']],
-                                    var='ICF')) if folding else ''
-        replace_dict['color_fold_gather'] = (
-            "      DO ICF = 1, NCOLORFOLD\n"
-            "        JFOLD(ICF) = JAMP(COLREP(ICF))\n"
-            "      ENDDO" if folding else
-            "      DO ICF = 1, NCOLOR\n"
-            "        JFOLD(ICF) = JAMP(ICF)\n"
-            "      ENDDO")
-        if not folding:
-            replace_dict['color_fold_decl'] = "      INTEGER ICF"
-        if folding:
-            replace_dict['color_fold_decl'] = \
-                "      INTEGER COLREP(NCOLORFOLD)\n      INTEGER ICF"
+        # the color matrix is symmetric, only its upper triangle is written
+        replace_dict['ncolortriang'] = ncolor * (ncolor + 1) // 2
 
         replace_dict['hel_avg_factor'] = matrix_element.get_hel_avg_factor()
         replace_dict['beamone_helavgfactor'], replace_dict['beamtwo_helavgfactor'] =\
@@ -6720,7 +6417,6 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     MadEvent format."""
 
     matrix_file = "matrix_madevent_v4.inc"
-    jamp_fold = True
     jamp_orbit = True
     # The color sum runs on the DDM basis for a fully adjoint process; the color
     # flow written into the events still needs the trace one, rebuilt from the
@@ -7459,11 +7155,6 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Extract ncolor
         ncolor = max(1, len(matrix_element.get('color_basis')))
         replace_dict['ncolor'] = ncolor
-        # |M|^2 is summed over one color flow per reversal pair when the basis
-        # allows it. JAMP itself keeps every flow: jamp2 and the color flow
-        # selection below read all of them.
-        folding = self.get_jamp_folding(matrix_element)
-        replace_dict.update(self.get_color_fold_ampso(folding, ncolor))
 
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)

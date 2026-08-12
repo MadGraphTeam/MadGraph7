@@ -59,7 +59,6 @@
     // The color structures the color flow is picked among. Same as ncolor,
     // unless the color sum runs on a smaller basis (see set_color_flow_lines_cpp).
     static constexpr int ncolor_flow = %(ncolor_flow)s;
-    static constexpr int ncolorfold = %(ncolorfold)s; // the number of color flows |M|^2 is summed over: one per reversal pair where the color basis folds, ncolor otherwise (see color_sum.cc)
     static constexpr int nmaxflavor = %(nmaxflavor)d; // the maximum number of flavor combinations
 
     // Hardcoded parameters for this process (constant class variables)
