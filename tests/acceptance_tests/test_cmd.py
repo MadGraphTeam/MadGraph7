@@ -3864,7 +3864,14 @@ C
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_pp_wpwm(self):
-        """Test `check p p > w+ w-` runs and gauge check succeeds."""
+        """Test `check p p > w+ w-` runs and gauge check succeeds.
+
+        With apply_flavor_grouping on (the default), the four light-quark
+        subprocesses are carried by the single merged matrix element
+        Q Qx > w+ w-, so the gauge block checks one process, not four.  The
+        per-flavor coverage lives in the flavor-grouping block, which compares
+        the merged matrix element against the unmerged one for every flavor.
+        """
 
         self.do('import model sm')
         with self.assertLogs('madgraph.check_cmd', level='DEBUG') as cm:
@@ -3872,10 +3879,17 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Summary: 4/4 passed, 0/4 failed', log)
+        self.assertIn('Q Qx > w+ w-', log)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+        # the four flavors (both orderings) are still checked, here:
+        self.assertIn('Flavor grouping check results:', log)
+        self.assertIn('Summary: 8/8 passed, 0/8 failed', log)
 
     def test_check_gauge_pp_wpwm(self):
-        """Test `check gauge p p > w+ w-` includes axial and succeeds."""
+        """Test `check gauge p p > w+ w-` includes axial and succeeds.
+
+        See test_check_pp_wpwm for why a single merged process is checked.
+        """
 
         self.do('import model sm')
         with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
@@ -3883,7 +3897,8 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Summary: 4/4 passed, 0/4 failed', log)
+        self.assertIn('Q Qx > w+ w-', log)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""
