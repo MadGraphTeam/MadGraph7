@@ -756,6 +756,63 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_1.html' % self.path))
 
     
+    @set_global()
+    def test_polarised_nlo_me_frame(self):
+        """Polarised fixed-order NLO in a chosen rest frame.
+
+        p p > z{0} z{0} j [QCD] with me_frame = [3,4], i.e. the matrix
+        elements evaluated in the ZZ rest frame. The Born, the real, every FKS
+        counterterm and the virtual all have to be boosted to the *same*
+        frame, rebuilt from each configuration's own momenta.
+
+        What is actually being tested is check_poles and test_soft_col_limits,
+        which the launch runs on its own and which fail the run if they do not
+        pass. They are the only checks sensitive to this:
+
+          - the infrared poles are proportional to the Born, so any frame
+            mismatch between the Born and the virtual shows up as a per-point
+            constant ratio between the MadFKS and the OLP poles;
+          - the collinear Q term is the same order as the AP term, so a wrong
+            azimuthal phase does not cancel and the soft/collinear ratios
+            plateau off 1.
+
+        A cross-section comparison would not catch either: both were wrong at
+        some point during development while the total stayed plausible.
+        """
+        self.generate('p p > z{0} z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the ZZ rest frame. nn23lo1 rather than lhapdf, since the
+        # python lhapdf bindings are broken under some interpreters and would
+        # fail this test for an unrelated reason; scales fixed so the run is
+        # reproducible; req_acc_fo loose because the assertion is on the
+        # checks, not on the precision of the cross-section.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3, 4], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('req_acc_fo', 0.05, user=True)
+        run_card.write(card_path)
+
+        self.do('calculate_xsect NLO -f')
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/summary.txt' % self.path))
+
+        # check_poles writes one log per P directory; none may report a
+        # miscancellation. This is the assertion that the frame handling is
+        # consistent between the Born and the virtual.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
     def test_amcatnlo_from_file(self):
         """ """
         
