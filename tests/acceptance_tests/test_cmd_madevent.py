@@ -3050,13 +3050,14 @@ class TestMEfromfile(unittest.TestCase):
             event.check()
 
     def test_generation_from_file_1_mg7(self):
-        """mg7 (madspace) cross-section for MSSM p p > go go, pinned to the
-        madevent reference from test_generation_from_file_1.
+        """mg7 (madspace) cross-section for MSSM p p > go go.
 
         the standalone (madmatrix) export reproduces the per-flavor |M|^2 for
-        p p > go go (test_madmatrix_mssm_gogo, ~1e-4) and the madspace integrator now
-        lands on the madevent cross-section as well, so this pins the mg7 result
-        to the madevent reference (run_01 of test_generation_from_file_1).
+        p p > go go (test_madmatrix_mssm_gogo, ~1e-4) and the madspace integrator
+        lands on the madevent cross-section as well: with NNPDF23_lo_as_0130_qed
+        pinned in the run_card this setup gives 5.0235, against the madevent
+        reference of 5.024 (run_01 of test_generation_from_file_1). The target
+        below is for the default PDF instead -- see the comment on it.
 
         This used to be red at random rather than for a physics reason: the
         assertion is at 1%, but with the old 2000-event target a single run
@@ -3073,28 +3074,17 @@ class TestMEfromfile(unittest.TestCase):
              'import model MSSM_SLHA2',
              'generate p p > go go'],
             pjoin(self.path, 'MG7_mssm_gogo'), datadir)
-        # madevent reference (run_01 in test_generation_from_file_1)
-        #
-        # KNOWN BROKEN with the current default PDF NNPDF40MC_lo_as_01180: the
-        # integration returns nan from the first survey iteration and then never
-        # terminates, so generate_events is killed and this test fails before it
-        # can quote a cross-section. The reference below is therefore left at the
-        # NNPDF23_lo_as_0130_qed value on purpose -- it is NOT a stale number to
-        # be refreshed, and updating it would hide the failure.
-        #
-        # Cause (bisected on the grid file itself): mg7 divides by the
-        # per-flavour parton density when it weights the initial-state flavour
-        # channels, and NNPDF40MC returns *exactly* 0.0 for c/b below their
-        # thresholds and at large x (b from x >= 0.933 at Q = 600), giving 0/0.
-        # p p > go go is forced to large x by the ~600 GeV gluino pair, so it hits
-        # it immediately; the lighter mg7 processes only avoid it by luck.
-        # Rewriting the .dat with every literal 0.0 replaced by 1e-30 makes this
-        # process integrate cleanly and give 3.71 pb. Not the interpolation:
-        # ms.PartonDensity reproduces LHAPDF xfxQ2 exactly for this set. The fix
-        # belongs in madspace; until then this test cannot be re-referenced.
-        target = 5.024 # no cut madevent with lhapdf (not internal pdf) (relative error from madevent: 1e-4)
+        # Reference for the default PDF NNPDF40MC_lo_as_01180, measured over 6
+        # runs: 3.7864 +- 0.0011 (single-run error ~0.003, i.e. ~0.08%), so the
+        # 1% tolerance here is a ~12 sigma check. The value shifts from the old
+        # NNPDF23_lo_as_0130_qed reference of 5.024 (madevent, no cuts, lhapdf)
+        # purely because of the PDF change: p p > go go is forced to large x by
+        # the ~600 GeV gluino pair, where the two sets differ a lot. With
+        # NNPDF23 pinned in the run_card this same setup still gives 5.0235,
+        # matching that madevent reference to 0.01%.
+        target = 3.786
         self.assertLess(abs(cross - target) / target, 0.01,
-            'mg7 p p > go go cross-section %s far from madevent reference %s'
+            'mg7 p p > go go cross-section %s far from reference %s'
             % (cross, target))
 
     def test_contur_from_file(self):
