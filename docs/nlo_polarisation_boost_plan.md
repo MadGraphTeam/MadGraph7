@@ -3,6 +3,10 @@
 This document records the assessment of the existing (dead) polarised-NLO code
 and the plan to make `p p > z{0} z{0} j [QCD]` work.
 
+**It works.** `check_poles` cancels 20 of 20 points in all 12 P dirs and
+`calculate_xsect NLO` gives 4.779e-01 +- 3.3e-03 pb (`me_frame=[3]`, nn23lo1,
+fixed scales 91.188, ptj 30, etaj 4.0). See M3 for the gate results.
+
 Status:
 
 | milestone | state |
@@ -11,12 +15,13 @@ Status:
 | M1 `[LOonly=QCD]` | **done** — Born boosted, validated against LO madevent |
 | M2 step 0 | **done** — ISR and FSR emission azimuth carried covariantly |
 | M2 rest | **done** — reals + counterterms boosted, azimuthal wiring in, `test_soft_col_limits` passes, `[real=QCD]` enabled |
-| M3 `[QCD]` | **wired, gate FAILS** — `binothlha_frame` in place but `check_poles` does not cancel; `[QCD]` stays refused |
-| M4 | not started — unblock the guard for `[QCD]`, docs |
+| M3 `[QCD]` | **done** — `check_poles` cancels 20/20 in every P dir, `calculate_xsect NLO` runs end to end, `[QCD]` enabled |
+| M4 | partly done — the guard is open for `[QCD]`; `help_polarization` still to revisit |
 
-`[LOonly=QCD]` and `[real=QCD]` accept a polarised massive particle today;
-`[QCD]` and the other modes that include the virtual are still refused at parse
-time.
+`[LOonly=QCD]`, `[real=QCD]`, `[QCD]` and `[virt=…]` all accept a polarised
+massive particle today. The first three get their frame from `me_frame` in the
+run_card; `[virt=…]` is standalone MadLoop, where the user supplies the
+phase-space point and therefore picks the frame themselves (see M3).
 
 Fixed along the way, and **live at LO on its own**: the `me_frame` boost left
 the selected leg at rest only to rounding, and HELAS switches quantisation axis
@@ -24,6 +29,9 @@ at exactly zero. See M2 step 2. It shifts the shipped LO polarised
 cross-section by 1.8% (5 sigma).
 
 ## 1. Assessment of the existing implementation
+
+This section records the state **before** this work started; the guard it
+quotes has since been rewritten (M3/M4).
 
 ### The guard
 
@@ -785,28 +793,51 @@ either way. The discriminating processes are those whose `me_frame` system
 recoils already at Born level: **`p p > z{0} j`** and **`p p > z{0} z{0} j`**,
 restricted to gluon-initiated channels (see the scope narrowing above).
 
-### M3 — `[QCD]`: virtual — **WIRED, GATE FAILS**
+### M3 — `[QCD]`: virtual — **DONE, GATE PASSES**
 
 `binothlha_frame` boosts the momenta handed to `BinothLHA`, which passes them
 straight to `sloopmatrix_thres` and takes `born_wgt` from the caller rather
 than recomputing it, so one call site covers the virtual.
 
-`check_poles` on `p p > z{0} j [QCD]` with `me_frame=[3]`: **poles do not
-cancel**, 20 miscancellations. `test_ME` is clean on the same run (0 FAILED,
-40 PASSED), so M2 is unaffected and this is purely the virtual. `[QCD]` and the
-other modes including the virtual stay refused at parse time.
+**Resolved.** The integration was already right; the *gate* was the thing
+comparing two frames. `check_poles.f` had been converted by the M2 sweep on
+its Born line only — `call sborn_frame(p_born, born)` — while the line
+immediately below it still called `BinothLHA(p_born, …)` directly, on the
+unboosted `p_born`. So the driver handed MadFKS a Born in the Z rest frame
+and MadLoop a phase-space point in the partonic c.m., and then compared the
+poles the two produced. Routing it through `binothlha_frame`, exactly as
+`bornsoftvirtual` already does at `fks_singular.f:7123`, makes the check
+pass. The rest of this section is the original failure report followed by the
+diagnosis, the evidence and the gate results.
 
-The pole coefficients say it is not a normalisation:
+#### What the failure was
+
+`check_poles` on `p p > z{0} j [QCD]` with `me_frame=[3]`: **poles do not
+cancel**, 20 miscancellations. `test_ME` was clean on the same run (0 FAILED,
+40 PASSED), which correctly said M2 was unaffected and the problem was on the
+virtual side.
+
+The pole coefficients were read as saying it is not a normalisation:
 
     COEFFICIENT DOUBLE POLE:  MadFKS -3.23e-3  OLP -4.88e-5   ratio 66
     COEFFICIENT DOUBLE POLE:  MadFKS -5.13e-3  OLP -9.43e-5   ratio 54
     COEFFICIENT SINGLE POLE:  MadFKS -4.06e-3  OLP -7.56e-5   ratio 54
 
-MadFKS builds its poles from the boosted Born; the OLP's come from MadLoop. The
-ratio is O(50-60) and *not* constant, so MadLoop is evaluating a different
-polarisation state rather than the same one with a wrong factor.
+"the ratio is O(50-60) and *not* constant, so MadLoop is evaluating a
+different polarisation state rather than the same one with a wrong factor."
 
-Two MadLoop settings were suspected and both are now **excluded by test**:
+**That reading was wrong, and it is what sent the search into MadLoop.** The
+three lines above come from three *different* phase-space points (points 4, 5
+and 6 of the scan), one line each — so the varying ratio is a comparison
+across points, not within one. Grouped by point, the ratio is *exactly*
+constant: point 1 gives 58.03 for the double pole and 58.03 for the single,
+point 2 gives 81.01 and 81.01, and only the per-point value moves. Both poles
+are proportional to the Born, so a per-point constant ratio says the two
+sides disagree about the Born by an overall factor, i.e. about the frame.
+Group diagnostics by phase-space point before drawing conclusions from them.
+
+Two MadLoop settings were suspected and both were correctly **excluded by
+test**:
 
 - `NRotations_DP`/`NRotations_QP` re-evaluate the loop at a rotated PS point and
   expect `|M|^2` unchanged -- which fails for a particle at rest, whose axis is
@@ -818,13 +849,254 @@ Two MadLoop settings were suspected and both are now **excluded by test**:
   to `-1` (no deformation in double precision) **does not fix it**: still 20
   miscancellations, ratio still ~58.
 
-So the cause is elsewhere and needs the instrumentation that solved M2, not
-more reasoning -- print what MadLoop actually receives and which quantisation
-axis it ends up using, and compare against the Born. Worth checking first
-whether MadLoop applies the polarisation restriction at all in the same way the
-tree-level Born does (`loop_exporters.py:1552` restores `hel_avg_factor` for
-polarised matrix elements, which is the only sign this path was ever
-considered).
+#### The diagnosis
+
+**MadLoop's polarisation restriction was never the problem, and that was
+checked before anything else was touched.** MadLoop reads its helicity
+configurations from `MadLoop5_resources/<prefix>HelConfigs.dat`, and for
+`P0_gd_z0d` that file holds exactly the eight rows of `born.f`'s `NHEL`
+table, with the Z entry pinned to `0`:
+
+    -1  1  0 -1        -1 -1  0 -1         1  1  0 -1         1 -1  0 -1
+    -1  1  0  1        -1 -1  0  1         1  1  0  1         1 -1  0  1
+
+`NCOMB=8` in `loop_matrix.f` against `MAX_BHEL=8` in `born_nhel.inc`. The
+Born and the virtual sum over the same helicity set. `hel_avg_factor` is
+restored as `loop_exporters.py:1552` intends. Nothing to fix there.
+
+**Instrumentation closed it.** A `diag_frame` routine in `check_poles.f`
+prints, for each point, the selected leg's `|p|` before and after the boost
+and the Born evaluated both ways (`sborn` on the raw `p_born`, and
+`sborn_frame`), with `calculatedborn` reset between the two so the shared
+amplitude cache does not fight. The Z goes from `|p| = 318.6` to exactly `0`,
+as `boost_to_me_frame` guarantees for `nsel=1`, and:
+
+| point | Born(me_frame)/Born(partonic c.m.) | MadFKS/OLP pole ratio | rel. diff |
+|---|---|---|---|
+| 1 | 58.0338377763 | 58.0338377763 | 1.7e-14 |
+| 2 | 81.0065550136 | 81.0065550136 | 6.9e-14 |
+| 3 | 64.0169796788 | 64.0169796788 | 4.4e-15 |
+| … | | | |
+| 20 | 57.8773835460 | 57.8773835460 | 1.3e-14 |
+
+All 20 points agree to 1e-13. The pole mismatch *is* the ratio of the two
+Borns, with nothing else in it.
+
+The chain that produces it: `getpoles` (`fks_singular.f:7574`) ignores its
+`p` argument for the Born and reads `common/pborn/p_born`, then calls
+`sborn_frame` on it — so the MadFKS poles are always in the me_frame.
+MadLoop's poles come from whatever momenta `BinothLHA` was handed. In the
+integration that is `binothlha_frame`'s boosted copy and the two agree; in
+`check_poles.f` it was the raw `p_born` and they did not.
+
+#### The fix
+
+One line, `Template/NLO/SubProcesses/check_poles.f:228`:
+
+```fortran
+-          call BinothLHA(p_born, born, virt_wgt)
++          call binothlha_frame(p_born, born, virt_wgt)
+```
+
+`check_poles.f` is compiled only into the `check_poles` executable (`POLES`
+in the P-dir makefile; the integration uses `driver_mintFO.o`), so no
+cross-section can move as a result of this change — only the diagnostic that
+was misreporting.
+
+Unpolarised runs are unaffected, by measurement as well as by construction:
+with `frame_id=0` every mask is empty, `get_me_frame_boost` returns `trivial`
+and `boost_to_me_frame` copies the momenta unchanged. Rebuilt
+`P0_gd_zd/check_poles` of unpolarised `p p > z j [QCD]` both ways — the two
+logs are **byte-identical**.
+
+The two settings excluded by the previous session stay excluded, and the
+passing run now confirms it positively rather than by elimination: it ran
+with the shipped defaults `ImprovePSPoint = 2`, `NRotations_DP = 0`,
+`NRotations_QP = 0`.
+
+#### Gate results
+
+`p p > z{0} j [QCD]`, `me_frame=[3]`, nn23lo1, fixed scales 91.188, ptj 30,
+etaj 4.0, `req_acc_fo 0.05`:
+
+| | before | after |
+|---|---|---|
+| `check_poles`, `P0_gd_z0d` | 0 of 20 pass | **20 of 20** |
+| `check_poles`, all 12 P dirs | — | **20 of 20 in every one** |
+| `test_ME`, all 12 P dirs | passed | passed, unchanged |
+| `calculate_xsect NLO` | — | **2.193e+03 +- 1.2e+01 pb** |
+
+Agreement is now at the level of the loop-library accuracy, not the
+tolerance: e.g. MadFKS `-5.1257915456849783e-03` against OLP
+`-5.1257915456856262e-03`.
+
+Unpolarised control, `p p > z j [QCD]`, same cuts and scales: `check_poles`
+20 of 20 in all 12 P dirs, `calculate_xsect NLO` 1.029e+04 +- 5.5e+01 pb.
+
+That control also gives a physics sanity check the pole cancellation cannot,
+since the M1 table has the Born of both at the same cuts and scales:
+
+| | Born (`[LOonly=QCD]`) | NLO (`[QCD]`) | K |
+|---|---|---|---|
+| unpolarised | 6964 +- 18 | 10290 +- 55 | 1.48 |
+| `z{0}`, `me_frame=[3]` | 1366 +- 3.1 | 2193 +- 12 | 1.61 |
+
+Both K factors are the O(1.5) expected for Z+jet at `muR=muF=mZ` with
+`ptj>30`, and the polarised one is close to but not equal to the unpolarised
+one — which is what a correct polarised NLO should look like. A frame bug of
+the kind M3 hit would not have landed anywhere near here.
+
+Two further processes, same settings:
+
+| process | `me_frame` | P dirs | `check_poles` | `test_ME` | xsec |
+|---|---|---|---|---|---|
+| `p p > z{0} z{0} [QCD]` | `[3]` | 4 | 20/20 each | passed | 1.217e+00 +- 6.6e-03 pb |
+| `p p > z{0} z{0} j [QCD]` | `[3]` | 12 | 20/20 each | passed | 4.779e-01 +- 3.3e-03 pb |
+
+The second is the process this document names as the M3 acceptance test.
+
+#### What the guard now accepts, and what it still refuses
+
+A polarised massive particle needs a frame. There are **two** ways to have
+one, and the guard now recognises both.
+
+*Frame from the run_card.* Modes `loonly`, `real` and `all` — the last being
+what the parser calls `[QCD]` with no mode keyword (`LoopOption='all'`,
+`madgraph_interface.py:5104`) — **for a purely QCD perturbation**. These are
+the modes whose matrix elements this work boosts.
+
+*Frame from the user.* Mode `virt` outputs standalone MadLoop: the caller
+supplies the phase-space point, so the frame is theirs to choose and there is
+no `me_frame` and nothing for the code to get wrong. Accepted for **any**
+perturbation orders, since the frame argument does not depend on them. This
+was initially refused on the grounds that "it has no run_card, so it has no
+frame" — which had the implication backwards. Confirmed by running it:
+`p p > z{0} j [virt=QCD]` does reject `order=NLO`, `fixed_order=ON` and
+`set me_frame [3]` at the launch prompt, because it is a standalone check and
+not an integrable process directory. That is the point, not a problem.
+
+**Unblocking `virt` exposed a separate bug, which had to be fixed for the
+unblock to mean anything.** `p p > z{0} j [virt=QCD]` was generating
+`P0_gu_zu` — no `z0` — with 24 helicity configurations covering all three Z
+polarisations. The user would have asked for a polarised loop and silently
+received the unpolarised one.
+
+The polarisation is dropped by the **multiparticle expansion**, and only on
+the MadLoop path. `u u~ > z{0} g [virt=QCD]` (explicit flavours) is correct —
+`P0_uux_z0g`, 8 configurations, Z pinned to `0`. Tree level is correct with
+multiparticles too. The culprit is `ProcessDefinition.__iter__`
+(`base_objects.py:4670`), whose own docstring says *"not used by MG which
+used some smarter version (use by ML)"*: it rebuilds each expanded leg as
+`Leg({'id':id, 'state':…})` and never carries `polarization` across.
+`loop_interface.py:885` iterates it and re-issues each combination as a text
+command, so by the time `nice_string` runs the `{0}` is already gone.
+`MultiProcess.generate_multi_amplitudes` — the path MG5 itself uses — copies
+`polarization` properly, which is why only the loop side was affected.
+
+Fixed by carrying the multileg's `polarization` onto each expanded leg.
+`p p > z{0} j [virt=QCD]` now gives `P0_gu_z0u` with 8 configurations in all
+seven subprocess MEs; unpolarised `p p > z j [virt=QCD]` still gives 24, so
+nothing else moves.
+
+Validated by running the standalone check, which has its own version of the
+check_poles argument: the IR pole coefficient is a colour factor times the
+Born, so `1eps/(born*ao2pi)` must be the same whether or not the helicities
+are restricted, while the Born itself must differ.
+
+| `g u > z u` | Born | `1eps/(born*ao2pi)` |
+|---|---|---|
+| `z{0}` | 3.1963946124086368e-04 | -4.1666666666641756 |
+| unpolarised | 0.55343246189280271 | -4.1666666666665897 |
+
+Both give -25/6. Had the loop summed all helicities while the Born stayed
+restricted, this ratio would have been wrong — the same signature that gave
+M3 away.
+
+**The sibling defect, and why it has to land with this change.**
+`ProcessDefinition.get_process` (`base_objects.py:4849`) hardcodes
+`'polarization':[]` the same way. Verified on this branch:
+
+    multileg pol : [[], [], [0], []]
+    get_process  : [(2, []), (-2, []), (23, []), (21, [])]     shell: 0_uux_zg
+
+Its callers are the `check` command paths. That matters here because
+`check_check` runs `check_process_format` (`madgraph_interface.py:1156`), so
+**opening `virt` in the guard also newly admits
+`check timing|stability|profile <polarised massive process> [virt=QCD]`**,
+which was refused before. Without the `get_process` fix that check silently
+runs the *unpolarised* loop. Tree-level `check` is unaffected by the guard —
+it has no brackets, so the polarisation branch never fires — and its version
+of the bug is purely pre-existing.
+
+Fixed separately on branch `claude/quizzical-ptolemy-16f0c8`, commit
+`2b151185d`, which also found a **third** instance:
+`process_checks.py:2032` `run_multiprocs_no_crossings` built its legs with no
+polarization at all, and that is the function every tree-level `check` goes
+through — so fixing `get_process` alone would have left `check
+gauge/lorentz/permutation` unpolarised. Their evidence, `check permutation
+p p > z{…} j --seed=1`:
+
+| | value |
+|---|---|
+| `g Q > z{0} Q` | 3.1783208585e-04 |
+| `g Q > z{T} Q` | 1.0612625837e-01 |
+| `g Q > z Q` (unpolarised) | 1.0644409045e-01 |
+
+the two polarised pieces summing exactly to the unpolarised one.
+
+**So `2b151185d` should land together with this change, not after it.** The
+guard here opens the door; that commit is what makes what is behind it
+correct. Its loop-side caller (`process_checks.py:2111`,
+`generate_loop_matrix_element` — the `check timing/stability/profile` path)
+is a pure data carry but is **unverified at runtime** on either branch, and
+it is exactly the combination this guard newly admits. Worth one polarised
+`check timing` run before relying on it.
+
+Two further things to know before using `check` on these processes, neither
+of them caused by this work:
+
+- `run_multiprocs_no_crossings` builds its legs with no `flavor` key, so
+  `_flavor_group_pos` returns 1 for every leg and **only flavour index 1 is
+  actually gauge-checked** once flavour grouping is on (the default). A
+  passing `check` covers less than the summary line suggests;
+  `set apply_flavor_grouping False` restores the per-flavour table.
+- FD/axial gauge on a process with a cross-base FLV routine (`FFVx_FFSy`,
+  classically massive-lepton Goldstone-Yukawa) was broken in every backend
+  until `6a8530f84` on `claude/bold-mestorf-777ea7` — the call site emitted
+  `FFV2_FFS3_0` against ALOHA's `FFV2_FFS3M_0`. It does **not** affect the
+  processes in this document: grepping the generated `p p > z{0} j [QCD]`
+  tree finds no cross-base combined routines at all, so `tags` is empty and
+  the fix is a no-op here. Checked rather than assumed.
+
+Still refused, each for a reason rather than by omission:
+
+- `[QED QCD]` and `[QED]` in the boosted modes. The frame wrappers are
+  order-agnostic and the QED counterterms (`particle_charge`, the charge
+  links, `sreal_deg`) go through the same `sborn_frame`/`sborn_sf_frame`, so
+  this is likely to work — but nothing in the QED sector has been run, and
+  the plan does not cover it. `[virt=QED]` is fine, being standalone.
+- `[noborn=QCD]` with a *massive* polarised particle. Pre-existing and
+  unchanged: loop-induced is exported through the LO madevent template and so
+  already has `me_frame`, but `check()` has always rejected massive there.
+  Worth revisiting; not touched here because nothing in this work exercises
+  it. See section 1.
+
+`tests/unit_tests/interface/test_cmd.py::test_check_generate` encoded the old
+restriction (`'u u~ > w+{L} [QCD]'` in the *invalid* list) and is updated: the
+massive-colourless QCD forms and both `[virt=…]` spellings move to the
+accepted list, `[QED QCD]` and `[QED]` stay in the rejected one. It was that
+test that caught the first version of this change quietly opening mixed-order
+NLO.
+
+#### What this milestone cost, and why
+
+The instrumentation-over-reasoning lesson from M2 held again, and more
+sharply. Every hypothesis on the list — the helicity restriction,
+`ImprovePSPoint`, `NRotations`, quadruple-precision promotion — was internal
+to MadLoop, because the one misread number said "MadLoop is computing
+something else". The bug was one line above the call, in the driver, in code
+this project had already touched. Both times the search went to the most
+intricate component available, and both times the answer was in the plumbing.
 
 Original plan for this milestone:
 
@@ -839,12 +1111,25 @@ frame.
 Born, so a Born/virtual frame mismatch shows up as a pole mismatch). Then
 `p p > z{0} z{0} j [QCD]` end to end.
 
-### M4 — Unblock and document
+### M4 — Unblock and document — **partly done**
 
-Remove the `[QCD]` rejection at `madgraph_interface.py:1245`, delete the stale
-commented guard at `:1251`, narrow `check()` at `:1254` so massive-colourless
-is allowed where supported. Update `help_polarization` (`:803`), which
-currently documents `me_frame` as LO-only.
+Done in M3: the guard now accepts `loonly`, `real` and `all`, deriving the
+mode the same way the parser does (no keyword in the brackets means `all`),
+and `check()` no longer rejects a massive particle in those modes. The stale
+commented-out `order != 'qcd'` guard is deleted, along with the dead `order`
+it parsed.
+
+Remaining:
+
+- `help_polarization` (`:803`) does not say `me_frame` is LO-only, but it
+  does not say it works at fixed-order NLO either — add that, and say which
+  modes accept it;
+- the acceptance test in section 4 is written up but not yet added to
+  `tests/acceptance_tests/test_cmd_amcatnlo.py`;
+- decide whether `[noborn=QCD]` should accept a massive polarised particle.
+  It is loop-induced, exported through the LO madevent template, so it has
+  `me_frame` already; `check()` has always refused massive there and nothing
+  in this work exercises it.
 
 ## 4. Acceptance test
 
@@ -860,7 +1145,9 @@ does it.
 | M1 | `p p > z{0} z{0}` | `[LOonly=QCD]` | `me_frame`-independent (null test) |
 | M2 | `p p > z{0} z{0}` | `[real=QCD]` | real boost: `test_ME` passes; xsec != partonic-CM value. **Weak** — see below |
 | M2 | `p p > z{0} j` | `[real=QCD]` | **discriminating**: `test_ME` on gluon-initiated channels |
-| M3 | `p p > z{0} z{0} j` | `[QCD]` | `check_poles` passes; xsec stable |
+| M3 | `p p > z{0} j` | `[QCD]` | **run**: `check_poles` 20/20 in all 12 P dirs, 2.193e+03 +- 1.2e+01 pb |
+| M3 | `p p > z{0} z{0}` | `[QCD]` | **run**: `check_poles` 20/20 in all 4 P dirs, 1.217e+00 +- 6.6e-03 pb |
+| M3 | `p p > z{0} z{0} j` | `[QCD]` | **run**: `check_poles` 20/20 in all 12 P dirs, 4.779e-01 +- 3.3e-03 pb |
 
 **Which process tests what.** The two are complementary, but not in the obvious
 way:
@@ -917,6 +1204,33 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   `betamin=1d-4` in `get_me_frame_boost`. The underlying fragility lives in
   HELAS and is not fixed; anything else that boosts an on-axis beam by a tiny
   amount will hit it. See M2 step 2.
+- **B12 — RESOLVED here, and it has a twin that must land with it.**
+  `ProcessDefinition.__iter__` dropped `polarization` when expanding
+  multiparticles, so any polarised MadLoop-standalone process written with
+  `p`/`j` came back silently unpolarised. Pre-existing, exposed by unblocking
+  `[virt=…]`. Fixed in `base_objects.py` on this branch. The same defect sits
+  in `ProcessDefinition.get_process` and in
+  `process_checks.run_multiprocs_no_crossings`, both feeding the `check`
+  command — fixed on `claude/quizzical-ptolemy-16f0c8` (`2b151185d`), which
+  **must be merged alongside this change**, because opening `virt` in the
+  guard is what makes `check … [virt=QCD]` reachable for a polarised massive
+  particle in the first place. See M3.
+- **B10 — RESOLVED, and it was the M3 blocker.** `check_poles.f` had been
+  half-converted: its Born line went through `sborn_frame` while the
+  `BinothLHA` call one line below still got the unboosted `p_born`, so the
+  gate compared MadFKS poles in the me_frame against MadLoop poles in the
+  partonic c.m.. This is B5 all over again — two consumers of one kinematic
+  configuration disagreeing about the frame — but in a *driver* rather than
+  in the integration, which is why the M2 sweep's "route every ME entry
+  point through a wrapper" rule did not catch it: `BinothLHA` is not an ME
+  entry point, it is a wrapper of one. Fixed at `check_poles.f:228`. See M3.
+- **B11 — latent, documented, not fixed.** `NRotations_DP`/`NRotations_QP`
+  re-evaluate the loop at a rotated phase-space point and expect `|M|^2`
+  unchanged. That fails for a particle put at rest by a one-leg `me_frame`,
+  whose quantisation axis is the frame z axis and does not rotate with the
+  momenta, so MadLoop would report spurious instability. Both default to 0,
+  so nothing is wrong today; a user who raises them on a polarised run will
+  see it. Same root as B8/B9: the HELAS branch at exactly zero momentum.
 
 ## 6. Risk
 
