@@ -64,13 +64,23 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
     # ------------------------------------------------------------------
     def _prepare_run_dir(self):
         """Provide the file names the madevent tools look for: a gzipped
-        ``unweighted_events.lhe.gz`` next to the mg7 ``events.lhe``."""
+        ``unweighted_events.lhe.gz`` next to the mg7 event file.
+
+        The mg7 event file may already be gzipped (``events.lhe.gz``, the
+        default) or plain (``events.lhe``). Compressing an already-gzipped
+        source would produce a doubly-gzipped file: every consumer would
+        decompress it once, get gzip bytes instead of LHE text, and read zero
+        events. So copy when the source is already compressed and only gzip a
+        plain source."""
         run_dir = os.path.dirname(self._mg7_lhe_path)
         gz = pjoin(run_dir, 'unweighted_events.lhe.gz')
         if not os.path.exists(gz) and os.path.exists(self._mg7_lhe_path):
-            with open(self._mg7_lhe_path, 'rb') as fin, \
-                    gzip.open(gz, 'wb') as fout:
-                shutil.copyfileobj(fin, fout)
+            if self._mg7_lhe_path.endswith('.gz'):
+                shutil.copyfile(self._mg7_lhe_path, gz)
+            else:
+                with open(self._mg7_lhe_path, 'rb') as fin, \
+                        gzip.open(gz, 'wb') as fout:
+                    shutil.copyfileobj(fin, fout)
 
     def load_results_db(self):
         """Fresh results database without recreating old runs from banners: the
