@@ -87,11 +87,8 @@ KERNELSPEC void kernel_sample_discrete_probs_inverse(
     for (std::size_t i = 0; i < probs.size(); ++i) {
         prob_norm = prob_norm + probs[i];
     }
-    // Same guard as case (A) above. Here det is the probability itself rather
-    // than its reciprocal, so a zero probability already means zero weight and
-    // case (B) needs no guard: with a unit fallback norm every ratio is 0,
-    // giving r = 0 and det = 0, i.e. a deterministic zero-weight point instead
-    // of NaN.
+    // Same guard as case (A) above, so that every ratio below is 0/1 = 0
+    // instead of 0/0 and r comes out as a deterministic 0.
     auto norm_safe = where(prob_norm != 0., prob_norm, FVal<T>(1.));
     FVal<T> cum_prob(0.), random(0.), prob_out(0.);
     for (std::size_t i = 0; i < probs.size(); ++i) {
@@ -102,7 +99,18 @@ KERNELSPEC void kernel_sample_discrete_probs_inverse(
         prob_out = where(mask, prob, prob_out);
     }
     r = random;
-    det = prob_out;
+    // This det is a density, not a jacobian: it is the g of the MadNIS loss
+    // (via IntegrandProbability), where it divides the integrand. Returning the
+    // zero probability itself would put a 0/0 into f/g and turn the variance
+    // estimate into NaN for a point that is merely inaccessible. A zero here
+    // means the index was not a choice the sampler could have made -- every
+    // option had probability zero, or the selected one did -- so the discrete
+    // step carries no information and the density of the row is the marginal
+    // over it, which is 1. That is the same neutral factor the forward det gets
+    // split into for the sampling density in Integrand::build_channel_part; the
+    // two stay consistent, and the event weight is zeroed there rather than
+    // here.
+    det = where(prob_out != 0., prob_out, FVal<T>(1.));
 }
 
 template <typename T>
@@ -118,15 +126,18 @@ KERNELSPEC void backward_kernel_sample_discrete_probs_inverse(
     for (std::size_t i = 0; i < probs.size(); ++i) {
         prob_norm = prob_norm + probs[i];
     }
-    // Matches the forward guard: where prob_norm is zero the forward det is
-    // identically 0 (a constant), so its gradient is 0 rather than NaN.
-    auto norm_ok = prob_norm != 0.;
-    auto norm_safe = where(norm_ok, prob_norm, FVal<T>(1.));
+    // Matches the forward guard: wherever the forward det is the constant
+    // fallback rather than the probability, it does not depend on probs at all,
+    // so its gradient is 0 rather than NaN. Testing the selected probability
+    // covers a zero prob_norm too, since a unit fallback norm then makes every
+    // ratio, including this one, exactly 0.
+    auto norm_safe = where(prob_norm != 0., prob_norm, FVal<T>(1.));
     FVal<T> det_grad_out(0.);
     auto prob = probs.gather(index) / norm_safe;
+    auto prob_ok = prob != 0.;
     for (std::size_t i = 0; i < probs.size(); ++i) {
         probs_grad[i] = where(
-            norm_ok,
+            prob_ok,
             (where(index == i, FVal<T>(1.), 0.) - prob) / norm_safe * det_grad,
             FVal<T>(0.)
         );
