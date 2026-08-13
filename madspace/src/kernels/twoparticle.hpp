@@ -7,6 +7,44 @@ namespace kernels {
 
 // Helper functions
 
+// A two-body splitting only exists above threshold, m0 >= m1 + m2. Below it the
+// decay has no phase-space volume at all, so the only correct answer is a
+// zero-weight event -- but the formulas below happily return one anyway, and the
+// result is not merely inaccurate, it is unphysical:
+//
+//   * pp is the daughter momentum in the rest frame of m0. In the m1 * m2 == 0
+//     shortcut branch it is 0.5 * (m0 - |ed|), which turns NEGATIVE below
+//     threshold (e.g. m0 = 100.33, m1 = 0, m2 = 141.95 gives pp = -50.25), and
+//     with it the Jacobian det = PI * pp / m0.
+//   * e1 = 0.5 * (m0 + ed) goes negative at the same time and is clamped by
+//     max(e1, 0.), which zeroes the energy while leaving the spatial components
+//     untouched. That clamp is what manufactures the damage: the returned p1 is
+//     SPACELIKE.
+//
+// A spacelike momentum is not a locally wrong number, it poisons everything
+// downstream. Handed on as the parent of the next splitting it reaches boost(),
+// whose rsq = sqrt(max(EPS2, p2_boost)) clamps the negative p^2 to 1e-12 and
+// then divides by it, so momenta grow to 1e16, then 1e30, then 1e38 as the
+// decay chain unwinds. The matrix element finally evaluates HELAS wavefunctions
+// on those and returns NaN, which propagates into the integral and never leaves
+// it. Observed for p p > mu+ n1, n1 > mu- j j at mn1 = 100 GeV.
+//
+// So the guard sits on the threshold test, and it is exact rather than a
+// tolerance: pp2 is the Kaellen function lambda(m0^2, m1^2, m2^2) divided by
+// m0^2, hence pp2 > 0 IS the condition m0 > m1 + m2. It is paired with pp > 0
+// because the two branches of the where() fail differently -- the massless
+// shortcut returns a negative pp, while sqrt(max(pp2, EPS)) hides the same
+// failure behind a small positive number -- and because a sub-EPS m0 makes ed
+// (which divides by m0_clip) large enough to fake pp2 > 0.
+//
+// Below threshold the kinematics are replaced by a valid massless-massless
+// splitting of the same parent rather than by zeros: every momentum stays
+// physical, so the matrix element is evaluated on sane input and returns a
+// finite number, and det = 0 multiplies that finite number away. Zeroing the
+// momenta instead would send a null vector into the wavefunctions and risk
+// trading the NaN for another one. Nothing is done to m0/m1/m2 themselves --
+// flooring those would move the threshold and change the physics everywhere.
+
 template <typename T>
 KERNELSPEC Pair<FourMom<T>, FVal<T>>
 two_body_decay(FVal<T> r_phi, FVal<T> r_cos_theta, FVal<T> m0, FVal<T> m1, FVal<T> m2) {
@@ -18,9 +56,14 @@ two_body_decay(FVal<T> r_phi, FVal<T> r_cos_theta, FVal<T> m0, FVal<T> m1, FVal<
     // used in MG5 (aloha_functions.f)
     auto ed = (m1 - m2) * (m1 + m2) / m0_clip;
     auto pp2 = ed * ed - 2. * (m1 * m1 + m2 * m2) + m0 * m0;
-    auto pp = 0.5 * where(m1 * m2 == 0., m0 - fabs(ed), sqrt(max(pp2, EPS)));
+    auto pp_open = 0.5 * where(m1 * m2 == 0., m0 - fabs(ed), sqrt(max(pp2, EPS)));
+    auto e1_open = 0.5 * (m0 + ed);
+
+    auto open = (pp2 > 0.) & (pp_open > 0.);
+    auto pp = where(open, pp_open, 0.5 * m0_clip);
+    auto e1 = where(open, e1_open, 0.5 * m0_clip);
+
     auto sin_theta = sqrt((1. - cos_theta) * (1 + cos_theta));
-    auto e1 = 0.5 * (m0 + ed);
     FourMom<T> p1{
         max(e1, 0.),
         pp * sin_theta * cos(phi),
@@ -28,7 +71,7 @@ two_body_decay(FVal<T> r_phi, FVal<T> r_cos_theta, FVal<T> m0, FVal<T> m1, FVal<
         pp * cos_theta
     };
 
-    auto det = PI * pp / m0_clip;
+    auto det = where(open, PI * pp_open / m0_clip, FVal<T>(0.));
     return {p1, det};
 }
 

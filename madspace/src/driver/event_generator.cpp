@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <format>
 #include <ranges>
+#include <stdexcept>
 
 #include "madspace/driver/logger.hpp"
 #include "madspace/util.hpp"
@@ -269,9 +270,20 @@ void EventGenerator::update_integral() {
     std::size_t total_integ_count = 0;
     std::size_t iterations = 0;
     bool optimized = true;
+    const ChannelEventGenerator* bad_channel = nullptr;
     for (auto& channel : _channels) {
         auto& status = channel->status();
         auto& cross_section = channel->cross_section();
+        // A channel that has integrated at least one sample must have a finite
+        // running mean. Channels with count() == 0 are skipped on purpose: their
+        // variance() / count() below is a benign 0 / 0 that heals as soon as they
+        // report, and mistaking it for a poisoned integral would abort every run
+        // on its very first batch.
+        if (bad_channel == nullptr && cross_section.count() > 0 &&
+            (!std::isfinite(cross_section.mean()) ||
+             !std::isfinite(cross_section.variance()))) {
+            bad_channel = channel.get();
+        }
         total_mean += cross_section.mean();
         total_var += cross_section.variance() / cross_section.count();
         total_count += status.count;
@@ -284,6 +296,34 @@ void EventGenerator::update_integral() {
             optimized = false;
         }
     }
+    // Stop as soon as the integral stops being a number. More samples can never
+    // undo this: NaN and inf propagate through every later accumulation, so the
+    // mean stays non-finite forever, no channel ever meets its target precision
+    // or its unweighted-event target, and both the survey and the generation
+    // loop keep drawing samples until something outside kills them. A hang gives
+    // the user nothing to act on, so fail here instead, naming the channel.
+    if (bad_channel != nullptr || !std::isfinite(total_mean)) {
+        std::string where = bad_channel != nullptr
+            ? std::format(
+                  "channel '{}' after {} samples (mean={}, variance={})",
+                  bad_channel->status().name,
+                  bad_channel->cross_section().count(),
+                  bad_channel->cross_section().mean(),
+                  bad_channel->cross_section().variance()
+              )
+            : std::format("the sum over channels (mean={})", total_mean);
+        throw std::runtime_error(std::format(
+            "non-finite integral in {}. A non-finite weight cannot be recovered "
+            "from by sampling further, so the integration is aborted here rather "
+            "than left to run forever. This usually means the matrix element or "
+            "the phase-space mapping returned nan/inf for some phase-space point "
+            "-- check the process for a zero or negative width, a parameter point "
+            "outside the model's validity, or a kinematic configuration at a "
+            "threshold.",
+            where
+        ));
+    }
+
     _status.mean = total_mean;
     _status.error = std::sqrt(total_var);
     _status.rel_std_dev = std::sqrt(total_var * total_integ_count) / total_mean;
