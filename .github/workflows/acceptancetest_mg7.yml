@@ -119,8 +119,8 @@ jobs:
   acceptancetest_mg7_madspin_mixed_flavor:
     needs: build_madspace
     # mg7 + MadSpin density-summary check driven through the madevent-style
-    # launch command interface. restore_heptools provides LHAPDF/NNPDF23 for the
-    # u u~ > z g generation.
+    # launch command interface. restore_heptools provides LHAPDF and the mg7
+    # default PDF set for the u u~ > z g generation.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -184,7 +184,7 @@ jobs:
   acceptancetest_mg7_group_subprocess:
     needs: build_madspace
     # mg7 cross-section run (u u > u u). madspace is installed by checkout_mg5;
-    # LHAPDF (incl. NNPDF23_lo_as_0130_qed) comes from the heptools cache.
+    # LHAPDF (incl. NNPDF40MC_lo_as_01180) comes from the heptools cache.
     # The test self-skips if that stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true

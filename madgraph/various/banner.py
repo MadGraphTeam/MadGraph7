@@ -6476,7 +6476,12 @@ class RunCardMG7(RunCard):
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)
         self.add_toml_param('beam', 'leptonic', False)
-        self.add_toml_param('beam', 'pdf', "NNPDF23_lo_as_0130_qed")
+        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118. This is the
+        # MC-generator-oriented variant of the NNPDF4.0 LO set: a single member
+        # and ~0.7 MB, versus ~54 MB for NNPDF40_lo_as_01180. NNPDF4.0 has no
+        # 4-flavour LO counterpart, so there is no scheme-dependent choice to
+        # make here: this one set is used whatever the b-quark treatment.
+        self.add_toml_param('beam', 'pdf', "NNPDF40MC_lo_as_01180")
         # Default to the dynamical scale set by dynamical_scale_choice below
         # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
         # / fact_scale values. Those fixed values are kept as the fallback used

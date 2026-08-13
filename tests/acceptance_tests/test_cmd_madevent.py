@@ -96,8 +96,8 @@ def _mg7_datadir_or_skip(test):
     misc.sprint(datadir)
     if not has_mg7 or not datadir or not os.path.isdir(datadir):
         test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-        test.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+    if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
+        test.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
     return datadir
 
 
@@ -722,8 +722,8 @@ class TestMECmdShell(unittest.TestCase):
         Runs the mg7 (madspace) integrator with group_subprocesses on and off
         and checks the two cross-sections agree (grouping consistency). It also
         pins the absolute value to the mg7-native result obtained with the
-        run_card.toml defaults (NNPDF23_lo_as_0130_qed + dynamical HT/2 scale,
-        events=2000) ~ 1.277e+06 pb.
+        run_card.toml defaults (NNPDF40MC_lo_as_01180 + dynamical HT/2 scale,
+        events=2000) ~ 7.76e+05 pb.
 
         NOTE: this is NOT the madevent reference (1.31e6 pb in
         test_group_subprocess); but it would be if true lhapdf were used in madevent
@@ -746,8 +746,8 @@ class TestMECmdShell(unittest.TestCase):
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
         # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-            self.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
+            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -786,9 +786,13 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val1 - val2) / (err1 + err2 + 1e-30), 5,
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
-        # NOT the madevent 1.31e6 value for internal pdf but the one for 
-        # lhapdf NNPDF23_lo_as_0130_qed + dynamical HT/2 scale 
-        target = 1.277e+06
+        # NOT the madevent 1.31e6 value for internal pdf but the one for
+        # lhapdf NNPDF40MC_lo_as_01180 + dynamical HT/2 scale. Was 1.277e+06
+        # with the old default NNPDF23_lo_as_0130_qed; a same-code A/B gives
+        # 1.272e+06 (NNPDF23) vs 7.79e+05, so the -39% is the PDF change alone:
+        # alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
+        # Spread over 6 runs at events=2000: 7.66e5-7.84e5, mean 7.76e5.
+        target = 7.76e+05
         self.assertLess(abs(val2 - target) / target, 0.10,
             'mg7 u u > u u cross-section %s far from mg7 reference %s'
             % (val2, target))
@@ -1192,8 +1196,9 @@ class TestMECmdShell(unittest.TestCase):
 
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,
-        q = u d): the merged-flavor path must reproduce the 4428 pb obtained by
-        running u u > u u and u d > u d as separate single-flavor processes.
+        q = u d): the merged-flavor path must reproduce the cross-section
+        obtained by running u u > u u and u d > u d as separate single-flavor
+        processes.
 
         This used to come out too large because the mg7 exporter mirrored the
         mixed u d initial flavor -- leg 1 is a fixed u, so the beam-swapped
@@ -1219,8 +1224,8 @@ class TestMECmdShell(unittest.TestCase):
                 datadir = None
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-            self.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
+            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -1253,8 +1258,14 @@ class TestMECmdShell(unittest.TestCase):
         info = json.load(open(infos[-1]))['process']
         cross = float(info['mean'])
         error = float(info.get('error') or 0.0)
-        # physical reference (same as the madevent test); mg7 must reproduce it
-        self.assertAlmostEqual(cross, 4428.0, delta=max(30.0, 5 * error))
+        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180. This no
+        # longer equals the 4428 pb of the madevent test above: that one runs on
+        # madevent's internal (nn23lo1) PDF while mg7 convolutes with the LHAPDF
+        # grid named in run_card.toml. QCD=0, so there is no alpha_s here at all
+        # and the -16% shift is purely the smaller NNPDF4.0 valence-quark
+        # luminosity; a same-code A/B gives 4380 pb (NNPDF23) vs 3688 pb.
+        # Spread over 7 runs at events=2000: 3675-3775, mean 3731.
+        self.assertAlmostEqual(cross, 3730.0, delta=max(30.0, 5 * error))
 
     def test_flavor_grouping_consistency(self):
         """Check that the four combinations of 'apply_flavor_grouping' and
@@ -2846,22 +2857,23 @@ class TestMEfromfile(unittest.TestCase):
     def test_generation_heft_mg7(self):
         """mg7 equivalent of test_generation_heft for g g > b b~ HIW<=1 (HEFT).
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 runs this HEFT process
-        but its cross-section comes out ~257x below the physical value (~1.6e6 pb
-        vs the madevent 4.117e8 pb) -- a large mg7 normalisation discrepancy for
-        the effective ggH coupling. The test asserts the physical reference and is
-        expected to fail until that is resolved; left undecorated to keep the
-        discrepancy visible. Self-skips where the mg7 runtime stack is unavailable.
+        Pins the mg7-native cross-section obtained with the run_card.toml
+        defaults and the dynamical HT/2 scale that _run_mg7_xsec selects.
+        Self-skips where the mg7 runtime stack is unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
-        cross, error = _run_mg7_xsec(self, 
+        cross, error = _run_mg7_xsec(self,
             ['set automatic_html_opening False --no_save',
              'import model heft',
              'generate g g > b b~ HIW<=1'],
             pjoin(self.path, 'MG7_heft'), datadir)
-        # physical reference (same as test_generation_heft)
-        target = 4.117e8 # HT/2
-        target = 3.754e+08 # fixed scale MZ
+        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180 (NNPDF4.0 LO,
+        # alpha_s(M_Z) = 0.118). The previous 3.754e+08 was the same run with the
+        # old default NNPDF23_lo_as_0130_qed: a same-code A/B on this process
+        # gives 3.708e+08 (NNPDF23) vs 1.820e+08 (NNPDF40MC), i.e. the -51% is
+        # entirely the PDF change -- gg luminosity (-25% at these x) times
+        # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
+        target = 1.820e+08
         self.assertLess(abs(cross - target) / target, 0.10,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
@@ -3062,6 +3074,24 @@ class TestMEfromfile(unittest.TestCase):
              'generate p p > go go'],
             pjoin(self.path, 'MG7_mssm_gogo'), datadir)
         # madevent reference (run_01 in test_generation_from_file_1)
+        #
+        # KNOWN BROKEN with the current default PDF NNPDF40MC_lo_as_01180: the
+        # integration returns nan from the first survey iteration and then never
+        # terminates, so generate_events is killed and this test fails before it
+        # can quote a cross-section. The reference below is therefore left at the
+        # NNPDF23_lo_as_0130_qed value on purpose -- it is NOT a stale number to
+        # be refreshed, and updating it would hide the failure.
+        #
+        # Cause (bisected on the grid file itself): mg7 divides by the
+        # per-flavour parton density when it weights the initial-state flavour
+        # channels, and NNPDF40MC returns *exactly* 0.0 for c/b below their
+        # thresholds and at large x (b from x >= 0.933 at Q = 600), giving 0/0.
+        # p p > go go is forced to large x by the ~600 GeV gluino pair, so it hits
+        # it immediately; the lighter mg7 processes only avoid it by luck.
+        # Rewriting the .dat with every literal 0.0 replaced by 1e-30 makes this
+        # process integrate cleanly and give 3.71 pb. Not the interpolation:
+        # ms.PartonDensity reproduces LHAPDF xfxQ2 exactly for this set. The fix
+        # belongs in madspace; until then this test cannot be re-referenced.
         target = 5.024 # no cut madevent with lhapdf (not internal pdf) (relative error from madevent: 1e-4)
         self.assertLess(abs(cross - target) / target, 0.01,
             'mg7 p p > go go cross-section %s far from madevent reference %s'
@@ -3160,7 +3190,8 @@ set draw_rivet_plots True
     # tool-selection question -> run_selected_tools -> MG7RunCmd), so that at
     # least one test exercises the command interface + chaining of every tool
     # with the new (default) output. They self-skip when the mg7 runtime stack
-    # (madspace + LHAPDF + NNPDF23) or the external tool is unavailable.
+    # (madspace + LHAPDF + the default PDF set) or the external tool is
+    # unavailable.
     #==========================================================================
     def test_add_time_of_flight_mg7(self):
         """time-of-flight LHE post-processing chained on the mg7 output.
