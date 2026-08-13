@@ -151,6 +151,7 @@ class MultiChannelData(NamedTuple):
     diagram_indices: list[list[int]]
     diagram_color_indices: list[list[list[int]]]
     active_flavors: list[list[list[int]]]
+    no_qcd_s_channel: list[bool]
 
 
 @dataclass
@@ -936,6 +937,10 @@ def clean_pids(pids: list[int]) -> list[int]:
     return pids_out
 
 
+def pid_is_qcd(pid: int):
+    return abs(pid) in [21, 1, 2, 3, 4, 5, 6, 81]
+
+
 def build_topologies(
     incoming_masses: list[float],
     outgoing_masses: list[float],
@@ -997,6 +1002,7 @@ def build_multi_channel_data(
     diagram_color_indices = []
     active_flavors = []
     channel_index = 0
+    no_qcd_s_channel = []
 
     for channel in meta["channels"]:
         if unmerged_meta is None:
@@ -1009,6 +1015,32 @@ def build_multi_channel_data(
             incoming_masses, outgoing_masses, topo_channel, process
         )
         topo_count = len(chan_topologies)
+        if topo_count == 0:
+            continue
+
+        topo = chan_topologies[0]
+        keep = [False] * len(topo.decays)
+        pdg_ids = [decay.pdg_id for decay in topo.decays]
+        for i, pid in zip(topo.outgoing_indices, meta["outgoing"]):
+            pdg_ids[i] = pid
+        for decay in reversed(topo.decays):
+            if decay.index == 0 and topo.t_propagator_count > 0:
+                keep[0] = all(
+                    keep[i]
+                    for i in decay.child_indices
+                    if len(topo.decays[i].child_indices) != 0
+                )
+                break
+            if len(decay.child_indices) == 0:
+                continue
+            is_qcd = pid_is_qcd(pdg_ids[decay.index]) and all(
+                pid_is_qcd(pdg_ids[i]) for i in decay.child_indices
+            )
+            keep[decay.index] = decay.on_shell or not is_qcd or any(
+                keep[i] for i in decay.child_indices
+            )
+        no_qcd_s_channel.append(keep[0])
+
         diagrams = channel["diagrams"]
         chan_permutations = [d["permutation"] for d in diagrams]
         if unmerged_meta is None:
@@ -1057,6 +1089,7 @@ def build_multi_channel_data(
         diagram_indices,
         diagram_color_indices,
         active_flavors,
+        no_qcd_s_channel,
     )
 
 
@@ -1173,6 +1206,12 @@ class MadgraphSubprocess:
         return self.multi_channel_data
 
     def build_multichannel_phasespace(self) -> PhaseSpace:
+        mcdata = self.build_multi_channel_data()
+        channel_count = sum(len(topos) for topos in mcdata.topologies)
+        drop_threshold = self.process.run_card["phasespace"]["drop_qcd_s_channel"]
+        if drop_threshold >= 0 and channel_count > drop_threshold:
+            mcdata = self.drop_qcd_s_channels(mcdata)
+
         (
             amp2_remaps,
             symfact,
@@ -1183,7 +1222,8 @@ class MadgraphSubprocess:
             _,
             _,
             all_active_flavors,
-        ) = self.build_multi_channel_data()
+            _,
+        ) = mcdata
 
         channels = []
         t_channel_mode = self.t_channel_mode(
@@ -1393,6 +1433,96 @@ class MadgraphSubprocess:
             symfact=symfact,
             prop_chan_weights=multi_phasespace.prop_chan_weights,
             subchan_weights=multi_phasespace.subchan_weights,
+        )
+
+    def drop_qcd_s_channels(self, mcdata: MultiChannelData) -> MultiChannelData:
+        """Drop channels without a QCD s-channel resonance, to reduce the
+        channel count for processes with many diagrams. Operates directly on
+        MultiChannelData, before any PhaseSpaceMapping/Vegas/discrete-sampler
+        or native channel-weight objects are built, so dropped channels never
+        pay for that construction. Diagrams belonging to a dropped channel
+        are simply left unmapped (amp2_remap entry of -1), the same
+        convention already used above for channels with no valid topology;
+        downstream code already redirects those to an unused sink weight."""
+        covered_flavors = set()
+        for group_flavors, keep in zip(mcdata.active_flavors, mcdata.no_qcd_s_channel):
+            if keep:
+                for flavs in group_flavors:
+                    covered_flavors.update(flavs)
+        kept_groups = [
+            index
+            for index, (group_flavors, keep) in enumerate(
+                zip(mcdata.active_flavors, mcdata.no_qcd_s_channel)
+            )
+            if keep or any(
+                flav not in covered_flavors
+                for flavs in group_flavors
+                for flav in flavs
+            )
+        ]
+        if len(kept_groups) == len(mcdata.topologies):
+            return mcdata
+
+        amp2_remaps = [[-1] * len(remap) for remap in mcdata.amp2_remaps]
+        symfact = []
+        topologies = []
+        permutations = []
+        channel_indices = []
+        channel_weight_indices = []
+        diagram_indices = []
+        diagram_color_indices = []
+        active_flavors = []
+        no_qcd_s_channel = []
+        channel_index = 0
+
+        for group in kept_groups:
+            chan_topologies = mcdata.topologies[group]
+            chan_permutations = mcdata.permutations[group]
+            chan_diagram_indices = mcdata.diagram_indices[group]
+            topo_count = len(chan_topologies)
+
+            channel_index_first = channel_index
+            symfact_index_first = len(symfact)
+            for i, diag in enumerate(chan_diagram_indices):
+                if self.unmerged_meta is None:
+                    amp2_remaps[0][diag] = channel_index
+                else:
+                    for amp2_remap, d in zip(amp2_remaps, diag):
+                        if d != -1:
+                            amp2_remap[d] = channel_index
+                if i == 0:
+                    symfact.extend([None] * topo_count)
+                else:
+                    symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
+                channel_index += 1
+
+            topologies.append(chan_topologies)
+            permutations.append(chan_permutations)
+            channel_indices.append(list(range(channel_index_first, channel_index)))
+            channel_weight_indices.append([
+                [
+                    symfact_index_first + topo_index + i * topo_count
+                    for i in range(len(chan_permutations))
+                ]
+                for topo_index in range(topo_count)
+            ])
+            diagram_indices.append(chan_diagram_indices)
+            if mcdata.diagram_color_indices:
+                diagram_color_indices.append(mcdata.diagram_color_indices[group])
+            active_flavors.append(mcdata.active_flavors[group])
+            no_qcd_s_channel.append(mcdata.no_qcd_s_channel[group])
+
+        return MultiChannelData(
+            amp2_remaps,
+            symfact,
+            topologies,
+            permutations,
+            channel_indices,
+            channel_weight_indices,
+            diagram_indices,
+            diagram_color_indices,
+            active_flavors,
+            no_qcd_s_channel,
         )
 
     def set_madnis_auto_settings(self, rsd: float):

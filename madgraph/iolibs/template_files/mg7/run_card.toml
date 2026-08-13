@@ -71,6 +71,7 @@ decays = %(phasespace.decays)s # options: all, massive, none
 t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
 flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
 combine_channel_threshold = %(phasespace.combine_channel_threshold)s
+drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # -1 keeps all channels, otherwise drop channels without a QCD s-channel resonance once the channel count would exceed this
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s

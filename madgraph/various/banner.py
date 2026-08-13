@@ -6548,6 +6548,10 @@ class RunCardMG7(RunCard):
         self.add_toml_param('phasespace', 'flat_mode', "rambo",
             allowed=['propagator', 'rambo', 'chili'])
         self.add_toml_param('phasespace', 'combine_channel_threshold', 0.01)
+        self.add_toml_param('phasespace', 'drop_qcd_s_channel', 20,
+            comment="drop multichannel channels without a QCD s-channel resonance "
+                    "once the channel count would otherwise exceed this many "
+                    "(-1 keeps all channels)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
