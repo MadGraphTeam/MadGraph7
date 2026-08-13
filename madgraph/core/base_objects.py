@@ -4675,22 +4675,36 @@ class ProcessDefinition(Process):
                  if leg['state'] == False]
         fsids = [leg['ids'] for leg in self['legs'] \
                  if leg['state'] == True]
+        # The polarization restriction lives on the multileg and has to be
+        # carried onto each expanded leg, or a polarized multiparticle
+        # process silently comes back unpolarized. MultiProcess.
+        # generate_multi_amplitudes (diagram_generation.py) does the same for
+        # the path MG5 itself uses.
+        ispols = [leg['polarization'] for leg in self['legs'] \
+                 if leg['state'] == False]
+        fspols = [leg['polarization'] for leg in self['legs'] \
+                 if leg['state'] == True]
 
         red_isidlist = []
         # Generate all combinations for the initial state
         for prod in itertools.product(*isids):
-            islegs = [Leg({'id':id, 'state': False}) for id in prod]  
+            # list() so that every yielded process owns its polarization
+            # rather than sharing the definition's list object
+            islegs = [Leg({'id':id, 'state': False, 'polarization': list(pol)})
+                      for id, pol in zip(prod, ispols)]
             if tuple(sorted(prod)) in red_isidlist:
-                    continue        
-            red_isidlist.append(tuple(sorted(prod)))      
+                    continue
+            red_isidlist.append(tuple(sorted(prod)))
             red_fsidlist = []
             for prod in itertools.product(*fsids):
                 # Remove double counting between final states
                 if tuple(sorted(prod)) in red_fsidlist:
-                    continue        
+                    continue
                 red_fsidlist.append(tuple(sorted(prod)))
                 leg_list = [copy.copy(leg) for leg in islegs]
-                leg_list.extend([Leg({'id':id, 'state': True}) for id in prod])
+                leg_list.extend([Leg({'id':id, 'state': True,
+                                      'polarization': list(pol)})
+                                 for id, pol in zip(prod, fspols)])
                 legs = LegList(leg_list)
                 process = self.get_process_with_legs(legs)
                 yield process
