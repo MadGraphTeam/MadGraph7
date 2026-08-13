@@ -16,7 +16,7 @@ Status:
 | M2 step 0 | **done** — ISR and FSR emission azimuth carried covariantly |
 | M2 rest | **done** — reals + counterterms boosted, azimuthal wiring in, `test_soft_col_limits` passes, `[real=QCD]` enabled |
 | M3 `[QCD]` | **done** — `check_poles` cancels 20/20 in every P dir, `calculate_xsect NLO` runs end to end, `[QCD]` enabled |
-| M4 | partly done — the guard is open for `[QCD]`; `help_polarization` still to revisit |
+| M4 | **done** — guard open, `help_polarization` rewritten, acceptance test written, run and wired into CI |
 
 `[LOonly=QCD]`, `[real=QCD]`, `[QCD]` and `[virt=…]` all accept a polarised
 massive particle today. The first three get their frame from `me_frame` in the
@@ -1111,7 +1111,29 @@ frame.
 Born, so a Born/virtual frame mismatch shows up as a pole mismatch). Then
 `p p > z{0} z{0} j [QCD]` end to end.
 
-### M4 — Unblock and document — **partly done**
+### M4 — Unblock and document — **DONE**
+
+`help_polarization` now covers fixed-order NLO: which modes accept a polarised
+massive particle and where each gets its frame. Two things it previously got
+wrong are corrected -- `nhel=1` was presented as a requirement when it is only
+a variance choice (measured: 1369 +- 1.7 against 1370 +- 1.7), and the
+QCD-only restriction on the run_card modes was not stated at all, so a reader
+would have assumed `[QED]` worked. It also warns that a frame must be built
+from final-state particles, an initial-state one not being infrared safe.
+
+The acceptance test `test_polarised_nlo_me_frame` covers
+`p p > z{0} z{0} j [QCD]` with `me_frame=[3,4]` and asserts on `check_poles`
+rather than on a cross-section, since the poles are proportional to the Born
+and are what a frame mismatch actually breaks. Run and verified to do real
+work, not to pass vacuously: 12 P dirs, 12 `check_poles.log`, zero
+miscancellations, `generate p p > z{0} z{0} j [QCD]` and `[3, 4] = me_frame`
+read back from the generated cards, 3.084e-01 +- 3.0e-03 pb.
+
+Wired into CI as `acceptancetest_105` in
+`.github/workflows/acceptancetest.yml`, modelled on the existing
+`test_calculate_xsect_nlo` job. Without that the test would never have run:
+the workflow invokes tests by explicit name.
+
 
 Done in M3: the guard now accepts `loonly`, `real` and `all`, deriving the
 mode the same way the parser does (no keyword in the brackets means `all`),

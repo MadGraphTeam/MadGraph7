@@ -1389,3 +1389,24 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_density_mode_vs_standalone_LI1 -pA -t0 -l INFO
 
+
+
+  acceptancetest_105:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      # Polarised fixed-order NLO evaluated in a chosen rest frame. Asserts on
+      # check_poles, which is the only check sensitive to the frame handling of
+      # the Born against the virtual.
+      - name: test one of the test test_polarised_nlo_me_frame
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_polarised_nlo_me_frame -pA -t0 -l INFO
