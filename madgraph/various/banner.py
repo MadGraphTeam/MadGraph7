@@ -6537,7 +6537,7 @@ class RunCardMG7(RunCard):
 
         # -------------------------- [phasespace] ----------------------
         self.add_toml_param('phasespace', 'merge_subprocesses', False)
-        self.add_toml_param('phasespace', 'mode', "auto",
+        self.add_toml_param('phasespace', 'mode', "multichannel",
             allowed=['auto', 'multichannel', 'flat', 'both'])
         self.add_toml_param('phasespace', 'sde_strategy', "diagrams",
             allowed=['diagrams', 'denominators'])

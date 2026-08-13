@@ -151,7 +151,7 @@ class MultiChannelData(NamedTuple):
     diagram_indices: list[list[int]]
     diagram_color_indices: list[list[list[int]]]
     active_flavors: list[list[list[int]]]
-    no_qcd_s_channel: list[bool]
+    qcd_s_channel_count: list[int]
 
 
 @dataclass
@@ -1002,7 +1002,7 @@ def build_multi_channel_data(
     diagram_color_indices = []
     active_flavors = []
     channel_index = 0
-    no_qcd_s_channel = []
+    qcd_s_channel_count = []
 
     for channel in meta["channels"]:
         if unmerged_meta is None:
@@ -1019,27 +1019,29 @@ def build_multi_channel_data(
             continue
 
         topo = chan_topologies[0]
-        keep = [False] * len(topo.decays)
+        s_chan_count = [0] * len(topo.decays)
+        non_qcd = [False] * len(topo.decays)
         pdg_ids = [decay.pdg_id for decay in topo.decays]
         for i, pid in zip(topo.outgoing_indices, meta["outgoing"]):
             pdg_ids[i] = pid
         for decay in reversed(topo.decays):
-            if decay.index == 0 and topo.t_propagator_count > 0:
-                keep[0] = all(
-                    keep[i]
-                    for i in decay.child_indices
-                    if len(topo.decays[i].child_indices) != 0
-                )
-                break
             if len(decay.child_indices) == 0:
                 continue
+            if decay.index == 0 and topo.t_propagator_count > 0:
+                s_chan_count[0] = sum(s_chan_count[i] for i in decay.child_indices)
+                break
+
             is_qcd = pid_is_qcd(pdg_ids[decay.index]) and all(
                 pid_is_qcd(pdg_ids[i]) for i in decay.child_indices
             )
-            keep[decay.index] = decay.on_shell or not is_qcd or any(
-                keep[i] for i in decay.child_indices
+            is_non_qcd = decay.on_shell or not is_qcd or any(
+                non_qcd[i] for i in decay.child_indices
             )
-        no_qcd_s_channel.append(keep[0])
+            non_qcd[decay.index] = is_non_qcd
+            s_chan_count[decay.index] = (
+                0 if is_non_qcd else sum(s_chan_count[i] for i in decay.child_indices) + 1
+            )
+        qcd_s_channel_count.append(s_chan_count[0])
 
         diagrams = channel["diagrams"]
         chan_permutations = [d["permutation"] for d in diagrams]
@@ -1078,6 +1080,7 @@ def build_multi_channel_data(
         if unmerged_meta is None:
             diagram_color_indices.append([d["active_colors"] for d in diagrams])
         active_flavors.append([d["active_flavors"] for d in diagrams])
+    print(qcd_s_channel_count)
 
     return MultiChannelData(
         amp2_remaps,
@@ -1089,7 +1092,7 @@ def build_multi_channel_data(
         diagram_indices,
         diagram_color_indices,
         active_flavors,
-        no_qcd_s_channel,
+        qcd_s_channel_count,
     )
 
 
@@ -1436,30 +1439,36 @@ class MadgraphSubprocess:
         )
 
     def drop_qcd_s_channels(self, mcdata: MultiChannelData) -> MultiChannelData:
-        """Drop channels without a QCD s-channel resonance, to reduce the
-        channel count for processes with many diagrams. Operates directly on
-        MultiChannelData, before any PhaseSpaceMapping/Vegas/discrete-sampler
-        or native channel-weight objects are built, so dropped channels never
-        pay for that construction. Diagrams belonging to a dropped channel
-        are simply left unmapped (amp2_remap entry of -1), the same
-        convention already used above for channels with no valid topology;
-        downstream code already redirects those to an unused sink weight."""
+        """Drop channels with non-resonant QCD s-channel propagators, to reduce the
+        channel count for processes with many diagrams. Channels are grouped by the
+        number of QCD s-channels, allowing for more if necessary to map out all flavor
+        indices. Channel weights belonging to a dropped channel are left unmapped."""
+        groups_by_s_count = {}
+        for index, count in enumerate(mcdata.qcd_s_channel_count):
+            groups_by_s_count.setdefault(count, []).append(index)
+
         covered_flavors = set()
-        for group_flavors, keep in zip(mcdata.active_flavors, mcdata.no_qcd_s_channel):
-            if keep:
-                for flavs in group_flavors:
+        kept_groups = set()
+        for s_count in sorted(groups_by_s_count):
+            s_count_groups = groups_by_s_count[s_count]
+            if s_count == 0:
+                selected = s_count_groups
+            else:
+                selected = [
+                    index
+                    for index in s_count_groups
+                    if any(
+                        flav not in covered_flavors
+                        for flavs in mcdata.active_flavors[index]
+                        for flav in flavs
+                    )
+                ]
+            kept_groups.update(selected)
+            for index in selected:
+                for flavs in mcdata.active_flavors[index]:
                     covered_flavors.update(flavs)
-        kept_groups = [
-            index
-            for index, (group_flavors, keep) in enumerate(
-                zip(mcdata.active_flavors, mcdata.no_qcd_s_channel)
-            )
-            if keep or any(
-                flav not in covered_flavors
-                for flavs in group_flavors
-                for flav in flavs
-            )
-        ]
+
+        kept_groups = sorted(kept_groups)
         if len(kept_groups) == len(mcdata.topologies):
             return mcdata
 
@@ -1472,7 +1481,7 @@ class MadgraphSubprocess:
         diagram_indices = []
         diagram_color_indices = []
         active_flavors = []
-        no_qcd_s_channel = []
+        qcd_s_channel_count = []
         channel_index = 0
 
         for group in kept_groups:
@@ -1510,7 +1519,7 @@ class MadgraphSubprocess:
             if mcdata.diagram_color_indices:
                 diagram_color_indices.append(mcdata.diagram_color_indices[group])
             active_flavors.append(mcdata.active_flavors[group])
-            no_qcd_s_channel.append(mcdata.no_qcd_s_channel[group])
+            qcd_s_channel_count.append(mcdata.qcd_s_channel_count[group])
 
         return MultiChannelData(
             amp2_remaps,
@@ -1522,7 +1531,7 @@ class MadgraphSubprocess:
             diagram_indices,
             diagram_color_indices,
             active_flavors,
-            no_qcd_s_channel,
+            qcd_s_channel_count,
         )
 
     def set_madnis_auto_settings(self, rsd: float):
