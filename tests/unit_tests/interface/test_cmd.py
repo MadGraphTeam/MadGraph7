@@ -257,7 +257,14 @@ class TestValidCmd(unittest.TestCase):
         cmd.check_process_format('g g > Z Z [ noborn=QCD] @1')
         cmd.check_process_format('u u~ > 2w+ 2j')
         cmd.check_process_format('u u~ > 2w+{0} 2j')
-        cmd.check_process_format,'u u~ > e+{L} vl [QED]'
+        cmd.check_process_format('u u~ > w+{L} [QCD]')
+        cmd.check_process_format('u u~ > z{0} g [QCD]')
+        cmd.check_process_format('u u~ > z{0} g [real=QCD]')
+        cmd.check_process_format('u u~ > z{0} g [LOonly=QCD]')
+        # standalone MadLoop: the user supplies the momenta, so the frame is
+        # theirs and the perturbation orders do not matter
+        cmd.check_process_format('u u~ > z{0} g [virt=QCD]')
+        cmd.check_process_format('u u~ > z{0} g [virt=QED QCD]')
         
         # unvalid syntax
         self.wrong(cmd.check_process_format, ' e+ e-')
@@ -274,8 +281,9 @@ class TestValidCmd(unittest.TestCase):
         self.wrong(cmd.check_process_format, 'e+ e- > Z > mu+ mu- / W+{L}')
         self.wrong(cmd.check_process_format, 'e+ e- > Z > mu+ mu- $ W+{L}')
         self.wrong(cmd.check_process_format, 'u u~ > t{L} t~ [QCD]')
+        # massive colourless polarization at NLO QCD is supported since the
+        # me_frame boost reaches the virtual; mixed and pure QED are not
         self.wrong(cmd.check_process_format, 'u u~ > W+{L} vl [ QED QCD]')
-        self.wrong(cmd.check_process_format,'u u~ > w+{L} [QCD]')
         self.wrong(cmd.check_process_format,'u u~ > e+{L} vl [QED]')
         
     @test_aloha.set_global()

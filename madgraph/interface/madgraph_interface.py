@@ -1240,35 +1240,42 @@ class CheckValidForCmd(cmd.CheckCmd):
         if '[' in process and '{' in process:
             # Which NLO mode was asked for, taken from inside the brackets so
             # that a stray 'real' elsewhere in the process cannot match.
-            nlo_mode = process.split('[')[1].split(']')[0]
-            if '=' in nlo_mode:
-                nlo_mode = nlo_mode.split('=')[0]
-            nlo_mode = nlo_mode.strip().lower()
+            bracket = process.split('[')[1].split(']')[0]
+            if '=' in bracket:
+                nlo_mode, pert_orders = bracket.split('=', 1)
+                nlo_mode = nlo_mode.strip().lower()
+            else:
+                # no keyword, e.g. '[QCD]': the parser calls that mode 'all'
+                nlo_mode, pert_orders = 'all', bracket
 
-            # LOonly evaluates the Born alone; 'real' adds the real emission
-            # and the full set of FKS counterterms. Both are boosted to the
-            # frame chosen by me_frame in the run_card, so a polarized massive
-            # particle is meaningful there. The virtual has no boost yet, so
-            # the modes including it are still refused; see
-            # docs/nlo_polarisation_boost_plan.md.
-            # Born (M1) and real + counterterms (M2) are boosted and
-            # validated. The virtual is wired (binothlha_frame) but NOT
-            # enabled: check_poles fails on a polarised boosted run, with
-            # the MadFKS pole coefficients ~50-60x the OLP's. Until that
-            # is understood the modes including the virtual stay refused.
-            frame_supported = nlo_mode in ('loonly', 'real')
+            # A polarized massive particle needs a frame to be defined in.
+            # There are two ways to have one.
+            #
+            # 'virt' outputs standalone MadLoop, where the user supplies the
+            # phase-space point themselves and so chooses the frame. There is
+            # no run_card, no me_frame and nothing for the code to get wrong,
+            # whatever the perturbation orders.
+            standalone_olp = nlo_mode == 'virt'
+
+            # Otherwise the frame comes from me_frame in the run_card, and
+            # every piece of the computation is boosted into it: the Born
+            # (M1), the real emission and the full set of FKS counterterms
+            # (M2), and the virtual, which goes through binothlha_frame (M3).
+            # check_poles cancels 20/20 in every P dir of p p > z{0} j [QCD]
+            # with me_frame=[3]. See docs/nlo_polarisation_boost_plan.md.
+            #
+            # Restricted to QCD corrections: the frame wrappers are
+            # order-agnostic and the QED counterterms go through them too, so
+            # this is likely to work, but nothing in the QED sector has been
+            # validated, so mixed or pure-QED perturbation stays refused.
+            frame_supported = standalone_olp or \
+                              (nlo_mode in ('loonly', 'real', 'all')
+                               and pert_orders.strip().lower() == 'qcd')
             if 'noborn' in process or 'sqrvirt' in process \
                                                       or frame_supported:
                 pass
             else:
                 raise self.InvalidCmd('Polarization restriction can not be used for NLO processes')
-
-            # below are the check when [QCD] will be valid for computation
-            order = process.split('[')[1].split(']')[0]
-            if '=' in order:
-                order = order.split('=')[1]
-#            if order.strip().lower() != 'qcd':
-#                raise self.InvalidCmd('Polarization restriction can not be used for generic NLO computations')
 
             def check(p):
                 if p.get('color') != 1:
