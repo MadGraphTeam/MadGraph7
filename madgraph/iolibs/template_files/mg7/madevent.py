@@ -398,9 +398,65 @@ class MadgraphProcess:
         self.event_generator = None
 
     def init_subprocesses(self) -> None:
+        self.backends = self.compile_matrix_elements()
         self.subprocesses = []
         for subproc_id, meta in enumerate(self.subprocess_data):
             self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+
+    def compile_matrix_elements(self) -> list[str]:
+        """Build the matrix-element library of every subprocess, and return the
+        list of requested devices with 'cppauto' replaced by the backend it
+        resolves to on this machine.
+
+        SubProcesses/makefile is a dispatcher over the P* directories, so a
+        single 'make -j N' there builds all the subprocesses at once with one
+        shared pool of N jobs: no subprocess is built with N jobs while the
+        others wait, and none is limited to N/#subprocesses jobs either.
+        """
+        backends = self.run_card["run"]["devices"]
+        if not isinstance(backends, list):
+            backends = [backends]
+        if not self.subprocess_data:
+            return backends
+
+        first_proc_path = self.subprocess_data[0]["path"]
+        subproc_path = os.path.dirname(first_proc_path)
+
+        # Resolve 'cppauto' once (the build rules pick the best SIMD backend
+        # available here), so that all subprocesses agree on the library names.
+        resolved = []
+        for backend in backends:
+            if backend == "cppauto":
+                out = subprocess.run(
+                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
+                    cwd=first_proc_path, capture_output=True, text=True,
+                ).stdout
+                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
+                if match:
+                    backend = match.group(1)
+                    logger.info(f"Device 'cppauto' resolved as '{backend}'")
+            resolved.append(backend)
+
+        nb_core = self.run_card["run"]["cpu_thread_pool_size"]
+        if not nb_core or nb_core < 0:
+            nb_core = os.cpu_count() or 1
+
+        for backend in resolved:
+            missing = [
+                meta for meta in self.subprocess_data
+                if not os.path.isfile(meta["me_path"].format(device=backend))
+            ]
+            if not missing:
+                continue
+            logger.info(
+                f"Compiling {len(missing)} subprocess(es) for device "
+                f"'{backend}' with {nb_core} parallel job(s)"
+            )
+            misc.compile(
+                arg=[f"BACKEND={backend}", "USEBUILDDIR=1"],
+                cwd=subproc_path, mode="cpp", nb_core=nb_core,
+            )
+        return resolved
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
@@ -959,29 +1015,11 @@ class MadgraphSubprocess:
         self.subproc_id = subproc_id
         self.multi_channel_data = None
 
-        api_path_format = self.meta["me_path"]
-        subproc_path = self.meta["path"]
-        devices = self.process.run_card["run"]["devices"]
-        api_paths = []
-        if not isinstance(devices, list):
-            devices = [devices]
-        for device in devices:
-            subproc_dir = os.path.dirname(subproc_path)
-            # 'cppauto' resolve quick fix
-            resolved = device
-            if device == "cppauto":
-                out = subprocess.run(
-                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
-                    cwd=subproc_path, capture_output=True, text=True,
-                ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
-                if match:
-                    resolved = match.group(1)
-            api_path = api_path_format.format(device=resolved)
-            if not os.path.isfile(api_path):
-                logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
-            api_paths.append(api_path)
+        # The libraries were all built up front by MadgraphProcess.compile_matrix_elements
+        api_paths = [
+            self.meta["me_path"].format(device=backend)
+            for backend in self.process.backends
+        ]
 
         self.incoming_masses = [
             self.process.get_mass(pid) for pid in clean_pids(self.meta["incoming"])

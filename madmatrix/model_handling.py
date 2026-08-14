@@ -1487,6 +1487,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     multichannel_var = ',fptype& multi_chanel_num, fptype& multi_chanel_denom'
     imaginary_unit = "cxtype(0,1)"
 
+    # Build rules (in SubProcesses/) that this P* directory links as its 'makefile'
+    p_makefile = 'madmatrix.mk'
+
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
     def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
@@ -1952,9 +1955,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
-        # NB: symlink of cudacpp.mk to makefile is overwritten by madevent makefile if this exists (#480)
+        # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
+        # itself is the dispatcher that fans out over all the P* directories.
+        # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
-        files.ln(pjoin(self.path, "..", "makefile"), self.path, "makefile")
+        files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -2226,6 +2231,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Get lines to reset jamps"""
         ret_lines = ""
         return ret_lines
+
+
+# Standalone mode: P*/makefile points at the wrapper that also builds check_sa.exe
+# (see ProcessExporterMadMatrixStandalone in output.py)
+class OneProcessExporterMadMatrixStandalone(OneProcessExporterMadMatrix):
+
+    p_makefile = 'madmatrix_standalone.mk'
 
 #------------------------------------------------------------------------------------
 
