@@ -8,47 +8,6 @@ using namespace madspace;
 
 static const BatchSize acc_batch_size("acc_batch_size");
 
-// A discrete sampler returns det = 1/p, so every regular det is >= 1, while
-// kernel_sample_discrete_probs returns exactly 0 for a draw the sampler could
-// not actually have made: either every option had probability zero, or the
-// selected one did. Both are routine once the options are weighted by parton
-// densities, which NNPDF4.0 returns as exactly 0.0 below the c/b thresholds and
-// at large x. That 0 is a sentinel meaning "zero-weight event", not a jacobian,
-// and it must not be inverted: the MadNIS training column is norm/det (see
-// build_common_part), so a degenerate draw would come out as +inf.
-//
-// Split the sentinel into the two things the caller needs instead:
-//
-//   prob_factor  the factor this draw contributes to the sampling density.
-//                A degenerate discrete distribution carries no information --
-//                whatever index comes back was not a choice -- so the density
-//                of the row is the marginal over that choice, i.e. 1. This is
-//                the same neutral factor that rows failing the cuts already
-//                contribute to the column.
-//   weight_mask  0 for a degenerate draw, 1 otherwise, so that the row's
-//                integrand is exactly zero. Under madnis_training the det is
-//                kept out of the weight (it is applied separately, to
-//                full_weight), so without this the loss would see a non-zero
-//                f against a finite q for a row whose event weight is zero.
-//                That is not hypothetical: the option a degenerate draw
-//                returns can be one the active-flavour mask switched off,
-//                whose parton density is not zero at all.
-//
-// Both are exact for a regular det -- max(det, 1) == det and min(det, 1) == 1,
-// bit for bit -- so nothing about a non-degenerate draw changes.
-namespace {
-
-struct DiscreteDet {
-    Value prob_factor;
-    Value weight_mask;
-};
-
-DiscreteDet split_discrete_det(FunctionBuilder& fb, Value det) {
-    return {fb.max(det, Value(1.)), fb.min(det, Value(1.))};
-}
-
-} // namespace
-
 Integrand::Integrand(
     const PhaseSpaceMapping& mapping,
     const DifferentialCrossSection& diff_xs,
@@ -350,14 +309,12 @@ NamedVector<Value> Integrand::build_channel_part(
                     auto discrete_result =
                         discrete_before.build_forward(fb, {chan_random}, {});
                     chan_index_in_group = discrete_result.at(0);
-                    auto det = split_discrete_det(fb, discrete_result["det"]);
                     if (_madnis_training) {
                         extra_weights_before_cuts.push_back(discrete_result["det"]);
-                        weights_before_cuts.push_back(det.weight_mask);
                     } else {
                         weights_before_cuts.push_back(discrete_result["det"]);
                     }
-                    adaptive_probs.push_back(det.prob_factor);
+                    adaptive_probs.push_back(discrete_result["det"]);
                     flow_conditions.push_back(
                         fb.one_hot(chan_index_in_group, opt_count)
                     );
@@ -493,16 +450,14 @@ NamedVector<Value> Integrand::build_channel_part(
                         fb, {flavor_random_acc}, discrete_condition
                     );
                     flavor_id = discrete_result.at(0);
-                    auto det = split_discrete_det(fb, discrete_result["det"]);
                     if (_madnis_training) {
                         extra_weight_after_cuts = discrete_result["det"];
-                        weights_after_cuts.push_back(det.weight_mask);
                     } else {
                         weights_after_cuts.push_back(discrete_result["det"]);
                     }
                     auto ones = fb.full({1., batch_size_val});
                     adaptive_probs.push_back(
-                        fb.batch_scatter(indices_acc, ones, det.prob_factor)
+                        fb.batch_scatter(indices_acc, ones, discrete_result["det"])
                     );
                 }
             },
