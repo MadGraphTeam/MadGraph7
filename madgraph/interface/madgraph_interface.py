@@ -121,6 +121,9 @@ logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # -> stdout include ins
 
 logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # -> stoud for MadLoop tuto
 
+# Central definition of the main interface prompt (bold blue "MG7> ")
+MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
+
 #===============================================================================
 # CmdExtended
 #===============================================================================
@@ -3285,8 +3288,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     def preloop(self):
         """Initializing before starting the main loop"""
 
-        #self.prompt = 'MG5_aMC>'
-        self.prompt = " 🚀 "
+        self.prompt = MG7_PROMPT
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 

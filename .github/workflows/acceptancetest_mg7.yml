@@ -58,6 +58,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_mg7_ufo_aloha -pA -t0 -l INFO
 
+  # FD gauge: the madmatrix and the fortran standalone must compute the same
+  # value, and the scalar and vectorised madmatrix backends must agree with each
+  # other (the FD wavefunctions are written once per backend in helas_fd.h)
+  acceptancetest_mg7_fd_gauge:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test FD gauge madmatrix vs fortran
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_fd_vs_fortran test_madmatrix_fd_simd_lanes -pA -t0 -l INFO
+
   acceptancetest_mg7_output_directory:
     needs: build_madspace
     runs-on: ubuntu-24.04

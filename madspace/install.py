@@ -71,6 +71,7 @@ class _Prompter:
         if cls._cmd is False:
             try:
                 from madgraph.interface.extended_cmd import Cmd
+
                 cls._cmd = Cmd()
             except Exception:
                 cls._cmd = None
@@ -83,8 +84,11 @@ class _Prompter:
         if cmd is not None:
             try:
                 ans = cmd.ask(
-                    question, default, choices=list(choices or []),
-                    timeout=0, force=_NONINTERACTIVE,
+                    question,
+                    default,
+                    choices=list(choices or []),
+                    timeout=0,
+                    force=_NONINTERACTIVE,
                 )
                 return default if ans is None else str(ans)
             except Exception:
@@ -124,7 +128,10 @@ def ask_string(prompt: str, default: str) -> str:
 
 
 def ask_compile_options(
-    saved: dict | None = None, from_saved: bool = False
+    saved: dict | None = None,
+    from_saved: bool = False,
+    keys: tuple[str, ...] | None = None,
+    show_expert_option: bool = False,
 ) -> dict[str, bool]:
     """Multi-select menu for compile options; returns {output_key: bool}.
 
@@ -133,6 +140,11 @@ def ask_compile_options(
     This lets the BLAS item be opt-in on Apple ("build OpenBLAS") and opt-out
     on Linux ("use system BLAS") while the default behavior of pressing Enter
     always matches the platform default.
+
+    *keys*, if given, restricts the menu to entries whose output_key is in
+    it (used to split the compile-options prompt into a basic and an expert
+    stage). *show_expert_option* appends a pseudo entry ("_expert") used to
+    let the user opt into seeing the expert stage.
 
     *from_saved* controls the Enter hint wording.
     """
@@ -167,6 +179,10 @@ def ask_compile_options(
     ]
     # CUDA and HIP are not available on Apple; hide them in interactive mode
     entries = [e for e in all_entries if not (_IS_APPLE and e[0] in ("cuda", "hip"))]
+    if keys is not None:
+        entries = [e for e in entries if e[2] in keys]
+    if show_expert_option:
+        entries.append(("expert", "Show expert/developer options", "_expert", False))
 
     # Derive the checkbox state for each menu item from the saved output values.
     # For normal items: checked = saved output value.
@@ -308,20 +324,11 @@ def _heptools_dir_from_config() -> str | None:
     return None
 
 
-def find_cmake() -> str | None:
-    """Return a path to a cmake >= CMAKE_MIN_VERSION, or None."""
-    # 1. explicit override
-    for var in ("MADGRAPH_CMAKE", "CMAKE"):
-        p = os.environ.get(var)
-        if p and _cmake_version_ok(p):
-            return p
-    # 2. system cmake on PATH (ignored if too old)
-    p = shutil.which("cmake")
-    if p and _cmake_version_ok(p):
-        return p
-    # 3. cmake installed via MadGraph's HEPTools installer. The HEPTools
-    #    location is configurable in MG5 (heptools_install_dir); MG5 passes it
-    #    down as MADGRAPH_HEPTOOLS_DIR. Fall back to the default <MG5>/HEPTools.
+def find_heptools_cmake() -> str | None:
+    """find cmake installed via MadGraph's HEPTools installer. The HEPTools
+    location is configurable in MG5 (heptools_install_dir); MG5 passes it
+    down as MADGRAPH_HEPTOOLS_DIR. Fall back to the default <MG5>/HEPTools.
+    """
     hep_dirs = []
     env_hep = os.environ.get("MADGRAPH_HEPTOOLS_DIR")
     if env_hep:
@@ -332,8 +339,13 @@ def find_cmake() -> str | None:
     hep_dirs.append(SCRIPT_DIR.parent / "HEPTools")
     seen = set()
     for heptools in hep_dirs:
-        for pattern in ("cmake/bin/cmake", "bin/cmake", "cmake",
-                        "cmake*/bin/cmake", "*/bin/cmake"):
+        for pattern in (
+            "cmake/bin/cmake",
+            "bin/cmake",
+            "cmake",
+            "cmake*/bin/cmake",
+            "*/bin/cmake",
+        ):
             for cand in sorted(heptools.glob(pattern)):
                 cand = cand.resolve()
                 if cand in seen:
@@ -347,7 +359,12 @@ def find_cmake() -> str | None:
 def add_cmake_to_path(env: dict) -> dict:
     """Ensure a suitable cmake (and co-located tools such as ninja) is on the
     PATH of the build environment."""
-    cmake = find_cmake()
+    cmake = shutil.which("cmake")
+    if cmake and _cmake_version_ok(cmake):
+        print(f"Using cmake: {cmake}")
+        return env
+
+    cmake = find_heptools_cmake()
     if cmake:
         cmake_dir = os.path.dirname(os.path.abspath(cmake))
         parts = [cmake_dir]
@@ -355,13 +372,13 @@ def add_cmake_to_path(env: dict) -> dict:
             parts.append(existing)
         env["PATH"] = os.pathsep.join(parts)
         print(f"Using cmake: {cmake}")
-    else:
-        print(
-            "WARNING: no cmake >= %d.%d found. The source build will likely fail.\n"
-            "  Install one with MG5 ('install cmake'), via your package manager,\n"
-            "  or point to it with MADGRAPH_CMAKE=/path/to/cmake."
-            % CMAKE_MIN_VERSION
-        )
+        return env
+
+    print(
+        "WARNING: no cmake >= %d.%d found. The source build will likely fail.\n"
+        "  Install one with MG5 ('install cmake'), via your package manager,\n"
+        "  or point to it with MADGRAPH_CMAKE=/path/to/cmake." % CMAKE_MIN_VERSION
+    )
     return env
 
 
@@ -608,12 +625,30 @@ def main() -> None:
         # Show saved source settings if available, else platform-appropriate defaults
         from_saved = saved.get("mode") == "source"
         menu_defaults = saved if from_saved else _PLATFORM_SOURCE_DEFAULTS
-        opts = ask_compile_options(menu_defaults, from_saved=from_saved)
-        enable_cuda = opts.get("cuda", menu_defaults.get("cuda", False))
-        enable_hip = opts.get("hip", menu_defaults.get("hip", False))
-        enable_openblas = opts["openblas"]
-        enable_simd = opts["simd"]
-        build_type = ask_build_type(menu_defaults)
+
+        # Basic prompt: just CUDA/HIP plus an opt-in to the expert options below
+        basic = ask_compile_options(
+            menu_defaults,
+            from_saved=from_saved,
+            keys=("cuda", "hip"),
+            show_expert_option=True,
+        )
+        enable_cuda = basic.get("cuda", menu_defaults.get("cuda", False))
+        enable_hip = basic.get("hip", menu_defaults.get("hip", False))
+
+        if basic.get("_expert", False):
+            expert = ask_compile_options(
+                menu_defaults, from_saved=from_saved, keys=("openblas", "simd")
+            )
+            enable_openblas = expert["openblas"]
+            enable_simd = expert["simd"]
+            build_type = ask_build_type(menu_defaults)
+        else:
+            enable_openblas = menu_defaults.get(
+                "openblas", _PLATFORM_SOURCE_DEFAULTS["openblas"]
+            )
+            enable_simd = menu_defaults.get("simd", False)
+            build_type = _saved_build_type(menu_defaults)
 
     # Compute capability prompts
     cuda_arch = saved.get("cuda_arch", DEFAULT_CUDA_ARCH)

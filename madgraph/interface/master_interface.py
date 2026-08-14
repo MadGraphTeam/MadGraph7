@@ -62,9 +62,9 @@ class Switcher(object):
         self.change_principal_cmd(main)
         self.cmd.__init__(self, *args, **opt)       
 
-    interface_names= {'MadGraph':('MG5_aMC',MGcmd.MadGraphCmd),
-                      'MadLoop':('MG5_aMC',LoopCmd.LoopInterface),
-                      'aMC@NLO':('MG5_aMC',amcatnloCmd.aMCatNLOInterface)}
+    interface_names= {'MadGraph':(MGcmd.MG7_PROMPT,MGcmd.MadGraphCmd),
+                      'MadLoop':(MGcmd.MG7_PROMPT,LoopCmd.LoopInterface),
+                      'aMC@NLO':(MGcmd.MG7_PROMPT,amcatnloCmd.aMCatNLOInterface)}
 
     _switch_opts = list(interface_names.keys())
     current_interface = None
@@ -659,7 +659,7 @@ class MasterCmd(Switcher, LoopCmd.LoopInterface, amcatnloCmd.aMCatNLOInterface, 
             
         # define the interface
         if main in list(self.interface_names.keys()):
-            self.prompt= self.interface_names[main][0]+'>'
+            self.prompt= self.interface_names[main][0]
             self.cmd= self.interface_names[main][1]
             self.current_interface=main
         else:
@@ -692,7 +692,7 @@ class MasterCmd(Switcher, LoopCmd.LoopInterface, amcatnloCmd.aMCatNLOInterface, 
             raise InvalidCmd("Command not compatible with previous command: Can not combine LO/NLO feature.")
             
         if name in list(self.interface_names.keys()):
-            self.prompt= self.interface_names[name][0]+'>'
+            self.prompt= self.interface_names[name][0]
             self.cmd= self.interface_names[name][1]
             self.current_interface=name
         else:

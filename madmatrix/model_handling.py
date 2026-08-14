@@ -87,6 +87,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # a combined routine written as a wrapper needs a scratch wavefunction
+        # as an extra argument (see write_combined_cc)
+        self.combined_needs_tmp = True
         self.outname = 'w%s%s' % (self.particles[self.outgoing-1], self.outgoing)
         self.momentum_size = 0 # for ALOHAOBJ implementation the momentum is separated from the wavefunctions
 
@@ -140,7 +143,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         """
         if name is None:
             name = self.name
-        if fd_gauge and name.count("_") > 1:  # FIXME ugly hack to get right header
+        if not self.combined_needs_tmp:
+            # assembled combined routine: it needs no scratch wavefunction
+            combined = False
+        elif fd_gauge and name.count("_") > 1:  # FIXME ugly hack to get right header
             combined = True
         if mode=='':
             mode = self.mode
@@ -229,12 +235,6 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     def get_foot_txt(self, combined=False):
         """Prototype for language specific footer"""
         text = ' '
-        if not combined and fd_gauge:
-            if self.outgoing and 'P1N' not in self.tag:
-                name = self.particles[self.outgoing-1]
-                if name.startswith(('S','V')):
-                    text += '      multiply_propagator_factor<W_ACCESS>(%(name)s%(i)s,%(mass)s%(i)s, %(name)s%(i)s);\n' % \
-                            {'name':name, 'mass': 'M%s' % name[1:], 'i': self.outgoing }
         text +='   mgDebug( 1, __FUNCTION__ );\n'
         text +='    return;\n'
         text += '  }\n\n  //--------------------------------------------------------------------------' # AV
@@ -378,8 +378,48 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 for i in range(1,6):
                     cppindex = i -1
                     out.write("    w%(type)s%(out)s[%(ind)s] = CZERO ;\n" % {'type': type, 'out':self.outgoing, 'ind':cppindex})
+            if self.has_fd_propagator():
+                out.write(self.get_fd_gauge_txt())
         # Returning result
         ###print('."' + out.getvalue() + '"') # AV - FOR DEBUGGING
+        return out.getvalue()
+
+    # OM - FD gauge: the propagator factor is written in the routine (it used to
+    # be a call to multiply_propagator_factor), split in a part that only
+    # depends on the momentum and one that is linear in the wavefunction.
+    def get_fd_gauge_txt(self):
+        """FD gauge: the 5-momentum q (its 5th component carries the mass) and
+        the gauge direction n. Written with the momenta: it does not depend on
+        the wavefunction the routine builds."""
+
+        out = StringIO()
+        wf = '%s%s' % (self.particles[self.outgoing-1], self.outgoing)
+        # the 5th component is -i * m: built from broadcast reals, since a
+        # scalar complex has no conversion to the vector type (cxtype_sv)
+        out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
+                  (', '.join('cxmake( -%s.pvec[%d], 0. )' % (wf, i) for i in range(4)),
+                   self.outgoing))
+        out.write('    fptype_sv FDN[5];\n')
+        out.write('    define_gauge_dir( FDQ, FDN );\n')
+        out.write('    const fptype_sv FDNQ = %s;\n' %
+                  ' - '.join('FDN[%d] * FDQ[%d].real()' % (i, i) for i in range(4)))
+        return out.getvalue()
+
+    def get_fd_propagator_txt(self):
+        """FD gauge: the part of the propagator factor that is linear in the
+        wavefunction, w -> w - q * js1 - n * js2, written after the components
+        have been built."""
+
+        out = StringIO()
+        w = self.outname
+        size = self.type_to_size[self.particles[self.outgoing-1]] - 2
+        out.write('    const cxtype_sv FDJS1 = ( %s ) / FDNQ;\n' %
+                  ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
+        out.write('    const cxtype_sv FDJS2 = ( %s - cxconj( FDQ[4] ) * %s[4] ) / FDNQ;\n' %
+                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)), w))
+        for i in range(size):
+            out.write('    %(w)s[%(i)d] = %(w)s[%(i)d] - FDQ[%(i)d] * FDJS1 - FDN[%(i)d] * FDJS2;\n'
+                      % {'w': w, 'i': i})
         return out.getvalue()
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting, add delayed declaration with initialisation)
@@ -565,12 +605,18 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             format = ' %s = %s;\n' % (name, self.get_fct_format(fct))
             out.write(format % ','.join([self.write_obj(obj) for obj in objs])) # AV not used in eemumu?
         numerator = self.routine.expr
-        if not 'Coup(1)' in self.routine.infostr:
+        if self.coup_name:
+            # one term of an assembled routine: its own coupling among COUP1, ...
+            coup_name = self.coup_name
+        elif not 'Coup(1)' in self.routine.infostr:
             coup_name = 'COUP'
         else:
             coup_name = '%s' % self.change_number_format(1)
+        has_coup = coup_name != self.change_number_format(1)
+        # OM the Ccoeff sign carrier goes with the coupling it multiplies
+        ccoeff = 'Ccoeff%s' % coup_name[4:]
         if not self.offshell:
-            if coup_name == 'COUP':
+            if has_coup:
                 mydict = {'num': self.write_obj(numerator.get_rep([0]))} # '...(TMP4)-cI...' comes from here
                 for c in ['coup', 'vertex']:
                     if self.type2def['pointer_%s' %c] in ['*']:
@@ -580,7 +626,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         mydict['pre_%s' %c] = ''
                         mydict['post_%s'%c] = ''
                 # This affects '( *vertex ) = ' in HelAmps_sm.cc
-                out.write('    %(pre_vertex)svertex%(post_vertex)s = Ccoeff * %(pre_coup)sCOUP%(post_coup)s * %(num)s;\n' % mydict) # OM add Ccoeff (fix #825)
+                mydict['coup'] = coup_name
+                mydict['ccoeff'] = ccoeff
+                mydict['add'] = '%(pre_vertex)svertex%(post_vertex)s + ' % mydict if self.combined_part else ''
+                out.write('    %(pre_vertex)svertex%(post_vertex)s = %(add)s%(ccoeff)s * %(pre_coup)s%(coup)s%(post_coup)s * %(num)s;\n' % mydict) # OM add Ccoeff (fix #825)
             else:
                 mydict= {}
                 if self.type2def['pointer_vertex'] in ['*']:
@@ -590,13 +639,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     mydict['pre_vertex'] = ''
                     mydict['post_vertex'] = ''
                 mydict['data'] = self.write_obj(numerator.get_rep([0]))
+                mydict['add'] = '%(pre_vertex)svertex%(post_vertex)s + ' % mydict if self.combined_part else ''
                 # This affects '( *vertex ) = ' in HelAmps_sm.cc
-                out.write('    %(pre_vertex)svertex%(post_vertex)s = %(data)s;\n' % mydict)
+                out.write('    %(pre_vertex)svertex%(post_vertex)s = %(add)s%(data)s;\n' % mydict)
         else:
             OffShellParticle = '%s%d' % (self.particles[self.offshell-1],\
                                                                   self.offshell)
             if 'L' not in self.tag:
-                coeff = 'denom'
+                # each term of an assembled routine has its own denominator
+                # (they are 'const' declarations in the same scope)
+                coeff = 'denom%s' % (coup_name[4:] if self.combined_part else '')
                 mydict = {}
                 if self.type2def['pointer_coup'] in ['*']:
                     mydict['pre_coup'] = '(*'
@@ -607,13 +659,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 mydict['coup'] = coup_name
                 mydict['i'] = self.outgoing
                 if self.nodeclare:
-                    mydict['declnamedenom'] = 'const %s denom' % self.type2def['complex_v'] # AV
+                    mydict['declnamedenom'] = 'const %s %s' % (self.type2def['complex_v'], coeff) # AV
                 else:
-                    mydict['declnamedenom'] = 'denom' # AV
-                    self.declaration.add(('complex','denom'))
+                    mydict['declnamedenom'] = coeff # AV
+                    self.declaration.add(('complex', coeff))
                 # Need to add the unary operator before the coupling (OM fix for #825)
-                if mydict['coup'] != 'one': # but in case where the coupling is not used (one)
-                    mydict['pre_coup'] = 'Ccoeff * %s' % mydict['pre_coup']
+                if has_coup: # but in case where the coupling is not used (one)
+                    mydict['pre_coup'] = '%s * %s' % (ccoeff, mydict['pre_coup'])
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
@@ -640,10 +692,22 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 shift = 5 - 1 #to correspond to the shift in fortran indicies with -1 for C++
             for ind in numerator.listindices():
                 # This affects 'V1[2] = ' and 'F1[2] = ' in HelAmps_sm.cc
-                ###out.write('    %s[%d]= %s*%s;\n' % (self.outname,
-                out.write('    %s[%d] = %s * %s;\n' % (self.outname, # AV
-                                        self.pass_to_HELAS(ind) + shift, coeff,
+                # the slot is fixed by the spin of this structure, the name by
+                # the routine the code is written in; a term of an assembled
+                # routine adds up into a slot several structures can feed
+                # outname carries the 'w' accessor prefix, rename_wf works on
+                # the wavefunction name itself
+                slot = 'w%s[%d]' % (self.rename_wf(self.outname[1:]),
+                                    self.pass_to_HELAS(ind) + shift)
+                out.write('    %s = %s%s * %s;\n' % (slot, # AV
+                                        '%s + ' % slot if self.combined_part else '',
+                                        coeff,
                                         self.write_obj(numerator.get_rep(ind))))
+        if self.has_fd_propagator() and not self.combined_part:
+            # the FD gauge propagator factor is part of the wavefunction this
+            # routine builds, not a post-treatment (a term of an assembled
+            # routine gets it once, from the assembler, on the total)
+            out.write(self.get_fd_propagator_txt())
         ###return out.getvalue() # AV
         # AV check if one, two, half or quarter are used and need to be defined (ugly hack for #291: can this be done better?)
         out2 = StringIO()
@@ -695,7 +759,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             shift =  -1
             if fd_gauge and match.group('var').startswith('S'):
                 shift += 4
-            return 'w%s[%s]' % (match.group('var'), int(match.group('num')) + shift)
+            # the slot is fixed by the spin this structure sees on the leg, the
+            # name by the routine the code is written in (rename_wf)
+            return 'w%s[%s]' % (self.rename_wf(match.group('var')),
+                                int(match.group('num')) + shift)
 
     # OM - overload aloha_writers.WriteALOHA and ALOHAWriterForCPP methods (handle 'unary minus' #628)
     def change_var_format(self, obj):
@@ -780,6 +847,18 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # Set some usefull command
         if offshell is None:
             offshell = self.offshell
+
+        # structures acting on different spins (FD gauge: a leg is a vector in
+        # one structure and its Goldstone in the next one) can not share a
+        # single ALOHA expression, but they can still be assembled into a
+        # single routine instead of a wrapper calling each of them
+        self.combined_needs_tmp = True
+        if hasattr(self.routine, 'get_combined_routines') and \
+                       not os.environ.get('MG_ALOHA_COMBINE_WRAPPER'):
+            routines = self.routine.get_combined_routines(lor_names)
+            if routines:
+                self.combined_needs_tmp = False
+                return self.write_combined_parts_cc(routines, lor_names, offshell, mode)
 
         name = combine_name(self.routine.name, lor_names, offshell, self.tag)
         self.name = name
@@ -871,6 +950,78 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         text = text.getvalue()
         return text
+
+    # OM - a combined routine whose structures do not act on the same spins is
+    # assembled term by term instead of calling each of them (see
+    # AbstractRoutine.get_combined_routines and the fortran writer)
+    def write_combined_parts_cc(self, routines, lor_names, offshell, mode=''):
+        """Assemble the structures of a combined call into a single routine:
+        one set of momenta, one set of declarations, one FD propagator factor,
+        and each structure adding its own coupling times its own expression
+        into the slots it feeds."""
+
+        name = combine_name(self.routine.name, lor_names, offshell, self.tag)
+        self.name = name
+        writers_l = [self.__class__(routine, None, options=self.options)
+                                                        for routine in routines]
+        main = writers_l[0]
+        main.name = name
+        main.mode = mode if mode else self.mode
+        # assembled: no scratch wavefunction in the signature (the .h header is
+        # written from self, which write_combined_cc already flagged)
+        main.combined_needs_tmp = False
+        # one name per leg -- the one the first structure gives it
+        legs = ['%s%d' % (spin, i+1) for i, spin in enumerate(main.particles)]
+
+        bodies = []
+        for i, writer in enumerate(writers_l):
+            writer.name = name
+            writer.mode = main.mode
+            writer.coup_name = 'COUP%s' % (i+1)
+            writer.combined_part = True
+            for j, spin in enumerate(writer.particles):
+                wf = '%s%d' % (spin, j+1)
+                if wf != legs[j]:
+                    writer.wf_rename[wf] = legs[j]
+            bodies.append(writer.define_expression())
+
+        new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
+        for writer in writers_l[1:]:
+            for entry in writer.declaration:
+                main.declaration.add(entry)
+
+        text = StringIO()
+        text.write(main.get_header_txt(name=name, couplings=new_couplings,
+                                       mode=main.mode))
+        # unlike the wrapper form, the assembled body needs cI
+        text.write(main.get_declaration_txt())
+        text.write(main.get_momenta_txt())
+        text.write(main.get_coupling_def())
+        # the terms add up into the output, so it has to start from zero (in FD
+        # gauge the momenta already reset the wavefunction)
+        if not offshell:
+            text.write('    ( *vertex ) = cxzero_sv();\n')
+        elif not (fd_gauge and main.particles[main.outgoing-1] in ['S', 'V']):
+            for i in range(self.type_to_size[main.particles[main.outgoing-1]] - 2):
+                text.write('    %s[%d] = cxzero_sv();\n' % (main.outname, i))
+        # the structures share the contraction cache, so the same TMP/FCT (and
+        # the same constexpr fptype) is built by several of them: a given name
+        # always stands for the same value, keep the first definition only
+        declared = re.compile(r'^(?:const|constexpr)\s+\S+\s+'
+                              r'((?:TMP|FCT)\d+|one|two|half|quarter)\s*[=(]')
+        seen = set()
+        for body in bodies:
+            for line in body.splitlines(True):
+                found = declared.match(line.strip())
+                if found:
+                    if found.group(1) in seen:
+                        continue
+                    seen.add(found.group(1))
+                text.write(line)
+        if main.has_fd_propagator():
+            text.write(main.get_fd_propagator_txt())
+        text.write(main.get_foot_txt())
+        return text.getvalue()
 
 
 from os.path import join as pjoin
@@ -2822,8 +2973,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
             if isinstance(argument, helas_objects.HelasWavefunction):
                 #arg['out'] = 'w_sv[%(out)d]'
                 arg['out'] = 'aloha_obj[%(out)d]'
-                if fd_gauge and len(l) > 1: #FIXME: this is a hack to avoid a bug in the FD code
-                    arg['out'] = arg['out'] + ", aloha_obj_tmp[0]"
                 if aloha.complex_mass:
                     arg['mass'] = 'm_pars->%(CM)s, '
                 else:
@@ -2832,8 +2981,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'
                 arg['out2'] = 'amp_sv[%(out)d]'
-                if fd_gauge and len(l) > 1: #FIXME: this is a hack to avoid a bug in the FD code
-                    arg['out'] = arg['out'] + ", &amp_tmp_fp[0]"
                 arg['mass'] = ''
             call = call % arg
             # Now we have a line correctly formatted
