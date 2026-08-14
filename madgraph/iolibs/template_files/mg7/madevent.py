@@ -1728,10 +1728,22 @@ def ask_edit_cards() -> dict:
     # question a card/banner path -- as the question itself advertises -- and have
     # it replace the corresponding card. Without it the path is rejected ("This
     # answer is not valid for current question") and the default is used instead.
-    switch, question = mother.ask('', '0', [], path_msg='enter path',
-                                  ask_class=selector_class,
-                                  mode='auto', line_args=[], force=False,
-                                  return_instance=True)
+    try:
+        switch, question = mother.ask('', '0', [], path_msg='enter path',
+                                      ask_class=selector_class,
+                                      mode='auto', line_args=[], force=False,
+                                      return_instance=True)
+    except BaseException:
+        # interrupted (e.g. ctrl-C) before the prune below could run: prune
+        # here too, using the instance ask() stashed pre-interrupt, or the
+        # eagerly-materialised tool cards get misread as "left ON" next time.
+        instance = getattr(mother, '_last_ask_instance', None)
+        if instance is not None and hasattr(instance, 'active_cards'):
+            try:
+                mother.keep_cards(instance.active_cards())
+            except Exception as error:
+                logger.debug('could not prune tool cards after aborted launch question: %s', error)
+        raise
     switch = dict(switch)
     prune_unselected_tool_cards(mother, question, switch)
     return switch

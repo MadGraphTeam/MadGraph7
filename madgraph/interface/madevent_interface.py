@@ -6949,10 +6949,23 @@ tar -czf split_$1.tar.gz split_$1
         # answer is validated by check_answer_in_input_file first: without
         # path_msg a card path is rejected ("This answer is not valid for
         # current question") and silently replaced by the default.
-        switch = self.ask('', '0', [], path_msg='enter path',
-                          ask_class=self.action_editcard,
-                          mode=mode, line_args=args, force=self.force,
-                          first_cmd=passing_cmd)
+        try:
+            switch = self.ask('', '0', [], path_msg='enter path',
+                              ask_class=self.action_editcard,
+                              mode=mode, line_args=args, force=self.force,
+                              first_cmd=passing_cmd)
+        except BaseException:
+            # interrupted (e.g. ctrl-C) before the normal-return pruning
+            # below could run: prune here too, or the tool cards eagerly
+            # materialised for every available program survive and get
+            # misread as "left ON" on the next launch.
+            instance = getattr(self, '_last_ask_instance', None)
+            if instance is not None and hasattr(instance, 'active_cards'):
+                try:
+                    self.keep_cards(instance.active_cards())
+                except Exception as error:
+                    logger.debug('could not prune tool cards after aborted launch question: %s', error)
+            raise
         #
         self.switch = switch # store the value of the switch for plugin purpose
         if 'dynamical' in switch:
