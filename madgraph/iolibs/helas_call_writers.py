@@ -231,18 +231,86 @@ class HelasCallWriter(base_objects.PhysicsObject):
         me = matrix_element.get('diagrams')
         matrix_element.reuse_outdated_wavefunctions(me)
 
+        # A current sum has to be written out once both currents are there.
+        # Doing it as soon as the later of the two is made keeps them alive:
+        # a slot is only handed on after its last use, and the cubic one is
+        # still needed by the amplitude the sum is for.
+        sums, uses, folded = self.get_quartic_current_sums(matrix_element)
+        slots = matrix_element.get_quartic_sum_me_ids()
+        after = {}
+        for i, (cubic, quartic, coeff) in enumerate(sums):
+            after.setdefault(max(cubic.get('number'), quartic.get('number')),
+                             []).append(i)
+
         res = []
+        written = set()
         for diagram in matrix_element.get('diagrams'):
-            
-            
-            res.extend([ self.get_wavefunction_call(wf) for \
-                         wf in diagram.get('wavefunctions') ])
+
+
+            for wf in diagram.get('wavefunctions'):
+                res.append(self.get_wavefunction_call(wf))
+                for i in after.get(wf.get('number'), []):
+                    # a wavefunction number can be listed by more than one
+                    # diagram, and the sum must only be written once
+                    if i in written:
+                        continue
+                    written.add(i)
+                    cubic, quartic, coeff = sums[i]
+                    res.extend(self.get_current_sum_lines(
+                        slots[i], cubic, quartic, coeff))
             res.append("# Amplitude(s) for diagram number %d" % \
                        diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
-                res.append(self.get_amplitude_call(amplitude))
+                if amplitude.get('number') in folded:
+                    # summed into another amplitude through a current sum
+                    continue
+                res.append(self.get_amplitude_call_on_sums(
+                    amplitude, uses.get(amplitude.get('number')), slots))
+
+        res.extend(self.get_amplitude_merge_lines(matrix_element))
 
         return res
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums to write out. Only the Fortran writer knows how to
+        emit one, see FortranUFOHelasCallWriter."""
+
+        return [], {}, set()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Lines building one current sum. Fortran only."""
+
+        raise NotImplementedError
+
+    def get_amplitude_call_on_sums(self, amplitude, substitution, slots):
+        """The amplitude call, reading the current sums in place of the cubic
+        currents they were built from.
+
+        The slot is swapped on the mother itself and put back straight away,
+        the same way get_loop_amplitude_helas_calls relabels its externals."""
+
+        if not substitution:
+            return self.get_amplitude_call(amplitude)
+
+        original = []
+        for mother in amplitude.get('mothers'):
+            index = substitution.get(mother.get('number'))
+            if index is None:
+                continue
+            original.append((mother, mother.get('me_id')))
+            mother.set('me_id', slots[index])
+        try:
+            return self.get_amplitude_call(amplitude)
+        finally:
+            for mother, me_id in original:
+                mother.set('me_id', me_id)
+
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Lines summing the quartic contributions into the amplitude which
+        carries the same colour factor. Only the Fortran writer implements
+        this, see FortranUFOHelasCallWriter."""
+
+        return []
 
     def get_wavefunction_calls(self, wavefunctions):
         """Return a list of strings, corresponding to the Helas calls
@@ -285,9 +353,12 @@ class HelasCallWriter(base_objects.PhysicsObject):
            call = fct(wavefunction) 
 
         
-        if  self.options['zerowidth_tchannel'] and wavefunction.is_t_channel():
-            call, n = re.subn(r',\s*fk_(?!ZERO)\w*\s*,', ', ZERO,', str(call), flags=re.I)
-            if n:
+        if self.options['zerowidth_tchannel'] and wavefunction.is_t_channel():
+            # The width i*M*Gamma is now dropped inside the ALOHA propagator
+            # routine itself, at runtime, for spacelike (P^2<0) momenta -- see
+            # aloha.t_channel_width / aloha_writers. We no longer rewrite the call
+            # to pass ZERO; we only flag a non-zero width here for the notice.
+            if re.search(r',\s*fk_(?!ZERO)\w*\s*,', str(call), flags=re.I):
                 self.width_tchannel_set_tozero = True
         return call
         
@@ -1027,6 +1098,60 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
 
     mp_prefix = check_param_card.ParamCard.mp_prefix
 
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Sum every quartic contribution into the amplitude carrying the
+        same colour factor.
+
+        The two share a colour factor up to a rational coefficient, so adding
+        them here lets the JAMPs run over the cubic diagrams only, which is
+        what the JAMP optimiser then has to work with. The amplitudes summed
+        away are dropped from the colour amplitudes by
+        HelasMatrixElement.get_color_amplitudes."""
+
+        merges = matrix_element.get_quartic_amplitude_merges()
+        if not merges:
+            return []
+        # these were never computed: their current was summed instead
+        folded = self.get_quartic_current_sums(matrix_element)[2]
+
+        res = ['# Sum the quartic contributions into their cubic partner']
+        for source in sorted(merges):
+            if source in folded:
+                continue
+            target, coeff = merges[source]
+            if coeff == 1:
+                res.append('AMP(%d) = AMP(%d) + AMP(%d)' %
+                           (target, target, source))
+            elif coeff == -1:
+                res.append('AMP(%d) = AMP(%d) - AMP(%d)' %
+                           (target, target, source))
+            else:
+                res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
+                           (target, target, float(coeff), source))
+        return res
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums, see HelasMatrixElement.get_quartic_current_sums"""
+
+        return matrix_element.get_quartic_current_sums()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Sum the quartic current into the cubic one carrying the same colour
+        factor, so that the amplitude reading the sum gets both at once.
+
+        Written as a call rather than as two assignments so that everything
+        reading these files -- the helicity recycling in particular, which
+        rebuilds the DAG from the calls alone -- sees an ordinary internal
+        wavefunction taking two mothers. sumw_1 and subw_1 live in
+        aloha_functions.f; the coefficient is always +-1, see
+        HelasMatrixElement.compute_quartic_current_sums."""
+
+        return ['CALL %s(%s,%s,%s)' % (
+            'SUMW_1' if coeff == 1 else 'SUBW_1',
+            self.format_helas_object('W(', '%d') % cubic.get('me_id'),
+            self.format_helas_object('W(', '%d') % quartic.get('me_id'),
+            self.format_helas_object('W(', '%d') % number)]
+
     def __init__(self, argument={}, hel_sum = False, options={}):
         """Allow generating a HelasCallWriter from a Model.The hel_sum argument
         specifies if amplitude and wavefunctions must be stored specifying the
@@ -1042,6 +1167,11 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         self.use_flavor_mask = False
         self.me_n_flavors = 0
         self.me_active_flavor_mask = None
+        # When True the external wavefunction NSF/NSV flag is multiplied by
+        # IC(i), letting the caller cross a leg between the initial and the
+        # final state. Only the exporters whose template passes a meaningful
+        # IC turn this on (see generate_external_wavefunction).
+        self.use_crossing_ic = False
         super(FortranUFOHelasCallWriter, self).__init__(argument, options=options)
 
     def format_helas_object(self, prefix, number):
@@ -1203,14 +1333,30 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 else:
                     call = call + "%(mass)s,"
                 call = call + "NHEL(%(number_external)d),"
+            wf_object = self.format_helas_object('W(', '%(me_id)d')
             if argument.get('spin') == 2:
-                call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
+                suffix = ", FLAVOR(%(number_external)d)," + wf_object + ")"
             else:
-                call = call + "%(state_id)+d,{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
+                suffix = "," + wf_object + ")"
+            # Two variants of the NSF/NSV flag: bare, or multiplied by IC so
+            # that the caller can flip a leg between the initial and the final
+            # state (crossing). Flipping that flag is what crosses the leg:
+            # helas stores the momentum as p*nsf and uses nhel*nsf. Only
+            # templates that actually pass a meaningful IC may use the second
+            # form -- several (e.g. the madevent MATRIX) declare IC as a local
+            # and never set it, so reading it there would give garbage.
+            call = (call + "%(state_id)+d" + suffix,
+                    call + "%(state_id)+d*IC(%(number_external)d)" + suffix)
 
-        call_function = lambda wf: call % wf.get_external_helas_call_dict()
+        if isinstance(call, tuple):
+            # The flag is read at emission time, not here: a single writer
+            # instance is reused across outputs (standalone then madevent), so
+            # the choice must not be baked into the cached call.
+            call_function = lambda wf: \
+                call[1 if self.use_crossing_ic else 0] % \
+                wf.get_external_helas_call_dict()
+        else:
+            call_function = lambda wf: call % wf.get_external_helas_call_dict()
         self.add_wavefunction(argument.get_call_key(), call_function)
 
     def generate_all_other_helas_objects(self,argument):
@@ -1676,6 +1822,10 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         self.use_flavor_mask = False
         self.me_n_flavors = 0
         self.me_active_flavor_mask = None
+        # When True, external HELAS calls permute the helicity through perm[]
+        # and multiply their NSF flag by ic[] so a crossed leg flips (set by the
+        # standalone_cpp exporter around calculate_wavefunctions generation).
+        self.use_crossing_ic = False
         super(CPPUFOHelasCallWriter, self).__init__(argument, options=options)
 
     def _flavor_mask_prefix(self, obj, kind):
@@ -1702,6 +1852,34 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         word = (idx - 1) // 64
         bit = (idx - 1) % 64
         return 'if ((%s[%d] & (1ULL << %d)) != 0ULL) ' % (array, word, bit)
+
+    def _cpp_external_call(self, wf, routine, spin, is_boson):
+        """Build the ixxxxx/oxxxxx/vxxxxx/sxxxxx call for an external leg.
+
+        When self.use_crossing_ic is False this reproduces the historical call
+        byte-for-byte. When True the helicity is read through perm[] and the NSF
+        flag is multiplied by ic[], so a leg the crossing moved between the
+        initial and the final state flips (helas folds the momentum sign change
+        and the helicity flip out of that flag)."""
+        n = wf.get('number_external') - 1
+        me = wf.get('me_id') - 1
+        if not is_boson:
+            # For fermions, need particle/antiparticle
+            nsf = - (-1) ** wf.get_with_flow('is_part')
+        else:
+            # For bosons (incl. scalars), need initial/final
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        cross = getattr(self, 'use_crossing_ic', False)
+        hel_tok = ('hel[perm[%d]]' % n) if cross else ('hel[%d]' % n)
+        nsf_tok = ('%+d*ic[%d]' % (nsf, n)) if cross else ('%+d' % nsf)
+        if spin == 1:
+            return '%s(p[perm[%d]],%s,w[%d]);' % (routine, n, nsf_tok, me)
+        elif spin == 2:
+            return '%s(p[perm[%d]],mME[%d],%s,%s, flavor[%d],w[%d]);' % \
+                   (routine, n, n, hel_tok, nsf_tok, n, me)
+        else:
+            return '%s(p[perm[%d]],mME[%d],%s,%s,w[%d]);' % \
+                   (routine, n, n, hel_tok, nsf_tok, me)
 
     def generate_helas_call(self, argument):
         """Routine for automatic generation of C++ Helas calls
@@ -1743,50 +1921,17 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         if isinstance(argument, helas_objects.HelasWavefunction) and \
                not argument.get('mothers'):
             # String is just ixxxxx, oxxxxx, vxxxxx or sxxxxx
-            call = call + HelasCallWriter.mother_dict[\
+            routine = HelasCallWriter.mother_dict[\
                 argument.get_spin_state_number()].lower()
             # Fill out with X up to 6 positions
-            call = call + 'x' * (6 - len(call))
-            # Specify namespace for Helas calls
-            call = call + "(p[perm[%d]],"
-            if argument.get('spin') != 1:
-                # For non-scalars, need mass and helicity
-                call = call + "mME[%d],hel[%d],"
-            if argument.get('spin') == 2:
-                call = call + "%+d, flavor[%i],w[%d]);"
-            else:
-                call = call + "%+d,w[%d]);"
-            if argument.get('spin') == 1:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 # For boson, need initial/final here
-                                 (-1) ** (wf.get('state') == 'initial'),
-                                 wf.get('me_id')-1)
-            elif argument.is_boson():
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 # For boson, need initial/final here
-                                 (-1) ** (wf.get('state') == 'initial'),
-                                 wf.get('me_id')-1)
-            elif argument.get('spin') == 2:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 # For fermions, need particle/antiparticle
-                                 - (-1) ** wf.get_with_flow('is_part'),
-                                 wf.get('number_external')-1, 
-                                 wf.get('me_id')-1)
-            else:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 # For fermions, need particle/antiparticle
-                                 - (-1) ** wf.get_with_flow('is_part'),
-                                 wf.get('me_id')-1)
+            routine = routine + 'x' * (6 - len(routine))
+            spin = argument.get('spin')
+            is_boson = argument.is_boson()
+            # The crossing decision (use_crossing_ic) is read at emission time,
+            # inside the cached lambda, because one session reuses the writer
+            # across a crossing output and a plain one (see the fortran writer).
+            call_function = lambda wf: self._cpp_external_call(
+                wf, routine, spin, is_boson)
         else:
             if isinstance(argument, helas_objects.HelasWavefunction):
                 outgoing = argument.find_outgoing_number()

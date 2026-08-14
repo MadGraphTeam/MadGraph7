@@ -54,6 +54,14 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV - keep OM's default for this plugin (using grouped_mode=False, "can decide to merge uu~ and u~u anyway")
     sa_symmetry = True
 
+    # The color sum can run on the (n-2)! Del Duca-Dixon-Maltoni basis for a
+    # multi-gluon process, but a color flow still has to be picked among the
+    # (n-1)! trace structures, so the trace basis is built alongside and the
+    # trace jamps are rebuilt from the DDM ones through the Kleiss-Kuijf
+    # relations (see set_color_flow_lines_cpp in model_handling.py).
+    support_ddm_color_basis = True
+    ddm_needs_flow_basis = True
+
     # Below are the class variable that are defined in export_cpp.ProcessExporterGPU
     # AV - keep defaults from export_cpp.ProcessExporterGPU
     # Decide which type of merging is used [madevent/madweight]
@@ -69,6 +77,12 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     # AV - use a custom OneProcessExporter
     oneprocessclass = model_handling.OneProcessExporterMadMatrix
+
+    # Crossing symmetry (extended flavor id) is supported by the madmatrix /
+    # cudacpp CPU-SIMD backend (gated by --use_crossing, default on). The MG7
+    # (pure-cpp mg7_v5) exporter keeps supports_crossing=False. When
+    # --use_crossing=False the generated output is byte-identical to before.
+    supports_crossing = True
 
     # Information to find the template file that we want to include from madgraph
     # you can include additional file from the plugin directory as well
@@ -159,6 +173,19 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             return val.strip().lower() not in ('false', '0', 'no', 'off')
         return bool(val)
 
+    def get_makefile_replace_dict(self, model):
+        """Add what madmatrix.mk needs to know about a host BLAS for the C++
+        color sum. Whether a given process actually takes it is decided when
+        that process is written out (see cpp_blas_wanted); this only settles
+        whether one could be linked at all."""
+
+        from madgraph.iolibs.export_v4 import ProcessExporterFortran
+        replace_dict = super().get_makefile_replace_dict(model)
+        flags = ProcessExporterFortran.blas_available_flags()
+        replace_dict['cpp_blas_default'] = 'hasBlas' if flags else 'hasNoBlas'
+        replace_dict['cpp_blas_libflags'] = flags
+        return replace_dict
+
     # AV - overload the default version: create CMake directory, do not create lib directory
     def copy_template(self, model):
         misc.sprint('Entering ProcessExporterMadMatrix.copy_template (initialise the directory)')
@@ -177,9 +204,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         misc.sprint('  type(proc_number)=%s me=%s'%(type(proc_number) if proc_number is not None else None, proc_number)) # e.g. int
         misc.sprint("need to link", self.to_link_in_P)
         # Propagate the --mask toggle to the helas call writer that emits the
-        # guarded wavefunction/amplitude calls.
+        # guarded wavefunction/amplitude calls, and the output command line as
+        # a whole for the --jamp_optim toggle of the color-flow optimisation.
         if cpp_helas_call_writer is not None:
             cpp_helas_call_writer.use_flavor_mask = self.use_flavor_mask
+            cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
         out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
         return out
 
@@ -230,10 +259,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     def copy_template(self, model):
         super().copy_template(model)
         madmatrix_mk = pjoin(self.madmatrix_templates, 'madmatrix.mk')
-        rendered = self.read_template_file(madmatrix_mk) % {
-            'model': self.get_model_name(model.get('name')),
-            'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++',
-        }
+        rendered = self.read_template_file(madmatrix_mk) % \
+                                        self.get_makefile_replace_dict(model)
         open(pjoin(self.dir_path, 'SubProcesses', 'madmatrix.mk'), 'w').write(rendered)
 
         # Write another custom bin/generate_events to orchestrate the standalone mode

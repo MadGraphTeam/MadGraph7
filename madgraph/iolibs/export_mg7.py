@@ -25,6 +25,13 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.process = self.amplitude.get("process")
         self.legs = self.process.get("legs_with_decays")
         self.color_basis = self.matrix_element.get("color_basis")
+        # The basis a color flow is picked among: always the trace one, which
+        # is the color basis itself unless the color sum runs on the DDM basis.
+        # Everything indexing a color flow -- the color_flows table, the
+        # active_colors masks, icolamp -- has to use this one and not the
+        # (smaller) basis of the color sum.
+        self.color_flow_basis = self.color_basis.get_flow_basis() \
+                                if self.color_basis else self.color_basis
         self.set_topology()
         self.set_flavor_indices()
         self.set_active_flavors()
@@ -104,9 +111,12 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
     def set_channels_colors_map(self):
         if self.color_basis:
+            # active_colors ends up in the icolamp mask, which is walked over
+            # the color flows, so it must be indexed on the flow basis
+            flow_basis = self.color_flow_basis
             diag_jamps = defaultdict(list)
-            for ijamp, col_basis_elem in enumerate(sorted(self.color_basis.keys())):
-                for diag_tuple in self.color_basis[col_basis_elem]:
+            for ijamp, col_basis_elem in enumerate(sorted(flow_basis.keys())):
+                for diag_tuple in flow_basis[col_basis_elem]:
                     diag_jamps[diag_tuple[0]].append(ijamp)
 
         sym_indices, sym_perms, _ = find_symmetry(
@@ -195,6 +205,39 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 self.active_color_map.append(active_colors)
                 i += 1
 
+    @staticmethod
+    def get_color_code_tables(color_flow_dicts, legs):
+        """(codes, slots) -- the canonical colour-flow code of each flow plus the
+        slot structure needed to decode it, or (None, None) when the flows have
+        no usable code (a sextet, or an epsilon structure).
+
+        Same encoding as the fortran madevent output (see export_v4:
+        _color_flow_code / _color_flow_decode): flip the initial-state pair so
+        every colour index connects to an anticolour index, then digit i is the
+        anticolour SLOT that colour slot i connects to, and
+        code = sum_i digit_i * N^i. `slots` is {"color": [...], "acolor": [...]}
+        with 1-based leg numbers, and is flow independent -- it is fixed by the
+        colour representations, so one table serves every flow.
+
+        Consumers decode a code back to the per-leg tags rather than looking the
+        flow up in the ICOLUP-style "color_flows" table."""
+        from madgraph.iolibs.export_v4 import ProcessExporterFortranME as _E
+        states = [l.get("state") for l in legs]
+        flows = [[tuple(cf[l.get("number")]) for l in legs]
+                 for cf in color_flow_dicts]
+        if any(c < 0 or a < 0 for fl in flows for c, a in fl):
+            return None, None      # sextet: negative tag, not representable
+        conns = [_E._color_flow_canon(fl, states) for fl in flows]
+        codes = [_E._color_flow_code(c) for c in conns]
+        if any(c is None for c in codes) or len(set(codes)) != len(codes):
+            return None, None
+        colslots, acolslots = _E._color_flow_slots(conns[0])
+        if not acolslots or any(_E._color_flow_slots(c) != (colslots, acolslots)
+                                for c in conns[1:]):
+            return None, None
+        return codes, {"color": [l + 1 for l in colslots],
+                       "acolor": [l + 1 for l in acolslots]}
+
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
         if self.color_basis:
@@ -205,15 +248,21 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 repr_dict[leg.get("number")] = self.model.get_particle(
                     leg.get("id")
                 ).get_color() * (-1) ** (1 + leg.get("state"))
-            # Get the list of color flows
-            color_flow_dicts = self.color_basis.color_flow_decomposition(repr_dict, n_initial)
+            # Get the list of color flows. This is about color flows, so
+            # always the trace basis, even when the color sum runs on the DDM
+            # one.
+            color_flow_dicts = self.color_flow_basis.\
+                               color_flow_decomposition(repr_dict, n_initial)
             # And output them properly
             color_flows = [
                 [[color_flow_dict[leg.get("number")][i] for i in [0, 1]] for leg in legs]
                 for color_flow_dict in color_flow_dicts
             ]
+            color_codes, color_slots = self.get_color_code_tables(
+                color_flow_dicts, legs)
         else:
             color_flows = [[[0, 0]] * n_external]
+            color_codes, color_slots = None, None
 
         # We need the both particle and antiparticle wf_ids, since the identity
         # depends on the direction of the wf.
@@ -264,7 +313,15 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             "me_path": lib_me_path,
             "path": proc_dir,
             "flavors": flavors,
+            # ICOLUP-style per-flow tags. Still needed by the LHE writer to
+            # reconstruct the colour of INTERNAL (propagator/decay) lines, so it
+            # cannot be dropped just because the code gives the external legs.
             "color_flows": color_flows,
+            # canonical colour-flow code of each flow + the (flow independent)
+            # slot structure to decode it; null when the flows have no usable
+            # code, in which case a consumer falls back to "color_flows".
+            "color_codes": color_codes,
+            "color_slots": color_slots,
             "pdg_color_types": pdg_color_types,
             "diagram_count": len(self.diagrams),
             "helicities": list(self.matrix_element.get_helicity_matrix()),

@@ -125,6 +125,16 @@ class IdentifyMETag(diagram_generation.DiagramTag):
                 process.get('is_decay_chain'),
                 identical_particle_factor,
                 dc,
+                # Two modules told to cover DIFFERENT halves of a pattern's
+                # flavors (set_excluded_flavors) must not be identified, however
+                # alike their diagrams: this tag deliberately identifies
+                # processes that agree up to a leg permutation, and the split
+                # that lets a crossing serve q q~ > q' q~' is exactly such a
+                # pair. Merging them would relabel one to the other's leg order
+                # (reorder_process below) and undo the split silently. Empty for
+                # every process that was never told anything, so ordinary
+                # flavor combination is untouched.
+                getattr(process, '_excluded_flavors', ()),
                 perms,
                 sorted_tags]
 
@@ -871,6 +881,12 @@ class HelasWavefunction(base_objects.PhysicsObject):
             self['lcut_size'] = self.get_lcut_size()  
 
         if name in ['spin', 'mass', 'width', 'self_antipart']:
+            # onshell_zero_width (a runtime annotation set post-generation on an
+            # internal propagator whose particle is also an external/on-shell
+            # state) forces a ZERO width there -- see
+            # HelasMatrixElement.set_onshell_particles_width_to_zero.
+            if name == 'width' and getattr(self, 'onshell_zero_width', False):
+                return 'ZERO'
             return self['particle'].get(name)
         elif name == 'pdg_code':
             return self['particle'].get_pdg_code()
@@ -3984,6 +4000,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # has_mirror_process is True if the same process but with the
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
+        # Crossed subprocesses folded into this ME and NOT generated on their
+        # own (merge_crossing='record'); carried over from the base amplitude so
+        # the exporter can reach them through this ME's crossing-aware SMATRIX.
+        # Each entry is (crossed Process, base_permutation, crossed_permutation).
+        self['crossed_processes'] = []
         self['allowed_flavors'] = [] # list of all allowed flavors for the process
         self['allowed_flavors_with_iden'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
         self['allowed_flavors_with_iden_sign'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
@@ -3994,9 +4015,22 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         #   _flavor_populated      -- the valid_flavors store is up to date
         #   _flavor_allow_trimming -- a per-leg flavor restriction is active
         #   _flavor_trimmed        -- restricted-flavor diagram trimming has run
+        #   _flavor_epoch          -- bumped whenever the store or the diagram
+        #                             list is rebuilt; invalidates the masks
+        #   _flavor_mask_cache     -- token of the last compute_flavor_masks()
+        #                             pass, or None if the masks are not current
         self._flavor_populated = False
         self._flavor_allow_trimming = False
         self._flavor_trimmed = False
+        # Cache for get_quartic_amplitude_merges(), needed both by the helas
+        # calls and by the colour amplitudes. Runtime only, like the above.
+        self.quartic_amplitude_merges = None
+        # Cache for get_quartic_current_sums(), same reason
+        self.quartic_current_sums = None
+        # Slots the current sums were given by reuse_outdated_wavefunctions
+        self.quartic_sum_me_ids = None
+        self._flavor_epoch = 0
+        self._flavor_mask_cache = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -4023,6 +4057,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if name == 'has_mirror_process':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid boolean" % str(value))
+        if name == 'crossed_processes':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError("%s is not a valid list" % str(value))
         return True
 
     def get_sorted_keys(self):
@@ -4030,7 +4067,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return ['processes', 'identical_particle_factor',
                 'diagrams', 'color_basis', 'color_matrix',
-                'base_amplitude', 'has_mirror_process']
+                'base_amplitude', 'has_mirror_process',
+                'crossed_processes']
 
     # Enhanced get function
     def get(self, name):
@@ -4055,6 +4093,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 self.get('processes').append(amplitude.get('process'))
                 self.set('has_mirror_process',
                          amplitude.get('has_mirror_process'))
+                if 'crossed_processes' in amplitude and \
+                        amplitude.get('crossed_processes'):
+                    self.set('crossed_processes',
+                             list(amplitude.get('crossed_processes')))
                 self.generate_helas_diagrams(amplitude, optimization, decay_ids)
                 self.calculate_fermionfactors()
                 self.calculate_identical_particle_factor()
@@ -4415,7 +4457,24 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             for diag in helas_diagrams:
                 for wf in diag['wavefunctions']:
                     wf.set('me_id',wf.get('number'))
+            self.quartic_sum_me_ids = None   # a fresh slot each, at the end
             return helas_diagrams
+
+        # A current sum is a line of its own, written as soon as the later of
+        # the two currents it reads is made, and read by the amplitudes it was
+        # built for. Giving it a key here lets it take a slot from the same
+        # pool as everything else, rather than one of its own at the end --
+        # and lets the cubic current die at the sum rather than at the
+        # amplitude, since the amplitude no longer reads it.
+        sums, uses, folded = self.get_quartic_current_sums()
+        read_after = {}
+        for isum, (cubic, quartic, coeff) in enumerate(sums):
+            read_after.setdefault(max(cubic.get('number'),
+                                      quartic.get('number')), []).append(isum)
+        # keys for the sums, above every wavefunction number
+        offset = max([wf.get('number') for diag in helas_diagrams
+                      for wf in diag['wavefunctions']] or [0])
+        sum_key = lambda isum: offset + 1 + isum
 
         # First compute the first/last appearance of each wavefunctions
         # first takes the line number and return the id of the created wf
@@ -4423,18 +4482,42 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         last_lign={}
         first={}
         pos=0
+        written = set()
+        allocated = set()
         for diag in helas_diagrams:
             for wf in diag['wavefunctions']:
                 pos+=1
                 for wfin in wf.get('mothers'):
                     last_lign[wfin.get('number')] = pos
                     assert wfin.get('number') in list(first.values())
+                # the same wavefunction can be listed by more than one
+                # diagram; it is written twice with the same value, so it owns
+                # one slot from its first appearance to its last use, and
+                # handing it a second one here would leak the first
+                if wf.get('number') in allocated:
+                    continue
+                allocated.add(wf.get('number'))
                 first[pos] = wf.get('number')
+                for isum in read_after.get(wf.get('number'), []):
+                    if isum in written:
+                        continue
+                    written.add(isum)
+                    pos+=1
+                    cubic, quartic, coeff = sums[isum]
+                    last_lign[cubic.get('number')] = pos
+                    last_lign[quartic.get('number')] = pos
+                    first[pos] = sum_key(isum)
             for amp in diag['amplitudes']:
                 pos+=1
+                substitution = uses.get(amp.get('number'), {})
                 for wfin in amp.get('mothers'):
-                    last_lign[wfin.get('number')] = pos
-        
+                    isum = substitution.get(wfin.get('number'))
+                    if isum is None:
+                        last_lign[wfin.get('number')] = pos
+                    else:
+                        # this amplitude reads the sum, not the cubic current
+                        last_lign[sum_key(isum)] = pos
+
         # last takes the line number and return the last appearing wf at
         #that particular line
         last=collections.defaultdict(list)
@@ -4463,7 +4546,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         for diag in helas_diagrams:
             for wf in diag['wavefunctions']:
                 wf.set('me_id', replace[wf.get('number')])
-        
+        self.quartic_sum_me_ids = [replace[sum_key(isum)]
+                                   for isum in range(len(sums))]
+
         return helas_diagrams
 
     def restore_original_wavefunctions(self):
@@ -4476,7 +4561,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         for diag in helas_diagrams:
             for wf in diag['wavefunctions']:
                 wf.set('me_id',wf.get('number'))
-        
+        self.quartic_sum_me_ids = None   # a fresh slot each, at the end
+
         return helas_diagrams
 
 
@@ -5314,12 +5400,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     def get_number_of_wavefunctions(self):
         """Gives the total number of wavefunctions for this ME"""
 
-        out =  max([wf.get('me_id') for wfs in self.get('diagrams') 
+        # a current sum can hold the highest slot of all
+        extra = self.get_quartic_sum_me_ids()
+
+        out =  max([wf.get('me_id') for wfs in self.get('diagrams')
                                     for wf in wfs.get('wavefunctions')])
-        if out: 
-            return out
-        return sum([ len(d.get('wavefunctions')) for d in \
-                       self.get('diagrams')])
+        if out:
+            return max([out] + extra)
+        return max([sum([ len(d.get('wavefunctions')) for d in \
+                       self.get('diagrams')])] + extra)
         
     def get_all_wavefunctions(self):
         """Gives a list of all wavefunctions for this ME"""
@@ -5332,6 +5421,79 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """Gives a list of all widths used by this ME (from propagator)"""
 
         return set([(d.get('mass'),d.get('width')) for d in self.get_all_wavefunctions()])
+
+
+    def set_onshell_particles_width_to_zero(self):
+        """Drop the width of any internal propagator whose particle is also an
+        external (initial/final) state of the process.
+
+        An external particle is an on-shell asymptotic state, so treating an
+        internal propagator of the same field as an unstable resonance
+        (the i*M*Gamma in its denominator) is inconsistent: e.g. the s/u-channel
+        top in t a > t a. This mirrors the T-channel width drop but is keyed on
+        the particle being external rather than on the propagator momentum being
+        spacelike. It is applied by setting the propagator wavefunction's width
+        to ZERO, which every UFO backend reads for the propagator's W argument
+        (see HelasWavefunction.get_helas_call_dict); in the complex-mass scheme
+        the same ZERO makes that propagator use the real mass. Controlled by the
+        zerowidth_external option; returns True if any width was dropped."""
+        # The asymptotic external states are the decay LEAVES: in a decay chain
+        # (d d~ > z z, z > e+ e-) the core final z is not asymptotic, it is a
+        # resonance decaying to e+ e-, so expand the decays (a no-op without
+        # them). Using the core legs would wrongly flag the resonance's field.
+        external_pdgs = set()
+        offshell_pdgs = set()
+        for proc in self.get('processes'):
+            legs = proc.get_legs_with_decays() \
+                if hasattr(proc, 'get_legs_with_decays') else proc.get('legs')
+            for leg in legs:
+                external_pdgs.add(abs(leg.get('id')))
+            # A leg tagged off-shell (the "particle*" syntax -> leg['offshell'])
+            # is deliberately NOT treated as an asymptotic on-shell state: it
+            # stands for an off-shell resonance whose Breit-Wigner width must be
+            # kept (e.g. p p > t* t~*). Exclude its field so no propagator of it
+            # has the width dropped.
+            for leg in proc.get('legs'):
+                if leg.get('offshell'):
+                    offshell_pdgs.add(abs(leg.get('id')))
+        external_pdgs -= offshell_pdgs
+        # A would-be Goldstone boson is eaten by -- and shares the mass of -- its
+        # gauge boson (G+ <-> W+, G0 <-> Z). In Feynman/FD gauge the Goldstone
+        # propagates explicitly, so if the gauge boson is an external on-shell
+        # state the Goldstone's internal propagator must drop its width too:
+        # otherwise the vector propagator carries ZERO width while its Goldstone
+        # keeps i*M*Gamma, an inconsistency that breaks the gauge-boson/Goldstone
+        # Ward identity. Add the Goldstone PDGs whose (shared) mass matches an
+        # external massive gauge boson. No-op in unitary gauge (no Goldstones)
+        # and for processes without an external vector boson.
+        model = self.get('processes')[0].get('model') if self.get('processes') \
+            else None
+        if model is not None and external_pdgs:
+            ext_vector_masses = set()
+            for pdg in external_pdgs:
+                part = model.get_particle(pdg)
+                if part and part.get('spin') == 3 \
+                        and str(part.get('mass')).lower() != 'zero':
+                    ext_vector_masses.add(part.get('mass'))
+            if ext_vector_masses:
+                for part in model.get('particles'):
+                    if part.get('goldstone') \
+                            and part.get('mass') in ext_vector_masses:
+                        external_pdgs.add(abs(part.get('pdg_code')))
+        dropped = False
+        for wf in self.get_all_wavefunctions():
+            # a wavefunction with no mothers is an external leg (no propagator,
+            # hence no width); only internal propagators carry the i*M*Gamma.
+            # A decay-chain resonance (onshell is True: produced on shell then
+            # decayed) MUST keep its Breit-Wigner width even if the same field
+            # also appears as an asymptotic external leg (e.g. one top decays
+            # while the other is final).
+            if wf.get('mothers') and wf.get('width') != 'ZERO' \
+                    and wf.get('onshell') is not True \
+                    and abs(wf.get_pdg_code()) in external_pdgs:
+                wf.onshell_zero_width = True
+                dropped = True
+        return dropped
 
 
     def get_coupling_for_flv(self, flv, model):
@@ -5491,6 +5653,47 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
             yield one_flavor, signed_pdg, signature
 
+    def set_excluded_flavors(self, flavors):
+        """Declare external-flavor assignments this module does NOT cover.
+
+        A merged matrix element offers every flavor its diagrams support. That
+        is right while one module covers a whole pattern, and wrong as soon as
+        two modules are meant to SHARE a pattern's flavors between them -- each
+        would offer the other's, and the two would double count.
+
+        The case that needs it: ``Q Q~ > Q Q~`` bundles three coupling classes,
+        and the flavor-changing annihilation ``q q~ > q' q~'`` is the one class a
+        crossing of ``Q Q > Q Q`` reaches only with the two light legs the other
+        way round. A module cannot list that class in the reachable order
+        (its leg pattern is shared by every row -- the FLAVOR table carries
+        unsigned group POSITIONS), so freeing it means generating a sibling with
+        the reordered pattern and giving each module HALF the flavors. This is
+        how a module is told which half is not its own.
+
+        `flavors` is an iterable of flavor-index tuples, in the same convention
+        as get_external_flavors(). Setting it invalidates the populated store so
+        the next read recomputes; passing an empty set restores the default
+        "cover everything the diagrams support".
+
+        The set is stored on the PROCESS, not on this matrix element, because a
+        matrix element is a derived object: the exporter rebuilds it from the
+        amplitude, and an exclusion recorded here would be silently dropped on
+        the way. The process travels with the amplitude, so the module that
+        comes out the far end still knows which half of the flavors is not its
+        own.
+        """
+        excluded = frozenset(tuple(f) for f in flavors)
+        for proc in self.get('processes'):
+            proc._excluded_flavors = excluded
+        # force a repopulate: allowed_flavors and everything derived from it
+        # (masks, pdg tables, coupling classes) must be rebuilt.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
+        self._flavor_populated = False
+        self['allowed_flavors'] = []
+        self['allowed_flavors_pdgs'] = []
+        self['allowed_flavors_with_iden'] = []
+        self['allowed_flavors_with_iden_pdgs'] = []
+
     def populate_flavor_validity(self, model=None):
         """Eager, single-source-of-truth pass for multi-flavor generation.
 
@@ -5514,6 +5717,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             return
         if model is None:
             model = self.get('processes')[0].get('model')
+
+        # The store below is what the flavor masks are read from, so rebuilding
+        # it retires any masks computed against the previous one.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
 
         # reset the per-diagram store (this is the authoritative source)
         for diag in self.get('diagrams'):
@@ -5562,6 +5769,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         flavor_list = []
         pdg_list = []
+        # Flavors this module has been told are not its own (set_excluded_
+        # flavors); carried on the process so it survives the exporter
+        # rebuilding the matrix element from the amplitude.
+        excluded_flavors = getattr(self.get('processes')[0],
+                                   '_excluded_flavors', ())
         # signature -> whether some diagram is valid for it, used to skip
         # permutation-equivalent assignments we have already decided on.
         checked = {}
@@ -5600,8 +5812,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
             # populate every diagram's store for this flavor
             if self.check_flavor_for_all_diagrams(one_flavor, model):
-                flavor_list.append(one_flavor)
-                pdg_list.append(signed_pdg)
+                # A flavor this module has been told it does not cover (see
+                # set_excluded_flavors) is still CHECKED -- the per-diagram
+                # store stays an honest record of what the diagrams support --
+                # but it is not offered, so it gets no bit in the flavor masks
+                # and no row anywhere downstream. Everything that describes the
+                # module's flavor content (compute_flavor_masks, the PDG
+                # tables, get_external_flavors_with_iden, the generated FLAVOR
+                # table) reads allowed_flavors, so dropping it here is the one
+                # place that needs to know.
+                if tuple(one_flavor) not in excluded_flavors:
+                    flavor_list.append(one_flavor)
+                    pdg_list.append(signed_pdg)
                 checked[signature] = True
             else:
                 checked[signature] = False
@@ -5796,6 +6018,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         debug = False
 
+        # Diagrams are about to be dropped and the survivors renumbered, so any
+        # mask set computed against the untrimmed ME is retired here.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
+
         # store which diagram
         dropped_wfct = {}
         def_wfct = set()
@@ -5849,6 +6075,53 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             raise self.NoFlavorError("No diagram left after trimming for flavor! \n Please check the diagram generated and change the QCD/QED restriction to allow more diagrams to be generated.")
 
 
+    def _clear_flavor_tags(self, objects):
+        """Drop the temporary 'flavortag' key from `objects` (wavefunctions and
+        amplitudes).
+
+        The tag is written by check_flavor()/get_coupling_for_flv() while they
+        walk the diagram and neither removes it afterwards, so it outlives the
+        computation that produced it.  It must not: replace_single_wavefunction
+        iterates old_wf.keys() and looks each one up on the new wavefunction, so
+        a leftover tag turns into a lookup on a key the replacement does not
+        have.  compute_flavor_masks() runs this on BOTH its paths -- the masks
+        can be reused from the cache, a stale tag never can.
+        """
+        for obj in objects:
+            try:
+                del obj['flavortag']
+            except Exception:
+                pass
+
+    def _flavor_mask_token(self, allowed_flavors, all_wfs, all_amps):
+        """Fingerprint of everything the flavor masks are derived from.
+
+        A cached mask set stays usable for exactly as long as this is unchanged.
+        It pins three things:
+
+        - `_flavor_epoch`, bumped by every routine that rebuilds the per-diagram
+          valid_flavors store or the allowed-flavor list (populate_flavor_
+          validity, set_excluded_flavors) or drops diagrams from the ME
+          (remove_diagrams_without_flavor).  That store is what the diagram masks
+          are read from, so a rebuild must not be served from the cache.
+        - the shape of the object graph, so any structural rewrite of the ME
+          forces a recompute.
+        - the amplitude NUMBERS, because guard_amp_number is one of them and the
+          helas call writer turns it straight into a bit index.  The C++/
+          madmatrix exporter renumbers amplitudes onto its single rolling
+          amp_sv slot while emitting calls, so the guards that hold inside that
+          window are not the ones that hold outside it and the two must not be
+          confused for each other.
+
+        It is built from the flat views the caller already has, so it costs no
+        traversal of its own.
+        """
+        return (getattr(self, '_flavor_epoch', 0),
+                len(allowed_flavors),
+                len(self.get('diagrams')),
+                len(all_wfs),
+                tuple(amp.get('number') for amp in all_amps))
+
     def compute_flavor_masks(self):
         """Compute per-diagram, per-amplitude and per-wavefunction flavor
         bitmasks. Bit i of a mask is set iff the object contributes for
@@ -5860,6 +6133,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         Returns the list of allowed-flavor tuples used to define the bit order
         (same object as self.get_external_flavors()). Returns [] if the ME has
         no merged-particle flavor variants (single flavor / nothing to mask).
+
+        Memoized.  A single `output` asks for the masks of one matrix element
+        four to six times (the flavor table, the pdg tables, the mask blocks,
+        the crossing rows), and step 2 below is an ancestor walk over every
+        wavefunction of every amplitude -- millions of visits for a process like
+        g g > t t~ 4g, repeated identically each time.  The masks are left ON the
+        objects, so a cache hit has nothing to re-apply; see _flavor_mask_token
+        for what keeps a hit honest.
         """
 
         if not self.get('processes'):
@@ -5867,6 +6148,27 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         allowed_flavors = self.get_external_flavors()
         if not allowed_flavors:
             return []
+
+        # The two flat views, taken once and reused for every step below.
+        # Same content and order as get_all_wavefunctions()/get_all_amplitudes(),
+        # flattened with a comprehension rather than their sum(..., []): that
+        # re-copies the accumulator once per diagram, so on a large matrix
+        # element one such rebuild costs about as much as the mask pass it
+        # feeds -- which would leave a cache hit nearly as dear as a miss.
+        diagrams = self.get('diagrams')
+        all_wfs = [wf for diag in diagrams for wf in diag.get('wavefunctions')]
+        all_amps = [amp for diag in diagrams for amp in diag.get('amplitudes')]
+
+        token = self._flavor_mask_token(allowed_flavors, all_wfs, all_amps)
+        if getattr(self, '_flavor_mask_cache', None) == token:
+            # Every mask, valid_flavors set and guard_amp_number this method
+            # writes is still on the objects from the computing call, and the
+            # token says nothing they are derived from has moved since.  Only
+            # step 3 still has to run: whatever ran in between may have re-tagged
+            # the objects (get_external_flavors_with_iden goes through
+            # get_coupling_for_flv, which tags and does not clean up).
+            self._clear_flavor_tags(all_wfs + all_amps)
+            return allowed_flavors
 
         # 1) Per-diagram mask, derived purely from the precomputed flavor store.
         # populate_flavor_validity() (triggered by get_external_flavors above)
@@ -5893,34 +6195,32 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # wavefunction contributes to exactly one amplitude, the call writer can
         # reuse that amplitude guard for the wavefunction call.
         wf_amp_sinks = {}
-        for diag in self.get('diagrams'):
-            for wf in diag.get('wavefunctions'):
-                wf['flavor_mask'] = 0
-                wf.pop('guard_amp_number', None)
+        for wf in all_wfs:
+            wf['flavor_mask'] = 0
+            wf.pop('guard_amp_number', None)
 
-        for diag in self.get('diagrams'):
-            for amp in diag.get('amplitudes'):
-                amp_mask = amp['flavor_mask']
-                if amp_mask == 0:
+        for amp in all_amps:
+            amp_mask = amp['flavor_mask']
+            if amp_mask == 0:
+                continue
+            amp_num = amp.get('number')
+            stack = list(amp.get('mothers'))
+            seen = set()
+            while stack:
+                wf = stack.pop()
+                wf_id = id(wf)
+                if wf_id in seen:
                     continue
-                amp_num = amp.get('number')
-                stack = list(amp.get('mothers'))
-                seen = set()
-                while stack:
-                    wf = stack.pop()
-                    wf_id = id(wf)
-                    if wf_id in seen:
-                        continue
-                    seen.add(wf_id)
-                    if amp_num is not None:
-                        wf_amp_sinks.setdefault(wf_id, set()).add(amp_num)
-                    existing = wf['flavor_mask'] if 'flavor_mask' in wf else 0
-                    new_mask = existing | amp_mask
-                    if new_mask != existing:
-                        wf['flavor_mask'] = new_mask
-                    stack.extend(wf.get('mothers'))
+                seen.add(wf_id)
+                if amp_num is not None:
+                    wf_amp_sinks.setdefault(wf_id, set()).add(amp_num)
+                existing = wf['flavor_mask'] if 'flavor_mask' in wf else 0
+                new_mask = existing | amp_mask
+                if new_mask != existing:
+                    wf['flavor_mask'] = new_mask
+                stack.extend(wf.get('mothers'))
 
-        for wf in self.get_all_wavefunctions():
+        for wf in all_wfs:
             sinks = wf_amp_sinks.get(id(wf))
             if sinks and len(sinks) == 1:
                 wf['guard_amp_number'] = next(iter(sinks))
@@ -5928,7 +6228,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # Mirror the wavefunction masks into per-wavefunction 'valid_flavors'
         # sets so HelasWavefunction.has_flavor() answers consistently with the
         # bitmasks (a wf contributes for flavor f iff bit f of its mask is set).
-        for wf in self.get_all_wavefunctions():
+        for wf in all_wfs:
             mask = wf['flavor_mask'] if 'flavor_mask' in wf else 0
             wf.valid_flavors = set(flavor for flav_idx, flavor
                                    in enumerate(allowed_flavors)
@@ -5937,12 +6237,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # 3) Clean up the 'flavortag' side effect left by diag.check_flavor on
         # wavefunctions and amplitudes. Same cleanup pattern as
         # get_external_flavors.
-        for wfct in self.get_all_wavefunctions() + self.get_all_amplitudes():
-            try:
-                del wfct['flavortag']
-            except Exception:
-                pass
+        self._clear_flavor_tags(all_wfs + all_amps)
 
+        self._flavor_mask_cache = token
         return allowed_flavors
 
     def flavor_mask_is_trivial(self):
@@ -6152,13 +6449,311 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return col_amp_list
 
-    def get_color_amplitudes(self):
+
+    def get_color_amplitudes(self, merge_quartic_amplitudes=True):
         """Return a list of (coefficient, amplitude number) lists,
         corresponding to the JAMPs for this matrix element. The
         coefficients are given in the format (fermion factor, color
-        coeff (frac), imaginary, Nc power)."""
-        
-        return self.generate_color_amplitudes(self['color_basis'],self['diagrams'])
+        coeff (frac), imaginary, Nc power).
+
+        merge_quartic_amplitudes says whether the caller also writes out the
+        sums of get_quartic_amplitude_merges. Only the Fortran writer does.
+        A backend which does not has to leave those amplitudes in the JAMPs,
+        where their own colour coefficients give the identical result -- the
+        two carry the same colour factor, which is the whole premise."""
+
+        col_amps = self.generate_color_amplitudes(self['color_basis'],
+                                                  self['diagrams'])
+        # never computed at all: their current was summed instead
+        dropped = set(self.get_quartic_current_sums()[2])
+        if merge_quartic_amplitudes:
+            # summed into their partner by GET_AMP, so they must not enter the
+            # JAMPs a second time
+            dropped |= set(self.get_quartic_amplitude_merges())
+        if not dropped:
+            return col_amps
+        return [[entry for entry in col_amp if entry[1] not in dropped]
+                for col_amp in col_amps]
+
+    def get_quartic_amplitude_merges(self):
+        """Return {amplitude number: (target number, coefficient)} for the
+        quartic gluon contributions which can be summed into another
+        amplitude.
+
+        Each colour structure of a four gluon vertex carries the same colour
+        factor as the diagram obtained by splitting that vertex into two cubic
+        ones, see diagram_generation.Amplitude.unroll_quartic_vertices, so the
+        two amplitudes may be added before the colour algebra is applied.
+        Doing so here keeps the JAMPs -- and hence the work of the JAMP
+        optimiser -- proportional to the number of cubic diagrams rather than
+        to the number of amplitudes.
+
+        The result is cached, since it is needed both when writing the helas
+        calls and when building the colour amplitudes.
+        """
+
+        if self.quartic_amplitude_merges is None:
+            self.quartic_amplitude_merges = self.compute_quartic_amplitude_merges()
+        return self.quartic_amplitude_merges
+
+    def compute_quartic_amplitude_merges(self):
+        """Work out the amplitude merges, see get_quartic_amplitude_merges."""
+
+        if not madgraph.merge_quartic_vertices:
+            return {}
+        # colorize() is applied to the reconstructed amplitude, so this is the
+        # one whose colour chains line up with our 'color_indices'
+        base = self.get('base_amplitude')
+        links = base.unroll_quartic_vertices()
+        if not links:
+            return {}
+
+        numbers = {}
+        for diagram in self.get('diagrams'):
+            for amplitude in diagram.get('amplitudes'):
+                numbers[(diagram.get('number') - 1,
+                         tuple(amplitude.get('color_indices')))] = \
+                    amplitude.get('number')
+
+        res = {}
+        for source, (target, coeff) in links.items():
+            target_chain = (0,) * \
+                len(base.get('diagrams')[target].get('vertices'))
+            try:
+                res[numbers[source]] = (numbers[(target, target_chain)], coeff)
+            except KeyError:
+                # no amplitude for one of the two: leave them alone
+                continue
+
+        # a merged amplitude must never itself be merged away, otherwise the
+        # contributions it absorbed would be lost
+        targets = set(target for target, _ in res.values())
+        return dict((source, value) for source, value in res.items()
+                    if source not in targets)
+
+    def get_quartic_current_sums(self):
+        """Return the current sums which take a quartic amplitude away.
+
+        Where a quartic current and the cubic current carrying the same colour
+        factor feed the same vertex, the two amplitudes they give differ by
+        that one line and by nothing else. Summing the two currents once and
+        calling the amplitude on the sum therefore gets both contributions out
+        of a single call:
+
+            TMP = W1 + c*W4
+            CALL VVV1_0(..., TMP, AMP(t))
+
+        instead of one call for AMP(t) and one for the quartic AMP(s) which is
+        then added to it. The sum is one addition and is shared by every
+        amplitude which uses it, so it replaces as many calls as it has users.
+
+        Only the amplitudes are treated. A sum sitting deeper would have to be
+        carried through every current above it, and those currents are shared
+        with diagrams which must not get the extra term -- see
+        docs/gluon-quartic-plan.md.
+
+        Returns (sums, uses, folded):
+          sums   [(cubic wavefunction, quartic wavefunction, coefficient)]
+          uses   {amplitude number: {cubic wavefunction number: sums index}}
+          folded set of amplitude numbers the sums make unnecessary
+        """
+
+        if self.quartic_current_sums is None:
+            self.quartic_current_sums = self.compute_quartic_current_sums()
+        return self.quartic_current_sums
+
+    def get_quartic_sum_me_ids(self):
+        """Wavefunction slot of each current sum.
+
+        reuse_outdated_wavefunctions hands them out of the same pool as the
+        wavefunctions themselves, so a sum lands in whatever slot happens to
+        be free. When the wavefunctions were not recycled they get a fresh
+        slot each, at the end."""
+
+        sums = self.get_quartic_current_sums()[0]
+        if not sums:
+            return []
+        if self.quartic_sum_me_ids is not None:
+            return self.quartic_sum_me_ids
+        used = [wf.get('me_id') or wf.get('number')
+                for diagram in self.get('diagrams')
+                for wf in diagram.get('wavefunctions')]
+        base = max(used or [0])
+        return [base + 1 + isum for isum in range(len(sums))]
+
+    def compute_quartic_current_sums(self):
+        """Work out the current sums, see get_quartic_current_sums."""
+
+        merges = self.get_quartic_amplitude_merges()
+        if not merges or madgraph.merge_quartic_vertices == 'slots':
+            # 'slots' orders the diagrams for the smallest wavefunction store
+            # instead, which puts a target ahead of the quartic currents
+            # feeding it, so no sum can be built
+            return [], {}, set()
+
+        model = self.get('processes')[0].get('model')
+        unrollable = diagram_generation.get_unrollable_quartic_vertices(model)
+        cubic_ids = diagram_generation.get_unrollable_cubic_ids(model)
+
+        amplitudes = {}
+        available = {}
+        written = set()
+        for diagram in self.get('diagrams'):
+            for wavefunction in diagram.get('wavefunctions'):
+                written.add(wavefunction.get('number'))
+            for amplitude in diagram.get('amplitudes'):
+                amplitudes[amplitude.get('number')] = amplitude
+                # the currents which exist by the time it is written out
+                available[amplitude.get('number')] = frozenset(written)
+
+        # For each target, the substitutions each of its merges asks for
+        candidates = {}
+        for source, (target, coeff) in merges.items():
+            pairs = self.match_quartic_mothers(amplitudes[source],
+                                               amplitudes[target],
+                                               unrollable, cubic_ids)
+            if not pairs:
+                continue
+            # the sum is written with sumw_1 / subw_1, which carry no weight
+            if abs(coeff) != 1:
+                continue
+            # the quartic current has to be there when the target is written
+            if any(quartic.get('number') not in available[target]
+                   for cubic, quartic in pairs):
+                continue
+            key = frozenset((cubic.get('number'), quartic.get('number'))
+                            for cubic, quartic in pairs)
+            candidates.setdefault(target, {})[key] = (source, coeff, pairs)
+
+        sums, uses, folded = [], {}, set()
+        index = {}
+        for target in sorted(candidates):
+            entries = candidates[target]
+            singles = dict((next(iter(key)), value)
+                           for key, value in entries.items() if len(key) == 1)
+
+            # Substituting several mothers at once also produces the amplitude
+            # with all of them substituted, so every subset has to be a merge
+            # into this same target, with the product of the coefficients.
+            # Keep the substitutions which pass, drop the ones which do not.
+            chosen = []
+            for pair in sorted(singles):
+                trial = chosen + [pair]
+                if all(self.subset_is_merged(entries, singles, combination)
+                       for size in range(2, len(trial) + 1)
+                       for combination in itertools.combinations(trial, size)):
+                    chosen = trial
+            if not chosen:
+                continue
+
+            for size in range(1, len(chosen) + 1):
+                for combination in itertools.combinations(chosen, size):
+                    folded.add(entries[frozenset(combination)][0])
+            for pair in chosen:
+                source, coeff, pairs = singles[pair]
+                cubic, quartic = pairs[0]
+                if (pair, coeff) not in index:
+                    index[(pair, coeff)] = len(sums)
+                    sums.append((cubic, quartic, coeff))
+                uses.setdefault(target, {})[cubic.get('number')] = \
+                    index[(pair, coeff)]
+
+        return sums, uses, folded
+
+    @staticmethod
+    def subset_is_merged(entries, singles, combination):
+        """Is the amplitude with all of combination substituted a merge into
+        the same target, weighing the product of the single coefficients?"""
+
+        entry = entries.get(frozenset(combination))
+        if entry is None:
+            return False
+        weight = 1
+        for pair in combination:
+            weight *= singles[pair][1]
+        return entry[1] == weight
+
+    @staticmethod
+    def match_quartic_mothers(source, target, unrollable, cubic_ids):
+        """Pair the mothers up where the source amplitude carries the quartic
+        current and the target the cubic one taking the same four lines.
+
+        Returns [] unless the two are otherwise one and the same vertex, which
+        is what makes the substitution a plain swap of one argument."""
+
+        if source.get('interaction_id') != target.get('interaction_id') or \
+           source.get('color_key') != target.get('color_key'):
+            return []
+
+        source_mothers = dict((mother.get('number'), mother)
+                              for mother in source.get('mothers'))
+        target_mothers = dict((mother.get('number'), mother)
+                              for mother in target.get('mothers'))
+        only_source = [source_mothers[number] for number in source_mothers
+                       if number not in target_mothers]
+        only_target = [target_mothers[number] for number in target_mothers
+                       if number not in source_mothers]
+        if not only_source or len(only_source) != len(only_target):
+            return []
+
+        res = []
+        for quartic in only_source:
+            hit = [cubic for cubic in only_target
+                   if HelasMatrixElement.is_unrolled_pair(quartic, cubic,
+                                                          unrollable,
+                                                          cubic_ids)]
+            if len(hit) != 1:
+                return []
+            res.append((hit[0], quartic))
+        if len(set(cubic.get('number') for cubic, quartic in res)) != len(res):
+            return []
+        return res
+
+    @staticmethod
+    def is_unrolled_pair(quartic, cubic, unrollable, cubic_ids):
+        """True when the cubic current is the pair of vertices the quartic one
+        factorises into: same four lines coming in, same line going out, and
+        the colour structure the quartic carries is the one which separates
+        the two lines the inner cubic vertex joins.
+
+        That last condition is the one which is easy to forget. A quartic
+        vertex makes one current per colour structure, and all of them take
+        the same lines and make the same line, so the lines alone cannot tell
+        them apart -- only the pairing can, and it has to be read against
+        sorted_mothers, the order ALOHA receives the legs in."""
+
+        if quartic.get('interaction_id') not in unrollable or \
+           cubic.get('interaction_id') not in cubic_ids or \
+           quartic.get('number_external') != cubic.get('number_external'):
+            return False
+
+        pairings = unrollable[quartic.get('interaction_id')][1]
+        if quartic.get('color_key') >= len(pairings):
+            return False
+        pairing = pairings[quartic.get('color_key')]
+        mothers = HelasMatrixElement.sorted_mothers(quartic)
+        outgoing = quartic.find_outgoing_number() - 1
+        slots = [i for i in range(len(mothers) + 1) if i != outgoing]
+
+        wanted = sorted(mother.get('number')
+                        for mother in quartic.get('mothers'))
+        for inner in cubic.get('mothers'):
+            if inner.get('interaction_id') not in cubic_ids or \
+               len(inner.get('mothers')) != 2:
+                continue
+            if sorted([mother.get('number')
+                       for mother in inner.get('mothers')] +
+                      [other.get('number') for other in cubic.get('mothers')
+                       if other is not inner]) != wanted:
+                continue
+            joined = set(mother.get('number')
+                         for mother in inner.get('mothers'))
+            separated = frozenset(slots[i] for i, mother in enumerate(mothers)
+                                  if mother.get('number') in joined)
+            if frozenset(pairing[0]) == separated or \
+               frozenset(pairing[1]) == separated:
+                return True
+        return False
 
     def sort_split_orders(self, split_orders):
         """ Sort the 'split_orders' list given in argument so that the orders of

@@ -60,4 +60,24 @@ if __debug__ or ADMIN_DEBUG:
     ordering = True
 else:
     ordering = False
+
+# Sum the quartic gluon contributions into the cubic amplitude carrying the
+# same colour factor, see HelasMatrixElement.get_quartic_amplitude_merges.
+# Set through the interface, "set merge_quartic_vertices <value>", and read
+# here because it is wanted while the diagrams are generated, long before any
+# exporter exists. False, or one of:
+#   'speed' -- the current sums, and the diagram order which allows them. Wins
+#              on cpu, where the amplitude calls dominate.
+#   'slots' -- no current sums, and the order which keeps fewest currents
+#              alive. Trades 6% more amplitude calls for 23% fewer
+#              wavefunction slots at seven gluons, which is the trade a gpu
+#              wants when occupancy is the limit.
+#   'auto'  -- generate as for 'speed', and let each output pick: 'slots' when
+#              the matrix elements go to a gpu backend, 'speed' otherwise. The
+#              interface resolves it to one of the two above before anything
+#              reads it again, so only the generation ever sees 'auto'.
+# Off by default: several consumers read the diagram or amplitude structure
+# rather than the result, see "Why this is not the default" in
+# docs/gluon-quartic-plan.md.
+merge_quartic_vertices = False
         

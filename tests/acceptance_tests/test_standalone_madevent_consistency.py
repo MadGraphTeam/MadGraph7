@@ -25,7 +25,6 @@ import logging
 logger = logging.getLogger('madgraph.madevent')
 
 import madgraph.interface.master_interface as cmd_interface
-import madgraph.various.misc as misc
 import madgraph.various.process_checks as process_checks
 
 
@@ -66,44 +65,112 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         self.cmd.exec_cmd(line)
 
     def check_process(self, process, model='sm', tolerance=1e-6):
+        """Every backend must return the same matrix element per flavor.
+
+        The reference is the plain (--use_crossing=False) fortran standalone.
+        Every other backend is compared to it flavor by flavor, matched by the
+        PDG tuple it prints (not by index -- the flavor ordering differs between
+        backends, and a crossing-folded backend may expose extra flavors):
+
+          - fortran madevent, ungrouped, --use_crossing=False (the original
+            check; only the ungrouped ME exporter does not support crossing);
+          - fortran standalone WITH crossing (the crossing-aware SMATRIX must
+            reproduce the plain per-flavor matrix element);
+          - fortran madevent, grouped, WITH crossing
+            (ProcessExporterFortranMEGroup, which does support crossing);
+          - standalone_mg7 (the madmatrix / cudacpp CPU-SIMD backend).
+        """
         self.do('set automatic_html_opening False')
         self.do('set group_subprocesses False')
         self.do('set apply_flavor_grouping True')
         self.do('set zerowidth_tchannel False')
         self.do('import model %s' % model)
-        self.do('generate %s' % process)
+
+        # -- Reference: plain fortran standalone (crossing machinery off) -------
+        self.do('generate %s --use_crossing=False' % process)
         generated_process = self.cmd._curr_amps[0].get('process')
-        self.do('output standalone %s -f' % self.standalone_dir)
-        self.do('output madevent %s -f' % self.madevent_dir)
-
-        standalone_dir = self._get_single_subprocess_dir(
-            pjoin(self.standalone_dir, 'SubProcesses'))
-        madevent_dir = self._get_single_subprocess_dir(
-            pjoin(self.madevent_dir, 'SubProcesses'))
-
-        standalone_rows, printed_phase_space = self._run_standalone(standalone_dir)
         seeded_phase_space = self._get_seeded_phase_space(generated_process)
+
+        ref_root = pjoin(self.tmpdir, 'standalone_plain')
+        self.do('output standalone %s -f' % ref_root)
+        ref_sub = self._get_single_subprocess_dir(pjoin(ref_root, 'SubProcesses'))
+        ref_rows, printed_phase_space = self._run_standalone(ref_sub)
         self._assert_phase_space_reasonable(
-            printed_phase_space, seeded_phase_space, standalone_dir)
-        madevent_by_iflav = self._run_hacked_madevent(madevent_dir, seeded_phase_space)
+            printed_phase_space, seeded_phase_space, ref_sub)
+        reference = self._rows_by_pdg(ref_rows, ref_sub)
 
-        self.assertTrue(len(standalone_rows) <= len(madevent_by_iflav),
-                         'Flavor-count mismatch for %s: standalone=%s madevent=%s'
-                         % (process, len(standalone_rows), len(madevent_by_iflav)))
+        # -- (1) fortran madevent, ungrouped, crossing off (the original check) -
+        # madevent enumerates flavors in the same order as the standalone check
+        # (its GET_FLAVOR returns group indices, not PDGs, so it is matched to
+        # the reference by that shared IFLAV order rather than by PDG).
+        me_root = pjoin(self.tmpdir, 'madevent_plain')
+        self.do('output madevent %s -f' % me_root)
+        me_sub = self._get_single_subprocess_dir(pjoin(me_root, 'SubProcesses'))
+        me_by_iflav = self._run_hacked_madevent(me_root, me_sub, seeded_phase_space)
+        self._compare_by_iflav(
+            process, 'madevent (ungrouped, crossing off)',
+            ref_rows, me_by_iflav, tolerance)
 
-        for iflav, standalone_row in enumerate(standalone_rows, start=1):
-            self.assertIn(iflav, madevent_by_iflav,
-                          'Missing madevent flavor index %s for %s' % (iflav, process))
-            standalone_me = standalone_row['value']
-            madevent_me = madevent_by_iflav[iflav]
-            scale = max(abs(standalone_me), abs(madevent_me), 1e-99)
-            misc.sprint('flavor=%s: diff=%f%%'%(
-                         standalone_row['pdg'], 100 * abs(standalone_me - madevent_me) / scale if scale != 0 else 0))
+        # -- (2) fortran standalone WITH crossing -------------------------------
+        self.do('generate %s --use_crossing=True' % process)
+        sacross_root = pjoin(self.tmpdir, 'standalone_crossing')
+        self.do('output standalone %s -f' % sacross_root)
+        sacross_sub = self._get_single_subprocess_dir(
+            pjoin(sacross_root, 'SubProcesses'))
+        sacross_rows, _ = self._run_standalone(sacross_sub)
+        self._compare_to_reference(
+            process, 'standalone (crossing on)',
+            reference, self._rows_by_pdg(sacross_rows, sacross_sub), tolerance)
+
+        # -- (3) fortran madevent, grouped, WITH crossing (MEGroup) -------------
+        self.do('set group_subprocesses True')
+        self.do('generate %s --use_crossing=True' % process)
+        meg_root = pjoin(self.tmpdir, 'madevent_group_crossing')
+        self.do('output madevent %s -f' % meg_root)
+        self.do('set group_subprocesses False')
+        meg_sub = self._get_single_subprocess_dir(pjoin(meg_root, 'SubProcesses'))
+        meg_by_iflav = self._run_hacked_madevent(
+            meg_root, meg_sub, seeded_phase_space,
+            smatrix_name='SMATRIX1', make_target='madevent_forhel')
+        self._compare_by_iflav(
+            process, 'madevent (grouped, crossing on)',
+            ref_rows, meg_by_iflav, tolerance)
+
+        # -- (4) standalone_mg7 (madmatrix / cudacpp CPU-SIMD) ------------------
+        # Skipped (not failed) if no C++ compiler or the madmatrix build
+        # toolchain is unavailable. Matched by flavor order like madevent: the
+        # extended flavor id is cross*nflav+flav, so the base flavors are ids
+        # 0..nflav-1, in the same order as the standalone check.
+        mg7_by_iflav = self._run_standalone_mg7(process, seeded_phase_space, ref_rows)
+        if mg7_by_iflav is not None:
+            self._compare_by_iflav(
+                process, 'standalone_mg7', ref_rows, mg7_by_iflav, tolerance)
+
+    def _rows_by_pdg(self, rows, subproc_dir):
+        """{PDG tuple -> matrix element} from _extract_standalone_flavors rows."""
+        by_pdg = {}
+        for row in rows:
+            by_pdg[tuple(row['pdg'])] = row['value']
+        self.assertEqual(len(by_pdg), len(rows),
+                         'Duplicate PDG flavor rows in %s' % subproc_dir)
+        return by_pdg
+
+    def _compare_to_reference(self, process, label, reference, other, tolerance):
+        """Assert `other` reproduces every reference flavor (matched by PDG)."""
+        self.assertTrue(other, 'No matrix elements produced by %s for %s'
+                        % (label, process))
+        for pdg, ref_me in reference.items():
+            self.assertIn(pdg, other,
+                          'Flavor %s missing from %s for %s' % (pdg, label, process))
+            other_me = other[pdg]
+            scale = max(abs(ref_me), abs(other_me), 1e-99)
+            rel = abs(ref_me - other_me) / scale
+            logger.debug('%s flavor=%s: diff=%f%%', label, pdg, 100 * rel)
             self.assertLessEqual(
-                abs(standalone_me - madevent_me) / scale,
-                tolerance,
-                'Incompatible matrix elements for %s flavor=%s iflav=%s: standalone=%s madevent=%s'
-                % (process, standalone_row['pdg'], iflav, standalone_me, madevent_me))
+                rel, tolerance,
+                'Incompatible matrix elements for %s flavor=%s (%s): '
+                'reference=%s %s=%s'
+                % (process, pdg, label, ref_me, label, other_me))
 
     def _get_single_subprocess_dir(self, root_dir):
         subproc_dirs = [pjoin(root_dir, name) for name in sorted(os.listdir(root_dir))
@@ -157,21 +224,128 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                     'printed=%s seeded=%s'
                     % (subproc_dir, ipart, icomp, printed_val, seeded_val))
 
-    def _run_hacked_madevent(self, subproc_dir, phase_space):
-        source_dir = pjoin(self.madevent_dir, 'Source')
+    def _compare_by_iflav(self, process, label, ref_rows, by_iflav, tolerance):
+        """Assert a madevent backend reproduces the reference, matched by IFLAV.
+
+        The standalone check loops flavors in the same order that the madevent
+        driver loops IFLAV, so reference row i (1-based) is madevent IFLAV i.
+        A grouped/crossing madevent may expose extra flavors past the reference
+        count; only the reference flavors are required to agree.
+        """
+        self.assertTrue(by_iflav, 'No matrix elements produced by %s for %s'
+                        % (label, process))
+        for iflav, row in enumerate(ref_rows, start=1):
+            self.assertIn(iflav, by_iflav,
+                          'Missing IFLAV=%s (flavor %s) from %s for %s'
+                          % (iflav, row['pdg'], label, process))
+            ref_me = row['value']
+            other_me = by_iflav[iflav]
+            scale = max(abs(ref_me), abs(other_me), 1e-99)
+            rel = abs(ref_me - other_me) / scale
+            logger.debug('%s flavor=%s: diff=%f%%', label, row['pdg'], 100 * rel)
+            self.assertLessEqual(
+                rel, tolerance,
+                'Incompatible matrix elements for %s flavor=%s iflav=%s (%s): '
+                'reference=%s %s=%s'
+                % (process, row['pdg'], iflav, label, ref_me, label, other_me))
+
+    def _run_hacked_madevent(self, madevent_root, subproc_dir, phase_space,
+                             smatrix_name='SMATRIX', make_target='madevent'):
+        # The grouped exporter names its per-subprocess routine SMATRIX1 and
+        # hides it behind helicity recycling (SMATRIX1 lives only in
+        # matrix1_orig.f -> the 'madevent_forhel' target). The test processes
+        # all group into a single subprocess (MAXSPROC=1), required by the
+        # single-SMATRIX driver below.
+        maxamps = pjoin(subproc_dir, 'maxamps.inc')
+        if os.path.isfile(maxamps):
+            match = re.search(r'MAXSPROC\s*=\s*(\d+)', open(maxamps).read())
+            if match:
+                self.assertEqual(int(match.group(1)), 1,
+                                 'Driver assumes MAXSPROC=1 in %s' % subproc_dir)
+        source_dir = pjoin(madevent_root, 'Source')
         retcode = self._call_with_optional_redirection(['make'], source_dir)
         self.assertEqual(retcode, 0, 'Failed to compile MadEvent source in %s' % source_dir)
 
-        self._write_hacked_driver(pjoin(subproc_dir, 'driver.f'), phase_space)
+        self._write_hacked_driver(pjoin(subproc_dir, 'driver.f'), phase_space,
+                                  smatrix_name)
 
-        retcode = self._call_with_optional_redirection(['make', 'madevent'], subproc_dir)
-        self.assertEqual(retcode, 0, 'Failed to compile hacked madevent in %s' % subproc_dir)
+        retcode = self._call_with_optional_redirection(['make', make_target], subproc_dir)
+        self.assertEqual(retcode, 0,
+                         'Failed to compile hacked madevent (%s) in %s'
+                         % (make_target, subproc_dir))
 
-        output = subprocess.Popen(['./madevent'],
+        output = subprocess.Popen(['./' + make_target],
                                   stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT,
                                   cwd=subproc_dir).communicate()[0].decode()
         return self._extract_madevent_by_iflav(output, subproc_dir)
+
+    def _run_standalone_mg7(self, process, phase_space, ref_rows):
+        """{IFLAV -> matrix element} for standalone_mg7 at the seeded momenta.
+
+        Returns None (skip) if there is no C++ compiler or the madmatrix build
+        toolchain cannot build check_sa.exe. check_sa.exe reads the external
+        momenta from an LHE file (-e), so the same seeded point is used as for
+        the fortran backends; the base flavors are the extended ids 0..nflav-1.
+        """
+        if not shutil.which(os.environ.get('CXX', 'g++')):
+            return None
+        outdir = pjoin(self.tmpdir, 'standalone_mg7')
+        self.do('generate %s --use_crossing=True' % process)
+        try:
+            self.do('output standalone_mg7 %s -f' % outdir)
+        except Exception:
+            return None
+        pdir = self._get_single_subprocess_dir(pjoin(outdir, 'SubProcesses'))
+
+        nevt = 8
+        lhe = pjoin(pdir, 'seeded.lhe')
+        self._write_lhe_events(lhe, phase_space, nevt)
+
+        rc = self._call_with_optional_redirection(
+            ['make', '-j2', 'check_sa.exe'], pdir)
+        if rc != 0:
+            return None
+
+        by_iflav = {}
+        for iflav in range(1, len(ref_rows) + 1):
+            flavor_id = iflav - 1  # extended id, cross=0 -> id = flavor (0-based)
+            output = subprocess.Popen(
+                ['./check_sa.exe', 'perf', '-v', '-f', str(flavor_id),
+                 '-e', lhe, '1', str(nevt), '1'],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                cwd=pdir).communicate()[0].decode()
+            values = re.findall(r'Matrix element =\s*([-\d.eE+]+)', output)
+            self.assertTrue(values,
+                            'No matrix element from standalone_mg7 flavor id %s '
+                            'for %s:\n%s' % (flavor_id, process, output))
+            by_iflav[iflav] = float(values[0])
+        return by_iflav
+
+    def _write_lhe_events(self, path, phase_space, nevents):
+        """Write `nevents` identical minimal LHE events at `phase_space`.
+
+        check_sa.exe only reads (E, px, py, pz) from each particle line; the
+        pdg/status/colour columns are placeholders. The momenta are replicated
+        across the SIMD page so every lane evaluates the seeded point.
+        """
+        def as_float(value):
+            if isinstance(value, str):
+                return float(value.replace('d', 'e').replace('D', 'E'))
+            return float(value)
+
+        npar = len(phase_space)
+        lines = []
+        for _ in range(nevents):
+            lines.append('<event>')
+            lines.append('%d 0 0.0 0.0 0.0 0.0' % npar)
+            for momentum in phase_space:
+                e, px, py, pz = (as_float(v) for v in momentum)
+                lines.append('1 1 0 0 0 0 %.17E %.17E %.17E %.17E 0.0'
+                             % (px, py, pz, e))
+            lines.append('</event>')
+        with open(path, 'w') as fsock:
+            fsock.write('\n'.join(lines) + '\n')
 
     def _call_with_optional_redirection(self, command, cwd):
         if logger.isEnabledFor(logging.INFO):
@@ -181,6 +355,14 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
 
     def _extract_standalone_flavors(self, output, subproc_dir):
         lines = output.splitlines()
+        # The standalone driver may append a crossing-symmetry demonstration
+        # (its own 'PDG ... / Matrix element = ...' lines for crossed
+        # processes). Those are not the primary per-flavor output this test
+        # compares against madevent, so stop at that section's header.
+        for cut, line in enumerate(lines):
+            if 'Crossing-symmetry example' in line:
+                lines = lines[:cut]
+                break
         standalone_rows = []
         for index, line in enumerate(lines):
             stripped = line.strip()
@@ -217,7 +399,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         self.assertTrue(by_iflav, 'No madevent flavor matrix elements found in %s' % subproc_dir)
         return by_iflav
 
-    def _write_hacked_driver(self, driver_path, phase_space):
+    def _write_hacked_driver(self, driver_path, phase_space, smatrix_name='SMATRIX'):
         lines = [
             '      PROGRAM DRIVER',
             '      use model_object',
@@ -277,12 +459,13 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                              (component, iparticle, formatted_value))
 
         lines.extend([
+            # The per-flavor PDG is read from leshouche.inc in python (madevent's
+            # GET_FLAVOR returns group indices, and its signature differs between
+            # the plain and grouped exporters), so the driver only emits IFLAV.
             '      DO IFLAV=1,MAXFLAVPERPROC',
-            '         CALL GET_FLAVOR(IFLAV,FLAVOR)',
-            '         CALL SMATRIX(P, IFLAV, 0.5D0, 0.5D0, 1, IVEC, ANS,',
+            '         CALL %s(P, IFLAV, 0.5D0, 0.5D0, 1, IVEC, ANS,' % smatrix_name,
             '     $    SELECTED_HEL, SELECTED_COL)',
             "         WRITE(*,*) 'IFLAV = ', IFLAV",
-            "         WRITE(*,*) 'PDG', (FLAVOR(J),J=1,NEXTERNAL)",
             "         WRITE(*,*) 'Matrix element = ', ANS, ' GeV^',-(2*NEXTERNAL-8)",
             '      ENDDO',
             '      END',

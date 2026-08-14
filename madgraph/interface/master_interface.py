@@ -612,6 +612,9 @@ class Switcher(object):
     def help_set2_loop_color_flows(self, *args, **opts):
         return self.cmd.help_set2_loop_color_flows(self, *args, **opts)
 
+    def help_set2_merge_quartic_vertices(self, *args, **opts):
+        return self.cmd.help_set2_merge_quartic_vertices(self, *args, **opts)
+
     def help_set2_loop_optimized_output(self, *args, **opts):
         return self.cmd.help_set2_loop_optimized_output(self, *args, **opts)
 
@@ -627,8 +630,14 @@ class Switcher(object):
     def help_set2_output_dependencies(self, *args, **opts):
         return self.cmd.help_set2_output_dependencies(self, *args, **opts)
 
+    def help_set2_color_basis(self, *args, **opts):
+        return self.cmd.help_set2_color_basis(self, *args, **opts)
+
     def help_set2_zerowidth_tchannel(self, *args, **opts):
         return self.cmd.help_set2_zerowidth_tchannel(self, *args, **opts)
+    
+    def help_set2_zerowidth_external(self, *args, **opts):
+         return self.cmd.help_set2_zerowidth_external(self, *args, **opts)
 
        
     def help_tutorial(self, *args, **opts):

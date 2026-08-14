@@ -733,3 +733,25 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz -t0
+
+
+  unittest_34:
+    # Unit tests added with the crossing-symmetry feature:
+    #   tests/unit_tests/interface/test_reweight_density.py
+    #     (TestAverageDensityMatrix: the average-density-matrix helpers shared by
+    #      DensityInterface and CommonRunCmd.do_reweight's multicore recombination)
+    #   tests/unit_tests/various/test_reweight_interface.py
+    #     (TestPdgForMeCall: merged-particle labels, both signs, resolved to the
+    #      event's concrete PDGs before the fortran call)
+    # Pure python, no toolchain: the whole job is a couple of seconds.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: reweight density / merged-label unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py TestAverageDensityMatrix TestPdgForMeCall -t0

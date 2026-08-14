@@ -1108,12 +1108,18 @@ class Interaction(PhysicsObject):
            """
         
         pdgs = [p.get_pdg_code() for p in self.get('particles')]
+        # 'merged_particles' is keyed by the positive merged code only
+        # ({81: [1,2,3,4], 82: [11,13], ...}) while pdgs holds the *signed* code:
+        # a leg that is an antiparticle instance reports -82, not 82. Membership
+        # must therefore always be tested through abs() -- a bare `pdg in ...`
+        # silently misses an interaction whose merged legs are all antiparticles
+        # (e.g. the l+ pair of a lepton-number-violating H-- l+ l+ vertex).
+        positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model.get('merged_particles')]
         flavor = [map_flavor[pdg].pop() if abs(pdg) in model.get('merged_particles') else 0 for pdg in pdgs]
         for coupling in self.get('couplings').values():
             if isinstance(coupling, str):
                 # if no PDG in merge range -> return True
-                if any([pdg in model['merged_particles'] for pdg in pdgs]):
-                    positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model['merged_particles']]
+                if positions:
                     if len(positions) != 2:
                         raise Exception
                     elif flavor[positions[0]] == flavor[positions[1]]:
@@ -2980,7 +2986,7 @@ class Vertex(PhysicsObject):
     """
     
     sorted_keys = ['id', 'legs']
-    
+
     # This sets what are the ID's of the vertices that must be ignored for the
     # purpose of the multi-channeling. 0 and -1 are ID's of various technical
     # vertices which have no relevance from the perspective of the diagram 
@@ -3014,7 +3020,6 @@ class Vertex(PhysicsObject):
         #       that it can be easily identified when constructing the DiagramChainLinks.
         self['id'] = 0
         self['legs'] = LegList()
-
     def filter(self, name, value):
         """Filter for valid vertex property values."""
 

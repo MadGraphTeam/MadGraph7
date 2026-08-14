@@ -225,6 +225,8 @@ C     undefined, corrupting memory when the density matrix is written.
       RETURN
       END
 
+%(f2py_flav_idx_wrappers)s
+
       LOGICAL FUNCTION PY_%(proc_prefix)sIS_BORN_HEL_SELECTED(HELID)
       IMPLICIT NONE
 C

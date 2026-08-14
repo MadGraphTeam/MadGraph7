@@ -71,6 +71,14 @@ $(BINDIR)gensudgrid: $(GENSUDGRID) $(LIBDIR)libpdf.$(libext) $(LIBDIR)libgammaUP
 
 # Dependencies
 
+# The model form-factor ALOHA routines in DHELAS and PDF/pdfwrap_lhapdf.f both do
+# "use model_object", whose F90 module (model_object.mod) is produced by the
+# MODEL build. Under a parallel (-j) top-level build libmodel, libdhelas and
+# libpdf are otherwise made concurrently, so order libdhelas and libpdf after
+# libmodel. Order-only (|) so they are not relinked when libmodel merely rebuilds.
+$(LIBDIR)libdhelas.$(libext): | $(LIBDIR)libmodel.$(libext)
+$(LIBDIR)libpdf.$(libext): | $(LIBDIR)libmodel.$(libext)
+
 dsample.o: DiscreteSampler.o dsample.f genps.inc StringCast.o vector.inc
 pawgraph.o: vector.inc
 DiscreteSampler.o: StringCast.o

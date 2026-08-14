@@ -118,7 +118,12 @@ class ReweightInterface(extended_cmd.Cmd):
         self.use_eventid = False
         self.inc_sudakov = False
         self.event_path = event_path
-        self.path2prefix = {} # store the f2pyprefix associated to a library 
+        self.path2prefix = {} # store the f2pyprefix associated to a library
+        # id_to_path-style tag -> folded crossed subprocesses reachable through
+        # a base matrix element (see build_cross_resolve); empty when crossing
+        # folded nothing.
+        self.cross_resolve = {}
+        self.cross_resolve_second = {}
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1596,6 +1601,28 @@ class ReweightInterface(extended_cmd.Cmd):
                 rm[val] = key
         return rm
 
+    def _pdg_for_me_call(self, event, orig_order, momenta, relevant_model):
+        """Return the PDG list to hand to the fortran for one permutation.
+
+        orig_order holds the leg ids of the generated process, which under
+        flavor grouping are the merged codes (81 for jets, 82 for charged
+        leptons, ...). Those are SIGNED: a subprocess whose grouped legs are
+        anti-particles -- g q~ > w+ q~, whose get_pdg_order is
+        [21,-81,24,-81] -- carries the negative code. model['merged_particles']
+        is keyed by the POSITIVE code only ({81: [1,2,3,4], ...}), hence the
+        abs(): without it the merged labels are handed to the fortran as-is,
+        the flavor mapping there resolves them to "no flavour", and both
+        SMATRIXHEL and GET_DENSITY return an exact zero.
+
+        Kept in one place because both calculate_matrix_element implementations
+        (matrix element and density matrix) need exactly this."""
+        pdg = list(orig_order[0]) + list(orig_order[1])
+        merged = relevant_model.get('merged_particles') if relevant_model \
+                 else self.merged_particles
+        if merged and any(abs(p) in merged for p in pdg):
+            return event.get_pdg(momenta)
+        return pdg
+
     def calculate_matrix_element(self, event, hypp_id, scale2=0):
         """routine to return the matrix element"""
 
@@ -1635,19 +1662,33 @@ class ReweightInterface(extended_cmd.Cmd):
         #else:
         #    base = "rw_me"
 
+        # A crossed subprocess folded in by crossing symmetry has no id_to_path
+        # entry of its own; it is reached through the base's crossing-aware
+        # SMATRIX at an extended flavor index (see build_cross_resolve). Stays
+        # None for every ordinary lookup.
+        flav_idx = procindex = None
         if (not self.second_model and not self.second_process and not self.dedicated_path) or hypp_id==0:
             if tag in self.id_to_path:
                 orig_order, Pdir, hel_dict = self.id_to_path[tag]
             else:
                 cross_tag = self.get_crossing_tag(tag)
-                orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
+                folded = None if cross_tag else self.resolve_folded_crossing(
+                    tag, tag_orig, self.cross_resolve)
+                if folded:
+                    orig_order, Pdir, hel_dict, procindex, flav_idx = folded
+                else:
+                    orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
         else:
             try:
                 orig_order, Pdir, hel_dict = self.id_to_path_second[tag]
             except KeyError:
                 cross_tag = self.get_crossing_tag(tag)
+                folded = None if cross_tag else self.resolve_folded_crossing(
+                    tag, tag_orig, self.cross_resolve_second)
                 if cross_tag:
                     orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
+                elif folded:
+                    orig_order, Pdir, hel_dict, procindex, flav_idx = folded
                 elif self.options['allow_missing_finalstate']:
                     return 0.0
                 else:
@@ -1679,10 +1720,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
         else:
             nhel = -1
-        pdg = list(orig_order[0])+list(orig_order[1])
-        relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
-        if relevant_merged and any(p in relevant_merged for p in pdg):
-            pdg = event.get_pdg(all_p[0])
+        pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
 
         #boosting the event
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id)
@@ -1712,7 +1750,14 @@ class ReweightInterface(extended_cmd.Cmd):
             with misc.chdir(Pdir):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):
                     #misc.sprint(pdg, pid, p, event.aqcd, scale2, nhel)
-                    new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
+                    if flav_idx is None:
+                        new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
+                    else:
+                        # folded crossing: name the matrix element by its slot
+                        # and the process by the extended flavor index, the PDG
+                        # dispatch cannot reach it. NPDG is f2py-derived from p.
+                        new_value = module.smatrixhel_idx(procindex, flav_idx, p,
+                                                    event.aqcd, scale2, nhel)
                     #misc.sprint(new_value)
                     if new_value == 0:
                         raise Exception("Invalid matrix element")
@@ -1741,14 +1786,25 @@ class ReweightInterface(extended_cmd.Cmd):
         """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
 
         # get list of possible crossing tag
-        crossing_tag = [tuple([int(x) for x in sorted(list(t[0])+list(t[1]))]) for t in self.id_to_path.keys()]
+        # id_to_path is not uniformly keyed: the NLO path also stores the
+        # virtual matrix element under ((initial, final), 'V'), so t[1] can be a
+        # string rather than a list of PDGs. Only a plain (initial, final) pair
+        # can carry a crossing, so skip anything else instead of trying to sort
+        # a string against a tuple.
+        crossing_tag = []
+        for t in self.id_to_path.keys():
+            try:
+                crossing_tag.append(
+                    tuple([int(x) for x in sorted(list(t[0]) + list(t[1]))]))
+            except (TypeError, ValueError):
+                continue
 
         mytag = list(tag[0])+list(tag[1])
         if self.revert_merged:
             for i in range(len(mytag)):
                 if mytag[i] in self.revert_merged:
                     mytag[i] = self.revert_merged[mytag[i]]
-                if -mytag[i] in self.revert_merged:
+                elif -mytag[i] in self.revert_merged:
                     mytag[i] = -self.revert_merged[-mytag[i]]
         mytag.sort()
         mytag=tuple(mytag)
@@ -1893,10 +1949,30 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             logger.info('generating the square matrix element for reweighting (second model and/or processes)')
         start = time.time()
+        # The reweight matches each event's flavor to a subprocess matrix
+        # element (id_to_path), and reaches a FOLDED crossed subprocess through
+        # the base's crossing-aware SMATRIX (see build_cross_resolve), so the
+        # crossings stay folded: the crossed subprocesses cost neither a
+        # generation nor a compilation.
+        #
+        # Two modes still want the crossed subprocesses back as separate entries:
+        #  - 'keep_ordering' promises that the events are written in the matrix
+        #    element's own leg order, which makes the id_to_path key
+        #    order-sensitive; a folded crossing has no directory and hence no
+        #    such order to promise, so a crossed event would miss the lookup.
+        #  - the density mode evaluates GET_DENSITY, not SMATRIX, and only its
+        #    FLAVOR-array entry point is wired up here; the FLAVOR array cannot
+        #    express a crossing (GET_DENSITY_IDX would be needed, as MadSpin's
+        #    density path does it).
+        # Perturbative (NLO / ewsudakov [...]) definitions are left untouched:
+        # they already skip crossing at generation, and the flag must not land
+        # inside their option-laden line.
+        xflag = ' --use_crossing=False' \
+            if (self.keep_ordering or self.flag_density_matrix) else ''
         commandline=''
         for i,proc in enumerate(data['processes']):
             if '[' not in proc:
-                commandline += "add process %s ;" % proc
+                commandline += "add process %s%s ;" % (proc, xflag)
             else:
                 has_nlo = True
                 if self.banner.get('run_card','ickkw') == 3:
@@ -1907,15 +1983,6 @@ class ReweightInterface(extended_cmd.Cmd):
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
                     commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
-        # --no_crossing skips the generation of crossed subprocesses (e.g.
-        # u~ g > h u~ when u g > h u is already there). That's fine when
-        # flavor grouping is on, because the merged matrix element handles
-        # all signs internally. Without flavor grouping, however, the
-        # crossed subprocesses must be generated as separate entries --
-        # otherwise antiparticle events have nothing to match against in
-        # id_to_path. Only emit --no_crossing when both conditions hold.
-        if not self.keep_ordering and self._reweight_use_flavor_grouping():
-            commandline = commandline.replace('add process', 'add process --no_crossing')
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
         try:
@@ -2158,7 +2225,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
         #if not self.keep_ordering:
         #    for i,line in enumerate(data['processes']):
-        #        data['processes'][i] = '%s --no_crossing' % line
+        #        data['processes'][i] = '%s --use_crossing=False' % line
             
 
         # 0. clean previous run ------------------------------------------------
@@ -2382,6 +2449,8 @@ class ReweightInterface(extended_cmd.Cmd):
 
         self.id_to_path = {}
         self.id_to_path_second = {}
+        self.cross_resolve = {}
+        self.cross_resolve_second = {}
         rwgt_dir_possibility =   ['rw_me','rw_me_%s' % self.nb_library,'rw_mevirt','rw_mevirt_%s' % self.nb_library]
         fprefix = ''
         for onedir in rwgt_dir_possibility:
@@ -2448,8 +2517,10 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
             data = self.id_to_path
+            cross_data = self.cross_resolve
             if onedir not in ["rw_me",  "rw_mevirt"]:
                 data = self.id_to_path_second
+                cross_data = self.cross_resolve_second
 
             # get all the information
 
@@ -2521,8 +2592,218 @@ class ReweightInterface(extended_cmd.Cmd):
                         misc.sprint(order, pdir,)
                         raise Exception( "two different matrix-element have the same initial/final state. Leading to an ambiguity. If your events are ALWAYS written in the correct-order (look at the numbering in the Feynman Diagram). Then you can add inside your reweight_card the line 'change keep_ordering True'." )
                 data[tag] = order, pdir, hel
-             
-             
+
+            # The merged-particle convention of the model that built `data`:
+            # get_pdg_order (hence every id_to_path key) may speak merged codes,
+            # and the crossed subprocesses must be keyed the same way.
+            if onedir in ("rw_me", "rw_mevirt"):
+                cross_model = getattr(self, 'original_model', None) or self.model
+            else:
+                cross_model = self.model
+            if cross_model is not None:
+                merged_map = self._get_revert_merged_for(cross_model)
+            else:
+                # restored from a pickle without a model loaded: the saved map
+                merged_map = getattr(self, 'revert_merged', None)
+            self.build_cross_resolve(mymod, all_prefix, all_pdgs, hel_dict,
+                                     pdir, 'virt' in onedir, cross_data,
+                                     merged_map)
+
+    def build_cross_resolve(self, mymod, all_prefix, all_pdgs, hel_dict, pdir,
+                            is_virt, cross_data, merged_map):
+        """Add to `cross_data` every CROSSED subprocess folded into this
+        module's matrix elements, keyed exactly like id_to_path.
+
+        With crossing on (merge_crossing='record') a crossed subprocess is not
+        generated as a directory of its own: the base's crossing-aware SMATRIX
+        evaluates it at an *extended* flavor index (FLAV_IDX = cross*NFLAV+flav),
+        so it has no get_pdg_order entry and id_to_path cannot see it -- a
+        crossed event would silently lose its weight. The per-process f2py entry
+        points PY_<prefix>GET_FLAVOR_LAYOUT / GET_PDG_FOR_FLAVOR let us walk that
+        index space and ask each entry which process it evaluates, restricted to
+        the crossings the generation actually recorded (crossed_flavors.dat --
+        the runtime space also holds crossings that are merely applicable, e.g. a
+        Z pulled into the initial state, and evaluating one of those for an event
+        would produce a wrong weight rather than no weight).
+
+        A matrix element covers several subprocesses in two independent ways, and
+        the crossing has to be applied to each: as FLAVOR indices inside one
+        get_pdg_order entry (flavor grouping: 81 for jets), and as several
+        get_pdg_order entries sharing one prefix (the exporter combining
+        processes with an identical matrix element, e.g. g u > h u and g s > h s).
+        So each recorded crossing is applied to EVERY base entry of the prefix,
+        by permuting and conjugating its PDGs the way GET_PDG_FOR_FLAVOR did for
+        the representative -- which is what makes the tags come out in the same
+        vocabulary the base entries use.
+
+        Each entry maps an id_to_path-style tag to a LIST of candidates
+        ``(order, pdir, hel, procindex, flav_idx, pdgs)``, one per flavor of the
+        tag's merged matrix element: the matrix element is NOT flavor blind
+        across those -- g d > z d and g u > z u differ by ~25% -- so the flavor is
+        picked per event from the signed PDGs (see resolve_folded_crossing).
+        `procindex` is the 1-based get_prefix slot the crossing-aware
+        SMATRIXHEL_IDX dispatch expects.
+
+        The helicity dictionary is the base one, unchanged: SMATRIX applies the
+        crossing to its whole NHEL table before the helicity loop, which makes
+        the helicity configuration selected by row r the base row r read
+        positionally in the crossed leg order (verified against independently
+        generated crossed subprocesses, per helicity)."""
+        codes = self.get_recorded_crossings(pdir)
+        if not codes:
+            return
+        import madgraph.iolibs.export_v4 as export_v4
+        get_perm = export_v4.ProcessExporterFortran.get_crossing_permutation
+        # merged codes (81, ...) as they appear in a base entry, i.e. the legs
+        # whose flavor a base entry leaves open and the flavor index resolves.
+        labels = set(merged_map.values()) if merged_map else set()
+        slots = {}
+        for i, (prefix, pdgs) in enumerate(zip(all_prefix, all_pdgs), 1):
+            slots.setdefault(prefix, []).append((i, [int(x) for x in pdgs]))
+        for prefix, entries in slots.items():
+            if not codes.get(prefix):
+                continue
+            layout = getattr(mymod, 'py_%sget_flavor_layout' % prefix, None)
+            get_pdg = getattr(mymod, 'py_%sget_pdg_for_flavor' % prefix, None)
+            if layout is None or get_pdg is None:
+                # matrix element written without the crossing machinery
+                continue
+            nflav, nexternal, ncross = (int(x) for x in layout())
+            entries = [e for e in entries if len(e[1]) == nexternal]
+            for cross in codes[prefix]:
+                if not 0 < cross < ncross:
+                    continue           # 0 is the base, already in id_to_path
+                perm, ic, valid = get_perm(cross, nexternal)
+                if not valid:
+                    continue
+                for flav in range(1, nflav+1):
+                    crossed = [int(x) for x in get_pdg(cross*nflav + flav)]
+                    if not any(crossed):
+                        continue       # names no valid flavor/crossing
+                    base = [int(x) for x in get_pdg(flav)]
+                    # Which legs the crossing conjugated: those it moved between
+                    # the initial and the final state, except a self-conjugate
+                    # one (a gluon crossed to the other side is still a gluon).
+                    # Read off the representative rather than from the model, so
+                    # that this needs nothing but the generated entry points.
+                    conj = [ic[k] == -1 and crossed[k] != base[perm[k]]
+                            for k in range(nexternal)]
+                    for (procindex, pdgs) in entries:
+                        xpdgs = [-pdgs[perm[k]] if conj[k] else pdgs[perm[k]]
+                                 for k in range(nexternal)]
+                        # The physical process this candidate evaluates: the
+                        # crossed base entry, with the legs it leaves merged
+                        # resolved by the flavor index.
+                        phys = [crossed[k] if abs(xpdgs[k]) in labels
+                                else xpdgs[k] for k in range(nexternal)]
+                        tag, order = self.tag_from_pdgs(xpdgs)
+                        if is_virt:
+                            tag = (tag, 'V')
+                        cross_data.setdefault(tag, []).append(
+                            (order, pdir, hel_dict.get(prefix, {}),
+                             procindex, cross*nflav + flav, phys))
+
+    def tag_from_pdgs(self, pdgs):
+        """(tag, order) of a subprocess given its per-leg PDG codes, in the same
+        convention load_module uses to key id_to_path."""
+        if self.is_decay:
+            incoming, outgoing = [pdgs[0]], list(pdgs[1:])
+        else:
+            incoming, outgoing = list(pdgs[0:2]), list(pdgs[2:])
+        order = (list(incoming), list(outgoing))
+        incoming.sort()
+        if not self.keep_ordering:
+            outgoing.sort()
+        return (tuple(incoming), tuple(outgoing)), order
+
+    def get_recorded_crossings(self, pdir):
+        """{prefix: [cross codes]} of the crossed subprocesses folded into the
+        matrix elements of `pdir`, from the crossed_flavors.dat written at output
+        time (see export_v4.write_crossing_records).
+
+        An absent file means an output produced before crossings were recorded,
+        hence one with nothing folded; an empty list for a prefix means that
+        matrix element folds no crossing."""
+        path = pjoin(pdir, 'crossed_flavors.dat')
+        if not os.path.exists(path):
+            return {}
+        codes = {}
+        for line in open(path):
+            line = line.split('#', 1)[0].split()
+            if not line:
+                continue
+            prefix, complete = line[0].lower(), line[1] == '1'
+            codes[prefix] = [int(c) for c in line[2:]]
+            if not complete:
+                logger.warning('Crossing symmetry folded a subprocess into the '
+                               'matrix element %s that could not be resolved '
+                               'back to a flavor. An event of that flavor will '
+                               'stop the reweighting rather than be given a '
+                               'wrong weight; if that happens, rerun with '
+                               '"change keep_ordering True" (which keeps the '
+                               'crossed subprocesses separate) and report it.',
+                               prefix)
+        return codes
+
+    def resolve_folded_crossing(self, tag, phys_tag, cross_data):
+        """(order, Pdir, hel, procindex, flav_idx) of the folded crossed
+        subprocess matching an event, or None.
+
+        `tag` is the (merged) id_to_path key the event was looked up with and
+        `phys_tag` its signed *physical* PDG twin. All candidates under one tag
+        share the merged flavor pattern, so the physical PDGs pick which flavor
+        of the merged matrix element the event actually is -- the matrix element
+        is not flavor blind. A candidate leg that the flavor index does not
+        resolve keeps its merged label and matches any member of the group."""
+        candidates = cross_data.get(tag) if cross_data else None
+        if not candidates:
+            return None
+        merged = self.revert_merged_groups()
+        ninitial = 1 if self.is_decay else 2
+        for (order, Pdir, hel, procindex, flav_idx, pdgs) in candidates:
+            if self.pdgs_match_event(pdgs, ninitial, phys_tag, merged):
+                return order, Pdir, hel, procindex, flav_idx
+        return None
+
+    def revert_merged_groups(self):
+        """{merged code: [member pdgs]} of the model the current lookup uses
+        (empty without flavor grouping)."""
+        if not self.revert_merged:
+            return {}
+        groups = {}
+        for pdg, code in self.revert_merged.items():
+            groups.setdefault(code, []).append(pdg)
+        return groups
+
+    @staticmethod
+    def pdgs_match_event(pdgs, ninitial, phys_tag, merged):
+        """Can `pdgs` (a subprocess' per-leg codes, possibly carrying merged
+        labels) be the event whose physical tag is `phys_tag`? Compared as
+        multisets per side, a merged label absorbing any one member flavor of the
+        same sign. Merged groups are disjoint, so the greedy assignment below is
+        exact."""
+        sides = ((pdgs[:ninitial], phys_tag[0]), (pdgs[ninitial:], phys_tag[1]))
+        for legs, want in sides:
+            left = list(want)
+            labels = []
+            for pdg in legs:
+                if abs(pdg) in merged:
+                    labels.append(pdg)
+                elif pdg in left:
+                    left.remove(pdg)
+                else:
+                    return False
+            for pdg in labels:
+                hit = next((q for q in left if (q > 0) == (pdg > 0)
+                            and abs(q) in merged[abs(pdg)]), None)
+                if hit is None:
+                    return False
+                left.remove(hit)
+            if left:
+                return False
+        return True
+
+
     def load_model(self, name, use_mg_default, complex_mass=False, ew_scheme=None):
         """load the model"""
 
@@ -2703,7 +2984,153 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
 
-        
+
+#===============================================================================
+# Helper functions for the average density matrix (density mode)
+#
+# Those are module level functions since the average density matrix is written
+# either by DensityInterface itself (single core) or by the mother interface
+# recombining the output of the various multicore jobs
+# (common_run_interface.do_reweight).
+#===============================================================================
+def parse_matrix_normalisation(value):
+    """interpret the argument of 'change matrix_normalisation'.
+    return (value, understood) where understood is False if the argument is
+    neither 'True' nor 'False' (in which case the normalisation is disabled)"""
+
+    value = value.strip("[],()")
+    if value == 'True':
+        return True, True
+    elif value == 'False':
+        return False, True
+    return False, False
+
+def get_matrix_normalisation(card_path):
+    """return the matrix_normalisation option of a density mode reweight card.
+    The default (option absent from the card) is the one of DensityInterface."""
+
+    matrix_normalisation = True # default value of DensityInterface
+    if not card_path or not os.path.exists(card_path):
+        return matrix_normalisation
+
+    with open(card_path) as card:
+        for line in card:
+            line = line.strip()
+            if not line or line[0] in ('#', '!'):
+                continue
+            split_line = line.split()
+            if len(split_line) < 3 or split_line[0] != 'change' or \
+                                        split_line[1] != 'matrix_normalisation':
+                continue
+            # last occurence wins, as when the card is executed line by line
+            matrix_normalisation, _ = parse_matrix_normalisation(split_line[2])
+    return matrix_normalisation
+
+def average_density_matrix_label(lhe_path):
+    """the label identifying an event file in the average density matrix output"""
+
+    if lhe_path.endswith('.gz'):
+        lhe_path = lhe_path[:-3]
+    return os.path.basename(lhe_path)[:-4]
+
+def average_density_matrix_path(lhe_path, output_dir=None):
+    """the canonical path of the average density matrix associated to an event file"""
+
+    if output_dir is None:
+        output_dir = os.path.dirname(lhe_path)
+    return pjoin(output_dir,
+                 "Average_density_matrix_%s.txt" % average_density_matrix_label(lhe_path))
+
+def write_average_density_matrix(rho_avg, lhe_path, output_dir=None):
+    """log the average density matrix rho_avg (line form) and write it in square
+    form next to the event file it has been computed from. return the path used."""
+
+    import madgraph.various.Density_functions as dens
+
+    rho_avg_square = dens.DensityMatrixObservables(rho_avg).square_matrix()
+
+    logger.info("Average density matrix:")
+    for i in range(len(rho_avg_square)):
+        print("\t",list(rho_avg_square[i]))
+
+    path = average_density_matrix_path(lhe_path, output_dir)
+    file_density = open(path, 'w')
+    file_density.write(f'Average density matrix of LHE file {average_density_matrix_label(lhe_path)}:\n')
+    # Cast each entry to a plain Python ``complex`` so that the file is
+    # written in the legacy ``(re+imj)`` repr regardless of the underlying
+    # numpy dtype (newer numpy prints np.complex64 values with a
+    # ``np.complex64(...)`` wrapper which the consumer parser cannot read).
+    for i in range(len(rho_avg_square)):
+            row = [complex(v) for v in rho_avg_square[i]]
+            file_density.write('\t' + str(row) + '\n')
+    file_density.close()
+    return path
+
+def average_density_matrix_from_lhe(lhe_path, matrix_normalisation=True):
+    """re-compute the average density matrix from the <density> tag of every
+    event of an already reweighted event file. This reproduces exactly what
+    DensityInterface.launch_actual_reweighting accumulates on the fly:
+     - matrix_normalisation True: the per event matrices stored in the file are
+       already normalised by their trace, the average is weighted by the weight
+       of the events.
+     - matrix_normalisation False: the per event matrices are the raw ones, the
+       average is a plain average over the events.
+    return the average density matrix in line form (None if no event of the file
+    carries a density matrix)."""
+
+    average_rho = None
+    total_wgt = 0.
+    nb_event = 0
+
+    lhe = lhe_parser.EventFile(lhe_path)
+    lhe.parsing = "wgt_only" # we only need the weight and the <density> tag
+    for event in lhe:
+        if not event.density:
+            continue
+        if matrix_normalisation:
+            contrib = [value * event.wgt for value in event.density]
+            total_wgt += event.wgt
+        else:
+            contrib = event.density
+        nb_event += 1
+        if average_rho is None:
+            average_rho = list(contrib)
+        elif len(contrib) != len(average_rho):
+            raise Exception("Inconsistent size of the density matrices within %s" % lhe_path)
+        else:
+            for i in range(len(average_rho)):
+                average_rho[i] += contrib[i]
+    lhe.close()
+
+    if average_rho is None:
+        return None
+
+    norm = total_wgt if matrix_normalisation else nb_event
+    return [value / norm for value in average_rho]
+
+def combine_density_matrix(lhe_path, chunk_paths=(), reweight_card=None):
+    """write the canonical average density matrix of lhe_path after a multicore
+    reweighting: each job has written the average of its own chunk of events, so
+    the average of the full (recombined) file is re-computed here and the per
+    chunk files are removed. return the path of the file written (None if the
+    average could not be computed)."""
+
+    matrix_normalisation = get_matrix_normalisation(reweight_card)
+    rho_avg = average_density_matrix_from_lhe(lhe_path, matrix_normalisation)
+
+    if rho_avg is None:
+        # keep the per chunk files: they are the only output left in that case
+        logger.warning("No density matrix found in %s: the average density matrix is not written." % lhe_path)
+        return None
+
+    path = write_average_density_matrix(rho_avg, lhe_path)
+    for chunk in chunk_paths:
+        chunk_path = average_density_matrix_path(chunk)
+        if chunk_path != path and os.path.exists(chunk_path):
+            os.remove(chunk_path)
+    return path
+
+
 class DensityInterface(ReweightInterface):
     """Basic interface for computing density matrix"""
 
@@ -2927,15 +3354,9 @@ class DensityInterface(ReweightInterface):
         Choses if the production matrix should be normalised by its trace or not.
         Default = True
         """
-        for i in range(len(line)): 
-            line[i] = line[i].strip("[],()") 
-        if line[0] == 'True':
-            self.matrix_normalisation = True
-        elif line[0] == 'False':
-            self.matrix_normalisation = False
-        else:
+        self.matrix_normalisation, understood = parse_matrix_normalisation(line[0])
+        if not understood:
             logger.warning('Option matrix_normalisation not understood, set it to True. Please use the syntax: change matrix_normalisation True if you want to enable it.')
-            self.matrix_normalisation = False
 
 
     def do_change_particle_in_density_matrix(self, line):
@@ -3115,22 +3536,8 @@ class DensityInterface(ReweightInterface):
             for i in range(len(rho_avg)):
                 rho_avg[i] = self.average_rho[i] / self.nevents
 
-        rho_avg_instance = dens.DensityMatrixObservables(rho_avg)
-        rho_avg_square = rho_avg_instance.square_matrix()
-
-        logger.info("Average density matrix:")
-        for i in range(len(rho_avg_square)):
-            print("\t",list(rho_avg_square[i]))
-        file_density = open(pjoin(os.path.dirname(self.event_path), f"Average_density_matrix_{os.path.basename(self.lhe_input.name)[:-4]}.txt"), 'w')
-        file_density.write(f'Average density matrix of LHE file {os.path.basename(self.lhe_input.name)[:-4]}:\n')
-        # Cast each entry to a plain Python ``complex`` so that the file is
-        # written in the legacy ``(re+imj)`` repr regardless of the underlying
-        # numpy dtype (newer numpy prints np.complex64 values with a
-        # ``np.complex64(...)`` wrapper which the consumer parser cannot read).
-        for i in range(len(rho_avg_square)):
-                row = [complex(v) for v in rho_avg_square[i]]
-                file_density.write('\t' + str(row) + '\n')
-        file_density.close()
+        write_average_density_matrix(rho_avg, self.lhe_input.name,
+                                    output_dir=os.path.dirname(self.event_path))
 
 
         if self.output_type == "default":
@@ -3238,10 +3645,7 @@ class DensityInterface(ReweightInterface):
         else:
             nhel = -1
 
-        pdg = list(orig_order[0])+list(orig_order[1])
-        relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
-        if relevant_merged and any(p in relevant_merged for p in pdg):
-            pdg = event.get_pdg(all_p[0])
+        pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
 
         #list_properties is the list of properties of the class FourMomentum that we can use to rank particles
         list_properties = [p for p in dir(lhe_parser.FourMomentum) if isinstance(getattr(lhe_parser.FourMomentum,p),property)]
@@ -3333,6 +3737,21 @@ class DensityInterface(ReweightInterface):
             else:
                 rho_instance = dens.DensityMatrixObservables(production_matrix, self.number_combinations * (self.number_combinations + 1) / 2)
                 new_value = rho_instance.density_matrix
+
+        # An identically-zero density matrix is not a physical answer for an
+        # event that is in the event file: either GET_DENSITY could not resolve
+        # the flavour of the legs it was handed (typically merged-particle
+        # labels 81/82/... reaching the fortran instead of the concrete PDGs),
+        # or 'allowed_helicities' selects a helicity configuration that carries
+        # no amplitude. Do not average it in: the trace is zero, so with
+        # matrix_normalisation on the normalisation is 0/0 and the average
+        # density matrix comes back as NaN; with it off the event silently
+        # dilutes the average. Refuse loudly, as the matrix-element path does.
+        if not any(new_value):
+            raise Exception("Invalid density matrix: only zeros returned for "
+                "event %s (pdg %s). Check that the flavour of every leg can be "
+                "resolved and that 'allowed_helicities' selects a contributing "
+                "helicity configuration." % (getattr(event, 'ievent', -1), list(pdg)))
 
         return new_value
 

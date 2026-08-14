@@ -61,6 +61,30 @@ C
     INTEGER IDUM, NGOOD, J, JJ
     REAL     XRAN1
     EXTERNAL XRAN1
+C   C-parity helicity de-duplication of the init full-sum loop (see below):
+C   FLIP(I) is the helicity row with every helicity negated (an involution
+C   built once). The de-duplication is ALL-OR-NOTHING per flavor: CSYMBAD(IFLAV)
+C   latches 1 as soon as ANY row fails to pair up (a self-paired row, FLIP(I)=I,
+C   has no distinct partner) or ANY pair shows |M(I)|^2 != |M(FLIP(I))|^2 at a
+C   scan point. Only when every row is in a genuine matched pair is the reuse
+C   enabled, and then exactly half the rows are evaluated and each counted twice.
+C   That uniformity is what makes the reuse safe for the multi-channel weight:
+C   AMP2(J) is accumulated inside MATRIX over this same loop, so a partial
+C   (per-row) de-duplication would rescale AMP2 non-uniformly across diagrams and
+C   bias AMP2(config)/XTOT even though the total |M|^2 stays exact. Halving every
+C   row scales AMP2(J) and XTOT by the same 1/2, leaving the ratio untouched.
+C   NCSCAN counts only the passes that actually ran the scan (NTRY alone is not
+C   enough: read_good_hel restores NTRY above the threshold without ever
+C   scanning, and the random-helicity branch bumps NTRY without a full sum).
+C   CSYMBAD/NCSCAN live in a COMMON block (zero-initialised, like NTRY above) so
+C   write_good_hel/read_good_hel can persist the verdict across jobs.
+    INTEGER FLIP(NCOMB), JHEL, KHEL
+    REAL*8 TSMAX
+    LOGICAL HELSAME, DEDUP
+    INTEGER CSYMBAD(MAXFLAVPERPROC), NCSCAN(MAXFLAVPERPROC)
+    COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
+    SAVE FLIP
+    DATA FLIP/NCOMB*0/
     INTEGER FLAVOR(NEXTERNAL)
     INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
 C   Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
@@ -71,7 +95,7 @@ C   row-level information to apply the identical-particle correction.
     %(get_flavor_row_matrix)s
     INTEGER IPSEL
     COMMON /SUBPROC/ IPSEL
-    INTEGER BROKEN_SYM%(proc_id)s
+    INTEGER BROKEN_SYM%(proc_id)s%(blas_smatrix_decl)s
 
 C
 C GLOBAL VARIABLES
@@ -100,6 +124,34 @@ C BEGIN CODE
 C ----------
     CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
     NTRY(IFLAV)=NTRY(IFLAV)+1
+C   C-parity partner of each helicity row (all helicities negated): an
+C   involution, self-paired when every helicity is 0. Fixed per process, so
+C   built once (FLIP starts at 0).
+    IF (FLIP(1).EQ.0) THEN
+      DO I=1,NCOMB
+        FLIP(I)=I
+        DO JHEL=1,NCOMB
+          HELSAME=.TRUE.
+          DO KHEL=1,NEXTERNAL
+            IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,I)) HELSAME=.FALSE.
+          ENDDO
+          IF (HELSAME) THEN
+            FLIP(I)=JHEL
+            EXIT
+          ENDIF
+        ENDDO
+      ENDDO
+C     A self-paired row (FLIP(I)=I, i.e. every helicity 0) has no distinct
+C     partner, so the loop could not be halved uniformly: refuse the
+C     de-duplication outright for every flavor in that case.
+      DO I=1,NCOMB
+        IF (FLIP(I).EQ.I) THEN
+          DO JHEL=1,MAXFLAVPERPROC
+            CSYMBAD(JHEL)=1
+          ENDDO
+        ENDIF
+      ENDDO
+    ENDIF
     DO I=1,NEXTERNAL
        JC(I) = +1
     ENDDO
@@ -120,18 +172,64 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
     ENDDO
 
 !   If the helicity grid status is 0, this means that it is not yet initialized.
+!   C-parity de-duplication of this init full-sum loop is all-or-nothing per
+!   flavor and only kicks in once this flavor has actually completed the scan
+!   (NCSCAN>=20; the scan passes stay within MAXTRIES=25 so the reuse overlaps
+!   the grid build). A crossing is a separate subprocess directory in madevent,
+!   so every IFLAV row here is the uncrossed base process; polarized beams are
+!   self-excluded because the beam_polarization scaling makes the flipped
+!   partner's |M|^2 differ, so the scan latches CSYMBAD.
+    DEDUP = NCSCAN(IFLAV).GE.20 .AND. CSYMBAD(IFLAV).EQ.0
     IF (ISUM_HEL.EQ.0.or.(DS_get_dim_status('Helicity').eq.0)) THEN
-        DO I=1,NCOMB
+%(blas_branch)s        DO I=1,NCOMB
            IF (GOODHEL(I,IFLAV) .OR. NTRY(IFLAV) .LE. MAXTRIES.OR.(ISUM_HEL.NE.0)) THEN
-               T=MATRIX%(proc_id)s(P,NHEL(1,I),IFLAV, IVEC)
+C            Fast phase: every row is in a matched pair (all-or-nothing), so the
+C            higher-index partner is skipped and the lower index counted twice.
+             IF (DEDUP.AND.I.GT.FLIP(I)) CYCLE
+               T=%(blas_matrix_call)s
             %(beam_polarization)s
              IF (ISUM_HEL.NE.0) then
                call DS_add_entry('Helicity',I,T)
              endif
              ANS=ANS+DABS(T)
              TS(I)=T
+C            The representative carries its skipped partner's identical
+C            contribution: copy |M|^2 to TS(FLIP) (so the per-helicity CDF and
+C            the DS grid pick both members), and count it once more in ANS.
+             IF (DEDUP.AND.I.LT.FLIP(I)) THEN
+               ANS=ANS+DABS(T)
+               TS(FLIP(I))=T
+               IF (ISUM_HEL.NE.0) call DS_add_entry('Helicity',FLIP(I),T)
+             ENDIF
            ENDIF
         ENDDO
+C       Scan phase: this pass evaluated every row, so it can test the pairing.
+C       A single mismatching pair (parity/C/polarization breaking) permanently
+C       disables the de-duplication for the whole flavor.
+C       A pair of rows that are BOTH numerically zero differ only by roundoff,
+C       and a purely RELATIVE test on that noise fails at random -- one such
+C       pair then vetoes every real pair, because the verdict is all-or-nothing.
+C       Measured on g g > t t~: rows 1/16 and 4/13 sit at |M|^2 ~ 1e-30 while
+C       the scan maximum is ~1.5e+02, and the de-duplication never engaged.
+C       So also require the difference to be significant against TSMAX, the
+C       largest |M|^2 of this scan point: a row that far down cannot bias the
+C       helicity sum whichever way it is paired, while a genuine parity
+C       violation still shows up at the relative level.
+        IF (NCSCAN(IFLAV).LT.20) THEN
+          NCSCAN(IFLAV)=NCSCAN(IFLAV)+1
+          TSMAX=0D0
+          DO I=1,NCOMB
+            IF (DABS(TS(I)).GT.TSMAX) TSMAX=DABS(TS(I))
+          ENDDO
+          DO I=1,NCOMB
+            IF (FLIP(I).GT.I) THEN
+              IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))
+     &            .AND.DABS(TS(I)-TS(FLIP(I))).GT.1D-12*TSMAX) THEN
+                CSYMBAD(IFLAV)=1
+              ENDIF
+            ENDIF
+          ENDDO
+        ENDIF
         IF(NTRY(IFLAV).EQ.(MAXTRIES+1)) THEN
            call reset_cumulative_variable() ! avoid biais of the initialization
         ENDIF
@@ -165,7 +263,7 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
 C           The helicity configuration was chosen already by genps and put in a common block defined in genps.inc.
             I = HEL_PICKED
 
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV, IVEC)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV, IVEC%(blas_matrix_args)s)
             %(beam_polarization)s
 c           Always one helicity at a time
             ANS = T
@@ -225,7 +323,7 @@ C     Returns the flavor array for a given flavor index IFLAV
       END
 
 
-REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IVEC)
+REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IVEC%(blas_arg)s)
 use model_object
 use aloha_object
 C  
@@ -246,8 +344,9 @@ C
     include 'genps.inc'
     include 'nexternal.inc'
     include 'maxamps.inc'
-    INTEGER    NWAVEFUNCS,     NCOLOR
+    INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
     PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
+    PARAMETER (NCOLORFOLD=%(ncolorfold)d)
     REAL*8     ZERO
     PARAMETER (ZERO=0D0)
     COMPLEX*16 IMAG1
@@ -271,10 +370,14 @@ C
 C LOCAL VARIABLES 
 C  
     INTEGER I,J,M,N
-    COMPLEX*16 ZTEMP, TMP_JAMP(%(nb_temp_jamp)i)
-    INTEGER CF(NCOLOR*(NCOLOR+1))
+    COMPLEX*16 ZTEMP
+%(jamp_tmp_decl)s
+%(jamp_decl)s
+    INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
     INTEGER CF_INDEX,DENOM
-    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+    COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
+    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_decl)s
+%(color_fold_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
@@ -302,11 +405,13 @@ C
 C COLOR DATA
 C  
 %(color_data_lines)s
+%(color_fold_index)s
 C ----------
 C BEGIN CODE
 C ----------
 if (first) then
     first=.false.
+    CALL %(proc_prefix)sINIT_CF%(proc_id)s()
     %(fake_width_definitions)s
 endif
 
@@ -317,18 +422,19 @@ AMP(:) = (0d0,0d0)
 %(helas_calls)s
 %(jamp_lines)s
 
+%(color_fold_gather)s%(blas_gather)s
     MATRIX%(proc_id)s = 0.D0 
-    DO M = 1, NAMPSO
+    DO M = 1, NAMPSO%(blas_gate)s
       CF_INDEX = 0
-      DO I = 1, NCOLOR
+      DO I = 1, NCOLORFOLD
         ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLOR
+        DO J = I, NCOLORFOLD
           CF_INDEX = CF_INDEX +1
-          ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
+          ZTEMP = ZTEMP + CF(CF_INDEX)*%(color_fold_array)s(J,M)
         ENDDO
         DO N = 1, NAMPSO
           IF (CHOSEN_SO_CONFIGS(SQSOINDEX%(proc_id)s(M,N))) THEN
-             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(JAMP(I,N))
+             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(%(color_fold_array)s(I,N))
           ENDIF
         ENDDO
       ENDDO
@@ -349,4 +455,6 @@ AMP(:) = (0d0,0d0)
     END
 
 
-%(broken_sym_function)s
+%(color_init_routine)s%(blas_routine)s
+
+    %(broken_sym_function)s

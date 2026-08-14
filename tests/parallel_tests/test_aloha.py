@@ -1084,7 +1084,7 @@ class testLorentzObject(unittest.TestCase):
         analytical2= analytical2.expand()
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                globals()[name] = eval(str(cexpr))   
             except:
                 pass
         
@@ -1214,7 +1214,7 @@ class testLorentzObject(unittest.TestCase):
         M1 = math.sqrt(P1_0 **2 - P1_1 **2 -P1_2 **2 -P1_3 **2)
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                globals()[name] = eval(str(cexpr))   
             except:
                 pass
         for ind in zero.listindices():
@@ -1337,7 +1337,7 @@ class testLorentzObject(unittest.TestCase):
         OM1 = 1.0/48#(P1_0 **2 - P1_1 **2 -P1_2 **2 -P1_3 **2)
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                globals()[name] = eval(str(cexpr))   
             except:
                 pass
         
@@ -2854,7 +2854,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         P2_0,P2_1,P2_2,P2_3 = 101, 111, 121, 134
         P3_0,P3_1,P3_2,P3_3 = 1001, 1106, 1240, 1320
         for name, cexpr in abstract_ZP.contracted.items():
-            exec('%s = %s' % (name, cexpr))
+            globals()[name] = eval(str(cexpr))
 
         for ind in expr.listindices():
             self.assertEqual(eval(str(expr.get_rep(ind))), 178727040j)
@@ -2920,10 +2920,10 @@ class test_aloha_creation(IOTests.IOTestManager):
         M3 = 500
         
         #for name, cexpr in one_exp.contracted.items():
-        #    exec('%s = %s' % (name, cexpr))
+        #    globals()[name] = eval(str(cexpr))
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))            
+                globals()[name] = eval(str(cexpr))            
             except:
                 pass
         for ind in one_exp.listindices():
@@ -3017,7 +3017,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         M3 = 500
         
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
         
         for ind in zero.listindices():
             self.assertAlmostEqual(eval(str(zero.get_rep(ind))),0)
@@ -3082,7 +3082,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         P3_0,P3_1,P3_2,P3_3 = 10, 11, 12, 13
         
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
         
         for ind in abstract.expr.listindices():                        
             self.assertAlmostEqual(eval(str(abstract.expr.get_rep(ind))) -
@@ -3116,7 +3116,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         
         #evaluate all contraction 
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr))
+            globals()[name] = eval(str(cexpr))
             
         # evaluate FFV_0
         val_V = eval(str(V.expr.get_rep((0,))))
@@ -3174,7 +3174,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         s4 = -j*((OM3*(P3_3*((F2_1*((F1_3*(-P3_0-P3_3))+(F1_4*(-P3_1-1*j*P3_2))))+(F2_2*((F1_3*(-P3_1+1*j*P3_2))+(F1_4*(-P3_0+P3_3)))))))+(-(F1_3*F2_1)+(F1_4*F2_2)))
 
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
 
         self.assertEqual(s1, eval(str(abstract_M.expr.get_rep([0]))))
         self.assertEqual(s2, eval(str(abstract_M.expr.get_rep([1]))))    
@@ -3193,7 +3193,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         zero = abstract_6.expr - abstract_M.expr - \
                                                     2* abstract_P.expr   
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            globals()[name] = eval(str(cexpr)) 
         for ind in zero.listindices():
             self.assertEqual(eval(str(zero.get_rep(ind))),0)
         
@@ -4020,7 +4020,10 @@ def SSS1_1(S2,S3,COUP,M1,W1):
     S1.momenta[2] = +S2.momenta[2]+S3.momenta[2]
     S1.momenta[3] = +S2.momenta[3]+S3.momenta[3]
     P1 = [-S1.momenta[j] for j in range(4)]
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     S1.W[0]= denom*1j * S3.W[0]*S2.W[0]
     return S1
 
@@ -4140,7 +4143,10 @@ def FFV1C1_1(F1,V3,COUP,M2,W2):
     F2.momenta[3] = +F1.momenta[3]+V3.momenta[3]
     P2 = [-F2.momenta[j] for j in range(4)]
     F2.flavor = F1.flavor
-    denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    if (P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2).real > 0:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    else:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2**2)
     F2.W[0]= denom*(-1j)*(F1.W[0]*(P2[0]*(-V3.W[0]+V3.W[3])+(P2[1]*(V3.W[1]-1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])+V3.W[2])+P2[3]*(-V3.W[0]+V3.W[3]))))+(F1.W[1]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-1)*(V3.W[0]+V3.W[3])+(P2[2]*(-1)*(+1j*(V3.W[0]+V3.W[3]))+P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[2]*(V3.W[0]+V3.W[3])+F1.W[3]*(V3.W[1]+1j*(V3.W[2])))))
     F2.W[1]= denom*1j*(F1.W[0]*(P2[0]*(-V3.W[1]+1j*(V3.W[2]))+(P2[1]*(V3.W[0]-V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))+P2[3]*(V3.W[1]-1j*(V3.W[2])))))+(F1.W[1]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])-V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+M2*(F1.W[2]*(-V3.W[1]+1j*(V3.W[2]))+F1.W[3]*(-V3.W[0]+V3.W[3]))))
     F2.W[2]= denom*1j*(F1.W[2]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-V3.W[1]+1j*(V3.W[2]))+(P2[2]*(-1)*(+1j*(V3.W[1])+V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+(F1.W[3]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-V3.W[0]+V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))-P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[0]*(-V3.W[0]+V3.W[3])+F1.W[1]*(V3.W[1]+1j*(V3.W[2])))))
@@ -4172,7 +4178,10 @@ def FFV1C1_2(F2,V3,COUP,M1,W1):
     F1.momenta[3] = +F2.momenta[3]+V3.momenta[3]
     P1 = [-F1.momenta[j] for j in range(4)]
     F1.flavor = F2.flavor
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     F1.W[0]= denom*(-1j)*(F2.W[0]*(P1[0]*(V3.W[0]+V3.W[3])+(P1[1]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P1[2]*(+1j*(V3.W[1])-V3.W[2])-P1[3]*(V3.W[0]+V3.W[3]))))+(F2.W[1]*(P1[0]*(V3.W[1]-1j*(V3.W[2]))+(P1[1]*(-V3.W[0]+V3.W[3])+(P1[2]*(+1j*(V3.W[0])-1j*(V3.W[3]))+P1[3]*(-V3.W[1]+1j*(V3.W[2])))))+M1*(F2.W[2]*(V3.W[0]-V3.W[3])+F2.W[3]*(-V3.W[1]+1j*(V3.W[2])))))
     F1.W[1]= denom*1j*(F2.W[0]*(P1[0]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P1[1]*(V3.W[0]+V3.W[3])+(P1[2]*(+1j*(V3.W[0]+V3.W[3]))-P1[3]*(V3.W[1]+1j*(V3.W[2])))))+(F2.W[1]*(P1[0]*(-V3.W[0]+V3.W[3])+(P1[1]*(V3.W[1]-1j*(V3.W[2]))+(P1[2]*(+1j*(V3.W[1])+V3.W[2])+P1[3]*(-V3.W[0]+V3.W[3]))))+M1*(F2.W[2]*(V3.W[1]+1j*(V3.W[2]))-F2.W[3]*(V3.W[0]+V3.W[3]))))
     F1.W[2]= denom*1j*(F2.W[2]*(P1[0]*(-V3.W[0]+V3.W[3])+(P1[1]*(V3.W[1]+1j*(V3.W[2]))+(P1[2]*(-1j*(V3.W[1])+V3.W[2])+P1[3]*(-V3.W[0]+V3.W[3]))))+(F2.W[3]*(P1[0]*(V3.W[1]-1j*(V3.W[2]))+(P1[1]*(-1)*(V3.W[0]+V3.W[3])+(P1[2]*(+1j*(V3.W[0]+V3.W[3]))+P1[3]*(V3.W[1]-1j*(V3.W[2])))))+M1*(F2.W[0]*(-1)*(V3.W[0]+V3.W[3])+F2.W[1]*(-V3.W[1]+1j*(V3.W[2])))))
@@ -4200,7 +4209,10 @@ def FFV1C1_1(F1,V3,COUP,M2,W2):
     F2.momenta[3] = +F1.momenta[3]+V3.momenta[3]
     P2 = [-F2.momenta[j] for j in range(4)]
     F2.flavor = F1.flavor
-    denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    if (P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2).real > 0:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    else:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2**2)
     F2.W[0]= denom*(-1j)*(F1.W[0]*(P2[0]*(-V3.W[0]+V3.W[3])+(P2[1]*(V3.W[1]-1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])+V3.W[2])+P2[3]*(-V3.W[0]+V3.W[3]))))+(F1.W[1]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-1)*(V3.W[0]+V3.W[3])+(P2[2]*(-1)*(+1j*(V3.W[0]+V3.W[3]))+P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[2]*(V3.W[0]+V3.W[3])+F1.W[3]*(V3.W[1]+1j*(V3.W[2])))))
     F2.W[1]= denom*1j*(F1.W[0]*(P2[0]*(-V3.W[1]+1j*(V3.W[2]))+(P2[1]*(V3.W[0]-V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))+P2[3]*(V3.W[1]-1j*(V3.W[2])))))+(F1.W[1]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])-V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+M2*(F1.W[2]*(-V3.W[1]+1j*(V3.W[2]))+F1.W[3]*(-V3.W[0]+V3.W[3]))))
     F2.W[2]= denom*1j*(F1.W[2]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-V3.W[1]+1j*(V3.W[2]))+(P2[2]*(-1)*(+1j*(V3.W[1])+V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+(F1.W[3]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-V3.W[0]+V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))-P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[0]*(-V3.W[0]+V3.W[3])+F1.W[1]*(V3.W[1]+1j*(V3.W[2])))))
@@ -4250,7 +4262,10 @@ def FFFF1_1(F2,F3,F4,COUP,M1,W1):
     P1 = [-F1.momenta[j] for j in range(4)]
     F1.flavor = F2.flavor
     TMP0 = (F4.W[0]*F3.W[0]+F4.W[1]*F3.W[1]+F4.W[2]*F3.W[2]+F4.W[3]*F3.W[3])
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     F1.W[0]= denom*-1j * TMP0*(F2.W[2]*(P1[0]+P1[3])+(F2.W[3]*(P1[1]+1j*(P1[2]))-F2.W[0]*M1))
     F1.W[1]= denom*1j * TMP0*(F2.W[2]*(-P1[1]+1j*(P1[2]))+(F2.W[3]*(-P1[0]+P1[3])+F2.W[1]*M1))
     F1.W[2]= denom*1j * TMP0*(F2.W[0]*(-P1[0]+P1[3])+(F2.W[1]*(P1[1]+1j*(P1[2]))+F2.W[2]*M1))
@@ -4284,7 +4299,10 @@ def FFFF1C1_1(F1,F3,F4,COUP,M2,W2):
     P2 = [-F2.momenta[j] for j in range(4)]
     F2.flavor = F1.flavor
     TMP0 = (F4.W[0]*F3.W[0]+F4.W[1]*F3.W[1]+F4.W[2]*F3.W[2]+F4.W[3]*F3.W[3])
-    denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    if (P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2).real > 0:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    else:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2**2)
     F2.W[0]= denom*-1j * TMP0*(F1.W[2]*(P2[0]+P2[3])+(F1.W[3]*(P2[1]+1j*(P2[2]))-F1.W[0]*M2))
     F2.W[1]= denom*1j * TMP0*(F1.W[2]*(-P2[1]+1j*(P2[2]))+(F1.W[3]*(-P2[0]+P2[3])+F1.W[1]*M2))
     F2.W[2]= denom*1j * TMP0*(F1.W[0]*(-P2[0]+P2[3])+(F1.W[1]*(P2[1]+1j*(P2[2]))+F1.W[2]*M2))
@@ -4318,7 +4336,10 @@ def FFFF1C2_1(F2,F4,F3,COUP,M1,W1):
     P1 = [-F1.momenta[j] for j in range(4)]
     F1.flavor = F2.flavor
     TMP0 = (F4.W[0]*F3.W[0]+F4.W[1]*F3.W[1]+F4.W[2]*F3.W[2]+F4.W[3]*F3.W[3])
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     F1.W[0]= denom*-1j * TMP0*(F2.W[2]*(P1[0]+P1[3])+(F2.W[3]*(P1[1]+1j*(P1[2]))-F2.W[0]*M1))
     F1.W[1]= denom*1j * TMP0*(F2.W[2]*(-P1[1]+1j*(P1[2]))+(F2.W[3]*(-P1[0]+P1[3])+F2.W[1]*M1))
     F1.W[2]= denom*1j * TMP0*(F2.W[0]*(-P1[0]+P1[3])+(F2.W[1]*(P1[1]+1j*(P1[2]))+F2.W[2]*M1))

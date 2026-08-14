@@ -49,6 +49,12 @@ clean:
 couplings.o: ../maxparticles.inc ../run.inc ../vector.inc
 couplings2.o: ../vector.inc
 
+# flavor_couplings.o provides the model_object F90 module (MODULE MODEL_OBJECT)
+# that every other object in $(MODEL) does "use model_object". Build it first so
+# a parallel (-j) sub-make cannot compile a consumer before model_object.mod
+# exists. Order-only (|) so consumers are not relinked when it merely rebuilds.
+$(filter-out flavor_couplings.o,$(MODEL)): | flavor_couplings.o
+
 ../run.inc:
 	touch ../run.inc
 

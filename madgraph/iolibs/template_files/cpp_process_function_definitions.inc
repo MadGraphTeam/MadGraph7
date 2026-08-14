@@ -6,7 +6,8 @@
 // Initialize process. 
   
 CPPProcess::CPPProcess(string param_card_name) :
-    goodhel(), ntry(), sum_hel(), ngood(), igood(), jhel()
+    goodhel(), ntry(), sum_hel(), ngood(), igood(), jhel(),
+    flip(), flip_ready(), csym_bad(), igoodrep(), nrep(), repwgt()
 {
 // Instantiate the model class and set parameters that stay fixed during run
     SLHAReader slha(param_card_name, false);
@@ -91,3 +92,5 @@ int CPPProcess::broken_sym(const int* flavor)
     }
     return total_factor;
 }
+
+%(ident_cross_function)s
