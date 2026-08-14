@@ -2,29 +2,34 @@
 
 The probabilities of the flavour sampler are parton densities (times an
 active-flavour mask), and modern sets return exactly 0.0 below the c/b
-thresholds and at large x, so a draw whose selected option has probability zero
-is routine rather than pathological. kernel_sample_discrete_probs answers that
-with det = 0, a sentinel meaning "zero-weight event". These tests pin what the
-consumers of that sentinel are allowed to see, in particular the two densities
-the MadNIS loss divides by.
+thresholds and at large x, so drawing a discrete option whose density is zero
+is routine rather than pathological. kernel_sample_discrete_probs handles
+that by construction instead of via a sentinel: an option with probability
+zero can never be selected, and if every option in a row is zero there is no
+real choice to make, so the sampler deterministically returns index 0 with
+probability 1 (det == 1), same as any other certain draw. Callers no longer
+need to special-case a "degenerate" result.
 """
 
 import numpy as np
+
 import madspace as ms
 
 N_OPTIONS = 4
 
 # row 0: a healthy prior
-# row 1: every option's density exactly zero -- the degenerate draw
+# row 1: every option's density exactly zero
 # row 2: a single non-zero option
-PRIOR = np.array([
-    [0.3, 0.2, 0.4, 0.1],
-    [0.0, 0.0, 0.0, 0.0],
-    [0.0, 0.0, 0.0, 0.7],
-])
+PRIOR = np.array(
+    [
+        [0.3, 0.2, 0.4, 0.1],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.7],
+    ]
+)
 RANDOM = np.array([0.42, 0.42, 0.42])
-UNUSED = np.zeros(len(RANDOM))
-DEGENERATE = 1
+UNUSED_INDEX = np.zeros(len(RANDOM), dtype=np.int32)
+ALL_ZERO_ROW = 1
 
 
 _prefix_count = 0
@@ -41,100 +46,124 @@ def sampler_and_context():
     return sampler, ctx
 
 
-def run(builder_fn, output_names, inputs):
+def run(builder_fn, output_names, inputs, output_types=None):
     sampler, ctx = sampler_and_context()
+    types = output_types or {}
     fb = ms.FunctionBuilder(
-        ms.NamedTypes([
-            ("r", ms.batch_float),
-            ("prior", ms.batch_float_array(N_OPTIONS)),
-            ("f", ms.batch_float),
-        ]),
-        ms.NamedTypes([(name, ms.batch_float) for name in output_names]),
+        ms.NamedTypes(
+            [
+                ("r", ms.batch_float),
+                ("prior", ms.batch_float_array(N_OPTIONS)),
+                ("index_in", ms.batch_int),
+            ]
+        ),
+        ms.NamedTypes(
+            [(name, types.get(name, ms.batch_float)) for name in output_names]
+        ),
     )
     builder_fn(fb, sampler)
     runtime = ms.FunctionRuntime(fb.function(), ctx)
     return dict(zip(output_names, (ms.Tensor.numpy(t) for t in runtime.call(inputs))))
 
 
-def test_forward_det_is_zero_or_at_least_one():
-    """The invariant Integrand::build_channel_part splits the sentinel on.
-
-    det is 1/p, so a det that came from an actual choice is >= 1 and the only
-    other value it can take is the 0 sentinel. That is what makes max(det, 1)
-    and min(det, 1) an exact split into a neutral density factor and a 0/1
-    weight mask.
+def test_forward_det_is_always_at_least_one():
+    """det is 1/p, so a det that came from an actual choice is >= 1. The
+    all-zero row is not an exception to that anymore: it deterministically
+    gets index 0 and probability 1, so det == 1 there too, and callers no
+    longer need to split det into a separate density factor and weight mask
+    the way build_channel_part used to.
     """
-    def build(fb, sampler):
-        det = sampler.build_forward(fb, [fb.input(0)], [fb.input(1)])["det"]
-        fb.output(0, det)
-        fb.output(1, fb.max(det, ms.Value(1.0)))
-        fb.output(2, fb.min(det, ms.Value(1.0)))
-
-    out = run(build, ["det", "prob_factor", "weight_mask"], [RANDOM, PRIOR, UNUSED])
-    det = out["det"]
-    assert det[DEGENERATE] == 0.0
-    regular = np.delete(np.arange(len(RANDOM)), DEGENERATE)
-    assert np.all(det[regular] >= 1.0)
-
-    # the split: bit for bit exact on a regular det, neutral/voiding on the
-    # sentinel
-    assert np.array_equal(out["prob_factor"][regular], det[regular])
-    assert np.array_equal(out["weight_mask"][regular], np.ones(len(regular)))
-    assert out["prob_factor"][DEGENERATE] == 1.0
-    assert out["weight_mask"][DEGENERATE] == 0.0
-
-
-def test_inverse_det_is_never_zero():
-    """The inverse det is the MadNIS g, which the loss divides by.
-
-    A zero there would put 0/0 into f/g, so a draw the sampler could not have
-    made returns the marginal density over the discrete step, 1, instead of the
-    zero probability.
-    """
-    def build(fb, sampler):
-        index = sampler.build_forward(fb, [fb.input(0)], [fb.input(1)])[0]
-        fb.output(0, sampler.build_inverse(fb, [index], [fb.input(1)])["det"])
-
-    out = run(build, ["g"], [RANDOM, PRIOR, UNUSED])
-    assert np.all(out["g"] > 0.0)
-    assert out["g"][DEGENERATE] == 1.0
-
-
-def test_madnis_terms_stay_finite_for_a_degenerate_draw():
-    """End of the chain: the three MadnisLoss kernels, wired as the integrand
-    wires them. Without the split, adaptive_prob is +inf and madnis_softclip
-    returns NaN for the whole batch.
-    """
-    mean, norm, threshold = ms.Value(0.5), ms.Value(1.0), ms.Value(100.0)
 
     def build(fb, sampler):
-        r, prior, f_raw = fb.input(0), fb.input(1), fb.input(2)
-        forward = sampler.build_forward(fb, [r], [prior])
-        det = forward["det"]
-        g = sampler.build_inverse(fb, [forward[0]], [prior])["det"]
-        # Integrand: adaptive_prob = norm / max(det, 1), weight *= min(det, 1)
-        q = fb.div(norm, fb.max(det, ms.Value(1.0)))
-        f = fb.mul(f_raw, fb.min(det, ms.Value(1.0)))
-        fb.output(0, f)
-        fb.output(1, q)
-        fb.output(2, fb.madnis_abs_weight(f, q))
-        fb.output(3, fb.madnis_softclip(f, q, mean, threshold))
-        fb.output(4, fb.madnis_variance(f, g, q, mean))
+        result = sampler.build_forward(fb, [fb.input(0)], [fb.input(1)])
+        fb.output(0, result["det"])
+        fb.output(1, result[0])
 
-    f_raw = np.array([1.5, 2.5, 3.5])
     out = run(
         build,
-        ["f", "q", "abs_weight", "softclip", "variance"],
-        [RANDOM, PRIOR, f_raw],
+        ["det", "index"],
+        [RANDOM, PRIOR, UNUSED_INDEX],
+        output_types={"index": ms.batch_int},
     )
-    for name, values in out.items():
-        assert np.all(np.isfinite(values)), f"{name} is not finite: {values}"
+    assert np.all(out["det"] >= 1.0)
+    assert out["det"][ALL_ZERO_ROW] == 1.0
+    assert out["index"][ALL_ZERO_ROW] == 0
 
-    # the degenerate row contributes nothing to the integral estimate, and its
-    # variance term is the ordinary penalty for a sample with zero integrand
-    assert out["f"][DEGENERATE] == 0.0
-    assert out["q"][DEGENERATE] == 1.0
-    assert out["abs_weight"][DEGENERATE] == 0.0
-    # every other row is untouched by the split
-    keep = np.delete(np.arange(len(f_raw)), DEGENERATE)
-    assert np.all(out["f"][keep] == f_raw[keep])
+
+def test_forward_selects_the_expected_bucket():
+    """Basic correctness of the inverse-CDF walk: r selects the option whose
+    cumulative-probability bucket contains it. For [0.3, 0.2, 0.4, 0.1] the
+    bucket edges are [0.3, 0.5, 0.9, 1.0].
+    """
+    prior = np.tile([0.3, 0.2, 0.4, 0.1], (5, 1))
+    random = np.array([0.0, 0.29, 0.31, 0.89, 0.99])
+    expected = np.array([0, 0, 1, 2, 3])
+
+    def build(fb, sampler):
+        fb.output(0, sampler.build_forward(fb, [fb.input(0)], [fb.input(1)])[0])
+
+    out = run(
+        build,
+        ["index"],
+        [random, prior, UNUSED_INDEX[: len(random)]],
+        output_types={"index": ms.batch_int},
+    )
+    assert np.array_equal(out["index"], expected)
+
+
+def test_forward_never_selects_a_zero_probability_option():
+    """Only one option carries any density; every draw of r must land on it.
+    The zero-probability options are masked out of the cumulative walk
+    directly, rather than relying on r never landing exactly on their
+    zero-width buckets.
+    """
+    prior = np.tile([0.0, 0.0, 0.0, 0.7], (5, 1))
+    random = np.array([0.0, 0.25, 0.5, 0.75, 0.999999])
+
+    def build(fb, sampler):
+        fb.output(0, sampler.build_forward(fb, [fb.input(0)], [fb.input(1)])[0])
+
+    out = run(
+        build,
+        ["index"],
+        [random, prior, UNUSED_INDEX[: len(random)]],
+        output_types={"index": ms.batch_int},
+    )
+    assert np.all(out["index"] == 3)
+
+
+def test_forward_and_inverse_dets_are_reciprocal():
+    """build_forward's det for the option it draws is 1/p; build_inverse's
+    det for that same option is p. The two must multiply to 1, the usual
+    Mapping invariant for a forward/inverse pair -- including on the
+    all-zero row, where both sides collapse to the certain-draw det of 1.
+    """
+
+    def build(fb, sampler):
+        prior_in = fb.input(1)
+        forward = sampler.build_forward(fb, [fb.input(0)], [prior_in])
+        inverse = sampler.build_inverse(fb, [forward[0]], [prior_in])
+        fb.output(0, forward["det"])
+        fb.output(1, inverse["det"])
+
+    out = run(build, ["det_fwd", "det_inv"], [RANDOM, PRIOR, UNUSED_INDEX])
+    assert np.allclose(out["det_fwd"] * out["det_inv"], 1.0)
+
+
+def test_inverse_all_zero_prior_returns_the_canonical_draw():
+    """When every option's density is zero there is nothing to invert:
+    kernel_sample_discrete_probs_inverse returns the canonical r = 0.5 and
+    det = 1 no matter which index is asked for, matching the forward
+    sampler's index-0/probability-1 convention for the same row.
+    """
+    prior = np.zeros((3, N_OPTIONS))
+    index_in = np.array([0, 1, 3], dtype=np.int32)
+
+    def build(fb, sampler):
+        inverse = sampler.build_inverse(fb, [fb.input(2)], [fb.input(1)])
+        fb.output(0, inverse[0])
+        fb.output(1, inverse["det"])
+
+    out = run(build, ["r", "det"], [np.zeros(3), prior, index_in])
+    assert np.all(out["r"] == 0.5)
+    assert np.all(out["det"] == 1.0)
