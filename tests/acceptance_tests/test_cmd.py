@@ -198,6 +198,10 @@ class TestCmdShell1(unittest.TestCase):
                     'madanalysis5_path': './HEPTools/madanalysis5/madanalysis5',
                     'group_subprocesses': 'Auto',
                     'complex_mass_scheme': False,
+                    # set-options added with the colour-basis / quartic
+                    # work (7f50f031b); this dict has to list every one.
+                    'color_basis': 'auto',
+                    'merge_quartic_vertices': False,
                     'gauge': 'unitary',
                     'output_dependencies': 'external',
                     'dmtcp': None,
