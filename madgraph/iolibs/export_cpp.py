@@ -3263,7 +3263,7 @@ class ProcessExporterCPP(VirtualExporter):
         process_exporter_cpp = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
 
         # Enable the crossing machinery for standalone_cpp when the process was
-        # generated with --use_crossing (default on) and the process does not
+        # generated with --use_crossing (default OFF) and the process does not
         # pin a specific s-channel (which a crossing would not preserve). Only a
         # single-ME directory carries the flavor tables the crossing needs.
         process_exporter_cpp.use_crossing = bool(
@@ -3656,7 +3656,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         process_exporter_mg7 = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
 
         # Enable the crossing machinery (extended flavor id) when the process was
-        # generated with --use_crossing (default on) and the process does not pin
+        # generated with --use_crossing (default OFF) and the process does not pin
         # a specific s-channel (which a crossing would not preserve). Only a
         # single-ME directory carries the flavor tables the crossing needs. When
         # off, use_crossing stays False and the output is byte-identical.

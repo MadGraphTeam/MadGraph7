@@ -112,7 +112,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
             ref_rows, me_by_iflav, tolerance)
 
         # -- (2) fortran standalone WITH crossing -------------------------------
-        self.do('generate %s' % process)
+        self.do('generate %s --use_crossing=True' % process)
         sacross_root = pjoin(self.tmpdir, 'standalone_crossing')
         self.do('output standalone %s -f' % sacross_root)
         sacross_sub = self._get_single_subprocess_dir(
@@ -124,7 +124,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
 
         # -- (3) fortran madevent, grouped, WITH crossing (MEGroup) -------------
         self.do('set group_subprocesses True')
-        self.do('generate %s' % process)
+        self.do('generate %s --use_crossing=True' % process)
         meg_root = pjoin(self.tmpdir, 'madevent_group_crossing')
         self.do('output madevent %s -f' % meg_root)
         self.do('set group_subprocesses False')
@@ -291,7 +291,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         if not shutil.which(os.environ.get('CXX', 'g++')):
             return None
         outdir = pjoin(self.tmpdir, 'standalone_mg7')
-        self.do('generate %s' % process)
+        self.do('generate %s --use_crossing=True' % process)
         try:
             self.do('output standalone_mg7 %s -f' % outdir)
         except Exception:

@@ -1440,7 +1440,7 @@ C
     def _check_crossing_support(self):
         """Note that this output cannot read folded crossings.
 
-        `--use_crossing` (on by default) tells the generation not to write out
+        `--use_crossing` (OFF by default) tells the generation not to write out
         the crossed subprocesses separately, because the matrix element is
         expected to reach them through an extended FLAV_IDX instead. Only the
         folding-capable standalone backends implement that decoding.
@@ -3126,7 +3126,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         The extended FLAV_IDX (a flavor *and* a crossing) and everything
         decoding it are only written out when the process was generated with
-        --use_crossing=True (the default) *and* the process definition pins no
+        --use_crossing=True (NOT the default) *and* the process definition pins no
         specific s-channel (see breaks_crossing_symmetry). Otherwise the
         crossed subprocesses are generated as separate matrix elements instead,
         so the crossing machinery would be dead code: the tables, the
@@ -7534,10 +7534,10 @@ C       so this also stays correct for split-order processes.
 
         if 'sa_symmetry' not in self.opt:
             self.opt['sa_symmetry']=False
-        # --use_crossing of the generate command (default on); see
-        # fill_crossing_replace_dict.
+        # --use_crossing of the generate command (default OFF, see
+        # MadGraphCmd._use_crossing); see fill_crossing_replace_dict.
         if 'use_crossing' not in self.opt:
-            self.opt['use_crossing']=True
+            self.opt['use_crossing']=False
 
         # Helicity-recycling standalone (--hel_recycling): reuse the madevent
         # DAG rewriter. The helas_calls / jamp_lines are produced in the
@@ -8779,7 +8779,7 @@ C       so this also stays correct for split-order processes.
         exactly. Degenerate crossings (e.g. FLIP1==FLIP2) decode to all-zero
         PDGs and are skipped by both the match and the fallback.
         """
-        use_crossing = self.opt.get('use_crossing', True) and \
+        use_crossing = self.opt.get('use_crossing', False) and \
             not any(self.breaks_crossing_symmetry(proc)
                     for proc in matrix_element.get('processes'))
         if not use_crossing:

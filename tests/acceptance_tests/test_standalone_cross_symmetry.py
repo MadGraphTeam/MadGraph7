@@ -320,6 +320,20 @@ print('DENSITY_JSON ' + json.dumps(out))
 '''
 
 
+
+def _pin_crossing(options, on=True):
+    """Return `options` with the crossing choice stated explicitly.
+
+    Crossing is OFF by default in MG5 (madspace does not support it yet). This
+    suite is *about* crossing, so nothing in it may lean on the shipped default
+    in either direction: a caller that already passed --use_crossing=... keeps
+    its choice, everyone else gets it pinned here. Flipping the product default
+    must never silently turn one of these tests into a test of the other mode.
+    """
+    if '--use_crossing' in options:
+        return options
+    return ('%s --use_crossing=%s' % (options, on)).strip()
+
 class TestStandaloneCrossSymmetry(unittest.TestCase):
     """u u~ > g g and u g > u g must reproduce each other under crossing."""
 
@@ -368,7 +382,8 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
         self.cmd.exec_cmd('set group_subprocesses False')
         self.cmd.exec_cmd('set apply_flavor_grouping True')
         self.cmd.exec_cmd('import model sm')
-        self.cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
+        self.cmd.exec_cmd(
+            ('generate %s %s' % (process, _pin_crossing(options))).strip())
         self.cmd.exec_cmd('output standalone %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
@@ -1500,7 +1515,7 @@ class TestGoodHelCParityDedup(unittest.TestCase):
         self.cmd.exec_cmd('set group_subprocesses False')
         self.cmd.exec_cmd('set apply_flavor_grouping True')
         self.cmd.exec_cmd('import model sm')
-        self.cmd.exec_cmd('generate %s' % process)
+        self.cmd.exec_cmd('generate %s --use_crossing=True' % process)
         self.cmd.exec_cmd('output standalone %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
@@ -1902,7 +1917,8 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
         for line in setup:
             cmd.exec_cmd(line)
         cmd.exec_cmd('import model sm')
-        cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
+        cmd.exec_cmd(
+            ('generate %s %s' % (process, _pin_crossing(options))).strip())
         cmd.exec_cmd(('output %s %s -f %s' % (fmt, out, out_options)).strip())
         return out
 
@@ -2089,7 +2105,8 @@ class TestStandaloneCppCrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('set group_subprocesses False')
         cmd.exec_cmd('set apply_flavor_grouping True')
         cmd.exec_cmd('import model sm')
-        cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
+        cmd.exec_cmd(
+            ('generate %s %s' % (process, _pin_crossing(options))).strip())
         cmd.exec_cmd('output standalone_cpp %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
@@ -2268,7 +2285,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         if color_basis:
             cmd.exec_cmd('set color_basis %s' % color_basis)
         cmd.exec_cmd('import model sm')
-        cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
+        cmd.exec_cmd(('generate %s %s' % (process, _pin_crossing(options))).strip())
         cmd.exec_cmd(('output standalone_mg7 %s -f %s'
                       % (outdir, out_options)).strip())
 
@@ -2368,7 +2385,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('set color_basis trace')
         cmd.exec_cmd('import model sm')
         cmd.exec_cmd('define pq = g u u~')
-        cmd.exec_cmd('generate pq pq > pq pq')
+        cmd.exec_cmd('generate pq pq > pq pq --use_crossing=True')
         cmd.exec_cmd('output standalone_mg7 %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
@@ -2544,7 +2561,7 @@ class TestCrossingPartition(unittest.TestCase):
         old = os.environ.get('MG_MERGE_CROSSING')
         os.environ['MG_MERGE_CROSSING'] = 'off'
         try:
-            cmd.run_cmd('generate %s' % proc)
+            cmd.run_cmd('generate %s --use_crossing=True' % proc)
         finally:
             if old is None:
                 os.environ.pop('MG_MERGE_CROSSING', None)
@@ -2625,7 +2642,7 @@ class TestCrossingRecycledHelicityUnion(unittest.TestCase):
         old = os.environ.get('MG_MERGE_CROSSING')
         os.environ['MG_MERGE_CROSSING'] = 'off'
         try:
-            cmd.run_cmd('generate %s' % proc)
+            cmd.run_cmd('generate %s --use_crossing=True' % proc)
         finally:
             if old is None:
                 os.environ.pop('MG_MERGE_CROSSING', None)
@@ -2911,7 +2928,7 @@ class TestCrossingConfigMap(unittest.TestCase):
         for proc in ('u u~ > t t~ g g', 'u u~ > t t~ u u~'):
             cmd = cmd_interface.MasterCmd()
             cmd.exec_cmd('import model sm', printcmd=False)
-            cmd.exec_cmd('generate %s' % proc, printcmd=False)
+            cmd.exec_cmd('generate %s --use_crossing=True' % proc, printcmd=False)
             mes.append(helas_objects.HelasMultiProcess(
                 cmd._curr_amps).get_matrix_elements()[0])
         dep, base = mes
@@ -3106,7 +3123,7 @@ class TestMadeventCrossingHelicity(unittest.TestCase):
         outdir = pjoin(self.tmpdir, 'ppwj')
         card = pjoin(self.tmpdir, 'cmd.txt')
         with open(card, 'w') as f:
-            f.write('generate p p > w+ j\n'
+            f.write('generate p p > w+ j --use_crossing=True\n'
                     'output madevent %s -f\n'
                     'launch\n'
                     'set nevents 1000\n'
@@ -3183,7 +3200,7 @@ class TestMadeventDecayChainCrossing(unittest.TestCase):
                         'output madevent %s -f\n'
                         'launch\n'
                         'set nevents 1000\n'
-                        'set iseed 424242\n' % (options, outdir))
+                        'set iseed 424242\n' % (_pin_crossing(options), outdir))
         subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
         results = pjoin(outdir, 'SubProcesses', 'results.dat')
         self.assertTrue(os.path.isfile(results),
@@ -3255,14 +3272,14 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
                         'launch\n'
                         'set nevents %d\n'
                         'set iseed %d\n'
-                        % (self.PROCESS, options, outdir,
+                        % (self.PROCESS, _pin_crossing(options), outdir,
                            self.NEVENTS, self.SEED))
         subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
         results = pjoin(outdir, 'SubProcesses', 'results.dat')
         self.assertTrue(
             os.path.isfile(results),
             'madevent produced no results for %s (%s)'
-            % (options or 'the default (crossing on) build', results))
+            % (options or 'the pinned (crossing on) build', results))
         with open(results) as fsock:
             # results.dat: cross-section, abs error, ... (in pb).
             fields = fsock.readline().split()
@@ -3347,7 +3364,7 @@ class TestColorFlowCode(unittest.TestCase):
         checked = 0
         for proc, nflow_exp in self.PROCS:
             cmd = cmd_interface.MasterCmd()
-            cmd.exec_cmd('generate %s' % proc, printcmd=False)
+            cmd.exec_cmd('generate %s --use_crossing=True' % proc, printcmd=False)
             me = helas_objects.HelasMultiProcess(cmd._curr_amps)
             for m in me.get('matrix_elements'):
                 if not m.get('color_basis'):
@@ -3381,7 +3398,7 @@ class TestColorFlowCode(unittest.TestCase):
         checked = 0
         for proc, _nflow in self.PROCS:
             cmd = cmd_interface.MasterCmd()
-            cmd.exec_cmd('generate %s' % proc, printcmd=False)
+            cmd.exec_cmd('generate %s --use_crossing=True' % proc, printcmd=False)
             me = helas_objects.HelasMultiProcess(cmd._curr_amps)
             for m in me.get('matrix_elements'):
                 if not m.get('color_basis'):
@@ -3460,7 +3477,7 @@ class TestMadeventColorFlowRatio(unittest.TestCase):
         outdir = pjoin(self.tmpdir, 'uux')
         card = pjoin(self.tmpdir, 'cmd.txt')
         with open(card, 'w') as f:
-            f.write('generate u u~ > u u~\n'
+            f.write('generate u u~ > u u~ --use_crossing=True\n'
                     'output madevent %s -f\n'
                     'launch\n'
                     'set nevents 2000\n'
@@ -3606,7 +3623,7 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
         outdir = pjoin(self.tmpdir, name)
         card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
         lines = ['%s\n' % self.DEFINE,
-                 'generate %s %s\n' % (self.PROCESS, options),
+                 'generate %s %s\n' % (self.PROCESS, _pin_crossing(options)),
                  'output madevent %s -f -nojpeg\n' % outdir]
         if launch:
             lines += ['launch\n',
@@ -4043,7 +4060,7 @@ class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
         card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
         with open(card, 'w') as fsock:
             fsock.writelines(['%s\n' % self.DEFINE,
-                              'generate %s %s\n' % (self.PROCESS, options),
+                              'generate %s %s\n' % (self.PROCESS, _pin_crossing(options)),
                               'output %s %s -f -nojpeg\n' % (fmt, outdir)])
         env = dict(os.environ)
         env['MG_SPLIT_CROSSING'] = 'on' if split else ''
@@ -4230,8 +4247,8 @@ class TestMadeventCrossingBaseColorFlow(unittest.TestCase):
         card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
         with open(card, 'w') as fsock:
             fsock.writelines(
-                ['generate g g > u u~ %s\n' % options,
-                 'add process u u~ > g g %s\n' % options,
+                ['generate g g > u u~ %s\n' % _pin_crossing(options),
+                 'add process u u~ > g g %s\n' % _pin_crossing(options),
                  'output madevent %s -f -nojpeg\n' % outdir,
                  'launch\n',
                  'set nevents %d\n' % self.NEVENTS,

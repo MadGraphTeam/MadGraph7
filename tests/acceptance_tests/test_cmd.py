@@ -943,11 +943,11 @@ class TestCmdShell2(unittest.TestCase,
                                           results[pdg], expected)))
 
     def test_standalone_crossing_folds_qqx_subprocess(self):
-        """The crossing (default) counterpart of the two tests below.
+        """The crossing (--use_crossing=True) counterpart of the tests below.
 
         test_standalone_flavor_mask and test_standalone_wwjj both pass
         --use_crossing=False because they open one specific subprocess directory,
-        which the default (crossing on) standalone output folds away. That leaves
+        which a crossing-on standalone output folds away. That leaves
         the folded layout of this very process untested here, so cover it: with
         crossing on the q q~ > q q~ directory must be *gone*, the output must be
         strictly smaller, and the base subprocess that absorbed it must carry the
@@ -967,7 +967,10 @@ class TestCmdShell2(unittest.TestCase,
             shutil.rmtree(self.out_dir)
         os.makedirs(self.out_dir)
 
-        crossed = build('', 'crossed')
+        # Both states are pinned: crossing is OFF by default (madspace does
+        # not support it yet), and this test is precisely about the
+        # difference between the two, so neither arm may inherit it.
+        crossed = build('--use_crossing=True', 'crossed')
         plain = build('--use_crossing=False', 'plain')
 
         # Folding really happened: fewer directories, and the one the sibling

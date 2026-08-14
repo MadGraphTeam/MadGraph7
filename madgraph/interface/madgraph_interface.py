@@ -528,7 +528,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
         logger.info("      --mask=False: [madevent|standalone] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
-        logger.info("      --use_crossing=False: [standalone|standalone_mg7] write this output without the crossing machinery; the crossed subprocesses folded onto their base at generation are written back as their own directories (same as generate --use_crossing=False).")
+        logger.info("      --use_crossing=True: [standalone|standalone_mg7] write this output WITH the crossing machinery (off by default: madspace does not support crossing yet). Left off, the crossed subprocesses folded onto their base at generation are written back as their own directories.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone MYRUN -f",'$MG:color:GREEN')
@@ -2745,7 +2745,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=', '--use_crossing=False']):
+                                                 '--mask=False', '--prefix=', '--use_crossing=True', '--use_crossing=False']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -3323,11 +3323,13 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_helas_model = None
     _curr_exporter = None
     _second_exporter = None
-    # UI flag --use_crossing (default on); see do_add.
-    _use_crossing = True
+    # UI flag --use_crossing; see do_add. DEFAULT OFF: madspace does not
+    # support crossing yet, so the shipped default must be the un-crossed
+    # output for every mode. Pass --use_crossing=True to opt in.
+    _use_crossing = False
     # Same flag on the output line, for the output being written (see do_output).
     # do_output sets it on every call, so it can never leak to the next output.
-    _output_use_crossing = True
+    _output_use_crossing = False
     _done_export = False
     _curr_decaymodel = None
 
@@ -3489,12 +3491,12 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             standalone_only = True
             args.remove('--standalone')
 
-        # Crossing symmetry is used by default. --use_crossing (bare) or
-        # --use_crossing=True keep it on, --use_crossing=False turns it off.
-        # --standalone does not affect it.
+        # Crossing symmetry is OFF by default (madspace does not support it
+        # yet). --use_crossing (bare) or --use_crossing=True turns it on,
+        # --use_crossing=False is the default. --standalone does not affect it.
         use_crossing = self.pop_use_crossing_flag(args)
         if use_crossing is None:
-            use_crossing = True
+            use_crossing = False
         # Crossed subprocesses are ALWAYS kept (merge_crossing=False, the
         # historical 3.x default): use_crossing only decides later, at the
         # exporter stage, whether they collapse into a single extended-FLAV_IDX
@@ -5209,8 +5211,8 @@ This implies that with decay chains:
         # interfaces have their own do_output which does not, so give it the
         # same lifetime as the generate-line flag rather than leaving the last
         # output's choice behind.
-        self._use_crossing = True
-        self._output_use_crossing = True
+        self._use_crossing = False
+        self._output_use_crossing = False
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir
