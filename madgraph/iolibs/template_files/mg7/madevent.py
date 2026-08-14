@@ -115,6 +115,51 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
+def resolve_cppauto_backend(build_path: str) -> str:
+    """Ask the matrix-element Makefile to resolve ``cppauto``.
+
+    Given the produced shared library will have its name taken from the resolved
+    backend name, we need to make sure the detection is taking place correctly
+    and catch any possible error.
+    """
+    command = ["make", "-n", "BACKEND=cppauto", "detect-backend"]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=build_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not run make to resolve cppauto in '{build_path}': {exc}"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        output = "\n".join(
+            part.strip() for part in (exc.stdout, exc.stderr) if part.strip()
+        )
+        detail = f"\nmake output:\n{output}" if output else ""
+        raise RuntimeError(
+            f"Could not resolve cppauto in '{build_path}': "
+            f"Exit status {exc.returncode}.{detail}"
+        ) from exc
+
+    match = re.search(
+        r"^BACKEND=(\S+) \(was cppauto\)$", result.stdout, re.MULTILINE
+    )
+    if match is None or match.group(1) == "cppauto":
+        output = "\n".join(
+            part.strip() for part in (result.stdout, result.stderr) if part.strip()
+        )
+        detail = f"\nmake output:\n{output}" if output else ""
+        raise RuntimeError(
+            f"Could not resolve cppauto in '{build_path}': "
+            f"make failed to report a backend.{detail}"
+        )
+    return match.group(1)
+
+
 @dataclass
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
@@ -424,18 +469,14 @@ class MadgraphProcess:
 
         # Resolve 'cppauto' once (the build rules pick the best SIMD backend
         # available here), so that all subprocesses agree on the library names.
-        resolved = []
-        for backend in backends:
-            if backend == "cppauto":
-                out = subprocess.run(
-                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
-                    cwd=first_proc_path, capture_output=True, text=True,
-                ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
-                if match:
-                    backend = match.group(1)
-                    logger.info(f"Device 'cppauto' resolved as '{backend}'")
-            resolved.append(backend)
+        cppauto_backend = None
+        if "cppauto" in backends:
+            cppauto_backend = resolve_cppauto_backend(first_proc_path)
+            logger.info("Device 'cppauto' resolved as '%s'", cppauto_backend)
+        resolved = [
+            cppauto_backend if backend == "cppauto" else backend
+            for backend in backends
+        ]
 
         nb_core = self.run_card["run"]["cpu_thread_pool_size"]
         if not nb_core or nb_core < 0:
