@@ -1080,7 +1080,6 @@ def build_multi_channel_data(
         if unmerged_meta is None:
             diagram_color_indices.append([d["active_colors"] for d in diagrams])
         active_flavors.append([d["active_flavors"] for d in diagrams])
-    print(qcd_s_channel_count)
 
     return MultiChannelData(
         amp2_remaps,

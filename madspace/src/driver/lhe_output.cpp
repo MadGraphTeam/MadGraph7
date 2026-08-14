@@ -31,7 +31,8 @@ std::tuple<int, int> compute_decay_color(
     std::size_t color_slot,
     std::size_t colors_size,
     int color_type,
-    const std::vector<std::tuple<int, int>>& prop_colors
+    const std::vector<std::tuple<int, int>>& prop_colors,
+    int& sign_flip
 ) {
     std::vector<int> decay_colors, decay_anti_colors;
     for (std::size_t child_index : decay.child_indices) {
@@ -65,22 +66,35 @@ std::tuple<int, int> compute_decay_color(
         decay_anti_colors.end()
     );
 
+    // TODO: sign_flip is a workaround for the situation where madgraph gets the sign
+    // of the propagator wrong. In this case, the sign is inferred from the color flow
     if (color_type == 1) {
         if (decay_colors.size() > 0 || decay_anti_colors.size() > 0) {
             throw std::runtime_error("Incompatible with color singlet");
         }
         return {0, 0};
     } else if (color_type == 3) {
+        if (decay_colors.size() == 0 || decay_anti_colors.size() == 1) {
+            sign_flip = -1;
+            return {0, decay_anti_colors.at(0)};
+        }
         if (decay_colors.size() != 1 || decay_anti_colors.size() > 0) {
             throw std::runtime_error("Incompatible with color triplet");
         }
         return {decay_colors.at(0), 0};
     } else if (color_type == -3) {
+        if (decay_colors.size() == 1 || decay_anti_colors.size() == 0) {
+            sign_flip = -1;
+            return {decay_colors.at(0), 0};
+        }
         if (decay_colors.size() > 0 || decay_anti_colors.size() != 1) {
             throw std::runtime_error("Incompatible with anti-color triplet");
         }
         return {0, decay_anti_colors.at(0)};
     } else if (color_type == 8) {
+        if (decay_colors.size() == 0 && decay_anti_colors.size() == 0) {
+            return {0, 0};
+        }
         if (decay_colors.size() != 1 || decay_anti_colors.size() != 1) {
             throw std::runtime_error("Incompatible with color octet");
         }
@@ -232,6 +246,15 @@ void LHECompleter::find_resonant_propagators(
             continue;
         }
 
+        int color_type = pdg_color_type(decay.pdg_id, args.pdg_color_types);
+        int sign_flip = 1;
+        for (std::size_t i = 0; std::size_t color_index : colors) {
+            prop_colors.at(colors.size() * decay.index + i) = compute_decay_color(
+                decay, i, colors.size(), color_type, prop_colors, sign_flip
+            );
+            ++i;
+        }
+
         double& e_min_item = e_min.at(decay.index);
         int& momentum_mask = momentum_masks.at(decay.index);
         int child_prop_mask = 0;
@@ -249,19 +272,12 @@ void LHECompleter::find_resonant_propagators(
 
         resonant_prop_indices.at(decay.index) = _propagators.size() - prop_offset;
         _propagators.push_back({
-            .pdg_id = decay.pdg_id,
+            .pdg_id = sign_flip * decay.pdg_id,
             .momentum_mask = momentum_mask,
             .child_prop_mask = child_prop_mask,
             .mass = decay.mass,
             .width = decay.width,
         });
-
-        int color_type = pdg_color_type(decay.pdg_id, args.pdg_color_types);
-        for (std::size_t i = 0; std::size_t color_index : colors) {
-            prop_colors.at(colors.size() * decay.index + i) =
-                compute_decay_color(decay, i, colors.size(), color_type, prop_colors);
-            ++i;
-        }
     }
 }
 
