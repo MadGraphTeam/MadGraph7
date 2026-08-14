@@ -673,10 +673,43 @@ early and its target arrives late and the entry cannot be reclaimed in
 between: 5869 rather than 945. Reversing that order puts each source next to
 its target, so `slots` lands on 946 and 106, one above the floor.
 
-That changes the `slots` case rather a lot. It used to buy 23% of the
-wavefunction store and cost 6% more arithmetic; it now buys **75% of the whole
-per-call working set** at seven gluons, which is the number that matters on a
-gpu, where this is per thread.
+That changes the `slots` case rather a lot **in fortran**: it used to buy 23%
+of the wavefunction store and cost 6% more arithmetic, and it now buys 75% of
+the whole per-call working set at seven gluons.
+
+**It does not carry over to the gpu backend, which is the one the argument was
+about.** madmatrix has no AMP array to recycle -- it keeps a single
+`cxtype_sv amp_sv[1]` and each amplitude goes straight into the JAMPs, so it
+was already at a floor of one entry, better than the 946 the fortran recycling
+reaches. Its per-thread cost is 112 bytes a wavefunction (`pvec_sv` 32,
+`w_sv` 64, `aloha_obj` 16) plus `jamp_sv[ncolor]`, and the wavefunctions are
+the only thing either mode moves:
+
+| | mode | nwf | madmatrix per thread | fortran per call |
+|---|---|---|---|---|
+| `g g > g g g g` | off | 51 | 7.5 kB | 13.1 kB |
+| | speed | 78 | 10.4 kB (+40%) | 12.9 kB (-2%) |
+| | slots | 54 | 7.8 kB (+4%) | 7.1 kB (-46%) |
+| `g g > 5 g` | off | 268 | 40.6 kB | 140.4 kB |
+| | speed | 259 | 39.6 kB (-2%) | 118.0 kB (-16%) |
+| | slots | 199 | 33.0 kB (**-19%**) | 35.0 kB (-75%) |
+| `g g > t t~ 3g` | off | 121 | 15.1 kB | 41.8 kB |
+| | speed | 213 | 25.2 kB (+67%) | 39.7 kB (-5%) |
+| | slots | 141 | 17.3 kB (+14%) | 29.1 kB (-30%) |
+| `u u~ > z 4g` | off | 76 | 8.7 kB | 15.8 kB |
+| | speed | 85 | 9.7 kB (+11%) | 14.7 kB (-7%) |
+| | slots | 84 | 9.6 kB (+10%) | 14.5 kB (-8%) |
+
+So on the gpu backend `slots` is -19% at seven gluons and *worse than off* at
+every smaller process measured, and `speed` is worse still, +40% and +67% on
+two of the four. `jamp_sv` is mode independent and not small either -- 11.2 kB
+at seven gluons, 28% of the total -- which dilutes it further. The only lever
+that exists there is the wavefunction count.
+
+The recycling is otherwise correctly supported in madmatrix: `nwf` matches the
+fortran slot count on all twelve generations, the current sums land inside it
+(`aloha_obj` indices 0..77 against `nwf` 78 at six gluons with 30 sums), and
+`|M|^2` is bit identical across the three modes.
 
 **It buys no time.** Measured at `g g > g g g g`, minimum of five: `speed`
 2247 -> 2260 us and `slots` 2347 -> 2373 us across the change, both inside the
