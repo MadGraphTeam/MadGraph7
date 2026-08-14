@@ -36,24 +36,24 @@ class CPPMEInterface(madevent_interface.MadEventCmdShell):
             common_run_interface.CommonRunCmd.update_make_opts_full(path,
                 {'override FPTYPE': self.run_card['floating_type'] })
             misc.sprint('FPTYPE checked')
-        cudacpp_supported_backends = [ 'fortran', 'cuda', 'hip', 'cpp', 'cppnone', 'cppsse4', 'cppavx2', 'cpp512y', 'cpp512z', 'cppauto' ]
+        cudacpp_supported_backends = [ 'fortran', 'cuda', 'hip', 'cpp', 'cpu_scalar', 'cpu_128b', 'cpu_256b', 'cpu_512b_y', 'cpu_512b', 'cpu' ]
         if args and args[0][0] == 'madevent' and hasattr(self, 'run_card'):            
             cudacpp_backend = self.run_card['cudacpp_backend'].lower() # the default value is defined in launch_plugin.py
-            if cudacpp_backend in ['cpp', 'cppauto']:
+            if cudacpp_backend in ['cpp', 'cpu']:
                 backend_log = pjoin(opts["cwd"], ".resolved-backend")
                 # try to remove old file if present
                 try:
                     os.remove(backend_log)
                 except FileNotFoundError:
                     pass
-                misc.compile(["-f", "cudacpp.mk", f"BACKEND=cppauto", f"BACKEND_LOG={backend_log}", "detect-backend"], **opts)
+                misc.compile(["-f", "cudacpp.mk", f"BACKEND=cpu", f"BACKEND_LOG={backend_log}", "detect-backend"], **opts)
                 try:
                     with open(backend_log, "r") as f:
                         resolved_backend = f.read().strip()
                     logger.info(f"Backend '{cudacpp_backend}' resolved as '{resolved_backend}'")
                     cudacpp_backend = resolved_backend
                 except FileNotFoundError:
-                    raise RuntimeError("Could not resolve cudacpp_backend=cppauto|cpp; ensure Makefile detection runs properly.")
+                    raise RuntimeError("Could not resolve cudacpp_backend=cpu|cpp; ensure Makefile detection runs properly.")
             logger.info(f"Building madevent in madevent_interface.py with '{cudacpp_backend}' matrix elements")
             if cudacpp_backend in cudacpp_supported_backends :
                 args[0][0] = 'madevent_' + cudacpp_backend + '_link'
@@ -68,7 +68,7 @@ template_on = \
 """#***********************************************************************
 # SIMD/GPU configuration for the CUDACPP plugin
 #************************************************************************
- %(cudacpp_backend)s = cudacpp_backend ! CUDACPP backend: fortran, cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto
+ %(cudacpp_backend)s = cudacpp_backend ! CUDACPP backend: fortran, cuda, hip, cpp, cpu_scalar, cpu_128b, cpu_256b, cpu_512b_y, cpu_512b, cpu
 """
 
 template_off = ''
@@ -105,7 +105,7 @@ class CPPRunCard(banner_mod.RunCardLO):
                        allowed=['m','d','f'],
                        comment='floating point precision: f (single), d (double), m (mixed: double for amplitudes, single for colors)'
                        )
-        cudacpp_supported_backends = [ 'fortran', 'cuda', 'hip', 'cpp', 'cppnone', 'cppsse4', 'cppavx2', 'cpp512y', 'cpp512z', 'cppauto' ]
+        cudacpp_supported_backends = [ 'fortran', 'cuda', 'hip', 'cpp', 'cpu_scalar', 'cpu_128b', 'cpu_256b', 'cpu_512b_y', 'cpu_512b', 'cpu' ]
         self.add_param('cudacpp_backend', 'cpp', include=False, hidden=False,
                        allowed=cudacpp_supported_backends)
         self['vector_size'] = 16 # already setup in default class (just change value)

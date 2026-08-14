@@ -429,7 +429,7 @@ class TestCmdShell2(unittest.TestCase,
         (madmatrix/cudacpp) directory for e+ e- > e+ e- -- the top-level layout
         (src/, SubProcesses/, lib/, Cards/, bin/), the mg7 cards and launcher,
         and that the generated subprocess compiles into the expected shared
-        libraries (scalar cppnone backend).
+        libraries (cpu_scalar backend).
         """
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
@@ -3486,7 +3486,7 @@ set boost_choice [6, -6] pt [0, 0]
         header: the same FFV* helicity-amplitude functions are emitted as inline
         ``ALOHAOBJ`` C++ routines. This mirrors test_madevent_ufo_aloha but for
         the mg7 backend: it checks the routines are generated, the parameters /
-        process sources are present, and that the subprocess compiles (cppnone
+        process sources are present, and that the subprocess compiles (cpu_scalar
         backend) into the expected shared libraries.
         """
 

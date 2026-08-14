@@ -9,7 +9,7 @@
 
 # Set the default BACKEND (CUDA, HIP or C++/SIMD) choice
 ifeq ($(BACKEND),)
-  override BACKEND = cppauto
+  override BACKEND = cpu
 endif
 
 # Set the default FPTYPE (floating point type) choice
@@ -33,7 +33,7 @@ endif
 
 # Check that the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD are supported
 # (NB: use 'filter' and 'words' instead of 'findstring' because they properly handle whitespace-separated words)
-override SUPPORTED_BACKENDS = cuda hip cppnone cppsse4 cppavx2 cpp512y cpp512z cppauto
+override SUPPORTED_BACKENDS = cuda hip cpu_scalar cpu_128b cpu_256b cpu_512b_y cpu_512b cpu
 ifneq ($(words $(filter $(BACKEND), $(SUPPORTED_BACKENDS))),1)
   $(error Invalid backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
 endif
@@ -70,10 +70,12 @@ endif
 #=== Configure MADMATRIX_BUILDDIR
 
 # Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
-override DIRTAG := $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+# NB: the 'cpu_' prefix of the CPU/SIMD backends is stripped, so the tag is the short backend name
+# ('cpu_128b' -> '128b', 'cpu_scalar' -> 'scalar'); 'cuda' and 'hip' are left unchanged.
+override DIRTAG := $(patsubst cpu_%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
 
 # Build directory: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
-# NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after potential cppauto resolution
+# NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'cpu' auto-resolution
 ifeq ($(USEBUILDDIR),1)
   override MADMATRIX_BUILDDIR = build.$(BACKEND)
 else
@@ -118,38 +120,38 @@ $(info Building objects in BUILDDIR=$(BUILDDIR), libraries in LIBDIR=$(LIBDIR))
 
 #-------------------------------------------------------------------------------
 
-#=== Redefine BACKEND if the current value is 'cppauto'
+#=== Redefine BACKEND if the current value is 'cpu'
 
-# Set the default BACKEND choice corresponding to 'cppauto' (the 'best' C++ vectorization available)
+# Set the default BACKEND choice corresponding to 'cpu' (the 'best' C++ vectorization available)
 BACKEND_ORIG := $(BACKEND)
-ifeq ($(BACKEND),cppauto)
+ifeq ($(BACKEND),cpu)
   ifeq ($(UNAME_P),ppc64le)
-    override BACKEND = cppsse4
+    override BACKEND = cpu_128b
   else ifneq (,$(filter $(UNAME_M),arm64 aarch64))
-    override BACKEND = cppsse4
+    override BACKEND = cpu_128b
   else ifeq ($(wildcard /proc/cpuinfo),)
-    override BACKEND = cppnone
+    override BACKEND = cpu_scalar
     ###$(warning Using BACKEND='$(BACKEND)' because host SIMD features cannot be read from /proc/cpuinfo)
   else ifeq ($(shell grep -m1 -c avx512vl /proc/cpuinfo)$(shell $(CXX) --version | grep ^clang),1)
-    override BACKEND = cpp512y
+    override BACKEND = cpu_512b_y
   else ifeq ($(shell grep -m1 -c avx2 /proc/cpuinfo),1)
-    override BACKEND = cppavx2
+    override BACKEND = cpu_256b
     ###ifneq ($(shell grep -m1 -c avx512vl /proc/cpuinfo),1)
     ###  $(warning Using BACKEND='$(BACKEND)' because host does not support avx512vl)
     ###else
     ###  $(warning Using BACKEND='$(BACKEND)' because this is faster than avx512vl for clang)
     ###endif
   else ifeq ($(shell grep -m1 -c sse4_2 /proc/cpuinfo),1)
-    override BACKEND = cppsse4
+    override BACKEND = cpu_128b
   else
-    override BACKEND = cppnone
+    override BACKEND = cpu_scalar
   endif
-  $(info BACKEND=$(BACKEND) (was cppauto))
+  $(info BACKEND=$(BACKEND) (was cpu))
 else
   $(info BACKEND='$(BACKEND)')
 endif
 
-# Create file with the resolved backend in case user chooses 'cppauto'
+# Create file with the resolved backend in case user chooses 'cpu'
 BACKEND_LOG ?= .resolved-backend
 ifneq ($(BACKEND_ORIG),$(BACKEND))
   $(file >$(BACKEND_LOG),$(BACKEND))
@@ -361,9 +363,9 @@ else
   override GPUFLAGS=
 
   # Sanity check, this should never happen: if GPUCC is empty, then this is a C++ build, i.e. BACKEND is neither cuda nor hip.
-  # In practice, in the following, "ifeq ($(GPUCC),)" is equivalent to "ifneq ($(findstring cpp,$(BACKEND)),)".
+  # In practice, in the following, "ifeq ($(GPUCC),)" is equivalent to "ifneq ($(findstring cpu,$(BACKEND)),)".
   # Conversely, note that GPUFLAGS is non-empty also for C++ builds, but it is never used in that case.
-  ifeq ($(findstring cpp,$(BACKEND)),)
+  ifeq ($(findstring cpu,$(BACKEND)),)
     $(error INTERNAL ERROR! Unknown backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
   endif
 
@@ -375,7 +377,7 @@ export GPUFLAGS
 export GPULANGUAGE
 export GPUSUFFIX
 
-# Export BACKEND (resolved from cppauto above if needed; used e.g. to name the common library)
+# Export BACKEND (resolved from cpu above if needed; used e.g. to name the common library)
 export BACKEND
 
 #-------------------------------------------------------------------------------
@@ -429,13 +431,13 @@ INCFLAGS += -I$(SRC)
 
 # PowerPC-specific CXX compiler flags (being reviewed)
 ifeq ($(UNAME_P),ppc64le)
-  CXXFLAGS+= -mcpu=power9 -mtune=power9 # gains ~2-3%% both for cppnone and cppsse4
-  # Throughput references without the extra flags below: cppnone=1.41-1.42E6, cppsse4=2.15-2.19E6
+  CXXFLAGS+= -mcpu=power9 -mtune=power9 # gains ~2-3%% both for cpu_scalar and cpu_128b
+  # Throughput references without the extra flags below: cpu_scalar=1.41-1.42E6, cpu_128b=2.15-2.19E6
   ###CXXFLAGS+= -DNO_WARN_X86_INTRINSICS # no change
   ###CXXFLAGS+= -fpeel-loops # no change
-  ###CXXFLAGS+= -funroll-loops # gains ~1%% for cppnone, loses ~1%% for cppsse4
+  ###CXXFLAGS+= -funroll-loops # gains ~1%% for cpu_scalar, loses ~1%% for cpu_128b
   ###CXXFLAGS+= -ftree-vectorize # no change
-  ###CXXFLAGS+= -flto # would increase to cppnone=4.08-4.12E6, cppsse4=4.99-5.03E6!
+  ###CXXFLAGS+= -flto # would increase to cpu_scalar=4.08-4.12E6, cpu_128b=4.99-5.03E6!
 else
   ###CXXFLAGS+= -flto # also on Intel this would increase throughputs by a factor 2 to 4...
   ######CXXFLAGS+= -fno-semantic-interposition # no benefit (neither alone, nor combined with -flto)
@@ -516,66 +518,66 @@ endif
 $(info OMPFLAGS=$(OMPFLAGS))
 CXXFLAGS += $(OMPFLAGS)
 
-# Set the build flags appropriate to each BACKEND choice (example: "make BACKEND=cppnone")
+# Set the build flags appropriate to each BACKEND choice (example: "make BACKEND=cpu_scalar")
 # [NB MGONGPU_PVW512 is needed because "-mprefer-vector-width=256" is not exposed in a macro]
 # [See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96476]
 # [Use 'g++ <buildflags> -E -dM - < /dev/null' to check which #define's are enabled]
 ifeq ($(UNAME_P),ppc64le)
-  ifeq ($(BACKEND),cppsse4)
+  ifeq ($(BACKEND),cpu_128b)
     override AVXFLAGS = -D__SSE4_2__ # Power9 VSX with 128 width (VSR registers)
-  else ifeq ($(BACKEND),cppavx2)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on PowerPC for the moment)
-  else ifeq ($(BACKEND),cpp512y)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on PowerPC for the moment)
-  else ifeq ($(BACKEND),cpp512z)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on PowerPC for the moment)
+  else ifeq ($(BACKEND),cpu_256b)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on PowerPC for the moment)
+  else ifeq ($(BACKEND),cpu_512b_y)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on PowerPC for the moment)
+  else ifeq ($(BACKEND),cpu_512b)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on PowerPC for the moment)
   endif
 else ifeq ($(UNAME_M),arm64) # ARM on Apple silicon
-  ifeq ($(BACKEND),cppnone) # this internally undefines __ARM_NEON
+  ifeq ($(BACKEND),cpu_scalar) # this internally undefines __ARM_NEON
     override AVXFLAGS = -DMGONGPU_NOARMNEON
-  else ifeq ($(BACKEND),cppsse4) # __ARM_NEON is always defined on Apple silicon
+  else ifeq ($(BACKEND),cpu_128b) # __ARM_NEON is always defined on Apple silicon
     override AVXFLAGS =
-  else ifeq ($(BACKEND),cppavx2)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on ARM for the moment)
-  else ifeq ($(BACKEND),cpp512y)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on ARM for the moment)
-  else ifeq ($(BACKEND),cpp512z)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on ARM for the moment)
+  else ifeq ($(BACKEND),cpu_256b)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on ARM for the moment)
+  else ifeq ($(BACKEND),cpu_512b_y)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on ARM for the moment)
+  else ifeq ($(BACKEND),cpu_512b)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on ARM for the moment)
   endif
 else ifeq ($(UNAME_M),aarch64) # ARM on Linux
-  ifeq ($(BACKEND),cppnone) # +nosimd ensures __ARM_NEON is absent
+  ifeq ($(BACKEND),cpu_scalar) # +nosimd ensures __ARM_NEON is absent
     override AVXFLAGS = -march=armv8-a+nosimd
-  else ifeq ($(BACKEND),cppsse4) # +simd ensures __ARM_NEON is present (128 width Q/quadword registers)
+  else ifeq ($(BACKEND),cpu_128b) # +simd ensures __ARM_NEON is present (128 width Q/quadword registers)
     override AVXFLAGS = -march=armv8-a+simd
-  else ifeq ($(BACKEND),cppavx2)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on aarch64 for the moment)
-  else ifeq ($(BACKEND),cpp512y)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on aarch64 for the moment)
-  else ifeq ($(BACKEND),cpp512z)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on aarch64 for the moment)
+  else ifeq ($(BACKEND),cpu_256b)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on aarch64 for the moment)
+  else ifeq ($(BACKEND),cpu_512b_y)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on aarch64 for the moment)
+  else ifeq ($(BACKEND),cpu_512b)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cpu_scalar' and 'cpu_128b' are supported on aarch64 for the moment)
   endif
 else ifneq ($(shell $(CXX) --version | grep ^nvc++),) # support nvc++ #531
-  ifeq ($(BACKEND),cppnone)
+  ifeq ($(BACKEND),cpu_scalar)
     override AVXFLAGS = -mno-sse3 # no SIMD
-  else ifeq ($(BACKEND),cppsse4)
+  else ifeq ($(BACKEND),cpu_128b)
     override AVXFLAGS = -mno-avx # SSE4.2 with 128 width (xmm registers)
-  else ifeq ($(BACKEND),cppavx2)
+  else ifeq ($(BACKEND),cpu_256b)
     override AVXFLAGS = -march=haswell # AVX2 with 256 width (ymm registers) [DEFAULT for clang]
-  else ifeq ($(BACKEND),cpp512y)
+  else ifeq ($(BACKEND),cpu_512b_y)
     override AVXFLAGS = -march=skylake -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
-  else ifeq ($(BACKEND),cpp512z)
+  else ifeq ($(BACKEND),cpu_512b)
     override AVXFLAGS = -march=skylake -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 else
-  ifeq ($(BACKEND),cppnone)
+  ifeq ($(BACKEND),cpu_scalar)
     override AVXFLAGS = -march=x86-64 # no SIMD (see #588)
-  else ifeq ($(BACKEND),cppsse4)
+  else ifeq ($(BACKEND),cpu_128b)
     override AVXFLAGS = -march=nehalem # SSE4.2 with 128 width (xmm registers)
-  else ifeq ($(BACKEND),cppavx2)
+  else ifeq ($(BACKEND),cpu_256b)
     override AVXFLAGS = -march=haswell # AVX2 with 256 width (ymm registers) [DEFAULT for clang]
-  else ifeq ($(BACKEND),cpp512y)
+  else ifeq ($(BACKEND),cpu_512b_y)
     override AVXFLAGS = -march=skylake-avx512 -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
-  else ifeq ($(BACKEND),cpp512z)
+  else ifeq ($(BACKEND),cpu_512b)
     override AVXFLAGS = -march=skylake-avx512 -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 endif
@@ -666,7 +668,8 @@ endif
 #=== Configure build directories and build lockfiles ===
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
-override TAG = $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+# NB: the 'cpu_' prefix of the CPU/SIMD backends is stripped (see DIRTAG above)
+override TAG = $(patsubst cpu_%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
@@ -797,23 +800,23 @@ bldhip:
 
 bldnone:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cppnone
+	$(MAKE) $(_BLDFLAGS) BACKEND=cpu_scalar
 
 bldsse4:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cppsse4
+	$(MAKE) $(_BLDFLAGS) BACKEND=cpu_128b
 
 bldavx2:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cppavx2
+	$(MAKE) $(_BLDFLAGS) BACKEND=cpu_256b
 
 bld512y:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cpp512y
+	$(MAKE) $(_BLDFLAGS) BACKEND=cpu_512b_y
 
 bld512z:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cpp512z
+	$(MAKE) $(_BLDFLAGS) BACKEND=cpu_512b
 
 ifeq ($(UNAME_P),ppc64le)
 bldavxs: bldnone bldsse4
@@ -862,7 +865,7 @@ cleanall:
 
 #-------------------------------------------------------------------------------
 
-# Detect backend (to be used in case of 'cppauto' to give info to the user)
+# Detect backend (to be used in case of 'cpu' to give info to the user)
 .PHONY: detect-backend
 detect-backend:
 	@echo "Resolved backend has already been written to $(BACKEND_LOG) at parse time."

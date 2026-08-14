@@ -4432,7 +4432,7 @@ def check_language(process_definition, param_card=None, options=None,
                     if p_dirs_mg7:
                         check_dir_mg7 = pjoin(sa_dir_mg7, 'SubProcesses',
                                               p_dirs_mg7[0])
-                        backends = ["cppnone", "cppsse4", "cppavx2", "cpp512z", "cuda", "hip"]
+                        backends = ["cpu_scalar", "cpu_128b", "cpu_256b", "cpu_512b", "cuda", "hip"]
                         for backend in backends:
                             with open(os.devnull, 'w') as devnull:
                                 ret = subprocess.call(f'make clean && make BACKEND={backend} USEBUILDDIR=1', shell=True, cwd=check_dir_mg7,

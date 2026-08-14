@@ -86,7 +86,7 @@ $(BUILDDIR)/.build.$(TAG):
 #-------------------------------------------------------------------------------
 
 # Generic target and build rules: objects from C++ or CUDA/HIP compilation.
-# Plain .o suffix — the BUILDDIR (e.g. build.cppavx2/) provides backend separation.
+# Plain .o suffix — the BUILDDIR (e.g. build.cpu_256b/) provides backend separation.
 # Use USEBUILDDIR=1 to build for multiple backends simultaneously without cleaning.
 ifeq ($(GPUCC),)
 $(BUILDDIR)/%%.o : %%.cc *.h $(BUILDDIR)/.build.$(TAG)

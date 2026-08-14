@@ -312,7 +312,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
         self.param_card = None
         self.reweight_card = []
         self.reweight_names = []
-        self.backend = 'cppauto' # default backend for tRex reweighting
+        self.backend = 'cpu' # default backend for tRex reweighting
         self.fptype = 'm' # default floating point type for tRex reweighting
         self.nb_threads = 1
         if self.mother:
@@ -465,7 +465,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
         if len(args) < 2:
             return super().do_change(line)
         if args[0].lower() in ['cudacpp_backend', 'backend']:
-            cudacpp_supported_backends = [ 'cuda', 'hip', 'cpp', 'cppnone', 'cppsse4', 'cppavx2', 'cpp512y', 'cpp512z', 'cppauto' ]
+            cudacpp_supported_backends = [ 'cuda', 'hip', 'cpp', 'cpu_scalar', 'cpu_128b', 'cpu_256b', 'cpu_512b_y', 'cpu_512b', 'cpu' ]
             if args[1].lower() in cudacpp_supported_backends:
                 self.backend = args[1].lower()
                 logger.info("Setting tRex reweighting backend to '%s'" % self.backend)

@@ -1649,7 +1649,7 @@ class TestMECmdShell(unittest.TestCase):
         generate_events run. The mg7 (madmatrix/cudacpp) integrator is far too
         slow for a CI cross-section run on this process, so this equivalent
         validates the mg7 *output* path instead: that `output mg7` generates the
-        e- p > e- j subprocess directories and that they compile (scalar cppnone
+        e- p > e- j subprocess directories and that they compile (cpu_scalar
         backend) into the expected shared libraries. The cross-section
         comparison against the madevent reference remains a TODO pending a
         faster mg7 integrator.

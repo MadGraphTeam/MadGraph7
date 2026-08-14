@@ -975,14 +975,14 @@ class MadgraphSubprocess:
             devices = [devices]
         for device in devices:
             subproc_dir = os.path.dirname(subproc_path)
-            # 'cppauto' resolve quick fix
+            # 'cpu' resolve quick fix
             resolved = device
-            if device == "cppauto":
+            if device == "cpu":
                 out = subprocess.run(
-                    ["make", "-n", "BACKEND=cppauto", "detect-backend"],
+                    ["make", "-n", "BACKEND=cpu", "detect-backend"],
                     cwd=subproc_path, capture_output=True, text=True,
                 ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cppauto\)", out)
+                match = re.search(r"BACKEND=(\S+) \(was cpu\)", out)
                 if match:
                     resolved = match.group(1)
             api_path = api_path_format.format(device=resolved)

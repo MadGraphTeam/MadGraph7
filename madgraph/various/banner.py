@@ -6453,8 +6453,8 @@ class RunCardMG7(RunCard):
 
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
-        self.add_toml_param('run', 'devices', ["cppnone"], typelist=str, gridpack=True,
-            comment="options: cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto")
+        self.add_toml_param('run', 'devices', ["cpu_scalar"], typelist=str, gridpack=True,
+            comment="options: cuda, hip, cpp, cpu_scalar, cpu_128b, cpu_256b, cpu_512b_y, cpu_512b, cpu")
         self.add_toml_param('run', 'simd_vector_size', -1,
             comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,

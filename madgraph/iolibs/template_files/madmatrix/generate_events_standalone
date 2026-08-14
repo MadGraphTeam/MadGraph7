@@ -17,9 +17,9 @@ import os
 import subprocess
 import sys
 
-BACKENDS = ['cppauto', 'cppnone', 'cppsse4', 'cppavx2', 'cpp512y', 'cpp512z', 'cuda', 'hip']
+BACKENDS = ['cpu', 'cpu_scalar', 'cpu_128b', 'cpu_256b', 'cpu_512b_y', 'cpu_512b', 'cuda', 'hip']
 
-DEFAULT_BACKEND = 'cppauto'
+DEFAULT_BACKEND = 'cpu'
 
 
 def list_p_dirs(subproc):
