@@ -25,6 +25,11 @@ else:
     import madgraph.various.banner as banner_mod
     import madgraph.interface.common_run_interface as common_run_interface
 
+# The backends accepted by the 'cudacpp_backend' run_card entry. 'cpu' is the
+# auto-detecting CPU backend (the makefile resolves it to the widest SIMD flavour
+# available on the host); the cpu_* entries pin one explicit SIMD width.
+CUDACPP_SUPPORTED_BACKENDS = [ 'fortran', 'cuda', 'hip', 'cpu_scalar', 'cpu_128b', 'cpu_256b', 'cpu_512b_y', 'cpu_512b', 'cpu' ]
+
 class CPPMEInterface(madevent_interface.MadEventCmdShell):
     def compile(self, *args, **opts):
         """ """
@@ -36,10 +41,10 @@ class CPPMEInterface(madevent_interface.MadEventCmdShell):
             common_run_interface.CommonRunCmd.update_make_opts_full(path,
                 {'override FPTYPE': self.run_card['floating_type'] })
             misc.sprint('FPTYPE checked')
-        cudacpp_supported_backends = [ 'fortran', 'cuda', 'hip', 'cpp', 'cpu_scalar', 'cpu_128b', 'cpu_256b', 'cpu_512b_y', 'cpu_512b', 'cpu' ]
-        if args and args[0][0] == 'madevent' and hasattr(self, 'run_card'):            
+        cudacpp_supported_backends = CUDACPP_SUPPORTED_BACKENDS
+        if args and args[0][0] == 'madevent' and hasattr(self, 'run_card'):
             cudacpp_backend = self.run_card['cudacpp_backend'].lower() # the default value is defined in launch_plugin.py
-            if cudacpp_backend in ['cpp', 'cpu']:
+            if cudacpp_backend == 'cpu':
                 backend_log = pjoin(opts["cwd"], ".resolved-backend")
                 # try to remove old file if present
                 try:
@@ -53,7 +58,7 @@ class CPPMEInterface(madevent_interface.MadEventCmdShell):
                     logger.info(f"Backend '{cudacpp_backend}' resolved as '{resolved_backend}'")
                     cudacpp_backend = resolved_backend
                 except FileNotFoundError:
-                    raise RuntimeError("Could not resolve cudacpp_backend=cpu|cpp; ensure Makefile detection runs properly.")
+                    raise RuntimeError("Could not resolve cudacpp_backend=cpu; ensure Makefile detection runs properly.")
             logger.info(f"Building madevent in madevent_interface.py with '{cudacpp_backend}' matrix elements")
             if cudacpp_backend in cudacpp_supported_backends :
                 args[0][0] = 'madevent_' + cudacpp_backend + '_link'
@@ -68,7 +73,7 @@ template_on = \
 """#***********************************************************************
 # SIMD/GPU configuration for the CUDACPP plugin
 #************************************************************************
- %(cudacpp_backend)s = cudacpp_backend ! CUDACPP backend: fortran, cuda, hip, cpp, cpu_scalar, cpu_128b, cpu_256b, cpu_512b_y, cpu_512b, cpu
+ %(cudacpp_backend)s = cudacpp_backend ! CUDACPP backend: fortran, cuda, hip, cpu_scalar, cpu_128b, cpu_256b, cpu_512b_y, cpu_512b, cpu
 """
 
 template_off = ''
@@ -76,6 +81,27 @@ plugin_block = banner_mod.RunBlock('simd', template_on=template_on, template_off
 
 class CPPRunCard(banner_mod.RunCardLO):
     blocks = banner_mod.RunCardLO.blocks + [plugin_block]
+
+    def __setitem__(self, name, value, *args, **opts):
+        """Refuse an unsupported cudacpp_backend instead of silently falling back.
+
+        The generic ConfigFile machinery reacts to a value outside an 'allowed'
+        list by logging a warning and keeping the previous value. For
+        cudacpp_backend that would mean building and running on a backend the
+        user never asked for, so make it a hard error here. This matters in
+        particular for run cards written before the backend renaming, which
+        still carry the removed 'cpp' value.
+        """
+        if isinstance(name, str) and name.strip().lower() == 'cudacpp_backend':
+            allowed = getattr(self, 'allowed_value', {}).get('cudacpp_backend', [])
+            if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
+                raise banner_mod.InvalidRunCard(
+                    "Invalid cudacpp_backend='%s': supported backends are [ '%s' ]. " \
+                    % (str(value).strip(), "', '".join(str(v) for v in allowed)) +
+                    "The CPU/SIMD backends were renamed: use 'cpu' (auto-detected SIMD width) " \
+                    "instead of 'cpp', and 'cpu_scalar'/'cpu_128b'/'cpu_256b'/'cpu_512b_y'/'cpu_512b' " \
+                    "instead of 'cppnone'/'cppsse4'/'cppavx2'/'cpp512y'/'cpp512z'.")
+        return super().__setitem__(name, value, *args, **opts)
 
     def reset_simd(self, old_value, new_value, name):
         if not hasattr(self, 'path'):
@@ -105,9 +131,8 @@ class CPPRunCard(banner_mod.RunCardLO):
                        allowed=['m','d','f'],
                        comment='floating point precision: f (single), d (double), m (mixed: double for amplitudes, single for colors)'
                        )
-        cudacpp_supported_backends = [ 'fortran', 'cuda', 'hip', 'cpp', 'cpu_scalar', 'cpu_128b', 'cpu_256b', 'cpu_512b_y', 'cpu_512b', 'cpu' ]
-        self.add_param('cudacpp_backend', 'cpp', include=False, hidden=False,
-                       allowed=cudacpp_supported_backends)
+        self.add_param('cudacpp_backend', 'cpu', include=False, hidden=False,
+                       allowed=CUDACPP_SUPPORTED_BACKENDS)
         self['vector_size'] = 16 # already setup in default class (just change value)
         self['aloha_flag'] = '--fast-math'
         self['matrix_flag'] = '-O3'
