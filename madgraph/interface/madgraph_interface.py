@@ -3327,6 +3327,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # support crossing yet, so the shipped default must be the un-crossed
     # output for every mode. Pass --use_crossing=True to opt in.
     _use_crossing = False
+    # Sticky: an explicit --use_crossing=False on ANY line of the current
+    # process definition keeps it off, even if a later line asks for it.
+    _use_crossing_off = False
     # Same flag on the output line, for the output being written (see do_output).
     # do_output sets it on every call, so it can never leak to the next output.
     _output_use_crossing = False
@@ -3495,8 +3498,20 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # yet). --use_crossing (bare) or --use_crossing=True turns it on,
         # --use_crossing=False is the default. --standalone does not affect it.
         use_crossing = self.pop_use_crossing_flag(args)
-        if use_crossing is None:
-            use_crossing = False
+        # Resolve what THIS line means for the definition as a whole. With the
+        # default off, the old `and` accumulator below could never be lifted
+        # (False and True is False), so an explicit --use_crossing=True was
+        # silently ignored. Instead: an explicit True switches it on, an
+        # explicit False switches it off for good (a multi-line definition must
+        # not end up half crossed), and a line with no flag inherits what the
+        # definition already chose -- which starts off.
+        if use_crossing is False:
+            self._use_crossing_off = True
+        elif use_crossing is True:
+            self._use_crossing = True
+        if getattr(self, '_use_crossing_off', False):
+            self._use_crossing = False
+        use_crossing = self._use_crossing
         # Crossed subprocesses are ALWAYS kept (merge_crossing=False, the
         # historical 3.x default): use_crossing only decides later, at the
         # exporter stage, whether they collapse into a single extended-FLAV_IDX
@@ -3527,10 +3542,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         if args[0] == 'model':
             return self.add_model(args[1:])
 
-        # Remember the choice for the exporter: the crossing machinery is only
-        # written out in the fortran standalone if every process of the current
-        # generation asked for it (reset by clean_process/do_generate).
-        self._use_crossing = self._use_crossing and use_crossing
+        # self._use_crossing is already the definition-wide choice (resolved
+        # above, reset by clean_process/do_generate); the exporter reads it.
 
         # special option for 1->N to avoid generation of kinematically forbidden
         #decay.
@@ -5212,6 +5225,7 @@ This implies that with decay chains:
         # same lifetime as the generate-line flag rather than leaving the last
         # output's choice behind.
         self._use_crossing = False
+        self._use_crossing_off = False
         self._output_use_crossing = False
         # Reset _done_export, since we have new process
         self._done_export = False
