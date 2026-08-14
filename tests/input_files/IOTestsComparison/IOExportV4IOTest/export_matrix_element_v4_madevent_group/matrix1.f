@@ -372,9 +372,10 @@ C
       INCLUDE 'genps.inc'
       INCLUDE 'nexternal.inc'
       INCLUDE 'maxamps.inc'
-      INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
+      INTEGER    NWAVEFUNCS,     NCOLOR
       PARAMETER (NWAVEFUNCS=5, NCOLOR=2)
-      PARAMETER (NCOLORFOLD=2)
+      INTEGER    NCOLOR_FLOW
+      PARAMETER (NCOLOR_FLOW=2)
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
       COMPLEX*16 IMAG1
@@ -401,7 +402,7 @@ C
       COMPLEX*16 ZTEMP
       COMPLEX*16 TMP_JAMP(0)
 
-      INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1)/2)
+      INTEGER CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER DENOM, CF_INDEX
       COMMON /COLOR_MATRIX1/ CF,DENOM
       COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
@@ -453,7 +454,6 @@ C
 C     1 T(2,1) T(3,4)
       DATA (CF(I),I=  3,  3) /9/
 C     1 T(2,4) T(3,1)
-
 C     ----------
 C     BEGIN CODE
 C     ----------
@@ -509,6 +509,7 @@ C     JAMPs contributing to orders ALL_ORDERS=1
       JAMP(2,1) = (-5.000000000000000D-01)*AMP(1)+(-1.666666666666667D
      $ -01)*AMP(4)+AMP(5)+AMP(6)
 
+
       IF(INIT_MODE)THEN
         DO I=1, NGRAPHS
           IF (AMP(I).NE.0) THEN
@@ -517,13 +518,12 @@ C     JAMPs contributing to orders ALL_ORDERS=1
         ENDDO
       ENDIF
 
-
       MATRIX1 = 0.D0
       DO M = 1, NAMPSO
         CF_INDEX = 0
-        DO I = 1, NCOLORFOLD
+        DO I = 1, NCOLOR
           ZTEMP = (0.D0,0.D0)
-          DO J = I, NCOLORFOLD
+          DO J = I, NCOLOR
             CF_INDEX = CF_INDEX + 1
             ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
           ENDDO
@@ -545,7 +545,7 @@ C     JAMPs contributing to orders ALL_ORDERS=1
         AMP2(6)=AMP2(6)+AMP(6)*DCONJG(AMP(6))
       ENDIF
 
-      DO I = 1, NCOLOR
+      DO I = 1, NCOLOR_FLOW
         DO M = 1, NAMPSO
           DO N = 1, NAMPSO
 
