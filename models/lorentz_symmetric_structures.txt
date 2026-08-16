@@ -1,0 +1,19 @@
+# Lorentz structure functions whose arguments commute.
+#
+# When the same lorentz name is defined twice, import_ufo compares the two
+# structure strings and warns if they differ. Some differences are not real
+# redefinitions: renumbering the indices of a vertex can reorder the arguments
+# of a symmetric function, so Metric(3,2) and Metric(2,3) come out as different
+# strings while denoting the same object.
+#
+# Every function listed here has its arguments sorted before that comparison,
+# so a difference in argument order alone is silent and only a genuine
+# disagreement is reported.
+#
+# One function name per line; blank lines and #-comments are ignored. Only add
+# a function whose arguments really do commute -- listing a non-symmetric one
+# would silence a real redefinition. Sorting applies solely to calls whose
+# arguments are all plain (possibly negative) integer indices.
+
+# g^{mu nu} is symmetric by definition.
+Metric

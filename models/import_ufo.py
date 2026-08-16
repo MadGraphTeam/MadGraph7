@@ -59,6 +59,52 @@ pjoin = os.path.join
 # Suffixes to employ for the various poles of CTparameters
 pole_dict = {-2:'2EPS',-1:'1EPS',0:'FIN'}
 
+# Cache for lorentz_symmetric_structures.txt (read at most once per session).
+_symmetric_lorentz_structures = None
+
+def get_symmetric_lorentz_structures():
+    """Return the lorentz structure functions whose arguments commute, as
+    listed in models/lorentz_symmetric_structures.txt."""
+
+    global _symmetric_lorentz_structures
+    if _symmetric_lorentz_structures is None:
+        names = []
+        path = pjoin(root_path, 'lorentz_symmetric_structures.txt')
+        try:
+            with open(path) as fsock:
+                for line in fsock:
+                    line = line.split('#', 1)[0].strip()
+                    if line:
+                        names.append(line)
+        except IOError:
+            logger.debug('%s not found: no lorentz structure is canonicalised',
+                         path)
+        _symmetric_lorentz_structures = names
+    return _symmetric_lorentz_structures
+
+def canonicalize_lorentz_structure(structure):
+    """Sort the arguments of the symmetric functions appearing in *structure*.
+
+    Renumbering the indices of a vertex can reorder the arguments of a
+    symmetric function, so that Metric(3,2) and Metric(2,3) -- the same object
+    -- come out as different strings. Sorting the arguments of the functions
+    known to be symmetric makes the two spellings compare equal, so that only a
+    real disagreement between two definitions is reported.
+
+    Only calls whose arguments are all plain (possibly negative) integer
+    indices are touched, so a nested expression is never rewritten."""
+
+    if not isinstance(structure, str):
+        return structure
+    for name in get_symmetric_lorentz_structures():
+        pattern = re.compile(r'\b%s\(\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\)'
+                             % re.escape(name))
+        def sort_args(matchobj, name=name):
+            args = [a.strip() for a in matchobj.group(1).split(',')]
+            return '%s(%s)' % (name, ','.join(sorted(args, key=int)))
+        structure = pattern.sub(sort_args, structure)
+    return structure
+
 class UFOImportError(MadGraph5Error):
     """ a error class for wrong import of UFO model""" 
 
@@ -1378,7 +1424,11 @@ class UFOMG5Converter(object):
                 new_lor = self.add_lorentz(new_name, new_spins, new_expr, formfact=new_formfact)
             except AssertionError:
                 prev_def = [l for l in self.model['lorentz'] if l.name==new_name][0]
-                if prev_def.structure != new_expr:
+                # compare canonicalised forms: the index renumbering above can
+                # reorder the arguments of a symmetric function, and that alone
+                # is not a redefinition (see canonicalize_lorentz_structure)
+                if canonicalize_lorentz_structure(prev_def.structure) != \
+                                     canonicalize_lorentz_structure(new_expr):
                     misc.sprint("WARNING, two different definition for one lorentz name", prev_def.structure, new_expr)
                 new_lor = prev_def
         return new_lor
