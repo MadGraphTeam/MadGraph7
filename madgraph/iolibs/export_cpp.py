@@ -101,7 +101,6 @@ class UFOModelConverterCPP(object):
     def __init__(self, model, output_path, wanted_lorentz = [],
                  wanted_couplings = [], replace_dict={}):
         """ initialization of the objects """
-        misc.sprint('Exporting model to C++ standalone format')
         self.model = model
         self.model_name = ProcessExporterCPP.get_model_name(model['name'])
 
@@ -216,7 +215,6 @@ class UFOModelConverterCPP(object):
         # Handle flavor couplings
         # strategy picke one of the actual coupling and check if this is a running one or not
         flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
-        misc.sprint(self.coups_dep)
         deps = [c.name for c in self.coups_dep.values()]
         for one_flv in flavor_couplings:
             one_coupling = one_flv.get_one_coupling()
@@ -348,7 +346,6 @@ class UFOModelConverterCPP(object):
 
         # For each parameter type, write out the definition string
         # type parameters;
-        misc.sprint(type_param_dict)
         res_strings = []
         for key in type_param_dict:
             res_strings.append("%s %s;" % (self.type_dict[key],

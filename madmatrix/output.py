@@ -144,7 +144,6 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV (default from OM's tutorial) - add a debug printout
     def __init__(self, *args, **kwargs):
         self.in_madevent_mode = False # see MR #747
-        misc.sprint('Entering ProcessExporterMadMatrix.__init__ (initialise the exporter)')
         args[1]["me_lib_format"] = pjoin("lib", "libmadmatrix_{process_id}_{{device}}.so")
         super().__init__(*args, **kwargs)
         # Honor the output command's --mask=True|False (flavor-mask
@@ -161,7 +160,6 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     # AV - overload the default version: create CMake directory, do not create lib directory
     def copy_template(self, model):
-        misc.sprint('Entering ProcessExporterMadMatrix.copy_template (initialise the directory)')
         super().copy_template(model)
         # Rename Makefile to makefile
         if self.template_src_make:
@@ -171,11 +169,6 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
-        misc.sprint('Entering ProcessExporterMadMatrix.generate_subprocess_directory (create the directory)')
-        misc.sprint('  type(matrix_element)=%s'%type(matrix_element)) # e.g. madgraph.core.helas_objects.HelasMatrixElement
-        misc.sprint('  type(cpp_helas_call_writer)=%s'%type(cpp_helas_call_writer)) # e.g. madgraph.iolibs.helas_call_writers.GPUFOHelasCallWriter
-        misc.sprint('  type(proc_number)=%s me=%s'%(type(proc_number) if proc_number is not None else None, proc_number)) # e.g. int
-        misc.sprint("need to link", self.to_link_in_P)
         # Propagate the --mask toggle to the helas call writer that emits the
         # guarded wavefunction/amplitude calls.
         if cpp_helas_call_writer is not None:
