@@ -51,7 +51,8 @@ AdamOptimizer::AdamOptimizer(
             ? build_runtime(GradientClipper().function(), context, false)
             : nullptr
     ),
-    _one(1.0, context->device()) {
+    _one(1.0, context->device()),
+    _loss_mean(std::numeric_limits<double>::quiet_NaN()) {
     DevicePtr device = context->device();
     for (auto& [name, value] : function.globals()) {
         if (context->global_requires_grad(name)) {
@@ -87,6 +88,14 @@ TensorVec AdamOptimizer::step(const TensorVec& inputs) {
     // TODO: return loss as double
     if (std::isnan(loss)) {
         return outputs;
+    }
+    if (std::isnan(_loss_mean)) {
+        _loss_mean = loss;
+    } else {
+        if (_step > 100 && loss > 20 * _loss_mean) {
+            return outputs;
+        }
+        _loss_mean = 0.05 * loss + 0.95 * _loss_mean;
     }
     TensorVec output_grads(outputs.size());
     DevicePtr device = _context->device();

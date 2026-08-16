@@ -55,6 +55,7 @@ private:
     double _eps;
     double _grad_clip_threshold;
     double _weight_decay;
+    double _loss_mean;
     RuntimePtr _grad_clipper;
     Tensor _one;
     Tensor _parameter;
