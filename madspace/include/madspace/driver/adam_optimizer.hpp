@@ -8,14 +8,12 @@ namespace madspace {
 
 class GradientClipper : public FunctionGenerator {
 public:
-    GradientClipper(double threshold);
+    GradientClipper();
 
 private:
     NamedVector<Value> build_function_impl(
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
-
-    double _threshold;
 };
 
 class AdamOptimizer {
@@ -54,11 +52,13 @@ private:
     double _beta1;
     double _beta2;
     double _eps;
+    double _grad_clip_threshold;
     RuntimePtr _grad_clipper;
     Tensor _one;
     Tensor _parameter;
     Tensor _exp_avg;
     Tensor _exp_avg_sq;
+    Tensor _threshold_tensor;
     TypeVec _input_types;
     std::vector<std::string> _param_names;
 };

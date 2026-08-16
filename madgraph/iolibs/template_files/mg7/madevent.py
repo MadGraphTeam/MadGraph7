@@ -557,6 +557,7 @@ class MadgraphProcess:
             config.adam_beta1 = madnis_args["adam_beta1"]
             config.adam_beta2 = madnis_args["adam_beta2"]
             config.adam_eps = madnis_args["adam_eps"]
+            config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
             config.buffer_capacity = madnis_args["buffer_capacity"]
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
             config.buffered_steps = madnis_args["buffered_steps"]
