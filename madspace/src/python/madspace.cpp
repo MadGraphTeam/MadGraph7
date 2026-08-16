@@ -1036,6 +1036,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("function"),
             py::arg("context"),
@@ -1045,7 +1046,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beta1") = 0.9,
             py::arg("beta2") = 0.999,
             py::arg("eps") = 1e-8,
-            py::arg("grad_clip_threshold") = 0.0
+            py::arg("grad_clip_threshold") = 0.0,
+            py::arg("weight_decay") = 0.0
     )
         .def(
             "step",
@@ -1366,6 +1368,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("adam_beta1", &MadnisTraining::Config::adam_beta1)
         .def_readwrite("adam_beta2", &MadnisTraining::Config::adam_beta2)
         .def_readwrite("adam_eps", &MadnisTraining::Config::adam_eps)
+        .def_readwrite("adam_weight_decay", &MadnisTraining::Config::adam_weight_decay)
         .def_readwrite(
             "grad_clip_threshold", &MadnisTraining::Config::grad_clip_threshold
         )

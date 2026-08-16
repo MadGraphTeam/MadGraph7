@@ -36,6 +36,7 @@ public:
         double adam_beta1 = 0.9;
         double adam_beta2 = 0.999;
         double adam_eps = 1e-8;
+        double adam_weight_decay = 0.0;
         double grad_clip_threshold = 0.0;
         std::size_t buffer_capacity = 0;
         std::size_t minimum_buffer_size = 10000;

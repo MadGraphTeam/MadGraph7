@@ -221,7 +221,8 @@ public:
         double beta1,
         double beta2,
         double eps,
-        double bias_corr2_sqrt
+        double bias_corr2_sqrt,
+        double weight_decay
     ) const = 0;
 };
 
@@ -680,6 +681,7 @@ private:
     }
 
     TensorImpl* impl;
+
 public:
     static inline std::size_t tensor_count = 0;
 };

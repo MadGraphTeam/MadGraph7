@@ -33,7 +33,8 @@ AdamOptimizer::AdamOptimizer(
     double beta1,
     double beta2,
     double eps,
-    double grad_clip_threshold
+    double grad_clip_threshold,
+    double weight_decay
 ) :
     _context(context),
     _learning_rate(learning_rate),
@@ -44,6 +45,7 @@ AdamOptimizer::AdamOptimizer(
     _beta2(beta2),
     _eps(eps),
     _grad_clip_threshold(grad_clip_threshold),
+    _weight_decay(weight_decay),
     _grad_clipper(
         grad_clip_threshold > 0.
             ? build_runtime(GradientClipper().function(), context, false)
@@ -107,7 +109,8 @@ TensorVec AdamOptimizer::step(const TensorVec& inputs) {
         _beta1,
         _beta2,
         _eps,
-        bias_corr2_sqrt
+        bias_corr2_sqrt,
+        lr * _weight_decay
     );
     return outputs;
 }

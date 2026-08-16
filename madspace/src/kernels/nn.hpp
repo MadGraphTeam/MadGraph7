@@ -778,13 +778,14 @@ KERNELSPEC void kernel_adam_step(
     FVal<T> beta1,
     FVal<T> beta2,
     FVal<T> eps,
-    FVal<T> bias_corr2_sqrt
+    FVal<T> bias_corr2_sqrt,
+    FVal<T> weight_decay
 ) {
     auto gradient2 = gradient * gradient;
     exp_avg = fma(beta1, exp_avg, fma(-beta1, gradient, gradient));
     exp_avg_sq = fma(beta2, exp_avg_sq, fma(-beta2, gradient2, gradient2));
     auto denom = sqrt(exp_avg_sq) / bias_corr2_sqrt + eps;
-    parameter = parameter - step_size * exp_avg / denom;
+    parameter = parameter - step_size * exp_avg / denom - weight_decay * parameter;
 }
 
 } // namespace kernels

@@ -60,7 +60,8 @@ void GpuDevice::adam_step(
     double beta1,
     double beta2,
     double eps,
-    double bias_corr2_sqrt
+    double bias_corr2_sqrt,
+    double weight_decay
 ) const {
     activate();
     AsyncGpuDevice device(*this, gpuStreamPerThread, 0);
@@ -73,7 +74,8 @@ void GpuDevice::adam_step(
         beta1,
         beta2,
         eps,
-        bias_corr2_sqrt
+        bias_corr2_sqrt,
+        weight_decay
     );
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
@@ -232,8 +234,9 @@ std::vector<std::pair<std::size_t, std::size_t>> MemPool::total_sizes() const {
 
 std::pair<void*, Tensor>
 AsyncGpuDevice::allocate(std::size_t size, AllocHint hint) const {
-    //if (_mem_pool && hint != AllocHint::normal && size <= 4 * 1024 * 1024) {
-    if (_mem_pool && hint != AllocHint::normal && hint != AllocHint::output && size <= 4 * 1024 * 1024) {
+    // if (_mem_pool && hint != AllocHint::normal && size <= 4 * 1024 * 1024) {
+    if (_mem_pool && hint != AllocHint::normal && hint != AllocHint::output &&
+        size <= 4 * 1024 * 1024) {
         return _mem_pool->allocate(
             static_cast<std::size_t>(hint) - 1,
             size,
