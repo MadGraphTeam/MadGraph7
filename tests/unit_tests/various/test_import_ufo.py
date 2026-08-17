@@ -1681,9 +1681,17 @@ class TestLorentzStructureCanonicalisation(unittest.TestCase):
     renumbering and hides the real disagreements among the noise.
     """
 
-    def test_symmetric_functions_are_loaded(self):
-        """Metric is declared symmetric in lorentz_symmetric_structures.txt."""
-        self.assertIn('Metric', import_ufo.get_symmetric_lorentz_structures())
+    def test_symmetry_is_carried_by_the_structure(self):
+        """is_symmetric lives on the aloha object, and defaults to False."""
+        import aloha.aloha_object as aloha_object
+        import aloha.aloha_lib as aloha_lib
+        self.assertFalse(aloha_lib.FactoryLorentz.is_symmetric)
+        self.assertTrue(aloha_object.Metric.is_symmetric)
+        self.assertFalse(aloha_object.Gamma.is_symmetric)
+        self.assertTrue(import_ufo.is_symmetric_lorentz_structure('Metric'))
+        self.assertFalse(import_ufo.is_symmetric_lorentz_structure('Gamma'))
+        # an unknown name must not be taken for a symmetric structure
+        self.assertFalse(import_ufo.is_symmetric_lorentz_structure('NotAThing'))
 
     def test_argument_order_of_a_symmetric_function_is_ignored(self):
         """The two spellings of one Metric compare equal."""

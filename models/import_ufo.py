@@ -59,28 +59,15 @@ pjoin = os.path.join
 # Suffixes to employ for the various poles of CTparameters
 pole_dict = {-2:'2EPS',-1:'1EPS',0:'FIN'}
 
-# Cache for lorentz_symmetric_structures.txt (read at most once per session).
-_symmetric_lorentz_structures = None
+def is_symmetric_lorentz_structure(name):
+    """True when the lorentz structure *name* has commuting arguments.
 
-def get_symmetric_lorentz_structures():
-    """Return the lorentz structure functions whose arguments commute, as
-    listed in models/lorentz_symmetric_structures.txt."""
+    The answer belongs to the structure itself: the aloha objects carry an
+    is_symmetric attribute, False on FactoryLorentz and set to True by the
+    structures whose arguments may be written in any order (Metric)."""
 
-    global _symmetric_lorentz_structures
-    if _symmetric_lorentz_structures is None:
-        names = []
-        path = pjoin(root_path, 'lorentz_symmetric_structures.txt')
-        try:
-            with open(path) as fsock:
-                for line in fsock:
-                    line = line.split('#', 1)[0].strip()
-                    if line:
-                        names.append(line)
-        except IOError:
-            logger.debug('%s not found: no lorentz structure is canonicalised',
-                         path)
-        _symmetric_lorentz_structures = names
-    return _symmetric_lorentz_structures
+    structure = getattr(aloha_object, name, None)
+    return bool(getattr(structure, 'is_symmetric', False))
 
 def canonicalize_lorentz_structure(structure):
     """Sort the arguments of the symmetric functions appearing in *structure*.
@@ -96,14 +83,16 @@ def canonicalize_lorentz_structure(structure):
 
     if not isinstance(structure, str):
         return structure
-    for name in get_symmetric_lorentz_structures():
-        pattern = re.compile(r'\b%s\(\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\)'
-                             % re.escape(name))
-        def sort_args(matchobj, name=name):
-            args = [a.strip() for a in matchobj.group(1).split(',')]
-            return '%s(%s)' % (name, ','.join(sorted(args, key=int)))
-        structure = pattern.sub(sort_args, structure)
-    return structure
+
+    def sort_args(matchobj):
+        name = matchobj.group(1)
+        if not is_symmetric_lorentz_structure(name):
+            return matchobj.group(0)
+        args = [a.strip() for a in matchobj.group(2).split(',')]
+        return '%s(%s)' % (name, ','.join(sorted(args, key=int)))
+
+    return re.sub(r'\b([A-Za-z_]\w*)\(\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\)',
+                  sort_args, structure)
 
 class UFOImportError(MadGraph5Error):
     """ a error class for wrong import of UFO model""" 
