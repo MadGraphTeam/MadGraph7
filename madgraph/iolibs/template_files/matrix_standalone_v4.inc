@@ -125,9 +125,12 @@ C
       data HELRESET/.true./
 
 C     Allowed canonical helicity codes (mixed-radix over the per-leg states).
-C     The explicit NHEL config table is materialized at runtime by FILL_NHEL.
-      INTEGER HELALLOW(NCOMB)
-%(hel_allow_data)s
+C     Published by FILL_NHEL, which owns the single DATA for this list and is
+C     called below before the loop that reads it. Kept in a COMMON rather than
+C     given a second DATA of its own: the table is NCOMB long and grows with
+C     the multiplicity, and one definition cannot fall out of step with itself.
+      INTEGER HELCODE(NCOMB)
+      COMMON/%(proc_prefix)sHELCODE/HELCODE
 %(den_factor_line)s
 
       INTEGER POLARIZATIONS(0:NEXTERNAL,0:5)
@@ -205,7 +208,7 @@ C     scan has settled (NTRY_CSYM>=20).
       ANS = 0D0
 %(blas_branch)s
           DO IHEL=1,NCOMB
-             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.HELALLOW(IHEL)%(blas_guard)s) THEN
+             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.HELCODE(IHEL)%(blas_guard)s) THEN
 %(smatrix_goodhel_gate)s
                     IF(NTRY(FLAV_USE).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
@@ -1220,6 +1223,11 @@ C     and python (f2py) interfaces.
       INTEGER NHEL(NEXTERNAL,NCOMB)
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
       INTEGER HELALLOW(NCOMB)
+C     The published copy. A DATA statement may not initialise a COMMON outside
+C     a BLOCK DATA, so the list stays a local DATA here and is copied out on the
+C     first call -- every reader is ordered behind that call.
+      INTEGER HELCODE(NCOMB)
+      COMMON/%(proc_prefix)sHELCODE/HELCODE
       INTEGER I, K, THIS(NEXTERNAL)
       LOGICAL DONE
       SAVE DONE
@@ -1227,6 +1235,7 @@ C     and python (f2py) interfaces.
       DATA DONE /.FALSE./
       IF (DONE) RETURN
       DO I=1,NCOMB
+        HELCODE(I) = HELALLOW(I)
         CALL %(proc_prefix)sDECODE_HEL(HELALLOW(I), THIS)
         DO K=1,NEXTERNAL
           NHEL(K,I) = THIS(K)
