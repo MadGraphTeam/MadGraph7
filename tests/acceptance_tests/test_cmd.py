@@ -197,6 +197,9 @@ class TestCmdShell1(unittest.TestCase):
                     'madanalysis5_path': './HEPTools/madanalysis5/madanalysis5',
                     'group_subprocesses': 'Auto',
                     'complex_mass_scheme': False,
+                    # set-option added by the DDM colour-basis work
+                    # (ab161ac8a); this dict has to list every one.
+                    'color_basis': 'auto',
                     'gauge': 'unitary',
                     'output_dependencies': 'external',
                     'dmtcp': None,
