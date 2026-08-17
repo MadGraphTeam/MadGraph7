@@ -482,6 +482,7 @@ class MadgraphProcess:
         if not nb_core or nb_core < 0:
             nb_core = os.cpu_count() or 1
 
+        log_path = os.path.join(self.run_path, "compile_subprocesses.log")
         for backend in resolved:
             missing = [
                 meta for meta in self.subprocess_data
@@ -490,14 +491,38 @@ class MadgraphProcess:
             if not missing:
                 continue
             logger.info(
-                f"Compiling {len(missing)} subprocess(es) for device "
-                f"'{backend}' with {nb_core} parallel job(s)"
+                f"Start compilation of SubProcesses for device '{backend}' "
+                f"({len(missing)} subprocess(es), {nb_core} parallel job(s)), "
+                f"see log detail in {log_path}"
             )
-            misc.compile(
-                arg=[f"BACKEND={backend}", "USEBUILDDIR=1"],
-                cwd=subproc_path, mode="cpp", nb_core=nb_core,
+            start_time = time.time()
+            self.make_subprocesses(
+                subproc_path, [f"BACKEND={backend}", "USEBUILDDIR=1"],
+                nb_core, log_path,
+            )
+            logger.info(
+                f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
         return resolved
+
+    @staticmethod
+    def make_subprocesses(
+        subproc_path: str, args: list[str], nb_core: int, log_path: str
+    ) -> None:
+        """Run 'make -j nb_core' in SubProcesses/, appending the full build
+        output to log_path (one run per device, so the file is appended to)."""
+        command = ["make", f"-j{nb_core}"] + args
+        with open(log_path, "a") as log:
+            log.write(f"\n$ cd {subproc_path} && {' '.join(command)}\n")
+            log.flush()
+            returncode = subprocess.call(
+                command, cwd=subproc_path, stdout=log, stderr=subprocess.STDOUT
+            )
+        if returncode != 0:
+            raise RuntimeError(
+                f"Compilation of the SubProcesses failed with exit status "
+                f"{returncode}; see {log_path} for details"
+            )
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
