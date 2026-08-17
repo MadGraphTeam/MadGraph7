@@ -14,7 +14,7 @@
 #include <map>
 #include <memory>
 
-namespace mg5amcCpu
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 

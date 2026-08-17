@@ -16,7 +16,7 @@
 #include "mgOnGpuVectors.h" // for fptype_sv
 #include "GpuAbstraction.h" // for gpuBlasHandle_t, gpuStream_t
 
-namespace mg5amcGpu
+namespace madgraph
 {
   __global__ void
   computeDependentCouplings( const fptype* allgs,

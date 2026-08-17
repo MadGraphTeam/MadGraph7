@@ -26,7 +26,7 @@
 #include "color_sum.h"
 #include "ColorData.h"
 
-namespace mg5amcGpu
+namespace madgraph
 {
   using namespace ProcessData;
   using namespace ProcessTables;

@@ -15,8 +15,8 @@
 
 #define MGONGPU_TRIVIAL_WAVEFUNCTIONS 1
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcCpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
   //----------------------------------------------------------------------------
 
@@ -161,6 +161,6 @@ namespace mg5amcCpu
 
   //----------------------------------------------------------------------------
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #endif // MemoryAccessWavefunctions_H

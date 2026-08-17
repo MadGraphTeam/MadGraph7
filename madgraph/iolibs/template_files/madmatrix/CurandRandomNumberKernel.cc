@@ -24,11 +24,7 @@ inline void assertCurand( curandStatus_t code, const char *file, int line, bool 
 }
 #endif /* clang-format on */
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 #ifndef MGONGPU_HAS_NO_CURAND

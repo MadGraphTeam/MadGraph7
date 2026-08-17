@@ -79,7 +79,7 @@ debug_me_is_abnormal( const fptype& me, size_t ievtALL )
 
 //============================================================================
 
-namespace mg5amcGpu
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 
@@ -183,7 +183,7 @@ namespace mg5amcGpu
 
 //============================================================================
 
-namespace mg5amcGpu
+namespace madgraph
 {
 
   /*

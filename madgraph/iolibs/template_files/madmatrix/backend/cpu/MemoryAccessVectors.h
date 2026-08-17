@@ -11,7 +11,7 @@
 
 #include "mgOnGpuVectors.h"
 
-namespace mg5amcCpu // this is only needed for CPU SIMD vectorization
+namespace madgraph // this is only needed for CPU SIMD vectorization
 {
 
 

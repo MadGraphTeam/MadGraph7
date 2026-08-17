@@ -15,8 +15,8 @@
 #include "MemoryAccessMomenta.h" // for MemoryAccessMomentaBase::neppM
 #include "MemoryBuffers.h"       // for HostBufferCouplings::isaligned
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcCpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
   //----------------------------------------------------------------------------
 
@@ -212,9 +212,9 @@ namespace mg5amcCpu
       constexpr int neppC = MemoryAccessCouplingsBase::neppC;
       static_assert( neppC >= neppV ); // ASSUME CONTIGUOUS ARRAYS
       static_assert( neppC % neppV == 0 ); // ASSUME CONTIGUOUS ARRAYS
-      static_assert( mg5amcCpu::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      static_assert( madgraph::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      return mg5amcCpu::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
+      return madgraph::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
 #endif
     }
     */
@@ -257,6 +257,6 @@ namespace mg5amcCpu
 
   //----------------------------------------------------------------------------
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #endif // MemoryAccessCouplings_H

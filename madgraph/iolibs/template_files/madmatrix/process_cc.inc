@@ -30,6 +30,7 @@
 #include "MemoryAccessDenominators.h"
 #include "MemoryAccessNumerators.h"
 #include "ColorData.h"
+#include "ProcessTables.h"
 
 #include <algorithm>
 #include <array>

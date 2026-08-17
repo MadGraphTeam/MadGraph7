@@ -26,8 +26,9 @@
 #include "ColorData.h"
 
 #include <cassert>
+#include <cstring>
 
-namespace mg5amcCpu
+namespace madgraph
 {
   using namespace ProcessData;
   using namespace ProcessTables;

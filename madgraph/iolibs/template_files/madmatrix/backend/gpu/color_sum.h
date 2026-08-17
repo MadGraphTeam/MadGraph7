@@ -14,7 +14,7 @@
 #include "ProcessData.h"
 #include "GpuAbstraction.h"
 
-namespace mg5amcGpu
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 

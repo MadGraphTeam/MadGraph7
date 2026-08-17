@@ -22,11 +22,7 @@
 #include <iostream>
 
 // Simplified rambo version for 2 to N (with N>=2) processes with massless particles
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madgraph
 {
 namespace massless_rambo {
 

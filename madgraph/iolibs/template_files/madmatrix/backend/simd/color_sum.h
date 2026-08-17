@@ -13,7 +13,7 @@
 
 #include "ProcessData.h"
 
-namespace mg5amcCpu
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 

@@ -73,7 +73,7 @@ namespace mgOnGpu /* clang-format off */
 using mgOnGpu::cxsmpl;
 
 // Printout to stream for user defined types
-namespace mg5amcCpu
+namespace madgraph
 {
   template<typename FP>
   inline __host__ std::ostream&
@@ -202,7 +202,7 @@ namespace mg5amcCpu
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) TYPEDEFS
 //==========================================================================
 
-namespace mg5amcCpu
+namespace madgraph
 {
   // --- Type definitions (complex type: cxtype)
 #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
@@ -223,7 +223,7 @@ namespace mg5amcCpu
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) FUNCTIONS AND OPERATORS
 //==========================================================================
 
-namespace mg5amcCpu
+namespace madgraph
 {
 #if defined MGONGPU_CPPCXTYPE_CXSMPL
 
@@ -331,14 +331,14 @@ namespace mg5amcCpu
     return cxmake( c.real(), c.imag() );
   }
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 //==========================================================================
 // COMPLEX TYPES: WRAPPER OVER RI FLOATING POINT PAIR (cxtype_ref)
 //==========================================================================
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcCpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]
   // It used to be included in the code only when MGONGPU_HAS_CPPCXTYPEV_BRK (originally MGONGPU_HAS_CPPCXTYPE_REF) is defined
@@ -373,7 +373,7 @@ namespace mg5amcCpu
     return out;
   }
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 //==========================================================================
 

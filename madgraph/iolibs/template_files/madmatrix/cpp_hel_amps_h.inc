@@ -27,11 +27,7 @@
 //#include <iomanip>
 //#include <iostream>
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madgraph
 {
 
   // ALOHA-style object for easy flavor consolidation and non-template API

@@ -32,8 +32,8 @@
 //#undef MGONGPU_HAS_CPPCXTYPEV_BRK // gcc test (very slightly slower? issue #172)
 #endif
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcGpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
 
   const int neppV = 1;
@@ -54,8 +54,8 @@ namespace mg5amcGpu
 
 //==========================================================================
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcGpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
 
   //==========================================================================
@@ -128,6 +128,6 @@ namespace mg5amcGpu
 
   //==========================================================================
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #endif // MGONGPUVECTORS_H

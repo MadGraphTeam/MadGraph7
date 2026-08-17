@@ -27,11 +27,7 @@
 #include <string>
 #include <vector>
 
-#ifdef MGONGPUCPP_GPUIMPL
-using mg5amcGpu::CPPProcess;
-#else
-using mg5amcCpu::CPPProcess;
-#endif
+using madgraph::CPPProcess;
 
 namespace
 {

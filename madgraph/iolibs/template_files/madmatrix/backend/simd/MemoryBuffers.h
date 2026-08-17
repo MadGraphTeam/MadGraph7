@@ -16,7 +16,7 @@
 
 #include <sstream>
 
-namespace mg5amcCpu
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 

@@ -32,8 +32,8 @@
 //#undef MGONGPU_HAS_CPPCXTYPEV_BRK // gcc test (very slightly slower? issue #172)
 #endif
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcCpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
 
   const int neppV = MGONGPU_CPPSIMD;
@@ -146,8 +146,8 @@ namespace mg5amcCpu
 
 //==========================================================================
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcCpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
 
   // Printout to stream for user defined types
@@ -713,8 +713,16 @@ namespace mg5amcCpu
     }
     return out;
     */
+#if MGONGPU_CPPSIMD == 2
     fptype2_v out =
       { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v2[0], (fptype2)v2[1] };
+#elif MGONGPU_CPPSIMD == 4
+    fptype2_v out =
+      { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v1[2], (fptype2)v1[3], (fptype2)v2[0], (fptype2)v2[1], (fptype2)v2[2], (fptype2)v2[3] };
+#elif MGONGPU_CPPSIMD == 8
+    fptype2_v out =
+      { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v1[2], (fptype2)v1[3], (fptype2)v1[4], (fptype2)v1[5], (fptype2)v1[6], (fptype2)v1[7], (fptype2)v2[0], (fptype2)v2[1], (fptype2)v2[2], (fptype2)v2[3], (fptype2)v2[4], (fptype2)v2[5], (fptype2)v2[6], (fptype2)v2[7] };
+#endif
     return out;
   }
 
@@ -728,8 +736,16 @@ namespace mg5amcCpu
       out[ieppV] = v[ieppV];
     }
     */
+#if MGONGPU_CPPSIMD == 2
     fptype_v out =
       { (fptype)v[0], (fptype)v[1] };
+#elif MGONGPU_CPPSIMD == 4
+    fptype_v out =
+      { (fptype)v[0], (fptype)v[1], (fptype)v[2], (fptype)v[3] };
+#elif MGONGPU_CPPSIMD == 8
+    fptype_v out =
+      { (fptype)v[0], (fptype)v[1], (fptype)v[2], (fptype)v[3], (fptype)v[4], (fptype)v[5], (fptype)v[6], (fptype)v[7] };
+#endif
     return out;
   }
 
@@ -743,10 +759,19 @@ namespace mg5amcCpu
       out[ieppV] = v[ieppV+neppV];
     }
     */
+#if MGONGPU_CPPSIMD == 2
     fptype_v out =
       { (fptype)v[2], (fptype)v[3] };
+#elif MGONGPU_CPPSIMD == 4
+    fptype_v out =
+      { (fptype)v[4], (fptype)v[5], (fptype)v[6], (fptype)v[7] };
+#elif MGONGPU_CPPSIMD == 8
+    fptype_v out =
+      { (fptype)v[8], (fptype)v[9], (fptype)v[10], (fptype)v[11], (fptype)v[12], (fptype)v[13], (fptype)v[14], (fptype)v[15] };
+#endif
     return out;
   }
+
 
 #endif // #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
 
@@ -778,6 +803,6 @@ namespace mg5amcCpu
 
   //==========================================================================
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #endif // MGONGPUVECTORS_H

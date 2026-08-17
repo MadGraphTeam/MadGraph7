@@ -33,11 +33,7 @@
 
 #define XTESTID( s ) TESTID( s )
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madgraph
 {
   std::string fpeHandlerMessage = "unknown";
   int fpeHandlerIevt = -1;
@@ -54,11 +50,7 @@ namespace mg5amcCpu
 
 TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
+  using namespace madgraph;
 #ifndef __APPLE__ // test #701 (except on MacOS where feenableexcept is not defined #730)
   auto fpeHandlerDefault = signal( SIGFPE, fpeHandlerTestxxx );
 #endif
@@ -73,9 +65,9 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   assert( nevt %% neppV == 0 ); // nevt must be a multiple of neppV
   // Fill in the input momenta
 #ifdef MGONGPUCPP_GPUIMPL
-  mg5amcGpu::PinnedHostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
+  madgraph::PinnedHostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
 #else
-  mg5amcCpu::HostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
+  madgraph::HostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
 #endif /* clang-format off */
   // NB NEW TESTS FOR DEBUGGING #701: KEEP TWO SEPARATE SETS (16-SIMD-VECTORS!) OF TESTS FOR M==0 AND M!=0!
   const fptype par0[np4 * nevt] = // AOS[nevt][np4]
@@ -317,11 +309,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   {
     for( int ievt = 0; ievt < nevt; ievt++ )
     {
-#ifdef MGONGPUCPP_GPUIMPL
-      using namespace mg5amcGpu;
-#else
-      using namespace mg5amcCpu;
-#endif
+      using namespace madgraph;
       if( debug )
       {
         std::cout << std::endl;

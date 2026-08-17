@@ -19,13 +19,10 @@
 // physics-parameter/coupling setup (initProc), and the flavor accessor.
 //==========================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madgraph
 {
   using namespace ProcessData;
+  using namespace ProcessTables;
 
   //--------------------------------------------------------------------------
 
