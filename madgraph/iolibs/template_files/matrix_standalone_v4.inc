@@ -106,11 +106,11 @@ C     NTRY_CSYM counts only the uncrossed (cross 0) calls: CSYM is built and
 C     applied for the base process only, because a crossing permutes/sign-flips
 C     the helicities so FLIP (a base-row negation) is no longer the crossed
 C     C-parity partner. Crossed flavours therefore keep the full helicity sum.
-      INTEGER FLIP(NCOMB), JHEL, KHEL, NTRY_CSYM(NFLAV)
-      LOGICAL CSYM(NFLAV), HELSAME, DEDUP
+      INTEGER FLIP(NCOMB), NTRY_CSYM(NFLAV)
+      LOGICAL CSYM(NFLAV), DEDUP
       REAL*8 TSTORE(NCOMB)
       REAL*8 TSMAX
-      DATA FLIP/NCOMB*0/
+%(flip_data)s
       DATA CSYM/NNTRY_FLAV*.TRUE./
       DATA NTRY_CSYM/NNTRY_FLAV*0/
 
@@ -176,24 +176,6 @@ C     The helicity filter is deliberately shared by every crossing of a given
 C     flavor, so it is indexed by FLAV_USE rather than by the full FLAV_IDX.
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
       CALL %(proc_prefix)sFILL_NHEL()
-C     C-parity partner of each helicity row (all helicities negated): an
-C     involution, self-paired when every helicity is 0. Fixed per process, so
-C     built once (FLIP starts at 0).
-      IF (FLIP(1).EQ.0) THEN
-        DO IHEL=1,NCOMB
-          FLIP(IHEL)=IHEL
-          DO JHEL=1,NCOMB
-            HELSAME=.TRUE.
-            DO KHEL=1,NEXTERNAL
-              IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,IHEL)) HELSAME=.FALSE.
-            ENDDO
-            IF (HELSAME) THEN
-              FLIP(IHEL)=JHEL
-              EXIT
-            ENDIF
-          ENDDO
-        ENDDO
-      ENDIF
       IF(USERHEL.EQ.-1) NTRY(FLAV_USE)=NTRY(FLAV_USE)+1
       IF(USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV)
      &   NTRY_CSYM(FLAV_USE)=NTRY_CSYM(FLAV_USE)+1

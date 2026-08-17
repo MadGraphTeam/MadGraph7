@@ -2505,6 +2505,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
           nhstate_data    - DATA for NHSTATE(NEXTERNAL)   (states per leg)
           states_data     - DATA for STATES(MAXHEL,NEXTERNAL) (helicity values)
           hel_allow_data  - DATA for HELALLOW(NCOMB)      (allowed codes)
+          flip_data       - DATA for FLIP(NCOMB)          (C-parity partner row)
         """
         model = matrix_element.get('processes')[0].get('model')
         pdict = model.get('particle_dict')
@@ -2525,6 +2526,28 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 code = code * nstate[k] + states[k].index(val)
             allowed.append(code + 1)
 
+        # C-parity partner of every row: the configuration with EVERY helicity
+        # negated. In code space that is a digit-wise complement, so it is known
+        # here and need not be rediscovered by an O(NCOMB^2 * NEXTERNAL) search
+        # over the materialized NHEL table at run time.
+        #
+        # FLIP(i) = i means "no distinct partner", which is what every consumer
+        # reads as "this row is not part of a C-symmetric pair, keep the
+        # de-duplication off". Two ways to land there, both deliberate: a row
+        # that negates to itself (all helicities 0), and a row whose negation is
+        # not in the allowed set -- the polarized case, where a leg keeps its
+        # full radix but only some states are selected.
+        code_to_row = {code: i + 1 for i, code in enumerate(allowed)}
+        flip = []
+        for i, row in enumerate(matrix_element.get_helicity_matrix()):
+            neg, ok = 0, True
+            for k, val in enumerate(row):
+                if -val not in states[k]:
+                    ok = False
+                    break
+                neg = neg * nstate[k] + states[k].index(-val)
+            flip.append(code_to_row.get(neg + 1, i + 1) if ok else i + 1)
+
         states_lines = []
         for k in range(nexternal):
             vals = [states[k][i] if i < nstate[k] else 0
@@ -2535,7 +2558,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         return {'maxhel': maxhel,
                 'nhstate_data': self._fortran_data_stmt('NHSTATE', nstate),
                 'states_data': "\n".join(states_lines),
-                'hel_allow_data': self._fortran_data_stmt('HELALLOW', allowed)}
+                'hel_allow_data': self._fortran_data_stmt('HELALLOW', allowed),
+                'flip_data': self._fortran_data_stmt('FLIP', flip)}
 
     def get_ic_line(self, matrix_element):
         """Return the IC definition line coming after helicities, required by
@@ -3206,6 +3230,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         replace_dict['maxhel'] = hel_data['maxhel']
         replace_dict['nhstate_data'] = hel_data['nhstate_data']
         replace_dict['states_data'] = hel_data['states_data']
+        replace_dict['flip_data'] = hel_data['flip_data']
         replace_dict['ghfilt_data'] = self.format_integer_data_lines(
             'GHFILT', self.compute_ghfilt(matrix_element, allow_reverse=True))
         replace_dict['pdg_cross_snippets'] = tuple(
@@ -3310,6 +3335,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'maxhel': hel_data['maxhel'],
             'nhstate_data': hel_data['nhstate_data'],
             'states_data': hel_data['states_data'],
+            'flip_data': hel_data['flip_data'],
             'ghfilt_data': self.format_integer_data_lines(
                 'GHFILT', self.compute_ghfilt(matrix_element,
                                               allow_reverse=True))}
@@ -7651,6 +7677,7 @@ C       so this also stays correct for split-order processes.
         replace_dict['maxhel'] = hel_data['maxhel']
         replace_dict['nhstate_data'] = hel_data['nhstate_data']
         replace_dict['states_data'] = hel_data['states_data']
+        replace_dict['flip_data'] = hel_data['flip_data']
         replace_dict['hel_allow_data'] = hel_data['hel_allow_data']
 
         # Extract overall denominator
@@ -9751,6 +9778,11 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         replace_dict['broken_sym_function'] = \
             self._make_broken_sym_fortran_function(bs_func_name, sym_data)
         
+        # C-parity partner row of every helicity config: generated data, so
+        # the matrix element does not rediscover it with an
+        # O(NCOMB^2 * NEXTERNAL) search over NHEL at run time.
+        replace_dict['flip_data'] = \
+            self._helstate_data(matrix_element)['flip_data']
         replace_dict['template_file'] =  os.path.join(_file_path, \
                           'iolibs/template_files/%s' % self.matrix_file)
         replace_dict['template_file2'] = ''
@@ -11330,6 +11362,10 @@ C       with every entry counted once.
 
 
 
+        # C-parity partner row of every helicity config (generated data --
+        # see the note at the other write_matrix_element_v4).
+        replace_dict['flip_data'] = \
+            self._helstate_data(matrix_element)['flip_data']
         replace_dict['template_file'] = pjoin(_file_path, \
                           'iolibs/template_files/%s' % self.matrix_file)
         replace_dict['template_file2'] = pjoin(_file_path, \
@@ -12084,6 +12120,7 @@ C       with every entry counted once.
         replace_dict['maxhel'] = hel_data['maxhel']
         replace_dict['nhstate_data'] = hel_data['nhstate_data']
         replace_dict['states_data'] = hel_data['states_data']
+        replace_dict['flip_data'] = hel_data['flip_data']
 
         context = {'read_write_good_hel':True}
         if not isinstance(self, ProcessExporterFortranMEGroup):            

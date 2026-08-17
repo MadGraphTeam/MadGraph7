@@ -98,12 +98,13 @@ C       COMMON block (zero-initialised, like NTRY) so the good-hel file can
 C       carry the verdict across jobs.
         INTEGER FLIP(NCOMB), JHEL, KHEL
         REAL*8 TSMAX
-        LOGICAL HELSAME, DEDUP
+        LOGICAL DEDUP, CSYM_DONE
         INTEGER CSYMBAD(MAXFLAVPERPROC,MAXSPROC)
         INTEGER NCSCAN(MAXFLAVPERPROC,MAXSPROC)
         COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
-        SAVE FLIP
-        DATA FLIP/NCOMB*0/
+        SAVE CSYM_DONE
+        DATA CSYM_DONE/.FALSE./
+%(flip_data)s
 
 c
 C       This is just to temporarily store the reference grid for helicity of the DiscreteSampler so as to obtain its number of entries with ref_helicity_grid%n_tot_entries
@@ -156,21 +157,7 @@ C ----------
 %(smatrix_me_cross_decode)s
     CALL GET_FLAVOR%(proc_id)s(%(me_flav_key)s, FLAVOR)
     NTRY(%(me_flav_key)s,%(proc_id)s)=NTRY(%(me_flav_key)s,%(proc_id)s)+1
-C   C-parity partner of each helicity row (all helicities negated), built once.
-    IF (FLIP(1).EQ.0) THEN
-      DO I=1,NCOMB
-        FLIP(I)=I
-        DO JHEL=1,NCOMB
-          HELSAME=.TRUE.
-          DO KHEL=1,NEXTERNAL
-            IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,I)) HELSAME=.FALSE.
-          ENDDO
-          IF (HELSAME) THEN
-            FLIP(I)=JHEL
-            EXIT
-          ENDIF
-        ENDDO
-      ENDDO
+    IF (.NOT.CSYM_DONE) THEN
 C     A self-paired row (FLIP(I)=I, every helicity 0) has no distinct partner,
 C     so the loop could not be halved uniformly: refuse the reuse outright.
       DO I=1,NCOMB
@@ -182,6 +169,7 @@ C     so the loop could not be halved uniformly: refuse the reuse outright.
           ENDDO
         ENDIF
       ENDDO
+      CSYM_DONE = .TRUE.
     ENDIF
     DEDUP = NCSCAN(%(me_flav_key)s,%(proc_id)s).GE.20 .AND. CSYMBAD(%(me_flav_key)s,%(proc_id)s).EQ.0 .AND. (%(me_csym_cross_ok)s)
 

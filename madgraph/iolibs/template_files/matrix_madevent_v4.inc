@@ -78,13 +78,12 @@ C   enough: read_good_hel restores NTRY above the threshold without ever
 C   scanning, and the random-helicity branch bumps NTRY without a full sum).
 C   CSYMBAD/NCSCAN live in a COMMON block (zero-initialised, like NTRY above) so
 C   write_good_hel/read_good_hel can persist the verdict across jobs.
-    INTEGER FLIP(NCOMB), JHEL, KHEL
+    INTEGER FLIP(NCOMB)
     REAL*8 TSMAX
-    LOGICAL HELSAME, DEDUP
+    LOGICAL DEDUP
     INTEGER CSYMBAD(MAXFLAVPERPROC), NCSCAN(MAXFLAVPERPROC)
     COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
-    SAVE FLIP
-    DATA FLIP/NCOMB*0/
+%(flip_data)s
     INTEGER FLAVOR(NEXTERNAL)
     INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
 C   Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
@@ -127,29 +126,6 @@ C ----------
 C   C-parity partner of each helicity row (all helicities negated): an
 C   involution, self-paired when every helicity is 0. Fixed per process, so
 C   built once (FLIP starts at 0).
-    IF (FLIP(1).EQ.0) THEN
-      DO I=1,NCOMB
-        FLIP(I)=I
-        DO JHEL=1,NCOMB
-          HELSAME=.TRUE.
-          DO KHEL=1,NEXTERNAL
-            IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,I)) HELSAME=.FALSE.
-          ENDDO
-          IF (HELSAME) THEN
-            FLIP(I)=JHEL
-            EXIT
-          ENDIF
-        ENDDO
-      ENDDO
-C     A self-paired row (FLIP(I)=I, i.e. every helicity 0) has no distinct
-C     partner, so the loop could not be halved uniformly: refuse the
-C     de-duplication outright for every flavor in that case.
-      DO I=1,NCOMB
-        IF (FLIP(I).EQ.I) THEN
-          DO JHEL=1,MAXFLAVPERPROC
-            CSYMBAD(JHEL)=1
-          ENDDO
-        ENDIF
       ENDDO
     ENDIF
     DO I=1,NEXTERNAL

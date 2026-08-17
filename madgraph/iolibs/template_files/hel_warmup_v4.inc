@@ -49,8 +49,9 @@ C     EVERY pair gave the same |M|^2 at EVERY sampled point, flavor and
 C     crossing -- the same all-or-nothing verdict the standard SMATRIX reaches
 C     at run time. A self-paired row (all helicities zero) disables it, since
 C     then the pairing halves nothing.
-      INTEGER FLIP(NCOMB), JHEL, KHEL
-      LOGICAL CSYM, HELSAME
+      INTEGER FLIP(NCOMB)
+      LOGICAL CSYM
+%(flip_data)s
 C     EXTERNAL
       DOUBLE PRECISION %(proc_prefix)sMATRIX
       EXTERNAL %(proc_prefix)sMATRIX
@@ -78,21 +79,11 @@ C-----
         GOODHEL(I) = .FALSE.
       ENDDO
 
-C     Build the C-parity partner table once (fixed per process).
+C     FLIP is generated data (the C-parity partner of every row). A
+C     self-paired row has no distinct partner, so the whole de-duplication is
+C     refused rather than applied to part of the table.
       CSYM = .TRUE.
       DO IHEL=1,NCOMB
-        FLIP(IHEL) = IHEL
-        DO JHEL=1,NCOMB
-          HELSAME = .TRUE.
-          DO KHEL=1,NEXTERNAL
-            IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,IHEL)) HELSAME = .FALSE.
-          ENDDO
-          IF (HELSAME) THEN
-            FLIP(IHEL) = JHEL
-            GOTO 30
-          ENDIF
-        ENDDO
- 30     CONTINUE
         IF (FLIP(IHEL).EQ.IHEL) CSYM = .FALSE.
       ENDDO
 
