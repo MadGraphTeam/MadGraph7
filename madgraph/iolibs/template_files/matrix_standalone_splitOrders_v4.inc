@@ -145,14 +145,56 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       LOGICAL GOODHEL(NCOMB,NFLAV)
       DATA NTRY/NNTRY_FLAV*0/
       DATA GOODHEL/NGOODHEL_FLAV*.FALSE./
+C     C-parity helicity de-duplication (see the helicity loop below):
+C     FLIP(IHEL) is the row with every helicity negated (built once by the
+C     generator, an involution); TSTORE caches the per-squared-order |M|^2
+C     vector within a scan point; DEDUP turns the reuse on in the fast phase
+C     only. The reuse is ALL-OR-NOTHING per flavor: CSYM(J) stays true only
+C     while EVERY row is in a genuine matched pair -- a self-paired row
+C     (FLIP(IHEL)=IHEL) or a single pair whose |M|^2 differ at any scan point
+C     clears it for good. Halving the whole loop (rather than an arbitrary
+C     subset of rows) is what keeps any per-row accumulation uniformly
+C     scaled, so the same rule is used by every backend.
+C     Unlike matrix_standalone_v4.inc this needs no separate NTRY_CSYM: that
+C     counter exists there only so a CROSSED call does not advance the scan
+C     (a crossing permutes/sign-flips the helicities, so a base-row negation
+C     is no longer the C-parity partner). This template carries no crossing
+C     machinery at all, so NTRY is that counter.
+C     The pair test runs per squared-order component, not on their sum: two
+C     components could in principle cancel into an equal total, and the
+C     doubling below is applied component by component.
+      INTEGER FLIP(NCOMB)
+      LOGICAL CSYM(NFLAV), DEDUP
+      REAL*8 TSTORE(NSQAMPSO,NCOMB)
+      REAL*8 TSMAX
+%(flip_data)s
+      DATA CSYM/NNTRY_FLAV*.TRUE./
 %(den_factor_line)s
 C
 C GLOBAL VARIABLES
 C
+C     Materialized by FILL_NHEL, which is called below before the loop that
+C     reads it (a DATA statement may not initialise a COMMON outside a BLOCK
+C     DATA, which is what this template used to rely on).
       INTEGER NHEL(NEXTERNAL,NCOMB)
-%(helicity_lines)s
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
 
+C     DELIBERATE DIVERGENCE from matrix_standalone_v4.inc, which publishes
+C     the canonical code list through a common and matches USERHEL against
+C     it. (The routine names it and the other entry points this template
+C     leaves out are spelled in the commit message and in
+C     test_splitorders_template_carries_the_non_crossing_standalone_api, not
+C     here: matrix_template_provides answers by searching the template text,
+C     so naming a routine in a comment would make it claim the routine
+C     exists.)
+C     Here the external helicity label stays the ROW NUMBER, because that is
+C     what this template's callers pass: MadLoop hands SMATRIXHEL_SPLITORDERS
+C     its own USERHEL, which the EW-Sudakov driver fills from
+C     `do chosen_hel=1,SDK_GET_NCOMB()` (Template/NLO/SubProcesses/
+C     check_sudakov.f) -- a row index into the same enumeration. The two
+C     labels coincide for every unpolarized process (the code of row i is
+C     exactly i); they differ only under a {0}/{L}-style restriction, and
+C     relabelling there would silently move the Born of a polarized NLO run.
       INTEGER USERHEL
       DATA USERHEL/-1/
       COMMON/%(proc_prefix)sHELUSERCHOICE/USERHEL
@@ -176,6 +218,7 @@ c---------
  if (HELRESET) then
    do i=1,NFLAV
       NTRY(i) = 0
+      CSYM(i) = .true.
    enddo
    do i=1,NCOMB
       do j=1,NFLAV
@@ -198,6 +241,7 @@ C     1..NFLAV GOODHEL/NTRY arrays.
         RETURN
       ENDIF
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX, FLAVOR)
+      CALL %(proc_prefix)sFILL_NHEL()
       IF(USERHEL.EQ.-1) NTRY(FLAV_IDX)=NTRY(FLAV_IDX)+1
       DO IHEL=1,NEXTERNAL
          JC(IHEL) = +1
@@ -212,13 +256,34 @@ C     For this reason, we simply remove the filterin when there is only three ex
       IF (NEXTERNAL.LE.3) THEN
         GOODHEL(:,:) = .True.
       ENDIF
+C     C-parity de-duplication is only safe for the plain unpolarized helicity
+C     sum and only once its own scan has settled (NTRY>=20).
+      DEDUP = NTRY(FLAV_IDX).GE.20 .AND. CSYM(FLAV_IDX)
+     &        .AND. USERHEL.EQ.-1 .AND. POLARIZATIONS(0,0).EQ.-1
       DO IHEL=1,NCOMB
          IF (USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL) THEN
            IF (GOODHEL(IHEL,FLAV_IDX) .OR. NTRY(FLAV_IDX) .LT. 20 .OR.USERHEL.NE.-1) THEN
               IF(NTRY(FLAV_IDX).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                 CYCLE
               ENDIF
+C             Fast phase: a row whose fully flipped C-parity partner has an
+C             identical |M|^2 (CSYM) is computed once, at the lower index,
+C             and counted twice -- skip the higher-index partner here.
+              IF (DEDUP.AND.IHEL.GT.FLIP(IHEL)) CYCLE
               CALL %(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_IDX, T)
+C             Scan phase: cache |M|^2 to test the C-parity partner below.
+              IF (NTRY(FLAV_IDX).LT.20) THEN
+                DO I=1,NSQAMPSO
+                  TSTORE(I,IHEL)=T(I)
+                ENDDO
+              ENDIF
+C             Fast phase: the representative carries its skipped partner's
+C             identical contribution, component by component.
+              IF (DEDUP.AND.IHEL.LT.FLIP(IHEL)) THEN
+                DO I=1,NSQAMPSO
+                  T(I)=T(I)+T(I)
+                ENDDO
+              ENDIF
               BUFF=0D0
               DO I=1,NSQAMPSO
                 IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
@@ -232,6 +297,42 @@ C     For this reason, we simply remove the filterin when there is only three ex
             ENDIF
           ENDIF
        ENDDO
+C     Scan phase: drop the C-parity pairing of any row whose fully flipped
+C     partner gave a different |M|^2 (parity/C violation). One mismatch at any
+C     scan point permanently invalidates the pair (robust, like the zero-filter),
+C     and because the verdict is all-or-nothing that turns the reuse off for the
+C     whole flavor. There is no way to reach the fast phase without having run
+C     this block: the two are gated on the same counter (NTRY<20 here,
+C     NTRY>=20 for DEDUP), which nothing but this routine advances.
+      IF (USERHEL.EQ.-1.AND.NTRY(FLAV_IDX).LT.20
+     &    .AND.POLARIZATIONS(0,0).EQ.-1) THEN
+C     A pair of rows that are BOTH numerically zero differ only by roundoff,
+C     and a purely RELATIVE test on that noise fails at random -- one such pair
+C     then vetoes every real pair. So also require the difference to be
+C     significant against TSMAX, the largest |M|^2 of this scan point.
+        TSMAX=0D0
+        DO IHEL=1,NCOMB
+          DO I=1,NSQAMPSO
+            IF (ABS(TSTORE(I,IHEL)).GT.TSMAX) TSMAX=ABS(TSTORE(I,IHEL))
+          ENDDO
+        ENDDO
+        DO IHEL=1,NCOMB
+          IF (FLIP(IHEL).EQ.IHEL) THEN
+C           Self-paired row: no distinct partner, so the loop cannot be
+C           halved uniformly -- refuse the reuse for this flavor.
+            CSYM(FLAV_IDX)=.FALSE.
+          ELSE IF (FLIP(IHEL).GT.IHEL) THEN
+            DO I=1,NSQAMPSO
+              IF (ABS(TSTORE(I,IHEL)-TSTORE(I,FLIP(IHEL))).GT.
+     &            1D-6*(ABS(TSTORE(I,IHEL))+ABS(TSTORE(I,FLIP(IHEL))))
+     &            .AND.ABS(TSTORE(I,IHEL)-TSTORE(I,FLIP(IHEL))).GT.
+     &            1D-12*TSMAX) THEN
+                CSYM(FLAV_IDX)=.FALSE.
+              ENDIF
+            ENDDO
+          ENDIF
+        ENDDO
+      ENDIF
       ANS(0)=0.0d0
       DO I=1,NSQAMPSO
         ANS(I)=ANS(I)/DBLE(IDEN)*%(proc_prefix)sBROKEN_SYM(FLAVOR)
@@ -333,24 +434,77 @@ c      write (*,*) "  -> col.ave. |M|^2 for HEL=[", NHEL ,"] = ", %(proc_prefix)
        END
 
 
-       SUBROUTINE %(proc_prefix)sGET_NHEL(IDEN_STAR,NHEL_STAR)
+      SUBROUTINE %(proc_prefix)sGET_NHEL(IDEN_STAR,NHEL_STAR)
 C CONSTANTS
 C
 CF2PY INTENT(OUT) :: NHEL_STAR
 CF2PY INTENT(OUT) :: IDEN_STAR
-       INTEGER    NEXTERNAL
-       PARAMETER (NEXTERNAL=%(nexternal)d)
-       INTEGER                 NCOMB
-       PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
 
-       INTEGER NHEL(NEXTERNAL,NCOMB),NHEL_STAR(NEXTERNAL,NCOMB)
-       INTEGER IDEN,IDEN_STAR
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER IDEN,IDEN_STAR
+%(den_factor_line)s
+      CALL %(proc_prefix)sFILL_NHEL()
+      IDEN_STAR = IDEN
+      NHEL_STAR = NHEL
+      END
 
- %(helicity_lines)s
- %(den_factor_line)s
-       IDEN_STAR = IDEN
-       NHEL_STAR = NHEL
-       END
+      SUBROUTINE %(proc_prefix)sGET_NHEL_IDX(FLAV_IDX_IN,IDEN_STAR,
+     & NHEL_STAR)
+C     Same as GET_NHEL, but reporting the denominator SMATRIX_SPLITORDERS
+C     ACTUALLY divides by for FLAV_IDX_IN, rather than the static IDEN.
+C
+C     The static IDEN is the averaging/symmetry factor of the *representative*
+C     flavor. SMATRIX_SPLITORDERS never uses it bare: it applies
+C     IDEN/BROKEN_SYM(FLAVOR), BROKEN_SYM correcting the identical-particle
+C     count of the representative to that of the actual flavor. A caller that
+C     reads GET_NHEL and multiplies ANS by it to recover the raw helicity/color
+C     sum -- the natural thing to do -- is therefore wrong for every
+C     non-representative flavor of a merged matrix element.
+C
+C     GET_NHEL is deliberately left alone: its signature and its value are
+C     what existing callers expect.
+C
+C     Unlike matrix_standalone_v4.inc's twin this has no crossing branch:
+C     this template carries no crossing machinery, so FLAV_IDX_IN is a plain
+C     flavor index in [1,NFLAV] and only BROKEN_SYM can move the denominator.
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER    NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
+CF2PY INTENT(IN) :: FLAV_IDX_IN
+CF2PY INTENT(OUT) :: NHEL_STAR
+CF2PY INTENT(OUT) :: IDEN_STAR
+      INTEGER FLAV_IDX_IN
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER IDEN_STAR
+      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER %(proc_prefix)sBROKEN_SYM
+
+      CALL %(proc_prefix)sGET_NHEL(IDEN_STAR, NHEL_STAR)
+C     An index naming no valid flavor gives a zero matrix element (see the
+C     guard at the top of SMATRIX_SPLITORDERS); report a 0 denominator rather
+C     than a plausible-looking one.
+      IF (FLAV_IDX_IN .LT. 1 .OR. FLAV_IDX_IN .GT. NFLAV) THEN
+        IDEN_STAR = 0
+        RETURN
+      ENDIF
+      CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX_IN, FLAVOR)
+C     Mirrors SMATRIX_SPLITORDERS exactly: ANS=ANS/IDEN*BROKEN_SYM means the
+C     effective denominator is IDEN/BROKEN_SYM. The division is exact --
+C     BROKEN_SYM is the ratio of the representative to the actual
+C     identical-particle count, and IDEN carries the representative one as a
+C     factor.
+      IDEN_STAR = IDEN_STAR / %(proc_prefix)sBROKEN_SYM(FLAVOR)
+      RETURN
+      END
 
 
 SUBROUTINE %(proc_prefix)sGET_AMP(P,NHEL,IC,FLAV_IDX,AMP)
@@ -597,6 +751,10 @@ C
           G = 2* DSQRT(ALPHAS*pi)
           call UPDATE_AS_PARAM()
       ENDIF
+C     The NHEL table is materialized at runtime (see FILL_NHEL), so it has to
+C     be filled here too: a caller reaching the density matrix before any
+C     SMATRIX evaluation would otherwise read a table of zeros.
+      CALL %(proc_prefix)sFILL_NHEL()
 
       DO IHEL =1, NB_NHEL
         THISNHEL(:) = NHEL(:, IHEL)
@@ -841,6 +999,75 @@ C     ----------
 
       RETURN
       END
+
+
+      SUBROUTINE %(proc_prefix)sDECODE_HEL(CODE, THISNHEL)
+C     Decode a canonical mixed-radix helicity CODE (1..NCOMBFULL) into the
+C     per-leg helicity values THISNHEL(NEXTERNAL). The last external leg is the
+C     least-significant digit, matching the itertools.product ordering used to
+C     build the allowed-code list HELALLOW.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER CODE, THISNHEL(NEXTERNAL)
+      INTEGER I, K, R, D
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      R = CODE - 1
+      DO K=NEXTERNAL,1,-1
+        D = MOD(R, NHSTATE(K))
+        THISNHEL(K) = STATES(D+1, K)
+        R = R / NHSTATE(K)
+      ENDDO
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sFILL_NHEL()
+C     Materialize the PROCESS_NHEL config table by decoding the list of allowed
+C     canonical helicity codes (HELALLOW). Runs once; the table is a runtime
+C     cache of the encoder representation, kept for the density-matrix and
+C     python (f2py) interfaces.
+C
+C     The inverse (code from helicity values) that matrix_standalone_v4.inc
+C     also carries is deliberately NOT written here: nothing in the tree calls
+C     it -- the crossing routines that would are not part of this template, and
+C     they inline their own encode anyway. A split-orders matrix.f is written
+C     once per MadLoop / FKS born as well as per standalone subprocess, so a
+C     dead routine there is paid for many times over.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+C     A DATA statement may not initialise a COMMON outside a BLOCK DATA, so
+C     the list is a local DATA here and the table it decodes into is filled on
+C     the first call -- every reader is ordered behind that call.
+C     matrix_standalone_v4.inc additionally publishes this list through a
+C     common of its own, because there the external helicity label IS the
+C     code; here it is the row number (see SMATRIX_SPLITORDERS), so that
+C     common would have no reader.
+      INTEGER HELALLOW(NCOMB)
+      INTEGER I, K, THIS(NEXTERNAL)
+      LOGICAL DONE
+      SAVE DONE
+%(hel_allow_data)s
+      DATA DONE /.FALSE./
+      IF (DONE) RETURN
+      DO I=1,NCOMB
+        CALL %(proc_prefix)sDECODE_HEL(HELALLOW(I), THIS)
+        DO K=1,NEXTERNAL
+          NHEL(K,I) = THIS(K)
+        ENDDO
+      ENDDO
+      DONE = .TRUE.
+      RETURN
+      END
+
 
 %(broken_sym_function)s
 

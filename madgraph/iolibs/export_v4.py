@@ -6578,6 +6578,21 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         file they link against actually contains: only the default template
         carries the full standalone API, and the msP/msF, split-orders and
         matchbox variants each carry a subset (see matrix_template_provides).
+
+        For the split-orders variant the dividing line is the crossing, and it
+        is meant to be readable as such: it carries the parts of the default
+        template that mean something without one (the canonical helicity
+        encoder/decoder feeding PROCESS_NHEL, the C-parity de-duplication, the
+        flavor-aware denominator accessor GET_NHEL_IDX) and none of the parts
+        that exist only to decode an extended FLAV_IDX (the _IDX/_CROSSED
+        density stack, GET_PDG_FOR_FLAVOR, the crossing routines themselves --
+        note fill_crossing_replace_dict fills holes this template does not
+        have, and use_crossing_ic excludes split orders outright). The one
+        further difference is the external helicity label: the row number
+        here, the canonical code there, because MadLoop passes a row.
+        test_splitorders_template_carries_the_non_crossing_standalone_api pins
+        all of it.
+
         --hel_recycling is deliberately not special-cased: it rewrites
         SMATRIX/MATRIX but appends every other routine verbatim from
         self.matrix_template, so the answer is the same.
@@ -6601,6 +6616,11 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         this exporter's `make` never compiles what it writes. Reading the
         template is the next best thing, and it is the same string the writer
         substitutes into.
+
+        It is a plain substring search, so a template comment that names a
+        routine it does NOT define makes this answer True for it. Templates
+        therefore describe a deliberately omitted entry point rather than
+        naming it.
         """
         template = self.get_matrix_template(matrix_element)
         if template not in self._matrix_template_cache:

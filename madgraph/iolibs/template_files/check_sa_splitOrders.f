@@ -4,6 +4,13 @@ C     THIS IS THE DRIVER FOR CHECKING THE STANDALONE MATRIX ELEMENT.
 C     IT USES A SIMPLE PHASE SPACE GENERATOR
 C     Fabio Maltoni - 3rd Febraury 2007
 C **************************************************************************
+C     coupl.inc declares TYPE(FLV_COUPLING) entries, whose type comes from
+C     model_object. Without this the driver does not compile at all
+C     ("Symbol 'flv_1' has no IMPLICIT type"), which nothing noticed because
+C     `make` builds check_sa.f only -- check_sa_born_splitOrders is a target
+C     of its own. check_sa.f has carried the same line since the flavored
+C     couplings landed.
+          use model_object
       IMPLICIT NONE
 C     
 C     CONSTANTS  
