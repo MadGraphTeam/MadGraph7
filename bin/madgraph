@@ -24,11 +24,9 @@ and call immediately the command line interface scripts"""
 import sys
 import logging
 import logging.config
-if sys.version_info < (3, 7):
-   sys.exit('MadGraph5_aMC@NLO works with python 3.7 or higher.\n\
+if sys.version_info < (3, 12):
+   sys.exit('MadGraph5_aMC@NLO works with python 3.12 or higher.\n\
               Please upgrade your version of python.')
-if sys.version_info[1] < 10:
-    logging.warning("\033[91mSupport for Python3.9 (and below) has been dropped since end of 2025. Please consider update your version of Python. Continue at your own risk \033[0m")
 
 
 import os

@@ -27,8 +27,8 @@ import time
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 pjoin = os.path.join
 
-if sys.version_info < (3, 7):
-    sys.exit('MadEvent works with python 3.7 or higher.\n\
+if sys.version_info < (3, 12):
+    sys.exit('MadEvent works with python 3.12 or higher.\n\
                Please upgrade your version of python.')
 
 try:
