@@ -19,8 +19,8 @@ use super::evaluator::symjit_direct::{
 use super::{PreparedKernelManifest, PreparedKernelPackManifest};
 use crate::artifact::EvaluatorPayloadStore;
 use crate::recurrence::direct_backend::{
-    DirectContributionExecutionMetadata, DirectExecutorCatalog, DirectExecutorHandle,
-    DirectUnionSourceDispatchHandle,
+    DirectContributionExecutionMetadata, DirectContributionFanoutExecutorHandle,
+    DirectExecutorCatalog, DirectExecutorHandle, DirectUnionSourceDispatchHandle,
 };
 use crate::recurrence::on_the_fly::{
     OnTheFlyExecutorKeyV1, OnTheFlyPreparedExecutorResolver, OnTheFlyProcessSeedV1,
@@ -82,6 +82,7 @@ pub(super) struct NativeRecurrencePreparedExecutorPool {
     bindings: BTreeMap<(DirectExecutorRole, u32), NativePreparedExecutorBinding>,
     executor_roles: Box<[DirectExecutorRole]>,
     contribution_metadata: Box<[Option<DirectContributionExecutionMetadata>]>,
+    contribution_fanout: Box<[Option<DirectContributionFanoutExecutorHandle>]>,
     identity_finalizer_id: Option<u32>,
     direct_template_catalog_digest: SemanticDigest,
     recurrence_template_catalog_digest: SemanticDigest,
@@ -296,8 +297,10 @@ impl NativeRecurrencePreparedExecutorPool {
         let mut bindings = BTreeMap::new();
         let mut executor_roles = Vec::with_capacity(direct.templates.len());
         let mut contribution_metadata = Vec::with_capacity(direct.templates.len());
+        let mut contribution_fanout = Vec::with_capacity(direct.templates.len());
         let mut identity_finalizer_id = None;
         for template in &direct.templates {
+            let mut fanout = None;
             let role = direct_role(&template.role)?;
             let parent_permutation: [u8; 2] = template
                 .payload_binding
@@ -342,6 +345,7 @@ impl NativeRecurrencePreparedExecutorPool {
                         "rusticol-intrinsic" if template.role == "contribution" => {
                             let loaded = load_contribution_intrinsic(template)?;
                             let handle = loaded.handle();
+                            fanout = loaded.contribution_fanout_handle();
                             intrinsics.push(loaded);
                             Some(handle)
                         }
@@ -402,6 +406,7 @@ impl NativeRecurrencePreparedExecutorPool {
                 )));
             }
             handles.push(handle);
+            contribution_fanout.push(fanout);
             executor_roles.push(role);
             contribution_metadata.push(if role == DirectExecutorRole::Contribution {
                 Some(DirectContributionExecutionMetadata::new(
@@ -436,6 +441,7 @@ impl NativeRecurrencePreparedExecutorPool {
             bindings,
             executor_roles: executor_roles.into_boxed_slice(),
             contribution_metadata: contribution_metadata.into_boxed_slice(),
+            contribution_fanout: contribution_fanout.into_boxed_slice(),
             identity_finalizer_id,
             direct_template_catalog_digest: digest,
             recurrence_template_catalog_digest,
@@ -592,11 +598,12 @@ impl NativeRecurrencePreparedExecutorPool {
             };
             handles.push(handle);
         }
-        DirectExecutorCatalog::new_sparse_with_metadata(
+        DirectExecutorCatalog::new_sparse_with_metadata_and_fanout(
             plan,
             self.direct_template_catalog_digest,
             handles,
             self.contribution_metadata.to_vec(),
+            self.contribution_fanout.to_vec(),
         )
     }
 }
@@ -1413,6 +1420,7 @@ pub(in crate::engine) mod on_the_fly_adapter_tests {
             ]
             .into_boxed_slice(),
             contribution_metadata: vec![None, None, None].into_boxed_slice(),
+            contribution_fanout: vec![None, None, None].into_boxed_slice(),
             identity_finalizer_id: Some(2),
             direct_template_catalog_digest: direct_digest,
             recurrence_template_catalog_digest: summary.catalog_digest,

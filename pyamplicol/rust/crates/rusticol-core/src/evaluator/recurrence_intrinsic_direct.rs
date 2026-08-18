@@ -8,8 +8,10 @@
 //! returned executor handle can be called.
 
 use crate::recurrence::direct_backend::{
-    DIRECT_STATUS_OK, DirectArenaView, DirectContributionExecutor, DirectExecutorHandle,
-    DirectFactorView, DirectFinalizationExecutor, DirectMomentumView, DirectParameterView,
+    DIRECT_STATUS_OK, DirectArenaView, DirectContributionExecutor, DirectContributionFanoutBatch,
+    DirectContributionFanoutExecutor, DirectContributionFanoutExecutorHandle,
+    DirectContributionFanoutScale, DirectExecutorHandle, DirectFactorView,
+    DirectFinalizationExecutor, DirectMomentumView, DirectParameterView,
 };
 use crate::recurrence::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DIRECT_NONE_U32, DirectContributionRow,
@@ -208,6 +210,41 @@ impl LoadedRecurrenceIntrinsicDirectExecutor {
         }
     }
 
+    pub(crate) fn contribution_fanout_handle(
+        &self,
+    ) -> Option<DirectContributionFanoutExecutorHandle> {
+        let (call, destination_component_count, parent_component_counts, requires_two_momenta): (
+            DirectContributionFanoutExecutor,
+            u32,
+            [u32; 2],
+            bool,
+        ) = match self.kind {
+            RecurrenceContributionIntrinsicKind::AntisymmetricTensorVectorToVector => (
+                execute_antisymmetric_tensor_vector_to_vector_fanout,
+                4,
+                [6, 4],
+                false,
+            ),
+            RecurrenceContributionIntrinsicKind::VectorWedgeVectorToAntisymmetricTensor => (
+                execute_vector_wedge_vector_to_antisymmetric_tensor_fanout,
+                6,
+                [4, 4],
+                false,
+            ),
+            RecurrenceContributionIntrinsicKind::ColorOrderedThreeVector => {
+                (execute_color_ordered_three_vector_fanout, 4, [4, 4], true)
+            }
+            _ => return None,
+        };
+        Some(DirectContributionFanoutExecutorHandle {
+            call,
+            context: ptr::from_ref(self.scale.as_ref()).cast(),
+            destination_component_count,
+            parent_component_counts,
+            requires_two_momenta,
+        })
+    }
+
     pub(crate) fn handle(&self) -> DirectExecutorHandle {
         let handle = self.contribution_handle();
         DirectExecutorHandle::Contribution {
@@ -400,6 +437,18 @@ struct AntisymmetricTensorVectorToVector;
 struct VectorWedgeVectorToAntisymmetricTensor;
 struct ColorOrderedThreeVector;
 
+trait DirectContributionFanoutFormula<const N: usize> {
+    const BASE_SCALE: ComplexValue;
+
+    unsafe fn evaluate(
+        arena: DirectArenaView,
+        momenta: Option<DirectMomentumView>,
+        row: DirectContributionRow,
+        stride: usize,
+        point: usize,
+    ) -> [ComplexValue; N];
+}
+
 #[derive(Clone, Copy)]
 struct SimdComplex2 {
     re: f64x2,
@@ -535,6 +584,43 @@ impl ColorOrderedThreeVector {
         point: usize,
         scale: ComplexValue,
     ) {
+        let output = unsafe {
+            <Self as DirectContributionFanoutFormula<4>>::evaluate(
+                arena,
+                Some(momenta),
+                row,
+                stride,
+                point,
+            )
+        };
+        for (component, value) in output.into_iter().enumerate() {
+            unsafe {
+                add_scaled_current(
+                    arena,
+                    row.destination_component_base + component as u32,
+                    stride,
+                    point,
+                    value,
+                    scale,
+                    contribution_accumulates(row),
+                );
+            }
+        }
+    }
+}
+
+impl DirectContributionFanoutFormula<4> for ColorOrderedThreeVector {
+    const BASE_SCALE: ComplexValue = Self::BASE_SCALE;
+
+    #[inline(always)]
+    unsafe fn evaluate(
+        arena: DirectArenaView,
+        momenta: Option<DirectMomentumView>,
+        row: DirectContributionRow,
+        stride: usize,
+        point: usize,
+    ) -> [ComplexValue; 4] {
+        let momenta = momenta.expect("color-ordered fanout inputs were validated");
         let mut left = [ComplexValue::ZERO; 4];
         let mut right = [ComplexValue::ZERO; 4];
         let mut parent0_momentum = [0.0; 4];
@@ -579,25 +665,15 @@ impl ColorOrderedThreeVector {
         let vector_dot = minkowski_complex_dot(left, right);
         let left_dot_parent1 = minkowski_complex_real_dot(left, parent1_momentum);
         let right_dot_parent0 = minkowski_complex_real_dot(right, parent0_momentum);
-        for component in 0..4 {
+        core::array::from_fn(|component| {
             let momentum_term =
                 vector_dot.mul_real(parent0_momentum[component] - parent1_momentum[component]);
             let current_term = left_dot_parent1
                 .mul(right[component])
                 .sub(right_dot_parent0.mul(left[component]))
                 .mul_real(2.0);
-            unsafe {
-                add_scaled_current(
-                    arena,
-                    row.destination_component_base + component as u32,
-                    stride,
-                    point,
-                    momentum_term.add(current_term),
-                    scale,
-                    contribution_accumulates(row),
-                );
-            }
-        }
+            momentum_term.add(current_term)
+        })
     }
 }
 
@@ -919,46 +995,9 @@ impl DirectContributionFormula for AntisymmetricTensorVectorToVector {
         point: usize,
         scale: ComplexValue,
     ) {
-        let mut left = [ComplexValue::ZERO; 6];
-        let mut right = [ComplexValue::ZERO; 4];
-        for (component, value) in left.iter_mut().enumerate() {
-            *value = unsafe {
-                load_current(
-                    arena,
-                    row.parent0_component_base + component as u32,
-                    stride,
-                    point,
-                )
-            };
-        }
-        for (component, value) in right.iter_mut().enumerate() {
-            *value = unsafe {
-                load_current(
-                    arena,
-                    row.parent1_component_base_or_sentinel + component as u32,
-                    stride,
-                    point,
-                )
-            };
-        }
-        let output = [
-            left[0]
-                .mul(right[1])
-                .add(left[1].mul(right[2]))
-                .add(left[2].mul(right[3])),
-            left[0]
-                .mul(right[0])
-                .add(left[3].mul(right[2]))
-                .add(left[4].mul(right[3])),
-            left[1]
-                .mul(right[0])
-                .sub(left[3].mul(right[1]))
-                .add(left[5].mul(right[3])),
-            left[2]
-                .mul(right[0])
-                .sub(left[4].mul(right[1]))
-                .sub(left[5].mul(right[2])),
-        ];
+        let output = unsafe {
+            <Self as DirectContributionFanoutFormula<4>>::evaluate(arena, None, row, stride, point)
+        };
         for (component, value) in output.into_iter().enumerate() {
             unsafe {
                 add_scaled_current(
@@ -1038,6 +1077,60 @@ impl DirectContributionFormula for AntisymmetricTensorVectorToVector {
     }
 }
 
+impl DirectContributionFanoutFormula<4> for AntisymmetricTensorVectorToVector {
+    const BASE_SCALE: ComplexValue = <Self as DirectContributionFormula>::BASE_SCALE;
+
+    #[inline(always)]
+    unsafe fn evaluate(
+        arena: DirectArenaView,
+        _momenta: Option<DirectMomentumView>,
+        row: DirectContributionRow,
+        stride: usize,
+        point: usize,
+    ) -> [ComplexValue; 4] {
+        let mut left = [ComplexValue::ZERO; 6];
+        let mut right = [ComplexValue::ZERO; 4];
+        for (component, value) in left.iter_mut().enumerate() {
+            *value = unsafe {
+                load_current(
+                    arena,
+                    row.parent0_component_base + component as u32,
+                    stride,
+                    point,
+                )
+            };
+        }
+        for (component, value) in right.iter_mut().enumerate() {
+            *value = unsafe {
+                load_current(
+                    arena,
+                    row.parent1_component_base_or_sentinel + component as u32,
+                    stride,
+                    point,
+                )
+            };
+        }
+        [
+            left[0]
+                .mul(right[1])
+                .add(left[1].mul(right[2]))
+                .add(left[2].mul(right[3])),
+            left[0]
+                .mul(right[0])
+                .add(left[3].mul(right[2]))
+                .add(left[4].mul(right[3])),
+            left[1]
+                .mul(right[0])
+                .sub(left[3].mul(right[1]))
+                .add(left[5].mul(right[3])),
+            left[2]
+                .mul(right[0])
+                .sub(left[4].mul(right[1]))
+                .sub(left[5].mul(right[2])),
+        ]
+    }
+}
+
 impl DirectContributionFormula for VectorWedgeVectorToAntisymmetricTensor {
     const PARENT0_COMPONENTS: u32 = 4;
     const PARENT1_COMPONENTS: u32 = 4;
@@ -1052,34 +1145,9 @@ impl DirectContributionFormula for VectorWedgeVectorToAntisymmetricTensor {
         point: usize,
         scale: ComplexValue,
     ) {
-        let mut left = [ComplexValue::ZERO; 4];
-        let mut right = [ComplexValue::ZERO; 4];
-        for component in 0..4 {
-            left[component] = unsafe {
-                load_current(
-                    arena,
-                    row.parent0_component_base + component as u32,
-                    stride,
-                    point,
-                )
-            };
-            right[component] = unsafe {
-                load_current(
-                    arena,
-                    row.parent1_component_base_or_sentinel + component as u32,
-                    stride,
-                    point,
-                )
-            };
-        }
-        let output = [
-            left[0].mul(right[1]).sub(left[1].mul(right[0])),
-            left[0].mul(right[2]).sub(left[2].mul(right[0])),
-            left[0].mul(right[3]).sub(left[3].mul(right[0])),
-            left[1].mul(right[2]).sub(left[2].mul(right[1])),
-            left[1].mul(right[3]).sub(left[3].mul(right[1])),
-            left[2].mul(right[3]).sub(left[3].mul(right[2])),
-        ];
+        let output = unsafe {
+            <Self as DirectContributionFanoutFormula<6>>::evaluate(arena, None, row, stride, point)
+        };
         for (component, value) in output.into_iter().enumerate() {
             unsafe {
                 add_scaled_current(
@@ -1144,6 +1212,201 @@ impl DirectContributionFormula for VectorWedgeVectorToAntisymmetricTensor {
                 );
             }
         }
+    }
+}
+
+impl DirectContributionFanoutFormula<6> for VectorWedgeVectorToAntisymmetricTensor {
+    const BASE_SCALE: ComplexValue = <Self as DirectContributionFormula>::BASE_SCALE;
+
+    #[inline(always)]
+    unsafe fn evaluate(
+        arena: DirectArenaView,
+        _momenta: Option<DirectMomentumView>,
+        row: DirectContributionRow,
+        stride: usize,
+        point: usize,
+    ) -> [ComplexValue; 6] {
+        let mut left = [ComplexValue::ZERO; 4];
+        let mut right = [ComplexValue::ZERO; 4];
+        for component in 0..4 {
+            left[component] = unsafe {
+                load_current(
+                    arena,
+                    row.parent0_component_base + component as u32,
+                    stride,
+                    point,
+                )
+            };
+            right[component] = unsafe {
+                load_current(
+                    arena,
+                    row.parent1_component_base_or_sentinel + component as u32,
+                    stride,
+                    point,
+                )
+            };
+        }
+        [
+            left[0].mul(right[1]).sub(left[1].mul(right[0])),
+            left[0].mul(right[2]).sub(left[2].mul(right[0])),
+            left[0].mul(right[3]).sub(left[3].mul(right[0])),
+            left[1].mul(right[2]).sub(left[2].mul(right[1])),
+            left[1].mul(right[3]).sub(left[3].mul(right[1])),
+            left[2].mul(right[3]).sub(left[3].mul(right[2])),
+        ]
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn execute_contribution_fanout<F, const N: usize>(
+    context: *const c_void,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
+    batch: DirectContributionFanoutBatch<'_>,
+) -> RusticolResult<()>
+where
+    F: DirectContributionFanoutFormula<N>,
+{
+    // The private batch is produced only by `DirectContributionFanoutProgram`.
+    // Its row spans and all raw views were validated before this call.
+    let context = unsafe { &*context.cast::<RecurrenceIntrinsicScale>() };
+    let context_scale = effective_context_scale(*context, parameters)
+        .map_err(|_| RusticolError::evaluation("fused contribution fanout scale is unavailable"))?
+        .mul(F::BASE_SCALE);
+    let stride = arena.point_stride as usize;
+
+    for run in batch.runs {
+        let row_start = usize::try_from(run.row_start)
+            .map_err(|_| RusticolError::integrity("fused fanout row start exceeds usize"))?;
+        let row_end = row_start
+            .checked_add(run.row_count as usize)
+            .ok_or_else(|| RusticolError::integrity("fused fanout row range overflows usize"))?;
+        let run_rows = batch
+            .rows
+            .get(row_start..row_end)
+            .ok_or_else(|| RusticolError::integrity("fused fanout row range is out of bounds"))?;
+        let representative = *run_rows.first().ok_or_else(|| {
+            RusticolError::integrity("fused fanout run has no representative row")
+        })?;
+        let mut output = unsafe { F::evaluate(arena, Some(momenta), representative, stride, 0) };
+        for value in &mut output {
+            *value = value.mul(context_scale);
+        }
+
+        let bundle_start = usize::try_from(run.bundle_start)
+            .map_err(|_| RusticolError::integrity("fused fanout bundle start exceeds usize"))?;
+        let bundle_end = bundle_start
+            .checked_add(run.bundle_count as usize)
+            .ok_or_else(|| RusticolError::integrity("fused fanout bundle range overflows usize"))?;
+        let bundles = batch.bundles.get(bundle_start..bundle_end).ok_or_else(|| {
+            RusticolError::integrity("fused fanout bundle range is out of bounds")
+        })?;
+        for bundle in bundles {
+            if bundle.effective_factor_id_or_sentinel == DIRECT_NONE_U32 {
+                return Err(RusticolError::integrity(
+                    "fused contribution fanout requires an explicit destination factor",
+                ));
+            }
+            let factor = bundle.effective_factor_id_or_sentinel as usize;
+            if factor >= factors.value_count as usize {
+                return Err(RusticolError::integrity(
+                    "fused contribution fanout factor is out of bounds",
+                ));
+            }
+            let scale = DirectContributionFanoutScale::new(
+                unsafe { *factors.values_re.add(factor) },
+                unsafe { *factors.values_im.add(factor) },
+            );
+            let scaled_output = output.map(|value| {
+                let (re, im) = scale.apply(value.re, value.im);
+                ComplexValue::new(re, im)
+            });
+            let bundle_row_start = usize::try_from(bundle.row_start).map_err(|_| {
+                RusticolError::integrity("fused fanout bundle row start exceeds usize")
+            })?;
+            let bundle_row_end = bundle_row_start
+                .checked_add(bundle.row_count as usize)
+                .ok_or_else(|| {
+                    RusticolError::integrity("fused fanout bundle row range overflows usize")
+                })?;
+            let rows = batch
+                .rows
+                .get(bundle_row_start..bundle_row_end)
+                .ok_or_else(|| {
+                    RusticolError::integrity("fused fanout bundle row range is out of bounds")
+                })?;
+            for row in rows {
+                for (component, value) in scaled_output.iter().enumerate() {
+                    let destination =
+                        (row.destination_component_base as usize + component) * stride;
+                    unsafe {
+                        if contribution_accumulates(*row) {
+                            *arena.current_re.add(destination) += value.re;
+                            *arena.current_im.add(destination) += value.im;
+                        } else {
+                            *arena.current_re.add(destination) = value.re;
+                            *arena.current_im.add(destination) = value.im;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+unsafe fn execute_antisymmetric_tensor_vector_to_vector_fanout(
+    context: *const c_void,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
+    batch: DirectContributionFanoutBatch<'_>,
+) -> RusticolResult<()> {
+    unsafe {
+        execute_contribution_fanout::<AntisymmetricTensorVectorToVector, 4>(
+            context, arena, momenta, parameters, factors, batch,
+        )
+    }
+}
+
+unsafe fn execute_vector_wedge_vector_to_antisymmetric_tensor_fanout(
+    context: *const c_void,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
+    batch: DirectContributionFanoutBatch<'_>,
+) -> RusticolResult<()> {
+    unsafe {
+        execute_contribution_fanout::<VectorWedgeVectorToAntisymmetricTensor, 6>(
+            context, arena, momenta, parameters, factors, batch,
+        )
+    }
+}
+
+unsafe fn execute_color_ordered_three_vector_fanout(
+    context: *const c_void,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
+    batch: DirectContributionFanoutBatch<'_>,
+) -> RusticolResult<()> {
+    if momenta.values.is_null()
+        || momenta.lorentz_component_count != 4
+        || momenta.point_stride != arena.point_stride
+    {
+        return Err(RusticolError::evaluation(
+            "color-ordered fused fanout requires four-component momenta at the arena point stride",
+        ));
+    }
+    unsafe {
+        execute_contribution_fanout::<ColorOrderedThreeVector, 4>(
+            context, arena, momenta, parameters, factors, batch,
+        )
     }
 }
 
@@ -2065,6 +2328,9 @@ unsafe fn set_pre_scaled_current_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::direct_backend::{
+        DirectContributionFanoutBundle, DirectContributionFanoutRun,
+    };
 
     #[derive(Clone, Copy, Debug)]
     struct ReferenceComplex {
@@ -2214,6 +2480,158 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn fused_fanout_matches_supported_intrinsic_rows() {
+        for kind in [
+            RecurrenceContributionIntrinsicKind::AntisymmetricTensorVectorToVector,
+            RecurrenceContributionIntrinsicKind::VectorWedgeVectorToAntisymmetricTensor,
+            RecurrenceContributionIntrinsicKind::ColorOrderedThreeVector,
+        ] {
+            let initial_re = (0..22)
+                .map(|component| component as f64 * 0.37 - 1.2)
+                .collect::<Vec<_>>();
+            let initial_im = initial_re
+                .iter()
+                .map(|value| -0.3 * value)
+                .collect::<Vec<_>>();
+            let mut direct_re = initial_re.clone();
+            let mut direct_im = initial_im.clone();
+            let mut fused_re = initial_re;
+            let mut fused_im = initial_im;
+            let factors_re = [0.7, -0.3];
+            let factors_im = [0.2, 0.8];
+            let parameters_re = [-0.4];
+            let parameters_im = [0.6];
+            let momenta_values = [1.1, 0.2, -0.4, 0.7, 0.6, -0.8, 0.3, -0.5];
+            let first = DirectContributionRow {
+                parent0_component_base: 0,
+                parent1_component_base_or_sentinel: 6,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: 1,
+                destination_component_base: 10,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            };
+            let rows = [
+                first,
+                DirectContributionRow {
+                    destination_component_base: 16,
+                    exact_factor_id: 1,
+                    flags: 0,
+                    ..first
+                },
+            ];
+            let executor = LoadedRecurrenceIntrinsicDirectExecutor::load(
+                kind,
+                RecurrenceIntrinsicScale::new(0.75, -0.2, Some(0)).unwrap(),
+            );
+            let execute_views = |re: &mut [f64], im: &mut [f64]| {
+                let (arena, _, parameters, factors) = views(
+                    re,
+                    im,
+                    1,
+                    &parameters_re,
+                    &parameters_im,
+                    &factors_re,
+                    &factors_im,
+                );
+                let momenta = DirectMomentumView {
+                    values: momenta_values.as_ptr(),
+                    scalar_len: 8,
+                    form_count: 2,
+                    lorentz_component_count: 4,
+                    point_stride: 1,
+                };
+                (arena, momenta, parameters, factors)
+            };
+            let (arena, momenta, parameters, factors) =
+                execute_views(&mut direct_re, &mut direct_im);
+            let handle = executor.contribution_handle();
+            assert_eq!(
+                unsafe {
+                    (handle.call)(
+                        handle.context,
+                        arena,
+                        momenta,
+                        parameters,
+                        factors,
+                        rows.as_ptr(),
+                        2,
+                        1,
+                    )
+                },
+                DIRECT_STATUS_OK
+            );
+
+            let (arena, momenta, parameters, factors) = execute_views(&mut fused_re, &mut fused_im);
+            let fused = executor.contribution_fanout_handle().unwrap();
+            let run = DirectContributionFanoutRun {
+                row_start: 0,
+                row_count: 2,
+                scratch_component_base: 0,
+                bundle_start: 0,
+                bundle_count: 2,
+            };
+            let bundles = [
+                DirectContributionFanoutBundle {
+                    row_start: 0,
+                    row_count: 1,
+                    effective_factor_id_or_sentinel: 0,
+                },
+                DirectContributionFanoutBundle {
+                    row_start: 1,
+                    row_count: 1,
+                    effective_factor_id_or_sentinel: 1,
+                },
+            ];
+            unsafe {
+                (fused.call)(
+                    fused.context,
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    DirectContributionFanoutBatch {
+                        rows: &rows,
+                        runs: &[run],
+                        bundles: &bundles,
+                    },
+                )
+            }
+            .unwrap();
+            if kind == RecurrenceContributionIntrinsicKind::ColorOrderedThreeVector {
+                assert!(
+                    unsafe {
+                        (fused.call)(
+                            fused.context,
+                            arena,
+                            DirectMomentumView {
+                                lorentz_component_count: 3,
+                                ..momenta
+                            },
+                            parameters,
+                            factors,
+                            DirectContributionFanoutBatch {
+                                rows: &rows,
+                                runs: &[run],
+                                bundles: &bundles,
+                            },
+                        )
+                    }
+                    .is_err()
+                );
+            }
+            for (actual, expected) in fused_re
+                .iter()
+                .zip(&direct_re)
+                .chain(fused_im.iter().zip(&direct_im))
+            {
+                assert!((actual - expected).abs() < 2.0e-13);
+            }
+        }
     }
 
     #[test]

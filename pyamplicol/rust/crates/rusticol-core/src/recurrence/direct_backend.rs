@@ -228,6 +228,24 @@ pub type DirectContributionExecutor = unsafe extern "C" fn(
     u32,
 ) -> c_int;
 
+pub(crate) type DirectContributionFanoutExecutor = for<'a> unsafe fn(
+    *const c_void,
+    DirectArenaView,
+    DirectMomentumView,
+    DirectParameterView,
+    DirectFactorView,
+    DirectContributionFanoutBatch<'a>,
+) -> RusticolResult<()>;
+
+#[derive(Clone, Copy)]
+pub(crate) struct DirectContributionFanoutExecutorHandle {
+    pub(crate) call: DirectContributionFanoutExecutor,
+    pub(crate) context: *const c_void,
+    pub(crate) destination_component_count: u32,
+    pub(crate) parent_component_counts: [u32; 2],
+    pub(crate) requires_two_momenta: bool,
+}
+
 pub type DirectFinalizationExecutor = unsafe extern "C" fn(
     *const c_void,
     DirectArenaView,
@@ -284,6 +302,7 @@ impl DirectExecutorHandle {
 pub struct DirectExecutorCatalog {
     handles: Box<[Option<DirectExecutorHandle>]>,
     contribution_metadata: Box<[Option<DirectContributionExecutionMetadata>]>,
+    contribution_fanout: Box<[Option<DirectContributionFanoutExecutorHandle>]>,
     plan_layout_digest: SemanticDigest,
     direct_template_catalog_digest: SemanticDigest,
 }
@@ -347,6 +366,23 @@ impl DirectExecutorCatalog {
         handles: Vec<Option<DirectExecutorHandle>>,
         contribution_metadata: Vec<Option<DirectContributionExecutionMetadata>>,
     ) -> RusticolResult<Self> {
+        let contribution_fanout = vec![None; handles.len()];
+        Self::new_sparse_with_metadata_and_fanout(
+            plan,
+            direct_template_catalog_digest,
+            handles,
+            contribution_metadata,
+            contribution_fanout,
+        )
+    }
+
+    pub(crate) fn new_sparse_with_metadata_and_fanout(
+        plan: &DirectRecurrencePlan,
+        direct_template_catalog_digest: SemanticDigest,
+        handles: Vec<Option<DirectExecutorHandle>>,
+        contribution_metadata: Vec<Option<DirectContributionExecutionMetadata>>,
+        contribution_fanout: Vec<Option<DirectContributionFanoutExecutorHandle>>,
+    ) -> RusticolResult<Self> {
         if handles.is_empty() {
             return Err(RusticolError::invalid_argument(
                 "direct recurrence executor catalog must not be empty",
@@ -357,6 +393,36 @@ impl DirectExecutorCatalog {
                 "direct contribution metadata does not cover the executor catalog",
             ));
         }
+        if contribution_fanout.len() != handles.len() {
+            return Err(RusticolError::integrity(
+                "direct contribution fanout capabilities do not cover the executor catalog",
+            ));
+        }
+        for (executor_id, capability) in contribution_fanout.iter().copied().enumerate() {
+            let Some(capability) = capability else {
+                continue;
+            };
+            if !matches!(
+                handles[executor_id],
+                Some(DirectExecutorHandle::Contribution { .. })
+            ) {
+                return Err(RusticolError::integrity(format!(
+                    "direct fused fanout capability {executor_id} is not a loaded contribution executor"
+                )));
+            }
+            let metadata = contribution_metadata[executor_id].ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "direct fused fanout capability {executor_id} has no contribution metadata"
+                ))
+            })?;
+            if metadata.exact_factor_is_kernel_input
+                || metadata.destination_component_count != capability.destination_component_count
+            {
+                return Err(RusticolError::integrity(format!(
+                    "direct fused fanout capability {executor_id} is incompatible with its contribution metadata"
+                )));
+            }
+        }
         if direct_template_catalog_digest != plan.direct_template_catalog_digest() {
             return Err(RusticolError::integrity(format!(
                 "loaded direct-template catalog digest {direct_template_catalog_digest} does not match plan {}",
@@ -366,6 +432,7 @@ impl DirectExecutorCatalog {
         let catalog = Self {
             handles: handles.into_boxed_slice(),
             contribution_metadata: contribution_metadata.into_boxed_slice(),
+            contribution_fanout: contribution_fanout.into_boxed_slice(),
             plan_layout_digest: plan.runtime_layout_digest(),
             direct_template_catalog_digest,
         };
@@ -385,6 +452,15 @@ impl DirectExecutorCatalog {
                     "direct contribution executor {executor_id} has no authenticated execution metadata"
                 ))
             })
+    }
+
+    fn contribution_fanout(
+        &self,
+        executor_id: u32,
+    ) -> Option<DirectContributionFanoutExecutorHandle> {
+        self.contribution_fanout
+            .get(executor_id as usize)
+            .and_then(|capability| *capability)
     }
 
     fn require(
@@ -421,6 +497,11 @@ impl DirectExecutorCatalog {
         if self.contribution_metadata.len() != self.handles.len() {
             return Err(RusticolError::integrity(
                 "direct contribution metadata has the wrong executor domain",
+            ));
+        }
+        if self.contribution_fanout.len() != self.handles.len() {
+            return Err(RusticolError::integrity(
+                "direct contribution fanout capabilities have the wrong executor domain",
             ));
         }
         if self.direct_template_catalog_digest != plan.direct_template_catalog_digest() {
@@ -508,12 +589,12 @@ fn conservative_contribution_metadata(
 const DIRECT_CONTRIBUTION_FANOUT_BATCH_CAPACITY: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct DirectContributionFanoutRun {
-    row_start: u64,
-    row_count: u32,
-    scratch_component_base: u32,
-    bundle_start: u64,
-    bundle_count: u32,
+pub(crate) struct DirectContributionFanoutRun {
+    pub(crate) row_start: u64,
+    pub(crate) row_count: u32,
+    pub(crate) scratch_component_base: u32,
+    pub(crate) bundle_start: u64,
+    pub(crate) bundle_count: u32,
 }
 
 /// Maximal consecutive fanout outputs which share their effective scale.
@@ -521,10 +602,17 @@ struct DirectContributionFanoutRun {
 /// `DIRECT_NONE_U32` denotes unity because factor-consuming executors already
 /// applied the authenticated row factor while producing the representative.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct DirectContributionFanoutBundle {
-    row_start: u64,
-    row_count: u32,
-    effective_factor_id_or_sentinel: u32,
+pub(crate) struct DirectContributionFanoutBundle {
+    pub(crate) row_start: u64,
+    pub(crate) row_count: u32,
+    pub(crate) effective_factor_id_or_sentinel: u32,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DirectContributionFanoutBatch<'a> {
+    pub(crate) rows: &'a [DirectContributionRow],
+    pub(crate) runs: &'a [DirectContributionFanoutRun],
+    pub(crate) bundles: &'a [DirectContributionFanoutBundle],
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -618,12 +706,16 @@ impl DirectContributionFanoutProgram {
                 )
             })
             .collect::<BTreeMap<_, _>>();
+        let arena_component_count = plan.current_arena_components();
+        let momentum_form_count = u32::try_from(plan.momentum_forms().len())
+            .map_err(|_| RusticolError::integrity("direct momentum-form count exceeds u32"))?;
 
         for descriptor in plan.row_groups().iter().filter(|descriptor| {
             descriptor.role == DirectExecutorRole::Contribution
                 && descriptor.direct_executor_id != DIRECT_NONE_U32
         }) {
             let metadata = executors.contribution_metadata(descriptor.direct_executor_id)?;
+            let fused = executors.contribution_fanout(descriptor.direct_executor_id);
             let group_step_start = u64::try_from(steps.len())
                 .map_err(|_| RusticolError::integrity("direct fanout step count exceeds u64"))?;
             let start = usize::try_from(descriptor.row_start).map_err(|_| {
@@ -651,6 +743,15 @@ impl DirectContributionFanoutProgram {
                         "direct contribution executor {} declares {} destination components, expected {authenticated_component_count}",
                         descriptor.direct_executor_id, metadata.destination_component_count
                     )));
+                }
+                if let Some(fused) = fused {
+                    validate_fused_fanout_row(
+                        *row,
+                        fused.parent_component_counts,
+                        fused.requires_two_momenta,
+                        arena_component_count,
+                        momentum_form_count,
+                    )?;
                 }
             }
             let mut selector_offset = 0_usize;
@@ -876,6 +977,63 @@ impl DirectContributionFanoutProgram {
             ));
         }
         Ok(&group_steps[first..stop])
+    }
+}
+
+fn validate_fused_fanout_row(
+    row: DirectContributionRow,
+    parent_component_counts: [u32; 2],
+    requires_two_momenta: bool,
+    arena_component_count: u32,
+    momentum_form_count: u32,
+) -> RusticolResult<()> {
+    for (base, required) in [
+        (row.parent0_component_base, parent_component_counts[0]),
+        (
+            row.parent1_component_base_or_sentinel,
+            parent_component_counts[1],
+        ),
+    ] {
+        if base == DIRECT_NONE_U32
+            || base
+                .checked_add(required)
+                .is_none_or(|end| end > arena_component_count)
+        {
+            return Err(RusticolError::integrity(
+                "direct fused fanout parent component span is incompatible with its intrinsic",
+            ));
+        }
+    }
+    if requires_two_momenta
+        && (row.parent0_momentum_form_id >= momentum_form_count
+            || row.parent1_momentum_form_id_or_sentinel >= momentum_form_count)
+    {
+        return Err(RusticolError::integrity(
+            "direct fused fanout momentum forms are incompatible with its intrinsic",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod fused_fanout_validation_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_short_parent_spans_and_missing_momentum_forms() {
+        let row = DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: 4,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: 1,
+            destination_component_base: 8,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        assert!(validate_fused_fanout_row(row, [9, 4], false, 8, 2).is_err());
+        assert!(validate_fused_fanout_row(row, [4, 4], true, 8, 1).is_err());
+        validate_fused_fanout_row(row, [4, 4], true, 8, 2).unwrap();
     }
 }
 
@@ -1578,6 +1736,7 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
                 fanout,
                 call,
                 context,
+                executors.contribution_fanout(descriptor.direct_executor_id),
                 workspace,
                 point_count,
             )?;
@@ -1728,6 +1887,7 @@ fn execute_contribution_group_with_fanout(
     fanout: &DirectContributionFanoutProgram,
     call: DirectContributionExecutor,
     context: *const c_void,
+    fused: Option<DirectContributionFanoutExecutorHandle>,
     workspace: &mut DirectWorkspace<'_>,
     point_count: u32,
 ) -> RusticolResult<u64> {
@@ -1809,6 +1969,38 @@ fn execute_contribution_group_with_fanout(
                 destination_component_count,
                 ..
             } => {
+                if point_count == 1
+                    && let Some(fused) = fused
+                {
+                    let start = usize::try_from(run_start).map_err(|_| {
+                        RusticolError::integrity("direct fanout run start exceeds usize")
+                    })?;
+                    let end = start.checked_add(run_count as usize).ok_or_else(|| {
+                        RusticolError::integrity("direct fanout run range overflows usize")
+                    })?;
+                    let runs = fanout.runs.get(start..end).ok_or_else(|| {
+                        RusticolError::integrity("direct fanout run range is out of bounds")
+                    })?;
+                    debug_assert_eq!(
+                        fused.destination_component_count,
+                        destination_component_count
+                    );
+                    unsafe {
+                        (fused.call)(
+                            fused.context,
+                            arena,
+                            momenta,
+                            parameters,
+                            factors,
+                            DirectContributionFanoutBatch {
+                                rows: plan.contributions(),
+                                runs,
+                                bundles: &fanout.bundles,
+                            },
+                        )
+                    }?;
+                    continue;
+                }
                 let representative_start = usize::try_from(representative_start).map_err(|_| {
                     RusticolError::integrity("direct fanout representative start exceeds usize")
                 })?;
@@ -1884,7 +2076,7 @@ fn execute_contribution_group_with_fanout(
 }
 
 #[derive(Clone, Copy)]
-enum DirectContributionFanoutScale {
+pub(crate) enum DirectContributionFanoutScale {
     Unity,
     NegativeUnity,
     Real(f64),
@@ -1894,7 +2086,7 @@ enum DirectContributionFanoutScale {
 
 impl DirectContributionFanoutScale {
     #[inline(always)]
-    fn new(real: f64, imaginary: f64) -> Self {
+    pub(crate) fn new(real: f64, imaginary: f64) -> Self {
         if imaginary == 0.0 {
             if real == 1.0 {
                 Self::Unity
@@ -1911,7 +2103,7 @@ impl DirectContributionFanoutScale {
     }
 
     #[inline(always)]
-    fn apply(self, real: f64, imaginary: f64) -> (f64, f64) {
+    pub(crate) fn apply(self, real: f64, imaginary: f64) -> (f64, f64) {
         match self {
             Self::Unity => (real, imaginary),
             Self::NegativeUnity => (-real, -imaginary),
