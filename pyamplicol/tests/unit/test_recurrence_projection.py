@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import replace
 
 import pytest
@@ -34,6 +35,10 @@ from pyamplicol.generation.recurrence_projection import (
 )
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.prepared_catalog import build_prepared_kernel_catalog
+from pyamplicol.models.recurrence_catalog_builder import (
+    build_recurrence_template_catalog,
+)
 from pyamplicol.models.recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
@@ -657,6 +662,254 @@ def test_contracted_pure_gluon_replay_projects_six_n5_template_orbits() -> None:
     assert len(contraction_destinations) == 720 * 4
     assert contraction_destinations[:4] == ((0, 0), (0, 1), (0, 2), (0, 3))
     assert contraction_destinations[-1] == (719, 3)
+
+
+def test_symmetric_group_anchor_is_opt_in_and_serializes() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("g g > g g", color_accuracy="full")
+    color_plan = build_color_plan(process, color_accuracy="full")
+    replay = build_color_topology_replay_certificate(color_plan, model)
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_sha("closure-anchor-compiled-model"),
+        prepared_kernel_pack_digest=_sha("closure-anchor-prepared-pack"),
+    )
+    common = {
+        "process": process,
+        "color_plan": color_plan,
+        "template_catalog": catalog,
+        "layout": "contracted-color-union",
+        "topology_replay": replay,
+        "normalization": _normalization(),
+        "model": model,
+    }
+    direct = project_recurrence_process_v1(**common)
+    anchored = project_recurrence_process_v1(
+        **common,
+        prefer_symmetric_group_closure_anchor=True,
+    )
+
+    assert {sector.closure_proof_algorithm for sector in direct.physical_sectors} == {
+        "canonical-lc-closure-anchor-v2"
+    }
+    assert {sector.closure_proof_algorithm for sector in anchored.physical_sectors} == {
+        "canonical-lc-closure-anchor-v4"
+    }
+    assert {sector.closure_source_slot for sector in anchored.physical_sectors} == {0}
+    assert anchored.public_flows == direct.public_flows
+    assert anchored.replay_partitions == direct.replay_partitions
+    assert tuple(
+        (
+            sector.sector_id,
+            sector.public_id,
+            sector.kind,
+            sector.open_strings,
+            sector.trace_source_slots,
+            sector.singlet_source_slots,
+            sector.word_source_slots,
+            sector.support_mask,
+        )
+        for sector in anchored.physical_sectors
+    ) == tuple(
+        (
+            sector.sector_id,
+            sector.public_id,
+            sector.kind,
+            sector.open_strings,
+            sector.trace_source_slots,
+            sector.singlet_source_slots,
+            sector.word_source_slots,
+            sector.support_mask,
+        )
+        for sector in direct.physical_sectors
+    )
+    assert all(
+        target.source_slot_permutation[0] == 0
+        for partition in anchored.replay_partitions
+        for target in partition.targets
+    )
+    build_recurrence_builder_input_v1(anchored)
+
+
+def test_symmetric_group_anchor_is_independent_of_particle_21_identity() -> None:
+    synthetic_particle_id = 9_000_001
+    model = BuiltinSMModel()
+    base_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_sha("synthetic-adjoint-compiled-model"),
+        prepared_kernel_pack_digest=_sha("synthetic-adjoint-prepared-pack"),
+    )
+    base_state = next(
+        state
+        for state in base_catalog.current_states
+        if state.particle_id == 21
+        and state.orientation == "self-conjugate"
+        and state.color_representation == 8
+    )
+    state = replace(
+        base_state,
+        particle_id=synthetic_particle_id,
+        anti_particle_id=synthetic_particle_id,
+        species_id="synthetic-adjoint",
+        semantic_digest="",
+    )
+    sources = tuple(
+        replace(
+            source,
+            flavour_flow=(synthetic_particle_id,),
+            semantic_digest="",
+        )
+        for source in base_catalog.sources
+        if source.state_template_id == state.template_id
+    )
+    closure = next(
+        item
+        for item in base_catalog.closures
+        if item.input_state_template_ids == (state.template_id, state.template_id)
+        and item.result_state_template_id is None
+        and not item.coupling_parameter_ids
+        and not item.coupling_orders
+        and not item.eligible_quantum_flow_template_ids
+        and item.output_factor_source == "none"
+        and item.equivalence_class == "direct-contraction"
+    )
+    resolver_keys = {
+        closure.evaluator_resolver_key,
+        *(source.evaluator_resolver_key for source in sources),
+    }
+    catalog = RecurrenceTemplateCatalog.create(
+        compiled_model_digest=base_catalog.header.compiled_model_digest,
+        prepared_kernel_pack_digest=(base_catalog.header.prepared_kernel_pack_digest),
+        current_states=(state,),
+        sources=sources,
+        closures=(closure,),
+        color_contractions=tuple(
+            item
+            for item in base_catalog.color_contractions
+            if item.template_id == closure.color_contraction_template_id
+        ),
+        evaluator_bindings=tuple(
+            item
+            for item in base_catalog.evaluator_bindings
+            if item.resolver_key in resolver_keys
+        ),
+    )
+    process = replace(
+        _pure_gluon_process(),
+        process="x x > x x",
+        key="synthetic_adjoint_scattering",
+        legs=tuple(
+            replace(
+                leg,
+                particle="x",
+                outgoing_particle="x",
+                pdg=synthetic_particle_id,
+                outgoing_pdg=synthetic_particle_id,
+            )
+            for leg in _pure_gluon_process().legs
+        ),
+    )
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="single-trace",
+                trace_labels=(1, 2, 3, 4),
+                word_labels=(1, 2, 3, 4),
+            ),
+        ),
+    )
+    logical = project_recurrence_process_v1(
+        process,
+        plan,
+        catalog,
+        layout="all-flow-union",
+        normalization=_normalization(),
+        prefer_symmetric_group_closure_anchor=True,
+    )
+
+    assert {leg.physical_pdg for leg in logical.external_legs} == {
+        synthetic_particle_id
+    }
+    assert logical.physical_sectors[0].closure_proof_algorithm == (
+        "canonical-lc-closure-anchor-v4"
+    )
+    assert logical.physical_sectors[0].closure_source_slot == 0
+
+
+def test_symmetric_group_anchor_falls_back_without_exact_template_contract() -> None:
+    process = _pure_gluon_process()
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="lc",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="single-trace",
+                trace_labels=(1, 2, 3, 4),
+                word_labels=(1, 2, 3, 4),
+            ),
+        ),
+    )
+    logical = project_recurrence_process_v1(
+        process,
+        plan,
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+        prefer_symmetric_group_closure_anchor=True,
+    )
+
+    assert logical.physical_sectors[0].closure_proof_algorithm == (
+        "canonical-lc-closure-anchor-v2"
+    )
+    assert logical.physical_sectors[0].closure_source_slot == 3
+
+
+def test_symmetric_group_anchor_preserves_n7_n8_factorial_trace_domains() -> None:
+    model = BuiltinSMModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_sha("closure-anchor-count-compiled-model"),
+        prepared_kernel_pack_digest=_sha("closure-anchor-count-prepared-pack"),
+    )
+    for total_gluons in (7, 8):
+        process = build_process_ir(
+            "g g > " + " ".join("g" for _ in range(total_gluons - 2)),
+            color_accuracy="full",
+        )
+        color_plan = build_color_plan(process, color_accuracy="full")
+        replay = build_color_topology_replay_certificate(color_plan, model)
+        logical = project_recurrence_process_v1(
+            process,
+            color_plan,
+            catalog,
+            layout="contracted-color-union",
+            topology_replay=replay,
+            normalization=_normalization(),
+            model=model,
+            prefer_symmetric_group_closure_anchor=True,
+        )
+
+        assert len(logical.physical_sectors) == math.factorial(total_gluons - 1)
+        assert all(
+            sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v4"
+            and sector.closure_source_slot == 0
+            for sector in logical.physical_sectors
+        )
+        assert sum(
+            len(partition.targets) for partition in logical.replay_partitions
+        ) == math.factorial(total_gluons - 1)
+        assert all(
+            target.source_slot_permutation[0] == 0
+            for partition in logical.replay_partitions
+            for target in partition.targets
+        )
 
 
 def test_contracted_color_owner_map_rejects_an_unproved_missing_sector() -> None:

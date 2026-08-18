@@ -127,6 +127,7 @@ fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<(
     validate_generic_momentum_slots(manifest)?;
     validate_generic_stages(manifest)?;
     validate_generic_amplitudes(manifest)?;
+    validate_compiled_symmetric_group_diagnostic(manifest)?;
     validate_generic_stage_evaluators(manifest)?;
     validate_lc_topology_replay(manifest)?;
     if let Some(sum_manifest) = manifest.helicity_sum_execution.as_deref() {
@@ -200,6 +201,56 @@ fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<(
             ));
         }
         validate_execution_manifest(lane.execution.as_ref())?;
+    }
+    Ok(())
+}
+
+fn validate_compiled_symmetric_group_diagnostic(
+    manifest: &ExecutionManifest,
+) -> RusticolResult<()> {
+    let Some(payload) = manifest.color_contraction_payload.as_ref() else {
+        return Ok(());
+    };
+    if payload.path.is_empty() {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT payload has an empty path",
+        ));
+    }
+    if manifest.color_accuracy != "full"
+        || manifest.helicity_sum_execution.is_some()
+        || !manifest.helicity_selector_executions.is_empty()
+        || !manifest.color_selector_executions.is_empty()
+        || manifest.runtime_schema.helicity_recurrence.is_some()
+        || manifest.compiled.lc_topology_replay.is_some()
+        || manifest.compiled.color_topology_replay.is_some()
+        || manifest
+            .runtime_schema
+            .amplitude_stage
+            .color_topology_replay
+            .is_some()
+    {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic supports only selected-helicity FullColour total execution without selector or topology-replay lanes",
+        ));
+    }
+    let contraction = manifest
+        .runtime_schema
+        .amplitude_stage
+        .color_contraction
+        .as_ref()
+        .ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled symmetric-group FFT payload has no amplitude contraction metadata",
+            )
+        })?;
+    if !contraction.supported
+        || contraction.group_count == 0
+        || !contraction.entries.is_empty()
+        || contraction.repeated_block.is_some()
+    {
+        return Err(RusticolError::integrity(
+            "compiled symmetric-group FFT diagnostic requires a compact payload-only amplitude contraction",
+        ));
     }
     Ok(())
 }

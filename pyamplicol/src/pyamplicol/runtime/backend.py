@@ -597,6 +597,16 @@ class RusticolRuntimeBackend:
                 "on-the-fly execution supports only precision=16 (native f64); "
                 f"received precision={precision}"
             )
+        if (
+            self._execution_mode == "compiled"
+            and precision != 16
+            and SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+            in self._required_runtime_capabilities
+        ):
+            raise CompatibilityError(
+                "compiled symmetric-group FFT diagnostic execution supports only "
+                "precision=16 native f64; exact/high-precision execution is unavailable"
+            )
 
     def _on_the_fly_runtime_state_census(self) -> Mapping[str, object] | None:
         if self._execution_mode != "on-the-fly":

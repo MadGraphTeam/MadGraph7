@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
+use crate::pacbin::{PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEST_ARTIFACT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -35,6 +37,69 @@ fn compiled_plane_arena_is_a_known_artifact_capability() {
             .expect("compiled plane-arena capability");
 
     assert_eq!(validated, BTreeSet::from([capability]));
+}
+
+#[test]
+fn typed_compiled_color_member_is_required_and_kind_checked() {
+    let artifact = TestArtifact::new();
+    let destination = artifact.root.join("evaluators.pacbin");
+    write_pacbin_atomic(
+        &destination,
+        vec![
+            PacbinWriteMember::from_bytes(
+                "processes/p0/compiled-color.pacrclr3",
+                PacbinMemberKind::ColorContraction,
+                b"color-payload",
+            )
+            .unwrap(),
+            PacbinWriteMember::from_bytes(
+                "processes/p0/wrong-kind.pacrclr3",
+                PacbinMemberKind::SymbolicaExactState,
+                b"wrong-kind",
+            )
+            .unwrap(),
+        ],
+        PacbinWriteOptions::default(),
+    )
+    .unwrap();
+    let store = EvaluatorPayloadStore {
+        artifact_root: artifact.root.clone(),
+        relative_root: artifact.root.join("processes/p0"),
+        container: Some(Arc::new(PacbinReader::open(&destination).unwrap())),
+        payloads: None,
+        #[cfg(feature = "f64-compiled")]
+        native_library_cache: Arc::new(Mutex::new(BTreeMap::new())),
+    };
+
+    assert_eq!(
+        store
+            .packed_member_bytes(
+                "compiled-color.pacrclr3",
+                PacbinMemberKind::ColorContraction,
+            )
+            .unwrap(),
+        b"color-payload",
+    );
+    let wrong_kind = store
+        .packed_member_bytes("wrong-kind.pacrclr3", PacbinMemberKind::ColorContraction)
+        .unwrap_err();
+    assert_eq!(wrong_kind.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(wrong_kind.message().contains("member kind"));
+    let missing = store
+        .packed_member_bytes("missing.pacrclr3", PacbinMemberKind::ColorContraction)
+        .unwrap_err();
+    assert_eq!(missing.kind(), crate::RusticolErrorKind::InvalidArgument);
+    assert!(missing.message().contains("unknown pacbin member"));
+
+    let unpacked = EvaluatorPayloadStore::directory(&artifact.root);
+    let no_pack = unpacked
+        .packed_member_bytes(
+            "compiled-color.pacrclr3",
+            PacbinMemberKind::ColorContraction,
+        )
+        .unwrap_err();
+    assert_eq!(no_pack.kind(), crate::RusticolErrorKind::Compatibility);
+    assert!(no_pack.message().contains("requires evaluators.pacbin"));
 }
 
 #[cfg(feature = "f64-symjit")]

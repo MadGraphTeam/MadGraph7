@@ -713,6 +713,12 @@ fn writer_is_deterministic_and_supports_runtime_member_kinds() {
                     b"recurrence-direct-plan-payload",
                 )
                 .unwrap(),
+                PacbinWriteMember::from_bytes(
+                    "compiled/color.pacrclr3",
+                    PacbinMemberKind::ColorContraction,
+                    b"compiled-color-contraction-payload",
+                )
+                .unwrap(),
             ],
             PacbinWriteOptions::new(3, 0o644).unwrap(),
         )
@@ -735,6 +741,10 @@ fn writer_is_deterministic_and_supports_runtime_member_kinds() {
             .kind(),
         PacbinMemberKind::RecurrenceDirectPlan
     );
+    assert_eq!(
+        reader.member("compiled/color.pacrclr3").unwrap().kind(),
+        PacbinMemberKind::ColorContraction
+    );
     fs::remove_dir_all(directory).unwrap();
 }
 
@@ -748,6 +758,10 @@ fn deleted_recurrence_v1_member_kind_is_not_a_compatibility_alias() {
     assert_eq!(
         PacbinMemberKind::parse(8).unwrap(),
         PacbinMemberKind::RecurrenceColorProjectionCertificate
+    );
+    assert_eq!(
+        PacbinMemberKind::parse(10).unwrap(),
+        PacbinMemberKind::ColorContraction
     );
 }
 

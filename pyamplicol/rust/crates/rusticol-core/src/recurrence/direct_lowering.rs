@@ -306,6 +306,74 @@ struct ContributionDraft {
     row: DirectContributionRow,
 }
 
+/// Authenticated runtime inputs which determine one contribution callable's
+/// kinematic result before its row-local destination/factor application.
+///
+/// The prepared executor ID fixes the callable, component layouts, coupling,
+/// and model-parameter projections. Physical current/momentum coordinates fix
+/// every remaining kinematic operand. Exact factors are ordered inside this
+/// key rather than being part of it: intrinsic output-only executors may fan
+/// out across factors, while prepared callables conservatively split the
+/// adjacent run by factor at load time when the factor is a kernel input.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ContributionFanoutOrderKey {
+    stage: u16,
+    executor_id: u32,
+    selector_domain_id: u32,
+    parent0_component_base: u32,
+    parent1_component_base_or_sentinel: u32,
+    parent0_momentum_form_id: u32,
+    parent1_momentum_form_id_or_sentinel: u32,
+}
+
+fn contribution_fanout_order_key(draft: &ContributionDraft) -> ContributionFanoutOrderKey {
+    ContributionFanoutOrderKey {
+        stage: draft.stage,
+        executor_id: draft.executor_id,
+        selector_domain_id: draft.row.selector_domain_id,
+        parent0_component_base: draft.row.parent0_component_base,
+        parent1_component_base_or_sentinel: draft.row.parent1_component_base_or_sentinel,
+        parent0_momentum_form_id: draft.row.parent0_momentum_form_id,
+        parent1_momentum_form_id_or_sentinel: draft.row.parent1_momentum_form_id_or_sentinel,
+    }
+}
+
+/// Place repeated kinematic inputs before singleton inputs and make every
+/// reusable class contiguous. This is a deliberate deterministic change to
+/// floating-point accumulation order, not a physics approximation: each
+/// destination still receives every exact-factor-scaled contribution once,
+/// with its first row initialized and all later rows added. Exact/high-
+/// precision execution remains driven by the semantic schedule.
+fn order_contributions_for_runtime_fanout(drafts: &mut [ContributionDraft]) {
+    let mut multiplicity = BTreeMap::<ContributionFanoutOrderKey, usize>::new();
+    for draft in drafts.iter().filter(|draft| {
+        draft.executor_id != DIRECT_NONE_U32
+            && draft.row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0
+    }) {
+        *multiplicity
+            .entry(contribution_fanout_order_key(draft))
+            .or_default() += 1;
+    }
+    drafts.sort_by_key(|draft| {
+        let key = contribution_fanout_order_key(draft);
+        let reusable = draft.executor_id != DIRECT_NONE_U32
+            && draft.row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0
+            && multiplicity.get(&key).copied().unwrap_or(0) > 1;
+        (
+            draft.stage,
+            draft.executor_id,
+            draft.row.selector_domain_id,
+            !reusable,
+            key.parent0_component_base,
+            key.parent1_component_base_or_sentinel,
+            key.parent0_momentum_form_id,
+            key.parent1_momentum_form_id_or_sentinel,
+            draft.row.exact_factor_id,
+            draft.semantic_contribution_id,
+        )
+    });
+}
+
 #[derive(Clone, Copy, Debug)]
 struct FinalizationDraft {
     stage: u16,
@@ -1114,14 +1182,7 @@ fn build_direct_parts(
             draft.semantic_current_id,
         )
     });
-    contribution_drafts.sort_by_key(|draft| {
-        (
-            draft.stage,
-            draft.executor_id,
-            draft.row.selector_domain_id,
-            draft.semantic_contribution_id,
-        )
-    });
+    order_contributions_for_runtime_fanout(&mut contribution_drafts);
     let mut initialized_currents = BTreeSet::new();
     for draft in &mut contribution_drafts {
         if initialized_currents.insert(draft.semantic_result_current_id) {

@@ -68,6 +68,7 @@ class PacbinMemberKind(IntEnum):
     RECURRENCE_DIRECT_PLAN = 7
     RECURRENCE_COLOR_PROJECTION_CERTIFICATE = 8
     ON_THE_FLY_PROCESS_SEED = 9
+    COLOR_CONTRACTION = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -554,9 +555,7 @@ class PacbinReader:
         if footer_member_count != member_count:
             raise PacbinError("pacbin footer member count disagrees with header")
         if member_count > PACBIN_MAX_MEMBERS:
-            raise PacbinError(
-                f"pacbin member count exceeds limit: {member_count}"
-            )
+            raise PacbinError(f"pacbin member count exceeds limit: {member_count}")
 
         stream.seek(index_offset)
         index_digest = hashlib.sha256()

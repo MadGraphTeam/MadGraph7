@@ -86,9 +86,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         FIELD_REGISTRY["generation.relation_discovery.precision_digits"].default == 96
     )
     assert (
-        FIELD_REGISTRY[
-            "generation.relation_discovery.verification_probe_count"
-        ].default
+        FIELD_REGISTRY["generation.relation_discovery.verification_probe_count"].default
         == 4
     )
     assert (
@@ -215,8 +213,7 @@ def test_relation_discovery_defaults_on_and_validates_certification_policy() -> 
         is RelationDiscoveryMode.CERTIFIED_REUSE
     )
     assert (
-        GenerationRelationDiscoveryConfig(mode="off").mode
-        is RelationDiscoveryMode.OFF
+        GenerationRelationDiscoveryConfig(mode="off").mode is RelationDiscoveryMode.OFF
     )
     assert (
         GenerationRelationDiscoveryConfig(mode="diagnostic").mode
@@ -285,19 +282,73 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane() -> N
             )
             assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
 
-    for execution_mode in ("compiled", "eager"):
-        with pytest.raises(
-            ConfigurationError,
-            match=r"requires evaluator\.execution_mode",
-        ):
+    with pytest.raises(ConfigurationError, match="selected_source_helicities"):
+        RunConfig(
+            action="generate",
+            color=ColorConfig(
+                accuracy="full",
+                contraction="symmetric-group-fft",
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    compiled = RunConfig(
+        action="generate",
+        process=ProcessConfig(selected_source_helicities={"1": 1}),
+        color=ColorConfig(
+            accuracy="full",
+            contraction="symmetric-group-fft",
+        ),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+    )
+    assert compiled.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy='full'"):
+        RunConfig(
+            action="generate",
+            process=ProcessConfig(selected_source_helicities={"1": 1}),
+            color=ColorConfig(
+                accuracy="nlc",
+                contraction="symmetric-group-fft",
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    with pytest.raises(ConfigurationError, match="unselected total f64"):
+        RunConfig(
+            action="generate",
+            process=ProcessConfig(selected_source_helicities={"1": 1}),
+            color=ColorConfig(
+                accuracy="full",
+                contraction="symmetric-group-fft",
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+            evaluation=EvaluationConfig(resolved=True),
+        )
+    for section in (
+        {"evaluation": EvaluationConfig(precision=32)},
+        {"benchmark": BenchmarkConfig(precision=32)},
+    ):
+        with pytest.raises(ConfigurationError, match="only precision=16"):
             RunConfig(
                 action="generate",
+                process=ProcessConfig(selected_source_helicities={"1": 1}),
                 color=ColorConfig(
                     accuracy="full",
                     contraction="symmetric-group-fft",
                 ),
-                evaluator=EvaluatorConfig(execution_mode=execution_mode),
+                evaluator=EvaluatorConfig(execution_mode="compiled"),
+                **section,
             )
+    with pytest.raises(
+        ConfigurationError,
+        match=r"requires evaluator\.execution_mode",
+    ):
+        RunConfig(
+            action="generate",
+            color=ColorConfig(
+                accuracy="full",
+                contraction="symmetric-group-fft",
+            ),
+            evaluator=EvaluatorConfig(execution_mode="eager"),
+        )
 
 
 def test_on_the_fly_execution_supports_every_color_accuracy() -> None:
@@ -319,10 +370,7 @@ def test_on_the_fly_execution_supports_every_color_accuracy() -> None:
             evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
         )
         assert contracted.color.accuracy.value == accuracy
-        assert (
-            contracted.evaluator.execution_mode
-            is EvaluatorExecutionMode.ON_THE_FLY
-        )
+        assert contracted.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
 
 
 @pytest.mark.parametrize(

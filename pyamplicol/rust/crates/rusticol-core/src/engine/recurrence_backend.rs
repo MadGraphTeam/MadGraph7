@@ -19,7 +19,8 @@ use super::evaluator::symjit_direct::{
 use super::{PreparedKernelManifest, PreparedKernelPackManifest};
 use crate::artifact::EvaluatorPayloadStore;
 use crate::recurrence::direct_backend::{
-    DirectExecutorCatalog, DirectExecutorHandle, DirectUnionSourceDispatchHandle,
+    DirectContributionExecutionMetadata, DirectExecutorCatalog, DirectExecutorHandle,
+    DirectUnionSourceDispatchHandle,
 };
 use crate::recurrence::on_the_fly::{
     OnTheFlyExecutorKeyV1, OnTheFlyPreparedExecutorResolver, OnTheFlyProcessSeedV1,
@@ -28,7 +29,7 @@ use crate::recurrence::on_the_fly::{
 };
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
 use crate::recurrence::{
-    DirectExecutorRole, DirectRecurrencePlan, PreparedDirectExecutorBinding,
+    DIRECT_NONE_U32, DirectExecutorRole, DirectRecurrencePlan, PreparedDirectExecutorBinding,
     PreparedDirectExecutorCatalog, SemanticDigest,
 };
 use crate::{RusticolError, RusticolResult, VerifiedArtifact};
@@ -80,6 +81,7 @@ pub(super) struct NativeRecurrencePreparedExecutorPool {
     handles: Box<[Option<DirectExecutorHandle>]>,
     bindings: BTreeMap<(DirectExecutorRole, u32), NativePreparedExecutorBinding>,
     executor_roles: Box<[DirectExecutorRole]>,
+    contribution_metadata: Box<[Option<DirectContributionExecutionMetadata>]>,
     identity_finalizer_id: Option<u32>,
     direct_template_catalog_digest: SemanticDigest,
     recurrence_template_catalog_digest: SemanticDigest,
@@ -159,7 +161,7 @@ impl NativeRecurrenceDirectExecutorBackend {
     /// indices must match `DirectSourceRow::source_template_or_dispatch_domain`.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn load_from_verified_artifact(
-        manifest_json: &[u8],
+        pack: &PreparedKernelPackManifest,
         artifact: &VerifiedArtifact,
         payload_root: impl AsRef<Path>,
         plan: &DirectRecurrencePlan,
@@ -169,7 +171,7 @@ impl NativeRecurrenceDirectExecutorBackend {
     ) -> RusticolResult<Self> {
         let payloads = artifact.evaluator_payload_store(payload_root.as_ref())?;
         Self::load_from_store(
-            manifest_json,
+            pack,
             &payloads,
             plan,
             expected_prepared_pack_digest,
@@ -180,16 +182,17 @@ impl NativeRecurrenceDirectExecutorBackend {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn load_from_store(
-        manifest_json: &[u8],
+        pack: &PreparedKernelPackManifest,
         payloads: &EvaluatorPayloadStore,
         plan: &DirectRecurrencePlan,
         expected_prepared_pack_digest: &str,
         expected_catalog_digest: &str,
         source_domains: Vec<DirectSourceDispatchDomainSpec>,
     ) -> RusticolResult<Self> {
-        let pool = NativeRecurrencePreparedExecutorPool::load_from_store(
-            manifest_json,
+        let pool = NativeRecurrencePreparedExecutorPool::load_for_direct_plan_from_validated_pack(
+            pack,
             payloads,
+            plan,
             expected_prepared_pack_digest,
             expected_catalog_digest,
         )?;
@@ -234,10 +237,56 @@ impl NativeRecurrencePreparedExecutorPool {
                 ))
             })?;
         pack.validate()?;
+        Self::load_from_validated_pack(
+            &pack,
+            payloads,
+            None,
+            expected_prepared_pack_digest,
+            expected_catalog_digest,
+        )
+    }
+
+    /// Load only the executor contexts referenced by one authenticated direct
+    /// plan while retaining the complete prepared-catalog identity and index
+    /// domain. The caller has already validated `pack` at the artifact boundary.
+    fn load_for_direct_plan_from_validated_pack(
+        pack: &PreparedKernelPackManifest,
+        payloads: &EvaluatorPayloadStore,
+        plan: &DirectRecurrencePlan,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<Self> {
+        Self::load_from_validated_pack(
+            pack,
+            payloads,
+            Some(plan),
+            expected_prepared_pack_digest,
+            expected_catalog_digest,
+        )
+    }
+
+    fn load_from_validated_pack(
+        pack: &PreparedKernelPackManifest,
+        payloads: &EvaluatorPayloadStore,
+        plan: Option<&DirectRecurrencePlan>,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<Self> {
+        #[cfg(not(any(feature = "f64-symjit", feature = "f64-compiled")))]
+        let _ = payloads;
         let direct = pack.recurrence_direct_template_catalog(
             expected_prepared_pack_digest,
             expected_catalog_digest,
         )?;
+        let digest = semantic_digest(&direct.catalog_digest, "Direct-Arena catalog")?;
+        if plan.is_some_and(|plan| digest != plan.direct_template_catalog_digest()) {
+            return Err(RusticolError::integrity(
+                "prepared Direct-Arena catalog digest does not match the recurrence plan",
+            ));
+        }
+        let required_executors = plan
+            .map(|plan| required_direct_executor_mask(plan, direct.templates.len()))
+            .transpose()?;
         let mut intrinsics = Vec::new();
         #[cfg(feature = "f64-symjit")]
         let mut symjit = Vec::new();
@@ -246,6 +295,7 @@ impl NativeRecurrencePreparedExecutorPool {
         let mut handles = Vec::with_capacity(direct.templates.len());
         let mut bindings = BTreeMap::new();
         let mut executor_roles = Vec::with_capacity(direct.templates.len());
+        let mut contribution_metadata = Vec::with_capacity(direct.templates.len());
         let mut identity_finalizer_id = None;
         for template in &direct.templates {
             let role = direct_role(&template.role)?;
@@ -273,73 +323,76 @@ impl NativeRecurrencePreparedExecutorPool {
                     "prepared Direct-Arena catalog repeats a semantic executor binding",
                 ));
             }
-            let handle = match template.payload_binding.kind.as_str() {
-                "rusticol-intrinsic" if template.role == "contribution" => {
-                    let loaded = load_contribution_intrinsic(template)?;
-                    let handle = loaded.handle();
-                    intrinsics.push(loaded);
-                    Some(handle)
-                }
-                "rusticol-intrinsic" if template.role == "source" => None,
-                "rusticol-intrinsic" => {
-                    let handle = load_intrinsic_handle(template)?;
-                    if template.payload_binding.runtime_template.as_deref()
-                        == Some("rusticol.identity-finalize-in-place.v1")
-                    {
-                        if identity_finalizer_id
-                            .replace(template.direct_executor_id)
-                            .is_some()
-                        {
-                            return Err(RusticolError::integrity(
-                                "prepared Direct-Arena catalog repeats the identity finalizer",
-                            ));
-                        }
-                    }
-                    Some(handle)
-                }
-                "prepared-direct-call" => match template.backend.as_str() {
-                    "jit" => {
-                        #[cfg(feature = "f64-symjit")]
-                        {
-                            let loaded = load_symjit_executor(template, &pack, payloads)?;
+            if template.payload_binding.kind == "rusticol-intrinsic"
+                && template.payload_binding.runtime_template.as_deref()
+                    == Some("rusticol.identity-finalize-in-place.v1")
+                && identity_finalizer_id
+                    .replace(template.direct_executor_id)
+                    .is_some()
+            {
+                return Err(RusticolError::integrity(
+                    "prepared Direct-Arena catalog repeats the identity finalizer",
+                ));
+            }
+            let handle = instantiate_selected_executor(
+                required_executors.as_deref(),
+                template.direct_executor_id,
+                || {
+                    let handle = match template.payload_binding.kind.as_str() {
+                        "rusticol-intrinsic" if template.role == "contribution" => {
+                            let loaded = load_contribution_intrinsic(template)?;
                             let handle = loaded.handle();
-                            symjit.push(loaded);
+                            intrinsics.push(loaded);
                             Some(handle)
                         }
-                        #[cfg(not(feature = "f64-symjit"))]
-                        {
-                            return Err(RusticolError::compatibility(
-                                "Direct-Arena JIT recurrence execution requires the f64-symjit feature",
-                            ));
+                        "rusticol-intrinsic" if template.role == "source" => None,
+                        "rusticol-intrinsic" => Some(load_intrinsic_handle(template)?),
+                        "prepared-direct-call" => match template.backend.as_str() {
+                            "jit" => {
+                                #[cfg(feature = "f64-symjit")]
+                                {
+                                    let loaded = load_symjit_executor(template, pack, payloads)?;
+                                    let handle = loaded.handle();
+                                    symjit.push(loaded);
+                                    Some(handle)
+                                }
+                                #[cfg(not(feature = "f64-symjit"))]
+                                {
+                                    return Err(RusticolError::compatibility(
+                                        "Direct-Arena JIT recurrence execution requires the f64-symjit feature",
+                                    ));
+                                }
+                            }
+                            "cpp" | "asm" => {
+                                #[cfg(feature = "f64-compiled")]
+                                {
+                                    let loaded = load_native_executor(template, pack, payloads)?;
+                                    let handle = loaded.handle();
+                                    native.push(loaded);
+                                    Some(handle)
+                                }
+                                #[cfg(not(feature = "f64-compiled"))]
+                                {
+                                    return Err(RusticolError::compatibility(
+                                        "Direct-Arena C++/ASM recurrence execution requires the f64-compiled feature",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(RusticolError::compatibility(format!(
+                                    "unsupported Direct-Arena prepared-call backend {other:?}"
+                                )));
+                            }
+                        },
+                        other => {
+                            return Err(RusticolError::compatibility(format!(
+                                "unsupported Direct-Arena executor binding {other:?}"
+                            )));
                         }
-                    }
-                    "cpp" | "asm" => {
-                        #[cfg(feature = "f64-compiled")]
-                        {
-                            let loaded = load_native_executor(template, &pack, payloads)?;
-                            let handle = loaded.handle();
-                            native.push(loaded);
-                            Some(handle)
-                        }
-                        #[cfg(not(feature = "f64-compiled"))]
-                        {
-                            return Err(RusticolError::compatibility(
-                                "Direct-Arena C++/ASM recurrence execution requires the f64-compiled feature",
-                            ));
-                        }
-                    }
-                    other => {
-                        return Err(RusticolError::compatibility(format!(
-                            "unsupported Direct-Arena prepared-call backend {other:?}"
-                        )));
-                    }
+                    };
+                    Ok(handle)
                 },
-                other => {
-                    return Err(RusticolError::compatibility(format!(
-                        "unsupported Direct-Arena executor binding {other:?}"
-                    )));
-                }
-            };
+            )?;
             if let Some(handle) = handle
                 && handle.role() != role
             {
@@ -350,8 +403,18 @@ impl NativeRecurrencePreparedExecutorPool {
             }
             handles.push(handle);
             executor_roles.push(role);
+            contribution_metadata.push(if role == DirectExecutorRole::Contribution {
+                Some(DirectContributionExecutionMetadata::new(
+                    template.destination_component_count,
+                    !template
+                        .payload_binding
+                        .exact_factor_scalar_slots
+                        .is_empty(),
+                )?)
+            } else {
+                None
+            });
         }
-        let digest = semantic_digest(&direct.catalog_digest, "Direct-Arena catalog")?;
         let recurrence_template_catalog_digest = semantic_digest(
             &direct.recurrence_template_catalog_digest,
             "recurrence template catalog",
@@ -372,6 +435,7 @@ impl NativeRecurrencePreparedExecutorPool {
             handles: handles.into_boxed_slice(),
             bindings,
             executor_roles: executor_roles.into_boxed_slice(),
+            contribution_metadata: contribution_metadata.into_boxed_slice(),
             identity_finalizer_id,
             direct_template_catalog_digest: digest,
             recurrence_template_catalog_digest,
@@ -503,29 +567,81 @@ impl NativeRecurrencePreparedExecutorPool {
                 "prepared Direct-Arena catalog digest does not match the recurrence plan",
             ));
         }
+        let required_executors = required_direct_executor_mask(plan, self.handles.len())?;
         let mut handles = Vec::with_capacity(self.handles.len());
         for (executor_id, handle) in self.handles.iter().copied().enumerate() {
-            let handle = if let Some(handle) = handle {
-                handle
-            } else {
-                let executor_id = u32::try_from(executor_id)
-                    .map_err(|_| RusticolError::integrity("prepared executor ID exceeds u32"))?;
-                let role = self
-                    .executor_roles
-                    .get(executor_id as usize)
-                    .copied()
-                    .ok_or_else(|| RusticolError::integrity("prepared executor role is absent"))?;
-                if role != DirectExecutorRole::Source {
-                    return Err(RusticolError::integrity(
-                        "prepared non-source executor has no loaded handle",
-                    ));
+            let selected = required_executors[executor_id];
+            let handle = match (handle, selected) {
+                (Some(handle), _) => Some(handle),
+                (None, false) => None,
+                (None, true) => {
+                    let role = self
+                        .executor_roles
+                        .get(executor_id)
+                        .copied()
+                        .ok_or_else(|| {
+                            RusticolError::integrity("prepared executor role is absent")
+                        })?;
+                    if role != DirectExecutorRole::Source {
+                        return Err(RusticolError::integrity(format!(
+                            "referenced prepared non-source executor {executor_id} has no loaded handle"
+                        )));
+                    }
+                    Some(sources.source_handle()?)
                 }
-                sources.source_handle()?
             };
             handles.push(handle);
         }
-        DirectExecutorCatalog::new(plan, self.direct_template_catalog_digest, handles)
+        DirectExecutorCatalog::new_sparse_with_metadata(
+            plan,
+            self.direct_template_catalog_digest,
+            handles,
+            self.contribution_metadata.to_vec(),
+        )
     }
+}
+
+fn required_direct_executor_mask(
+    plan: &DirectRecurrencePlan,
+    catalog_executor_count: usize,
+) -> RusticolResult<Vec<bool>> {
+    if plan.direct_executor_count() as usize != catalog_executor_count {
+        return Err(RusticolError::integrity(format!(
+            "prepared Direct-Arena catalog has {catalog_executor_count} executors, expected {}",
+            plan.direct_executor_count()
+        )));
+    }
+    let mut required = vec![false; catalog_executor_count];
+    for descriptor in plan.row_groups() {
+        if descriptor.direct_executor_id == DIRECT_NONE_U32 {
+            continue;
+        }
+        let slot = required
+            .get_mut(descriptor.direct_executor_id as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "recurrence row group references absent prepared executor {}",
+                    descriptor.direct_executor_id
+                ))
+            })?;
+        *slot = true;
+    }
+    Ok(required)
+}
+
+fn instantiate_selected_executor<T>(
+    required_executors: Option<&[bool]>,
+    executor_id: u32,
+    instantiate: impl FnOnce() -> RusticolResult<Option<T>>,
+) -> RusticolResult<Option<T>> {
+    let selected = required_executors.map_or(Ok(true), |required| {
+        required.get(executor_id as usize).copied().ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "prepared executor {executor_id} is outside the authenticated catalog"
+            ))
+        })
+    })?;
+    if selected { instantiate() } else { Ok(None) }
 }
 
 impl NativeOnTheFlyPreparedExecutorResolver {
@@ -1181,7 +1297,47 @@ pub(in crate::engine) mod on_the_fly_adapter_tests {
     use crate::recurrence::{
         PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog, validated_template_fixture,
     };
+    use std::cell::Cell;
     use std::ptr;
+
+    #[test]
+    fn unreferenced_symjit_executor_loader_is_not_invoked_by_plan_filter() {
+        let required = [true, false, true];
+        let calls = Cell::new(0_u32);
+        let skipped = instantiate_selected_executor(Some(&required), 1, || {
+            calls.set(calls.get() + 1);
+            Ok(Some(7_u32))
+        })
+        .unwrap();
+        assert_eq!(skipped, None);
+        assert_eq!(calls.get(), 0);
+
+        let loaded = instantiate_selected_executor(Some(&required), 2, || {
+            calls.set(calls.get() + 1);
+            Ok(Some(9_u32))
+        })
+        .unwrap();
+        assert_eq!(loaded, Some(9));
+        assert_eq!(calls.get(), 1);
+
+        let full_catalog = instantiate_selected_executor(None, 99, || {
+            calls.set(calls.get() + 1);
+            Ok(Some(13_u32))
+        })
+        .unwrap();
+        assert_eq!(full_catalog, Some(13));
+        assert_eq!(calls.get(), 2);
+
+        let propagated = instantiate_selected_executor(Some(&required), 0, || {
+            Err::<Option<u32>, _>(RusticolError::artifact("selected payload is absent"))
+        })
+        .unwrap_err();
+        assert_eq!(propagated.kind(), crate::RusticolErrorKind::Artifact);
+
+        let error =
+            instantiate_selected_executor(Some(&required), 3, || Ok(Some(11_u32))).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    }
 
     pub(in crate::engine) fn digest(seed: u8) -> SemanticDigest {
         SemanticDigest::new([seed; 32]).unwrap()
@@ -1256,6 +1412,7 @@ pub(in crate::engine) mod on_the_fly_adapter_tests {
                 DirectExecutorRole::Finalization,
             ]
             .into_boxed_slice(),
+            contribution_metadata: vec![None, None, None].into_boxed_slice(),
             identity_finalizer_id: Some(2),
             direct_template_catalog_digest: direct_digest,
             recurrence_template_catalog_digest: summary.catalog_digest,

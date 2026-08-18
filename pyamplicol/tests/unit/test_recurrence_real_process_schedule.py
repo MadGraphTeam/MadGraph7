@@ -53,6 +53,59 @@ _UFO_SM_ROOT = (
 )
 
 
+@pytest.mark.parametrize("model_source", ("built-in", "ufo-sm"))
+def test_symmetric_group_trace_anchor_uses_model_generic_catalog_contracts(
+    model_source: str,
+) -> None:
+    if model_source == "built-in":
+        model = BuiltinSMModel()
+        process = build_process_ir("g g > g g", color_accuracy="full")
+    else:
+        compiled = compile_model_source(
+            _UFO_SM_ROOT / "sm.json",
+            restriction=str((_UFO_SM_ROOT / "restrict_default.json").resolve()),
+            use_cache=True,
+        )
+        model = CompiledUFOModel(compiled)
+        process = build_model_process_ir(
+            "g g > g g",
+            compiled.ir,
+            color_accuracy="full",
+        )
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    color_plan = build_color_plan(process, color_accuracy="full")
+    logical = project_recurrence_process_v1(
+        process,
+        color_plan,
+        recurrence_catalog,
+        layout="contracted-color-union",
+        normalization=RecurrenceNormalizationV1(
+            ExactComplexRationalV1(1),
+            "model-generic-cyclic-anchor-canary-v1",
+            "9" * 64,
+        ),
+        coupling_order_limits=infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+        ),
+        model=model,
+        prefer_symmetric_group_closure_anchor=True,
+    )
+
+    assert logical.physical_sectors
+    assert all(
+        sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v4"
+        and sector.closure_source_slot == 0
+        for sector in logical.physical_sectors
+    )
+    build_recurrence_builder_input_v1(logical)
+
+
 def test_ufo_full_ddbar_to_ee_prepares_source_only_electron_mass() -> None:
     compiled = compile_model_source(
         _UFO_SM_ROOT / "sm.json",

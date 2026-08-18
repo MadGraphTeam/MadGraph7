@@ -419,6 +419,8 @@ struct ExecutionManifest {
     materialization_census: ExecutionMaterializationCensus,
     runtime_schema: ExecutionPlan,
     #[serde(default)]
+    color_contraction_payload: Option<CompiledColorContractionPayloadManifest>,
+    #[serde(default)]
     physics_reduction: Option<crate::Reduction>,
     #[serde(default)]
     helicity_sum_execution: Option<Box<ExecutionManifest>>,
@@ -426,6 +428,12 @@ struct ExecutionManifest {
     helicity_selector_executions: Vec<HelicitySelectorExecutionManifest>,
     #[serde(default)]
     color_selector_executions: Vec<ColorSelectorExecutionManifest>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompiledColorContractionPayloadManifest {
+    path: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2419,7 +2427,14 @@ struct ColorContractionRuntime {
     group_count: usize,
     entries: Vec<ColorContractionEntry>,
     repeated_block: Option<RepeatedColorContractionBlock>,
+    symmetric_group: Option<CompiledSymmetricGroupColorContraction>,
     group_scratch_f64: Vec<Complex<f64>>,
+}
+
+struct CompiledSymmetricGroupColorContraction {
+    plan: crate::recurrence::RecurrenceColorContraction,
+    ordered_group_indices: Vec<usize>,
+    workspace: Option<crate::recurrence::RuntimeSymmetricGroupColorWorkspace>,
 }
 
 #[derive(Clone, Copy)]
@@ -2476,6 +2491,7 @@ impl ColorContractionRuntime {
             group_count: groups.len(),
             entries,
             repeated_block,
+            symmetric_group: None,
             group_scratch_f64: Vec::new(),
         }
     }
@@ -2510,11 +2526,39 @@ impl ColorContractionRuntime {
             group_count: groups.len(),
             entries: Vec::new(),
             repeated_block: Some(repeated_block),
+            symmetric_group: None,
             group_scratch_f64: Vec::new(),
         }
     }
 
+    fn from_symmetric_group(
+        groups: &[RawSumGroup],
+        plan: crate::recurrence::RecurrenceColorContraction,
+        ordered_group_indices: Vec<usize>,
+    ) -> Self {
+        Self {
+            group_count: groups.len(),
+            entries: Vec::new(),
+            repeated_block: None,
+            symmetric_group: Some(CompiledSymmetricGroupColorContraction {
+                plan,
+                ordered_group_indices,
+                workspace: None,
+            }),
+            group_scratch_f64: Vec::new(),
+        }
+    }
+
+    const fn is_symmetric_group(&self) -> bool {
+        self.symmetric_group.is_some()
+    }
+
     fn logical_entry_count(&self) -> RusticolResult<usize> {
+        if self.is_symmetric_group() {
+            return Err(RusticolError::compatibility(
+                "compiled symmetric-group FFT diagnostic contraction has no dense logical-entry view",
+            ));
+        }
         if self.entries.is_empty() {
             let Some(block) = self.repeated_block.as_ref() else {
                 return Ok(0);
@@ -4412,6 +4456,7 @@ enum CompiledDirectReducerKind {
     Plain,
     Coherent,
     Contracted { group_count: usize },
+    SymmetricGroup { workspace_scalars_per_lane: usize },
     ColorTopologyReplay { physical_group_count: usize },
 }
 
@@ -4457,6 +4502,13 @@ impl CompiledDirectReductionFootprint {
                     )
                 })?,
                 true,
+            ),
+            CompiledDirectReducerKind::SymmetricGroup {
+                workspace_scalars_per_lane,
+            } => (
+                maximum_group_plane_scalars,
+                workspace_scalars_per_lane,
+                false,
             ),
             CompiledDirectReducerKind::ColorTopologyReplay {
                 physical_group_count,

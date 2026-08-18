@@ -198,7 +198,11 @@ from .recurrence_template_columnar import (
     RecurrenceTemplateInputV1,
     build_recurrence_template_input_v1,
 )
-from .runtime_schema import build_runtime_expression_schema
+from .runtime_schema import (
+    RuntimeSchemaLayout,
+    build_runtime_expression_schema,
+    build_runtime_schema_layout,
+)
 from .stage_compiler import (
     build_and_write_generic_stage_evaluator_artifacts,
     write_model_parameter_evaluator_artifact,
@@ -1194,8 +1198,7 @@ def _build_on_the_fly_contracted_color_payload_v1(
             "on-the-fly color contraction has an invalid destination projection"
         )
     normalized_owner_sector_ids = tuple(
-        owner_sector_ids[destination_id]
-        for destination_id in destination_by_group
+        owner_sector_ids[destination_id] for destination_id in destination_by_group
     )
     payload = encode_recurrence_color_contraction(
         contraction,
@@ -1220,9 +1223,7 @@ def _build_on_the_fly_contracted_color_payload_v1(
             "abi": RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
             "color_accuracy": contraction.color_accuracy,
             "storage": (
-                "convolution-kernels"
-                if symmetric_group is not None
-                else "expanded"
+                "convolution-kernels" if symmetric_group is not None else "expanded"
             ),
             "includes_color_factor": contraction.includes_color_factor,
             "group_count": group_count,
@@ -1261,16 +1262,12 @@ def _build_on_the_fly_contracted_color_payload_v1(
                         "residual_group_count": len(
                             symmetric_group.residual_local_group_indices
                         ),
-                        "residual_entry_count": len(
-                            symmetric_group.residual_entries
-                        ),
+                        "residual_entry_count": len(symmetric_group.residual_entries),
                         "raw_kernel_bytes": len(symmetric_group.kernel_entries) * 16,
                         "transformed_kernel_bytes": (
                             len(symmetric_group.kernel_entries) * 8
                         ),
-                        "capability": (
-                            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
-                        ),
+                        "capability": (SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY),
                     }
                 }
             ),
@@ -2350,6 +2347,7 @@ class _EvaluatorProcess:
     compiled: _CompiledProcess
     runtime_schema: RuntimeExpressionSchema
     stage_input: StageCompilationInput
+    color_contraction_payload: bytes | None = None
     helicity_sum_runtime_schema: RuntimeExpressionSchema | None = None
     helicity_sum_stage_input: StageCompilationInput | None = None
     helicity_selector_lanes: tuple[_HelicitySelectorLane, ...] = ()
@@ -2374,6 +2372,115 @@ class _HelicitySelectorLane:
     stage_input: StageCompilationInput
     schedule_mode: Literal["parent-closure", "nested-runtime"] = "parent-closure"
     child_lanes: tuple[_HelicitySelectorLane, ...] = ()
+
+
+def _validate_compiled_symmetric_group_diagnostic_process(
+    process: _CompiledProcess,
+) -> None:
+    """Fail closed outside the deliberately narrow compiled diagnostic lane."""
+
+    dag = process.dag
+    if dag.color_plan.color_accuracy != "full":
+        raise GenerationError(
+            "compiled symmetric-group FFT diagnostic execution requires FullColour"
+        )
+    if not dag.selected_source_helicities or dag.helicity_coverage != "selected":
+        raise GenerationError(
+            "compiled symmetric-group FFT diagnostic execution requires one "
+            "generation-time selected source-helicity assignment"
+        )
+    selected_source_labels = {
+        int(label) for label, _helicity in dag.selected_source_helicities
+    }
+    external_source_labels = {int(leg.label) for leg in dag.process.legs}
+    if selected_source_labels != external_source_labels:
+        raise GenerationError(
+            "compiled symmetric-group FFT diagnostic execution requires the "
+            "selected source-label domain to match every resolved external leg"
+        )
+    if (
+        process.helicity_sum_dag is not None
+        or process.helicity_selector_union_dag is not None
+        or dag.helicity_recurrence is not None
+        or dag.helicity_materialization is not None
+    ):
+        raise GenerationError(
+            "compiled symmetric-group FFT diagnostic execution does not support "
+            "helicity selector or materialization lanes"
+        )
+    if dag.lc_topology_replay is not None or dag.color_topology_replay is not None:
+        raise GenerationError(
+            "compiled symmetric-group FFT diagnostic execution does not support "
+            "colour-topology replay"
+        )
+
+
+def _compiled_symmetric_group_color_contraction_payload(
+    dag: GenericDAG,
+    layout: RuntimeSchemaLayout,
+) -> bytes:
+    contraction = layout.color_contraction
+    if contraction is None or not contraction.supported:
+        reason = None if contraction is None else contraction.reason
+        raise GenerationError(
+            "compiled symmetric-group FFT colour contraction is unavailable"
+            + ("" if reason is None else f": {reason}")
+        )
+    block = contraction.symmetric_group_block
+    if block is None:
+        raise GenerationError(
+            "compiled symmetric-group FFT diagnostic execution requires a "
+            "certified nontrivial symmetric-group orbit"
+        )
+    if block.component_count != 1:
+        raise GenerationError(
+            "compiled symmetric-group FFT diagnostic execution requires exactly "
+            "one selected-helicity contraction component"
+        )
+    group_count = contraction.group_count
+    descriptor_by_group = {
+        descriptor.group_id: descriptor
+        for descriptor in layout.color_contraction_descriptors
+    }
+    if len(descriptor_by_group) != group_count or set(descriptor_by_group) != set(
+        range(group_count)
+    ):
+        raise GenerationError(
+            "compiled symmetric-group FFT coherent group IDs are not a dense "
+            "authenticated destination domain"
+        )
+    destination_by_group = (
+        tuple(range(group_count))
+        if contraction.destination_by_group is None
+        else contraction.destination_by_group
+    )
+    if len(destination_by_group) != group_count or set(destination_by_group) != set(
+        range(group_count)
+    ):
+        raise GenerationError(
+            "compiled symmetric-group FFT destination projection is not a "
+            "permutation of coherent group IDs"
+        )
+    group_sector_ids = tuple(
+        descriptor_by_group[destination_id].sector_id
+        for destination_id in destination_by_group
+    )
+    return encode_recurrence_color_contraction(
+        contraction,
+        sector_count=dag.color_plan.sector_count,
+        component_count=1,
+        ordered_group_ids=block.component_group_ids,
+        destination_by_group=destination_by_group,
+        destination_count=group_count,
+        group_sector_ids=group_sector_ids,
+        group_component_ids=(0,) * group_count,
+        sector_owner_ids=tuple(range(dag.color_plan.sector_count)),
+        exact_coefficients=recurrence_exact_color_coefficients(
+            dag.color_plan,
+            contraction,
+            group_sector_ids,
+        ),
+    )
 
 
 def _compiled_lc_color_selector_lane_dags(
@@ -4420,6 +4527,11 @@ class GenerationBackend:
                 ),
                 coupling_order_limits=prepared.coupling_order_limits,
                 model=model,
+                prefer_symmetric_group_closure_anchor=(
+                    self._run_config is not None
+                    and self._run_config.color.contraction.value
+                    == "symmetric-group-fft"
+                ),
             )
             if selection.selected_color_sector_ids is not None:
                 selected_public_flow_ids = tuple(
@@ -5291,16 +5403,39 @@ class GenerationBackend:
         phase: PhaseHandle,
     ) -> _EvaluatorProcess:
         process_name = process.expanded.request.name
+        run = self._run_config
+        compiled_symmetric_group = (
+            run is not None and run.color.contraction.value == "symmetric-group-fft"
+        )
         with phase.child(
             process_name,
             f"{process_name}: runtime schema",
             details={"process": process_name, "step": "runtime layout"},
         ) as task:
-            schema = build_runtime_expression_schema(
-                process.dag,
-                model,
-                process_id=process_name,
-            )
+            color_contraction_payload = None
+            if compiled_symmetric_group:
+                _validate_compiled_symmetric_group_diagnostic_process(process)
+                schema_layout = build_runtime_schema_layout(
+                    process.dag,
+                    model,
+                    process_id=process_name,
+                    color_contraction="symmetric-group-fft",
+                )
+                schema = RuntimeExpressionSchema.from_mapping(
+                    schema_layout.runtime_schema
+                )
+                color_contraction_payload = (
+                    _compiled_symmetric_group_color_contraction_payload(
+                        process.dag,
+                        schema_layout,
+                    )
+                )
+            else:
+                schema = build_runtime_expression_schema(
+                    process.dag,
+                    model,
+                    process_id=process_name,
+                )
             helicity_sum_schema = (
                 None
                 if process.helicity_sum_dag is None
@@ -5429,6 +5564,7 @@ class GenerationBackend:
             compiled=process,
             runtime_schema=schema,
             stage_input=StageCompilationInput(process.dag, model, schema),
+            color_contraction_payload=color_contraction_payload,
             helicity_sum_runtime_schema=helicity_sum_schema,
             helicity_sum_stage_input=(
                 None
@@ -5886,6 +6022,7 @@ class GenerationBackend:
                 "truncated": False,
             },
             evaluator_root=evaluator_root,
+            color_contraction_payload=process.color_contraction_payload,
             validation_point=process.compiled.validation_points[0],
             generation_filters=process.compiled.filters,
             helicity_sum_execution=helicity_sum_execution,

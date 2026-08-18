@@ -14,11 +14,13 @@ use std::time::{Duration, Instant};
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 use super::direct_backend::observe_direct_amplitudes_before_replay;
 use super::direct_backend::{
-    DIRECT_STATUS_OK, DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
-    DirectFactorView, DirectMomentumView, DirectParameterView, DirectUnionSourceDispatchHandle,
-    DirectWorkspace, execute_direct_plan_profiled_with_traffic,
-    execute_direct_plan_selected_profiled_with_traffic, execute_direct_plan_selected_unprofiled,
-    execute_direct_plan_unprofiled,
+    DIRECT_STATUS_OK, DirectContributionFanoutProgram, DirectExecutionCounters,
+    DirectExecutionRoleTimings, DirectExecutorCatalog, DirectFactorView, DirectMomentumView,
+    DirectParameterView, DirectUnionSourceDispatchHandle, DirectWorkspace,
+    execute_direct_plan_profiled_with_fanout_and_traffic,
+    execute_direct_plan_selected_profiled_with_fanout_and_traffic,
+    execute_direct_plan_selected_unprofiled_with_fanout,
+    execute_direct_plan_unprofiled_with_fanout,
 };
 use super::direct_plan::{
     DirectAmplitudeDestinationDescriptor, DirectExecutorRole, DirectRecurrencePlan,
@@ -239,6 +241,7 @@ pub struct DirectRecurrenceExecutionRuntime {
     parameters_im: AlignedF64Buffer,
     factors_re: AlignedF64Buffer,
     factors_im: AlignedF64Buffer,
+    contribution_fanout: DirectContributionFanoutProgram,
     union_source_dispatch: Option<DirectUnionSourceDispatchHandle>,
     additive_amplitude_ranges: Vec<Range<usize>>,
     momentum_form_count: u32,
@@ -302,9 +305,15 @@ impl DirectRecurrenceExecutionRuntime {
             return Err(invalid("Lorentz component count must be positive"));
         }
 
+        let contribution_fanout = DirectContributionFanoutProgram::build(&plan, &executors)?;
+        let runtime_current_component_count = plan
+            .current_arena_components()
+            .checked_add(contribution_fanout.scratch_component_count())
+            .ok_or_else(|| invalid("direct fanout current arena exceeds u32"))?;
+
         let momentum_form_count = u32::try_from(plan.momentum_forms().len())
             .map_err(|_| invalid("momentum form count exceeds u32"))?;
-        let split_complex_scalar_count = usize::try_from(plan.current_arena_components())
+        let split_complex_scalar_count = usize::try_from(runtime_current_component_count)
             .ok()
             .and_then(|current| current.checked_mul(2))
             .and_then(|current| {
@@ -314,8 +323,11 @@ impl DirectRecurrenceExecutionRuntime {
                     .and_then(|amplitude| current.checked_add(amplitude))
             })
             .ok_or_else(|| invalid("split-complex per-point workspace size overflows usize"))?;
-        let cache_split_complex_scalar_count =
-            replay_cache_split_complex_scalar_count(&plan, split_complex_scalar_count)?;
+        let cache_split_complex_scalar_count = replay_cache_split_complex_scalar_count(
+            &plan,
+            split_complex_scalar_count,
+            contribution_fanout.scratch_component_count(),
+        )?;
         let momentum_scalar_count = usize::try_from(momentum_form_count)
             .ok()
             .and_then(|forms| forms.checked_mul(usize::from(lorentz_component_count)))
@@ -359,7 +371,7 @@ impl DirectRecurrenceExecutionRuntime {
         let tile_capacity =
             hard_budget_tile.min(u32::try_from(cache_tile).unwrap_or(u32::MAX).max(1));
         let mut arena = DirectArenaWorkspace::new(
-            plan.current_arena_components(),
+            runtime_current_component_count,
             plan.amplitude_destination_count(),
             tile_capacity,
         )?;
@@ -376,7 +388,11 @@ impl DirectRecurrenceExecutionRuntime {
         )?;
         let parameter_len = usize::try_from(plan.parameter_value_count())
             .map_err(|_| invalid("parameter value count exceeds usize"))?;
-        let factor_len = plan.exact_factors().len();
+        let factor_len = plan
+            .exact_factors()
+            .len()
+            .checked_add(usize::from(contribution_fanout.needs_unit_factor()))
+            .ok_or_else(|| invalid("direct fanout factor catalog exceeds usize"))?;
 
         let additive_amplitude_ranges = amplitude_clear_ranges(&plan)?;
         let momenta = AlignedF64Buffer::zeroed(momentum_len, "momentum")?;
@@ -392,6 +408,11 @@ impl DirectRecurrenceExecutionRuntime {
         {
             *factor_re = factor.real().numerator() as f64 / factor.real().denominator() as f64;
             *factor_im = factor.imag().numerator() as f64 / factor.imag().denominator() as f64;
+        }
+        if contribution_fanout.needs_unit_factor() {
+            let unit = plan.exact_factors().len();
+            factors_re.as_mut_slice()[unit] = 1.0;
+            factors_im.as_mut_slice()[unit] = 0.0;
         }
         arena.begin_tile(tile_capacity)?;
         let arena_view = arena.view()?;
@@ -437,6 +458,7 @@ impl DirectRecurrenceExecutionRuntime {
             parameters_im,
             factors_re,
             factors_im,
+            contribution_fanout,
             union_source_dispatch,
             additive_amplitude_ranges,
             momentum_form_count,
@@ -950,9 +972,10 @@ impl DirectRecurrenceExecutionRuntime {
     }
 
     pub fn factors_mut(&mut self) -> (&mut [f64], &mut [f64]) {
+        let public_count = self.plan.exact_factors().len();
         (
-            self.factors_re.as_mut_slice(),
-            self.factors_im.as_mut_slice(),
+            &mut self.factors_re.as_mut_slice()[..public_count],
+            &mut self.factors_im.as_mut_slice()[..public_count],
         )
     }
 
@@ -964,14 +987,17 @@ impl DirectRecurrenceExecutionRuntime {
     }
 
     pub fn set_factors(&mut self, values_re: &[f64], values_im: &[f64]) -> RusticolResult<()> {
-        validate_split_values("factor", self.factors_re.len(), values_re, values_im)?;
-        self.factors_re.as_mut_slice().copy_from_slice(values_re);
-        self.factors_im.as_mut_slice().copy_from_slice(values_im);
+        let public_count = self.plan.exact_factors().len();
+        validate_split_values("factor", public_count, values_re, values_im)?;
+        self.factors_re.as_mut_slice()[..public_count].copy_from_slice(values_re);
+        self.factors_im.as_mut_slice()[..public_count].copy_from_slice(values_im);
         Ok(())
     }
 
     pub fn current_arenas(&self) -> (&[f64], &[f64]) {
-        self.arena.current_slices()
+        let (real, imaginary) = self.arena.current_slices();
+        let public_len = self.plan.current_arena_components() as usize * self.point_stride as usize;
+        (&real[..public_len], &imaginary[..public_len])
     }
 
     pub fn amplitude_arenas(&self) -> (&[f64], &[f64]) {
@@ -1408,37 +1434,43 @@ impl DirectRecurrenceExecutionRuntime {
             };
             let started = PROFILE.then(Instant::now);
             let result = match (PROFILE, selector) {
-                (true, Some(selector)) => execute_direct_plan_selected_profiled_with_traffic(
+                (true, Some(selector)) => {
+                    execute_direct_plan_selected_profiled_with_fanout_and_traffic(
+                        &self.plan,
+                        &selector.row_groups,
+                        selector.representative_flow_id,
+                        &self.executors,
+                        &self.contribution_fanout,
+                        &mut workspace,
+                        point_count,
+                        &mut self.counters,
+                        &mut self.role_timings,
+                        &mut self.traffic_counters,
+                    )
+                }
+                (false, Some(selector)) => execute_direct_plan_selected_unprofiled_with_fanout(
                     &self.plan,
                     &selector.row_groups,
                     selector.representative_flow_id,
                     &self.executors,
+                    &self.contribution_fanout,
+                    &mut workspace,
+                    point_count,
+                ),
+                (true, None) => execute_direct_plan_profiled_with_fanout_and_traffic(
+                    &self.plan,
+                    &self.executors,
+                    &self.contribution_fanout,
                     &mut workspace,
                     point_count,
                     &mut self.counters,
                     &mut self.role_timings,
                     &mut self.traffic_counters,
                 ),
-                (false, Some(selector)) => execute_direct_plan_selected_unprofiled(
-                    &self.plan,
-                    &selector.row_groups,
-                    selector.representative_flow_id,
-                    &self.executors,
-                    &mut workspace,
-                    point_count,
-                ),
-                (true, None) => execute_direct_plan_profiled_with_traffic(
+                (false, None) => execute_direct_plan_unprofiled_with_fanout(
                     &self.plan,
                     &self.executors,
-                    &mut workspace,
-                    point_count,
-                    &mut self.counters,
-                    &mut self.role_timings,
-                    &mut self.traffic_counters,
-                ),
-                (false, None) => execute_direct_plan_unprofiled(
-                    &self.plan,
-                    &self.executors,
+                    &self.contribution_fanout,
                     &mut workspace,
                     point_count,
                 ),
@@ -1689,6 +1721,7 @@ impl DirectRecurrenceExecutionRuntime {
 fn replay_cache_split_complex_scalar_count(
     plan: &DirectRecurrencePlan,
     persisted_split_complex_scalar_count: usize,
+    fanout_scratch_component_count: u32,
 ) -> RusticolResult<usize> {
     if plan.strategy() != RecurrenceStrategy::TopologyReplay {
         return Ok(persisted_split_complex_scalar_count);
@@ -1710,6 +1743,7 @@ fn replay_cache_split_complex_scalar_count(
             .min(current_arena_components);
         let active_complex_planes = active_current_components
             .checked_add(summary.amplitude_destination_count)
+            .and_then(|count| count.checked_add(u64::from(fanout_scratch_component_count)))
             .ok_or_else(|| invalid("selected replay cache plane count overflows u64"))?;
         let active_split_scalars = active_complex_planes
             .checked_mul(2)

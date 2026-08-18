@@ -126,7 +126,7 @@ fn native_compiled_direct_application_manifest_rejects_inconsistent_stack() {
     assert!(error.to_string().contains("logical stack metadata"));
 }
 
-fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
+pub(super) fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
     let contracted = color_accuracy != "lc";
     let color_components = if contracted {
         vec![crate::ColorComponent::ContractedColor(
@@ -2493,6 +2493,186 @@ fn reduction_test_amplitude(
         materialized_helicity_direct_total_next_replacement: 0,
         evaluator_output_order: None,
         evaluator: Some(empty_evaluator_group()),
+    }
+}
+
+#[test]
+fn compiled_symmetric_group_reducer_binds_group_ids_and_multi_root_odd_tail() {
+    const POINT_COUNT: usize = 127;
+    const PREPARED_CAPACITY: usize = 136;
+    const GROUP_COUNT: usize = 13;
+    const OUTPUT_COUNT: usize = 15;
+    let destination_ids = vec![7, 0, 12, 3, 9, 1, 11, 4, 10, 2, 8, 5, 6];
+    let vector_order = [12, 4, 1, 9, 0, 7, 3, 11, 2, 10, 5, 8, 6];
+    let mut sector_by_id = [0usize; GROUP_COUNT];
+    for (sector, destination) in destination_ids.iter().copied().enumerate() {
+        sector_by_id[destination as usize] = sector;
+    }
+    let mut next_output = 0usize;
+    let groups = vector_order
+        .into_iter()
+        .map(|id| {
+            let root_count = if id == 7 { 3 } else { 1 };
+            let indices = (next_output..next_output + root_count).collect::<Vec<_>>();
+            next_output += root_count;
+            RawSumGroup {
+                id,
+                indices,
+                weight: 1.0,
+                all_sector_weight: 1.0,
+                sector_ids: vec![sector_by_id[id as usize] as i64],
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(next_output, OUTPUT_COUNT);
+    let outputs = (0..POINT_COUNT * OUTPUT_COUNT)
+        .map(|index| {
+            c64(
+                (index * 29 % 211) as f64 * 0.03125 - 2.5,
+                (index * 43 % 197) as f64 * -0.015625 + 1.25,
+            )
+        })
+        .collect::<Vec<_>>();
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: GROUP_COUNT,
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: None,
+    };
+
+    let duplicated_destination =
+        crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+            vec![0; GROUP_COUNT],
+            GROUP_COUNT as u32,
+        );
+    let duplicate_error = match build_compiled_symmetric_group_color_contraction_runtime(
+        Some(&manifest),
+        &groups,
+        duplicated_destination,
+    ) {
+        Ok(_) => panic!("duplicate coherent destination unexpectedly bound"),
+        Err(error) => error,
+    };
+    assert_eq!(duplicate_error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(duplicate_error.message().contains("symmetric-group FFT"));
+
+    let plan = crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+        destination_ids.clone(),
+        GROUP_COUNT as u32,
+    );
+    let reducer = match plan.runtime_reducer().unwrap() {
+        crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(reducer) => {
+            reducer
+        }
+        _ => panic!("expected symmetric-group reducer"),
+    };
+    let mut expected_workspace = reducer.workspace(PREPARED_CAPACITY).unwrap();
+    reducer
+        .reduce_lanes(
+            &mut expected_workspace,
+            POINT_COUNT,
+            |local_group, point| {
+                let group_id = i64::from(destination_ids[local_group]);
+                let group = groups.iter().find(|group| group.id == group_id).unwrap();
+                let value = group.indices.iter().fold(c64(0.0, 0.0), |total, index| {
+                    total + outputs[point * OUTPUT_COUNT + *index]
+                });
+                Ok((value.re, value.im))
+            },
+        )
+        .unwrap();
+    let expected = expected_workspace.reduced(POINT_COUNT).unwrap().to_vec();
+
+    let contraction =
+        build_compiled_symmetric_group_color_contraction_runtime(Some(&manifest), &groups, plan)
+            .unwrap();
+    assert_eq!(
+        contraction
+            .symmetric_group
+            .as_ref()
+            .unwrap()
+            .ordered_group_indices,
+        destination_ids
+            .iter()
+            .map(|destination| {
+                groups
+                    .iter()
+                    .position(|group| group.id == i64::from(*destination))
+                    .unwrap()
+            })
+            .collect::<Vec<_>>(),
+    );
+    let mut amplitude = reduction_test_amplitude(OUTPUT_COUNT, outputs.clone(), groups, Vec::new());
+    amplitude.color_contraction = Some(contraction);
+    amplitude
+        .prepare_compiled_symmetric_group_workspace(PREPARED_CAPACITY)
+        .unwrap();
+    assert_eq!(
+        amplitude
+            .color_contraction
+            .as_ref()
+            .and_then(|contraction| contraction.symmetric_group.as_ref())
+            .and_then(|symmetric_group| symmetric_group.workspace.as_ref())
+            .unwrap()
+            .lane_capacity(),
+        PREPARED_CAPACITY,
+    );
+
+    let actual = plane_native_totals(&mut amplitude, &outputs, POINT_COUNT, None);
+    for (actual, expected) in actual.iter().zip(expected.iter()) {
+        assert!(
+            (actual - expected).abs() <= 1.0e-11 * expected.abs().max(1.0),
+            "compiled symmetric-group reduction {actual} differs from reference {expected}",
+        );
+    }
+
+    #[cfg(not(feature = "f64-symjit"))]
+    {
+        let mut workspace = crate::direct_arena::DirectArenaWorkspace::new(
+            0,
+            OUTPUT_COUNT as u32,
+            POINT_COUNT as u32,
+        )
+        .unwrap();
+        workspace.begin_tile(POINT_COUNT as u32).unwrap();
+        let stride = workspace.point_stride() as usize;
+        {
+            let (_, _, values_re, values_im) = workspace.split_slices_mut();
+            for point in 0..POINT_COUNT {
+                for component in 0..OUTPUT_COUNT {
+                    let value = outputs[point * OUTPUT_COUNT + component];
+                    values_re[component * stride + point] = value.re;
+                    values_im[component * stride + point] = value.im;
+                }
+            }
+        }
+        let (values_re, values_im) = workspace.amplitude_slices();
+        let planes = crate::direct_arena::DirectAmplitudePlanes::new(
+            values_re,
+            values_im,
+            stride as u32,
+            POINT_COUNT as u32,
+        )
+        .unwrap();
+        let mut totals = vec![0.0; POINT_COUNT];
+        amplitude
+            .reduce_planes_f64_into_selected_slice(planes, &mut totals, None)
+            .unwrap();
+        let (result, allocation_count, allocated_bytes) =
+            super::evaluator::native_direct::tests::count_allocations(|| {
+                amplitude.reduce_planes_f64_into_selected_slice(planes, &mut totals, None)
+            });
+        result.unwrap();
+        assert_eq!(
+            allocation_count, 0,
+            "warmed symmetric-group reduction allocated"
+        );
+        assert_eq!(
+            allocated_bytes, 0,
+            "warmed symmetric-group reduction allocated bytes",
+        );
     }
 }
 

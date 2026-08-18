@@ -1163,6 +1163,32 @@ def test_adapter_accepts_on_the_fly_symmetric_group_fft_capability(
         _NativeRuntime.physics_value = _native_physics("lc")
 
 
+def test_compiled_symmetric_group_fft_rejects_exact_precision_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    capabilities = (
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+    )
+    manifest = _selector_manifest(tmp_path, capabilities=capabilities)
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "compiled"
+    _NativeRuntime.physics_value = _native_physics("full")
+    runtime = Runtime.load(tmp_path, process="uux_g")
+
+    assert runtime.evaluate([], precision=16) == (2.0 + 0.0j,)
+    with pytest.raises(CompatibilityError, match="only precision=16 native f64"):
+        runtime.evaluate([], precision=32)
+
+
 @pytest.mark.parametrize(
     "capabilities",
     (

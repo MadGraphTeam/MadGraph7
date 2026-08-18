@@ -1054,18 +1054,44 @@ class RunConfig:
         for name, expected_type in expected:
             if not isinstance(getattr(self, name), expected_type):
                 raise ConfigurationError(f"{name} must be a {expected_type.__name__}")
-        if (
-            self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
-            and self.evaluator.execution_mode
-            not in {
+        if self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
+            if self.evaluator.execution_mode is EvaluatorExecutionMode.COMPILED:
+                if self.color.accuracy is not ColorAccuracy.FULL:
+                    raise ConfigurationError(
+                        "compiled symmetric-group FFT diagnostic execution "
+                        "requires color.accuracy='full'"
+                    )
+                if not self.process.selected_source_helicities:
+                    raise ConfigurationError(
+                        "compiled symmetric-group FFT diagnostic execution "
+                        "requires process.selected_source_helicities"
+                    )
+                if (
+                    self.evaluation.resolved
+                    or self.evaluation.helicity_ids
+                    or self.evaluation.color_flow_ids
+                    or self.benchmark.helicity_ids
+                    or self.benchmark.color_flow_ids
+                ):
+                    raise ConfigurationError(
+                        "compiled symmetric-group FFT diagnostic execution "
+                        "supports only unselected total f64 evaluation"
+                    )
+                if self.evaluation.precision != 16 or self.benchmark.precision != 16:
+                    raise ConfigurationError(
+                        "compiled symmetric-group FFT diagnostic execution "
+                        "supports only precision=16 native f64 evaluation; "
+                        "exact/high-precision execution is unavailable"
+                    )
+            elif self.evaluator.execution_mode not in {
                 EvaluatorExecutionMode.RECURRENCE,
                 EvaluatorExecutionMode.ON_THE_FLY,
-            }
-        ):
-            raise ConfigurationError(
-                "color.contraction='symmetric-group-fft' requires "
-                "evaluator.execution_mode='recurrence' or 'on-the-fly'"
-            )
+            }:
+                raise ConfigurationError(
+                    "color.contraction='symmetric-group-fft' requires "
+                    "evaluator.execution_mode='compiled', 'recurrence', or "
+                    "'on-the-fly'"
+                )
 
 
 __all__ = [

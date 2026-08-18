@@ -2306,7 +2306,9 @@ impl<'a> RecurrenceProcessInputView<'a> {
             )?;
             if !matches!(
                 closure_algorithm,
-                "canonical-lc-closure-anchor-v2" | "canonical-lc-closure-anchor-v3"
+                "canonical-lc-closure-anchor-v2"
+                    | "canonical-lc-closure-anchor-v3"
+                    | "canonical-lc-closure-anchor-v4"
             ) {
                 return Err(invalid(format!(
                     "physical LC sector {sector_index} uses unsupported closure-anchor proof algorithm {closure_algorithm:?}"
@@ -2449,6 +2451,73 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 block.extend_from_slice(adjoints);
                 block.push(line.antifundamental_source_slot);
                 open_blocks.push(block);
+            }
+            if closure_algorithm == "canonical-lc-closure-anchor-v4" {
+                if kind != ProcessLCSectorKind::SingleTrace
+                    || sector.open_string_range.count != 0
+                    || !singlets.is_empty()
+                    || trace != word
+                {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v4 closure anchoring requires one complete cyclic single-trace source domain"
+                    )));
+                }
+                let mut sorted_word = word.to_vec();
+                sorted_word.sort_unstable();
+                let expected_domain = (0..self.external_legs.len())
+                    .map(|slot| {
+                        u32::try_from(slot).map_err(|_| invalid("external source slot exceeds u32"))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                if sorted_word != expected_domain {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v4 trace does not cover every external source exactly once"
+                    )));
+                }
+                let expected_anchor = word.iter().copied().min().ok_or_else(|| {
+                    invalid(format!(
+                        "physical LC sector {sector_index} v4 colour word is empty"
+                    ))
+                })?;
+                if sector.closure_source_slot != expected_anchor {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v4 closure source slot {} is not the minimum cyclic trace source {expected_anchor}",
+                        sector.closure_source_slot
+                    )));
+                }
+                let fermionic_source_slots = self
+                    .external_legs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, leg)| leg.is_fermionic == 1)
+                    .map(|(slot, _)| {
+                        u32::try_from(slot).map_err(|_| invalid("external source slot exceeds u32"))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let mut state_template_ids = BTreeSet::new();
+                for (source_slot, leg) in self.external_legs.iter().copied().enumerate() {
+                    let rows = leg.source_state_range.as_usize_range(
+                        self.source_states.len(),
+                        &format!(
+                            "physical LC sector {sector_index} v4 source {source_slot} states"
+                        ),
+                    )?;
+                    if rows.is_empty() {
+                        return Err(invalid(format!(
+                            "physical LC sector {sector_index} v4 source {source_slot} has no current-state contract"
+                        )));
+                    }
+                    state_template_ids.extend(
+                        self.source_states[rows]
+                            .iter()
+                            .map(|state| state.current_state_template_id),
+                    );
+                }
+                if !fermionic_source_slots.is_empty() || state_template_ids.len() != 1 {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v4 closure anchoring requires one nonfermionic current-state template across every source"
+                    )));
+                }
             }
             if closure_algorithm == "canonical-lc-closure-anchor-v3" {
                 if kind != ProcessLCSectorKind::OpenLines {
@@ -3504,6 +3573,95 @@ mod tests {
         input.validate_color_sectors(&catalogs)
     }
 
+    fn validate_v4_color_fixture(
+        word: &[u32],
+        closure_source_slot: u32,
+        state_template_ids: [u32; 4],
+        fermionic_source_slot: Option<usize>,
+    ) -> RusticolResult<()> {
+        let external_legs = (0..4)
+            .map(|source_slot| ProcessExternalLegRow {
+                source_slot,
+                public_label: source_slot + 1,
+                physical_pdg: 21,
+                outgoing_pdg: 21,
+                is_initial: u8::from(source_slot < 2),
+                is_fermionic: u8::from(fermionic_source_slot == Some(source_slot as usize)),
+                source_state_range: test_range(source_slot as usize, 1),
+                momentum_mask_id: 0,
+                support_mask_id: 0,
+            })
+            .collect::<Vec<_>>();
+        let source_states = state_template_ids
+            .into_iter()
+            .enumerate()
+            .map(
+                |(source_slot, current_state_template_id)| ProcessSourceStateRow {
+                    source_slot: source_slot as u32,
+                    state_index: 0,
+                    public_helicity: 1,
+                    chirality: 0,
+                    spin_state: 1,
+                    current_state_template_id,
+                    source_template_id: source_slot as u32,
+                    momentum_sign: 1,
+                    crossing_phase_factor_id: 0,
+                },
+            )
+            .collect::<Vec<_>>();
+        let physical_sectors = [ProcessPhysicalLCSectorRow {
+            sector_id: 0,
+            public_id_string_id: 0,
+            kind: ProcessLCSectorKind::SingleTrace as u8,
+            closure_source_slot,
+            closure_proof_algorithm_string_id: 1,
+            closure_proof_digest_id: 0,
+            open_string_range: test_range(0, 0),
+            trace_sequence_id: 1,
+            singlet_sequence_id: 0,
+            word_sequence_id: 1,
+            support_mask_id: 0,
+        }];
+        let sequence_ranges = [test_range(0, 0), test_range(0, word.len())];
+        let catalogs = ProcessCatalogs {
+            strings: vec!["flow:1,2,3,4", "canonical-lc-closure-anchor-v4"],
+            digests: vec![
+                SemanticDigest::new(test_digest(33)).expect("test closure digest must be nonzero"),
+            ],
+            factors: Vec::new(),
+        };
+        let input = RecurrenceProcessInputView {
+            input_abi: RECURRENCE_BUILDER_INPUT_ABI,
+            declared_input_digest: SemanticDigest::new(test_digest(32))
+                .expect("test process digest is nonzero"),
+            fermion_pairing: None,
+            bitset_ranges: &[],
+            bitset_words: &[],
+            coupling_limits: &[],
+            digest_catalog: &[],
+            exact_factors: &[],
+            external_legs: &external_legs,
+            header: &[],
+            header_digests: &[],
+            lc_open_strings: &[],
+            normalization: &[],
+            parameter_projection: &[],
+            physical_lc_sectors: &physical_sectors,
+            public_lc_flows: &[],
+            replay_partitions: &[],
+            replay_targets: &[],
+            selected_public_flow_coverage: &[],
+            selected_source_coverage: &[],
+            semantic_template_references: &[],
+            source_states: &source_states,
+            string_ranges: &[],
+            string_bytes: &[],
+            u32_sequence_ranges: &sequence_ranges,
+            u32_sequence_values: word,
+        };
+        input.validate_color_sectors(&catalogs)
+    }
+
     #[test]
     fn v3_closure_recomputes_no_rotation_mapping_and_rejects_stale_inputs() {
         let open_strings = [
@@ -3864,6 +4022,27 @@ mod tests {
             exact_integer_limbs,
             string_ranges,
             string_bytes,
+        }
+    }
+
+    #[test]
+    fn v4_closure_validates_cyclic_anchor_and_homogeneous_source_contract() {
+        let word = [0, 2, 1, 3];
+        validate_v4_color_fixture(&word, 0, [7; 4], None)
+            .expect("valid cyclic trace anchor must pass");
+
+        for error in [
+            validate_v4_color_fixture(&word, 1, [7; 4], None)
+                .expect_err("noncanonical anchor must fail"),
+            validate_v4_color_fixture(&word, 0, [7, 7, 8, 7], None)
+                .expect_err("heterogeneous current states must fail"),
+            validate_v4_color_fixture(&word, 0, [7; 4], Some(2))
+                .expect_err("fermionic trace source must fail"),
+        ] {
+            assert!(
+                error.to_string().contains("v4"),
+                "unexpected validation error: {error}"
+            );
         }
     }
 

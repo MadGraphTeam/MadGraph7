@@ -2,6 +2,77 @@
 
 use super::*;
 
+fn load_compiled_symmetric_group_color_contraction(
+    payload: Option<&CompiledColorContractionPayloadManifest>,
+    payloads: &EvaluatorPayloadStore,
+    physics: &PhysicsRuntime,
+) -> RusticolResult<Option<crate::recurrence::RecurrenceColorContraction>> {
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1 {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic requires one contracted FullColour axis",
+        ));
+    }
+    if physics.manifest.coverage.helicities != "selected" {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic requires generation-time selected helicity coverage",
+        ));
+    }
+    let live_helicity_count = physics
+        .manifest
+        .helicities
+        .iter()
+        .filter(|helicity| {
+            helicity.computed && !helicity.structural_zero && helicity.coefficient != 0.0
+        })
+        .count();
+    if live_helicity_count != 1 {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic requires exactly one generation-time selected helicity",
+        ));
+    }
+    let bytes = payloads.packed_member_bytes(
+        &payload.path,
+        crate::pacbin::PacbinMemberKind::ColorContraction,
+    )?;
+    crate::recurrence::decode_recurrence_color_contraction_v3(bytes).map(Some)
+}
+
+#[cfg(test)]
+mod compiled_symmetric_group_load_tests {
+    use super::*;
+
+    #[test]
+    fn complete_helicity_coverage_is_rejected_even_with_one_live_helicity() {
+        let physics = crate::engine::tests::test_physics_runtime("full");
+        assert_eq!(physics.manifest.coverage.helicities, "complete");
+        assert_eq!(
+            physics
+                .manifest
+                .helicities
+                .iter()
+                .filter(|helicity| {
+                    helicity.computed && !helicity.structural_zero && helicity.coefficient != 0.0
+                })
+                .count(),
+            1,
+        );
+        let payload = CompiledColorContractionPayloadManifest {
+            path: "not-read.pacrclr3".to_string(),
+        };
+        let payloads = EvaluatorPayloadStore::directory(std::path::Path::new("."));
+
+        let error =
+            load_compiled_symmetric_group_color_contraction(Some(&payload), &payloads, &physics)
+                .expect_err("complete helicity coverage must not enter the selected diagnostic");
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.message().contains("selected helicity coverage"));
+    }
+}
+
 fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> RusticolResult<bool> {
     let declared_execution = manifest
         .required_runtime_capabilities
@@ -3341,6 +3412,7 @@ impl ExecutionRuntime {
         let helicity_selector_manifests =
             std::mem::take(&mut manifest.helicity_selector_executions);
         let color_selector_manifests = std::mem::take(&mut manifest.color_selector_executions);
+        let compiled_color_payload = manifest.color_contraction_payload.take();
         let stage_evaluators = manifest.compiled.stage_evaluators.clone();
         let model_parameter_evaluator = manifest.compiled.model_parameter_evaluator.clone();
         let amplitude_stage_manifest = manifest.runtime_schema.amplitude_stage.clone();
@@ -3352,6 +3424,11 @@ impl ExecutionRuntime {
         } else {
             inherited_sizing_physics.clone()
         };
+        let mut compiled_color_contraction = load_compiled_symmetric_group_color_contraction(
+            compiled_color_payload.as_ref(),
+            payloads,
+            &sizing_physics,
+        )?;
         let routed_footprint = if runtime.lc_topology_replay_enabled {
             if let Some(stage_evaluators) = stage_evaluators.as_ref() {
                 let sizing_amplitude = AmplitudeRuntime::load_reducer_only(
@@ -3438,32 +3515,49 @@ impl ExecutionRuntime {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             if compiled_plane_arena {
                 #[cfg(feature = "symbolica-runtime")]
-                let (stages, amplitude) = {
-                    // Preserve the public exact-precision API without
-                    // instantiating a second f64 evaluator representation.
-                    // These groups own only lazy evaluator-state sources;
-                    // every f64 entry point fails closed on ExactOnly and the
-                    // production hot path remains the Direct application.
-                    (
-                        stage_evaluators
-                            .stages
-                            .iter()
-                            .map(|stage| StageRuntime::load_exact_from_plane(stage, payloads))
-                            .collect::<RusticolResult<Vec<_>>>()?,
-                        AmplitudeRuntime::load_exact_from_plane(
+                let (stages, mut amplitude) = match compiled_color_contraction.take() {
+                    Some(color) => (
+                        Vec::new(),
+                        AmplitudeRuntime::load_reducer_only_with_compiled_color(
                             &amplitude_stage_manifest,
                             &stage_evaluators.amplitude_stage,
-                            payloads,
+                            Some(color),
                         )?,
-                    )
+                    ),
+                    None => {
+                        // Preserve the public exact-precision API for ordinary
+                        // compiled artifacts without instantiating a second f64
+                        // evaluator representation. The selected-helicity SG
+                        // diagnostic rejects exact execution and therefore uses
+                        // only the reducer construction above.
+                        (
+                            stage_evaluators
+                                .stages
+                                .iter()
+                                .map(|stage| StageRuntime::load_exact_from_plane(stage, payloads))
+                                .collect::<RusticolResult<Vec<_>>>()?,
+                            AmplitudeRuntime::load_exact_from_plane(
+                                &amplitude_stage_manifest,
+                                &stage_evaluators.amplitude_stage,
+                                payloads,
+                            )?,
+                        )
+                    }
                 };
                 #[cfg(not(feature = "symbolica-runtime"))]
-                let (stages, amplitude) = (
+                let (stages, mut amplitude) = (
                     Vec::new(),
-                    AmplitudeRuntime::load_reducer_only(
-                        &amplitude_stage_manifest,
-                        &stage_evaluators.amplitude_stage,
-                    )?,
+                    match compiled_color_contraction.take() {
+                        Some(color) => AmplitudeRuntime::load_reducer_only_with_compiled_color(
+                            &amplitude_stage_manifest,
+                            &stage_evaluators.amplitude_stage,
+                            Some(color),
+                        )?,
+                        None => AmplitudeRuntime::load_reducer_only(
+                            &amplitude_stage_manifest,
+                            &stage_evaluators.amplitude_stage,
+                        )?,
+                    },
                 );
                 let maximum_resolved_component_count = sizing_physics
                     .manifest
@@ -3495,6 +3589,8 @@ impl ExecutionRuntime {
                         stage_evaluators.amplitude_stage.output_length,
                         reduction_footprint,
                     )?;
+                amplitude
+                    .prepare_compiled_symmetric_group_workspace(direct.reduction_tile_capacity())?;
                 runtime.stages = Some(stages);
                 runtime.amplitude_stage = Some(amplitude);
                 let mut color_schedules = BTreeMap::new();
@@ -3507,6 +3603,11 @@ impl ExecutionRuntime {
                 runtime.compiled_direct_color_schedules = color_schedules;
                 runtime.compiled_direct_runtime = Some(direct);
             } else {
+                if compiled_color_contraction.is_some() {
+                    return Err(RusticolError::compatibility(
+                        "compiled symmetric-group FFT diagnostic requires compiled-plane-arena-v1",
+                    ));
+                }
                 let stages = stage_evaluators
                     .stages
                     .iter()
@@ -4018,6 +4119,9 @@ fn ensure_execution_capabilities_supported(manifest: &ExecutionManifest) -> Rust
             }
             .to_string(),
         );
+    }
+    if manifest.color_contraction_payload.is_some() {
+        execution_capabilities.insert(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY.to_string());
     }
     validate_declared_execution_capabilities(
         &manifest.required_runtime_capabilities,

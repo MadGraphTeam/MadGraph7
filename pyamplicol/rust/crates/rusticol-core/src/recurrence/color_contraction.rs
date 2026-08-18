@@ -374,7 +374,7 @@ impl RuntimeSymmetricGroupColorContraction {
                     &kernel.fourier_coefficients[offset..offset + block.coefficient_count()];
                 let block_weight = dimension as f64 * normalization * kernel.pair_scale;
                 if left_channel == right_channel {
-                    contract_hermitian_diagonal_block(
+                    contract_real_hermitian_same_channel_block(
                         left,
                         coefficients,
                         dimension,
@@ -510,7 +510,7 @@ impl RuntimeSymmetricGroupColorWorkspace {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn contract_hermitian_diagonal_block(
+fn contract_real_hermitian_same_channel_block(
     amplitudes: &[SymmetricGroupComplex64],
     kernel: &[f64],
     dimension: usize,
@@ -520,9 +520,43 @@ fn contract_hermitian_diagonal_block(
     weight: f64,
     reduced: &mut [f64],
 ) {
+    // Diagonal channel kernels are authenticated at load as real and
+    // inversion-Hermitian.  Their Young blocks are therefore real symmetric,
+    // while Re(A_c^dagger A_i) is symmetric even in the presence of harmless
+    // transform roundoff.  Pairing K_ci and K_ic preserves the previous dense
+    // arithmetic for either representation and evaluates each overlap once.
+    if lane_count == 1 {
+        contract_real_hermitian_same_channel_block_scalar(
+            amplitudes,
+            kernel,
+            dimension,
+            coefficient_offset,
+            lane_capacity,
+            weight,
+            reduced,
+        );
+        return;
+    }
+
     for column in 0..dimension {
-        for inner in 0..dimension {
-            let kernel_value = kernel[column * dimension + inner] * weight;
+        let diagonal_kernel = kernel[column * dimension + column] * weight;
+        if diagonal_kernel != 0.0 {
+            for row in 0..dimension {
+                let value = (coefficient_offset + column * dimension + row) * lane_capacity;
+                for lane in 0..lane_count {
+                    let amplitude = amplitudes[value + lane];
+                    let norm = amplitude.0.mul_add(amplitude.0, amplitude.1 * amplitude.1);
+                    reduced[lane] = diagonal_kernel.mul_add(norm, reduced[lane]);
+                }
+            }
+        }
+
+        for inner in column + 1..dimension {
+            let paired_kernel =
+                (kernel[column * dimension + inner] + kernel[inner * dimension + column]) * weight;
+            if paired_kernel == 0.0 {
+                continue;
+            }
             for row in 0..dimension {
                 let left = (coefficient_offset + column * dimension + row) * lane_capacity;
                 let right = (coefficient_offset + inner * dimension + row) * lane_capacity;
@@ -532,11 +566,89 @@ fn contract_hermitian_diagonal_block(
                     let product_re = left_value
                         .0
                         .mul_add(right_value.0, left_value.1 * right_value.1);
-                    reduced[lane] = kernel_value.mul_add(product_re, reduced[lane]);
+                    reduced[lane] = paired_kernel.mul_add(product_re, reduced[lane]);
                 }
             }
         }
     }
+}
+
+const HERMITIAN_COLUMN_BLOCK: usize = 4;
+
+#[allow(clippy::too_many_arguments)]
+fn contract_real_hermitian_same_channel_block_scalar(
+    amplitudes: &[SymmetricGroupComplex64],
+    kernel: &[f64],
+    dimension: usize,
+    coefficient_offset: usize,
+    lane_capacity: usize,
+    weight: f64,
+    reduced: &mut [f64],
+) {
+    let mut result = reduced[0];
+    for left_start in (0..dimension).step_by(HERMITIAN_COLUMN_BLOCK) {
+        let left_width = (dimension - left_start).min(HERMITIAN_COLUMN_BLOCK);
+        for right_start in (left_start..dimension).step_by(HERMITIAN_COLUMN_BLOCK) {
+            let right_width = (dimension - right_start).min(HERMITIAN_COLUMN_BLOCK);
+            let diagonal_block = left_start == right_start;
+            let mut overlaps = [[0.0_f64; HERMITIAN_COLUMN_BLOCK]; HERMITIAN_COLUMN_BLOCK];
+
+            // Four simultaneous unit-stride column streams reuse each loaded
+            // amplitude for all overlaps in the opposing four-column block.
+            for row in 0..dimension {
+                let mut left_values = [(0.0, 0.0); HERMITIAN_COLUMN_BLOCK];
+                for (local, value) in left_values[..left_width].iter_mut().enumerate() {
+                    let column = left_start + local;
+                    *value =
+                        amplitudes[(coefficient_offset + column * dimension + row) * lane_capacity];
+                }
+                let mut right_values = [(0.0, 0.0); HERMITIAN_COLUMN_BLOCK];
+                if diagonal_block {
+                    right_values = left_values;
+                } else {
+                    for (local, value) in right_values[..right_width].iter_mut().enumerate() {
+                        let column = right_start + local;
+                        *value = amplitudes
+                            [(coefficient_offset + column * dimension + row) * lane_capacity];
+                    }
+                }
+
+                for left_local in 0..left_width {
+                    let first_right = if diagonal_block { left_local } else { 0 };
+                    let left_value = left_values[left_local];
+                    for right_local in first_right..right_width {
+                        let right_value = right_values[right_local];
+                        overlaps[left_local][right_local] = left_value.0.mul_add(
+                            right_value.0,
+                            left_value
+                                .1
+                                .mul_add(right_value.1, overlaps[left_local][right_local]),
+                        );
+                    }
+                }
+            }
+
+            for (left_local, overlap_row) in overlaps[..left_width].iter().enumerate() {
+                let column = left_start + left_local;
+                let first_right = if diagonal_block { left_local } else { 0 };
+                for (right_local, overlap) in overlap_row[first_right..right_width]
+                    .iter()
+                    .copied()
+                    .enumerate()
+                {
+                    let inner_local = first_right + right_local;
+                    let inner = right_start + inner_local;
+                    let kernel_value = if column == inner {
+                        kernel[column * dimension + column]
+                    } else {
+                        kernel[column * dimension + inner] + kernel[inner * dimension + column]
+                    } * weight;
+                    result = kernel_value.mul_add(overlap, result);
+                }
+            }
+        }
+    }
+    reduced[0] = result;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2518,6 +2630,189 @@ mod tests {
         assert_eq!(plan.logical_entry_count(), 31);
         assert!(plan.entries().is_empty());
         assert!(plan.exact_factors().is_empty());
+    }
+
+    #[test]
+    fn real_hermitian_same_channel_microkernel_matches_dense_complex_form() {
+        for &(dimension, lane_count, lane_capacity) in &[(1, 1, 2), (5, 1, 3), (9, 3, 4)] {
+            let coefficient_offset = 2;
+            let weight = 0.375;
+            let amplitude_count = (coefficient_offset + dimension * dimension) * lane_capacity;
+            let amplitudes = (0..amplitude_count)
+                .map(|index| {
+                    (
+                        ((index * 17 + 3) % 31) as f64 / 11.0 - 1.2,
+                        ((index * 13 + 7) % 29) as f64 / 9.0 - 0.7,
+                    )
+                })
+                .collect::<Vec<_>>();
+            // The loader certifies mathematical symmetry.  Keeping a tiny
+            // representational asymmetry here verifies that pairing K_ci and
+            // K_ic still reproduces the previous full dense traversal.
+            let kernel = (0..dimension * dimension)
+                .map(|index| {
+                    let row = index % dimension;
+                    let column = index / dimension;
+                    0.25 * (row + column + 1) as f64 + if row < column { 3.0e-14 } else { 0.0 }
+                })
+                .collect::<Vec<_>>();
+            let initial = (0..lane_capacity)
+                .map(|lane| lane as f64 * 0.125 - 0.25)
+                .collect::<Vec<_>>();
+            let mut expected = initial.clone();
+            for column in 0..dimension {
+                for inner in 0..dimension {
+                    let kernel_value = kernel[column * dimension + inner] * weight;
+                    for row in 0..dimension {
+                        let left = (coefficient_offset + column * dimension + row) * lane_capacity;
+                        let right = (coefficient_offset + inner * dimension + row) * lane_capacity;
+                        for lane in 0..lane_count {
+                            let left_value = amplitudes[left + lane];
+                            let right_value = amplitudes[right + lane];
+                            let product_re = left_value
+                                .0
+                                .mul_add(right_value.0, left_value.1 * right_value.1);
+                            expected[lane] = kernel_value.mul_add(product_re, expected[lane]);
+                        }
+                    }
+                }
+            }
+
+            let mut actual = initial;
+            let amplitude_pointer = amplitudes.as_ptr();
+            let kernel_pointer = kernel.as_ptr();
+            let reduced_pointer = actual.as_ptr();
+            contract_real_hermitian_same_channel_block(
+                &amplitudes,
+                &kernel,
+                dimension,
+                coefficient_offset,
+                lane_capacity,
+                lane_count,
+                weight,
+                &mut actual,
+            );
+            assert_eq!(amplitudes.as_ptr(), amplitude_pointer);
+            assert_eq!(kernel.as_ptr(), kernel_pointer);
+            assert_eq!(actual.as_ptr(), reduced_pointer);
+            for lane in 0..lane_count {
+                let scale = expected[lane].abs().max(1.0);
+                assert!(
+                    (actual[lane] - expected[lane]).abs() <= 2.0e-12 * scale,
+                    "dimension={dimension}, lane={lane}: {} != {}",
+                    actual[lane],
+                    expected[lane]
+                );
+            }
+            assert_eq!(&actual[lane_count..], &expected[lane_count..]);
+        }
+    }
+
+    #[test]
+    #[ignore = "developer microbenchmark; run explicitly in release mode"]
+    fn real_hermitian_same_channel_microbenchmark_six_and_seven() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        for degree in [6, 7] {
+            let plan = SymmetricGroupFftPlan::new(degree).unwrap();
+            let amplitudes = (0..plan.order())
+                .map(|index| {
+                    (
+                        ((index * 17 + 3) % 101) as f64 / 31.0 - 1.1,
+                        ((index * 13 + 7) % 97) as f64 / 29.0 - 0.9,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let mut kernel = vec![0.0; plan.order()];
+            for block in plan.blocks() {
+                let dimension = block.dimension();
+                let offset = block.coefficient_offset();
+                for column in 0..dimension {
+                    for inner in 0..=column {
+                        let value = 1.0 / (1 + column.abs_diff(inner)) as f64;
+                        kernel[offset + column * dimension + inner] = value;
+                        kernel[offset + inner * dimension + column] = value;
+                    }
+                }
+            }
+
+            let optimized_run = |reduced: &mut [f64]| {
+                reduced[0] = 0.0;
+                for block in plan.blocks() {
+                    contract_real_hermitian_same_channel_block(
+                        &amplitudes,
+                        &kernel[block.coefficient_offset()
+                            ..block.coefficient_offset() + block.coefficient_count()],
+                        block.dimension(),
+                        block.coefficient_offset(),
+                        1,
+                        1,
+                        block.dimension() as f64 / plan.order() as f64,
+                        reduced,
+                    );
+                }
+            };
+            let legacy_run = |reduced: &mut [f64]| {
+                reduced[0] = 0.0;
+                for block in plan.blocks() {
+                    contract_legacy_same_channel_block_scalar(
+                        &amplitudes,
+                        &kernel[block.coefficient_offset()
+                            ..block.coefficient_offset() + block.coefficient_count()],
+                        block.dimension(),
+                        block.coefficient_offset(),
+                        block.dimension() as f64 / plan.order() as f64,
+                        reduced,
+                    );
+                }
+            };
+            let mut optimized = [0.0];
+            let mut legacy = [0.0];
+            optimized_run(&mut optimized);
+            legacy_run(&mut legacy);
+            let scale = legacy[0].abs().max(1.0);
+            assert!((optimized[0] - legacy[0]).abs() <= 2.0e-11 * scale);
+
+            let iterations = if degree == 6 { 512 } else { 64 };
+            let legacy_started = Instant::now();
+            for _ in 0..iterations {
+                legacy_run(black_box(&mut legacy));
+            }
+            let legacy_elapsed = legacy_started.elapsed();
+            let optimized_started = Instant::now();
+            for _ in 0..iterations {
+                optimized_run(black_box(&mut optimized));
+            }
+            let optimized_elapsed = optimized_started.elapsed();
+            eprintln!(
+                "S_{degree} Hermitian contraction: legacy={:.3}us optimized={:.3}us speedup={:.3}x",
+                legacy_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
+                optimized_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
+                legacy_elapsed.as_secs_f64() / optimized_elapsed.as_secs_f64(),
+            );
+        }
+    }
+
+    fn contract_legacy_same_channel_block_scalar(
+        amplitudes: &[SymmetricGroupComplex64],
+        kernel: &[f64],
+        dimension: usize,
+        coefficient_offset: usize,
+        weight: f64,
+        reduced: &mut [f64],
+    ) {
+        for column in 0..dimension {
+            for inner in 0..dimension {
+                let kernel_value = kernel[column * dimension + inner] * weight;
+                for row in 0..dimension {
+                    let left = amplitudes[coefficient_offset + column * dimension + row];
+                    let right = amplitudes[coefficient_offset + inner * dimension + row];
+                    let product_re = left.0.mul_add(right.0, left.1 * right.1);
+                    reduced[0] = kernel_value.mul_add(product_re, reduced[0]);
+                }
+            }
+        }
     }
 
     #[test]

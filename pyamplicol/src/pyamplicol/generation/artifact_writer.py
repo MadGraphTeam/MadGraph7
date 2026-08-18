@@ -69,10 +69,10 @@ from .._internal.versions import (
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     SYMBOLICA_SERIALIZATION_ABI,
-    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
     SYMJIT_PLANE_APPLICATION_ABI,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
     TOML_SCHEMA_VERSION,
     active_native_build_inputs_sha256,
     active_source_revision,
@@ -133,6 +133,7 @@ _EAGER_PACK_IDENTITY_KIND = "pyamplicol-prepared-kernel-pack-identity"
 _EAGER_PACK_IDENTITY_SCHEMA_VERSION = 1
 _EVALUATOR_PAYLOAD_CONTAINER_EXTENSION = "evaluator_payload_container"
 _EVALUATOR_PAYLOAD_CONTAINER_PATH = "evaluators.pacbin"
+_COMPILED_COLOR_CONTRACTION_MEMBER_PATH = "compiled-color.pacrclr3"
 _EVALUATOR_PAYLOAD_CONTAINER_KIND = "pyamplicol-evaluator-payload-container"
 _EVALUATOR_PAYLOAD_CONTAINER_SCHEMA_VERSION = 1
 _EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI = "pacbin-v1"
@@ -218,6 +219,7 @@ class CompiledProcessArtifact:
     evaluator_root: Path
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    color_contraction_payload: bytes | None = None
     helicity_sum_execution: CompiledExecutionArtifact | None = None
     helicity_selector_executions: tuple[
         CompiledHelicitySelectorExecutionArtifact, ...
@@ -546,6 +548,10 @@ def _packed_evaluator_member_kind(relative: str) -> PacbinMemberKind | None:
         return PacbinMemberKind.SYMJIT_APPLICATION
     if relative.endswith(".evaluator.bin"):
         return PacbinMemberKind.SYMBOLICA_EXACT_STATE
+    if relative.endswith(".color.pacrclr3") or relative.endswith(
+        "/compiled-color.pacrclr3"
+    ):
+        return PacbinMemberKind.COLOR_CONTRACTION
     return None
 
 
@@ -1537,14 +1543,29 @@ def _write_process_payloads(
             media_type="application/json",
             process_id=process.process_id,
         )
-    else:
+    elif isinstance(process, CompiledProcessArtifact):
+        color_contraction_payload_path = None
+        if process.color_contraction_payload is not None:
+            color_contraction_payload_path = _COMPILED_COLOR_CONTRACTION_MEMBER_PATH
+            evaluator_payloads.add_bytes(
+                f"{prefix}/{color_contraction_payload_path}",
+                process.color_contraction_payload,
+                process_id=process.process_id,
+                media_type="application/octet-stream",
+            )
         execution_record = builder.add_json(
             execution_path,
-            _execution_manifest(process, schema),
+            _execution_manifest(
+                process,
+                schema,
+                color_contraction_payload_path=color_contraction_payload_path,
+            ),
             role="evaluator-manifest",
             process_id=process.process_id,
             compact=True,
         )
+    else:  # pragma: no cover - exhaustive ProcessArtifact union
+        raise TypeError(f"unsupported process artifact {type(process).__name__}")
     builder.add_json(
         validation_path,
         process.validation_point.to_mapping(),
@@ -1743,14 +1764,11 @@ def _on_the_fly_execution_summary(
         }
         if (
             isinstance(summary.get("factorization"), Mapping)
-            and summary["factorization"].get("kind")
-            == "symmetric-group-fourier"
+            and summary["factorization"].get("kind") == "symmetric-group-fourier"
         ):
             expected_summary_fields.add("fft_provenance")
         if set(summary) != expected_summary_fields:
-            raise ValueError(
-                "on-the-fly color-contraction summary fields are invalid"
-            )
+            raise ValueError("on-the-fly color-contraction summary fields are invalid")
         factorization = summary.get("factorization")
         symmetric_group_fft = (
             isinstance(factorization, Mapping)
@@ -1793,9 +1811,7 @@ def _on_the_fly_execution_summary(
             or summary.get("logical_entry_count") != summary.get("entry_count")
             or summary.get("semantic_digest") != color_contraction_record.sha256
         ):
-            raise ValueError(
-                "on-the-fly color-contraction summary is noncanonical"
-            )
+            raise ValueError("on-the-fly color-contraction summary is noncanonical")
         runtime_metadata["color_contraction"] = {
             **summary,
             "path": _ON_THE_FLY_COLOR_CONTRACTION_PATH,
@@ -2119,6 +2135,8 @@ def _nonnegative_integer(
 def _execution_manifest(
     process: ProcessArtifact,
     compiler_schema: Mapping[str, object],
+    *,
+    color_contraction_payload_path: str | None = None,
 ) -> dict[str, object]:
     if isinstance(process, OnTheFlyProcessArtifact):
         raise TypeError("on-the-fly execution manifests use the compact seed writer")
@@ -2137,6 +2155,8 @@ def _execution_manifest(
         payload_prefix=None,
     )
     required_runtime_capabilities = set(_required_runtime_capabilities(primary))
+    if color_contraction_payload_path is not None:
+        required_runtime_capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
     color_selector_executions = _compiled_color_selector_execution_manifests(
         process=process,
         executions=process.color_selector_executions,
@@ -2187,6 +2207,15 @@ def _execution_manifest(
         "dag_summary": primary["dag_summary"],
         "materialization_census": primary["materialization_census"],
         "runtime_schema": primary["runtime_schema"],
+        **(
+            {}
+            if color_contraction_payload_path is None
+            else {
+                "color_contraction_payload": {
+                    "path": color_contraction_payload_path,
+                }
+            }
+        ),
         **({} if auxiliary is None else {"helicity_sum_execution": auxiliary}),
         **(
             {}
@@ -3701,14 +3730,11 @@ def _artifact_target_metadata(
             and config.evaluator.jit.optimization_level in {1, 2}
         )
     )
-    portable_64le = (
-        requested_portable_jit
-        and not {
-            SYMBOLICA_ASM_RUNTIME_CAPABILITY,
-            SYMBOLICA_CPP_RUNTIME_CAPABILITY,
-            SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
-        }.intersection(runtime_capabilities)
-    )
+    portable_64le = requested_portable_jit and not {
+        SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+        SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+        SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
+    }.intersection(runtime_capabilities)
     if portable_64le:
         target = {
             "triple": PORTABLE_64LE_TARGET,
@@ -4057,6 +4083,8 @@ def _compiled_process_runtime_capabilities(
             _runtime_schema_mapping(process.runtime_schema)
         )
     )
+    if process.color_contraction_payload is not None:
+        capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
     if process.model_parameter_evaluator is not None:
         capabilities.update(
             _required_runtime_capabilities(process.model_parameter_evaluator)

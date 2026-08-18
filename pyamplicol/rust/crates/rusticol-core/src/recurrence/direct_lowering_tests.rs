@@ -1123,6 +1123,135 @@ fn deterministic_lowering_uses_stable_prepared_executor_ids_and_i32_spin() {
 }
 
 #[test]
+fn contribution_fanout_order_uses_only_authenticated_kinematic_inputs() {
+    fn draft(
+        semantic_id: u32,
+        parent_base: u32,
+        destination_base: u32,
+        exact_factor_id: u32,
+        flags: u32,
+    ) -> ContributionDraft {
+        ContributionDraft {
+            stage: 3,
+            executor_id: 7,
+            semantic_contribution_id: semantic_id,
+            semantic_result_current_id: destination_base,
+            semantic_parent_current_ids: [parent_base, DIRECT_NONE_U32],
+            semantic_parent_count: 1,
+            row: DirectContributionRow {
+                parent0_component_base: parent_base,
+                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                parent0_momentum_form_id: 9,
+                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                destination_component_base: destination_base,
+                exact_factor_id,
+                selector_domain_id: 5,
+                flags,
+            },
+        }
+    }
+
+    let mut drafts = vec![
+        draft(10, 2, 100, 2, 0),
+        draft(20, 4, 200, 1, 0),
+        draft(8, 2, 300, 0, DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE),
+        draft(
+            11,
+            2,
+            101,
+            1,
+            DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+        ),
+        draft(21, 4, 201, 1, 0),
+        draft(9, 2, 102, 1, 0),
+        draft(30, 6, 400, 1, 0),
+    ];
+    order_contributions_for_runtime_fanout(&mut drafts);
+
+    let semantic_ids = drafts
+        .iter()
+        .map(|draft| draft.semantic_contribution_id)
+        .collect::<Vec<_>>();
+    assert_eq!(&semantic_ids[..5], &[9, 11, 10, 20, 21]);
+    assert_eq!(
+        semantic_ids[5..].iter().copied().collect::<BTreeSet<_>>(),
+        BTreeSet::from([8, 30])
+    );
+    assert!(
+        drafts[..3]
+            .windows(2)
+            .all(|pair| contribution_fanout_order_key(&pair[0])
+                == contribution_fanout_order_key(&pair[1]))
+    );
+    assert_ne!(
+        contribution_fanout_order_key(&drafts[2]),
+        contribution_fanout_order_key(&drafts[3])
+    );
+    assert!(
+        drafts
+            .iter()
+            .find(|draft| draft.semantic_contribution_id == 8)
+            .unwrap()
+            .row
+            .flags
+            & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE
+            != 0
+    );
+
+    let base = draft(40, 12, 500, 1, 0);
+    let mut output_local = base;
+    output_local.row.destination_component_base = 999;
+    output_local.row.exact_factor_id = 17;
+    output_local.row.flags = DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
+    assert_eq!(
+        contribution_fanout_order_key(&base),
+        contribution_fanout_order_key(&output_local)
+    );
+    for changed in [
+        {
+            let mut changed = base;
+            changed.stage += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.executor_id += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.selector_domain_id += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent0_component_base += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent1_component_base_or_sentinel = 7;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent0_momentum_form_id += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent1_momentum_form_id_or_sentinel = 8;
+            changed
+        },
+    ] {
+        assert_ne!(
+            contribution_fanout_order_key(&base),
+            contribution_fanout_order_key(&changed)
+        );
+    }
+}
+
+#[test]
 fn prepared_executor_ids_do_not_depend_on_process_encounter_order() {
     let templates = validated_template();
     let program = count_fixture_program(&templates, 4, 31, 34, 12, 1);

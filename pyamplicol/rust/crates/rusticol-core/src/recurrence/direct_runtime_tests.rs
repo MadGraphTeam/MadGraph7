@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: 0BSD
 
 use crate::recurrence::direct_backend::{
-    DIRECT_STATUS_OK, DirectArenaView, DirectContributionExecutor, DirectExecutionCounters,
+    DIRECT_STATUS_OK, DirectArenaView, DirectContributionExecutionMetadata,
+    DirectContributionExecutor, DirectContributionFanoutProgram, DirectExecutionCounters,
     DirectExecutorCatalog, DirectExecutorHandle, DirectFactorView, DirectFinalizationExecutor,
-    DirectMomentumView, DirectParameterView, DirectSourceExecutor,
-    begin_direct_current_observation, take_direct_current_observation,
+    DirectMomentumView, DirectParameterView, DirectSourceExecutor, DirectWorkspace,
+    begin_direct_current_observation, execute_direct_plan, take_direct_current_observation,
 };
 use crate::recurrence::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectClosureRow, DirectContributionRow,
@@ -25,6 +26,7 @@ use crate::recurrence::{
     RecurrenceStrategy, SemanticDigest, closure_component_factor_digest_v2,
 };
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const STATUS_BOUNDS: i32 = 2;
 
@@ -114,13 +116,58 @@ unsafe extern "C" fn accumulate_contributions(
             }
             let source_re = unsafe { *arena.current_re.add(source) };
             let source_im = unsafe { *arena.current_im.add(source) };
+            let value_re = source_re * scale_re - source_im * scale_im;
+            let value_im = source_re * scale_im + source_im * scale_re;
             unsafe {
-                *arena.current_re.add(destination) += source_re * scale_re - source_im * scale_im;
-                *arena.current_im.add(destination) += source_re * scale_im + source_im * scale_re;
+                if row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION != 0 {
+                    *arena.current_re.add(destination) = value_re;
+                    *arena.current_im.add(destination) = value_im;
+                } else {
+                    *arena.current_re.add(destination) += value_re;
+                    *arena.current_im.add(destination) += value_im;
+                }
             }
         }
     }
     DIRECT_STATUS_OK
+}
+
+#[derive(Default)]
+struct ContributionCallCensus {
+    calls: AtomicU64,
+    rows: AtomicU64,
+}
+
+unsafe extern "C" fn counted_accumulate_contributions(
+    context: *const c_void,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
+    rows: *const DirectContributionRow,
+    row_count: u32,
+    point_count: u32,
+) -> i32 {
+    if context.is_null() {
+        return STATUS_BOUNDS;
+    }
+    let census = unsafe { &*context.cast::<ContributionCallCensus>() };
+    census.calls.fetch_add(1, Ordering::Relaxed);
+    census
+        .rows
+        .fetch_add(u64::from(row_count), Ordering::Relaxed);
+    unsafe {
+        accumulate_contributions(
+            std::ptr::null(),
+            arena,
+            momenta,
+            parameters,
+            factors,
+            rows,
+            row_count,
+            point_count,
+        )
+    }
 }
 
 unsafe extern "C" fn finalize_currents(
@@ -572,6 +619,355 @@ fn synthetic_runtime() -> DirectRecurrenceExecutionRuntime {
     synthetic_runtime_with_lorentz(1)
 }
 
+fn fanout_test_plan() -> DirectRecurrencePlan {
+    let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.point_tile_size = 8;
+    parts.exact_factors = vec![
+        ExactComplexRational::ONE,
+        complex_rational(10_000, 1, 3, 1),
+        complex_rational(-10_000, 1, -3, 1),
+        complex_rational(5, 7, 2, 5),
+        complex_rational(-2, 7, -1, 5),
+        complex_rational(11, 13, -7, 17),
+        complex_rational(-5, 19, 3, 23),
+        complex_rational(2, 29, 1, 31),
+        complex_rational(-3, 37, 5, 41),
+        complex_rational(7, 43, -11, 47),
+    ];
+    let prototype = parts.contributions[0];
+    parts.contributions = (1_u32..=9)
+        .map(|exact_factor_id| DirectContributionRow {
+            exact_factor_id,
+            flags: u32::from(exact_factor_id == 1)
+                * DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            ..prototype
+        })
+        .collect();
+    parts
+        .row_groups
+        .iter_mut()
+        .find(|group| group.role == DirectExecutorRole::Contribution)
+        .unwrap()
+        .row_count = parts.contributions.len() as u32;
+    DirectRecurrencePlan::new(parts).unwrap()
+}
+
+fn fanout_test_catalog(
+    plan: &DirectRecurrencePlan,
+    census: &ContributionCallCensus,
+    exact_factor_is_kernel_input: bool,
+) -> DirectExecutorCatalog {
+    let mut handles = direct_executor_handles();
+    handles[1] = DirectExecutorHandle::Contribution {
+        call: counted_accumulate_contributions,
+        context: census as *const ContributionCallCensus as *const c_void,
+    };
+    DirectExecutorCatalog::new_sparse_with_metadata(
+        plan,
+        plan.direct_template_catalog_digest(),
+        handles.into_iter().map(Some).collect(),
+        vec![
+            None,
+            Some(
+                DirectContributionExecutionMetadata::new(1, exact_factor_is_kernel_input).unwrap(),
+            ),
+            None,
+            None,
+        ],
+    )
+    .unwrap()
+}
+
+fn direct_baseline(
+    plan: &DirectRecurrencePlan,
+    executors: &DirectExecutorCatalog,
+    point_stride: u32,
+    point_count: u32,
+    momenta: &[f64],
+    parameter: (f64, f64),
+) -> Vec<(f64, f64)> {
+    let mut current_re =
+        vec![0.0; plan.current_arena_components() as usize * point_stride as usize];
+    let mut current_im = vec![0.0; current_re.len()];
+    let mut amplitude_re =
+        vec![0.0; plan.amplitude_destination_count() as usize * point_stride as usize];
+    let mut amplitude_im = vec![0.0; amplitude_re.len()];
+    let factors_re = plan
+        .exact_factors()
+        .iter()
+        .map(|factor| factor.real().numerator() as f64 / factor.real().denominator() as f64)
+        .collect::<Vec<_>>();
+    let factors_im = plan
+        .exact_factors()
+        .iter()
+        .map(|factor| factor.imag().numerator() as f64 / factor.imag().denominator() as f64)
+        .collect::<Vec<_>>();
+    let mut workspace = DirectWorkspace {
+        current_re: &mut current_re,
+        current_im: &mut current_im,
+        amplitude_re: &mut amplitude_re,
+        amplitude_im: &mut amplitude_im,
+        momenta,
+        momentum_form_count: plan.momentum_forms().len() as u32,
+        lorentz_component_count: 1,
+        parameters_re: &[parameter.0],
+        parameters_im: &[parameter.1],
+        factors_re: &factors_re,
+        factors_im: &factors_im,
+        point_stride,
+    };
+    let mut counters = DirectExecutionCounters::default();
+    execute_direct_plan(plan, executors, &mut workspace, point_count, &mut counters).unwrap();
+    assert_eq!(
+        counters.contribution_rows,
+        plan.contributions().len() as u64
+    );
+    amplitude_re[..point_count as usize]
+        .iter()
+        .copied()
+        .zip(amplitude_im[..point_count as usize].iter().copied())
+        .collect()
+}
+
+fn assert_scale_relative_complex_parity(baseline: &[(f64, f64)], candidate: &[(f64, f64)]) {
+    assert_eq!(baseline.len(), candidate.len());
+    for (point, (&expected, &observed)) in baseline.iter().zip(candidate).enumerate() {
+        let error = (expected.0 - observed.0).hypot(expected.1 - observed.1);
+        let scale = expected
+            .0
+            .hypot(expected.1)
+            .max(observed.0.hypot(observed.1))
+            .max(1.0);
+        assert!(
+            error <= 1.0e-10 * scale,
+            "point {point} differs by {error:e} at scale {scale:e}: expected {expected:?}, observed {observed:?}"
+        );
+    }
+}
+
+#[test]
+fn sparse_executor_catalog_resolves_arbitrary_referenced_ids_and_keeps_unused_holes() {
+    let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.direct_executor_count = 8;
+    let selected_ids = [6_u32, 1, 7, 3];
+    for (descriptor, executor_id) in parts.row_groups.iter_mut().zip(selected_ids) {
+        descriptor.direct_executor_id = executor_id;
+    }
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let dense_handles = direct_executor_handles();
+    let mut sparse_handles = vec![None; plan.direct_executor_count() as usize];
+    for (handle, executor_id) in dense_handles.into_iter().zip(selected_ids) {
+        sparse_handles[executor_id as usize] = Some(handle);
+    }
+
+    DirectExecutorCatalog::new_sparse(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        sparse_handles.clone(),
+    )
+    .unwrap();
+
+    sparse_handles[selected_ids[2] as usize] = None;
+    let error = DirectExecutorCatalog::new_sparse(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        sparse_handles,
+    )
+    .err()
+    .unwrap();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Evaluation);
+    assert!(error.to_string().contains("executor 7 is not loaded"));
+}
+
+#[test]
+fn output_only_contribution_fanout_matches_direct_under_complex_cancellation() {
+    let plan = fanout_test_plan();
+    let point_stride = 8;
+    let point_count = 7;
+    let momenta = [0.125, -0.875, 1.75, -3.5, 0.0625, 7.25, -11.0, 0.0];
+    let parameter = (0.375, -1.125);
+
+    let factor_norm_sum = plan
+        .exact_factors()
+        .iter()
+        .skip(1)
+        .map(|factor| {
+            let real = factor.real().numerator() as f64 / factor.real().denominator() as f64;
+            let imaginary = factor.imag().numerator() as f64 / factor.imag().denominator() as f64;
+            real.hypot(imaginary)
+        })
+        .sum::<f64>();
+    let factor_sum = plan
+        .exact_factors()
+        .iter()
+        .skip(1)
+        .fold((0.0_f64, 0.0_f64), |sum, factor| {
+            (
+                sum.0 + factor.real().numerator() as f64 / factor.real().denominator() as f64,
+                sum.1 + factor.imag().numerator() as f64 / factor.imag().denominator() as f64,
+            )
+        });
+    assert!(factor_norm_sum > 1_000.0 * factor_sum.0.hypot(factor_sum.1));
+
+    let baseline_census = ContributionCallCensus::default();
+    let baseline_catalog = fanout_test_catalog(&plan, &baseline_census, false);
+    let baseline = direct_baseline(
+        &plan,
+        &baseline_catalog,
+        point_stride,
+        point_count,
+        &momenta,
+        parameter,
+    );
+    assert_eq!(baseline_census.calls.load(Ordering::Relaxed), 1);
+    assert_eq!(baseline_census.rows.load(Ordering::Relaxed), 9);
+
+    let optimized_census = ContributionCallCensus::default();
+    let optimized_catalog = fanout_test_catalog(&plan, &optimized_census, false);
+    let fanout = DirectContributionFanoutProgram::build(&plan, &optimized_catalog).unwrap();
+    assert_eq!(fanout.row_counts(), (9, 1));
+    assert_eq!(fanout.scratch_component_count(), 1);
+    assert!(fanout.needs_unit_factor());
+    let mut runtime =
+        DirectRecurrenceExecutionRuntime::new(plan.clone(), optimized_catalog, 1).unwrap();
+    runtime
+        .set_parameters(&[parameter.0], &[parameter.1])
+        .unwrap();
+    runtime
+        .momentum_plane_mut(0, 0)
+        .unwrap()
+        .copy_from_slice(&momenta);
+    assert_eq!(runtime.factors_mut().0.len(), plan.exact_factors().len());
+    assert_eq!(
+        runtime.current_arenas().0.len(),
+        plan.current_arena_components() as usize * runtime.point_stride() as usize
+    );
+    let storage = storage_identity(&mut runtime);
+    let output = runtime.execute_tile(point_count).unwrap();
+    let candidate = output
+        .destination_re(0)
+        .unwrap()
+        .iter()
+        .copied()
+        .zip(output.destination_im(0).unwrap().iter().copied())
+        .collect::<Vec<_>>();
+    assert_scale_relative_complex_parity(&baseline, &candidate);
+    assert_eq!(optimized_census.calls.load(Ordering::Relaxed), 1);
+    assert_eq!(optimized_census.rows.load(Ordering::Relaxed), 1);
+
+    runtime.execute_tile(point_count).unwrap();
+    assert_eq!(storage_identity(&mut runtime), storage);
+    assert_eq!(optimized_census.calls.load(Ordering::Relaxed), 2);
+    assert_eq!(optimized_census.rows.load(Ordering::Relaxed), 2);
+
+    let tail_count = 5;
+    let tail_baseline = direct_baseline(
+        &plan,
+        &baseline_catalog,
+        point_stride,
+        tail_count,
+        &momenta,
+        parameter,
+    );
+    let tail_output = runtime.execute_tile(tail_count).unwrap();
+    let tail_candidate = tail_output
+        .destination_re(0)
+        .unwrap()
+        .iter()
+        .copied()
+        .zip(tail_output.destination_im(0).unwrap().iter().copied())
+        .collect::<Vec<_>>();
+    assert_scale_relative_complex_parity(&tail_baseline, &tail_candidate);
+    assert_eq!(storage_identity(&mut runtime), storage);
+}
+
+#[test]
+fn factor_consuming_contribution_fanout_is_fail_closed() {
+    let plan = fanout_test_plan();
+    let census = ContributionCallCensus::default();
+    let catalog = fanout_test_catalog(&plan, &census, true);
+    let fanout = DirectContributionFanoutProgram::build(&plan, &catalog).unwrap();
+    assert_eq!(fanout.row_counts(), (9, 9));
+    assert_eq!(fanout.scratch_component_count(), 0);
+    assert!(!fanout.needs_unit_factor());
+
+    let mut bad_metadata = vec![None; plan.direct_executor_count() as usize];
+    bad_metadata[1] = Some(DirectContributionExecutionMetadata::new(2, false).unwrap());
+    let error = DirectExecutorCatalog::new_sparse_with_metadata(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles().into_iter().map(Some).collect(),
+        bad_metadata,
+    )
+    .and_then(|catalog| DirectContributionFanoutProgram::build(&plan, &catalog))
+    .err()
+    .unwrap();
+    assert!(
+        error
+            .to_string()
+            .contains("declares 2 destination components")
+    );
+}
+
+fn output_only_physical_fanout_census(plan: &DirectRecurrencePlan) -> (u64, u64) {
+    let mut logical = 0_u64;
+    let mut evaluated = 0_u64;
+    for descriptor in plan.row_groups().iter().filter(|descriptor| {
+        descriptor.role == DirectExecutorRole::Contribution
+            && descriptor.direct_executor_id != DIRECT_NONE_U32
+    }) {
+        let start = descriptor.row_start as usize;
+        let end = start + descriptor.row_count as usize;
+        let rows = &plan.contributions()[start..end];
+        logical += rows.len() as u64;
+        let mut classes = std::collections::BTreeSet::new();
+        for row in rows {
+            if row.flags & crate::recurrence::DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0 {
+                evaluated += 1;
+                continue;
+            }
+            classes.insert((
+                row.selector_domain_id,
+                row.parent0_component_base,
+                row.parent1_component_base_or_sentinel,
+                row.parent0_momentum_form_id,
+                row.parent1_momentum_form_id_or_sentinel,
+            ));
+        }
+        evaluated += classes.len() as u64;
+    }
+    (logical, evaluated)
+}
+
+#[test]
+#[ignore = "release census requires PYAMPLICOL_FANOUT_N7_SCHEDULE and PYAMPLICOL_FANOUT_N8_SCHEDULE"]
+fn production_gluon_artifacts_certify_the_expected_fanout_reduction() {
+    for (label, variable, minimum_reduction) in [
+        ("N7", "PYAMPLICOL_FANOUT_N7_SCHEDULE", 0.47),
+        ("N8", "PYAMPLICOL_FANOUT_N8_SCHEDULE", 0.49),
+    ] {
+        let path = std::env::var(variable).unwrap_or_else(|_| panic!("{variable} is required"));
+        let plan = crate::recurrence::load_recurrence_direct_plan_pacbin(path).unwrap();
+        let (logical, evaluated) = output_only_physical_fanout_census(&plan);
+        let reduction = 1.0 - evaluated as f64 / logical as f64;
+        eprintln!(
+            "{label} output-only physical fanout: logical={logical}, evaluated={evaluated}, reduction={reduction:.6}"
+        );
+        assert!(
+            reduction >= minimum_reduction,
+            "{label} fanout reduction {reduction:.6} is below {minimum_reduction:.6}"
+        );
+    }
+}
+
+#[test]
+fn direct_plan_rejects_a_row_group_executor_outside_the_catalog_domain() {
+    let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.row_groups[0].direct_executor_id = parts.direct_executor_count;
+    let error = DirectRecurrencePlan::new(parts).err().unwrap();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
+}
+
 #[test]
 fn low_footprint_runtime_retains_the_requested_point_tile() {
     let (plan, executors) = synthetic_plan_and_executors();
@@ -593,7 +989,7 @@ fn replay_cache_footprint_uses_authenticated_active_selector_work() {
 
     assert_eq!(persisted_split_scalars, 258);
     assert_eq!(
-        replay_cache_split_complex_scalar_count(&plan, persisted_split_scalars).unwrap(),
+        replay_cache_split_complex_scalar_count(&plan, persisted_split_scalars, 0).unwrap(),
         8
     );
 }

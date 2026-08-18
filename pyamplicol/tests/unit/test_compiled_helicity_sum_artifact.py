@@ -10,6 +10,7 @@ import pytest
 
 import pyamplicol.generation.artifact_writer as artifact_writer
 import pyamplicol.generation.service as service_module
+import pyamplicol.models.loading as model_loading
 from pyamplicol._internal.versions import (
     COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY,
     COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
@@ -24,6 +25,7 @@ from pyamplicol._internal.versions import (
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
     SYMJIT_PLANE_APPLICATION_ABI,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api import ModelSource, ProcessRequest
 from pyamplicol.artifacts import load_manifest
@@ -32,6 +34,7 @@ from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
     GenerationConfig,
+    ProcessConfig,
     RunConfig,
 )
 from pyamplicol.generation.artifact_writer import (
@@ -39,7 +42,7 @@ from pyamplicol.generation.artifact_writer import (
     write_schema_v3_artifact,
 )
 from pyamplicol.generation.contracts import RuntimeExpressionSchema
-from pyamplicol.generation.evaluator_container import PacbinReader
+from pyamplicol.generation.evaluator_container import PacbinMemberKind, PacbinReader
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.generation.service import _ProcessSelection
 from pyamplicol.generation.stage_artifacts import _compiled_plane_arena_stage
@@ -63,7 +66,10 @@ def _evaluator_process(
         None,
         process_selection=selection,
     )
-    process_ir = build_process_ir(expression, color_accuracy="lc")
+    color_accuracy = (
+        config.color.accuracy.value if isinstance(config, RunConfig) else "lc"
+    )
+    process_ir = build_process_ir(expression, color_accuracy=color_accuracy)
     dag, coverage = backend._compile_concrete_process(process_ir, model)
     prepared = backend._prepare_warmup_process(
         service_module._DagProcess(
@@ -100,9 +106,7 @@ def _symjit_stage_manifest(
     application.write_bytes(f"application:{label}".encode())
     plane_application.write_bytes(f"plane-application:{label}".encode())
     state.write_bytes(f"state:{label}".encode())
-    plane_source_digest = hashlib.sha256(
-        f"instructions:{label}".encode()
-    ).hexdigest()
+    plane_source_digest = hashlib.sha256(f"instructions:{label}".encode()).hexdigest()
     evaluator = {
         "kind": "symjit-application-evaluator",
         "runtime_capability": SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -528,6 +532,13 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
             1,
         ),
     )
+    monkeypatch.setattr(model_loading, "package_version", lambda: "0.1.4")
+    monkeypatch.setattr(artifact_writer, "package_version", lambda: "0.1.4")
+    monkeypatch.setattr(
+        artifact_writer,
+        "active_native_build_inputs_sha256",
+        lambda: "0" * 64,
+    )
     output = tmp_path / "artifact"
     write_schema_v3_artifact(
         output,
@@ -572,6 +583,114 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
         members = {member.logical_path for member in container.members}
     for relative in referenced:
         assert f"processes/dual_lane/{relative}" in members
+
+
+def test_compiled_symmetric_group_requires_complete_selected_source_domain() -> None:
+    selected = {1: -1}
+    config = RunConfig(
+        action="generate",
+        process=ProcessConfig(selected_source_helicities={"1": -1}),
+        color=ColorConfig(
+            accuracy="full",
+            contraction="symmetric-group-fft",
+        ),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+        generation=GenerationConfig(emit_api_bundle=False),
+    )
+
+    with pytest.raises(service_module.GenerationError, match="source-label domain"):
+        _evaluator_process(
+            "g g > g g",
+            selection=_ProcessSelection(selected_source_helicities=selected),
+            config=config,
+        )
+
+
+def test_selected_full_symmetric_group_payload_is_typed_inside_evaluator_pack(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    selected = {1: -1, 2: -1, 3: 1, 4: 1}
+    config = RunConfig(
+        action="generate",
+        process=ProcessConfig(
+            selected_source_helicities={
+                str(label): value for label, value in selected.items()
+            }
+        ),
+        color=ColorConfig(
+            accuracy="full",
+            contraction="symmetric-group-fft",
+        ),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+        generation=GenerationConfig(emit_api_bundle=False),
+    )
+    artifact = _materialize_without_symbolica(
+        monkeypatch,
+        tmp_path,
+        expression="g g > g g",
+        selection=_ProcessSelection(selected_source_helicities=selected),
+        config=config,
+    )
+    assert artifact.color_contraction_payload is not None
+    contraction = artifact.runtime_schema.to_mapping()["amplitude_stage"][
+        "color_contraction"
+    ]
+    assert contraction["supported"] is True
+    assert contraction["entries"] == []
+
+    monkeypatch.setattr(
+        artifact_writer,
+        "_target_metadata",
+        lambda _config: (
+            {"triple": "aarch64-apple-darwin", "cpu_features": []},
+            1,
+        ),
+    )
+    monkeypatch.setattr(model_loading, "package_version", lambda: "0.1.4")
+    monkeypatch.setattr(artifact_writer, "package_version", lambda: "0.1.4")
+    monkeypatch.setattr(
+        artifact_writer,
+        "active_native_build_inputs_sha256",
+        lambda: "0" * 64,
+    )
+    output = tmp_path / "artifact"
+    write_schema_v3_artifact(
+        output,
+        mode="error",
+        source=ModelSource.built_in_sm(),
+        compiled_model=compile_model_source("built-in-sm", use_cache=False),
+        configuration=_GenerationConfigProvenance.from_config(config.generation),
+        processes=(artifact,),
+        timings={"total": 0.1},
+        api_bundle_hook=None,
+    )
+
+    execution = json.loads(
+        (output / "processes/dual_lane/execution.json").read_text(encoding="utf-8")
+    )
+    assert execution["color_contraction_payload"] == {
+        "path": "compiled-color.pacrclr3",
+    }
+    assert (
+        "symmetric_group_block"
+        not in execution["runtime_schema"]["amplitude_stage"]["color_contraction"]
+    )
+    assert (
+        SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+        in execution["required_runtime_capabilities"]
+    )
+    assert not (output / "processes/dual_lane/compiled-color.pacrclr3").exists()
+    with PacbinReader.open(output / "evaluators.pacbin") as container:
+        member = container.member("processes/dual_lane/compiled-color.pacrclr3")
+        assert member.kind is PacbinMemberKind.COLOR_CONTRACTION
+        assert (
+            container.read_member(
+                "processes/dual_lane/compiled-color.pacrclr3",
+                length=member.length,
+            )
+            == artifact.color_contraction_payload
+        )
 
 
 def test_generation_specialized_color_artifact_has_no_topology_lanes(
@@ -780,18 +899,15 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
         for name, value in execution_manifest["dag_summary"].items()
         if name.endswith("_count")
     }
-    assert (
-        execution_manifest["helicity_sum_execution"]["materialization_census"][
-            "final"
-        ]
-        == {
-            name: value
-            for name, value in execution_manifest["helicity_sum_execution"][
-                "dag_summary"
-            ].items()
-            if name.endswith("_count")
-        }
-    )
+    assert execution_manifest["helicity_sum_execution"]["materialization_census"][
+        "final"
+    ] == {
+        name: value
+        for name, value in execution_manifest["helicity_sum_execution"][
+            "dag_summary"
+        ].items()
+        if name.endswith("_count")
+    }
     selector_records = execution_manifest["helicity_selector_executions"]
     assert len(selector_records) == len(artifact.helicity_selector_executions)
     for selector_record in selector_records:

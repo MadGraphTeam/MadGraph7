@@ -623,6 +623,28 @@ impl EvaluatorPayloadStore {
         Ok(EvaluatorPayloadSource::File(path))
     }
 
+    pub(crate) fn packed_member_bytes(
+        &self,
+        value: &str,
+        expected_kind: PacbinMemberKind,
+    ) -> RusticolResult<&[u8]> {
+        let logical_path = self.logical_path(value)?;
+        let container = self.container.as_ref().ok_or_else(|| {
+            RusticolError::compatibility(format!(
+                "typed evaluator payload {logical_path:?} requires evaluators.pacbin storage"
+            ))
+        })?;
+        let member = container.member(&logical_path)?;
+        if member.kind() != expected_kind {
+            return Err(RusticolError::integrity(format!(
+                "evaluator payload {logical_path:?} has pacbin member kind {:?}, expected {:?}",
+                member.kind(),
+                expected_kind,
+            )));
+        }
+        container.member_bytes(&logical_path)
+    }
+
     pub(crate) fn load_native_library(
         &self,
         value: &str,

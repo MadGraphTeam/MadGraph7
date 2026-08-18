@@ -248,8 +248,28 @@ impl SymmetricGroupFftPlan {
         for current_degree in 2..=self.degree {
             let level = &self.levels[current_degree];
             let child_level = &self.levels[current_degree - 1];
-            if current_is_workspace {
-                transform_level(
+            if active_lanes == 1 {
+                if current_is_workspace {
+                    transform_level_scalar(
+                        level,
+                        child_level,
+                        &workspace.buffer[..value_count],
+                        coefficients,
+                        &mut workspace.block,
+                        self.order,
+                    );
+                } else {
+                    transform_level_scalar(
+                        level,
+                        child_level,
+                        coefficients,
+                        &mut workspace.buffer[..value_count],
+                        &mut workspace.block,
+                        self.order,
+                    );
+                }
+            } else if current_is_workspace {
+                transform_level_batched(
                     level,
                     child_level,
                     &workspace.buffer[..value_count],
@@ -259,7 +279,7 @@ impl SymmetricGroupFftPlan {
                     self.order,
                 );
             } else {
-                transform_level(
+                transform_level_batched(
                     level,
                     child_level,
                     coefficients,
@@ -341,7 +361,7 @@ impl SymmetricGroupFftWorkspace {
     }
 }
 
-fn transform_level(
+fn transform_level_batched(
     level: &SymmetricGroupLevel,
     child_level: &SymmetricGroupLevel,
     input: &[SymmetricGroupComplex64],
@@ -406,6 +426,72 @@ fn transform_level(
     }
 }
 
+/// Scalar transforms keep each temporary matrix transposed.  A Young
+/// generator then mixes two contiguous rows rather than walking two strided
+/// rows of the public column-major output.  The transpose is folded into the
+/// branch gather and final accumulation, so it needs no additional storage or
+/// pass over the block.
+fn transform_level_scalar(
+    level: &SymmetricGroupLevel,
+    child_level: &SymmetricGroupLevel,
+    input: &[SymmetricGroupComplex64],
+    output: &mut [SymmetricGroupComplex64],
+    block: &mut [SymmetricGroupComplex64],
+    total_order: usize,
+) {
+    debug_assert_eq!(input.len(), total_order);
+    debug_assert_eq!(output.len(), total_order);
+    debug_assert_eq!(level.order, level.degree * child_level.order);
+    debug_assert!(block.len() >= level.maximum_dimension.pow(2));
+
+    for group_start in (0..total_order).step_by(level.order) {
+        output[group_start..group_start + level.order].fill((0.0, 0.0));
+
+        for coset in 0..level.degree {
+            let child_start = group_start + coset * child_level.order;
+            for irrep in &level.irreps {
+                let dimension = irrep.dimension;
+                let block_value_count = dimension * dimension;
+                let block = &mut block[..block_value_count];
+                block.fill((0.0, 0.0));
+
+                for branch in &irrep.branches {
+                    let child = &child_level.irreps[branch.child_irrep as usize];
+                    let basis_offset = branch.basis_offset as usize;
+                    for column in 0..child.dimension {
+                        for row in 0..child.dimension {
+                            let source = child_start
+                                + child.coefficient_offset
+                                + column * child.dimension
+                                + row;
+                            // Fold the column-major -> row-major transpose into
+                            // the sparse branch embedding.
+                            let target = (basis_offset + row) * dimension + basis_offset + column;
+                            block[target] = input[source];
+                        }
+                    }
+                }
+
+                // The coset representative is s_i s_(i+1) ... s_(m-1).
+                // Left multiplication therefore applies its rightmost factor first.
+                for generator in (coset..level.degree - 1).rev() {
+                    apply_generator_on_left_scalar_transposed(irrep, generator, block);
+                }
+
+                let output_offset = group_start + irrep.coefficient_offset;
+                for row in 0..dimension {
+                    for column in 0..dimension {
+                        let target = output_offset + column * dimension + row;
+                        let value = block[row * dimension + column];
+                        output[target].0 += value.0;
+                        output[target].1 += value.1;
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn apply_generator_on_left(
     irrep: &YoungIrrep,
     generator: usize,
@@ -449,6 +535,57 @@ fn apply_generator_on_left(
                     other_value,
                 );
             }
+        }
+    }
+}
+
+fn apply_generator_on_left_scalar_transposed(
+    irrep: &YoungIrrep,
+    generator: usize,
+    matrix: &mut [SymmetricGroupComplex64],
+) {
+    let dimension = irrep.dimension;
+    debug_assert_eq!(matrix.len(), dimension * dimension);
+    for first in 0..dimension {
+        let first_action = irrep.generator(generator, first);
+        let other = first_action.partner as usize;
+        if other < first {
+            continue;
+        }
+        if other == first {
+            // A fixed Young-basis vector has axial distance +/-1.  The +1
+            // action is the identity and is common enough to skip outright.
+            if first_action.diagonal == 1.0 {
+                continue;
+            }
+            debug_assert_eq!(first_action.diagonal, -1.0);
+            let row = &mut matrix[first * dimension..(first + 1) * dimension];
+            for value in row {
+                value.0 = -value.0;
+                value.1 = -value.1;
+            }
+            continue;
+        }
+
+        let other_action = irrep.generator(generator, other);
+        let (before_other, from_other) = matrix.split_at_mut(other * dimension);
+        let first_row = &mut before_other[first * dimension..(first + 1) * dimension];
+        let other_row = &mut from_other[..dimension];
+        for (first_value, other_value) in first_row.iter_mut().zip(other_row) {
+            let old_first = *first_value;
+            let old_other = *other_value;
+            *first_value = linear_combination(
+                first_action.diagonal,
+                old_first,
+                first_action.mixing,
+                old_other,
+            );
+            *other_value = linear_combination(
+                other_action.mixing,
+                old_first,
+                other_action.diagonal,
+                old_other,
+            );
         }
     }
 }
@@ -1064,6 +1201,82 @@ mod tests {
     }
 
     #[test]
+    fn scalar_transposed_path_matches_batched_path_through_s_seven() {
+        for degree in 0..=7 {
+            let plan = SymmetricGroupFftPlan::new(degree).unwrap();
+            let scalar_values = deterministic_values(plan.order(), degree * 13 + 5);
+            let other_values = deterministic_values(plan.order(), degree * 17 + 9);
+            let mut scalar = vec![(0.0, 0.0); plan.order()];
+            let mut scalar_workspace = plan.workspace(1).unwrap();
+            plan.forward(&scalar_values, &mut scalar, &mut scalar_workspace)
+                .unwrap();
+
+            let mut batched_values = vec![(0.0, 0.0); plan.order() * 2];
+            for group in 0..plan.order() {
+                batched_values[group * 2] = scalar_values[group];
+                batched_values[group * 2 + 1] = other_values[group];
+            }
+            let mut batched = vec![(0.0, 0.0); batched_values.len()];
+            let mut batched_workspace = plan.workspace(2).unwrap();
+            plan.forward_lanes(2, &batched_values, &mut batched, &mut batched_workspace)
+                .unwrap();
+            let first_lane = batched
+                .chunks_exact(2)
+                .map(|lanes| lanes[0])
+                .collect::<Vec<_>>();
+            assert_complex_slices_close(&scalar, &first_lane, TOLERANCE);
+        }
+    }
+
+    #[test]
+    #[ignore = "developer microbenchmark; run explicitly in release mode"]
+    fn scalar_transposed_path_microbenchmark_six_and_seven() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        for degree in [6, 7] {
+            let plan = SymmetricGroupFftPlan::new(degree).unwrap();
+            let values = deterministic_values(plan.order(), degree * 23 + 1);
+            let mut optimized = vec![(0.0, 0.0); plan.order()];
+            let mut legacy = vec![(0.0, 0.0); plan.order()];
+            let mut optimized_workspace = plan.workspace(1).unwrap();
+            let mut legacy_workspace = plan.workspace(1).unwrap();
+            plan.forward(&values, &mut optimized, &mut optimized_workspace)
+                .unwrap();
+            forward_with_batched_scalar_kernel(&plan, &values, &mut legacy, &mut legacy_workspace);
+            assert_complex_slices_close(&optimized, &legacy, TOLERANCE);
+
+            let iterations = if degree == 6 { 128 } else { 24 };
+            let legacy_started = Instant::now();
+            for _ in 0..iterations {
+                forward_with_batched_scalar_kernel(
+                    black_box(&plan),
+                    black_box(&values),
+                    black_box(&mut legacy),
+                    black_box(&mut legacy_workspace),
+                );
+            }
+            let legacy_elapsed = legacy_started.elapsed();
+            let optimized_started = Instant::now();
+            for _ in 0..iterations {
+                plan.forward(
+                    black_box(&values),
+                    black_box(&mut optimized),
+                    black_box(&mut optimized_workspace),
+                )
+                .unwrap();
+            }
+            let optimized_elapsed = optimized_started.elapsed();
+            eprintln!(
+                "S_{degree} scalar FFT: legacy={:.3}us optimized={:.3}us speedup={:.3}x",
+                legacy_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
+                optimized_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
+                legacy_elapsed.as_secs_f64() / optimized_elapsed.as_secs_f64(),
+            );
+        }
+    }
+
+    #[test]
     fn capacity_workspace_reuses_active_prefix_without_state_leakage() {
         let plan = SymmetricGroupFftPlan::new(5).unwrap();
         let lane_capacity = 4;
@@ -1114,6 +1327,49 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    fn forward_with_batched_scalar_kernel(
+        plan: &SymmetricGroupFftPlan,
+        values: &[SymmetricGroupComplex64],
+        coefficients: &mut [SymmetricGroupComplex64],
+        workspace: &mut SymmetricGroupFftWorkspace,
+    ) {
+        for (recursive_index, lexicographic_index) in
+            plan.recursive_to_lexicographic.iter().copied().enumerate()
+        {
+            workspace.buffer[recursive_index] = values[lexicographic_index as usize];
+        }
+        let mut current_is_workspace = true;
+        for current_degree in 2..=plan.degree {
+            let level = &plan.levels[current_degree];
+            let child_level = &plan.levels[current_degree - 1];
+            if current_is_workspace {
+                transform_level_batched(
+                    level,
+                    child_level,
+                    &workspace.buffer[..plan.order],
+                    coefficients,
+                    &mut workspace.block,
+                    1,
+                    plan.order,
+                );
+            } else {
+                transform_level_batched(
+                    level,
+                    child_level,
+                    coefficients,
+                    &mut workspace.buffer[..plan.order],
+                    &mut workspace.block,
+                    1,
+                    plan.order,
+                );
+            }
+            current_is_workspace = !current_is_workspace;
+        }
+        if current_is_workspace {
+            coefficients.copy_from_slice(&workspace.buffer[..plan.order]);
+        }
     }
 
     #[test]

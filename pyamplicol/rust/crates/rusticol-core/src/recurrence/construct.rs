@@ -24,8 +24,9 @@ use super::process::{
 };
 use super::program::closure_candidate_identity_digest_v1;
 use super::template::{
-    ClosureRow, ColorContractionRow, LCColorTransitionWitnessRow, OutputFactorSource,
-    OwnedRecurrenceTemplateInput, QuantumFlowRow, RuntimeHelicityContractRow,
+    ClosureRow, ColorContractionRow, CurrentOrientation, EvaluatorCallableKind,
+    EvaluatorContractKind, LCColorTransitionWitnessRow, OutputFactorSource,
+    OwnedRecurrenceTemplateInput, ParticleStatistics, QuantumFlowRow, RuntimeHelicityContractRow,
     RuntimeHelicityVariantRow, SourceRow, TransitionRow,
 };
 use super::{
@@ -51,6 +52,7 @@ const PROGRESS_TIME_INTERVAL: Duration = Duration::from_millis(250);
 const PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: &str =
     "helicity-support:pure-massless-adjoint-tree-v1";
 const GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE: &str = "helicity-equivalence:global-flip-v1";
+const CYCLIC_TRACE_CLOSURE_ANCHOR_ALGORITHM: &str = "canonical-lc-closure-anchor-v4";
 const REFLECTION_PROOF_ALGORITHM_ID: u32 = 1;
 const THREE_LINE_DIRECT_CERTIFICATE_ID: u32 = 0;
 const THREE_LINE_PARTNER_CERTIFICATE_ID: u32 = 1;
@@ -3357,6 +3359,124 @@ impl<'a> ProcessCatalog<'a> {
     }
 }
 
+fn validate_cyclic_trace_closure_anchor_contracts(
+    process: &OwnedRecurrenceProcessInput,
+    process_catalog: &ProcessCatalog<'_>,
+    template: &OwnedRecurrenceTemplateInput,
+    template_catalog: &TemplateCatalog<'_>,
+) -> RusticolResult<()> {
+    let mut has_cyclic_trace_anchor = false;
+    for sector in &process.physical_lc_sectors {
+        if process_catalog.string(
+            sector.closure_proof_algorithm_string_id,
+            "closure-anchor proof algorithm",
+        )? == CYCLIC_TRACE_CLOSURE_ANCHOR_ALGORITHM
+        {
+            has_cyclic_trace_anchor = true;
+            break;
+        }
+    }
+    if !has_cyclic_trace_anchor {
+        return Ok(());
+    }
+
+    // The authenticated process catalog already proves that every source is
+    // nonfermionic and uses this same, nonempty current-state contract.
+    let state_template_id = process
+        .source_states
+        .first()
+        .ok_or_else(|| invalid("cyclic trace closure state contract is absent"))?
+        .current_state_template_id;
+    let state = template
+        .current_states
+        .get(state_template_id as usize)
+        .copied()
+        .ok_or_else(|| invalid("cyclic trace closure current state is absent"))?;
+    let color_shape = template_catalog.string(
+        state.lc_color_shape_string_id,
+        "cyclic trace closure current-state color shape",
+    )?;
+    if CurrentOrientation::try_from(state.orientation)? != CurrentOrientation::SelfConjugate
+        || ParticleStatistics::try_from(state.statistics)? != ParticleStatistics::Boson
+        || state.particle_id != state.anti_particle_id
+        || state.color_representation != 8
+        || color_shape != "adjoint-segment"
+        || state.auxiliary_kind_string_id != MISSING_U32
+    {
+        return Err(invalid(
+            "cyclic trace closure anchoring requires one non-auxiliary, bosonic, self-conjugate adjoint state",
+        ));
+    }
+
+    let mut has_direct_closure = false;
+    for closure in template.closures.iter().copied() {
+        let input_states = template_catalog.u32_sequence(
+            closure.input_state_sequence_id,
+            "cyclic trace closure input states",
+        )?;
+        let coupling_order_set = template
+            .coupling_order_ranges
+            .get(closure.coupling_order_set_id as usize)
+            .ok_or_else(|| invalid("cyclic trace closure coupling-order set is absent"))?;
+        if input_states != [state_template_id, state_template_id]
+            || closure.result_state_template_id != MISSING_U32
+            || !template_catalog
+                .u32_sequence(
+                    closure.coupling_parameter_sequence_id,
+                    "cyclic trace closure coupling parameters",
+                )?
+                .is_empty()
+            || coupling_order_set.range.count != 0
+            || !template_catalog
+                .u32_sequence(
+                    closure.eligible_quantum_flow_sequence_id,
+                    "cyclic trace closure quantum flows",
+                )?
+                .is_empty()
+            || OutputFactorSource::try_from(closure.output_factor_source)?
+                != OutputFactorSource::None
+            || template_catalog.string(
+                closure.equivalence_class_string_id,
+                "cyclic trace closure equivalence class",
+            )? != "direct-contraction"
+        {
+            continue;
+        }
+        let evaluator = template
+            .evaluator_bindings
+            .get(closure.evaluator_binding_id as usize)
+            .copied()
+            .ok_or_else(|| invalid("cyclic trace closure evaluator is absent"))?;
+        if EvaluatorCallableKind::try_from(evaluator.callable_kind)?
+            != EvaluatorCallableKind::RusticolTemplate
+            || EvaluatorContractKind::try_from(evaluator.contract_kind)?
+                != EvaluatorContractKind::Closure
+        {
+            continue;
+        }
+        let color = template
+            .color_contractions
+            .get(closure.color_contraction_template_id as usize)
+            .copied()
+            .ok_or_else(|| invalid("cyclic trace closure color contract is absent"))?;
+        if template_catalog.i32_sequence(
+            color.input_representation_sequence_id,
+            "cyclic trace closure input representations",
+        )? == [8, 8]
+            && color.has_output_representation == 0
+        {
+            has_direct_closure = true;
+            break;
+        }
+    }
+    if !has_direct_closure {
+        return Err(invalid(
+            "cyclic trace closure anchoring requires an exact direct binary adjoint closure",
+        ));
+    }
+    Ok(())
+}
+
 /// Construction-only exact support identity.
 ///
 /// Runtime and persisted current keys continue to carry canonical source-slot
@@ -4489,6 +4609,12 @@ fn build_recurrence_program_impl(
     let global_helicity_flip_rule = global_helicity_flip_rule(authenticated)?;
     let retained_helicity_count = retained_helicity_count(process_input)?;
     let template_catalog = TemplateCatalog::new(template_input)?;
+    validate_cyclic_trace_closure_anchor_contracts(
+        process_input,
+        &process_catalog,
+        template_input,
+        &template_catalog,
+    )?;
     let coupling_limits = coupling_limits(&process_catalog, &template_catalog)?;
     let propagators = propagator_by_state(template_input)?;
     let transition_reflections = TransitionReflectionIndex::new(template_input, &template_catalog)?;
@@ -12122,6 +12248,166 @@ mod tests {
             u32_sequence_ranges: vec![CheckedTableRange::new(0, 0)],
             u32_sequence_values: vec![],
         }
+    }
+
+    fn cyclic_trace_anchor_contract_fixture()
+    -> (OwnedRecurrenceProcessInput, OwnedRecurrenceTemplateInput) {
+        let mut template = scalar_reference_template();
+        let color_shape_string_id = append_template_string(&mut template, "adjoint-segment");
+        let direct_closure_string_id = append_template_string(&mut template, "direct-contraction");
+        template.current_states = vec![crate::recurrence::template::CurrentStateRow {
+            id: 0,
+            template_string_id: 0,
+            particle_id: 21,
+            anti_particle_id: 21,
+            species_string_id: 0,
+            orientation: CurrentOrientation::SelfConjugate as u8,
+            statistics: ParticleStatistics::Boson as u8,
+            color_representation: 8,
+            basis_string_id: 0,
+            tensor_ordering_sequence_id: 0,
+            dimension: 4,
+            chirality: 0,
+            lc_color_shape_string_id: color_shape_string_id,
+            auxiliary_kind_string_id: MISSING_U32,
+            mass_parameter_id: MISSING_U32,
+            width_parameter_id: MISSING_U32,
+            semantic_digest_id: 0,
+        }];
+        template.evaluator_bindings = vec![crate::recurrence::template::EvaluatorBindingRow {
+            id: 0,
+            resolver_key_string_id: 0,
+            prepared_kernel_id: MISSING_U32,
+            contract_kind: EvaluatorContractKind::Closure as u8,
+            callable_signature_digest_id: 0,
+            input_state_sequence_id: 1,
+            output_state_template_id: MISSING_U32,
+            input_layout_sequence_id: 0,
+            output_layout_sequence_id: 0,
+            exact_expression_digest_sequence_id: 0,
+            semantic_template_sequence_id: 0,
+            callable_kind: EvaluatorCallableKind::RusticolTemplate as u8,
+            runtime_template_string_id: 0,
+            semantic_digest_id: 0,
+        }];
+        template.closures[0].equivalence_class_string_id = direct_closure_string_id;
+        template.i32_sequence_values = vec![8, 8];
+
+        let mut process = scalar_reference_process(4);
+        let (string_ranges, string_bytes) =
+            encoded_strings(&[CYCLIC_TRACE_CLOSURE_ANCHOR_ALGORITHM]);
+        process.string_ranges = string_ranges;
+        process.string_bytes = string_bytes;
+        process.u32_sequence_ranges =
+            vec![CheckedTableRange::new(0, 0), CheckedTableRange::new(0, 4)];
+        process.u32_sequence_values = vec![0, 1, 2, 3];
+        process.physical_lc_sectors[0] = ProcessPhysicalLCSectorRow {
+            kind: ProcessLCSectorKind::SingleTrace as u8,
+            closure_source_slot: 0,
+            closure_proof_algorithm_string_id: 0,
+            trace_sequence_id: 1,
+            singlet_sequence_id: 0,
+            word_sequence_id: 1,
+            ..process.physical_lc_sectors[0]
+        };
+        process.source_states = (0..4)
+            .map(|source_slot| ProcessSourceStateRow {
+                source_slot,
+                state_index: 0,
+                public_helicity: 1,
+                chirality: 0,
+                spin_state: 1,
+                current_state_template_id: 0,
+                source_template_id: source_slot,
+                momentum_sign: 1,
+                crossing_phase_factor_id: 0,
+            })
+            .collect();
+        for (source_slot, leg) in process.external_legs.iter_mut().enumerate() {
+            leg.physical_pdg = 21;
+            leg.outgoing_pdg = 21;
+            leg.source_state_range = CheckedTableRange::new(source_slot as u64, 1);
+        }
+        (process, template)
+    }
+
+    #[test]
+    fn cyclic_trace_anchor_constructor_authenticates_template_contracts() {
+        let (process, template) = cyclic_trace_anchor_contract_fixture();
+        let process_catalog = ProcessCatalog::new(&process).unwrap();
+        let template_catalog = TemplateCatalog::new(&template).unwrap();
+        validate_cyclic_trace_closure_anchor_contracts(
+            &process,
+            &process_catalog,
+            &template,
+            &template_catalog,
+        )
+        .expect("authenticated adjoint trace closure contract must pass");
+
+        let mut non_adjoint = template.clone();
+        non_adjoint.current_states[0].color_representation = 3;
+        let catalog = TemplateCatalog::new(&non_adjoint).unwrap();
+        assert!(
+            validate_cyclic_trace_closure_anchor_contracts(
+                &process,
+                &process_catalog,
+                &non_adjoint,
+                &catalog,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("self-conjugate adjoint")
+        );
+
+        let mut missing_direct_closure = template.clone();
+        missing_direct_closure.closures[0].result_state_template_id = 0;
+        let catalog = TemplateCatalog::new(&missing_direct_closure).unwrap();
+        assert!(
+            validate_cyclic_trace_closure_anchor_contracts(
+                &process,
+                &process_catalog,
+                &missing_direct_closure,
+                &catalog,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("exact direct binary adjoint closure")
+        );
+
+        let mut coupling_order_closure = template.clone();
+        let coupling_order_name = append_template_string(&mut coupling_order_closure, "QCD");
+        coupling_order_closure.coupling_order_ranges[0].range = CheckedTableRange::new(0, 1);
+        coupling_order_closure.coupling_order_terms =
+            vec![crate::recurrence::template::CouplingOrderTermRow {
+                set_id: 0,
+                name_string_id: coupling_order_name,
+                power: 1,
+            }];
+        let catalog = TemplateCatalog::new(&coupling_order_closure).unwrap();
+        assert!(
+            validate_cyclic_trace_closure_anchor_contracts(
+                &process,
+                &process_catalog,
+                &coupling_order_closure,
+                &catalog,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("exact direct binary adjoint closure")
+        );
+
+        let mut established_process = process.clone();
+        let (string_ranges, string_bytes) = encoded_strings(&["canonical-lc-closure-anchor-v2"]);
+        established_process.string_ranges = string_ranges;
+        established_process.string_bytes = string_bytes;
+        let catalog = ProcessCatalog::new(&established_process).unwrap();
+        validate_cyclic_trace_closure_anchor_contracts(
+            &established_process,
+            &catalog,
+            &non_adjoint,
+            &TemplateCatalog::new(&non_adjoint).unwrap(),
+        )
+        .expect("non-v4 recurrence contracts must remain untouched");
     }
 
     fn scalar_structural_sources(

@@ -13,7 +13,7 @@ import hashlib
 import json
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from ..color.plan import (
@@ -69,6 +69,7 @@ _TEMPLATE_SECTIONS: Final = (
 )
 _CLOSURE_ANCHOR_PROOF_ALGORITHM_V2: Final = "canonical-lc-closure-anchor-v2"
 _CLOSURE_ANCHOR_PROOF_ALGORITHM_V3: Final = "canonical-lc-closure-anchor-v3"
+_CLOSURE_ANCHOR_PROOF_ALGORITHM_V4: Final = "canonical-lc-closure-anchor-v4"
 _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: Final = (
     "helicity-support:pure-massless-adjoint-tree-v1"
 )
@@ -123,6 +124,7 @@ def project_recurrence_process_v1(
     coupling_order_limits: Mapping[str, int] | None = None,
     process_support_mask: int = 1,
     model: Model | None = None,
+    prefer_symmetric_group_closure_anchor: bool = False,
 ) -> RecurrenceBuilderLogicalInputV1:
     """Return deterministic recurrence-builder records for one LC process.
 
@@ -177,6 +179,13 @@ def project_recurrence_process_v1(
         topology_replay,
         layout,
     )
+    if prefer_symmetric_group_closure_anchor:
+        physical_sectors = _project_cyclic_trace_closure_anchors(
+            physical_sectors,
+            replay_partitions,
+            external_legs,
+            template_catalog,
+        )
     fermion_pairing = build_recurrence_fermion_pairing_catalog_v1(
         process,
         template_catalog.current_states,
@@ -966,12 +975,10 @@ def _project_physical_sectors(
             word_source_slots=word_source_slots,
             closure_word_source_slots=closure_word_source_slots,
             physical_block_source_slots=tuple(
-                slots(block, "LC physical open-line block")
-                for block in physical_blocks
+                slots(block, "LC physical open-line block") for block in physical_blocks
             ),
             closure_block_source_slots=tuple(
-                slots(block, "LC closure open-line block")
-                for block in closure_blocks
+                slots(block, "LC closure open-line block") for block in closure_blocks
             ),
             process_source_label_order=tuple(int(leg.label) for leg in process.legs),
             singlet_source_slots=singlet_source_slots,
@@ -1126,6 +1133,159 @@ def _closure_anchor_contract(
         )
     proof_digest = _digest(proof_payload)
     return closure_source_slot, proof_algorithm, proof_digest
+
+
+def _project_cyclic_trace_closure_anchors(
+    sectors: tuple[RecurrencePhysicalLCSectorV1, ...],
+    replay_partitions: tuple[RecurrenceReplayPartitionV1, ...],
+    external_legs: tuple[RecurrenceExternalLegV1, ...],
+    template_catalog: RecurrenceTemplateCatalog,
+) -> tuple[RecurrencePhysicalLCSectorV1, ...]:
+    """Fix one authenticated adjoint trace source as the closure sink.
+
+    This is deliberately an opt-in projection for the symmetric-group colour
+    lane.  It uses only cyclic trace equivalence plus process/template
+    contracts.  Any heterogeneous, open-line, fermionic, auxiliary, or
+    replay-incompatible channel retains its established v2/v3 anchor.
+    """
+
+    state_template_id = _cyclic_trace_state_template_id(
+        external_legs,
+        template_catalog,
+    )
+    if state_template_id is None:
+        return sectors
+
+    candidates: dict[int, int] = {}
+    full_source_domain = tuple(range(len(external_legs)))
+    for sector in sectors:
+        if (
+            sector.kind != "single-trace"
+            or sector.open_strings
+            or sector.singlet_source_slots
+            or not sector.trace_source_slots
+            or sector.trace_source_slots != sector.word_source_slots
+            or tuple(sorted(sector.word_source_slots)) != full_source_domain
+        ):
+            continue
+        candidates[sector.sector_id] = min(sector.word_source_slots)
+
+    # A replayed representative must keep the same distinguished source under
+    # every exact target mapping.  Fall back for the complete partition when
+    # any target cannot preserve that closure ancestry.
+    rejected: set[int] = set()
+    for partition in replay_partitions:
+        partition_sector_ids = {target.sector_id for target in partition.targets}
+        representative_anchor = candidates.get(partition.representative_sector_id)
+        if representative_anchor is None or not partition_sector_ids.issubset(
+            candidates
+        ):
+            rejected.update(partition_sector_ids)
+            continue
+        if any(
+            target.source_slot_permutation[representative_anchor]
+            != candidates[target.sector_id]
+            for target in partition.targets
+        ):
+            rejected.update(partition_sector_ids)
+
+    result: list[RecurrencePhysicalLCSectorV1] = []
+    process_source_label_order = tuple(leg.public_label for leg in external_legs)
+    fermionic_source_slots = tuple(
+        leg.source_slot for leg in external_legs if leg.is_fermionic
+    )
+    for sector in sectors:
+        closure_source_slot = candidates.get(sector.sector_id)
+        if closure_source_slot is None or sector.sector_id in rejected:
+            result.append(sector)
+            continue
+        proof_payload = {
+            "algorithm": _CLOSURE_ANCHOR_PROOF_ALGORITHM_V4,
+            "closure_source_slot": closure_source_slot,
+            "component_order_policy": "cyclic-single-trace",
+            "external_source_count": len(external_legs),
+            "fermionic_source_slots": fermionic_source_slots,
+            "open_string_count": 0,
+            "policy": "minimum-source-slot-cyclic-single-trace",
+            "process_source_label_order": process_source_label_order,
+            "sector_id": sector.sector_id,
+            "sector_kind": sector.kind,
+            "singlet_source_slots": sector.singlet_source_slots,
+            "state_template_id": state_template_id,
+            "trace_source_slots": sector.trace_source_slots,
+            "word_source_slots": sector.word_source_slots,
+        }
+        result.append(
+            replace(
+                sector,
+                closure_source_slot=closure_source_slot,
+                closure_proof_algorithm=_CLOSURE_ANCHOR_PROOF_ALGORITHM_V4,
+                closure_proof_digest=_digest(proof_payload),
+            )
+        )
+    return tuple(result)
+
+
+def _cyclic_trace_state_template_id(
+    external_legs: tuple[RecurrenceExternalLegV1, ...],
+    catalog: RecurrenceTemplateCatalog,
+) -> int | None:
+    """Return one process-wide state ID only for the certified adjoint case."""
+
+    if not external_legs or any(
+        leg.is_fermionic or not leg.source_states for leg in external_legs
+    ):
+        return None
+    state_ids = {
+        state.current_state_template_id
+        for leg in external_legs
+        for state in leg.source_states
+    }
+    if len(state_ids) != 1:
+        return None
+    state_template_id = next(iter(state_ids))
+    try:
+        state = catalog.current_states[state_template_id]
+    except IndexError:
+        return None
+    if (
+        state.orientation != "self-conjugate"
+        or state.statistics != "boson"
+        or state.particle_id != state.anti_particle_id
+        or state.color_representation != 8
+        or state.lc_color_shape_kind != "adjoint-segment"
+        or state.auxiliary_kind is not None
+    ):
+        return None
+
+    bindings = {binding.resolver_key: binding for binding in catalog.evaluator_bindings}
+    colors = {color.template_id: color for color in catalog.color_contractions}
+    for closure in catalog.closures:
+        if (
+            closure.input_state_template_ids != (state.template_id, state.template_id)
+            or closure.result_state_template_id is not None
+            or closure.coupling_parameter_ids
+            or closure.coupling_orders
+            or closure.eligible_quantum_flow_template_ids
+            or closure.output_factor_source != "none"
+            or closure.equivalence_class != "direct-contraction"
+        ):
+            continue
+        binding = bindings.get(closure.evaluator_resolver_key)
+        color = colors.get(closure.color_contraction_template_id)
+        if (
+            binding is not None
+            and binding.callable_kind == "rusticol-template"
+            and binding.contract_kind == "closure"
+            and binding.input_state_template_ids
+            == (state.template_id, state.template_id)
+            and binding.output_state_template_id is None
+            and color is not None
+            and color.input_representations == (8, 8)
+            and color.output_representation is None
+        ):
+            return state_template_id
+    return None
 
 
 def _project_replay_partitions(

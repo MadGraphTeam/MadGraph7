@@ -465,6 +465,7 @@ impl EagerExecutionManifest {
             dag_summary: self.dag_summary.clone(),
             materialization_census,
             runtime_schema: self.runtime_schema.clone(),
+            color_contraction_payload: None,
             physics_reduction: None,
             helicity_sum_execution: None,
             helicity_selector_executions: Vec::new(),

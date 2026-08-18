@@ -1793,6 +1793,10 @@ def _validate_logical_relations(
                         "v2 LC closure source slot must be the terminal "
                         "colour-word endpoint"
                     )
+            elif sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v4":
+                # The producer owns this inherited provenance; the typed Rust
+                # process boundary validates its structural preconditions once.
+                pass
             elif sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v3":
                 if sector.kind != "open-lines":
                     raise RecurrenceColumnarInputError(
