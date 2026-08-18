@@ -180,6 +180,8 @@ pub const ON_THE_FLY_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.complex-f64
 pub const ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     "rusticol.on-the-fly.contracted-color.v1";
 pub const ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.lc-color.v1";
+pub const SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY: &str =
+    "rusticol.color-contraction.symmetric-group-fft.v1";
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
 pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "pyamplicol-compiled-plane-kernel-v2";
@@ -252,6 +254,7 @@ pub enum RuntimeCapability {
     RecurrenceRuntimeComplexF64V1,
     RecurrenceLcColorV1,
     RecurrenceContractedColorV1,
+    SymmetricGroupFftColorContractionV1,
     OnTheFlyRuntimeComplexF64V1,
     OnTheFlyContractedColorV1,
     OnTheFlyLcColorV1,
@@ -283,6 +286,9 @@ impl RuntimeCapability {
             Self::RecurrenceRuntimeComplexF64V1 => RECURRENCE_RUNTIME_CAPABILITY,
             Self::RecurrenceLcColorV1 => RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
             Self::RecurrenceContractedColorV1 => RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            Self::SymmetricGroupFftColorContractionV1 => {
+                SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+            }
             Self::OnTheFlyRuntimeComplexF64V1 => ON_THE_FLY_RUNTIME_CAPABILITY,
             Self::OnTheFlyContractedColorV1 => ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::OnTheFlyLcColorV1 => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
@@ -324,6 +330,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         ON_THE_FLY_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

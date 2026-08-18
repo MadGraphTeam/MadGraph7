@@ -205,6 +205,7 @@ def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
     plain = config_to_dict(config)
     assert plain["color"] == {  # type: ignore[index]
         "accuracy": "lc",
+        "contraction": "direct",
         "lc_flow_layout": "all-flow-union",
     }
     assert resolve_config(plain).effective == config

@@ -24,6 +24,7 @@ pub(crate) mod on_the_fly;
 pub mod process;
 mod program;
 mod relation;
+mod symmetric_group_fft;
 pub mod template;
 pub(crate) mod template_json;
 
@@ -38,13 +39,16 @@ pub use color::{
     LCColorPortBinding, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
     LCColorTransitionWitness,
 };
+pub(crate) use color_contraction::RuntimeSymmetricGroupColorWorkspace;
 pub use color_contraction::{
     CanonicalColorContractionEntries, CanonicalColorContractionEntry, FactorizedColorContraction,
     FactorizedColorContractionKind, RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
     RawColorContractionEntry, RecurrenceColorAccuracy, RecurrenceColorContraction,
     RecurrenceColorStorage, RuntimeColorContractionEntries, RuntimeColorContractionEntry,
-    RuntimeFactorizedColorContraction, RuntimeFactorizedColorContractionEntry,
-    decode_recurrence_color_contraction_v3, recurrence_color_contraction_digest,
+    RuntimeColorContractionReducer, RuntimeFactorizedColorContraction,
+    RuntimeFactorizedColorContractionEntry, RuntimeSymmetricGroupColorContraction,
+    RuntimeSymmetricGroupKernel, decode_recurrence_color_contraction_v3,
+    recurrence_color_contraction_digest,
 };
 pub use construct::RecurrenceBuildProgress;
 #[doc(hidden)]
@@ -114,6 +118,10 @@ pub use relation::{
     RecurrenceRelationDiscoveryMode, RecurrenceRelationDiscoveryOptions,
     RecurrenceRelationDiscoveryReport, authenticate_recurrence_numerical_relation_provenance,
     recurrence_numerical_source_semantics_sha256, relation_certificate_algorithm,
+};
+pub use symmetric_group_fft::{
+    MAX_SYMMETRIC_GROUP_FFT_DEGREE, SymmetricGroupComplex64, SymmetricGroupFftBlock,
+    SymmetricGroupFftPlan, SymmetricGroupFftWorkspace,
 };
 /// Semantic prepared-model companion ABI.
 pub const RECURRENCE_TEMPLATE_ABI: &str = "pyamplicol-recurrence-template-v1";

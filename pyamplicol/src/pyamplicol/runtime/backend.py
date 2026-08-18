@@ -20,6 +20,7 @@ from pyamplicol._internal.versions import (
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
     verify_native_module,
 )
 from pyamplicol.api.errors import (
@@ -790,13 +791,32 @@ class RusticolRuntimeBackend:
                 ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
                 ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             }
-            selected_color_capabilities = set(capabilities).intersection(
+            capability_values = set(capabilities)
+            selected_color_capabilities = capability_values.intersection(
                 color_capabilities
             )
+            expected_capabilities: set[str] = set()
+            if len(selected_color_capabilities) == 1:
+                selected_color_capability = next(iter(selected_color_capabilities))
+                expected_capabilities = {
+                    ON_THE_FLY_RUNTIME_CAPABILITY,
+                    selected_color_capability,
+                }
+                if (
+                    selected_color_capability
+                    == ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+                    and SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+                    in capability_values
+                ):
+                    expected_capabilities.add(
+                        SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+                    )
+            # The native loader has already authenticated the OTF color payload.
+            # Keep this adapter check exact: only contracted color may add FFT.
             if (
-                len(capabilities) != 2
-                or ON_THE_FLY_RUNTIME_CAPABILITY not in capabilities
-                or len(selected_color_capabilities) != 1
+                len(selected_color_capabilities) != 1
+                or capability_values != expected_capabilities
+                or len(capabilities) != len(expected_capabilities)
             ):
                 raise CompatibilityError(
                     "on-the-fly artifact has an invalid runtime capability contract"

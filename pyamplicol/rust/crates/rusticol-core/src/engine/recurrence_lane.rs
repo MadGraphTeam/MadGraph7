@@ -14,6 +14,7 @@ use crate::recurrence::direct_runtime::{
 };
 use crate::recurrence::{
     DIRECT_NONE_U32, DirectRecurrencePlan, RecurrenceColorContraction, RecurrenceStrategy,
+    RuntimeColorContractionReducer, RuntimeSymmetricGroupColorWorkspace,
 };
 use std::collections::BTreeMap;
 
@@ -37,11 +38,13 @@ pub(super) struct RecurrenceNativeRuntime {
     parameter_defaults: Vec<crate::EagerComplex64>,
     parameter_projection: Vec<PreparedParameterProjectionEntry>,
     external_source_count: usize,
+    effective_point_tile_size: usize,
     external_momenta: Vec<f64>,
     contracted_replay_re: Vec<f64>,
     contracted_replay_im: Vec<f64>,
     color_transform_re: Vec<f64>,
     color_transform_im: Vec<f64>,
+    symmetric_group_color_workspace: Option<RuntimeSymmetricGroupColorWorkspace>,
 }
 
 struct ContractedReplayRoute {
@@ -408,29 +411,31 @@ impl RecurrenceNativeRuntime {
                 )?
             }
         };
-        let color_transform_scratch_len = color_contraction
-            .as_ref()
-            .and_then(|contraction| {
-                contraction
-                    .runtime_factorization()
-                    .map(|_| contraction.local_group_count())
-            })
-            .map(|local_group_count| {
-                usize::try_from(local_group_count)
-                    .ok()
-                    .and_then(|groups| {
-                        usize::try_from(scheduler.point_tile_size())
-                            .ok()
-                            .and_then(|points| groups.checked_mul(points))
-                    })
-                    .ok_or_else(|| {
-                        RusticolError::artifact(
-                            "recurrence factorized color workspace overflows usize",
-                        )
-                    })
-            })
-            .transpose()?
-            .unwrap_or(0);
+        let point_tile_capacity = scheduler.point_tile_size() as usize;
+        let mut effective_point_tile_size = point_tile_capacity;
+        let mut color_transform_scratch_len = 0usize;
+        let mut symmetric_group_color_workspace = None;
+        if let Some(contraction) = color_contraction.as_ref() {
+            match contraction.runtime_reducer() {
+                Some(RuntimeColorContractionReducer::Walsh(_)) => {
+                    color_transform_scratch_len = usize::try_from(contraction.local_group_count())
+                        .ok()
+                        .and_then(|groups| groups.checked_mul(point_tile_capacity))
+                        .ok_or_else(|| {
+                            RusticolError::artifact(
+                                "recurrence factorized color workspace overflows usize",
+                            )
+                        })?;
+                }
+                Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+                    let (bounded_tile_size, workspace) =
+                        symmetric_group_workspace_for_point_tile(reducer, point_tile_capacity)?;
+                    effective_point_tile_size = bounded_tile_size;
+                    symmetric_group_color_workspace = Some(workspace);
+                }
+                None => {}
+            }
+        }
         let selectors = match strategy {
             RecurrenceStrategy::TopologyReplay => {
                 let replay_selectors = public_flow_ids
@@ -552,11 +557,13 @@ impl RecurrenceNativeRuntime {
             parameter_defaults,
             parameter_projection,
             external_source_count,
+            effective_point_tile_size,
             external_momenta,
             contracted_replay_re: vec![0.0; contracted_replay_len],
             contracted_replay_im: vec![0.0; contracted_replay_len],
             color_transform_re: vec![0.0; color_transform_scratch_len],
             color_transform_im: vec![0.0; color_transform_scratch_len],
+            symmetric_group_color_workspace,
         })
     }
 
@@ -565,7 +572,7 @@ impl RecurrenceNativeRuntime {
     }
 
     pub(super) fn effective_point_tile_size(&self) -> usize {
-        self.scheduler.point_tile_size() as usize
+        self.effective_point_tile_size
     }
 
     pub(super) fn validate_global_selectors(
@@ -1697,6 +1704,7 @@ impl RecurrenceNativeRuntime {
             contracted_replay_im,
             color_transform_re,
             color_transform_im,
+            symmetric_group_color_workspace,
             ..
         } = self;
         let (
@@ -1730,6 +1738,7 @@ impl RecurrenceNativeRuntime {
                 normalization_factor,
                 color_transform_re,
                 color_transform_im,
+                symmetric_group_color_workspace.as_mut(),
                 accumulate,
             )?;
             return Ok(reduction_started.elapsed());
@@ -1803,6 +1812,7 @@ impl RecurrenceNativeRuntime {
             normalization_factor,
             color_transform_re,
             color_transform_im,
+            symmetric_group_color_workspace.as_mut(),
             accumulate,
         )?;
         Ok(replay_output_copy + reduction_started.elapsed())
@@ -1865,6 +1875,17 @@ impl RecurrenceNativeRuntime {
         }
         Ok(())
     }
+}
+
+fn symmetric_group_workspace_for_point_tile(
+    reducer: &crate::recurrence::RuntimeSymmetricGroupColorContraction,
+    requested_point_tile_size: usize,
+) -> RusticolResult<(usize, RuntimeSymmetricGroupColorWorkspace)> {
+    let bounded_point_tile_size = reducer.bounded_lane_capacity(requested_point_tile_size)?;
+    Ok((
+        bounded_point_tile_size,
+        reducer.workspace(bounded_point_tile_size)?,
+    ))
 }
 
 fn validate_recurrence_selector_ids(
@@ -1948,10 +1969,16 @@ fn contracted_destination_helicity_map(
     direct_helicity_to_physics: &[usize],
 ) -> RusticolResult<Vec<usize>> {
     let destination_count = contraction.destination_count() as usize;
+    let group_count = contraction.group_count() as usize;
+    let symmetric_group = matches!(
+        contraction.runtime_reducer(),
+        Some(RuntimeColorContractionReducer::SymmetricGroupFourier(_))
+    );
     if contraction.component_count() as usize != direct_helicity_to_physics.len()
-        || contraction.destination_by_group().len() != destination_count
-        || contraction.sector_by_group().len() != destination_count
-        || contraction.component_by_group().len() != destination_count
+        || contraction.destination_by_group().len() != group_count
+        || contraction.sector_by_group().len() != group_count
+        || contraction.component_by_group().len() != group_count
+        || (!symmetric_group && group_count != destination_count)
     {
         return Err(RusticolError::integrity(
             "contracted color dimensions disagree with the public helicity map",
@@ -1985,18 +2012,20 @@ fn contracted_destination_helicity_map(
         }
         *slot = physics_helicity;
     }
-    if destination_physics_helicity.contains(&usize::MAX) {
+    if !symmetric_group && destination_physics_helicity.contains(&usize::MAX) {
         return Err(RusticolError::integrity(
             "contracted color map does not cover every amplitude destination",
         ));
     }
-    for entry in contraction.canonical_logical_entries() {
-        if contraction.component_by_group()[entry.left_group_id as usize]
-            != contraction.component_by_group()[entry.right_group_id as usize]
-        {
-            return Err(RusticolError::integrity(
-                "contracted color entry mixes different helicity components",
-            ));
+    if !symmetric_group {
+        for entry in contraction.canonical_logical_entries() {
+            if contraction.component_by_group()[entry.left_group_id as usize]
+                != contraction.component_by_group()[entry.right_group_id as usize]
+            {
+                return Err(RusticolError::integrity(
+                    "contracted color entry mixes different helicity components",
+                ));
+            }
         }
     }
     Ok(destination_physics_helicity)
@@ -2030,6 +2059,10 @@ fn contracted_replay_routes(
 
     let destination_count = contraction.destination_count() as usize;
     let component_count = contraction.component_count() as usize;
+    let symmetric_group = matches!(
+        contraction.runtime_reducer(),
+        Some(RuntimeColorContractionReducer::SymmetricGroupFourier(_))
+    );
     let mut covered = vec![false; destination_count];
     let mut routes = Vec::with_capacity(plan.replay_targets().len());
     for target in plan.replay_targets() {
@@ -2062,16 +2095,20 @@ fn contracted_replay_routes(
                         "contracted replay physical destination overflows usize",
                     )
                 })?;
-            if physical_destination >= destination_count
-                || covered[physical_destination]
-                || contraction.sector_by_group()[physical_destination] as usize != target_sector
-                || contraction.component_by_group()[physical_destination] as usize
-                    != mapped_helicity
-                || contraction.destination_by_group()[physical_destination] as usize
-                    != physical_destination
-            {
+            if physical_destination >= destination_count || covered[physical_destination] {
                 return Err(RusticolError::integrity(
                     "contracted replay route is not a dense physical color/helicity bijection",
+                ));
+            }
+            if !symmetric_group
+                && (contraction.sector_by_group()[physical_destination] as usize != target_sector
+                    || contraction.component_by_group()[physical_destination] as usize
+                        != mapped_helicity
+                    || contraction.destination_by_group()[physical_destination] as usize
+                        != physical_destination)
+            {
+                return Err(RusticolError::integrity(
+                    "contracted replay route disagrees with the direct color projection",
                 ));
             }
             covered[physical_destination] = true;
@@ -2165,22 +2202,42 @@ fn contract_color_tile<T: ContractedAmplitudeTile>(
     normalization_factor: f64,
     color_transform_re: &mut [f64],
     color_transform_im: &mut [f64],
+    symmetric_group_workspace: Option<&mut RuntimeSymmetricGroupColorWorkspace>,
     mut accumulate: impl FnMut(usize, usize, f64),
 ) -> RusticolResult<()> {
     let point_count = output.point_count();
-    if let Some(factorization) = contraction.runtime_factorization() {
-        return contract_factorized_color_tile(
-            output,
-            contraction,
-            factorization,
-            destination_physics_helicity,
-            physics,
-            selected_helicities,
-            normalization_factor,
-            color_transform_re,
-            color_transform_im,
-            &mut accumulate,
-        );
+    match contraction.runtime_reducer() {
+        Some(RuntimeColorContractionReducer::Walsh(factorization)) => {
+            return contract_factorized_color_tile(
+                output,
+                contraction,
+                factorization,
+                destination_physics_helicity,
+                physics,
+                selected_helicities,
+                normalization_factor,
+                color_transform_re,
+                color_transform_im,
+                &mut accumulate,
+            );
+        }
+        Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+            let workspace = symmetric_group_workspace.ok_or_else(|| {
+                RusticolError::integrity("symmetric-group recurrence color workspace is absent")
+            })?;
+            return contract_symmetric_group_color_tile(
+                output,
+                contraction,
+                reducer,
+                workspace,
+                destination_physics_helicity,
+                physics,
+                selected_helicities,
+                normalization_factor,
+                &mut accumulate,
+            );
+        }
+        None => {}
     }
     for entry in contraction.runtime_entries() {
         let left_helicity = *destination_physics_helicity
@@ -2245,6 +2302,128 @@ fn contract_color_tile<T: ContractedAmplitudeTile>(
                 right_im[point],
             );
             for physical_helicity in physics.helicity_orbit_members(left_helicity) {
+                if !recurrence_helicity_is_selected(
+                    physics,
+                    selected_helicities,
+                    *physical_helicity,
+                ) {
+                    continue;
+                }
+                let scale = physics.manifest.helicities[*physical_helicity].coefficient
+                    * normalization_factor;
+                accumulate(point, *physical_helicity, scale * contracted);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn contract_symmetric_group_color_tile<T: ContractedAmplitudeTile>(
+    output: &T,
+    contraction: &RecurrenceColorContraction,
+    reducer: &crate::recurrence::RuntimeSymmetricGroupColorContraction,
+    workspace: &mut RuntimeSymmetricGroupColorWorkspace,
+    destination_physics_helicity: &[usize],
+    physics: &PhysicsRuntime,
+    selected_helicities: Option<&BTreeSet<String>>,
+    normalization_factor: f64,
+    accumulate: &mut impl FnMut(usize, usize, f64),
+) -> RusticolResult<()> {
+    let point_count = output.point_count();
+    let component_count = contraction.component_count() as usize;
+    if reducer.local_group_count() != contraction.local_group_count() as usize {
+        return Err(RusticolError::integrity(
+            "symmetric-group recurrence reducer has the wrong local-group domain",
+        ));
+    }
+
+    for component_index in 0..component_count {
+        let representative_destination = contraction
+            .ordered_destination_id(0, component_index)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "symmetric-group recurrence component has no amplitude destination",
+                )
+            })?;
+        let helicity_index = *destination_physics_helicity
+            .get(representative_destination as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "symmetric-group recurrence destination has no public helicity mapping",
+                )
+            })?;
+        let helicity = physics
+            .manifest
+            .helicities
+            .get(helicity_index)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "symmetric-group recurrence component references an absent helicity",
+                )
+            })?;
+        if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0 {
+            continue;
+        }
+        if recurrence_helicity_orbit_weight(physics, selected_helicities, helicity_index) == 0.0 {
+            continue;
+        }
+
+        for local_group_index in 0..reducer.local_group_count() {
+            let destination_id = contraction
+                .ordered_destination_id(local_group_index, component_index)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "symmetric-group recurrence local group has no amplitude destination",
+                    )
+                })?;
+            if destination_physics_helicity
+                .get(destination_id as usize)
+                .copied()
+                != Some(helicity_index)
+                || output.destination_re(destination_id).is_none()
+                || output.destination_im(destination_id).is_none()
+            {
+                return Err(RusticolError::integrity(
+                    "symmetric-group recurrence local groups mix helicities or lack amplitudes",
+                ));
+            }
+        }
+
+        reducer.reduce_lanes(workspace, point_count, |local_group_index, point| {
+            let destination_id = contraction
+                .ordered_destination_id(local_group_index, component_index)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "symmetric-group recurrence local group has no amplitude destination",
+                    )
+                })?;
+            let real = output.destination_re(destination_id).ok_or_else(|| {
+                RusticolError::integrity(
+                    "symmetric-group recurrence real amplitude destination is absent",
+                )
+            })?;
+            let imaginary = output.destination_im(destination_id).ok_or_else(|| {
+                RusticolError::integrity(
+                    "symmetric-group recurrence imaginary amplitude destination is absent",
+                )
+            })?;
+            Ok((
+                *real.get(point).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "symmetric-group recurrence real amplitude tile is too short",
+                    )
+                })?,
+                *imaginary.get(point).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "symmetric-group recurrence imaginary amplitude tile is too short",
+                    )
+                })?,
+            ))
+        })?;
+
+        for (point, contracted) in workspace.reduced(point_count)?.iter().copied().enumerate() {
+            for physical_helicity in physics.helicity_orbit_members(helicity_index) {
                 if !recurrence_helicity_is_selected(
                     physics,
                     selected_helicities,
@@ -2781,6 +2960,151 @@ mod replay_destination_helicity_tests {
             out_of_range.message(),
             "recurrence replay helicity has no public physics mapping"
         );
+    }
+
+    #[test]
+    fn symmetric_group_recurrence_workspace_starts_at_its_bounded_tile_capacity() {
+        let contraction =
+            RecurrenceColorContraction::symmetric_group_s3_for_runtime_test((0..13).collect(), 13);
+        let RuntimeColorContractionReducer::SymmetricGroupFourier(reducer) =
+            contraction.runtime_reducer().unwrap()
+        else {
+            panic!("expected symmetric-group runtime reducer")
+        };
+        let (effective_point_tile_size, workspace) =
+            symmetric_group_workspace_for_point_tile(reducer, 5).unwrap();
+        assert_eq!(effective_point_tile_size, 5);
+        assert_eq!(workspace.lane_capacity(), effective_point_tile_size);
+    }
+
+    #[test]
+    fn symmetric_group_recurrence_dispatch_handles_sparse_owner_destinations_and_partial_tiles() {
+        let contraction = RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+            (0..13).map(|group| group + 2).collect(),
+            20,
+        );
+        let destination_physics_helicity =
+            contracted_destination_helicity_map(&contraction, &[0]).unwrap();
+        assert_eq!(destination_physics_helicity.len(), 20);
+        assert_eq!(destination_physics_helicity[..2], [usize::MAX; 2]);
+        assert!(
+            destination_physics_helicity[2..15]
+                .iter()
+                .all(|helicity| *helicity == 0)
+        );
+        assert!(
+            destination_physics_helicity[15..]
+                .iter()
+                .all(|helicity| *helicity == usize::MAX)
+        );
+
+        let physics = PhysicsRuntime {
+            binding_id: 0,
+            manifest: ProcessPhysicsV1 {
+                schema_version: crate::RUNTIME_PHYSICS_SCHEMA_VERSION,
+                kind: "pyamplicol-resolved-physics".to_string(),
+                process_id: "fft-runtime-test".to_string(),
+                process: "g g > g g".to_string(),
+                color_accuracy: crate::ColorAccuracy::Full,
+                coverage: crate::Coverage {
+                    helicities: "complete".to_string(),
+                    color: "contracted".to_string(),
+                    color_kind: "contracted-color".to_string(),
+                    structural_zero_helicity_count: 0,
+                },
+                external_particles: Vec::new(),
+                helicities: vec![crate::Helicity {
+                    id: "h0".to_string(),
+                    index: 0,
+                    values: Vec::new(),
+                    representative_id: "h0".to_string(),
+                    computed: true,
+                    structural_zero: false,
+                    coefficient: 1.0,
+                }],
+                color_components: vec![crate::ColorComponent::ContractedColor(
+                    crate::ContractedColor {
+                        id: "contracted".to_string(),
+                        index: 0,
+                        description: "contracted color".to_string(),
+                    },
+                )],
+                reduction: crate::Reduction {
+                    kind: crate::ReductionKind::ContractedColor,
+                    groups: Vec::new(),
+                },
+                model_parameters: Vec::new(),
+                selectors: crate::SelectorCapabilities {
+                    helicity: true,
+                    color_flow: false,
+                    contracted_color: false,
+                },
+                extensions: BTreeMap::new(),
+            },
+            helicity_index_by_id: BTreeMap::from([("h0".to_string(), 0)]),
+            helicity_members_by_representative: vec![vec![0]],
+            color_index_by_id: BTreeMap::from([("contracted".to_string(), 0)]),
+            reduction_by_group_id: BTreeMap::new(),
+            numeric_reduction_by_group_id: BTreeMap::new(),
+        };
+        let point_count = 3;
+        let point_stride = point_count;
+        let mut values_re = vec![0.0; 20 * point_stride];
+        let mut values_im = vec![0.0; 20 * point_stride];
+        let mut local_values = vec![(0.0, 0.0); 13 * point_count];
+        for group in 0..13 {
+            for point in 0..point_count {
+                let value = (
+                    (group * 7 + point * 3) as f64 / 11.0 - 1.0,
+                    (group * 5 + point) as f64 / 13.0 - 0.4,
+                );
+                local_values[group * point_count + point] = value;
+                values_re[(group + 2) * point_stride + point] = value.0;
+                values_im[(group + 2) * point_stride + point] = value.1;
+            }
+        }
+        let tile = ContractedReplayTile {
+            values_re: &values_re,
+            values_im: &values_im,
+            point_count,
+            point_stride,
+            destination_count: 20,
+        };
+        let RuntimeColorContractionReducer::SymmetricGroupFourier(reducer) =
+            contraction.runtime_reducer().unwrap()
+        else {
+            panic!("expected symmetric-group runtime reducer")
+        };
+        let mut expected_workspace = reducer.workspace(1).unwrap();
+        reducer
+            .reduce_lanes(&mut expected_workspace, point_count, |group, point| {
+                Ok(local_values[group * point_count + point])
+            })
+            .unwrap();
+        let expected = expected_workspace.reduced(point_count).unwrap().to_vec();
+
+        let mut workspace = reducer.workspace(1).unwrap();
+        let mut actual = vec![0.0; point_count];
+        contract_color_tile(
+            &tile,
+            &contraction,
+            &destination_physics_helicity,
+            &physics,
+            None,
+            1.0,
+            &mut [],
+            &mut [],
+            Some(&mut workspace),
+            |point, helicity, value| {
+                assert_eq!(helicity, 0);
+                actual[point] += value;
+            },
+        )
+        .unwrap();
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            let scale = expected.abs().max(1.0);
+            assert!((actual - expected).abs() <= 2.0e-11 * scale);
+        }
     }
 }
 

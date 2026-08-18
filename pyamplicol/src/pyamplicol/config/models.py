@@ -35,6 +35,11 @@ class ColorAccuracy(StrEnum):
     FULL = "full"
 
 
+class ColorContraction(StrEnum):
+    DIRECT = "direct"
+    SYMMETRIC_GROUP_FFT = "symmetric-group-fft"
+
+
 class LCFlowLayout(StrEnum):
     TOPOLOGY_REPLAY = "topology-replay"
     ALL_FLOW_UNION = "all-flow-union"
@@ -413,6 +418,10 @@ class ColorConfig:
         default=ColorAccuracy.LC,
         metadata=_setting("str", choices=tuple(ColorAccuracy)),
     )
+    contraction: ColorContraction = field(
+        default=ColorContraction.DIRECT,
+        metadata=_setting("str", choices=tuple(ColorContraction)),
+    )
     lc_flow_layout: LCFlowLayout = field(
         default=LCFlowLayout.TOPOLOGY_REPLAY,
         metadata=_setting("str", choices=tuple(LCFlowLayout)),
@@ -421,6 +430,15 @@ class ColorConfig:
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "accuracy", _enum(self.accuracy, ColorAccuracy, "color.accuracy")
+        )
+        object.__setattr__(
+            self,
+            "contraction",
+            _enum(
+                self.contraction,
+                ColorContraction,
+                "color.contraction",
+            ),
         )
         object.__setattr__(
             self,
@@ -433,6 +451,14 @@ class ColorConfig:
         ):
             raise ConfigurationError(
                 "color.lc_flow_layout='all-flow-union' requires color.accuracy='lc'"
+            )
+        if (
+            self.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+            and self.accuracy is ColorAccuracy.LC
+        ):
+            raise ConfigurationError(
+                "color.contraction='symmetric-group-fft' requires "
+                "color.accuracy='nlc' or 'full'"
             )
 
 
@@ -1028,6 +1054,20 @@ class RunConfig:
         for name, expected_type in expected:
             if not isinstance(getattr(self, name), expected_type):
                 raise ConfigurationError(f"{name} must be a {expected_type.__name__}")
+        if (
+            self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+            and self.evaluator.execution_mode
+            not in {
+                EvaluatorExecutionMode.RECURRENCE,
+                EvaluatorExecutionMode.ON_THE_FLY,
+            }
+        ):
+            raise ConfigurationError(
+                "color.contraction='symmetric-group-fft' requires "
+                "evaluator.execution_mode='recurrence' or 'on-the-fly'"
+            )
+
+
 __all__ = [
     "ACTIONS",
     "Action",
@@ -1036,6 +1076,7 @@ __all__ = [
     "BenchmarkConfig",
     "ColorAccuracy",
     "ColorConfig",
+    "ColorContraction",
     "ColorMode",
     "CouplingOrderPolicy",
     "CppConfig",

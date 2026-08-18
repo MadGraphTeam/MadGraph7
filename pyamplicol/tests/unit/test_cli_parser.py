@@ -8,6 +8,7 @@ import pytest
 
 from pyamplicol.cli import build_parser, parse_cli
 from pyamplicol.config import (
+    ColorContraction,
     ConfigurationError,
     EvaluatorExecutionMode,
     LCFlowLayout,
@@ -55,6 +56,23 @@ def test_generate_accepts_on_the_fly_execution_mode_override() -> None:
 def test_generate_defaults_to_recurrence_execution() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+
+
+def test_generate_accepts_symmetric_group_color_contraction() -> None:
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "--color-accuracy",
+                "full",
+                "--color-contraction",
+                "symmetric-group-fft",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
 
 
 def test_profile_help_explains_layout_aware_selector_default(

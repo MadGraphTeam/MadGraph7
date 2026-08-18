@@ -150,6 +150,7 @@ pub(super) fn load_color_contraction_reference(
     let storage = match contraction.storage() {
         crate::recurrence::RecurrenceColorStorage::Expanded => "expanded",
         crate::recurrence::RecurrenceColorStorage::Repeated => "repeated",
+        crate::recurrence::RecurrenceColorStorage::ConvolutionKernels => "convolution-kernels",
     };
     if accuracy != reference.color_accuracy
         || storage != reference.storage
@@ -158,7 +159,7 @@ pub(super) fn load_color_contraction_reference(
         || contraction.sector_count() as u64 != reference.sector_count
         || contraction.component_count() as u64 != reference.component_count
         || contraction.destination_count() as u64 != reference.destination_count
-        || contraction.entries().len() as u64 != reference.entry_count
+        || contraction.stored_entry_count() as u64 != reference.entry_count
         || contraction.logical_entry_count() as u64 != reference.logical_entry_count
         || contraction.includes_color_factor() != reference.includes_color_factor
     {
@@ -177,6 +178,7 @@ pub(super) fn load_color_contraction_reference(
                 FactorizedColorContractionKind::ElementaryAbelianWalsh => {
                     "elementary-abelian-walsh"
                 }
+                FactorizedColorContractionKind::SymmetricGroupFourier => "symmetric-group-fourier",
             };
             reference.kind == kind
                 && reference.rank == factorization.rank()

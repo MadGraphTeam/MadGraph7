@@ -33,7 +33,8 @@ use crate::recurrence::on_the_fly::{
 };
 use crate::recurrence::template_json::project_recurrence_template_catalog_json_v1;
 use crate::recurrence::{
-    RecurrenceColorAccuracy, RecurrenceColorContraction, RecurrenceColorStorage,
+    FactorizedColorContractionKind, RecurrenceColorAccuracy, RecurrenceColorContraction,
+    RecurrenceColorStorage,
 };
 
 pub(super) struct LoadedOnTheFlyColorContractionV1 {
@@ -156,7 +157,7 @@ pub(super) fn load_on_the_fly_native_runtime(
         requested_query_construction_threads,
         available_query_construction_threads,
     );
-    let lane = OnTheFlyNativeRuntime::new(
+    let mut lane = OnTheFlyNativeRuntime::new(
         templates,
         direct_catalog,
         seed,
@@ -167,6 +168,10 @@ pub(super) fn load_on_the_fly_native_runtime(
         projection,
         &common.model_parameter_values_f64,
     )?;
+    if let Some(workspace) = symmetric_group_workspace_for_loaded_color(color_contraction.as_ref())?
+    {
+        lane.install_symmetric_group_color_workspace(workspace)?;
+    }
     Ok(LoadedOnTheFlyRuntime {
         common,
         lane,
@@ -177,15 +182,57 @@ pub(super) fn load_on_the_fly_native_runtime(
     })
 }
 
+fn symmetric_group_workspace_for_loaded_color(
+    loaded: Option<&LoadedOnTheFlyColorContractionV1>,
+) -> RusticolResult<Option<crate::recurrence::RuntimeSymmetricGroupColorWorkspace>> {
+    let Some((reducer, point_tile_size)) = loaded.and_then(|loaded| {
+        loaded
+            .plan
+            .runtime_reducer()
+            .and_then(|reducer| match reducer {
+                crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(value) => {
+                    Some((value, loaded.point_tile_size))
+                }
+                _ => None,
+            })
+    }) else {
+        return Ok(None);
+    };
+    // `point_tile_size` was already clamped against the shared 512 MiB
+    // workspace budget while authenticating the color payload.  Allocate the
+    // final capacity here so the first multi-point evaluation is warmed too.
+    Ok(Some(reducer.workspace(point_tile_size)?))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::clamp_query_construction_threads;
+    use super::{
+        LoadedOnTheFlyColorContractionV1, clamp_query_construction_threads,
+        symmetric_group_workspace_for_loaded_color,
+    };
+    use crate::recurrence::RecurrenceColorContraction;
 
     #[test]
     fn query_construction_threads_are_capped_by_positive_host_availability() {
         assert_eq!(clamp_query_construction_threads(8, 3), 3);
         assert_eq!(clamp_query_construction_threads(2, 8), 2);
         assert_eq!(clamp_query_construction_threads(4, 0), 1);
+    }
+
+    #[test]
+    fn symmetric_group_workspace_is_installed_at_the_authenticated_tile_capacity() {
+        let loaded = LoadedOnTheFlyColorContractionV1 {
+            plan: RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+                (0..13).collect(),
+                13,
+            ),
+            destination_by_owner_ordinal: (0..13).collect::<Vec<_>>().into_boxed_slice(),
+            point_tile_size: 5,
+        };
+        let workspace = symmetric_group_workspace_for_loaded_color(Some(&loaded))
+            .unwrap()
+            .expect("symmetric-group workspace");
+        assert_eq!(workspace.lane_capacity(), 5);
     }
 }
 
@@ -270,10 +317,15 @@ fn load_on_the_fly_color_contraction(
     let plan_sector_count = usize::try_from(plan.sector_count()).map_err(|_| {
         RusticolError::artifact("on-the-fly contracted payload sector count exceeds usize")
     })?;
+    let direct_storage =
+        plan.storage() == RecurrenceColorStorage::Expanded && plan.factorization().is_none();
+    let symmetric_group_storage = plan.storage() == RecurrenceColorStorage::ConvolutionKernels
+        && plan.factorization().is_some_and(|factorization| {
+            factorization.kind() == FactorizedColorContractionKind::SymmetricGroupFourier
+        });
     if plan.accuracy() != expected_accuracy
-        || plan.storage() != RecurrenceColorStorage::Expanded
+        || !(direct_storage || symmetric_group_storage)
         || !plan.includes_color_factor()
-        || plan.factorization().is_some()
         || plan.component_count() != 1
         || plan.active_sector_count() != owner_count
         || plan.group_count() != owner_count_u32
@@ -337,38 +389,94 @@ fn load_on_the_fly_color_contraction(
             "on-the-fly contracted groups do not cover every structural owner once",
         ));
     }
-    let mut destination_by_owner_ordinal = Vec::new();
-    destination_by_owner_ordinal
-        .try_reserve_exact(owner_count)
-        .map_err(|error| {
-            RusticolError::artifact(format!(
-                "could not reserve on-the-fly contracted destination map: {error}"
-            ))
-        })?;
-    for (owner_ordinal, owner_sector) in fixed_owner_sectors.iter().copied().enumerate() {
-        let group_id = group_by_owner_sector
-            .get(&owner_sector)
-            .copied()
-            .ok_or_else(|| {
-                RusticolError::integrity("on-the-fly contracted owner has no component-zero group")
+    let destination_by_owner_ordinal = if direct_storage {
+        let mut destinations = Vec::new();
+        destinations
+            .try_reserve_exact(owner_count)
+            .map_err(|error| {
+                RusticolError::artifact(format!(
+                    "could not reserve on-the-fly contracted destination map: {error}"
+                ))
             })?;
-        let destination = plan.destination_by_group()[group_id as usize];
-        let expected_destination = u32::try_from(owner_ordinal).map_err(|_| {
-            RusticolError::artifact("on-the-fly contracted owner ordinal exceeds u32")
-        })?;
-        if destination != expected_destination
-            || plan.ordered_group_ids().get(owner_ordinal).copied() != Some(group_id)
-        {
+        for (owner_ordinal, owner_sector) in fixed_owner_sectors.iter().copied().enumerate() {
+            let group_id = group_by_owner_sector
+                .get(&owner_sector)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "on-the-fly contracted owner has no component-zero group",
+                    )
+                })?;
+            let destination = plan.destination_by_group()[group_id as usize];
+            let expected_destination = u32::try_from(owner_ordinal).map_err(|_| {
+                RusticolError::artifact("on-the-fly contracted owner ordinal exceeds u32")
+            })?;
+            if destination != expected_destination
+                || plan.ordered_group_ids().get(owner_ordinal).copied() != Some(group_id)
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly contracted destination order disagrees with the compact structural owner basis",
+                ));
+            }
+            destinations.push(destination);
+        }
+        destinations
+    } else {
+        // Symmetric-group groups are channel/permutation ordered.  Their
+        // authenticated destination projection maps that order back to the
+        // compact selector-owner ordinals, so query construction consumes the
+        // inverse map (owner ordinal -> Fourier group ID).
+        let mut destinations = vec![u32::MAX; owner_count];
+        for (group_id, owner_ordinal) in plan.destination_by_group().iter().copied().enumerate() {
+            let owner_ordinal = usize::try_from(owner_ordinal).map_err(|_| {
+                RusticolError::artifact("on-the-fly contracted owner ordinal exceeds usize")
+            })?;
+            let slot = destinations.get_mut(owner_ordinal).ok_or_else(|| {
+                RusticolError::integrity(
+                    "on-the-fly symmetric-group destination is outside the owner domain",
+                )
+            })?;
+            if *slot != u32::MAX {
+                return Err(RusticolError::integrity(
+                    "on-the-fly symmetric-group destination projection is not one-to-one",
+                ));
+            }
+            *slot = u32::try_from(group_id).map_err(|_| {
+                RusticolError::artifact("on-the-fly symmetric-group group ID exceeds u32")
+            })?;
+        }
+        if destinations.contains(&u32::MAX) {
             return Err(RusticolError::integrity(
-                "on-the-fly contracted destination order disagrees with the compact structural owner basis",
+                "on-the-fly symmetric-group destination projection is incomplete",
             ));
         }
-        destination_by_owner_ordinal.push(destination);
-    }
-    let point_tile_size =
-        usize::try_from(manifest.runtime_options.point_tile_size).map_err(|_| {
+        for (owner_ordinal, owner_sector) in fixed_owner_sectors.iter().copied().enumerate() {
+            let expected_group = group_by_owner_sector
+                .get(&owner_sector)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "on-the-fly contracted owner has no component-zero group",
+                    )
+                })?;
+            if destinations[owner_ordinal] != expected_group {
+                return Err(RusticolError::integrity(
+                    "on-the-fly symmetric-group projection disagrees with the authenticated owner sectors",
+                ));
+            }
+        }
+        destinations
+    };
+    let requested_point_tile_size = usize::try_from(manifest.runtime_options.point_tile_size)
+        .map_err(|_| {
             RusticolError::artifact("on-the-fly contracted point tile size exceeds usize")
         })?;
+    let point_tile_size = match plan.runtime_reducer() {
+        Some(crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+            reducer.bounded_lane_capacity(requested_point_tile_size)?
+        }
+        _ => requested_point_tile_size,
+    };
     Ok(Some(LoadedOnTheFlyColorContractionV1 {
         plan,
         destination_by_owner_ordinal: destination_by_owner_ordinal.into_boxed_slice(),

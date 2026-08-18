@@ -1596,6 +1596,7 @@ mod tests {
             vec![
                 "compiled-plane-arena-v1".to_string(),
                 "eager-direct-arena-v1".to_string(),
+                "rusticol.color-contraction.symmetric-group-fft.v1".to_string(),
                 "rusticol.compiled.color-contraction-walsh-c2k.v1".to_string(),
                 "rusticol.compiled.color-contraction-walsh.v1".to_string(),
                 "rusticol.compiled.color-topology-lanes.v1".to_string(),

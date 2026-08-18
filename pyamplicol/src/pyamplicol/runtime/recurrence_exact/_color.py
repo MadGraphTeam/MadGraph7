@@ -23,10 +23,12 @@ _MAGIC = b"PACRCLR3"
 _VERSION = 3
 _STORAGE_EXPANDED = 1
 _STORAGE_REPEATED = 2
+_STORAGE_CONVOLUTION_KERNELS = 3
 _ACCURACY = {1: "nlc", 2: "full"}
 _FACTOR_NONE = 0
 _FACTOR_KLEIN_FOUR = 1
 _FACTOR_ELEMENTARY_ABELIAN = 2
+_FACTOR_SYMMETRIC_GROUP_FOURIER = 3
 _FLAG_INCLUDES_COLOR_FACTOR = 1 << 0
 _KNOWN_FLAGS = _FLAG_INCLUDES_COLOR_FACTOR
 _MAX_FACTOR_RANK = 16
@@ -316,6 +318,14 @@ def _decode_recurrence_color_contraction(
         raise ArtifactError(
             "recurrence color-contraction payload has invalid color accuracy"
         ) from exc
+    if (
+        storage_id == _STORAGE_CONVOLUTION_KERNELS
+        and factor_kind == _FACTOR_SYMMETRIC_GROUP_FOURIER
+    ):
+        raise CompatibilityError(
+            "symmetric-group FFT recurrence artifacts support native f64 "
+            "evaluation but not the exact/high-precision diagnostic executor"
+        )
     if storage_id not in {_STORAGE_EXPANDED, _STORAGE_REPEATED}:
         raise ArtifactError("recurrence color-contraction payload has invalid storage")
     storage = "expanded" if storage_id == _STORAGE_EXPANDED else "repeated"

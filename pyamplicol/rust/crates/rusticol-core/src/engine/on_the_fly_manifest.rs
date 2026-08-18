@@ -12,7 +12,8 @@ use super::recurrence_manifest::{
 };
 use super::{
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY, ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
-    ON_THE_FLY_RUNTIME_CAPABILITY, confined_internal_path,
+    ON_THE_FLY_RUNTIME_CAPABILITY, SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+    confined_internal_path,
 };
 use crate::recurrence::RECURRENCE_COLOR_CONTRACTION_CODEC_ABI;
 use crate::recurrence::on_the_fly::{
@@ -154,7 +155,16 @@ impl OnTheFlyExecutionManifest {
                 )));
             }
         };
-        let expected = BTreeSet::from([ON_THE_FLY_RUNTIME_CAPABILITY, color_capability]);
+        let uses_symmetric_group_fft = self
+            .runtime_metadata
+            .color_contraction
+            .as_ref()
+            .and_then(|reference| reference.factorization.as_ref())
+            .is_some_and(|factorization| factorization.kind == "symmetric-group-fourier");
+        let mut expected = BTreeSet::from([ON_THE_FLY_RUNTIME_CAPABILITY, color_capability]);
+        if uses_symmetric_group_fft {
+            expected.insert(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY);
+        }
         if actual.len() != self.required_runtime_capabilities.len() || actual != expected {
             return Err(RusticolError::integrity(format!(
                 "on-the-fly execution must require exactly {expected:?}"
@@ -557,9 +567,11 @@ fn validate_contracted_color_reference(
     }
     if reference.color_accuracy != color_accuracy
         || !matches!(color_accuracy, "nlc" | "full")
-        || reference.storage != "expanded"
+        || !matches!(
+            reference.storage.as_str(),
+            "expanded" | "convolution-kernels"
+        )
         || !reference.includes_color_factor
-        || reference.factorization.is_some()
         || reference.component_count != 1
         || reference.group_count == 0
         || reference.group_count != reference.active_sector_count
@@ -586,6 +598,37 @@ fn validate_contracted_color_reference(
     {
         return Err(RusticolError::integrity(
             "on-the-fly color-contraction summary is inconsistent",
+        ));
+    }
+    let symmetric_group_fft = reference
+        .factorization
+        .as_ref()
+        .is_some_and(|factorization| {
+            factorization.kind == "symmetric-group-fourier"
+                && (2..=10).contains(&factorization.rank)
+                && factorization.coset_count > 0
+        });
+    if reference.factorization.is_some() != symmetric_group_fft
+        || (reference.storage == "convolution-kernels") != symmetric_group_fft
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly convolution-kernel storage requires symmetric-group Fourier factorization",
+        ));
+    }
+    if symmetric_group_fft {
+        let factorization = reference
+            .factorization
+            .as_ref()
+            .expect("validated symmetric-group factorization");
+        let provenance = reference.fft_provenance.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "on-the-fly symmetric-group Fourier summary is missing FFT provenance",
+            )
+        })?;
+        reference.validate_fft_provenance(factorization, provenance)?;
+    } else if reference.fft_provenance.is_some() {
+        return Err(RusticolError::integrity(
+            "on-the-fly non-FFT color summary carries FFT provenance",
         ));
     }
     confined_internal_path(&reference.path, "on-the-fly color-contraction payload")?;
@@ -785,6 +828,34 @@ mod tests {
         )
     }
 
+    fn symmetric_group_contracted_manifest(color_accuracy: &str) -> Value {
+        let mut value = contracted_manifest(color_accuracy);
+        value["required_runtime_capabilities"] = json!([
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        ]);
+        let reference = &mut value["runtime_metadata"]["color_contraction"];
+        reference["storage"] = json!("convolution-kernels");
+        reference["factorization"] = json!({
+            "kind": "symmetric-group-fourier",
+            "rank": 2,
+            "coset_count": 3,
+        });
+        reference["fft_provenance"] = json!({
+            "method": "symmetric-group-fourier",
+            "degree": 2,
+            "channel_count": 3,
+            "covered_local_group_count": 6,
+            "residual_group_count": 0,
+            "residual_entry_count": 0,
+            "raw_kernel_bytes": 192,
+            "transformed_kernel_bytes": 96,
+            "capability": SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        });
+        value
+    }
+
     #[test]
     fn accepts_only_the_compact_lc_contract() {
         let parsed = parse(&manifest()).unwrap();
@@ -881,6 +952,29 @@ mod tests {
         lc_with_companion["runtime_metadata"]["color_contraction"] =
             contracted_manifest("full")["runtime_metadata"]["color_contraction"].clone();
         assert!(parse(&lc_with_companion).is_err());
+    }
+
+    #[test]
+    fn symmetric_group_contracted_color_keeps_the_exact_otf_owner_domain() {
+        let value = symmetric_group_contracted_manifest("full");
+        parse_contracted(&value, "full").unwrap();
+
+        let mut retained_alias_destination = value.clone();
+        retained_alias_destination["runtime_metadata"]["color_contraction"]["destination_count"] =
+            json!(7);
+        assert!(parse_contracted(&retained_alias_destination, "full").is_err());
+
+        let mut missing_capability = value.clone();
+        missing_capability["required_runtime_capabilities"] = json!([
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        ]);
+        assert!(parse_contracted(&missing_capability, "full").is_err());
+
+        let mut stale_transformed_size = value;
+        stale_transformed_size["runtime_metadata"]["color_contraction"]["fft_provenance"]["transformed_kernel_bytes"] =
+            json!(88);
+        assert!(parse_contracted(&stale_transformed_size, "full").is_err());
     }
 
     #[test]

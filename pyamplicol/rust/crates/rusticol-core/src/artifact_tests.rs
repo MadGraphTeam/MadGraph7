@@ -1927,8 +1927,9 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
 }
 
 #[test]
-fn on_the_fly_capabilities_are_known_and_the_catalog_remains_closed() {
+fn on_the_fly_fft_capabilities_are_known_and_the_catalog_remains_closed() {
     let capabilities = json!([
+        crate::engine::SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
         "rusticol.on-the-fly.complex-f64.v1",
         "rusticol.on-the-fly.contracted-color.v1",
         "rusticol.on-the-fly.lc-color.v1"

@@ -268,6 +268,12 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--color-contraction",
+        dest="color.contraction",
+        choices=("direct", "symmetric-group-fft"),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--lc-flow-layout",
         dest="color.lc_flow_layout",
         choices=("topology-replay", "all-flow-union"),

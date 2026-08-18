@@ -2,6 +2,7 @@
 
 //! Bounded parsing and semantic validation for recurrence execution manifests.
 
+use crate::engine::SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY;
 use crate::recurrence::direct_backend::RECURRENCE_DIRECT_BACKEND_ABI;
 use crate::recurrence::template::RECURRENCE_TEMPLATE_INPUT_ABI;
 use crate::recurrence::{
@@ -466,6 +467,8 @@ pub(super) struct RecurrenceColorContractionReference {
     pub(super) semantic_digest: String,
     #[serde(default)]
     pub(super) factorization: Option<RecurrenceColorFactorizationReference>,
+    #[serde(default)]
+    pub(super) fft_provenance: Option<RecurrenceColorFftProvenance>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -474,6 +477,20 @@ pub(super) struct RecurrenceColorFactorizationReference {
     pub(super) kind: String,
     pub(super) rank: u32,
     pub(super) coset_count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceColorFftProvenance {
+    pub(super) method: String,
+    pub(super) degree: u32,
+    pub(super) channel_count: u64,
+    pub(super) covered_local_group_count: u64,
+    pub(super) residual_group_count: u64,
+    pub(super) residual_entry_count: u64,
+    pub(super) raw_kernel_bytes: u64,
+    pub(super) transformed_kernel_bytes: u64,
+    pub(super) capability: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -666,14 +683,22 @@ impl RecurrenceExecutionManifest {
                 outer.id
             )));
         }
+        let uses_symmetric_group_fft = self
+            .runtime_metadata
+            .color_contraction
+            .as_ref()
+            .and_then(|reference| reference.factorization.as_ref())
+            .is_some_and(|factorization| factorization.kind == "symmetric-group-fourier");
         validate_capabilities(
             &self.required_runtime_capabilities,
             &self.color_accuracy,
+            uses_symmetric_group_fft,
             "recurrence execution manifest",
         )?;
         validate_capabilities(
             &outer.required_runtime_capabilities,
             &self.color_accuracy,
+            uses_symmetric_group_fft,
             "outer recurrence process",
         )?;
         validate_direct_contract(
@@ -711,6 +736,7 @@ impl RecurrenceExecutionManifest {
             &self.prepared_kernel_pack_digest,
             &self.direct_template_catalog_digest,
             &self.color_accuracy,
+            uses_symmetric_group_fft,
         )?;
         self.recurrence_summary.validate()?;
         self.runtime_metadata.validate(
@@ -766,6 +792,7 @@ impl RecurrencePlanSummary {
         prepared_kernel_pack_digest: &str,
         direct_template_catalog_digest: &str,
         color_accuracy: &str,
+        uses_symmetric_group_fft: bool,
     ) -> RusticolResult<()> {
         if self.kind != RECURRENCE_RUNTIME_KIND {
             return Err(RusticolError::compatibility(format!(
@@ -803,6 +830,7 @@ impl RecurrencePlanSummary {
         validate_capabilities(
             &self.required_runtime_capabilities,
             color_accuracy,
+            uses_symmetric_group_fft,
             "nested recurrence plan",
         )?;
         self.runtime_schedule.validate()?;
@@ -2272,7 +2300,10 @@ impl RecurrenceColorContractionReference {
         }
         if self.color_accuracy != color_accuracy
             || !matches!(self.color_accuracy.as_str(), "nlc" | "full")
-            || !matches!(self.storage.as_str(), "expanded" | "repeated")
+            || !matches!(
+                self.storage.as_str(),
+                "expanded" | "repeated" | "convolution-kernels"
+            )
         {
             return Err(RusticolError::integrity(
                 "recurrence color-contraction summary has incompatible accuracy or storage",
@@ -2287,14 +2318,46 @@ impl RecurrenceColorContractionReference {
             let valid_kind_and_rank = match factorization.kind.as_str() {
                 "klein-four-walsh" => factorization.rank == 2,
                 "elementary-abelian-walsh" => (3..=16).contains(&factorization.rank),
+                "symmetric-group-fourier" => (2..=10).contains(&factorization.rank),
                 _ => false,
             };
-            if self.storage != "repeated" || !valid_kind_and_rank || factorization.coset_count == 0
-            {
+            let valid_storage = match factorization.kind.as_str() {
+                "symmetric-group-fourier" => self.storage == "convolution-kernels",
+                _ => self.storage == "repeated",
+            };
+            if !valid_storage || !valid_kind_and_rank || factorization.coset_count == 0 {
                 return Err(RusticolError::integrity(
                     "recurrence color factorization summary is inconsistent",
                 ));
             }
+        }
+        if (self.storage == "convolution-kernels")
+            != self
+                .factorization
+                .as_ref()
+                .is_some_and(|value| value.kind == "symmetric-group-fourier")
+        {
+            return Err(RusticolError::integrity(
+                "recurrence convolution-kernel storage requires symmetric-group Fourier factorization",
+            ));
+        }
+        match (&self.factorization, &self.fft_provenance) {
+            (Some(factorization), Some(provenance))
+                if factorization.kind == "symmetric-group-fourier" =>
+            {
+                self.validate_fft_provenance(factorization, provenance)?;
+            }
+            (Some(factorization), None) if factorization.kind == "symmetric-group-fourier" => {
+                return Err(RusticolError::integrity(
+                    "recurrence symmetric-group Fourier summary is missing FFT provenance",
+                ));
+            }
+            (_, Some(_)) => {
+                return Err(RusticolError::integrity(
+                    "recurrence non-FFT color summary carries FFT provenance",
+                ));
+            }
+            _ => {}
         }
         parse_sha256(&self.sha256, "recurrence color-contraction payload")?;
         parse_sha256(
@@ -2339,6 +2402,100 @@ impl RecurrenceColorContractionReference {
         {
             return Err(RusticolError::integrity(
                 "recurrence color-contraction summary is inconsistent with the Direct-Arena schedule",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn validate_fft_provenance(
+        &self,
+        factorization: &RecurrenceColorFactorizationReference,
+        provenance: &RecurrenceColorFftProvenance,
+    ) -> RusticolResult<()> {
+        let group_order = (2..=factorization.rank)
+            .try_fold(1_u64, |value, factor| value.checked_mul(u64::from(factor)));
+        let Some(group_order) = group_order else {
+            return Err(RusticolError::artifact(
+                "recurrence symmetric-group order overflows u64",
+            ));
+        };
+        let Some(covered_local_group_count) = factorization.coset_count.checked_mul(group_order)
+        else {
+            return Err(RusticolError::artifact(
+                "recurrence FFT-covered local group count overflows u64",
+            ));
+        };
+        if self.component_count == 0 || self.group_count % self.component_count != 0 {
+            return Err(RusticolError::integrity(
+                "recurrence symmetric-group component map is not rectangular",
+            ));
+        }
+        let local_group_count = self.group_count / self.component_count;
+        let Some(residual_group_count) = local_group_count.checked_sub(covered_local_group_count)
+        else {
+            return Err(RusticolError::integrity(
+                "recurrence FFT-covered groups exceed the local color domain",
+            ));
+        };
+        let upper_triangle_count = |count: u64| {
+            count
+                .checked_add(1)
+                .and_then(|successor| count.checked_mul(successor))
+                .and_then(|value| value.checked_div(2))
+        };
+        let Some(total_pair_count) = upper_triangle_count(local_group_count) else {
+            return Err(RusticolError::artifact(
+                "recurrence local color pair count overflows u64",
+            ));
+        };
+        let Some(covered_pair_count) = upper_triangle_count(covered_local_group_count) else {
+            return Err(RusticolError::artifact(
+                "recurrence FFT-covered color pair count overflows u64",
+            ));
+        };
+        let residual_entry_count = total_pair_count - covered_pair_count;
+        let Some(channel_pair_count) = upper_triangle_count(factorization.coset_count) else {
+            return Err(RusticolError::artifact(
+                "recurrence FFT channel-pair count overflows u64",
+            ));
+        };
+        let Some(kernel_entry_count) = channel_pair_count.checked_mul(group_order) else {
+            return Err(RusticolError::artifact(
+                "recurrence FFT kernel entry count overflows u64",
+            ));
+        };
+        let Some(raw_kernel_bytes) = kernel_entry_count.checked_mul(16) else {
+            return Err(RusticolError::artifact(
+                "recurrence FFT kernel storage exceeds u64",
+            ));
+        };
+        let Some(transformed_kernel_bytes) = kernel_entry_count.checked_mul(8) else {
+            return Err(RusticolError::artifact(
+                "recurrence transformed FFT kernel storage exceeds u64",
+            ));
+        };
+        let expected_entry_count = kernel_entry_count
+            .checked_add(residual_entry_count)
+            .ok_or_else(|| RusticolError::artifact("recurrence FFT entry count overflows u64"))?;
+        let expected_logical_entry_count = expected_entry_count
+            .checked_mul(self.component_count)
+            .ok_or_else(|| {
+            RusticolError::artifact("recurrence FFT logical entry count overflows u64")
+        })?;
+        if provenance.method != "symmetric-group-fourier"
+            || provenance.degree != factorization.rank
+            || provenance.channel_count != factorization.coset_count
+            || provenance.covered_local_group_count != covered_local_group_count
+            || provenance.residual_group_count != residual_group_count
+            || provenance.residual_entry_count != residual_entry_count
+            || provenance.raw_kernel_bytes != raw_kernel_bytes
+            || provenance.transformed_kernel_bytes != transformed_kernel_bytes
+            || provenance.capability != SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+            || self.entry_count != expected_entry_count
+            || self.logical_entry_count != expected_logical_entry_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence symmetric-group FFT provenance is inconsistent",
             ));
         }
         Ok(())
@@ -2565,6 +2722,7 @@ pub(super) fn parse_recurrence_execution_manifest(
 fn validate_capabilities(
     capabilities: &[String],
     color_accuracy: &str,
+    uses_symmetric_group_fft: bool,
     context: &str,
 ) -> RusticolResult<()> {
     let color_capability = match color_accuracy {
@@ -2576,12 +2734,18 @@ fn validate_capabilities(
             )));
         }
     };
-    if capabilities.len() != 2
-        || capabilities[0] != color_capability
-        || capabilities[1] != RECURRENCE_RUNTIME_CAPABILITY
-    {
+    let expected = if uses_symmetric_group_fft {
+        vec![
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+            color_capability,
+            RECURRENCE_RUNTIME_CAPABILITY,
+        ]
+    } else {
+        vec![color_capability, RECURRENCE_RUNTIME_CAPABILITY]
+    };
+    if capabilities.iter().map(String::as_str).collect::<Vec<_>>() != expected {
         return Err(RusticolError::compatibility(format!(
-            "{context} must require exactly [{color_capability:?}, {RECURRENCE_RUNTIME_CAPABILITY:?}]"
+            "{context} must require exactly {expected:?}"
         )));
     }
     Ok(())

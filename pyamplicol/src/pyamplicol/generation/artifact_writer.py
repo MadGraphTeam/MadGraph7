@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import importlib.metadata
 import json
+import math
 import os
 import re
 import time
@@ -68,6 +69,7 @@ from .._internal.versions import (
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     SYMBOLICA_SERIALIZATION_ABI,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
     SYMJIT_PLANE_APPLICATION_ABI,
@@ -1724,7 +1726,7 @@ def _on_the_fly_execution_summary(
         summary = _deep_plain(process.color_contraction_summary)
         if not isinstance(summary, dict):
             raise TypeError("on-the-fly color-contraction summary must be a mapping")
-        if set(summary) != {
+        expected_summary_fields = {
             "abi",
             "color_accuracy",
             "storage",
@@ -1738,17 +1740,54 @@ def _on_the_fly_execution_summary(
             "logical_entry_count",
             "semantic_digest",
             "factorization",
-        }:
+        }
+        if (
+            isinstance(summary.get("factorization"), Mapping)
+            and summary["factorization"].get("kind")
+            == "symmetric-group-fourier"
+        ):
+            expected_summary_fields.add("fft_provenance")
+        if set(summary) != expected_summary_fields:
             raise ValueError(
                 "on-the-fly color-contraction summary fields are invalid"
             )
+        factorization = summary.get("factorization")
+        symmetric_group_fft = (
+            isinstance(factorization, Mapping)
+            and factorization.get("kind") == "symmetric-group-fourier"
+        )
+        factorization_rank = (
+            factorization.get("rank") if isinstance(factorization, Mapping) else None
+        )
+        factorization_coset_count = (
+            factorization.get("coset_count")
+            if isinstance(factorization, Mapping)
+            else None
+        )
+        factorization_is_canonical = (
+            factorization is None
+            if not symmetric_group_fft
+            else isinstance(factorization, Mapping)
+            and set(factorization) == {"kind", "rank", "coset_count"}
+            and isinstance(factorization_rank, int)
+            and not isinstance(factorization_rank, bool)
+            and 2 <= factorization_rank <= 10
+            and isinstance(factorization_coset_count, int)
+            and not isinstance(factorization_coset_count, bool)
+            and factorization_coset_count >= 1
+        )
+        _validate_symmetric_group_fft_provenance(
+            summary,
+            context="on-the-fly color-contraction",
+        )
         if (
             summary.get("abi") != "pyamplicol-recurrence-color-contraction-v3"
             or summary.get("color_accuracy") != process.color_accuracy
-            or summary.get("storage") != "expanded"
+            or summary.get("storage")
+            != ("convolution-kernels" if symmetric_group_fft else "expanded")
             or summary.get("includes_color_factor") is not True
             or summary.get("component_count") != 1
-            or summary.get("factorization") is not None
+            or not factorization_is_canonical
             or summary.get("active_sector_count") != summary.get("group_count")
             or summary.get("destination_count") != summary.get("group_count")
             or summary.get("logical_entry_count") != summary.get("entry_count")
@@ -2013,6 +2052,10 @@ def _recurrence_execution_manifest(
         summary = _deep_plain(process.color_contraction_summary)
         if not isinstance(summary, dict):
             raise TypeError("recurrence color-contraction summary must be a mapping")
+        _validate_symmetric_group_fft_provenance(
+            summary,
+            context="recurrence color-contraction",
+        )
         runtime_metadata["color_contraction"] = {
             **summary,
             "path": _RECURRENCE_COLOR_CONTRACTION_PATH,
@@ -4158,14 +4201,13 @@ def _on_the_fly_process_runtime_capabilities(
         raise ValueError(
             f"unsupported on-the-fly color accuracy {process.color_accuracy!r}"
         )
-    return tuple(
-        sorted(
-            {
-                color_capability,
-                ON_THE_FLY_RUNTIME_CAPABILITY,
-            }
-        )
-    )
+    capabilities = {
+        color_capability,
+        ON_THE_FLY_RUNTIME_CAPABILITY,
+    }
+    if _uses_symmetric_group_fft_color_contraction(process):
+        capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
+    return tuple(sorted(capabilities))
 
 
 def _recurrence_process_runtime_capabilities(
@@ -4176,14 +4218,101 @@ def _recurrence_process_runtime_capabilities(
         if process.color_accuracy == "lc"
         else RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
     )
-    return tuple(
-        sorted(
-            {
-                RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
-                color_capability,
-            }
-        )
+    capabilities = {
+        RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+        color_capability,
+    }
+    if _uses_symmetric_group_fft_color_contraction(process):
+        capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
+    return tuple(sorted(capabilities))
+
+
+def _uses_symmetric_group_fft_color_contraction(
+    process: OnTheFlyProcessArtifact | RecurrenceProcessArtifact,
+) -> bool:
+    summary = process.color_contraction_summary
+    if not isinstance(summary, Mapping):
+        return False
+    factorization = summary.get("factorization")
+    return isinstance(factorization, Mapping) and (
+        factorization.get("kind") == "symmetric-group-fourier"
     )
+
+
+def _validate_symmetric_group_fft_provenance(
+    summary: Mapping[str, object],
+    *,
+    context: str,
+) -> None:
+    factorization_raw = summary.get("factorization")
+    symmetric_group_fft = (
+        isinstance(factorization_raw, Mapping)
+        and factorization_raw.get("kind") == "symmetric-group-fourier"
+    )
+    provenance_raw = summary.get("fft_provenance")
+    if not symmetric_group_fft:
+        if provenance_raw is not None or "fft_provenance" in summary:
+            raise ValueError(f"{context} non-FFT summary carries FFT provenance")
+        return
+    factorization = _mapping(factorization_raw)
+    provenance = _mapping(provenance_raw)
+    if set(provenance) != {
+        "method",
+        "degree",
+        "channel_count",
+        "covered_local_group_count",
+        "residual_group_count",
+        "residual_entry_count",
+        "raw_kernel_bytes",
+        "transformed_kernel_bytes",
+        "capability",
+    }:
+        raise ValueError(f"{context} FFT provenance fields are invalid")
+    degree = _nonnegative_integer(
+        factorization.get("rank"), f"{context} FFT degree", minimum=2
+    )
+    channel_count = _nonnegative_integer(
+        factorization.get("coset_count"), f"{context} FFT channel count", minimum=1
+    )
+    group_count = _nonnegative_integer(
+        summary.get("group_count"), f"{context} group count", minimum=1
+    )
+    component_count = _nonnegative_integer(
+        summary.get("component_count"), f"{context} component count", minimum=1
+    )
+    if degree > 10 or group_count % component_count:
+        raise ValueError(f"{context} FFT group shape is invalid")
+    group_order = math.factorial(degree)
+    covered_local_group_count = channel_count * group_order
+    local_group_count = group_count // component_count
+    if covered_local_group_count > local_group_count:
+        raise ValueError(f"{context} FFT channels exceed local groups")
+    residual_group_count = local_group_count - covered_local_group_count
+    residual_entry_count = (
+        local_group_count * (local_group_count + 1) // 2
+        - covered_local_group_count * (covered_local_group_count + 1) // 2
+    )
+    kernel_entry_count = channel_count * (channel_count + 1) // 2 * group_order
+    raw_kernel_bytes = kernel_entry_count * 16
+    transformed_kernel_bytes = kernel_entry_count * 8
+    expected = {
+        "method": "symmetric-group-fourier",
+        "degree": degree,
+        "channel_count": channel_count,
+        "covered_local_group_count": covered_local_group_count,
+        "residual_group_count": residual_group_count,
+        "residual_entry_count": residual_entry_count,
+        "raw_kernel_bytes": raw_kernel_bytes,
+        "transformed_kernel_bytes": transformed_kernel_bytes,
+        "capability": SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+    }
+    if (
+        dict(provenance) != expected
+        or summary.get("entry_count") != kernel_entry_count + residual_entry_count
+        or summary.get("logical_entry_count")
+        != (kernel_entry_count + residual_entry_count) * component_count
+    ):
+        raise ValueError(f"{context} symmetric-group FFT provenance is inconsistent")
 
 
 def _required_runtime_capabilities(

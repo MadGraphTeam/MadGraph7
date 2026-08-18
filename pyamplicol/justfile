@@ -7,6 +7,7 @@ eager_builtin_pack := env_var_or_default("PYAMPLICOL_EAGER_BUILTIN_PACK", ".arti
 eager_ufo_pack := env_var_or_default("PYAMPLICOL_EAGER_UFO_SM_PACK", ".artifacts/eager-models/ufo-sm-jit-o3.pyamplicol-model")
 eager_ufo_source := env_var_or_default("PYAMPLICOL_EAGER_UFO_SM_SOURCE", "src/pyamplicol/assets/models/json/sm/sm.json")
 dev_cache := ".artifacts/dev-install"
+fft_performance_run_id := env_var_or_default("PYAMPLICOL_FFT_PERFORMANCE_RUN_ID", "manual")
 
 default:
     @just --list
@@ -49,6 +50,18 @@ python-physics:
 # four separate full-colour extra artifacts.
 numerical-acceptance: _source-checkout
     PYTHONPATH="$PWD/src" PYAMPLICOL_RUN_NUMERICAL_ACCEPTANCE=1 PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} -m pytest tests/integration/test_numerical_acceptance.py -q -x
+
+# Dedicated FFT process-table parity and frozen-MadGraph replay.
+# This expensive gate is absent from every default CI and release aggregate.
+fft-numerical-acceptance: _source-checkout
+    mkdir -p .artifacts/fft-acceptance-env/tmp .artifacts/fft-acceptance-env/cargo-home .artifacts/fft-acceptance-env/cargo-target .artifacts/fft-acceptance-env/pip-cache .artifacts/fft-acceptance-env/xdg-cache .artifacts/fft-acceptance-env/python-cache .artifacts/fft-numerical-acceptance
+    TMPDIR="$PWD/.artifacts/fft-acceptance-env/tmp" CARGO_HOME="$PWD/.artifacts/fft-acceptance-env/cargo-home" CARGO_TARGET_DIR="$PWD/.artifacts/fft-acceptance-env/cargo-target" CARGO_NET_OFFLINE=true PIP_CACHE_DIR="$PWD/.artifacts/fft-acceptance-env/pip-cache" PIP_NO_INDEX=1 XDG_CACHE_HOME="$PWD/.artifacts/fft-acceptance-env/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/.artifacts/fft-acceptance-env/python-cache" PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/fft_numerical_acceptance.py --output-root "$PWD/.artifacts/fft-numerical-acceptance"
+
+# Native same-host pure-gluon timing, RSS, and cold-to-ready comparison. This
+# hardware-sensitive gate is deliberately excluded from default CI/release runs.
+fft-performance-acceptance: _source-checkout
+    mkdir -p .artifacts/fft-performance/env/tmp .artifacts/fft-performance/env/cargo-home .artifacts/fft-performance/env/cargo-target .artifacts/fft-performance/env/pip-cache .artifacts/fft-performance/env/xdg-cache .artifacts/fft-performance/env/python-cache
+    TMPDIR="$PWD/.artifacts/fft-performance/env/tmp" CARGO_HOME="$PWD/.artifacts/fft-performance/env/cargo-home" CARGO_TARGET_DIR="$PWD/.artifacts/fft-performance/env/cargo-target" CARGO_NET_OFFLINE=true PIP_CACHE_DIR="$PWD/.artifacts/fft-performance/env/pip-cache" PIP_NO_INDEX=1 XDG_CACHE_HOME="$PWD/.artifacts/fft-performance/env/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/.artifacts/fft-performance/env/python-cache" PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/fft_gluon_performance_acceptance.py --include-optional --run-id "{{fft_performance_run_id}}"
 
 # Build a fresh wheel through the real backend and stage only ignored native
 # runtime/SDK resources beside the current Python source for source-tree tests.

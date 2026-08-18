@@ -20,6 +20,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from pyamplicol._internal.versions import (
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
     active_native_source_identity,
     active_source_revision,
     verify_native_module,
@@ -1163,52 +1164,122 @@ def _on_the_fly_validation_selectors_v1(
 
 def _build_on_the_fly_contracted_color_payload_v1(
     color_plan: GenericColorPlan,
+    *,
+    contraction: str = "direct",
 ) -> _OnTheFlyContractedColorPayloadV1:
     """Encode the contracted metric over compact structural selector ordinals."""
 
     contraction, sector_owner_ids, owner_sector_ids = (
-        build_on_the_fly_color_contraction(color_plan)
+        build_on_the_fly_color_contraction(
+            color_plan,
+            contraction=contraction,
+        )
     )
-    group_count = len(owner_sector_ids)
-    destination_by_group = tuple(range(group_count))
+    group_count = contraction.group_count
+    destination_count = len(owner_sector_ids)
+    destination_by_group = (
+        tuple(range(group_count))
+        if contraction.destination_by_group is None
+        else contraction.destination_by_group
+    )
+    if (
+        len(destination_by_group) != group_count
+        or len(set(destination_by_group)) != group_count
+        or any(
+            destination_id < 0 or destination_id >= destination_count
+            for destination_id in destination_by_group
+        )
+    ):
+        raise ValueError(
+            "on-the-fly color contraction has an invalid destination projection"
+        )
+    normalized_owner_sector_ids = tuple(
+        owner_sector_ids[destination_id]
+        for destination_id in destination_by_group
+    )
     payload = encode_recurrence_color_contraction(
         contraction,
         sector_count=color_plan.sector_count,
         component_count=1,
         ordered_group_ids=tuple(range(group_count)),
         destination_by_group=destination_by_group,
-        destination_count=group_count,
-        group_sector_ids=owner_sector_ids,
+        destination_count=destination_count,
+        group_sector_ids=normalized_owner_sector_ids,
         group_component_ids=(0,) * group_count,
         sector_owner_ids=sector_owner_ids,
         exact_coefficients=recurrence_exact_color_coefficients(
             color_plan,
             contraction,
-            owner_sector_ids,
+            normalized_owner_sector_ids,
         ),
     )
     semantic_digest = recurrence_color_contraction_digest(payload)
+    symmetric_group = contraction.symmetric_group_block
     summary = MappingProxyType(
         {
             "abi": RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
             "color_accuracy": contraction.color_accuracy,
-            "storage": "expanded",
+            "storage": (
+                "convolution-kernels"
+                if symmetric_group is not None
+                else "expanded"
+            ),
             "includes_color_factor": contraction.includes_color_factor,
             "group_count": group_count,
             "sector_count": color_plan.sector_count,
             "active_sector_count": group_count,
             "component_count": 1,
-            "destination_count": group_count,
-            "entry_count": len(contraction.entries),
+            "destination_count": destination_count,
+            "entry_count": (
+                len(contraction.entries)
+                if symmetric_group is None
+                else symmetric_group.stored_entry_count
+            ),
             "logical_entry_count": contraction.logical_entry_count,
             "semantic_digest": semantic_digest,
-            "factorization": None,
+            "factorization": (
+                None
+                if symmetric_group is None
+                else {
+                    "kind": "symmetric-group-fourier",
+                    "rank": symmetric_group.degree,
+                    "coset_count": symmetric_group.channel_count,
+                }
+            ),
+            **(
+                {}
+                if symmetric_group is None
+                else {
+                    "fft_provenance": {
+                        "method": "symmetric-group-fourier",
+                        "degree": symmetric_group.degree,
+                        "channel_count": symmetric_group.channel_count,
+                        "covered_local_group_count": (
+                            symmetric_group.channel_count
+                            * math.factorial(symmetric_group.degree)
+                        ),
+                        "residual_group_count": len(
+                            symmetric_group.residual_local_group_indices
+                        ),
+                        "residual_entry_count": len(
+                            symmetric_group.residual_entries
+                        ),
+                        "raw_kernel_bytes": len(symmetric_group.kernel_entries) * 16,
+                        "transformed_kernel_bytes": (
+                            len(symmetric_group.kernel_entries) * 8
+                        ),
+                        "capability": (
+                            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+                        ),
+                    }
+                }
+            ),
         }
     )
     return _OnTheFlyContractedColorPayloadV1(
         payload=payload,
         summary=summary,
-        owner_sector_ids=owner_sector_ids,
+        owner_sector_ids=normalized_owner_sector_ids,
         destination_by_group=destination_by_group,
     )
 
@@ -3362,7 +3433,8 @@ class GenerationBackend:
                 )
             try:
                 contracted_color = _build_on_the_fly_contracted_color_payload_v1(
-                    projection.color_plan
+                    projection.color_plan,
+                    contraction=run.color.contraction.value,
                 )
             except ValueError as exc:
                 raise GenerationError(
@@ -4967,6 +5039,7 @@ class GenerationBackend:
             prepared.complete_color_plan,
             resolved_helicities,
             amplitude_destinations,
+            contraction=run.color.contraction.value,
         )
         color_contraction_payload = None
         color_contraction_summary = None
@@ -4990,34 +5063,58 @@ class GenerationBackend:
                 amplitude_destinations,
             )
             destination_count = len(contraction_destinations)
-            if destination_count != group_count:
+            if destination_count < group_count:
                 raise GenerationError(
-                    "contracted recurrence physical replay domain does not match "
-                    "its color-contraction groups"
+                    "contracted recurrence physical replay domain is smaller "
+                    "than its color-contraction group domain"
                 )
             if any(helicity_id is None for _, helicity_id in amplitude_destinations):
                 raise GenerationError(
                     "contracted recurrence exposes a destination without a "
                     "resolved helicity"
                 )
+            destination_by_group = (
+                tuple(range(group_count))
+                if color_contraction.destination_by_group is None
+                else color_contraction.destination_by_group
+            )
+            if (
+                len(destination_by_group) != group_count
+                or len(set(destination_by_group)) != group_count
+                or any(
+                    destination_id < 0 or destination_id >= destination_count
+                    for destination_id in destination_by_group
+                )
+            ):
+                raise GenerationError(
+                    "contracted recurrence color plan has an invalid destination "
+                    "projection"
+                )
+            normalized_destinations = tuple(
+                contraction_destinations[destination_id]
+                for destination_id in destination_by_group
+            )
             group_sector_ids = tuple(
-                sector_id for sector_id, _ in contraction_destinations
+                sector_id for sector_id, _ in normalized_destinations
             )
             group_component_ids = tuple(
-                cast(int, helicity_id) for _, helicity_id in contraction_destinations
+                cast(int, helicity_id) for _, helicity_id in normalized_destinations
             )
             repeated = color_contraction.repeated_block
+            symmetric_group = color_contraction.symmetric_group_block
             ordered_group_ids = (
-                tuple(range(group_count))
-                if repeated is None
-                else repeated.component_group_ids
+                repeated.component_group_ids
+                if repeated is not None
+                else symmetric_group.component_group_ids
+                if symmetric_group is not None
+                else tuple(range(group_count))
             )
             color_contraction_payload = encode_recurrence_color_contraction(
                 color_contraction,
                 sector_count=sector_count,
                 component_count=component_count,
                 ordered_group_ids=ordered_group_ids,
-                destination_by_group=tuple(range(destination_count)),
+                destination_by_group=destination_by_group,
                 destination_count=destination_count,
                 group_sector_ids=group_sector_ids,
                 group_component_ids=group_component_ids,
@@ -5038,8 +5135,10 @@ class GenerationBackend:
                 "abi": RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
                 "color_accuracy": color_contraction.color_accuracy,
                 "storage": (
-                    "expanded"
-                    if color_contraction.repeated_block is None
+                    "convolution-kernels"
+                    if symmetric_group is not None
+                    else "expanded"
+                    if repeated is None
                     else "repeated"
                 ),
                 "includes_color_factor": color_contraction.includes_color_factor,
@@ -5050,14 +5149,22 @@ class GenerationBackend:
                 "destination_count": destination_count,
                 "materialized_destination_count": schedule_destination_count,
                 "entry_count": (
-                    len(color_contraction.entries)
+                    symmetric_group.stored_entry_count
+                    if symmetric_group is not None
+                    else len(color_contraction.entries)
                     if repeated is None
                     else len(repeated.entries)
                 ),
                 "logical_entry_count": color_contraction.logical_entry_count,
                 "semantic_digest": color_digest,
                 "factorization": (
-                    None
+                    {
+                        "kind": "symmetric-group-fourier",
+                        "rank": symmetric_group.degree,
+                        "coset_count": symmetric_group.channel_count,
+                    }
+                    if symmetric_group is not None
+                    else None
                     if repeated is None or repeated.factorized_block is None
                     else {
                         "kind": repeated.factorized_block.kind,
@@ -5067,6 +5174,36 @@ class GenerationBackend:
                             else repeated.factorized_block.rank
                         ),
                         "coset_count": len(repeated.factorized_block.cosets),
+                    }
+                ),
+                **(
+                    {}
+                    if symmetric_group is None
+                    else {
+                        "fft_provenance": {
+                            "method": "symmetric-group-fourier",
+                            "degree": symmetric_group.degree,
+                            "channel_count": symmetric_group.channel_count,
+                            "covered_local_group_count": (
+                                symmetric_group.channel_count
+                                * math.factorial(symmetric_group.degree)
+                            ),
+                            "residual_group_count": len(
+                                symmetric_group.residual_local_group_indices
+                            ),
+                            "residual_entry_count": len(
+                                symmetric_group.residual_entries
+                            ),
+                            "raw_kernel_bytes": (
+                                len(symmetric_group.kernel_entries) * 16
+                            ),
+                            "transformed_kernel_bytes": (
+                                len(symmetric_group.kernel_entries) * 8
+                            ),
+                            "capability": (
+                                SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+                            ),
+                        }
                     }
                 ),
             }

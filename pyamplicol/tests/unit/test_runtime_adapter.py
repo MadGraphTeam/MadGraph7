@@ -19,6 +19,7 @@ from pyamplicol._internal.versions import (
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
     SYMJIT_F64_RUNTIME_CAPABILITY,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api import (
     ArtifactError,
@@ -1119,9 +1120,109 @@ def test_adapter_accepts_on_the_fly_contracted_color_capability(
         backend = backend_module.load_runtime_backend(tmp_path, process="uux_g")
         assert backend.execution_mode == "on-the-fly"
         assert backend.physics.color_accuracy == "full"
+        assert backend.required_runtime_capabilities == (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        )
         with pytest.raises(EvaluationError, match="does not expose color-flow"):
             Runtime(backend).warm_up(((),), color_flows=("c0",))
         assert _NativeRuntime.last_warm_up_options is None
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+        _NativeRuntime.physics_value = _native_physics("lc")
+
+
+def test_adapter_accepts_on_the_fly_symmetric_group_fft_capability(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    capabilities = (
+        ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+        ON_THE_FLY_RUNTIME_CAPABILITY,
+        SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+    )
+    manifest = _selector_manifest(tmp_path, capabilities=capabilities)
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "on-the-fly"
+    _NativeRuntime.physics_value = _native_physics("full")
+    try:
+        runtime = Runtime.load(tmp_path, process="uux_g")
+        assert runtime.execution_mode == "on-the-fly"
+        assert runtime.physics.color_accuracy == "full"
+        assert runtime._backend.required_runtime_capabilities == capabilities
+        assert runtime._backend.supports_per_point_selectors
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+        _NativeRuntime.physics_value = _native_physics("lc")
+
+
+@pytest.mark.parametrize(
+    "capabilities",
+    (
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            "unknown.runtime-capability.v1",
+        ),
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+            "unknown.runtime-capability.v1",
+        ),
+        (
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        ),
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        ),
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        ),
+    ),
+    ids=(
+        "direct-extra",
+        "fft-extra",
+        "fft-with-lc",
+        "duplicate-fft",
+        "fft-without-otf",
+    ),
+)
+def test_adapter_rejects_invalid_on_the_fly_capability_sets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capabilities: tuple[str, ...],
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(tmp_path, capabilities=capabilities)
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "on-the-fly"
+    _NativeRuntime.physics_value = _native_physics("full")
+    try:
+        with pytest.raises(
+            CompatibilityError,
+            match="invalid runtime capability contract",
+        ):
+            Runtime.load(tmp_path, process="uux_g")
     finally:
         _NativeRuntime.execution_mode = "compiled"
         _NativeRuntime.physics_value = _native_physics("lc")

@@ -12,9 +12,14 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol.api.errors import ArtifactError, EvaluationError
+from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.artifacts.manifest import ArtifactManifest, PayloadRecord
-from pyamplicol.color import ColorContractionEntry, ColorContractionPlan
+from pyamplicol.color import (
+    ColorContractionEntry,
+    ColorContractionPlan,
+    ColorContractionTemplateEntry,
+    SymmetricGroupColorContractionBlock,
+)
 from pyamplicol.generation.recurrence_color import (
     RecurrenceColorCodecError,
     encode_recurrence_color_contraction,
@@ -341,6 +346,98 @@ def test_color_encoder_accepts_sparse_expanded_coordinates() -> None:
     assert contraction.group_sector_ids == (0, 2, 1)
 
 
+def test_color_encoder_emits_canonical_symmetric_group_kernel_rows() -> None:
+    block = SymmetricGroupColorContractionBlock(
+        degree=2,
+        component_count=1,
+        component_group_ids=(0, 1, 2),
+        local_sector_ids=(0, 1, 2),
+        channel_cosets=((0, 1),),
+        kernel_entries=(
+            ColorContractionTemplateEntry(0, 0, 3.0),
+            ColorContractionTemplateEntry(0, 1, 1.0),
+        ),
+        kernel_exact_weights=(Fraction(3), Fraction(1)),
+        residual_entries=(
+            ColorContractionTemplateEntry(0, 2, 0.25, symmetry_factor=2.0),
+            ColorContractionTemplateEntry(1, 2, 0.0, symmetry_factor=2.0),
+            ColorContractionTemplateEntry(2, 2, 5.0),
+        ),
+        residual_exact_weights=(Fraction(1, 4), Fraction(0), Fraction(5)),
+        residual_local_group_indices=(2,),
+    )
+    plan = ColorContractionPlan(
+        color_accuracy="full",
+        supported=True,
+        reason=None,
+        group_count=3,
+        entries=(),
+        symmetric_group_block=block,
+        destination_by_group=(2, 0, 1),
+    )
+    exact_values = (
+        Fraction(3),
+        Fraction(1),
+        Fraction(1, 2),
+        Fraction(0),
+        Fraction(5),
+    )
+    exact = tuple(
+        ExactComplexRationalV1(value.numerator, value.denominator)
+        for value in exact_values
+    )
+    payload = encode_recurrence_color_contraction(
+        plan,
+        sector_count=3,
+        component_count=1,
+        ordered_group_ids=(0, 1, 2),
+        destination_by_group=(2, 0, 1),
+        group_sector_ids=(0, 1, 2),
+        group_component_ids=(0, 0, 0),
+        sector_owner_ids=(0, 1, 2),
+        exact_coefficients=exact,
+        destination_count=3,
+    )
+
+    header = _HEADER.unpack_from(payload)
+    assert header[0] == b"PACRCLR3"
+    assert header[1:4] == (3, _HEADER.size, 3)
+    assert header[11:13] == (3, 2)
+    assert header[15:20] == (5, 5, 1, 2, 5)
+    rows = tuple(
+        _ENTRY.unpack_from(payload, _HEADER.size + index * _ENTRY.size)[:5]
+        for index in range(5)
+    )
+    assert rows == (
+        (0, 0, 3.0, 0.0, 1.0),
+        (0, 1, 1.0, 0.0, 1.0),
+        (0, 2, 0.25, 0.0, 2.0),
+        (1, 2, 0.0, 0.0, 2.0),
+        (2, 2, 5.0, 0.0, 1.0),
+    )
+    assert struct.unpack_from("<2I", payload, len(payload) - 2 * _U32.size) == (
+        0,
+        1,
+    )
+
+    with pytest.raises(CompatibilityError, match="native f64 evaluation"):
+        _decode_recurrence_color_contraction(payload)
+
+    with pytest.raises(RecurrenceColorCodecError, match="certified convolution plan"):
+        encode_recurrence_color_contraction(
+            plan,
+            sector_count=3,
+            component_count=1,
+            ordered_group_ids=(0, 1, 2),
+            destination_by_group=(2, 0, 1),
+            group_sector_ids=(0, 1, 2),
+            group_component_ids=(0, 0, 0),
+            sector_owner_ids=(0, 1, 2),
+            exact_coefficients=(*exact[:-1], ExactComplexRationalV1(6)),
+            destination_count=3,
+        )
+
+
 def test_color_encoder_rejects_duplicate_group_coordinates() -> None:
     plan = ColorContractionPlan(
         color_accuracy="nlc",
@@ -643,6 +740,7 @@ def test_contracted_exact_replay_reconstructs_dense_physical_destinations(
 ) -> None:
     executor = object.__new__(RecurrenceExactExecutor)
     executor._plan = _contracted_replay_plan()
+    executor._permutation = (0, 1)
     executor._physics = {
         "helicities": [
             {"id": "h:0,0", "values": [0, 0]},
@@ -709,7 +807,7 @@ def test_contracted_exact_resolved_output_and_selector_contract(
         ],
         "color_accuracy": "full",
     }
-    executor._permutation = None
+    executor._permutation = (0, 1)
     executor._native_runtime = object()
     (
         executor._helicity_representative,
