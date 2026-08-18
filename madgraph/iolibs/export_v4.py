@@ -3255,6 +3255,194 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         replace_dict['crossing_routines'] = \
             open(crossing_template).read() % replace_dict
 
+    def fill_crossing_replace_dict_so(self, matrix_element, replace_dict,
+                                      use_crossing):
+        """Fill the crossing holes of matrix_standalone_splitOrders_v4.inc.
+
+        Same job as fill_crossing_replace_dict, against a SMATRIX that differs
+        structurally: ANS and T are vectors over the squared split orders, and
+        MATRIX is a subroutine rather than a function. So the split-orders
+        template gets its own hole set rather than sharing the default one --
+        the shapes do not line up, and pretending they do is how a template
+        ends up with a hole it cannot fill.
+
+        With crossing OFF every hole reproduces the code that was written
+        before any of this existed, byte for byte, which is what keeps the FKS
+        and MadLoop borns (written from this same template, and always
+        uncrossed -- a perturbative process breaks crossing symmetry) exactly
+        as they were.
+
+        Requires proc_prefix, nflav and den_factor_line to be set already.
+        """
+        prefix = replace_dict['proc_prefix']
+
+        if not use_crossing:
+            replace_dict.update({
+                'so_cross_decl': '',
+                'so_entry_guard':
+                    '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) THEN\n'
+                    '        ANS(:) = 0d0\n'
+                    '        RETURN\n'
+                    '      ENDIF',
+                'so_cross_decode': '',
+                'so_cross_apply': '',
+                'so_csym_decl': '',
+                'so_csym_reset': '',
+                'so_csym_incr': '',
+                # No crossing -> every call is uncrossed, so the plain NTRY is
+                # the C-parity scan counter and no call has to be excluded.
+                'so_csym_ntry': 'NTRY',
+                'so_dedup_cross': '',
+                'so_goodhel_gate':
+                    '           IF (GOODHEL(IHEL,FLAV_USE) .OR. NTRY(FLAV_USE)'
+                    ' .LT. 20 .OR.USERHEL.NE.-1) THEN',
+                'so_matrix_call':
+                    '              CALL %sMATRIX(P ,NHEL(1,IHEL),JC(1),'
+                    'FLAV_USE, T)' % prefix,
+                'so_goodhel_train':
+                    '              IF (BUFF .NE. 0D0 .AND. .NOT.    '
+                    'GOODHEL(IHEL,FLAV_USE)) THEN\n'
+                    '                GOODHEL(IHEL,FLAV_USE)=.TRUE.\n'
+                    '              ENDIF',
+                'so_iden_line':
+                    'C     IDEN carries the identical-particle factor of the'
+                    ' representative\nC     flavor; BROKEN_SYM corrects it for'
+                    ' the actual one.\n'
+                    '      DO I=1,NSQAMPSO\n'
+                    '        ANS(I)=ANS(I)/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)\n'
+                    '      ENDDO' % prefix,
+                'so_getamp_guard': '',
+                'so_crossing_routines': '',
+                'so_pdg_function': '',
+            })
+            return
+
+        replace_dict.update({
+            'so_cross_decl':
+                'C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE'
+                ' the initial\nC     state spin*color average of the process it'
+                ' crosses into. PUSE/NHELUSE/ICUSE\nC     are the crossed'
+                ' momenta, helicity table and NSF flags, built once per call.\n'
+                '      INTEGER IDENUSE, CROSSUSE\n'
+                '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
+                '      INTEGER %(p)sGET_IDENT_CROSS\n'
+                '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
+                '      INTEGER NHELUSE(NEXTERNAL,NCOMB)\n'
+                '      INTEGER ICUSE(NEXTERNAL)\n'
+                '      INTEGER DUMFLAV\n'
+                'C     GHIDX is the identity row whose shared GOODHEL bit gates'
+                ' the current\nC     crossed row; XGPERM/XGSGN are the'
+                ' crossing\'s slot permutation and NSF\nC     signs, fetched'
+                ' once per call.\n'
+                '      INTEGER GHIDX\n'
+                '      INTEGER XGPERM(NEXTERNAL), XGSGN(NEXTERNAL), XGDUM'
+                % {'p': prefix},
+            # An extended index is legal here; only the lower bound is fixed.
+            'so_entry_guard':
+                '      IF (FLAV_IDX.LT.1) THEN\n'
+                '        ANS(:) = 0d0\n'
+                '        RETURN\n'
+                '      ENDIF',
+            'so_cross_decode':
+                'C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply.'
+                ' IDENUSE is 0 for a\nC     crossing that cannot be applied,'
+                ' whose matrix element is identically zero.\n'
+                '      CROSSUSE = (FLAV_IDX-1) / NFLAV\n'
+                '      IDENUSE = %(p)sGET_SPINCOL_CROSS(CROSSUSE)\n'
+                '      IF (IDENUSE.EQ.0) THEN\n'
+                '        ANS(:) = 0d0\n'
+                '        RETURN\n'
+                '      ENDIF' % {'p': prefix},
+            'so_cross_apply':
+                'C     Apply the crossing ONCE, here, rather than once per'
+                ' helicity: it is a\nC     fixed slot permutation, identical'
+                ' for every row, so the whole NHEL table\nC     goes through in'
+                ' one sweep together with the momenta and the NSF flags.\n'
+                '      CALL %(p)sGET_CROSS_PERM(FLAV_IDX, XGPERM, XGSGN, XGDUM)\n'
+                '      IF (CROSSUSE.NE.0) THEN\n'
+                '        CALL %(p)sAPPLY_CROSSING_TABLE(FLAV_IDX, NCOMB, P,'
+                ' NHEL,\n'
+                '     &   JC, PUSE, NHELUSE, ICUSE, DUMFLAV)\n'
+                '      ENDIF' % {'p': prefix},
+            'so_csym_decl':
+                'C     NTRY_CSYM counts only the uncrossed (cross 0) calls: the'
+                ' C-parity pairing\nC     is a base-row negation, which a'
+                ' crossing does not preserve.\n'
+                '      INTEGER NTRY_CSYM(NFLAV)\n'
+                '      DATA NTRY_CSYM/NNTRY_FLAV*0/',
+            'so_csym_reset': '      NTRY_CSYM(i) = 0',
+            'so_csym_incr':
+                '      IF(USERHEL.EQ.-1.AND.FLAV_IDX.LE.NFLAV)\n'
+                '     &   NTRY_CSYM(FLAV_USE)=NTRY_CSYM(FLAV_USE)+1',
+            'so_csym_ntry': 'NTRY_CSYM',
+            'so_dedup_cross': ' .AND. FLAV_IDX.LE.NFLAV',
+            'so_goodhel_gate':
+                'C     GOODHEL is shared by every crossing of a flavor, but a'
+                ' crossing permutes\nC     and flips helicities, so CROSS_GHIDX'
+                ' sends crossed row IHEL to the identity\nC     row that gates'
+                ' it. GHIDX=0 means not filterable -> compute it.\n'
+                '           CALL %(p)sCROSS_GHIDX(CROSSUSE, XGPERM, XGSGN,\n'
+                '     &      NHEL(1,IHEL), GHIDX)\n'
+                '           IF (GHIDX.EQ.0 .OR. GOODHEL(GHIDX,FLAV_USE) .OR.'
+                ' NTRY(FLAV_USE) .LT. 20 .OR.USERHEL.NE.-1) THEN'
+                % {'p': prefix},
+            'so_matrix_call':
+                '              IF (CROSSUSE.EQ.0) THEN\n'
+                '                CALL %(p)sMATRIX(P ,NHEL(1,IHEL),JC(1),'
+                'FLAV_USE, T)\n'
+                '              ELSE\n'
+                '                CALL %(p)sMATRIX(PUSE,NHELUSE(1,IHEL),'
+                'ICUSE(1), FLAV_USE, T)\n'
+                '              ENDIF' % {'p': prefix},
+            'so_goodhel_train':
+                'C     Train the SHARED filter through the same map, so GOODHEL'
+                ' always stores\nC     the identity pattern whatever crossing is'
+                ' being evaluated.\n'
+                '              IF (BUFF .NE. 0D0 .AND. GHIDX.NE.0 .AND. .NOT.'
+                '    GOODHEL(GHIDX,FLAV_USE)) THEN\n'
+                '                GOODHEL(GHIDX,FLAV_USE)=.TRUE.\n'
+                '              ENDIF',
+            'so_iden_line':
+                'C     Uncrossed: IDEN carries the representative'
+                ' identical-particle factor and\nC     BROKEN_SYM corrects it'
+                ' per flavor. Crossed: BROKEN_SYM\'s tables describe\n'
+                'C     the uncrossed final state, so rebuild the denominator as'
+                ' initial state\nC     spin*color (per crossing) times the'
+                ' identical final state factor of the\nC     actual crossed'
+                ' flavors.\n'
+                '      IF (CROSSUSE.EQ.0) THEN\n'
+                '        DO I=1,NSQAMPSO\n'
+                '          ANS(I)=ANS(I)/DBLE(IDEN)*%(p)sBROKEN_SYM(FLAVOR)\n'
+                '        ENDDO\n'
+                '      ELSE\n'
+                '        DO I=1,NSQAMPSO\n'
+                '          ANS(I)=ANS(I)/DBLE(IDENUSE*%(p)sGET_IDENT_CROSS(\n'
+                '     &     CROSSUSE, FLAVOR))\n'
+                '        ENDDO\n'
+                '      ENDIF' % {'p': prefix},
+            'so_getamp_guard':
+                'C     Contract guard: an extended FLAV_IDX (one carrying a'
+                ' crossing) reaching\nC     this routine would be silently'
+                ' truncated to its flavor part and give the\nC     uncrossed'
+                ' amplitude. Fail loudly and return zero instead.\n'
+                '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) THEN\n'
+                "        WRITE(*,*) 'ERROR: GET_AMP got FLAV_IDX', FLAV_IDX\n"
+                "        WRITE(*,*) 'GET_AMP needs a reduced index and crossed"
+                " P/NHEL/IC.'\n"
+                '        DO AMP_I = 1, NGRAPHS\n'
+                '          AMP(AMP_I) = (0D0, 0D0)\n'
+                '        ENDDO\n'
+                '        RETURN\n'
+                '      ENDIF',
+        })
+        # Both blocks are already built, by fill_crossing_replace_dict and by
+        # the GET_PDG_FOR_FLAVOR writer: this template just opts into them.
+        # They are reached through holes of their own rather than the default
+        # template's names so that a split-orders file written WITHOUT crossing
+        # gets neither -- GET_PDG_FOR_FLAVOR only exists to decode a crossing.
+        replace_dict['so_crossing_routines'] = replace_dict['crossing_routines']
+        replace_dict['so_pdg_function'] = replace_dict['flavor_pdg_function']
+
     def fill_crossing_replace_dict_me(self, matrix_element, replace_dict,
                                       use_crossing, proc_id, xgrow_map=None):
         """Fill the crossing holes of matrix_madevent_group_v4.inc.
@@ -6628,6 +6816,21 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 pjoin(_file_path, 'iolibs', 'template_files', template)).read()
         return marker in self._matrix_template_cache[template]
 
+    def matrix_template_has_pdg_decoder(self, matrix_element):
+        """True when the matrix element file defines GET_PDG_FOR_FLAVOR.
+
+        Two templates emit it, through holes of their own: the default one
+        always (%(flavor_pdg_function)s), the split-orders one only when the
+        crossing machinery is written (%(so_pdg_function)s -- without a
+        crossing there is nothing for it to decode). Asking for one hole name
+        would answer 'no' for the other template even though the routine is
+        right there, which is how the crossing demonstration went missing from
+        a folded split-orders output that could perfectly well run it.
+        """
+        return any(self.matrix_template_provides(matrix_element, marker)
+                   for marker in ('%(flavor_pdg_function)s',
+                                  '%(so_pdg_function)s'))
+
     # template name -> text, so the lookup above costs one read per output
     _matrix_template_cache = {}
 
@@ -7651,12 +7854,13 @@ C       so this also stays correct for split-order processes.
         fortran_model.use_crossing_ic = (
             use_crossing
             and (hel_recycling
-                 or self.matrix_template == 'matrix_standalone_v4.inc')
+                 or self.get_matrix_template(matrix_element) in (
+                     'matrix_standalone_v4.inc',
+                     'matrix_standalone_splitOrders_v4.inc'))
             and self.opt['export_format'] not in ('standalone_msP',
                                                   'standalone_msF',
                                                   'matchbox',
-                                                  'madloop_matchbox')
-            and not matrix_element.get('processes')[0].get('split_orders'))
+                                                  'madloop_matchbox'))
         try:
             # Extract helas calls
             helas_calls = fortran_model.get_matrix_element_calls(\
@@ -8029,6 +8233,11 @@ C       so this also stays correct for split-order processes.
                 n_pdg_flav, pdg_flat, antipdg_flat,
                 replace_dict['pdg_cross_snippets'],
                 nexternal_decl=bs_nexternal)
+
+        # ... and the split-orders template's own crossing holes, which need
+        # both of the blocks above, so this comes last.
+        self.fill_crossing_replace_dict_so(matrix_element, replace_dict,
+                                           use_crossing)
 
         # f2py entry points taking an extended FLAV_IDX (the only way a python
         # caller can request a crossing, and reach GET_DENSITY_IDX /
@@ -8837,8 +9046,7 @@ C       so this also stays correct for split-order processes.
         # block against those leaves the driver unlinkable (or, when the block
         # happens to be gated off, relying on the compiler to drop a call to a
         # symbol that does not exist).
-        if not self.matrix_template_provides(matrix_element,
-                                             '%(flavor_pdg_function)s'):
+        if not self.matrix_template_has_pdg_decoder(matrix_element):
             return ''
 
         # Gate the demo on the generated DATA, not on the flag. The block is

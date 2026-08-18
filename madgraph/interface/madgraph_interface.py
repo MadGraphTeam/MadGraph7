@@ -10232,25 +10232,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         subprocesses, and expanding is always safe: it just reproduces the
         complete unmerged (--use_crossing=False) output.
 
-        The format is not the whole answer, though: a folding-capable backend
-        still has to write the base from a template that carries the crossing
-        machinery, and a process with a SQUARED ORDER constraint is written
-        from matrix_standalone_splitOrders_v4.inc, which does not
-        (write_matrix_element_v4's get_matrix_template picks it whenever the
-        process has split_orders). Folding into it drops the crossed
-        subprocesses outright: `p p > j j QCD^2==4 --use_crossing=True` folded
-        8 subprocesses onto 3 and wrote no decoder, so 50 of the 65 flavor
-        columns became unreachable and an extended FLAV_IDX returned 0 without
-        a word. Expanding is the same answer the user gets with
-        --use_crossing=False, so ask for it here until that template can fold.
+        This used to carve out squared-order processes as well: their matrix
+        element is written from matrix_standalone_splitOrders_v4.inc, which had
+        no crossing machinery, so folding into it dropped the crossed
+        subprocesses outright. That template folds now
+        (fill_crossing_replace_dict_so), so the carve-out is gone and the
+        answer is the format again. The other two folding formats never needed
+        it: standalone_rw writes the same fortran template, and the
+        mg7/cudacpp exporter has no split-orders variant at all.
         """
         crossed = [amp for amp in amps if 'crossed_processes' in amp
                    and amp.get('crossed_processes')]
         if not crossed:
             return False
-        if not self._output_folds_crossings():
-            return True
-        return any(amp.get('process').get('split_orders') for amp in crossed)
+        return not self._output_folds_crossings()
 
     def _split_reorder_blocked(self, amps):
         """Peel the flavor classes that keep a module compiled for no good reason.

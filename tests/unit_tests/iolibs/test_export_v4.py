@@ -255,17 +255,12 @@ class IOExportV4IOTest(IOTests.IOTestManager,
         # ... and the color sum is folded only where it can be read back
         self.assertIsNone(matchbox.get_jamp_folding(self.mymatrixelement))
 
-    def test_splitorders_template_carries_the_non_crossing_standalone_api(self):
+    def test_splitorders_template_carries_the_standalone_api(self):
         """Which parts of matrix_standalone_v4.inc the split-orders template
         deliberately does and does not carry.
 
         The two drifted apart, and the point of pinning it here is that a
-        reader can tell an intended difference from an accident. The rule is
-        the crossing: the split-orders variant has no crossing machinery (see
-        fill_crossing_replace_dict, which only fills holes the default template
-        has, and use_crossing_ic, which excludes split orders), so everything
-        that exists only to decode an extended FLAV_IDX stays out, and
-        everything that is meaningful without a crossing is carried.
+        reader can tell an intended difference from an accident.
         """
         sa = export_v4.ProcessExporterFortranSA()
         process = self.mymatrixelement.get('processes')[0]
@@ -275,22 +270,33 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             self.assertEqual('matrix_standalone_splitOrders_v4.inc',
                              sa.get_matrix_template(self.mymatrixelement))
 
-            # Carried: the canonical helicity table (one definition of the
-            # allowed-code list, decoded into PROCESS_NHEL at runtime), the
-            # C-parity de-duplication, and the flavor-aware denominator
-            # accessor -- none of which needs a crossing.
+            # Carried: the canonical helicity table, the C-parity
+            # de-duplication, the flavor-aware denominator accessor, and --
+            # through holes of its own, filled by
+            # fill_crossing_replace_dict_so -- the crossing machinery.
             for marker in ('DECODE_HEL', 'FILL_NHEL', '%(hel_allow_data)s',
                            '%(flip_data)s', 'GET_NHEL_IDX', 'GET_DENSITY',
-                           'GET_ALL_INTER'):
+                           'GET_ALL_INTER', '%(so_crossing_routines)s',
+                           '%(so_pdg_function)s', '%(so_cross_decode)s'):
                 self.assertTrue(
                     sa.matrix_template_provides(self.mymatrixelement, marker),
                     '%s missing from the split-orders template' % marker)
 
+            # ... so the crossing demonstration check_sa.f writes must be
+            # emitted against it: it calls GET_PDG_FOR_FLAVOR, which this
+            # template reaches through so_pdg_function rather than the default
+            # template's hole, and asking for the wrong hole name is how that
+            # block went missing from a folded output that could run it.
+            self.assertTrue(
+                sa.matrix_template_has_pdg_decoder(self.mymatrixelement))
+
             # Left out on purpose. The _IDX / _CROSSED / RESCALE density stack
-            # and GET_PDG_FOR_FLAVOR exist only because a FLAVOR array cannot
-            # express a crossing; HELCODE because the external helicity label
-            # here is the row number, which is what MadLoop passes; ENCODE_HEL
-            # because nothing anywhere calls it.
+            # takes a crossing-carrying index the FLAVOR-array entry points
+            # cannot express -- the density here stays uncrossed. HELCODE
+            # because the external helicity label is the row number, which is
+            # what MadLoop passes. ENCODE_HEL because nothing anywhere calls
+            # it. The default template's own crossing holes because this one
+            # has its own set, shaped for a vector ANS/T.
             for marker in ('ENCODE_HEL', 'HELCODE', 'GET_DENSITY_IDX',
                            'GET_ALL_INTER_IDX', 'GET_ALL_INTER_CROSSED',
                            'GET_INTER_RESCALE', '%(flavor_pdg_function)s',
@@ -299,10 +305,8 @@ class IOExportV4IOTest(IOTests.IOTestManager,
                     sa.matrix_template_provides(self.mymatrixelement, marker),
                     '%s unexpectedly in the split-orders template' % marker)
 
-            # ... so the drivers written beside it must not emit the crossing
-            # demonstration, and the color sum must not be folded.
-            self.assertEqual('', sa._get_check_sa_crossing_example(
-                self.mymatrixelement, ''))
+            # ... and the color sum still must not be folded: the gather that
+            # reads a folded matrix back is only in the default template.
             self.assertIsNone(sa.get_jamp_folding(self.mymatrixelement))
         finally:
             process.set('split_orders', saved)

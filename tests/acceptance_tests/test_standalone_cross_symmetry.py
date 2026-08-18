@@ -110,6 +110,10 @@ PROC_MERGED_QG_QQQX = '_quark g > _quark _quark _anti_quark'
 # instead of the default template. Same final state, so BROKEN_SYM is still 2
 # on the rows where the two final quarks differ.
 PROC_MERGED_QG_QQQX_SO = '_quark g > _quark _quark _anti_quark QED^2==0'
+# ... and its crossing partner under the same constraint, so a whole merged
+# split-orders table can be swept through the crossing (see
+# test_split_orders_merged_flavor_crossing_every_flavor).
+PROC_MERGED_QQX_GQQX_SO = '_quark _anti_quark > g _quark _anti_quark QED^2==0'
 
 # Processes constraining an s-channel propagator. A crossing moves legs between
 # the initial and the final state, so what is s-channel in the generated process
@@ -1109,6 +1113,95 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
                     'flavor %s: diagonal=%r smatrix=%r (ratio %r)'
                     % (flav, diagonal.real, reference,
                        reference / diagonal.real if diagonal.real else None))
+
+    def test_split_orders_merged_flavor_crossing_every_flavor(self):
+        """The merged-flavor crossing sweep, on the split-orders template.
+
+        The twin of test_merged_flavor_crossing_every_flavor, and here for the
+        same reason as test_split_orders_density_diagonal_matches_smatrix:
+        matrix_standalone_splitOrders_v4.inc is a SEPARATE template with its own
+        SMATRIX, so making the default one cross correctly says nothing about
+        it. It carried no crossing machinery at all until
+        fill_crossing_replace_dict_so, while the generator happily folded the
+        crossed subprocesses onto their base -- 50 of the 65 flavor columns of
+        `p p > j j QCD^2==4` had no entry point left, and the extended FLAV_IDX
+        that names them returned 0 in silence.
+
+        Sweeping the whole merged table is what makes this bite: the crossed
+        denominator is rebuilt per flavor (GET_SPINCOL_CROSS *
+        GET_IDENT_CROSS), so a denominator taken from the representative flavor
+        instead of the actual one shows up as a clean factor 2 on the rows
+        where the two final quarks differ.
+        """
+        merged_a = self._generate(PROC_MERGED_QQX_GQQX_SO, 'Proc_so_cross_a',
+                                  split_orders=True)
+        merged_b = self._generate(PROC_MERGED_QG_QQQX_SO, 'Proc_so_cross_b',
+                                  split_orders=True)
+        # Guard the premise twice over: the split-orders template, and the
+        # crossing machinery actually written into it.
+        code_a = self._matrix_code(merged_a)
+        self.assertIn('SMATRIX_SPLITORDERS', code_a,
+                      'Expected %s to use the split-orders template; this test '
+                      'would otherwise just retest the default one'
+                      % PROC_MERGED_QQX_GQQX_SO)
+        self.assertIn('GET_CROSS_PERM', code_a,
+                      'The split-orders matrix.f carries no crossing '
+                      'machinery, so an extended FLAV_IDX cannot be decoded '
+                      'and every assertion below would compare zeros')
+        nflav_a = self._read_nflav(merged_a)
+        self.assertGreater(nflav_a, 1,
+                           'Expected a merged multi-flavor matrix element, got '
+                           'NFLAV=%s' % nflav_a)
+        momenta = self._phase_space_2to3()
+
+        unmapped = []
+        checked = 0
+        for flav in range(1, nflav_a + 1):
+            positions = self._flavor_positions(merged_a, flav)
+            # Caller slot 2 holds leg 3 (the gluon) and slot 3 holds leg 2.
+            crossed = (positions[0], positions[2], positions[1],
+                       positions[3], positions[4])
+            reference_perm = None
+            target = self._flavor_index(merged_b, crossed)
+            if target < 1:
+                # Slots 3 and 4 are both _quark, so the target keeps only one
+                # ordering of each unordered pair. Try the other one, swapping
+                # the momenta along with the flavors.
+                swapped = (crossed[0], crossed[1], crossed[3],
+                           crossed[2], crossed[4])
+                target = self._flavor_index(merged_b, swapped)
+                reference_perm = (0, 1, 3, 2, 4)
+            if target < 1:
+                unmapped.append((flav, positions, crossed))
+                continue
+
+            with self.subTest(flav=flav, positions=positions):
+                crossed_value = self._run(merged_a, momenta,
+                                          _iflav(CROSS_2_3_5, flav,
+                                                 nflav=nflav_a))
+                reference_momenta = momenta if reference_perm is None else \
+                    [momenta[index] for index in reference_perm]
+                reference = self._run(merged_b, reference_momenta, target)
+                self.assertNotEqual(
+                    crossed_value, 0.0,
+                    'Crossed flavor %s evaluated to exactly zero, which is what '
+                    'a matrix element with no crossing decoder returns for an '
+                    'extended FLAV_IDX' % flav)
+                scale = max(abs(crossed_value), abs(reference), 1e-99)
+                self.assertLessEqual(
+                    abs(crossed_value - reference) / scale, self.tolerance,
+                    'split-orders flavor %s (positions %s) crossed disagrees: '
+                    'crossed=%r reference=%r (ratio %r)'
+                    % (flav, positions, crossed_value, reference,
+                       reference / crossed_value if crossed_value else None))
+                checked += 1
+
+        self.assertFalse(unmapped,
+                         'Crossed flavors with no counterpart in %s: %s'
+                         % (PROC_MERGED_QG_QQQX_SO, unmapped))
+        self.assertGreater(checked, 1,
+                           'Only %s flavor compared; the sweep is the point'
+                           % checked)
 
     def test_use_crossing_false_drops_the_machinery(self):
         """--use_crossing=False must emit no crossing code, same ME otherwise.
