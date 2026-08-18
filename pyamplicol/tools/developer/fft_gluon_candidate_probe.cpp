@@ -212,7 +212,7 @@ double evaluate_one(
         nullptr,
         0,
         selected_helicity_index,
-        1,
+        selected_helicity_index == nullptr ? 0 : 1,
         nullptr,
         0,
         &value,
@@ -378,6 +378,8 @@ int main(int argc, char **argv) {
             throw std::runtime_error(
                 "candidate artifact does not expose one matching selected helicity");
         }
+        const std::uint32_t *const evaluation_helicity_index =
+            execution_mode == "compiled" ? nullptr : &selected_helicity_index;
         const char *selected_helicity_ids[] = {selected_helicity_id.c_str()};
         const double load_seconds = process_cpu_seconds() - load_start;
 
@@ -416,7 +418,7 @@ int main(int argc, char **argv) {
             point_values[point] = evaluate_one(
                 handle,
                 events[point].momenta,
-                &selected_helicity_index,
+                evaluation_helicity_index,
                 minimum_absolute_value,
                 sink);
             point_value_recorded[point] = true;
@@ -458,7 +460,7 @@ int main(int argc, char **argv) {
                 const double value = evaluate_one(
                     handle,
                     events[kRepresentativePoint].momenta,
-                    &selected_helicity_index,
+                    evaluation_helicity_index,
                     minimum_absolute_value,
                     sink);
                 if (!point_value_recorded[kRepresentativePoint]) {
@@ -487,7 +489,7 @@ int main(int argc, char **argv) {
                 evaluate_one(
                     handle,
                     events[kRepresentativePoint].momenta,
-                    &selected_helicity_index,
+                    evaluation_helicity_index,
                     minimum_absolute_value,
                     sink);
             }
