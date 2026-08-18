@@ -448,21 +448,45 @@ def build_symmetric_group_color_contraction_plan(
     kernel_entries: list[ColorContractionTemplateEntry] = []
     kernel_exact_weights: list[Fraction] = []
     kernel_exact_by_key: dict[tuple[int, int, int], Fraction] = {}
+    diagonal_trace_exact: dict[tuple[int, tuple[int, ...]], Fraction] = {}
     for left_channel, left_orbit in enumerate(partition.orbits):
         left_local_index = channel_cosets[left_channel][0]
         left_sector = sector_by_id[left_orbit.sector_ids[0]]
         for right_channel in range(left_channel, len(partition.orbits)):
             right_orbit = partition.orbits[right_channel]
             symmetry = 1.0 if left_channel == right_channel else 2.0
+            quotient_diagonal_trace = (
+                left_channel == right_channel
+                and color_plan.process.color_endpoints.pair_count == 0
+                and left_sector.kind == "single-trace"
+                and left_orbit.channel_key[:1] == ("single-trace",)
+            )
             for relative_index, right_sector_id in enumerate(right_orbit.sector_ids):
                 right_local_index = channel_cosets[right_channel][relative_index]
-                exact = weight_fraction * exact_color_contraction_factor(
-                    color_plan,
-                    left_sector,
-                    sector_by_id[right_sector_id],
-                    accuracy=accuracy,
-                    full_col_acc=20,
+                cache_key = None
+                if quotient_diagonal_trace:
+                    cache_key = (
+                        left_channel,
+                        _single_trace_diagonal_kernel_representative(
+                            _lexicographic_permutation_unrank(
+                                partition.degree,
+                                relative_index,
+                            )
+                        ),
+                    )
+                exact = (
+                    None if cache_key is None else diagonal_trace_exact.get(cache_key)
                 )
+                if exact is None:
+                    exact = weight_fraction * exact_color_contraction_factor(
+                        color_plan,
+                        left_sector,
+                        sector_by_id[right_sector_id],
+                        accuracy=accuracy,
+                        full_col_acc=20,
+                    )
+                    if cache_key is not None:
+                        diagonal_trace_exact[cache_key] = exact
                 kernel_entries.append(
                     ColorContractionTemplateEntry(
                         left_group_index=left_local_index,
@@ -935,6 +959,23 @@ def _inverse_permutation(permutation: tuple[int, ...]) -> tuple[int, ...]:
     for position, label in enumerate(permutation):
         inverse[label] = position
     return tuple(inverse)
+
+
+def _single_trace_diagonal_kernel_representative(
+    permutation: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Canonicalize one anchored trace under cyclic relabelling and inversion."""
+
+    trace_length = len(permutation) + 1
+    anchored_word = (0, *(value + 1 for value in permutation))
+    candidates: list[tuple[int, ...]] = []
+    for shift in range(trace_length):
+        relabelled = tuple((value + shift) % trace_length for value in anchored_word)
+        anchor_index = relabelled.index(0)
+        rotated = relabelled[anchor_index:] + relabelled[:anchor_index]
+        coordinate = tuple(value - 1 for value in rotated[1:])
+        candidates.extend((coordinate, _inverse_permutation(coordinate)))
+    return min(candidates)
 
 
 def _hermiticity_relative_indices(

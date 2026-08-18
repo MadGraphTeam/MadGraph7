@@ -596,3 +596,88 @@ def test_large_degree_hermiticity_samples_are_deterministic_and_nontrivial() -> 
         for permutation in selected
     )
     assert len(relative_indices) < math.factorial(5)
+
+
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_single_trace_kernel_quotient_matches_every_direct_exact_row(
+    monkeypatch: pytest.MonkeyPatch,
+    accuracy: str,
+) -> None:
+    symmetric_group_module = importlib.import_module("pyamplicol.color.symmetric_group")
+    color_plan = _plan("g g > g g g", accuracy=accuracy)
+    owners, owner_sector_ids, descriptors = _owner_descriptors(color_plan)
+    partition = certify_symmetric_group_orbits(
+        color_plan,
+        owner_sector_ids,
+        sector_owner_ids=owners,
+    )
+    (orbit,) = partition.orbits
+    identity_sector_id = orbit.sector_ids[0]
+    direct = symmetric_group_module.exact_color_contraction_factor
+    identity_left_calls = 0
+
+    def counted(color_plan, left, right, **kwargs):
+        nonlocal identity_left_calls
+        if left.id == identity_sector_id:
+            identity_left_calls += 1
+        return direct(color_plan, left, right, **kwargs)
+
+    monkeypatch.setattr(
+        symmetric_group_module,
+        "exact_color_contraction_factor",
+        counted,
+    )
+    contraction = build_symmetric_group_color_contraction_plan(
+        color_plan,
+        descriptors,
+        sector_owner_ids=owners,
+    )
+    block = contraction.symmetric_group_block
+    assert block is not None
+    sectors = {sector.id: sector for sector in color_plan.sectors}
+    expected = tuple(
+        direct(
+            color_plan,
+            sectors[identity_sector_id],
+            sectors[sector_id],
+            accuracy=accuracy,
+            full_col_acc=20,
+        )
+        for sector_id in orbit.sector_ids
+    )
+    representatives = {
+        symmetric_group_module._single_trace_diagonal_kernel_representative(item)
+        for item in permutations(range(partition.degree))
+    }
+    assert block.kernel_exact_weights == expected
+    assert (
+        identity_left_calls == len(representatives) < math.factorial(partition.degree)
+    )
+    if accuracy == "nlc":
+        assert any(value < 0 for value in expected)
+
+
+def test_single_trace_kernel_quotient_stays_off_for_open_line_channels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    symmetric_group_module = importlib.import_module("pyamplicol.color.symmetric_group")
+    color_plan = _plan("d d~ > u u~ g g")
+    owners, _, descriptors = _owner_descriptors(color_plan)
+
+    def unexpected(_permutation):
+        raise AssertionError("single-trace quotient reached an open-line channel")
+
+    monkeypatch.setattr(
+        symmetric_group_module,
+        "_single_trace_diagonal_kernel_representative",
+        unexpected,
+    )
+    contraction = build_symmetric_group_color_contraction_plan(
+        color_plan,
+        descriptors,
+        sector_owner_ids=owners,
+    )
+    block = contraction.symmetric_group_block
+    assert block is not None
+    assert block.channel_count == 6
+    _assert_dense_reconstruction(color_plan, block)
