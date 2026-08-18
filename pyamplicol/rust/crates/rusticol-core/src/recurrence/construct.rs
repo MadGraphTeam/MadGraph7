@@ -2333,6 +2333,7 @@ struct PreparedClosureSector {
 #[derive(Debug, Default)]
 struct PreparedClosureSectorCatalog {
     sectors: BTreeMap<u32, PreparedClosureSector>,
+    v4_trace_sector_by_anchored_word: BTreeMap<Box<[u32]>, u32>,
 }
 
 impl PreparedClosureSectorCatalog {
@@ -2345,6 +2346,7 @@ impl PreparedClosureSectorCatalog {
         let source_count = process.external_legs.len();
         let full_support = (0..source_count as u32).collect::<Vec<_>>();
         let mut sectors = BTreeMap::new();
+        let mut v4_trace_sector_by_anchored_word = BTreeMap::new();
         let mut contracted_open_forests = HashSet::<Box<[LCColorComponent]>>::new();
         for row in process.physical_lc_sectors.iter().copied() {
             if !materialized_sector_ids.contains(&row.sector_id)
@@ -2384,19 +2386,49 @@ impl PreparedClosureSectorCatalog {
                     "prepared closure sector catalog contains a duplicate sector",
                 ));
             }
+            if row.kind()? == ProcessLCSectorKind::SingleTrace
+                && catalog.string(
+                    row.closure_proof_algorithm_string_id,
+                    "prepared closure-anchor algorithm",
+                )? == CYCLIC_TRACE_CLOSURE_ANCHOR_ALGORITHM
+            {
+                let word = catalog
+                    .u32_sequence(row.word_sequence_id, "prepared v4 physical LC sector word")?;
+                let key = anchored_cyclic_trace_word(word, row.closure_source_slot)?;
+                if v4_trace_sector_by_anchored_word
+                    .insert(key, row.sector_id)
+                    .is_some()
+                {
+                    return Err(invalid(
+                        "prepared v4 closure sectors contain an ambiguous cyclic trace word",
+                    ));
+                }
+            }
         }
         if sectors.len() != materialized_sector_ids.len() {
             return Err(invalid(
                 "prepared closure sector catalog omits a materialized sector",
             ));
         }
-        Ok(Self { sectors })
+        Ok(Self {
+            sectors,
+            v4_trace_sector_by_anchored_word,
+        })
     }
 
     fn get(&self, sector_id: u32) -> RusticolResult<&PreparedClosureSector> {
         self.sectors
             .get(&sector_id)
             .ok_or_else(|| invalid("prepared closure sector is absent"))
+    }
+
+    fn reflected_v4_sector(
+        &self,
+        mapped_word: &[u32],
+        closure_source_slot: u32,
+    ) -> RusticolResult<Option<u32>> {
+        let key = anchored_cyclic_trace_word(mapped_word, closure_source_slot)?;
+        Ok(self.v4_trace_sector_by_anchored_word.get(&key).copied())
     }
 }
 
@@ -7274,8 +7306,15 @@ fn pairing_reconstruction_factor(_rule: Option<FermionPairingRuleRow>) -> ExactC
 
 // Closure certification deliberately receives each authenticated catalog and
 // proof table separately so that no unchecked aggregate can cross this boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClosureReflectionProjection {
+    certificate_id: u32,
+    partner_sector_id: Option<u32>,
+    partner_phase: ExactComplexRational,
+}
+
 #[allow(clippy::too_many_arguments)]
-fn closure_reflection_certificate_id(
+fn closure_reflection_projection(
     sector: ProcessPhysicalLCSectorRow,
     closed: &[LCColorComponent],
     process: &OwnedRecurrenceProcessInput,
@@ -7284,7 +7323,9 @@ fn closure_reflection_certificate_id(
     currents: &[PendingCurrent],
     parent_ids: [u32; 2],
     certificates: &[PendingReflectionCertificate],
-) -> RusticolResult<Option<u32>> {
+    prepared_sectors: &PreparedClosureSectorCatalog,
+    materialized_sectors: &BTreeSet<u32>,
+) -> RusticolResult<Option<ClosureReflectionProjection>> {
     let mut certified_parents = Vec::new();
     for parent_id in parent_ids {
         let current = currents
@@ -7371,6 +7412,27 @@ fn closure_reflection_certificate_id(
             "closure reflection maps a trace to a cyclic fixed point",
         ));
     }
+    let closure_algorithm = process_catalog.string(
+        sector.closure_proof_algorithm_string_id,
+        "reflection closure-anchor algorithm",
+    )?;
+    if closure_algorithm == CYCLIC_TRACE_CLOSURE_ANCHOR_ALGORITHM
+        && let Some(partner_sector_id) =
+            prepared_sectors.reflected_v4_sector(&mapped_word, sector.closure_source_slot)?
+        && materialized_sectors.contains(&partner_sector_id)
+    {
+        if partner_sector_id == sector.sector_id {
+            return Err(invalid(
+                "closure reflection maps a v4 trace sector onto itself",
+            ));
+        }
+        return Ok(Some(ClosureReflectionProjection {
+            certificate_id,
+            partner_sector_id: Some(partner_sector_id),
+            partner_phase: certificate.canonical_phase,
+        }));
+    }
+
     let mut matching_public_flows = Vec::new();
     for flow in retained_public_flows(process)?
         .into_iter()
@@ -7383,8 +7445,12 @@ fn closure_reflection_certificate_id(
         }
     }
     match matching_public_flows.as_slice() {
+        [_] => Ok(Some(ClosureReflectionProjection {
+            certificate_id,
+            partner_sector_id: None,
+            partner_phase: certificate.canonical_phase,
+        })),
         [] => Ok(None),
-        [_] => Ok(Some(certificate_id)),
         _ => Err(invalid(
             "closure reflection maps to multiple retained public LC flows",
         )),
@@ -7403,6 +7469,52 @@ fn cyclic_words_equal(left: &[u32], right: &[u32]) -> bool {
             .enumerate()
             .all(|(index, value)| *value == right[(index + offset) % right.len()])
     })
+}
+
+fn anchored_cyclic_trace_word(word: &[u32], anchor: u32) -> RusticolResult<Box<[u32]>> {
+    let mut positions = word
+        .iter()
+        .enumerate()
+        .filter_map(|(index, source_slot)| (*source_slot == anchor).then_some(index));
+    let position = positions
+        .next()
+        .ok_or_else(|| invalid("v4 cyclic trace word omits its closure anchor"))?;
+    if positions.next().is_some() {
+        return Err(invalid("v4 cyclic trace word repeats its closure anchor"));
+    }
+    Ok(word[position..]
+        .iter()
+        .chain(&word[..position])
+        .copied()
+        .collect::<Vec<_>>()
+        .into_boxed_slice())
+}
+
+fn include_closure_with_reflection(
+    result: &mut BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    key: PendingClosureKey,
+    contribution: PendingClosureProofContribution,
+    reflection: Option<ClosureReflectionProjection>,
+) -> RusticolResult<()> {
+    result
+        .entry(key.clone())
+        .or_default()
+        .include(contribution.clone())?;
+    if let Some(reflection) = reflection
+        && let Some(partner_sector_id) = reflection.partner_sector_id
+    {
+        let mut partner_key = key;
+        partner_key.target_sector_id = partner_sector_id;
+        let mut partner_contribution = contribution;
+        partner_contribution.exact_factor = partner_contribution
+            .exact_factor
+            .checked_mul(reflection.partner_phase)?;
+        result
+            .entry(partner_key)
+            .or_default()
+            .include(partner_contribution)?;
+    }
+    Ok(())
 }
 
 fn materialize_reflection_certificates(
@@ -7547,6 +7659,8 @@ fn build_closures(
                         currents,
                         pairing_catalog,
                         reflection_certificates,
+                        prepared_sectors,
+                        materialized_sectors,
                         &mut result,
                         telemetry,
                         collect_telemetry,
@@ -7783,6 +7897,8 @@ fn add_closure_terms(
     currents: &[PendingCurrent],
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
     reflection_certificates: &[PendingReflectionCertificate],
+    prepared_sectors: &PreparedClosureSectorCatalog,
+    materialized_sectors: &BTreeSet<u32>,
     result: &mut BTreeMap<PendingClosureKey, PendingClosureGroup>,
     telemetry: &mut RecurrenceGenerationTelemetry,
     collect_telemetry: bool,
@@ -7880,37 +7996,38 @@ fn add_closure_terms(
                 parent_current_ids: evaluator_parent_ids.into(),
             };
             let factor = base_factor.checked_mul(witness.witness.exact_factor())?;
-            result
-                .entry(key)
-                .or_default()
-                .include(PendingClosureProofContribution {
-                    construction_parent_ids: parent_ids,
-                    construction_parent_permutation: [0, 1],
-                    reconstruction_parent_permutation,
-                    evaluator_parent_permutation,
-                    closure_template_semantic_digest: closure.semantic_digest,
-                    color_witness_term_id,
-                    color_witness_proof_digest: witness.witness.proof_digest(),
-                    three_line_certificate: three_line_traversal_certificate(
-                        &closed,
-                        sector.row,
-                        &sector.expected_components,
-                        process_catalog,
-                        pairing_rule.map(|rule| rule.rule_id),
-                    )?,
-                    pairing_certificate_ids: pairing_certificate_ids.clone().into_boxed_slice(),
-                    reflection_certificate_id: closure_reflection_certificate_id(
-                        sector.row,
-                        &closed,
-                        process,
-                        process_catalog,
-                        color_states,
-                        currents,
-                        parent_ids,
-                        reflection_certificates,
-                    )?,
-                    exact_factor: factor,
-                })?;
+            let reflection = closure_reflection_projection(
+                sector.row,
+                &closed,
+                process,
+                process_catalog,
+                color_states,
+                currents,
+                parent_ids,
+                reflection_certificates,
+                prepared_sectors,
+                materialized_sectors,
+            )?;
+            let contribution = PendingClosureProofContribution {
+                construction_parent_ids: parent_ids,
+                construction_parent_permutation: [0, 1],
+                reconstruction_parent_permutation,
+                evaluator_parent_permutation,
+                closure_template_semantic_digest: closure.semantic_digest,
+                color_witness_term_id,
+                color_witness_proof_digest: witness.witness.proof_digest(),
+                three_line_certificate: three_line_traversal_certificate(
+                    &closed,
+                    sector.row,
+                    &sector.expected_components,
+                    process_catalog,
+                    pairing_rule.map(|rule| rule.rule_id),
+                )?,
+                pairing_certificate_ids: pairing_certificate_ids.clone().into_boxed_slice(),
+                reflection_certificate_id: reflection.map(|row| row.certificate_id),
+                exact_factor: factor,
+            };
+            include_closure_with_reflection(result, key, contribution, reflection)?;
         }
     }
     Ok(())
@@ -11006,6 +11123,76 @@ mod tests {
         };
 
         assert_eq!(run(false), run(true));
+    }
+
+    #[test]
+    fn reflected_closure_emission_reuses_parents_and_applies_exact_phase() {
+        let factor = ExactComplexRational::parse_parts("2", "1", "0", "1").unwrap();
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        let key = PendingClosureKey {
+            target_sector_id: 119,
+            complete_source_states: Vec::new().into_boxed_slice(),
+            closure_template_id: 3,
+            quantum_flow_template_id: Some(5),
+            parent_current_ids: vec![7, 9].into_boxed_slice(),
+        };
+        let contribution = PendingClosureProofContribution {
+            construction_parent_ids: [7, 9],
+            construction_parent_permutation: [0, 1],
+            reconstruction_parent_permutation: [0, 1],
+            evaluator_parent_permutation: [0, 1],
+            closure_template_semantic_digest: digest(111),
+            color_witness_term_id: 13,
+            color_witness_proof_digest: digest(112),
+            three_line_certificate: None,
+            pairing_certificate_ids: Vec::new().into_boxed_slice(),
+            reflection_certificate_id: Some(17),
+            exact_factor: factor,
+        };
+        let projection = ClosureReflectionProjection {
+            certificate_id: 17,
+            partner_sector_id: Some(153),
+            partner_phase: minus_one,
+        };
+        let mut closures = BTreeMap::new();
+
+        include_closure_with_reflection(&mut closures, key, contribution, Some(projection))
+            .unwrap();
+
+        assert_eq!(closures.len(), 2);
+        let canonical = closures
+            .iter()
+            .find(|(key, _)| key.target_sector_id == 119)
+            .unwrap();
+        let reflected = closures
+            .iter()
+            .find(|(key, _)| key.target_sector_id == 153)
+            .unwrap();
+        assert_eq!(canonical.1.exact_factor, factor);
+        assert_eq!(
+            reflected.1.exact_factor,
+            factor.checked_mul(minus_one).unwrap()
+        );
+        assert_eq!(
+            canonical.0.parent_current_ids,
+            reflected.0.parent_current_ids
+        );
+        assert_eq!(canonical.1.contributions[0].construction_parent_ids, [7, 9]);
+        assert_eq!(reflected.1.contributions[0].construction_parent_ids, [7, 9]);
+        assert_eq!(
+            reflected.1.contributions[0].reflection_certificate_id,
+            Some(17)
+        );
+
+        let mut ineligible = BTreeMap::new();
+        include_closure_with_reflection(
+            &mut ineligible,
+            canonical.0.clone(),
+            canonical.1.contributions[0].clone(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(ineligible.len(), 1);
     }
 
     fn buffered_parent_pairs(target_size: usize, currents_by_size: &[Vec<u32>]) -> Vec<[u32; 2]> {
