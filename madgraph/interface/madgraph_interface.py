@@ -10214,11 +10214,26 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         SMATRIX/sigmaKin). Every other output needs them back as explicit
         subprocesses, and expanding is always safe: it just reproduces the
         complete unmerged (--use_crossing=False) output.
+
+        The format is not the whole answer, though: a folding-capable backend
+        still has to write the base from a template that carries the crossing
+        machinery, and a process with a SQUARED ORDER constraint is written
+        from matrix_standalone_splitOrders_v4.inc, which does not
+        (write_matrix_element_v4's get_matrix_template picks it whenever the
+        process has split_orders). Folding into it drops the crossed
+        subprocesses outright: `p p > j j QCD^2==4 --use_crossing=True` folded
+        8 subprocesses onto 3 and wrote no decoder, so 50 of the 65 flavor
+        columns became unreachable and an extended FLAV_IDX returned 0 without
+        a word. Expanding is the same answer the user gets with
+        --use_crossing=False, so ask for it here until that template can fold.
         """
-        if self._output_folds_crossings():
+        crossed = [amp for amp in amps if 'crossed_processes' in amp
+                   and amp.get('crossed_processes')]
+        if not crossed:
             return False
-        return any(amp.get('crossed_processes') for amp in amps
-                   if 'crossed_processes' in amp)
+        if not self._output_folds_crossings():
+            return True
+        return any(amp.get('process').get('split_orders') for amp in crossed)
 
     def _split_reorder_blocked(self, amps):
         """Peel the flavor classes that keep a module compiled for no good reason.
@@ -10571,17 +10586,22 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     # does not implement folding (it just reproduces the complete
                     # unmerged output) -- or for a folding backend told to write
                     # this output without the machinery (--use_crossing=False).
-                    if not self._output_folds_crossings():
-                        # DecayAmplitude / DecayChainAmplitude are Amplitude
-                        # subclasses that override default_setup with their own
-                        # key set and do NOT carry crossed_processes (e.g. the
-                        # compute_widths and MadSpin decay paths reach here), so
-                        # guard on the dict key rather than the amplitude type
-                        # (_crossing_needs_expansion does that).
-                        if self._crossing_needs_expansion(non_dc_amps):
-                            non_dc_amps = \
-                                self._expand_recorded_crossings(non_dc_amps)
+                    # DecayAmplitude / DecayChainAmplitude are Amplitude
+                    # subclasses that override default_setup with their own
+                    # key set and do NOT carry crossed_processes (e.g. the
+                    # compute_widths and MadSpin decay paths reach here), so
+                    # guard on the dict key rather than the amplitude type
+                    # (_crossing_needs_expansion does that).
+                    # Asked OUTSIDE the format gate below, because the format
+                    # is not the whole answer: a folding backend still cannot
+                    # fold a process carrying a squared order, whose matrix
+                    # element is written from a template with no decoder. See
+                    # _crossing_needs_expansion.
+                    if self._crossing_needs_expansion(non_dc_amps):
+                        non_dc_amps = \
+                            self._expand_recorded_crossings(non_dc_amps)
 
+                    if not self._output_folds_crossings():
                         # Opt-in: peel the flavor classes that keep a module
                         # compiled only because the crossing reaches them with
                         # two same-side legs the other way round.
