@@ -23,6 +23,7 @@ namespace {
 
 constexpr std::size_t kPointCount = 10;
 constexpr std::size_t kWarmSampleCount = 10;
+constexpr std::size_t kRepresentativePoint = 0;
 constexpr double kPi = 3.141592653589793238462643383279502884;
 constexpr double kUnitCouplingAlphaS = 1.0 / (4.0 * kPi);
 
@@ -381,6 +382,8 @@ int main(int argc, char **argv) {
 
         double minimum_absolute_value = std::numeric_limits<double>::infinity();
         double sink = 0.0;
+        std::array<double, kPointCount> point_values {};
+        std::array<bool, kPointCount> point_value_recorded {};
         RusticolWarmUpResult warm_up {};
         double warm_up_api_seconds = 0.0;
         const double first_warm_start = process_cpu_seconds();
@@ -409,12 +412,13 @@ int main(int argc, char **argv) {
         for (std::size_t point = first_evaluated_point;
              point < events.size();
              ++point) {
-            evaluate_one(
+            point_values[point] = evaluate_one(
                 handle,
                 events[point].momenta,
                 &selected_helicity_index,
                 minimum_absolute_value,
                 sink);
+            point_value_recorded[point] = true;
         }
         const double first_warm_seconds =
             process_cpu_seconds() - first_warm_start;
@@ -442,63 +446,53 @@ int main(int argc, char **argv) {
             return 0;
         }
 
-        std::array<std::size_t, kPointCount> calibration_calls {};
-        std::array<double, kPointCount> calibration_seconds {};
-        std::array<double, kPointCount> point_values {};
-        std::array<bool, kPointCount> point_value_recorded {};
-        for (std::size_t point = 0; point < events.size(); ++point) {
-            std::size_t repetitions = 1;
-            for (;;) {
-                const double calibration_start = process_cpu_seconds();
-                for (std::size_t repetition = 0;
-                     repetition < repetitions;
-                     ++repetition) {
-                    const double value = evaluate_one(
-                        handle,
-                        events[point].momenta,
-                        &selected_helicity_index,
-                        minimum_absolute_value,
-                        sink);
-                    if (!point_value_recorded[point]) {
-                        point_values[point] = value;
-                        point_value_recorded[point] = true;
-                    }
+        std::size_t calibration_calls = 0;
+        double calibration_seconds = 0.0;
+        std::size_t repetitions = 1;
+        for (;;) {
+            const double calibration_start = process_cpu_seconds();
+            for (std::size_t repetition = 0;
+                 repetition < repetitions;
+                 ++repetition) {
+                const double value = evaluate_one(
+                    handle,
+                    events[kRepresentativePoint].momenta,
+                    &selected_helicity_index,
+                    minimum_absolute_value,
+                    sink);
+                if (!point_value_recorded[kRepresentativePoint]) {
+                    point_values[kRepresentativePoint] = value;
+                    point_value_recorded[kRepresentativePoint] = true;
                 }
-                const double elapsed = process_cpu_seconds() - calibration_start;
-                if (elapsed >= arguments.target_seconds) {
-                    calibration_calls[point] = repetitions;
-                    calibration_seconds[point] = elapsed;
-                    break;
-                }
-                if (repetitions >
-                    std::numeric_limits<std::size_t>::max() / 2) {
-                    throw std::runtime_error("calibration repetition count overflow");
-                }
-                repetitions *= 2;
             }
+            const double elapsed = process_cpu_seconds() - calibration_start;
+            if (elapsed >= arguments.target_seconds) {
+                calibration_calls = repetitions;
+                calibration_seconds = elapsed;
+                break;
+            }
+            if (repetitions > std::numeric_limits<std::size_t>::max() / 2) {
+                throw std::runtime_error("calibration repetition count overflow");
+            }
+            repetitions *= 2;
         }
 
-        std::array<
-            std::array<double, kPointCount>,
-            kWarmSampleCount>
-            warm_cells {};
+        std::array<double, kWarmSampleCount> warm_cells {};
         for (std::size_t sample = 0; sample < arguments.samples; ++sample) {
-            for (std::size_t point = 0; point < events.size(); ++point) {
-                const double cell_start = process_cpu_seconds();
-                for (std::size_t repetition = 0;
-                     repetition < calibration_calls[point];
-                     ++repetition) {
-                    evaluate_one(
-                        handle,
-                        events[point].momenta,
-                        &selected_helicity_index,
-                        minimum_absolute_value,
-                        sink);
-                }
-                warm_cells[sample][point] =
-                    (process_cpu_seconds() - cell_start) /
-                    static_cast<double>(calibration_calls[point]);
+            const double cell_start = process_cpu_seconds();
+            for (std::size_t repetition = 0;
+                 repetition < calibration_calls;
+                 ++repetition) {
+                evaluate_one(
+                    handle,
+                    events[kRepresentativePoint].momenta,
+                    &selected_helicity_index,
+                    minimum_absolute_value,
+                    sink);
             }
+            warm_cells[sample] =
+                (process_cpu_seconds() - cell_start) /
+                static_cast<double>(calibration_calls);
         }
 
         peak_rss_kib = std::max(peak_rss_kib, process_peak_rss_kib());
@@ -506,6 +500,10 @@ int main(int argc, char **argv) {
             throw std::runtime_error("candidate benchmark sink is invalid");
         }
         if (!std::all_of(
+                point_value_recorded.begin(),
+                point_value_recorded.end(),
+                [](const bool recorded) { return recorded; }) ||
+            !std::all_of(
                 point_values.begin(),
                 point_values.end(),
                 [](const double value) {
@@ -515,7 +513,7 @@ int main(int argc, char **argv) {
         }
 
         std::cout << std::setprecision(17) << std::scientific
-                  << "FFT_CANDIDATE_PROBE_V3\n"
+                  << "FFT_CANDIDATE_PROBE_V4\n"
                   << "PROCESS " << process << "\n"
                   << "EXECUTION_MODE " << execution_mode << "\n"
                   << "TIMER_SOURCE process-cpu-time\n"
@@ -529,17 +527,12 @@ int main(int argc, char **argv) {
             std::cout << "POINT_VALUE " << (point + 1) << " "
                       << point_values[point] << "\n";
         }
-        for (std::size_t point = 0; point < events.size(); ++point) {
-            std::cout << "CALIBRATION_CELL " << (point + 1) << " "
-                      << calibration_calls[point] << " "
-                      << calibration_seconds[point] << "\n";
-        }
+        std::cout << "CALIBRATION_CELL " << (kRepresentativePoint + 1) << " "
+                  << calibration_calls << " " << calibration_seconds << "\n";
         for (std::size_t sample = 0; sample < arguments.samples; ++sample) {
-            for (std::size_t point = 0; point < events.size(); ++point) {
-                std::cout << "WARM_CELL_SECONDS " << (sample + 1) << " "
-                          << (point + 1) << " "
-                          << warm_cells[sample][point] << "\n";
-            }
+            std::cout << "WARM_CELL_SECONDS " << (sample + 1) << " "
+                      << (kRepresentativePoint + 1) << " "
+                      << warm_cells[sample] << "\n";
         }
         std::cout << "MIN_ABSOLUTE_VALUE " << minimum_absolute_value << "\n"
                   << "MAX_RSS_KIB " << peak_rss_kib << "\n";

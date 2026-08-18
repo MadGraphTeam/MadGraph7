@@ -41,7 +41,7 @@ PROBE_SOURCE = ROOT / "tools" / "developer" / "fft_gluon_candidate_probe.cpp"
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
 
 KIND = "pyamplicol-pure-gluon-fft-performance-acceptance"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 REFERENCE_BACKEND = "AmpliGluonTraceDefaultBG"
 # Recurrence is the only generation-specialized acceptance candidate.  Running
 # it first prevents the diagnostic OTF generation from warming its cold path.
@@ -49,6 +49,7 @@ LANES = ("recurrence", "on-the-fly")
 MANDATORY_MULTIPLICITIES = tuple(range(4, 10))
 OPTIONAL_MULTIPLICITIES = (10, 11)
 POINT_COUNT = 10
+REPRESENTATIVE_POINT = 1
 BASE_SEED = 1729
 WARM_SAMPLE_COUNT = 10
 MINIMUM_CALIBRATION_SECONDS = 0.25
@@ -286,7 +287,7 @@ def parse_candidate_probe_output(output: str) -> CandidateProbeMetrics:
     """Parse per-cell process-CPU evidence emitted by the public-C probe."""
 
     lines = [line.strip() for line in output.splitlines() if line.strip()]
-    if not lines or lines[0] != "FFT_CANDIDATE_PROBE_V3":
+    if not lines or lines[0] != "FFT_CANDIDATE_PROBE_V4":
         raise AcceptanceError("candidate probe header is missing or invalid")
     scalar: dict[str, str] = {}
     point_values: dict[int, float] = {}
@@ -346,16 +347,16 @@ def parse_candidate_probe_output(output: str) -> CandidateProbeMetrics:
     expected_points = set(range(1, POINT_COUNT + 1))
     if set(point_values) != expected_points:
         raise AcceptanceError("candidate probe must report all 10 point values")
-    if set(calibration) != expected_points:
-        raise AcceptanceError("candidate probe must calibrate all 10 event cells")
+    if set(calibration) != {REPRESENTATIVE_POINT}:
+        raise AcceptanceError(
+            "candidate probe must calibrate only representative point 1"
+        )
     expected_warm_cells = {
-        (sample, point)
-        for sample in range(1, WARM_SAMPLE_COUNT + 1)
-        for point in range(1, POINT_COUNT + 1)
+        (sample, REPRESENTATIVE_POINT) for sample in range(1, WARM_SAMPLE_COUNT + 1)
     }
     if set(warm_cells) != expected_warm_cells:
         raise AcceptanceError(
-            "candidate probe must contain the complete 10x10 warm grid"
+            "candidate probe must contain one point-1 cell in each of 10 batches"
         )
     execution_mode = scalar["EXECUTION_MODE"]
     if execution_mode not in LANES:
@@ -374,16 +375,16 @@ def parse_candidate_probe_output(output: str) -> CandidateProbeMetrics:
             "MIN_ABSOLUTE_VALUE",
         )
     }
-    calibration_calls = tuple(calibration[index][0] for index in sorted(calibration))
-    calibration_seconds = tuple(calibration[index][1] for index in sorted(calibration))
+    calibration_calls = (calibration[REPRESENTATIVE_POINT][0],)
+    calibration_seconds = (calibration[REPRESENTATIVE_POINT][1],)
     ordered_point_values = tuple(
         point_values[index] for index in range(1, POINT_COUNT + 1)
     )
     warm_cell_rows = tuple(
-        tuple(warm_cells[(sample, point)] for point in range(1, POINT_COUNT + 1))
+        (warm_cells[(sample, REPRESENTATIVE_POINT)],)
         for sample in range(1, WARM_SAMPLE_COUNT + 1)
     )
-    warm_samples = tuple(statistics.fmean(row) for row in warm_cell_rows)
+    warm_samples = tuple(row[0] for row in warm_cell_rows)
     if point_count != POINT_COUNT:
         raise AcceptanceError("candidate probe did not use 10 phase-space points")
     if helicity_coverage_count < 1 or not scalar["SELECTED_HELICITY_ID"].startswith(
@@ -1007,6 +1008,27 @@ def _reference_arguments(
     return parsed
 
 
+def _reference_representative_warm_samples(
+    cell_timings: Mapping[tuple[int, int, int], float],
+) -> tuple[float, ...]:
+    """Validate DefaultBG's one representative event/configuration per batch."""
+
+    expected = {
+        (batch, REPRESENTATIVE_POINT, 1) for batch in range(1, WARM_SAMPLE_COUNT + 1)
+    }
+    if set(cell_timings) != expected:
+        raise AcceptanceError(
+            "reference must report one point-1 cell in each of 10 batches"
+        )
+    values = tuple(
+        cell_timings[(batch, REPRESENTATIVE_POINT, 1)]
+        for batch in range(1, WARM_SAMPLE_COUNT + 1)
+    )
+    if not all(_positive_finite(value) for value in values):
+        raise AcceptanceError("reference representative timing cells are not positive")
+    return values
+
+
 def _run_reference(
     *,
     reference: ModuleType,
@@ -1133,20 +1155,7 @@ def _run_reference(
     finally:
         reference.run_command = original_run_command
 
-    batch_values: list[float] = []
-    for batch in range(1, WARM_SAMPLE_COUNT + 1):
-        cells = [
-            value
-            for (cell_batch, _, _), value in run.cell_timings.items()
-            if cell_batch == batch
-        ]
-        if len(cells) != POINT_COUNT or not all(
-            _positive_finite(value) for value in cells
-        ):
-            raise AcceptanceError(
-                f"reference batch {batch} does not contain 10 positive cells"
-            )
-        batch_values.append(statistics.fmean(cells))
+    batch_values = _reference_representative_warm_samples(run.cell_timings)
     if (
         run.first_helicity_sweep is None
         or not _positive_finite(run.first_helicity_sweep)
@@ -1171,7 +1180,7 @@ def _run_reference(
         clean_build_seconds=clean_build_seconds,
         initialization_seconds=run.initialization,
         first_pass_seconds=run.first_helicity_sweep,
-        warm_samples_seconds=tuple(batch_values),
+        warm_samples_seconds=batch_values,
         warm_median_seconds=statistics.median(batch_values),
         max_rss_kib=run.peak_rss_kib,
         selected_helicity=tuple(representative.helicities),
@@ -1545,9 +1554,10 @@ def dry_run_plan(
             "cpu_cores": 1,
             "batch_size": 1,
             "calibration_seconds_minimum": MINIMUM_CALIBRATION_SECONDS,
-            "calibration_scope": "each-of-10-event-cells",
+            "calibration_scope": "representative-point-1-only",
             "candidate_timer_source": "process-cpu-time",
-            "warm_batch_reduction": "mean-of-10-event-cells",
+            "warm_batch_reduction": "point-1-cell-direct",
+            "timed_event_cells_per_batch": 1,
             "warm_samples": WARM_SAMPLE_COUNT,
             "warm_excludes_first_call": True,
             "memory_limit_gib": MEMORY_LIMIT_GIB,
@@ -1566,7 +1576,10 @@ def dry_run_plan(
         },
         "numerical_parity": {
             "reference_values": "ordered-10-AmpliGluonTrace-matrix-elements",
-            "candidate_values": "first-existing-calibration-evaluation-per-point",
+            "candidate_values": (
+                "recurrence-first-pass-all-10;"
+                "otf-first-pass-points-2-10-plus-point-1-calibration"
+            ),
             "candidate_runtime_parameter": "normalization.alpha_s_me_check",
             "candidate_runtime_parameter_value": UNIT_COUPLING_ALPHA_S,
             "candidate_to_reference_scale": "256*factorial(N-2)",

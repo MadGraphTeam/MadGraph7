@@ -22,7 +22,7 @@ def _probe(
     point_values: tuple[float, ...] = (1.0,) * 10,
 ) -> acceptance.CandidateProbeMetrics:
     samples = tuple(warm * (1.0 + 0.001 * index) for index in range(10))
-    warm_cells = tuple((sample,) * 10 for sample in samples)
+    warm_cells = tuple((sample,) for sample in samples)
     return acceptance.CandidateProbeMetrics(
         process="gg_N4",
         execution_mode=lane,
@@ -33,8 +33,8 @@ def _probe(
         load_seconds=0.2,
         first_warm_seconds=0.3,
         warm_up_api_seconds=0.0 if lane == "recurrence" else 0.25,
-        calibration_calls=(100,) * 10,
-        calibration_seconds=(0.26,) * 10,
+        calibration_calls=(100,),
+        calibration_seconds=(0.26,),
         warm_cell_seconds=warm_cells,
         warm_samples_seconds=samples,
         warm_median_seconds=acceptance.statistics.median(samples),
@@ -109,7 +109,7 @@ def _probe_output(
     lane: str = "recurrence",
 ) -> str:
     rows = [
-        "FFT_CANDIDATE_PROBE_V3",
+        "FFT_CANDIDATE_PROBE_V4",
         "PROCESS gg_N4",
         f"EXECUTION_MODE {lane}",
         "TIMER_SOURCE process-cpu-time",
@@ -120,15 +120,8 @@ def _probe_output(
         "FIRST_WARM_SECONDS 3.0e-1",
         f"WARM_UP_API_SECONDS {0.0 if lane == 'recurrence' else 0.25}",
         *(f"POINT_VALUE {point} {1.0 / 512.0}" for point in range(1, 11)),
-        *(
-            f"CALIBRATION_CELL {point} {100 + point} {calibration}"
-            for point in range(1, 11)
-        ),
-        *(
-            f"WARM_CELL_SECONDS {batch} {point} {(batch * 10 + point) * 1.0e-6}"
-            for batch in range(1, 11)
-            for point in range(1, 11)
-        ),
+        f"CALIBRATION_CELL 1 101 {calibration}",
+        *(f"WARM_CELL_SECONDS {batch} 1 {batch * 1.0e-6}" for batch in range(1, 11)),
         "MIN_ABSOLUTE_VALUE 1.0e-20",
         "MAX_RSS_KIB 4096",
     ]
@@ -199,14 +192,14 @@ def test_candidate_probe_parser_requires_canonical_ten_sample_evidence() -> None
     assert parsed.point_count == 10
     assert parsed.point_values == pytest.approx((1.0 / 512.0,) * 10)
     assert parsed.warm_up_api_seconds == 0.0
-    assert parsed.calibration_calls == tuple(range(101, 111))
-    assert parsed.calibration_seconds == pytest.approx((0.26,) * 10)
+    assert parsed.calibration_calls == (101,)
+    assert parsed.calibration_seconds == pytest.approx((0.26,))
     assert len(parsed.warm_cell_seconds) == 10
-    assert all(len(row) == 10 for row in parsed.warm_cell_seconds)
+    assert all(len(row) == 1 for row in parsed.warm_cell_seconds)
     assert parsed.warm_samples_seconds == pytest.approx(
-        tuple((batch * 10 + 5.5) * 1.0e-6 for batch in range(1, 11))
+        tuple(batch * 1.0e-6 for batch in range(1, 11))
     )
-    assert parsed.warm_median_seconds == pytest.approx(60.5e-6)
+    assert parsed.warm_median_seconds == pytest.approx(5.5e-6)
     assert parsed.max_rss_kib == 4096
 
 
@@ -215,9 +208,16 @@ def test_candidate_probe_parser_requires_canonical_ten_sample_evidence() -> None
     (
         (_probe_output(calibration=0.249), "0.25 seconds"),
         (_without_point_value(_probe_output(), 10), "all 10 point values"),
-        (_without_warm_cell(_probe_output(), 10, 10), "10x10 warm"),
+        (_without_warm_cell(_probe_output(), 10, 1), "point-1 cell"),
         (
-            _duplicate_warm_cell(_probe_output(), (10, 10), (10, 9)),
+            _probe_output().replace(
+                "CALIBRATION_CELL 1 101 0.26",
+                "CALIBRATION_CELL 1 101 0.26\nCALIBRATION_CELL 2 102 0.26",
+            ),
+            "calibrate only representative point 1",
+        ),
+        (
+            _duplicate_warm_cell(_probe_output(), (10, 1), (9, 1)),
             "duplicated",
         ),
     ),
@@ -239,6 +239,38 @@ def test_candidate_probe_parser_enforces_lane_specific_warm_up_contract() -> Non
     )
     with pytest.raises(acceptance.AcceptanceError, match="OTF-only"):
         acceptance.parse_candidate_probe_output(bad_recurrence)
+
+
+def test_observed_default_bg_n4_protocol_times_one_cell_but_retains_ten_mes() -> None:
+    rows = [
+        f"BACKEND {acceptance.REFERENCE_BACKEND}",
+        "DIMENSION 6",
+        "INITIALIZATION_SECONDS 1.0e-3",
+        "FIRST_HELICITY_SWEEP_SECONDS 2.0e-3",
+        "EVALUATIONS_PER_SWEEP 1",
+        *(f"MATRIX_ELEMENT {point} 1 {point * 1.0e-3}" for point in range(1, 11)),
+        *(
+            f"EVALUATION_CELL_SECONDS {batch} 1 1 {batch * 1.0e-6}"
+            for batch in range(1, 11)
+        ),
+    ]
+    reference = acceptance._load_reference_module()
+    run = reference.parse_driver_output(
+        "\n".join(rows) + "\n",
+        acceptance.REFERENCE_BACKEND,
+        False,
+    )
+
+    samples = acceptance._reference_representative_warm_samples(run.cell_timings)
+
+    assert set(run.matrix_elements) == {(point, 1) for point in range(1, 11)}
+    assert samples == pytest.approx(tuple(batch * 1.0e-6 for batch in range(1, 11)))
+    assert acceptance.statistics.median(samples) == pytest.approx(5.5e-6)
+
+    with pytest.raises(acceptance.AcceptanceError, match="one point-1 cell"):
+        acceptance._reference_representative_warm_samples(
+            run.cell_timings | {(1, 2, 1): 1.0e-6}
+        )
 
 
 @pytest.mark.parametrize("total_gluons", (4, 9, 11))
@@ -652,7 +684,7 @@ def test_dry_run_is_nonwriting_and_covers_locked_seeds(
     )
     assert payload["measurement"] | {"cpu_policy": None} == {
         "batch_size": 1,
-        "calibration_scope": "each-of-10-event-cells",
+        "calibration_scope": "representative-point-1-only",
         "calibration_seconds_minimum": 0.25,
         "candidate_timer_source": "process-cpu-time",
         "cpu_cores": 1,
@@ -662,7 +694,8 @@ def test_dry_run_is_nonwriting_and_covers_locked_seeds(
         "memory_limit_gib": 30.0,
         "model_cache": "disabled-per-lane-and-multiplicity",
         "optional_cold_and_warm_processes_separate": True,
-        "warm_batch_reduction": "mean-of-10-event-cells",
+        "timed_event_cells_per_batch": 1,
+        "warm_batch_reduction": "point-1-cell-direct",
         "warm_excludes_first_call": True,
         "warm_samples": 10,
     }
@@ -684,10 +717,13 @@ def test_dry_run_is_nonwriting_and_covers_locked_seeds(
         ),
         "recurrence": "generation-specialized",
     }
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["numerical_parity"] == {
         "reference_values": "ordered-10-AmpliGluonTrace-matrix-elements",
-        "candidate_values": "first-existing-calibration-evaluation-per-point",
+        "candidate_values": (
+            "recurrence-first-pass-all-10;"
+            "otf-first-pass-points-2-10-plus-point-1-calibration"
+        ),
         "candidate_runtime_parameter": "normalization.alpha_s_me_check",
         "candidate_runtime_parameter_value": pytest.approx(
             1.0 / (4.0 * acceptance.math.pi)
@@ -790,6 +826,12 @@ def test_native_probe_uses_public_allocation_free_call_and_lane_guard() -> None:
     assert '"normalization.alpha_s_me_check"' in source
     assert "kUnitCouplingAlphaS" in source
     assert source.count("evaluate_one(") == 4
+    assert "FFT_CANDIDATE_PROBE_V4" in source
+    assert "point_values[point] = evaluate_one(" in source
+    assert "point_values[kRepresentativePoint] = value" in source
+    assert "std::array<double, kWarmSampleCount> warm_cells" in source
+    assert "calibration_calls[point]" not in source
+    assert "warm_cells[sample][point]" not in source
     assert "POINT_VALUE" in source
     assert "CALIBRATION_CELL" in source
     assert "WARM_CELL_SECONDS" in source
