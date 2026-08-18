@@ -74,6 +74,10 @@ METHODS: tuple[MethodName, ...] = ("direct", "symmetric-group-fft")
 MODELS: tuple[ModelName, ...] = ("built-in-sm", "ufo-sm")
 MODES: tuple[ModeName, ...] = ("recurrence", "on-the-fly")
 ACCURACIES: tuple[AccuracyName, ...] = ("full", "nlc")
+_INSPECTION_METHODS_BY_REQUEST: Mapping[MethodName, tuple[str | None, ...]] = {
+    "direct": (None,),
+    "symmetric-group-fft": (None, "symmetric-group-fourier"),
+}
 
 
 class FFTAcceptanceError(RuntimeError):
@@ -1037,16 +1041,11 @@ class NativeArtifactBuilder:
                     f"artifact {request.key.slug} contains the wrong execution mode"
                 )
             method = process.recurrence_color_contraction_method
-            if request.key.method == "direct" and method is not None:
+            expected_methods = _INSPECTION_METHODS_BY_REQUEST[request.key.method]
+            if method not in expected_methods:
                 raise FFTAcceptanceError(
-                    f"direct artifact {request.key.slug} carries FFT provenance"
-                )
-            if request.key.method == "symmetric-group-fft" and method not in {
-                None,
-                "symmetric-group-fft",
-            }:
-                raise FFTAcceptanceError(
-                    f"FFT artifact {request.key.slug} carries method {method!r}"
+                    f"artifact {request.key.slug} carries inspection method "
+                    f"{method!r}; expected one of {expected_methods!r}"
                 )
             if request.selected_source_helicities is None:
                 if process.selected_source_helicities:

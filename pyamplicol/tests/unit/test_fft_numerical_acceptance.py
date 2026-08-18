@@ -177,6 +177,72 @@ def test_process_set_cache_builds_once_per_exact_boundary() -> None:
         cache.get(incompatible)
 
 
+@pytest.mark.parametrize(
+    ("request_method", "inspection_method"),
+    (
+        ("direct", None),
+        ("symmetric-group-fft", None),
+        ("symmetric-group-fft", "symmetric-group-fourier"),
+    ),
+)
+@pytest.mark.parametrize("mode", gate.MODES)
+def test_artifact_validation_maps_request_to_canonical_inspection_method(
+    request_method: gate.MethodName,
+    inspection_method: str | None,
+    mode: gate.ModeName,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    case = gate.catalog_cases(1)[0]
+    request = gate.GroupRequest(
+        gate.ArtifactKey(
+            request_method,
+            "built-in-sm",
+            mode,
+            "full",
+            "complete-test",
+        ),
+        (case,),
+    )
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "effective.toml").write_text(
+        "\n".join(
+            (
+                "[color]",
+                'accuracy = "full"',
+                f'contraction = "{request_method}"',
+                "[evaluator]",
+                f'execution_mode = "{mode}"',
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    inspection = SimpleNamespace(
+        model_name="built-in-sm",
+        model_source="compiled-model",
+        processes=(
+            SimpleNamespace(
+                id=case.artifact_name,
+                expression=case.process,
+                aliases=(),
+                color_accuracy="full",
+                execution_mode=mode,
+                recurrence_color_contraction_method=inspection_method,
+                selected_source_helicities=(),
+                helicity_coverage="complete",
+                generation_specialized_axes=(),
+            ),
+        ),
+    )
+    fake_artifacts = ModuleType("pyamplicol.artifacts")
+    fake_artifacts.inspect_artifact = lambda _path: inspection  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pyamplicol.artifacts", fake_artifacts)
+
+    gate.NativeArtifactBuilder._validate(tmp_path, request)
+
+
 def test_group_request_rejects_selection_outside_recorded_domain() -> None:
     case = gate.catalog_cases(1)[0]
     with pytest.raises(ValueError, match="outside its domain"):
