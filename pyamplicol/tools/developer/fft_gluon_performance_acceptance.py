@@ -41,7 +41,7 @@ PROBE_SOURCE = ROOT / "tools" / "developer" / "fft_gluon_candidate_probe.cpp"
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
 
 KIND = "pyamplicol-pure-gluon-fft-performance-acceptance"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 REFERENCE_BACKEND = "AmpliGluonTraceDefaultBG"
 # Recurrence is the only generation-specialized acceptance candidate.  Running
 # it first prevents the diagnostic OTF generation from warming its cold path.
@@ -58,6 +58,9 @@ MANDATORY_LANE_TIMEOUT_SECONDS = 60.0 * 60.0
 WARM_RATIO_LIMIT = 1.25
 RSS_RATIO_LIMIT = 2.0
 COLD_RATIO_LIMIT = 5.0
+NUMERICAL_RELATIVE_TOLERANCE = 1.0e-10
+INITIAL_GLUON_AVERAGE_FACTOR = 256
+UNIT_COUPLING_ALPHA_S = 1.0 / (4.0 * math.pi)
 DARWIN_RSS_MARKER = "FFT_MAX_RSS_KIB"
 REFERENCE_RSS_MARKER = "BENCHMARK_MAX_RSS_KIB"
 WATCHDOG_CLEANUP_WAIT_SECONDS = 7.0
@@ -76,6 +79,10 @@ class AcceptanceError(RuntimeError):
     """Raised when the paired campaign or its evidence is invalid."""
 
 
+class NumericalParityError(AcceptanceError):
+    """Raised when an evaluated candidate disagrees with the reference."""
+
+
 @dataclass(frozen=True)
 class CandidateProbeMetrics:
     process: str
@@ -83,6 +90,7 @@ class CandidateProbeMetrics:
     helicity_coverage_count: int
     selected_helicity_id: str
     point_count: int
+    point_values: tuple[float, ...]
     load_seconds: float
     first_warm_seconds: float
     warm_up_api_seconds: float
@@ -96,6 +104,16 @@ class CandidateProbeMetrics:
 
 
 @dataclass(frozen=True)
+class NumericalParityEvidence:
+    normalization_alpha_s_me_check: float
+    candidate_scale_factor: int
+    relative_tolerance: float
+    maximum_relative_error: float
+    maximum_relative_error_point: int
+    passes: bool
+
+
+@dataclass(frozen=True)
 class CandidateMetrics:
     lane: str
     total_gluons: int
@@ -105,6 +123,7 @@ class CandidateMetrics:
     first_warm_seconds: float
     max_rss_kib: int
     probe: CandidateProbeMetrics
+    numerical_parity: NumericalParityEvidence
 
     @property
     def cold_to_ready_seconds(self) -> float:
@@ -161,6 +180,7 @@ class ReferenceMetrics:
     selected_helicity: tuple[int, ...]
     selected_path: str
     event_paths: tuple[str, ...]
+    matrix_elements: tuple[float, ...]
 
     @property
     def cold_to_ready_seconds(self) -> float:
@@ -181,10 +201,16 @@ class GateResult:
     warm_passes: bool
     rss_passes: bool
     cold_passes: bool
+    numerical_passes: bool
 
     @property
     def passes(self) -> bool:
-        return self.warm_passes and self.rss_passes and self.cold_passes
+        return (
+            self.warm_passes
+            and self.rss_passes
+            and self.cold_passes
+            and self.numerical_passes
+        )
 
 
 @dataclass(frozen=True)
@@ -208,17 +234,74 @@ def _positive_finite(value: object) -> bool:
     )
 
 
+def _finite_number(value: object) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def candidate_reference_scale_factor(total_gluons: int) -> int:
+    """Undo pyAmpliCol's initial-state average and final-gluon symmetry factor."""
+
+    if total_gluons < 2:
+        raise AcceptanceError("total-gluon multiplicity must be at least two")
+    return INITIAL_GLUON_AVERAGE_FACTOR * math.factorial(total_gluons - 2)
+
+
+def compare_candidate_to_reference(
+    *,
+    total_gluons: int,
+    candidate_values: Sequence[float],
+    reference_values: Sequence[float],
+) -> NumericalParityEvidence:
+    """Compare the same ordered points after aligning public ME conventions."""
+
+    if len(candidate_values) != POINT_COUNT or len(reference_values) != POINT_COUNT:
+        raise AcceptanceError("numerical parity requires exactly 10 paired values")
+    if not all(_finite_number(value) for value in candidate_values):
+        raise AcceptanceError("candidate numerical parity values must be finite")
+    if not all(_positive_finite(value) for value in reference_values):
+        raise AcceptanceError("reference numerical parity values must be positive")
+    scale_factor = candidate_reference_scale_factor(total_gluons)
+    errors: list[float] = []
+    for candidate, reference in zip(candidate_values, reference_values, strict=True):
+        scaled_candidate = float(candidate) * scale_factor
+        scale = max(abs(scaled_candidate), abs(float(reference)))
+        errors.append(abs(scaled_candidate - float(reference)) / scale)
+    maximum = max(errors)
+    maximum_point = errors.index(maximum) + 1
+    return NumericalParityEvidence(
+        normalization_alpha_s_me_check=UNIT_COUPLING_ALPHA_S,
+        candidate_scale_factor=scale_factor,
+        relative_tolerance=NUMERICAL_RELATIVE_TOLERANCE,
+        maximum_relative_error=maximum,
+        maximum_relative_error_point=maximum_point,
+        passes=maximum <= NUMERICAL_RELATIVE_TOLERANCE,
+    )
+
+
 def parse_candidate_probe_output(output: str) -> CandidateProbeMetrics:
     """Parse per-cell process-CPU evidence emitted by the public-C probe."""
 
     lines = [line.strip() for line in output.splitlines() if line.strip()]
-    if not lines or lines[0] != "FFT_CANDIDATE_PROBE_V2":
+    if not lines or lines[0] != "FFT_CANDIDATE_PROBE_V3":
         raise AcceptanceError("candidate probe header is missing or invalid")
     scalar: dict[str, str] = {}
+    point_values: dict[int, float] = {}
     calibration: dict[int, tuple[int, float]] = {}
     warm_cells: dict[tuple[int, int], float] = {}
     for line in lines[1:]:
         fields = line.split()
+        if fields[0] == "POINT_VALUE":
+            if len(fields) != 3:
+                raise AcceptanceError("candidate point-value row is malformed")
+            point = int(fields[1])
+            if point in point_values:
+                raise AcceptanceError("candidate point value is duplicated")
+            point_values[point] = float(fields[2])
+            continue
         if fields[0] == "CALIBRATION_CELL":
             if len(fields) != 4:
                 raise AcceptanceError("candidate calibration cell is malformed")
@@ -261,6 +344,8 @@ def parse_candidate_probe_output(output: str) -> CandidateProbeMetrics:
             f"candidate probe scalar fields differ: missing={missing}, extra={extra}"
         )
     expected_points = set(range(1, POINT_COUNT + 1))
+    if set(point_values) != expected_points:
+        raise AcceptanceError("candidate probe must report all 10 point values")
     if set(calibration) != expected_points:
         raise AcceptanceError("candidate probe must calibrate all 10 event cells")
     expected_warm_cells = {
@@ -291,6 +376,9 @@ def parse_candidate_probe_output(output: str) -> CandidateProbeMetrics:
     }
     calibration_calls = tuple(calibration[index][0] for index in sorted(calibration))
     calibration_seconds = tuple(calibration[index][1] for index in sorted(calibration))
+    ordered_point_values = tuple(
+        point_values[index] for index in range(1, POINT_COUNT + 1)
+    )
     warm_cell_rows = tuple(
         tuple(warm_cells[(sample, point)] for point in range(1, POINT_COUNT + 1))
         for sample in range(1, WARM_SAMPLE_COUNT + 1)
@@ -321,18 +409,24 @@ def parse_candidate_probe_output(output: str) -> CandidateProbeMetrics:
     positive_numeric = (
         numeric["LOAD_SECONDS"],
         numeric["FIRST_WARM_SECONDS"],
-        numeric["MIN_ABSOLUTE_VALUE"],
         *calibration_seconds,
         *(value for row in warm_cell_rows for value in row),
     )
     if not all(_positive_finite(value) for value in positive_numeric):
-        raise AcceptanceError("candidate probe contains a non-positive timing/value")
+        raise AcceptanceError("candidate probe contains a non-positive timing")
+    if (
+        not _finite_number(numeric["MIN_ABSOLUTE_VALUE"])
+        or numeric["MIN_ABSOLUTE_VALUE"] < 0.0
+        or not all(_finite_number(value) for value in ordered_point_values)
+    ):
+        raise AcceptanceError("candidate probe contains an invalid matrix element")
     return CandidateProbeMetrics(
         process=scalar["PROCESS"],
         execution_mode=execution_mode,
         helicity_coverage_count=helicity_coverage_count,
         selected_helicity_id=scalar["SELECTED_HELICITY_ID"],
         point_count=point_count,
+        point_values=ordered_point_values,
         load_seconds=numeric["LOAD_SECONDS"],
         first_warm_seconds=numeric["FIRST_WARM_SECONDS"],
         warm_up_api_seconds=warm_up_api_seconds,
@@ -391,9 +485,10 @@ def parse_candidate_first_ready_output(output: str) -> CandidateFirstReadyMetric
         or not scalar["SELECTED_HELICITY_ID"].startswith("h:")
         or max_rss_kib < 1
         or not all(
-            _positive_finite(value)
-            for value in (load_seconds, first_warm_seconds, minimum_absolute_value)
+            _positive_finite(value) for value in (load_seconds, first_warm_seconds)
         )
+        or not _finite_number(minimum_absolute_value)
+        or minimum_absolute_value < 0.0
     ):
         raise AcceptanceError("candidate first-ready evidence is invalid")
     if execution_mode == "recurrence":
@@ -533,6 +628,7 @@ def evaluate_gates(
                 warm_passes=warm_ratio <= WARM_RATIO_LIMIT,
                 rss_passes=rss_ratio <= RSS_RATIO_LIMIT,
                 cold_passes=cold_ratio <= COLD_RATIO_LIMIT,
+                numerical_passes=candidate.numerical_parity.passes,
             )
         )
     return tuple(results)
@@ -1058,12 +1154,16 @@ def _run_reference(
         or run.peak_rss_kib < 1
     ):
         raise AcceptanceError("reference cold/RSS metrics are incomplete")
-    if len(run.matrix_elements) != POINT_COUNT or any(
+    expected_matrix_element_keys = {(point, 1) for point in range(1, POINT_COUNT + 1)}
+    if set(run.matrix_elements) != expected_matrix_element_keys or any(
         not _positive_finite(value) for value in run.matrix_elements.values()
     ):
         raise AcceptanceError(
             "reference did not confirm the selected helicity at all 10 points"
         )
+    matrix_elements = tuple(
+        run.matrix_elements[(point, 1)] for point in range(1, POINT_COUNT + 1)
+    )
     metrics = ReferenceMetrics(
         total_gluons=total_gluons,
         generator_seed=generator_seed(total_gluons),
@@ -1077,6 +1177,7 @@ def _run_reference(
         selected_helicity=tuple(representative.helicities),
         selected_path=representative.path,
         event_paths=tuple(str(path) for path in uniform_events),
+        matrix_elements=matrix_elements,
     )
     return _ReferenceRun(metrics=metrics, event_paths=tuple(uniform_events))
 
@@ -1301,6 +1402,11 @@ def _run_candidate(
         probe_metrics.max_rss_kib,
         cold_metrics.max_rss_kib if cold_metrics is not None else 0,
     )
+    numerical_parity = compare_candidate_to_reference(
+        total_gluons=total_gluons,
+        candidate_values=probe_metrics.point_values,
+        reference_values=reference.metrics.matrix_elements,
+    )
     return CandidateMetrics(
         lane=lane,
         total_gluons=total_gluons,
@@ -1310,6 +1416,7 @@ def _run_candidate(
         first_warm_seconds=first_warm_seconds,
         max_rss_kib=max_rss_kib,
         probe=probe_metrics,
+        numerical_parity=numerical_parity,
     )
 
 
@@ -1365,6 +1472,17 @@ def _plain_reference(reference: ReferenceMetrics) -> dict[str, object]:
     payload = asdict(reference)
     payload["cold_to_ready_seconds"] = reference.cold_to_ready_seconds
     return payload
+
+
+def _gate_report(gates: Sequence[GateResult]) -> dict[str, object]:
+    """Serialize every completed gate and aggregate its acceptance result."""
+
+    return {
+        "gates": [asdict(gate) | {"passes": gate.passes} for gate in gates],
+        # Infeasible optional rows are skipped before producing a GateResult.
+        # Every row that was measured is therefore acceptance-authoritative.
+        "passes": all(gate.passes for gate in gates),
+    }
 
 
 def _write_report(path: Path, payload: Mapping[str, object]) -> None:
@@ -1446,6 +1564,17 @@ def dry_run_plan(
                 "generation coverage"
             ),
         },
+        "numerical_parity": {
+            "reference_values": "ordered-10-AmpliGluonTrace-matrix-elements",
+            "candidate_values": "first-existing-calibration-evaluation-per-point",
+            "candidate_runtime_parameter": "normalization.alpha_s_me_check",
+            "candidate_runtime_parameter_value": UNIT_COUPLING_ALPHA_S,
+            "candidate_to_reference_scale": "256*factorial(N-2)",
+            "relative_error_scale": "max(abs(candidate),abs(reference))",
+            "relative_tolerance": NUMERICAL_RELATIVE_TOLERANCE,
+            "failure_is_fatal": True,
+            "extra_evaluations": 0,
+        },
         "global_lane_policy": (
             "on-the-fly is diagnostic-only under complete generation coverage; "
             "among generation-specialized lanes, minimum geometric mean candidate "
@@ -1520,6 +1649,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
     reference_module = _load_reference_module()
     references: dict[int, ReferenceMetrics] = {}
     candidates: dict[str, dict[int, CandidateMetrics]] = {lane: {} for lane in LANES}
+    optional_status: dict[str, object] = {}
     report_path = run_root / "report.json"
 
     def partial(status: str) -> dict[str, object]:
@@ -1550,8 +1680,22 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
                 }
                 for lane, records in candidates.items()
             },
+            "optional": optional_status,
         }
         return payload
+
+    def require_numerical_parity(candidate: CandidateMetrics) -> None:
+        evidence = candidate.numerical_parity
+        if evidence.passes:
+            return
+        _write_report(report_path, partial("failed-numerical-parity"))
+        raise NumericalParityError(
+            "candidate/reference matrix-element mismatch for "
+            f"{candidate.lane} N={candidate.total_gluons} at point "
+            f"{evidence.maximum_relative_error_point}: relative error "
+            f"{evidence.maximum_relative_error:.17g} exceeds "
+            f"{evidence.relative_tolerance:.17g}"
+        )
 
     for total_gluons in MANDATORY_MULTIPLICITIES:
         reference = _run_reference(
@@ -1566,7 +1710,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
         )
         references[total_gluons] = reference.metrics
         for lane in LANES:
-            candidates[lane][total_gluons] = _run_candidate(
+            candidate = _run_candidate(
                 lane=lane,
                 total_gluons=total_gluons,
                 reference=reference,
@@ -1577,11 +1721,12 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
                 target_seconds=arguments.target_seconds,
                 timeout_seconds=MANDATORY_LANE_TIMEOUT_SECONDS,
             )
+            candidates[lane][total_gluons] = candidate
+            require_numerical_parity(candidate)
         _write_report(report_path, partial("running"))
 
     winner = select_global_lane(candidates)
     mandatory_gates = evaluate_gates(winner, references, candidates)
-    optional_status: dict[str, object] = {}
     optional_gates: tuple[GateResult, ...] = ()
     if arguments.include_optional:
         optional_totals: list[int] = []
@@ -1609,6 +1754,13 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
                     timeout_seconds=MANDATORY_LANE_TIMEOUT_SECONDS,
                     cold_limit_seconds=OPTIONAL_COLD_LIMIT_SECONDS,
                 )
+                if not candidate.numerical_parity.passes:
+                    references[total_gluons] = reference.metrics
+                    candidates[winner][total_gluons] = candidate
+                    optional_status[str(total_gluons)] = {
+                        "status": "failed-numerical-parity"
+                    }
+                    require_numerical_parity(candidate)
                 if not optional_candidate_is_feasible(candidate):
                     optional_status[str(total_gluons)] = {
                         "status": "skipped",
@@ -1620,6 +1772,8 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
                 optional_totals.append(total_gluons)
                 optional_status[str(total_gluons)] = {"status": "measured"}
                 _write_report(report_path, partial("running"))
+            except NumericalParityError:
+                raise
             except AcceptanceError as error:
                 optional_status[str(total_gluons)] = {
                     "status": "skipped",
@@ -1639,11 +1793,10 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
         {
             "global_winning_lane": winner,
             "lane_eligibility": lane_eligibility(candidates),
-            "gates": [asdict(gate) | {"passes": gate.passes} for gate in gates],
             "optional": optional_status,
-            "passes": all(gate.passes for gate in mandatory_gates),
         }
     )
+    final.update(_gate_report(gates))
     _write_report(report_path, final)
     return final
 

@@ -23,6 +23,8 @@ namespace {
 
 constexpr std::size_t kPointCount = 10;
 constexpr std::size_t kWarmSampleCount = 10;
+constexpr double kPi = 3.141592653589793238462643383279502884;
+constexpr double kUnitCouplingAlphaS = 1.0 / (4.0 * kPi);
 
 struct Event {
     std::vector<double> momenta;
@@ -218,9 +220,6 @@ double evaluate_one(
         throw std::runtime_error("Rusticol returned an invalid scalar result");
     }
     const double absolute = std::abs(value);
-    if (!(absolute > 0.0)) {
-        throw std::runtime_error("generation-selected helicity evaluated to zero");
-    }
     minimum_absolute_value = std::min(minimum_absolute_value, absolute);
     sink += value;
     return value;
@@ -328,6 +327,11 @@ int main(int argc, char **argv) {
         }
         RuntimeHandle runtime(arguments.artifact, arguments.process);
         RusticolRuntimeHandle *const handle = runtime.get();
+        check_rusticol(rusticol_runtime_set_model_parameter(
+            handle,
+            "normalization.alpha_s_me_check",
+            kUnitCouplingAlphaS,
+            0.0));
         const std::string process = runtime_string(handle, rusticol_runtime_process_key);
         const std::string execution_mode =
             runtime_string(handle, rusticol_runtime_execution_mode);
@@ -421,7 +425,7 @@ int main(int argc, char **argv) {
                 peak_rss_kib,
                 (warm_up.peak_rss_bytes + 1023U) / 1024U);
         }
-        if (!std::isfinite(sink) || !(minimum_absolute_value > 0.0)) {
+        if (!std::isfinite(sink) || !std::isfinite(minimum_absolute_value)) {
             throw std::runtime_error("candidate first-pass sink is invalid");
         }
         if (arguments.first_ready_only) {
@@ -440,6 +444,8 @@ int main(int argc, char **argv) {
 
         std::array<std::size_t, kPointCount> calibration_calls {};
         std::array<double, kPointCount> calibration_seconds {};
+        std::array<double, kPointCount> point_values {};
+        std::array<bool, kPointCount> point_value_recorded {};
         for (std::size_t point = 0; point < events.size(); ++point) {
             std::size_t repetitions = 1;
             for (;;) {
@@ -447,12 +453,16 @@ int main(int argc, char **argv) {
                 for (std::size_t repetition = 0;
                      repetition < repetitions;
                      ++repetition) {
-                    evaluate_one(
+                    const double value = evaluate_one(
                         handle,
                         events[point].momenta,
                         &selected_helicity_index,
                         minimum_absolute_value,
                         sink);
+                    if (!point_value_recorded[point]) {
+                        point_values[point] = value;
+                        point_value_recorded[point] = true;
+                    }
                 }
                 const double elapsed = process_cpu_seconds() - calibration_start;
                 if (elapsed >= arguments.target_seconds) {
@@ -492,12 +502,20 @@ int main(int argc, char **argv) {
         }
 
         peak_rss_kib = std::max(peak_rss_kib, process_peak_rss_kib());
-        if (!std::isfinite(sink) || !(minimum_absolute_value > 0.0)) {
+        if (!std::isfinite(sink) || !std::isfinite(minimum_absolute_value)) {
             throw std::runtime_error("candidate benchmark sink is invalid");
+        }
+        if (!std::all_of(
+                point_values.begin(),
+                point_values.end(),
+                [](const double value) {
+                    return std::isfinite(value);
+                })) {
+            throw std::runtime_error("candidate point-value evidence is invalid");
         }
 
         std::cout << std::setprecision(17) << std::scientific
-                  << "FFT_CANDIDATE_PROBE_V2\n"
+                  << "FFT_CANDIDATE_PROBE_V3\n"
                   << "PROCESS " << process << "\n"
                   << "EXECUTION_MODE " << execution_mode << "\n"
                   << "TIMER_SOURCE process-cpu-time\n"
@@ -507,6 +525,10 @@ int main(int argc, char **argv) {
                   << "LOAD_SECONDS " << load_seconds << "\n"
                   << "FIRST_WARM_SECONDS " << first_warm_seconds << "\n"
                   << "WARM_UP_API_SECONDS " << warm_up_api_seconds << "\n";
+        for (std::size_t point = 0; point < events.size(); ++point) {
+            std::cout << "POINT_VALUE " << (point + 1) << " "
+                      << point_values[point] << "\n";
+        }
         for (std::size_t point = 0; point < events.size(); ++point) {
             std::cout << "CALIBRATION_CELL " << (point + 1) << " "
                       << calibration_calls[point] << " "

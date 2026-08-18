@@ -19,6 +19,7 @@ def _probe(
     lane: str,
     warm: float,
     rss_kib: int = 1024,
+    point_values: tuple[float, ...] = (1.0,) * 10,
 ) -> acceptance.CandidateProbeMetrics:
     samples = tuple(warm * (1.0 + 0.001 * index) for index in range(10))
     warm_cells = tuple((sample,) * 10 for sample in samples)
@@ -28,6 +29,7 @@ def _probe(
         helicity_coverage_count=1 if lane == "recurrence" else 16,
         selected_helicity_id="h:-1,-1,+1,+1",
         point_count=10,
+        point_values=point_values,
         load_seconds=0.2,
         first_warm_seconds=0.3,
         warm_up_api_seconds=0.0 if lane == "recurrence" else 0.25,
@@ -48,7 +50,17 @@ def _candidate(
     *,
     generation: float = 1.0,
     rss_kib: int = 1024,
+    numerical_passes: bool = True,
 ) -> acceptance.CandidateMetrics:
+    scale_factor = acceptance.candidate_reference_scale_factor(total_gluons)
+    point_values = [1.0 / scale_factor] * 10
+    if not numerical_passes:
+        point_values[4] *= 1.0 + 1.0e-8
+    numerical_parity = acceptance.compare_candidate_to_reference(
+        total_gluons=total_gluons,
+        candidate_values=point_values,
+        reference_values=(1.0,) * 10,
+    )
     return acceptance.CandidateMetrics(
         lane=lane,
         total_gluons=total_gluons,
@@ -57,7 +69,13 @@ def _candidate(
         load_seconds=0.2,
         first_warm_seconds=0.3,
         max_rss_kib=rss_kib,
-        probe=_probe(lane=lane, warm=warm, rss_kib=rss_kib),
+        probe=_probe(
+            lane=lane,
+            warm=warm,
+            rss_kib=rss_kib,
+            point_values=tuple(point_values),
+        ),
+        numerical_parity=numerical_parity,
     )
 
 
@@ -81,6 +99,7 @@ def _reference(
         selected_helicity=(-1, -1, 1, 1),
         selected_path="mhv",
         event_paths=tuple(f"point-{index}.event" for index in range(10)),
+        matrix_elements=(1.0,) * 10,
     )
 
 
@@ -90,7 +109,7 @@ def _probe_output(
     lane: str = "recurrence",
 ) -> str:
     rows = [
-        "FFT_CANDIDATE_PROBE_V2",
+        "FFT_CANDIDATE_PROBE_V3",
         "PROCESS gg_N4",
         f"EXECUTION_MODE {lane}",
         "TIMER_SOURCE process-cpu-time",
@@ -100,6 +119,7 @@ def _probe_output(
         "LOAD_SECONDS 2.0e-1",
         "FIRST_WARM_SECONDS 3.0e-1",
         f"WARM_UP_API_SECONDS {0.0 if lane == 'recurrence' else 0.25}",
+        *(f"POINT_VALUE {point} {1.0 / 512.0}" for point in range(1, 11)),
         *(
             f"CALIBRATION_CELL {point} {100 + point} {calibration}"
             for point in range(1, 11)
@@ -145,6 +165,14 @@ def _without_warm_cell(output: str, batch: int, point: int) -> str:
     )
 
 
+def _without_point_value(output: str, point: int) -> str:
+    prefix = f"POINT_VALUE {point} "
+    return (
+        "\n".join(line for line in output.splitlines() if not line.startswith(prefix))
+        + "\n"
+    )
+
+
 def _duplicate_warm_cell(
     output: str,
     source: tuple[int, int],
@@ -169,6 +197,7 @@ def test_candidate_probe_parser_requires_canonical_ten_sample_evidence() -> None
 
     assert parsed.execution_mode == "recurrence"
     assert parsed.point_count == 10
+    assert parsed.point_values == pytest.approx((1.0 / 512.0,) * 10)
     assert parsed.warm_up_api_seconds == 0.0
     assert parsed.calibration_calls == tuple(range(101, 111))
     assert parsed.calibration_seconds == pytest.approx((0.26,) * 10)
@@ -185,6 +214,7 @@ def test_candidate_probe_parser_requires_canonical_ten_sample_evidence() -> None
     ("payload", "message"),
     (
         (_probe_output(calibration=0.249), "0.25 seconds"),
+        (_without_point_value(_probe_output(), 10), "all 10 point values"),
         (_without_warm_cell(_probe_output(), 10, 10), "10x10 warm"),
         (
             _duplicate_warm_cell(_probe_output(), (10, 10), (10, 9)),
@@ -211,10 +241,59 @@ def test_candidate_probe_parser_enforces_lane_specific_warm_up_contract() -> Non
         acceptance.parse_candidate_probe_output(bad_recurrence)
 
 
+@pytest.mark.parametrize("total_gluons", (4, 9, 11))
+def test_numerical_parity_aligns_unit_coupling_and_me_conventions(
+    total_gluons: int,
+) -> None:
+    reference_values = tuple(float(point * point + 1) for point in range(1, 11))
+    scale_factor = 256 * acceptance.math.factorial(total_gluons - 2)
+    candidate_values = tuple(value / scale_factor for value in reference_values)
+
+    evidence = acceptance.compare_candidate_to_reference(
+        total_gluons=total_gluons,
+        candidate_values=candidate_values,
+        reference_values=reference_values,
+    )
+
+    assert evidence.normalization_alpha_s_me_check == pytest.approx(
+        1.0 / (4.0 * acceptance.math.pi)
+    )
+    assert evidence.candidate_scale_factor == scale_factor
+    assert evidence.relative_tolerance == 1.0e-10
+    assert evidence.maximum_relative_error <= 1.0e-15
+    assert evidence.passes is True
+
+
+@pytest.mark.parametrize("mismatch_multiplier", (1.0 + 2.0e-10, 0.0, -1.0))
+def test_numerical_parity_rejects_a_strict_scale_relative_mismatch(
+    mismatch_multiplier: float,
+) -> None:
+    reference_values = (1.0,) * 10
+    scale_factor = acceptance.candidate_reference_scale_factor(4)
+    candidate_values = [1.0 / scale_factor] * 10
+    candidate_values[6] *= mismatch_multiplier
+
+    evidence = acceptance.compare_candidate_to_reference(
+        total_gluons=4,
+        candidate_values=candidate_values,
+        reference_values=reference_values,
+    )
+
+    assert evidence.maximum_relative_error_point == 7
+    assert evidence.maximum_relative_error > 1.0e-10
+    assert evidence.passes is False
+
+
 def test_candidate_first_ready_parser_uses_the_same_lane_contract() -> None:
     parsed = acceptance.parse_candidate_first_ready_output(_first_ready_output())
     assert parsed.execution_mode == "recurrence"
     assert parsed.warm_up_api_seconds == 0.0
+    zero_candidate = acceptance.parse_candidate_first_ready_output(
+        _first_ready_output().replace(
+            "MIN_ABSOLUTE_VALUE 1e-20", "MIN_ABSOLUTE_VALUE 0"
+        )
+    )
+    assert zero_candidate.minimum_absolute_value == 0.0
 
 
 def test_darwin_reference_command_strips_only_the_locked_gnu_wrapper() -> None:
@@ -346,6 +425,149 @@ def test_gate_ratios_use_only_the_global_winner_and_include_thresholds() -> None
     assert all(gate.passes for gate in gates)
 
 
+def test_numerical_mismatch_fails_an_otherwise_passing_gate() -> None:
+    references = {
+        total: _reference(total) for total in acceptance.MANDATORY_MULTIPLICITIES
+    }
+    candidates = {
+        lane: {
+            total: _candidate(
+                lane,
+                total,
+                1.0 / 1.0045,
+                numerical_passes=(lane != "recurrence" or total != 7),
+            )
+            for total in acceptance.MANDATORY_MULTIPLICITIES
+        }
+        for lane in acceptance.LANES
+    }
+
+    gates = acceptance.evaluate_gates("recurrence", references, candidates)
+
+    failed = next(gate for gate in gates if gate.total_gluons == 7)
+    assert failed.warm_passes is True
+    assert failed.rss_passes is True
+    assert failed.cold_passes is True
+    assert failed.numerical_passes is False
+    assert failed.passes is False
+    assert acceptance._gate_report(gates)["passes"] is False
+
+
+def _gate(total_gluons: int, *, passes: bool) -> acceptance.GateResult:
+    return acceptance.GateResult(
+        total_gluons=total_gluons,
+        lane="recurrence",
+        warm_ratio=1.0 if passes else 1.26,
+        rss_ratio=1.0,
+        cold_ratio=1.0,
+        warm_passes=passes,
+        rss_passes=True,
+        cold_passes=True,
+        numerical_passes=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("optional_gates", "expected"),
+    (
+        ((_gate(10, passes=False),), False),
+        ((_gate(10, passes=True), _gate(11, passes=True)), True),
+        ((), True),
+    ),
+    ids=("measured-fail", "measured-pass", "skipped"),
+)
+def test_gate_report_includes_every_measured_optional_row(
+    monkeypatch: pytest.MonkeyPatch,
+    optional_gates: tuple[acceptance.GateResult, ...],
+    expected: bool,
+) -> None:
+    mandatory = tuple(
+        _gate(total_gluons, passes=True)
+        for total_gluons in acceptance.MANDATORY_MULTIPLICITIES
+    )
+
+    report = acceptance._gate_report((*mandatory, *optional_gates))
+
+    assert report["passes"] is expected
+    serialized = report["gates"]
+    assert isinstance(serialized, list)
+    assert [gate["total_gluons"] for gate in serialized] == [
+        *acceptance.MANDATORY_MULTIPLICITIES,
+        *(gate.total_gluons for gate in optional_gates),
+    ]
+    assert all(gate["passes"] for gate in serialized[:6])
+    assert [gate["passes"] for gate in serialized[6:]] == [
+        gate.passes for gate in optional_gates
+    ]
+    monkeypatch.setattr(acceptance, "_campaign", lambda _arguments: report)
+    assert acceptance.main(("--run-id", "pytest-optional-gate-report")) == (
+        0 if expected else 1
+    )
+
+
+def test_optional_numerical_mismatch_is_fatal_and_persisted_not_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    performance_root = tmp_path / "performance"
+    monkeypatch.setattr(acceptance, "PERFORMANCE_ROOT", performance_root)
+    monkeypatch.setattr(acceptance, "_workspace_environment", lambda _python: {})
+    monkeypatch.setattr(
+        acceptance,
+        "_enforce_one_core",
+        lambda _platform: {"requested_cpu_cores": 1},
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_build_probe",
+        lambda **_kwargs: (
+            tmp_path / "probe",
+            {"target": "test-target", "package_version": "test-version"},
+        ),
+    )
+    monkeypatch.setattr(acceptance, "_load_reference_module", object)
+
+    def fake_reference(**kwargs: object) -> acceptance._ReferenceRun:
+        total_gluons = int(kwargs["total_gluons"])
+        return acceptance._ReferenceRun(
+            metrics=_reference(total_gluons),
+            event_paths=tuple(
+                tmp_path / f"N{total_gluons}-point-{point}.event" for point in range(10)
+            ),
+        )
+
+    def fake_candidate(**kwargs: object) -> acceptance.CandidateMetrics:
+        total_gluons = int(kwargs["total_gluons"])
+        return _candidate(
+            str(kwargs["lane"]),
+            total_gluons,
+            1.0,
+            numerical_passes=total_gluons != 10,
+        )
+
+    monkeypatch.setattr(acceptance, "_run_reference", fake_reference)
+    monkeypatch.setattr(acceptance, "_run_candidate", fake_candidate)
+    arguments = acceptance._parser().parse_args(
+        ("--include-optional", "--run-id", "optional-numerical-mismatch")
+    )
+
+    with pytest.raises(acceptance.NumericalParityError, match="N=10"):
+        acceptance._campaign(arguments)
+
+    report = json.loads(
+        (
+            performance_root / "runs" / "optional-numerical-mismatch" / "report.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert report["status"] == "failed-numerical-parity"
+    assert report["optional"]["10"]["status"] == "failed-numerical-parity"
+    evidence = report["candidates"]["recurrence"]["10"]
+    assert len(evidence["probe"]["point_values"]) == 10
+    assert evidence["numerical_parity"]["passes"] is False
+    assert evidence["numerical_parity"]["maximum_relative_error"] > 1.0e-10
+    assert len(report["reference"]["10"]["matrix_elements"]) == 10
+
+
 def test_optional_policy_enforces_both_cold_and_memory_caps() -> None:
     accepted = _candidate("recurrence", 10, 1.0, generation=899.0)
     slow = _candidate("recurrence", 10, 1.0, generation=900.0)
@@ -462,6 +684,20 @@ def test_dry_run_is_nonwriting_and_covers_locked_seeds(
         ),
         "recurrence": "generation-specialized",
     }
+    assert payload["schema_version"] == 3
+    assert payload["numerical_parity"] == {
+        "reference_values": "ordered-10-AmpliGluonTrace-matrix-elements",
+        "candidate_values": "first-existing-calibration-evaluation-per-point",
+        "candidate_runtime_parameter": "normalization.alpha_s_me_check",
+        "candidate_runtime_parameter_value": pytest.approx(
+            1.0 / (4.0 * acceptance.math.pi)
+        ),
+        "candidate_to_reference_scale": "256*factorial(N-2)",
+        "relative_error_scale": "max(abs(candidate),abs(reference))",
+        "relative_tolerance": 1.0e-10,
+        "failure_is_fatal": True,
+        "extra_evaluations": 0,
+    }
 
 
 def test_dry_run_rejects_unsafe_run_id_without_writing() -> None:
@@ -550,6 +786,11 @@ def test_native_probe_uses_public_allocation_free_call_and_lane_guard() -> None:
     assert 'if (execution_mode == "on-the-fly")' in source
     assert source.count("rusticol_runtime_warm_up_f64") == 1
     assert "CLOCK_PROCESS_CPUTIME_ID" in source
+    assert "rusticol_runtime_set_model_parameter" in source
+    assert '"normalization.alpha_s_me_check"' in source
+    assert "kUnitCouplingAlphaS" in source
+    assert source.count("evaluate_one(") == 4
+    assert "POINT_VALUE" in source
     assert "CALIBRATION_CELL" in source
     assert "WARM_CELL_SECONDS" in source
 
