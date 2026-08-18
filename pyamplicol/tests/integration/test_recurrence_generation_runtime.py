@@ -1004,18 +1004,24 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
             application["certified_relation_count"] == lane["certified_relation_count"]
         )
         native = manifest_report["native_relation_application"]
-        assert isinstance(native, dict)
+        certified = lane["certified_relation_count"]
+        applied = lane["applied_relation_count"]
+        if certified == 0:
+            assert applied == 0
+            assert native is None
+        else:
+            assert isinstance(native, dict)
+            assert native["requested_mode"] == lane["effective_mode"]
+            assert native["exact_certified_relation_count"] == certified
         effective_mode = lane["effective_mode"]
-        assert native["requested_mode"] == effective_mode
-        assert (
-            native["exact_certified_relation_count"] == lane["certified_relation_count"]
-        )
         if effective_mode == "diagnostic":
-            assert lane["applied_relation_count"] == 0
+            assert applied == 0
             assert lane["warning"]["required"] is False
             assert manifest_report["warning"]["required"] is False
-            assert native["applied_relation_count"] == 0
-            assert native["scale_copy_row_count"] == 0
+            if certified:
+                assert isinstance(native, dict)
+                assert native["applied_relation_count"] == 0
+                assert native["scale_copy_row_count"] == 0
             if mode == "certified-reuse":
                 assert lane["effective_reuse_state"] == "disabled"
                 assert lane["effective_mode_reason"] in {
@@ -1028,10 +1034,11 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
                 )
         else:
             assert effective_mode == mode == "certified-reuse"
-            applied = lane["applied_relation_count"]
-            assert applied == lane["certified_relation_count"]
-            assert native["applied_relation_count"] == applied
-            assert native["scale_copy_row_count"] == applied
+            assert applied == certified
+            if applied:
+                assert isinstance(native, dict)
+                assert native["applied_relation_count"] == applied
+                assert native["scale_copy_row_count"] == applied
             assert lane["warning"]["required"] is (applied > 0)
             assert manifest_report["warning"]["required"] is (applied > 0)
             assert lane["application_validation"]["status"] == (
@@ -1251,7 +1258,6 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
     executions: dict[str, dict[str, Any]] = {}
     reports: dict[str, dict[str, Any]] = {}
     lanes: dict[str, dict[str, Any]] = {}
-    native_reports: dict[str, dict[str, Any]] = {}
     runtimes: dict[str, Runtime] = {}
     active_artifact: Path | None = None
     active_mode: str | None = None
@@ -1300,11 +1306,11 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         assert isinstance(lane, dict)
         lanes[mode] = lane
         native = report["native_relation_application"]
-        if mode == "off":
+        if mode == "off" or lane["certified_relation_count"] == 0:
+            assert lane["applied_relation_count"] == 0
             assert native is None
         else:
             assert isinstance(native, dict)
-            native_reports[mode] = native
 
         runtime = Runtime.load(artifact)
         runtimes[mode] = runtime
@@ -1408,53 +1414,6 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         assert replay_capture["observations"] == []
         assert replay_capture["full_batch_commitment"]["current_count"] == 68
 
-    diagnostic_native = native_reports["diagnostic"]
-    certified_native = native_reports["certified-reuse"]
-    for native_report in (diagnostic_native, certified_native):
-        assert native_report["probe"]["tested_hypothesis_count"] == 0
-        assert native_report["numerical_candidate_count"] == 0
-        assert native_report["probe"]["verification_rejected_count"] == 0
-        assert native_report["uncertified_candidate_count"] == 0
-        assert native_report["exact_certified_relation_count"] == 0
-        assert native_report["rejected_hypothesis_count"] == 0
-        assert native_report["numerical_candidate_count"] == (
-            native_report["exact_certified_relation_count"]
-            + native_report["uncertified_candidate_count"]
-        )
-        assert native_report["rejected_hypothesis_count"] == (
-            native_report["probe"]["tested_hypothesis_count"]
-            - native_report["exact_certified_relation_count"]
-        )
-        assert native_report["rejected_candidates"] == []
-        assert native_report["certificates"] == []
-        assert native_report["certificate_count"] == 0
-        rejected_diagnostics = native_report["rejected_candidate_diagnostics"]
-        assert rejected_diagnostics["total_rejected_hypothesis_count"] == 0
-        assert rejected_diagnostics["retained_count"] == 0
-        assert rejected_diagnostics["truncated"] is False
-        assert rejected_diagnostics["truncation_policy"] == (
-            "none-authenticated-full-rejection-digest-v1"
-        )
-        assert (
-            rejected_diagnostics["full_rejection_sha256"]
-            == (native_report["probe"]["rejection_decision_sha256"])
-        )
-    assert diagnostic_native["exact_certified_relation_count"] == 0
-    assert diagnostic_native["applied_relation_count"] == 0
-    assert diagnostic_native["scale_copy_row_count"] == 0
-    assert diagnostic_native["requested_mode"] == "diagnostic"
-    assert certified_native["requested_mode"] == "diagnostic"
-    assert certified_native["state"] == "diagnostic-only"
-    for native_report in (diagnostic_native, certified_native):
-        assert native_report["applied_relation_count"] == 0
-        assert native_report["scale_copy_row_count"] == 0
-        assert native_report["current_count_before"] == 68
-        assert native_report["current_count_after"] == 68
-        assert native_report["contribution_count_before"] == 132
-        assert native_report["contribution_count_after"] == 132
-        assert native_report["interaction_evaluation_count_before"] == 132
-        assert native_report["interaction_evaluation_count_after"] == 132
-        assert native_report["interaction_evaluation_savings"] == 0
     _assert_runtime_values_match(
         runtimes["certified-reuse"],
         runtimes["diagnostic"],

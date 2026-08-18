@@ -265,6 +265,7 @@ pub(crate) fn encode_recurrence_direct_plan_v2_to_writer<W: Write>(
     plan: &DirectRecurrencePlan,
     destination: W,
 ) -> RusticolResult<u64> {
+    plan.ensure_serializable()?;
     let mut writer = Writer::new(destination);
     writer.raw(MAGIC)?;
     writer.u32(VERSION)?;

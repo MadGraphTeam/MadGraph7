@@ -532,6 +532,7 @@ def _recurrence_relation_reporting(
     *,
     mode: str,
     lane_report: Mapping[str, object],
+    zero_certificate_baseline_reused: bool = False,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Separate strict runtime inspection from artifact-wide provenance."""
 
@@ -681,6 +682,11 @@ def _recurrence_relation_reporting(
         if native is not None:
             raise GenerationError(
                 "disabled recurrence numerical current lane published application state"
+            )
+    elif native is None and zero_certificate_baseline_reused:
+        if certified != 0 or applied != 0:
+            raise GenerationError(
+                "recurrence baseline reuse requires an empty certificate set"
             )
     else:
         if not isinstance(native, Mapping):
@@ -837,6 +843,59 @@ def _recurrence_relation_reporting(
         "native_relation_application": (None if native is None else dict(native)),
     }
     return runtime_inspection, aggregate
+
+
+def _lower_recurrence_after_numerical_warmup(
+    *,
+    lower_once: Callable[..., _RustRecurrenceLoweringOutput],
+    final_schedule_path: Path,
+    baseline: _RustRecurrenceLoweringOutput,
+    warmup: RecurrenceNumericalCurrentWarmupResult,
+    requested_mode: str,
+) -> tuple[_RustRecurrenceLoweringOutput, bool]:
+    """Lower any certified relation set, or publish its unchanged baseline."""
+
+    if warmup.certificates:
+        return (
+            lower_once(
+                final_schedule_path,
+                mode=warmup.effective_mode,
+                evidence=warmup.evidence_json,
+                report_progress=False,
+                timing_name="native-final-generation",
+            ),
+            True,
+        )
+    runtime_inspection, aggregate_report = _recurrence_relation_reporting(
+        baseline.inspection_summary,
+        mode=requested_mode,
+        lane_report=warmup.to_json_dict(),
+        zero_certificate_baseline_reused=True,
+    )
+    if final_schedule_path.exists() or final_schedule_path.is_symlink():
+        raise GenerationError(
+            f"recurrence schedule destination already exists: {final_schedule_path}"
+        )
+    try:
+        final_schedule_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline.payload_path.replace(final_schedule_path)
+    except OSError as exc:
+        raise GenerationError(
+            "failed to publish the validated recurrence baseline payload"
+        ) from exc
+    return (
+        replace(
+            baseline,
+            inspection_summary=runtime_inspection,
+            generation_profile={
+                "schema_version": 1,
+                "native_passes": {"final": dict(baseline.generation_profile)},
+            },
+            numerical_current_reuse_report=aggregate_report,
+            payload_path=final_schedule_path,
+        ),
+        False,
+    )
 
 
 def _complete_recurrence_evidence_envelope_fallback(
@@ -4897,12 +4956,16 @@ class GenerationBackend:
                             RecurrenceNumericalEvidenceEnvelopeExceeded | None
                         ) = None
                         try:
-                            output = lower_once(
-                                final_schedule_path,
-                                mode=warmup.effective_mode,
-                                evidence=warmup.evidence_json,
-                                report_progress=False,
-                                timing_name="native-final-generation",
+                            if not warmup.certificates:
+                                warmup = warmup.without_evidence_transport()
+                            output, application_validation_required = (
+                                _lower_recurrence_after_numerical_warmup(
+                                    lower_once=lower_once,
+                                    final_schedule_path=final_schedule_path,
+                                    baseline=baseline,
+                                    warmup=warmup,
+                                    requested_mode=relation_discovery_mode,
+                                )
                             )
                         except (ArtifactError, GenerationError) as exc:
                             native_capacity_fallback = (
@@ -4976,6 +5039,8 @@ class GenerationBackend:
                                 "recurrence numerical warm-up was released "
                                 "without a fallback"
                             )
+                        if not application_validation_required:
+                            return output
                         warmup = warmup.without_evidence_transport()
                         try:
                             with _SYMBOLICA_MATERIALIZATION_LOCK:

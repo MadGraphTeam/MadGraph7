@@ -1154,6 +1154,108 @@ def _fallback_lowering_output(
     )
 
 
+@pytest.mark.parametrize(
+    ("plan_factory", "mode", "expected_lowering_calls"),
+    (
+        (_no_relation_plan, "certified-reuse", 1),
+        (_topology_replay_plan, "diagnostic", 2),
+    ),
+)
+def test_service_only_skips_second_lowering_for_zero_certificates(
+    tmp_path: Path,
+    plan_factory: object,
+    mode: str,
+    expected_lowering_calls: int,
+) -> None:
+    assert callable(plan_factory)
+    warmup = run_recurrence_numerical_current_warmup(
+        plan_factory(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode=mode,  # type: ignore[arg-type]
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=71,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+    calls: list[tuple[Path, dict[str, object]]] = []
+
+    def lower_once(
+        destination: Path,
+        **kwargs: object,
+    ) -> generation_service._RustRecurrenceLoweringOutput:
+        calls.append((destination, dict(kwargs)))
+        pass_name = "baseline" if len(calls) == 1 else "final"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(f"{pass_name}-payload".encode("ascii"))
+        return replace(
+            _fallback_lowering_output(
+                tmp_path,
+                pass_name,
+                inspection={"runtime": pass_name},
+            ),
+            resolved_helicities=((len(calls),),),
+            exact_sections={"pass": pass_name},
+            payload_path=destination,
+            payload_size_bytes=destination.stat().st_size,
+            payload_sha256=str(len(calls)) * 64,
+        )
+
+    baseline = lower_once(
+        tmp_path / ".baseline" / "recurrence-runtime.pacbin",
+        mode="off",
+        evidence=None,
+        report_progress=True,
+        timing_name="native-baseline-generation",
+    )
+    final_path = tmp_path / "final" / "recurrence-runtime.pacbin"
+    if not warmup.certificates:
+        warmup = warmup.without_evidence_transport()
+    try:
+        output, application_validation_required = (
+            generation_service._lower_recurrence_after_numerical_warmup(
+                lower_once=lower_once,
+                final_schedule_path=final_path,
+                baseline=baseline,
+                warmup=warmup,
+                requested_mode=mode,
+            )
+        )
+        assert len(calls) == expected_lowering_calls
+        assert application_validation_required is bool(warmup.certificates)
+        assert output.payload_path == final_path
+        if not warmup.certificates:
+            assert final_path.read_bytes() == b"baseline-payload"
+            assert not baseline.payload_path.exists()
+            assert output.resolved_helicities == baseline.resolved_helicities
+            assert output.exact_sections == baseline.exact_sections
+            assert output.inspection_summary == {"runtime": "baseline"}
+            assert output.generation_profile == {
+                "schema_version": 1,
+                "native_passes": {"final": {"pass": "baseline"}},
+            }
+            report = output.numerical_current_reuse_report
+            assert isinstance(report, Mapping)
+            assert report["requested_mode"] == mode
+            assert report["effective_mode"] == warmup.effective_mode
+            assert report["certified_relation_count"] == 0
+            assert report["applied_relation_count"] == 0
+            assert report["native_relation_application"] is None
+        else:
+            assert mode == "diagnostic"
+            assert final_path.read_bytes() == b"final-payload"
+            assert output.numerical_current_reuse_report is None
+            assert calls[1][1] == {
+                "mode": warmup.effective_mode,
+                "evidence": warmup.evidence_json,
+                "report_progress": False,
+                "timing_name": "native-final-generation",
+            }
+    finally:
+        warmup.close()
+
+
 def test_service_fallback_finishes_with_reuse_off_lowering(
     tmp_path: Path,
 ) -> None:

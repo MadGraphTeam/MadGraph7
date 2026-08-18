@@ -585,7 +585,7 @@ fn load_plan(
             "direct recurrence plan authentication digests disagree with execution.json",
         ));
     }
-    apply_process_remap(plan, &process_remap)
+    apply_process_remap(plan, &process_remap).map(DirectRecurrencePlan::into_runtime_compacted)
 }
 
 fn validate_process_binding(

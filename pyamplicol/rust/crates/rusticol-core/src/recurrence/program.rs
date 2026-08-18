@@ -1252,6 +1252,13 @@ impl ClosureProofMetadataV2 {
         }
         Ok(())
     }
+
+    pub(crate) fn discard_rows_for_runtime(&mut self) {
+        self.contributions = Box::default();
+        self.groups = Box::default();
+        self.reflection_certificates = Box::default();
+        self.three_line_traversal_certificates = Box::default();
+    }
 }
 
 pub fn closure_component_factor_digest_v2(

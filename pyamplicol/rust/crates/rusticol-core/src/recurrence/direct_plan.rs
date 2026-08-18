@@ -374,6 +374,7 @@ pub struct DirectRecurrencePlanParts {
 pub struct DirectRecurrencePlan {
     parts: DirectRecurrencePlanParts,
     runtime_layout_digest: SemanticDigest,
+    closure_proof_rows_retained: bool,
 }
 
 fn selector_domain_contains_parts(
@@ -419,7 +420,23 @@ impl DirectRecurrencePlan {
         Ok(Self {
             parts,
             runtime_layout_digest,
+            closure_proof_rows_retained: true,
         })
+    }
+
+    pub(crate) fn into_runtime_compacted(mut self) -> Self {
+        self.parts.closure_proofs.discard_rows_for_runtime();
+        self.closure_proof_rows_retained = false;
+        self
+    }
+
+    pub(crate) fn ensure_serializable(&self) -> RusticolResult<()> {
+        if !self.closure_proof_rows_retained {
+            return Err(invalid(
+                "runtime-compacted plan cannot be serialized without closure-proof rows",
+            ));
+        }
+        Ok(())
     }
 
     pub const fn strategy(&self) -> RecurrenceStrategy {
@@ -665,6 +682,10 @@ impl DirectRecurrencePlan {
     }
 
     pub fn into_parts(self) -> DirectRecurrencePlanParts {
+        assert!(
+            self.closure_proof_rows_retained,
+            "runtime-compacted DirectRecurrencePlan cannot be converted back into complete parts"
+        );
         self.parts
     }
 }
