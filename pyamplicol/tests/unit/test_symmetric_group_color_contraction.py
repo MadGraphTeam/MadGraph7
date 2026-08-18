@@ -336,8 +336,11 @@ def test_four_adjoint_two_line_plan_is_ten_coupled_s_four_owner_channels() -> No
         )
 
 
-def test_incomplete_channel_is_an_exact_direct_residual_and_cross_metric() -> None:
-    color_plan = _plan("d d~ > u u~ g g")
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_incomplete_channel_is_an_exact_direct_residual_and_cross_metric(
+    accuracy: str,
+) -> None:
+    color_plan = _plan("d d~ > u u~ g g", accuracy=accuracy)
     owners, owner_sector_ids, _ = _owner_descriptors(color_plan)
     complete_channel = (owner_sector_ids[0], owner_sector_ids[3])
     incomplete_member = owner_sector_ids[1]

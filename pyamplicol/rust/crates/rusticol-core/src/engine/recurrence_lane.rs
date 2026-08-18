@@ -3075,13 +3075,17 @@ mod replay_destination_helicity_tests {
         else {
             panic!("expected symmetric-group runtime reducer")
         };
-        let mut expected_workspace = reducer.workspace(1).unwrap();
-        reducer
-            .reduce_lanes(&mut expected_workspace, point_count, |group, point| {
-                Ok(local_values[group * point_count + point])
-            })
-            .unwrap();
-        let expected = expected_workspace.reduced(point_count).unwrap().to_vec();
+        let covered_group_count = reducer.channel_count() * reducer.group_order();
+        assert!(reducer.channel_count() > 0);
+        assert!(reducer.local_group_count() > covered_group_count);
+        assert!(reducer.residual_entries().iter().any(|entry| {
+            entry.left_group_index < covered_group_count as u32
+                && entry.right_group_index >= covered_group_count as u32
+        }));
+        let expected = RecurrenceColorContraction::symmetric_group_s3_dense_for_runtime_test(
+            &local_values,
+            point_count,
+        );
 
         let mut workspace = reducer.workspace(1).unwrap();
         let mut actual = vec![0.0; point_count];

@@ -3418,6 +3418,13 @@ mod tests {
         else {
             panic!("expected symmetric-group runtime reducer")
         };
+        let covered_group_count = reducer.channel_count() * reducer.group_order();
+        assert!(reducer.channel_count() > 0);
+        assert!(reducer.local_group_count() > covered_group_count);
+        assert!(reducer.residual_entries().iter().any(|entry| {
+            entry.left_group_index < covered_group_count as u32
+                && entry.right_group_index >= covered_group_count as u32
+        }));
         let point_count = 3;
         let helicity_count = 2;
         let structural_color_count = 13;
@@ -3458,22 +3465,15 @@ mod tests {
             }
         }
 
-        let mut expected_workspace = reducer.workspace(1).unwrap();
         let mut expected = vec![0.0; helicity_count * point_count];
+        let helicity_stride = structural_color_count * point_count;
         for helicity in 0..helicity_count {
-            reducer
-                .reduce_lanes(&mut expected_workspace, point_count, |group, point| {
-                    Ok(local_values
-                        [(helicity * structural_color_count + group) * point_count + point])
-                })
-                .unwrap();
-            for (point, value) in expected_workspace
-                .reduced(point_count)
-                .unwrap()
-                .iter()
-                .copied()
-                .enumerate()
-            {
+            let start = helicity * helicity_stride;
+            let dense = RecurrenceColorContraction::symmetric_group_s3_dense_for_runtime_test(
+                &local_values[start..start + helicity_stride],
+                point_count,
+            );
+            for (point, value) in dense.into_iter().enumerate() {
                 expected[point * helicity_count + helicity] = normalization * value;
             }
         }

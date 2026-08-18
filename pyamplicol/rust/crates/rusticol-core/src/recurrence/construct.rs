@@ -7565,8 +7565,457 @@ fn materialize_three_line_certificates(
     Ok(rows)
 }
 
+type ClosureSupportBucketKey = (Box<[u32]>, Box<[u32]>);
+
+#[derive(Debug, Default)]
+struct ContractedClosureSupportBucket {
+    sector_ids: Vec<u32>,
+    ordered_sector_ids_by_components: BTreeMap<Box<[LCColorComponent]>, Vec<u32>>,
+    open_line_sector_ids_by_components: BTreeMap<Box<[LCColorComponent]>, Vec<u32>>,
+}
+
+impl ContractedClosureSupportBucket {
+    fn include(&mut self, sector: &PreparedClosureSector) -> RusticolResult<()> {
+        self.sector_ids.push(sector.row.sector_id);
+        match sector.row.kind()? {
+            ProcessLCSectorKind::Singlet | ProcessLCSectorKind::SingleTrace => {
+                self.ordered_sector_ids_by_components
+                    .entry(sector.expected_components.clone())
+                    .or_default()
+                    .push(sector.row.sector_id);
+            }
+            ProcessLCSectorKind::OpenLines if sector.contracted_color_canonical_owner => {
+                let mut canonical = sector.expected_components.to_vec();
+                canonical.sort_unstable();
+                self.open_line_sector_ids_by_components
+                    .entry(canonical.into_boxed_slice())
+                    .or_default()
+                    .push(sector.row.sector_id);
+            }
+            ProcessLCSectorKind::OpenLines => {}
+        }
+        Ok(())
+    }
+
+    fn matching_sector_ids(&self, closed: &[LCColorComponent]) -> Vec<u32> {
+        let mut matching = self
+            .ordered_sector_ids_by_components
+            .get(closed)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        if !self.open_line_sector_ids_by_components.is_empty() {
+            let mut canonical = closed.to_vec();
+            canonical.sort_unstable();
+            if let Some(open_line_sectors) = self
+                .open_line_sector_ids_by_components
+                .get(canonical.as_slice())
+            {
+                matching.extend(open_line_sectors.iter().copied());
+            }
+        }
+        matching
+    }
+}
+
+#[derive(Debug)]
+struct ContractedClosureAttempt {
+    closed_components: Box<[LCColorComponent]>,
+    key: PendingClosureKey,
+    contribution: PendingClosureProofContribution,
+    pairing_rule_id: Option<u32>,
+}
+
+fn contracted_closure_support_buckets(
+    prepared_sectors: &PreparedClosureSectorCatalog,
+    materialized_sectors: &BTreeSet<u32>,
+) -> RusticolResult<BTreeMap<ClosureSupportBucketKey, ContractedClosureSupportBucket>> {
+    let mut buckets = BTreeMap::<ClosureSupportBucketKey, ContractedClosureSupportBucket>::new();
+    for sector_id in materialized_sectors.iter().copied() {
+        let sector = prepared_sectors.get(sector_id)?;
+        buckets
+            .entry((
+                sector.anchor_support.clone(),
+                sector.complement_support.clone(),
+            ))
+            .or_default()
+            .include(sector)?;
+    }
+    Ok(buckets)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn include_contracted_closure_attempt(
+    sector: &PreparedClosureSector,
+    attempt: &ContractedClosureAttempt,
+    process: &OwnedRecurrenceProcessInput,
+    process_catalog: &ProcessCatalog<'_>,
+    color_states: &DynamicLCColorStateInterner,
+    currents: &[PendingCurrent],
+    reflection_certificates: &[PendingReflectionCertificate],
+    prepared_sectors: &PreparedClosureSectorCatalog,
+    materialized_sectors: &BTreeSet<u32>,
+    result: &mut BTreeMap<PendingClosureKey, PendingClosureGroup>,
+) -> RusticolResult<()> {
+    if !closed_components_match_prepared_sector(
+        RecurrenceStrategy::ContractedColorUnion,
+        &attempt.closed_components,
+        sector,
+    )? {
+        return Err(invalid(format!(
+            "contracted-color closure routing selected non-matching sector {}",
+            sector.row.sector_id
+        )));
+    }
+    let reflection = closure_reflection_projection(
+        sector.row,
+        &attempt.closed_components,
+        process,
+        process_catalog,
+        color_states,
+        currents,
+        attempt.contribution.construction_parent_ids,
+        reflection_certificates,
+        prepared_sectors,
+        materialized_sectors,
+    )?;
+    let mut key = attempt.key.clone();
+    key.target_sector_id = sector.row.sector_id;
+    let mut contribution = attempt.contribution.clone();
+    contribution.three_line_certificate = three_line_traversal_certificate(
+        &attempt.closed_components,
+        sector.row,
+        &sector.expected_components,
+        process_catalog,
+        attempt.pairing_rule_id,
+    )?;
+    contribution.reflection_certificate_id = reflection.map(|row| row.certificate_id);
+    include_closure_with_reflection(result, key, contribution, reflection)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_contracted_color_union_closures(
+    process: &OwnedRecurrenceProcessInput,
+    process_catalog: &ProcessCatalog<'_>,
+    template: &OwnedRecurrenceTemplateInput,
+    fermion_ordering: &FermionOrderingContext,
+    pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
+    prepared_closures: &PreparedClosureCatalog,
+    prepared_sectors: &PreparedClosureSectorCatalog,
+    color_states: &DynamicLCColorStateInterner,
+    currents: &[PendingCurrent],
+    materialized_sectors: &BTreeSet<u32>,
+    reflection_certificates: &[PendingReflectionCertificate],
+    construction_domain: Option<PendingConstructionDomain>,
+    telemetry: &mut RecurrenceGenerationTelemetry,
+    collect_telemetry: bool,
+) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
+    let support_index = LaneClosureSupportIndex::new(currents, construction_domain)?;
+    let support_buckets =
+        contracted_closure_support_buckets(prepared_sectors, materialized_sectors)?;
+    let mut attempts = Vec::<ContractedClosureAttempt>::new();
+    let mut attempt_indices_by_sector = BTreeMap::<u32, Vec<usize>>::new();
+
+    for ((anchor_support, complement_support), bucket) in &support_buckets {
+        let anchor_ids = support_index
+            .current_ids(anchor_support)
+            .iter()
+            .copied()
+            .filter(|current_id| {
+                currents[*current_id as usize].key.node_kind() == RecurrenceNodeKind::Source
+            })
+            .collect::<Vec<_>>();
+        let complement_ids = support_index.current_ids(complement_support);
+        let anchor_count = anchor_ids.len();
+        let complement_count = complement_ids.len();
+        if collect_telemetry {
+            checked_diagnostic_add(
+                &mut telemetry.closure_support_lookup_count,
+                2,
+                "telemetry closure-support lookup count",
+            )?;
+            let theoretical_count = anchor_count
+                .checked_mul(complement_count)
+                .and_then(|count| count.checked_mul(prepared_closures.row_count()))
+                .and_then(|count| count.checked_mul(bucket.sector_ids.len()))
+                .ok_or_else(|| invalid("theoretical closure-candidate count exceeds usize"))?;
+            checked_diagnostic_add(
+                &mut telemetry.closure_candidate_theoretical_count,
+                theoretical_count,
+                "telemetry theoretical closure-candidate count",
+            )?;
+        }
+        for anchor_id in anchor_ids.iter().copied() {
+            let anchor_state = currents[anchor_id as usize].key.current_state_template_id();
+            for &complement_id in complement_ids {
+                let complement_state = currents[complement_id as usize]
+                    .key
+                    .current_state_template_id();
+                let matching_closures = prepared_closures.rows(anchor_state, complement_state);
+                if collect_telemetry {
+                    checked_diagnostic_add(
+                        &mut telemetry.closure_candidate_count,
+                        matching_closures.len(),
+                        "telemetry closure-candidate count",
+                    )?;
+                    checked_diagnostic_add(
+                        &mut telemetry.closure_state_match_count,
+                        matching_closures.len(),
+                        "telemetry closure-state-match count",
+                    )?;
+                }
+                for closure in matching_closures {
+                    let parent_ids = closure.parent_ids(
+                        anchor_state,
+                        complement_state,
+                        anchor_id,
+                        complement_id,
+                    )?;
+                    let parents = [
+                        &currents[parent_ids[0] as usize].key,
+                        &currents[parent_ids[1] as usize].key,
+                    ];
+                    let pairing_certificate_ids =
+                        closure_pairing_certificate_ids(currents, parent_ids, pairing_catalog)?;
+                    let pairing_rule =
+                        pairing_rule_for_certificate(&pairing_certificate_ids, pairing_catalog)?;
+                    for quantum in closure
+                        .quantum_flows
+                        .iter()
+                        .filter(|quantum| quantum.matches(&parents))
+                    {
+                        let output_factor = quantum.output_factor()?;
+                        let (evaluator_parent_ids, exchange_factor) =
+                            closure.canonical_evaluator_parents(parent_ids);
+                        let evaluator_parent_permutation = two_parent_permutation(
+                            parent_ids,
+                            evaluator_parent_ids,
+                            "closure evaluator order",
+                        )?;
+                        let fermion_factor = fermion_ordering_factor(
+                            &template.current_states,
+                            [
+                                parents[0].current_state_template_id(),
+                                parents[1].current_state_template_id(),
+                            ],
+                            [
+                                parents[0].support_source_slots(),
+                                parents[1].support_source_slots(),
+                            ],
+                            fermion_ordering,
+                        )?;
+                        let base_factor = multiply_factors(&[
+                            closure.closure_exact_factor,
+                            exchange_factor,
+                            closure.contraction_exact_factor,
+                            output_factor,
+                            fermion_factor,
+                            pairing_reconstruction_factor(pairing_rule),
+                        ])?;
+                        let left = color_states
+                            .get(parents[0].dynamic_lc_color_state_id())
+                            .ok_or_else(|| invalid("closure left color state disappeared"))?;
+                        let right = color_states
+                            .get(parents[1].dynamic_lc_color_state_id())
+                            .ok_or_else(|| invalid("closure right color state disappeared"))?;
+                        for witness in &closure.witnesses {
+                            if witness.row.left_shape_string_id != left.output_color_shape_id()
+                                || witness.row.right_shape_string_id
+                                    != right.output_color_shape_id()
+                            {
+                                continue;
+                            }
+                            let closed = witness.witness.closed_components(left, right)?;
+                            if collect_telemetry {
+                                checked_diagnostic_add(
+                                    &mut telemetry.closure_color_attempt_count,
+                                    1,
+                                    "telemetry closure-color-attempt count",
+                                )?;
+                            }
+                            let matching_sector_ids = bucket.matching_sector_ids(&closed);
+                            if matching_sector_ids.is_empty() {
+                                continue;
+                            }
+                            if pairing_catalog.is_some() && pairing_certificate_ids.is_empty() {
+                                return Err(invalid(format!(
+                                    "closure witness {} for contracted-color support bucket has no exactly realized fermion pairing",
+                                    witness.row.ordinal
+                                )));
+                            }
+                            let reconstruction_parent_permutation = match witness
+                                .row
+                                .input_permutation
+                            {
+                                0 => [0, 1],
+                                1 => [1, 0],
+                                value => {
+                                    return Err(invalid(format!(
+                                        "closure color witness has invalid parent permutation {value}"
+                                    )));
+                                }
+                            };
+                            let color_witness_term_id = closure
+                                .contraction
+                                .witness_start
+                                .checked_add(u64::from(witness.row.ordinal))
+                                .ok_or_else(|| {
+                                    invalid("closure color-witness term ID overflows")
+                                })?;
+                            let color_witness_term_id = u32::try_from(color_witness_term_id)
+                                .map_err(|_| {
+                                    invalid("closure color-witness term ID exceeds u32")
+                                })?;
+                            let attempt_index = attempts.len();
+                            attempts.push(ContractedClosureAttempt {
+                                closed_components: closed.into_boxed_slice(),
+                                key: PendingClosureKey {
+                                    target_sector_id: MISSING_U32,
+                                    complete_source_states: complete_closure_source_states(
+                                        parents,
+                                        process.external_legs.len(),
+                                    )?,
+                                    closure_template_id: closure.row.id,
+                                    quantum_flow_template_id: quantum.template_id(),
+                                    parent_current_ids: evaluator_parent_ids
+                                        .to_vec()
+                                        .into_boxed_slice(),
+                                },
+                                contribution: PendingClosureProofContribution {
+                                    construction_parent_ids: parent_ids,
+                                    construction_parent_permutation: [0, 1],
+                                    reconstruction_parent_permutation,
+                                    evaluator_parent_permutation,
+                                    closure_template_semantic_digest: closure.semantic_digest,
+                                    color_witness_term_id,
+                                    color_witness_proof_digest: witness.witness.proof_digest(),
+                                    three_line_certificate: None,
+                                    pairing_certificate_ids: pairing_certificate_ids
+                                        .clone()
+                                        .into_boxed_slice(),
+                                    reflection_certificate_id: None,
+                                    exact_factor: base_factor
+                                        .checked_mul(witness.witness.exact_factor())?,
+                                },
+                                pairing_rule_id: pairing_rule.map(|rule| rule.rule_id),
+                            });
+                            for sector_id in matching_sector_ids {
+                                attempt_indices_by_sector
+                                    .entry(sector_id)
+                                    .or_default()
+                                    .push(attempt_index);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut result = BTreeMap::new();
+    for sector_id in materialized_sectors.iter().copied() {
+        let sector = prepared_sectors.get(sector_id)?;
+        for attempt_index in attempt_indices_by_sector
+            .get(&sector_id)
+            .into_iter()
+            .flatten()
+            .copied()
+        {
+            let attempt = &attempts[attempt_index];
+            include_contracted_closure_attempt(
+                sector,
+                attempt,
+                process,
+                process_catalog,
+                color_states,
+                currents,
+                reflection_certificates,
+                prepared_sectors,
+                materialized_sectors,
+                &mut result,
+            )?;
+        }
+    }
+    validate_pending_closure_obligations(&result, pairing_catalog, prepared_sectors)?;
+    if collect_telemetry {
+        checked_diagnostic_add(
+            &mut telemetry.closure_group_count,
+            result.len(),
+            "telemetry closure-group count",
+        )?;
+        checked_diagnostic_add(
+            &mut telemetry.closure_proof_contribution_count,
+            result.values().try_fold(0usize, |total, group| {
+                total
+                    .checked_add(group.contributions.len())
+                    .ok_or_else(|| invalid("closure proof-contribution count exceeds usize"))
+            })?,
+            "telemetry closure-proof-contribution count",
+        )?;
+    }
+    Ok(result)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_closures(
+    strategy: RecurrenceStrategy,
+    process: &OwnedRecurrenceProcessInput,
+    process_catalog: &ProcessCatalog<'_>,
+    template: &OwnedRecurrenceTemplateInput,
+    fermion_ordering: &FermionOrderingContext,
+    pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
+    prepared_closures: &PreparedClosureCatalog,
+    prepared_sectors: &PreparedClosureSectorCatalog,
+    color_states: &DynamicLCColorStateInterner,
+    currents: &[PendingCurrent],
+    materialized_sectors: &BTreeSet<u32>,
+    stage_diagnostics: &[StageConstructionDiagnostics],
+    reflection_certificates: &[PendingReflectionCertificate],
+    construction_domain: Option<PendingConstructionDomain>,
+    telemetry: &mut RecurrenceGenerationTelemetry,
+    collect_telemetry: bool,
+) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
+    if strategy == RecurrenceStrategy::ContractedColorUnion {
+        return build_contracted_color_union_closures(
+            process,
+            process_catalog,
+            template,
+            fermion_ordering,
+            pairing_catalog,
+            prepared_closures,
+            prepared_sectors,
+            color_states,
+            currents,
+            materialized_sectors,
+            reflection_certificates,
+            construction_domain,
+            telemetry,
+            collect_telemetry,
+        );
+    }
+    build_closures_per_sector(
+        strategy,
+        process,
+        process_catalog,
+        template,
+        fermion_ordering,
+        pairing_catalog,
+        prepared_closures,
+        prepared_sectors,
+        color_states,
+        currents,
+        materialized_sectors,
+        stage_diagnostics,
+        reflection_certificates,
+        construction_domain,
+        telemetry,
+        collect_telemetry,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_closures_per_sector(
     strategy: RecurrenceStrategy,
     process: &OwnedRecurrenceProcessInput,
     process_catalog: &ProcessCatalog<'_>,
@@ -12825,7 +13274,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_closure_sectors_cache_expected_components_and_exact_contracted_owner() {
+    fn contracted_closure_index_preserves_open_line_canonical_owner() {
         let mut process = scalar_reference_process(4);
         process.lc_open_strings = vec![
             ProcessLCOpenStringRow {
@@ -12872,7 +13321,7 @@ mod tests {
             ProcessPhysicalLCSectorRow {
                 sector_id: 1,
                 kind: ProcessLCSectorKind::OpenLines as u8,
-                closure_source_slot: 3,
+                closure_source_slot: 1,
                 open_string_range: CheckedTableRange::new(2, 2),
                 ..seed
             },
@@ -12912,6 +13361,34 @@ mod tests {
         );
         assert_eq!(first.anchor_support.as_ref(), [1]);
         assert_eq!(first.complement_support.as_ref(), [0, 2, 3]);
+        let buckets = contracted_closure_support_buckets(&contracted, &sector_ids).unwrap();
+        let bucket = buckets.values().next().unwrap();
+        assert_eq!(buckets.len(), 1);
+        assert_eq!(bucket.sector_ids, [0, 1]);
+        assert_eq!(bucket.matching_sector_ids(&first.expected_components), [0]);
+        assert_eq!(bucket.matching_sector_ids(&alias.expected_components), [0]);
+
+        // Canonical ownership is established against the complete process
+        // catalog, not merely the materialized subset.  An alias-only replay
+        // therefore remains suppressed instead of becoming a local fallback.
+        let alias_only_ids = BTreeSet::from([1]);
+        let alias_only = PreparedClosureSectorCatalog::new(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &catalog,
+            &alias_only_ids,
+        )
+        .unwrap();
+        let alias_bucket = contracted_closure_support_buckets(&alias_only, &alias_only_ids)
+            .unwrap()
+            .into_values()
+            .next()
+            .unwrap();
+        assert!(
+            alias_bucket
+                .matching_sector_ids(&alias.expected_components)
+                .is_empty()
+        );
 
         let topology = PreparedClosureSectorCatalog::new(
             RecurrenceStrategy::TopologyReplay,
@@ -13750,6 +14227,342 @@ mod tests {
         assert_eq!(telemetry.closure_color_attempt_count, 1);
         assert_eq!(telemetry.closure_group_count, 1);
         assert_eq!(telemetry.closure_proof_contribution_count, 1);
+    }
+
+    #[test]
+    fn contracted_closure_buckets_match_legacy_rows_and_collapse_executed_attempts() {
+        let template = scalar_reference_template();
+        let template_catalog = TemplateCatalog::new(&template).unwrap();
+        let prepared_closures = PreparedClosureCatalog::new(&template, &template_catalog).unwrap();
+        let mut process = scalar_reference_process(2);
+        process
+            .physical_lc_sectors
+            .push(ProcessPhysicalLCSectorRow {
+                sector_id: 1,
+                ..process.physical_lc_sectors[0]
+            });
+        let process_catalog = ProcessCatalog::new(&process).unwrap();
+        let materialized_sectors = BTreeSet::from([0, 1]);
+        let prepared_sectors = PreparedClosureSectorCatalog::new(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &materialized_sectors,
+        )
+        .unwrap();
+        let fermion_ordering =
+            established_fermion_ordering_context(&process, &template, None).unwrap();
+        let mut color_states = DynamicLCColorStateInterner::default();
+        let color_id = color_states
+            .intern(DynamicLCColorState::new(0, None, vec![]).unwrap())
+            .unwrap();
+        let currents = (0..2_u32)
+            .map(|source_slot| {
+                let key = CurrentCoreKey::new(
+                    template.catalog_digest,
+                    RecurrenceNodeKind::Source,
+                    0,
+                    color_id,
+                    vec![source_slot],
+                    CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                        source_slot,
+                        coefficient: 1,
+                    }])
+                    .unwrap(),
+                    CurrentHelicityIdentity::contracted_color_union(
+                        0,
+                        vec![SourceStateAssignment::new(source_slot, 0)],
+                    )
+                    .unwrap(),
+                    vec![0],
+                    0,
+                    vec![],
+                    CurrentSourceBinding::FixedTemplate(source_slot),
+                    None,
+                )
+                .unwrap();
+                PendingCurrent {
+                    key,
+                    source_exact_factor: Some(ExactComplexRational::ONE),
+                    contributions: BTreeMap::new(),
+                    realized_pairing_rule_ids: BTreeSet::new(),
+                    reflection: CurrentReflection::Unavailable,
+                    reflection_certificate_id: None,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut bucketed_telemetry = RecurrenceGenerationTelemetry::default();
+        let bucketed = build_closures(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &template,
+            &fermion_ordering,
+            None,
+            &prepared_closures,
+            &prepared_sectors,
+            &color_states,
+            &currents,
+            &materialized_sectors,
+            &[],
+            &[],
+            None,
+            &mut bucketed_telemetry,
+            true,
+        )
+        .unwrap();
+        let mut legacy_telemetry = RecurrenceGenerationTelemetry::default();
+        let legacy = build_closures_per_sector(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &template,
+            &fermion_ordering,
+            None,
+            &prepared_closures,
+            &prepared_sectors,
+            &color_states,
+            &currents,
+            &materialized_sectors,
+            &[],
+            &[],
+            None,
+            &mut legacy_telemetry,
+            true,
+        )
+        .unwrap();
+
+        // PendingClosureGroup equality covers key identity, aggregate exact
+        // factors, and every proof contribution field in vector order.
+        assert_eq!(bucketed, legacy);
+        assert_eq!(
+            bucketed
+                .keys()
+                .map(|key| key.target_sector_id)
+                .collect::<Vec<_>>(),
+            [0, 1]
+        );
+        assert_eq!(bucketed_telemetry.closure_candidate_theoretical_count, 2);
+        assert_eq!(
+            bucketed_telemetry.closure_candidate_theoretical_count,
+            legacy_telemetry.closure_candidate_theoretical_count
+        );
+        assert_eq!(bucketed_telemetry.closure_support_lookup_count, 2);
+        assert_eq!(legacy_telemetry.closure_support_lookup_count, 4);
+        assert_eq!(bucketed_telemetry.closure_candidate_count, 1);
+        assert_eq!(legacy_telemetry.closure_candidate_count, 2);
+        assert_eq!(bucketed_telemetry.closure_state_match_count, 1);
+        assert_eq!(legacy_telemetry.closure_state_match_count, 2);
+        assert_eq!(bucketed_telemetry.closure_color_attempt_count, 1);
+        assert_eq!(legacy_telemetry.closure_color_attempt_count, 2);
+        assert_eq!(bucketed_telemetry.closure_group_count, 2);
+        assert_eq!(bucketed_telemetry.closure_proof_contribution_count, 2);
+    }
+
+    #[test]
+    fn contracted_closure_buckets_preserve_v4_reflection_partner_rows() {
+        let (mut process, mut template) = cyclic_trace_anchor_contract_fixture();
+        let closure_pairings = append_u32_sequence(&mut template, &[0, 0, 1, 1, 0, 1, 1, 0]);
+        template.lc_color_transition_witnesses[1].input_port_pairing_sequence_id = closure_pairings;
+        let reflected_word_id = process.u32_sequence_ranges.len() as u32;
+        process.u32_sequence_ranges.push(CheckedTableRange::new(
+            process.u32_sequence_values.len() as u64,
+            4,
+        ));
+        process.u32_sequence_values.extend_from_slice(&[0, 3, 2, 1]);
+        process
+            .physical_lc_sectors
+            .push(ProcessPhysicalLCSectorRow {
+                sector_id: 1,
+                trace_sequence_id: reflected_word_id,
+                word_sequence_id: reflected_word_id,
+                ..process.physical_lc_sectors[0]
+            });
+
+        let template_catalog = TemplateCatalog::new(&template).unwrap();
+        let prepared_closures = PreparedClosureCatalog::new(&template, &template_catalog).unwrap();
+        let process_catalog = ProcessCatalog::new(&process).unwrap();
+        let materialized_sectors = BTreeSet::from([0, 1]);
+        let prepared_sectors = PreparedClosureSectorCatalog::new(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &materialized_sectors,
+        )
+        .unwrap();
+        let fermion_ordering =
+            established_fermion_ordering_context(&process, &template, None).unwrap();
+
+        let adjoint =
+            |word| LCColorComponent::new(LCColorComponentKind::AdjointSegment, word).unwrap();
+        let color = |word| {
+            DynamicLCColorState::new_port_wired(
+                0,
+                vec![
+                    LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                    LCColorPortBinding::new(0, LCColorEndpoint::Front),
+                ],
+                vec![adjoint(word)],
+            )
+            .unwrap()
+        };
+        let anchor_color = color(vec![0]);
+        let complement_color = color(vec![1, 2, 3]);
+        let reflected_color = color(vec![3, 2, 1]);
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        let canonical_proof = CurrentReflectionProof::new(
+            minus_one,
+            [digest(180)],
+            dynamic_color_identity_digest(&complement_color).unwrap(),
+        )
+        .unwrap();
+        let reflected_proof = CurrentReflectionProof::new(
+            minus_one,
+            [digest(181)],
+            dynamic_color_identity_digest(&reflected_color).unwrap(),
+        )
+        .unwrap();
+        let reflection_certificate = PendingReflectionCertificate::reciprocal_pair(
+            0,
+            1,
+            2,
+            &canonical_proof,
+            &reflected_proof,
+            &complement_color,
+            &reflected_color,
+            4,
+        )
+        .unwrap();
+        let mut color_states = DynamicLCColorStateInterner::default();
+        let anchor_color_id = color_states.intern(anchor_color).unwrap();
+        let complement_color_id = color_states.intern(complement_color).unwrap();
+        let current =
+            |node_kind, color_id, support: &[u32], reflection, reflection_certificate_id| {
+                let key = CurrentCoreKey::new(
+                    template.catalog_digest,
+                    node_kind,
+                    0,
+                    color_id,
+                    support.to_vec(),
+                    CanonicalMomentumLinearForm::new(
+                        support
+                            .iter()
+                            .copied()
+                            .map(|source_slot| MomentumTerm {
+                                source_slot,
+                                coefficient: 1,
+                            })
+                            .collect(),
+                    )
+                    .unwrap(),
+                    CurrentHelicityIdentity::contracted_color_union(
+                        0,
+                        support
+                            .iter()
+                            .copied()
+                            .map(|slot| SourceStateAssignment::new(slot, 0))
+                            .collect(),
+                    )
+                    .unwrap(),
+                    vec![0],
+                    0,
+                    vec![],
+                    if node_kind == RecurrenceNodeKind::Source {
+                        CurrentSourceBinding::FixedTemplate(support[0])
+                    } else {
+                        CurrentSourceBinding::None
+                    },
+                    None,
+                )
+                .unwrap();
+                PendingCurrent {
+                    key,
+                    source_exact_factor: (node_kind == RecurrenceNodeKind::Source)
+                        .then_some(ExactComplexRational::ONE),
+                    contributions: BTreeMap::new(),
+                    realized_pairing_rule_ids: BTreeSet::new(),
+                    reflection,
+                    reflection_certificate_id,
+                }
+            };
+        let currents = vec![
+            current(
+                RecurrenceNodeKind::Source,
+                anchor_color_id,
+                &[0],
+                CurrentReflection::Unavailable,
+                None,
+            ),
+            current(
+                RecurrenceNodeKind::Current,
+                complement_color_id,
+                &[1, 2, 3],
+                CurrentReflection::Proven(canonical_proof),
+                Some(0),
+            ),
+        ];
+        let reflection_certificates = [reflection_certificate];
+
+        let mut bucketed_telemetry = RecurrenceGenerationTelemetry::default();
+        let bucketed = build_closures(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &template,
+            &fermion_ordering,
+            None,
+            &prepared_closures,
+            &prepared_sectors,
+            &color_states,
+            &currents,
+            &materialized_sectors,
+            &[],
+            &reflection_certificates,
+            None,
+            &mut bucketed_telemetry,
+            true,
+        )
+        .unwrap();
+        let mut legacy_telemetry = RecurrenceGenerationTelemetry::default();
+        let legacy = build_closures_per_sector(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &template,
+            &fermion_ordering,
+            None,
+            &prepared_closures,
+            &prepared_sectors,
+            &color_states,
+            &currents,
+            &materialized_sectors,
+            &[],
+            &reflection_certificates,
+            None,
+            &mut legacy_telemetry,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(bucketed, legacy);
+        assert_eq!(bucketed.len(), 2);
+        let canonical = bucketed
+            .iter()
+            .find(|(key, _)| key.target_sector_id == 0)
+            .unwrap();
+        let reflected = bucketed
+            .iter()
+            .find(|(key, _)| key.target_sector_id == 1)
+            .unwrap();
+        assert_eq!(canonical.1.exact_factor, ExactComplexRational::ONE);
+        assert_eq!(reflected.1.exact_factor, minus_one);
+        assert_eq!(
+            reflected.1.contributions[0].reflection_certificate_id,
+            Some(0)
+        );
+        assert_eq!(bucketed_telemetry.closure_color_attempt_count, 1);
+        assert_eq!(legacy_telemetry.closure_color_attempt_count, 2);
     }
 
     #[test]

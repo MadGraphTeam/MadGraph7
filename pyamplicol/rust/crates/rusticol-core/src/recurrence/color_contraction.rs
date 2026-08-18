@@ -965,6 +965,79 @@ impl RecurrenceColorContraction {
             )),
         }
     }
+
+    /// Evaluate the complete dense quadratic form owned by the synthetic S3
+    /// runtime fixture without entering the symmetric-group reducer.
+    ///
+    /// The input is group-major and lane-minor.  This deliberately retains the
+    /// original convolution kernels, both cross-channel orientations, and the
+    /// eligible/residual plus residual/residual rows so native lane tests have
+    /// an oracle independent of the transformed execution path.
+    #[cfg(test)]
+    pub(crate) fn symmetric_group_s3_dense_for_runtime_test(
+        amplitudes: &[(f64, f64)],
+        lane_count: usize,
+    ) -> Vec<f64> {
+        assert!(lane_count > 0);
+        assert_eq!(amplitudes.len(), 13 * lane_count);
+
+        let diagonal_left = [6.0, 1.0, 2.0, 3.0, 3.0, 4.0];
+        let cross = [1.0, 2.0, 0.0, -1.0, 0.5, 3.0];
+        let diagonal_right = [7.0, 0.0, 2.0, -1.0, -1.0, 0.0];
+        let kernels = [&diagonal_left[..], &cross[..], &diagonal_right[..]];
+        let channel_pairs = [(0usize, 0usize), (0, 1), (1, 1)];
+        let permutations = [
+            [0usize, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ];
+        let mut expected = vec![0.0; lane_count];
+        for lane in 0..lane_count {
+            for ((left_channel, right_channel), kernel) in channel_pairs.into_iter().zip(kernels) {
+                let mut value = (0.0, 0.0);
+                for left_relative in 0..6 {
+                    let mut inverse_left = [0usize; 3];
+                    for (position, image) in permutations[left_relative].iter().copied().enumerate()
+                    {
+                        inverse_left[image] = position;
+                    }
+                    for right_relative in 0..6 {
+                        let relative =
+                            permutations[right_relative].map(|image| inverse_left[image]);
+                        let relative_index = permutations
+                            .iter()
+                            .position(|candidate| *candidate == relative)
+                            .unwrap();
+                        let left =
+                            amplitudes[(left_channel * 6 + left_relative) * lane_count + lane];
+                        let right =
+                            amplitudes[(right_channel * 6 + right_relative) * lane_count + lane];
+                        let product_re = left.0.mul_add(right.0, left.1 * right.1);
+                        let product_im = left.0.mul_add(right.1, -left.1 * right.0);
+                        value.0 += kernel[relative_index] * product_re;
+                        value.1 += kernel[relative_index] * product_im;
+                    }
+                }
+                expected[lane] += if left_channel == right_channel {
+                    value.0
+                } else {
+                    2.0 * value.0
+                };
+            }
+
+            // The fixture's residual suffix contains group 12.  Its complete
+            // direct rows are 2 * 0.25 * Re(A0 conj(A12)) plus
+            // 5 * |A12|^2; the intervening cross rows are exact zeros.
+            let first = amplitudes[lane];
+            let residual = amplitudes[12 * lane_count + lane];
+            expected[lane] += 0.5 * first.0.mul_add(residual.0, first.1 * residual.1);
+            expected[lane] += 5.0 * residual.0.mul_add(residual.0, residual.1 * residual.1);
+        }
+        expected
+    }
 }
 
 pub struct CanonicalColorContractionEntries<'a> {
@@ -2824,6 +2897,13 @@ mod tests {
         else {
             panic!("expected symmetric-group runtime reducer")
         };
+        let covered_group_count = reducer.channel_count() * reducer.group_order();
+        assert!(reducer.channel_count() > 0);
+        assert!(reducer.local_group_count() > covered_group_count);
+        assert!(reducer.residual_entries().iter().any(|entry| {
+            entry.left_group_index < covered_group_count as u32
+                && entry.right_group_index >= covered_group_count as u32
+        }));
         let lane_count = 3;
         let amplitudes = (0..reducer.local_group_count() * lane_count)
             .map(|index| {
@@ -2847,57 +2927,10 @@ mod tests {
             })
             .unwrap();
 
-        let diagonal_left = [6.0, 1.0, 2.0, 3.0, 3.0, 4.0];
-        let cross = [1.0, 2.0, 0.0, -1.0, 0.5, 3.0];
-        let diagonal_right = [7.0, 0.0, 2.0, -1.0, -1.0, 0.0];
-        let kernels = [&diagonal_left[..], &cross[..], &diagonal_right[..]];
-        let channel_pairs = [(0usize, 0usize), (0, 1), (1, 1)];
-        let permutations = [
-            [0usize, 1, 2],
-            [0, 2, 1],
-            [1, 0, 2],
-            [1, 2, 0],
-            [2, 0, 1],
-            [2, 1, 0],
-        ];
-        let mut expected = vec![0.0; lane_count];
-        for lane in 0..lane_count {
-            for ((left_channel, right_channel), kernel) in channel_pairs.into_iter().zip(kernels) {
-                let mut value = (0.0, 0.0);
-                for left_relative in 0..6 {
-                    let mut inverse_left = [0usize; 3];
-                    for (position, image) in permutations[left_relative].iter().copied().enumerate()
-                    {
-                        inverse_left[image] = position;
-                    }
-                    for right_relative in 0..6 {
-                        let relative =
-                            permutations[right_relative].map(|image| inverse_left[image]);
-                        let relative_index = permutations
-                            .iter()
-                            .position(|candidate| *candidate == relative)
-                            .unwrap();
-                        let left =
-                            amplitudes[(left_channel * 6 + left_relative) * lane_count + lane];
-                        let right =
-                            amplitudes[(right_channel * 6 + right_relative) * lane_count + lane];
-                        let product_re = left.0.mul_add(right.0, left.1 * right.1);
-                        let product_im = left.0.mul_add(right.1, -left.1 * right.0);
-                        value.0 += kernel[relative_index] * product_re;
-                        value.1 += kernel[relative_index] * product_im;
-                    }
-                }
-                expected[lane] += if left_channel == right_channel {
-                    value.0
-                } else {
-                    2.0 * value.0
-                };
-            }
-            let first = amplitudes[lane];
-            let residual = amplitudes[12 * lane_count + lane];
-            expected[lane] += 0.5 * first.0.mul_add(residual.0, first.1 * residual.1);
-            expected[lane] += 5.0 * residual.0.mul_add(residual.0, residual.1 * residual.1);
-        }
+        let expected = RecurrenceColorContraction::symmetric_group_s3_dense_for_runtime_test(
+            &amplitudes,
+            lane_count,
+        );
         for (actual, expected) in workspace.reduced(lane_count).unwrap().iter().zip(expected) {
             let scale = expected.abs().max(1.0);
             assert!((actual - expected).abs() <= 2.0e-11 * scale);
