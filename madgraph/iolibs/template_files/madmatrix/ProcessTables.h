@@ -10,7 +10,7 @@
 // pulled in via ProcessTables::name from backend-owned function bodies.
 //
 // Namespace-wrapped (unlike ProcessData.h) because it needs FLV_COUPLING,
-// which is itself backend-namespaced (madgraph::/madgraph::, see Parameters.h).
+// which is itself namespace-wrapped too (madgraph::, see Parameters.h).
 
 #ifndef PROCESSTABLES_H
 #define PROCESSTABLES_H 1

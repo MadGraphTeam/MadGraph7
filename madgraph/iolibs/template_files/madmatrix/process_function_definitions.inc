@@ -78,10 +78,7 @@ namespace madgraph
       //m_pars->printDependentCouplings(); // now computed event-by-event (running alphas #373)
     }
     %(initProc_lines)s
-#ifdef MGONGPUCPP_GPUIMPL
-    // Create the normalized color matrix in device memory
-    createNormalizedColorMatrix();
-#endif
+    createNormalizedColorMatrix(); // no-op on cpu/simd, pushes to device memory on gpu
     // Read physics parameters like masses and couplings from user configuration files,
     // then hand them to the backend-owned storage via the setters (see SigmaKin.cc).
     %(cipdassign)s
@@ -103,10 +100,7 @@ namespace madgraph
       //Parameters::printDependentCouplings(); // now computed event-by-event (running alphas #373)
     }
     %(hardcoded_initProc_lines)s
-#ifdef MGONGPUCPP_GPUIMPL
-    // Create the normalized color matrix in device memory
-    createNormalizedColorMatrix();
-#endif
+    createNormalizedColorMatrix(); // no-op on cpu/simd, pushes to device memory on gpu
     %(cipdhrdassign)s
     %(cipchrdassign)s
     %(cipfhrdassign)s
