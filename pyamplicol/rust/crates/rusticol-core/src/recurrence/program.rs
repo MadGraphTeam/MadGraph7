@@ -2563,7 +2563,9 @@ impl RecurrenceProgram {
                 self.physical_sector_count
             )));
         }
+        let mut destination_sectors = BTreeSet::new();
         for destination in &self.amplitude_destinations {
+            destination_sectors.insert(destination.target_sector_id);
             if self.strategy.uses_topology_replay_targets()
                 && !self.replay_targets.is_empty()
                 && !materialized_sectors.contains(&destination.target_sector_id)
@@ -2575,11 +2577,7 @@ impl RecurrenceProgram {
             }
         }
         for sector in materialized_sectors {
-            if !self
-                .amplitude_destinations
-                .iter()
-                .any(|destination| destination.target_sector_id == sector)
-            {
+            if !destination_sectors.contains(&sector) {
                 return Err(invalid(format!(
                     "recurrence replay materialized sector {sector} has no amplitude destination"
                 )));

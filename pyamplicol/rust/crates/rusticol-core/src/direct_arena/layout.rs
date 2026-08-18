@@ -2,7 +2,7 @@
 
 //! Deterministic variable-width interval allocation for arena planes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{RusticolError, RusticolResult};
 
@@ -163,11 +163,79 @@ impl DirectArenaLayout {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct ActiveRange {
-    last_use: u64,
-    component_base: u32,
-    component_count: u32,
+#[derive(Default)]
+struct FreeRanges {
+    by_base: BTreeMap<u32, u32>,
+    by_size: BTreeSet<(u32, u32)>,
+}
+
+impl FreeRanges {
+    fn take_best_fit(&mut self, required: u32) -> RusticolResult<Option<(u32, u32)>> {
+        let Some(&(component_count, component_base)) = self.by_size.range((required, 0)..).next()
+        else {
+            return Ok(None);
+        };
+        self.remove(component_base, component_count)?;
+        Ok(Some((component_base, component_count)))
+    }
+
+    fn insert(&mut self, mut component_base: u32, mut component_count: u32) -> RusticolResult<()> {
+        if component_count == 0 {
+            return Err(invalid("cannot release an empty direct-arena range"));
+        }
+
+        if let Some((&previous_base, &previous_count)) =
+            self.by_base.range(..component_base).next_back()
+        {
+            let previous_stop = previous_base
+                .checked_add(previous_count)
+                .ok_or_else(|| invalid("direct-arena free range overflows u32"))?;
+            if previous_stop > component_base {
+                return Err(invalid("released direct-arena ranges overlap"));
+            }
+            if previous_stop == component_base {
+                self.remove(previous_base, previous_count)?;
+                component_base = previous_base;
+                component_count = component_count
+                    .checked_add(previous_count)
+                    .ok_or_else(|| invalid("direct-arena merged range overflows u32"))?;
+            }
+        }
+
+        let component_stop = component_base
+            .checked_add(component_count)
+            .ok_or_else(|| invalid("direct-arena free range overflows u32"))?;
+        if let Some((&next_base, &next_count)) = self.by_base.range(component_base..).next() {
+            if component_stop > next_base {
+                return Err(invalid("released direct-arena ranges overlap"));
+            }
+            if component_stop == next_base {
+                self.remove(next_base, next_count)?;
+                component_count = component_count
+                    .checked_add(next_count)
+                    .ok_or_else(|| invalid("direct-arena merged range overflows u32"))?;
+            }
+        }
+
+        if self
+            .by_base
+            .insert(component_base, component_count)
+            .is_some()
+            || !self.by_size.insert((component_count, component_base))
+        {
+            return Err(invalid("released direct-arena range repeats its base"));
+        }
+        Ok(())
+    }
+
+    fn remove(&mut self, component_base: u32, component_count: u32) -> RusticolResult<()> {
+        if self.by_base.remove(&component_base) != Some(component_count)
+            || !self.by_size.remove(&(component_count, component_base))
+        {
+            return Err(invalid("direct-arena free-range indexes disagree"));
+        }
+        Ok(())
+    }
 }
 
 /// Assign variable-width semantic intervals to reusable physical planes.
@@ -188,6 +256,8 @@ pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<
 
     let mut ordered = intervals.to_vec();
     ordered.sort_by_key(|interval| (interval.first_use, interval.semantic_value_id));
+    let mut releases = ordered.clone();
+    releases.sort_by_key(|interval| (interval.last_use, interval.semantic_value_id));
     let mut seen = vec![false; intervals.len()];
     for interval in &ordered {
         let id = interval.semantic_value_id as usize;
@@ -210,28 +280,27 @@ pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<
         ));
     }
 
-    let mut assignments = vec![None; intervals.len()];
-    let mut active = Vec::<ActiveRange>::new();
-    let mut free = BTreeMap::<u32, u32>::new();
+    let mut assignments = vec![None::<DirectArenaAssignment>; intervals.len()];
+    let mut next_release = 0;
+    let mut free = FreeRanges::default();
     let mut arena_stop = 0_u32;
     let mut total_semantic_components = 0_u64;
 
     for interval in ordered {
-        let mut retained = Vec::with_capacity(active.len() + 1);
-        for range in active.drain(..) {
-            if range.last_use < interval.first_use {
-                insert_free_range(&mut free, range.component_base, range.component_count)?;
-            } else {
-                retained.push(range);
-            }
+        while releases
+            .get(next_release)
+            .is_some_and(|released| released.last_use < interval.first_use)
+        {
+            let released = releases[next_release];
+            let assignment = assignments[released.semantic_value_id as usize].ok_or_else(|| {
+                invalid("direct-arena interval was released before it was assigned")
+            })?;
+            free.insert(assignment.component_base, assignment.component_count)?;
+            next_release += 1;
         }
-        active = retained;
 
         let (component_base, available_count) = free
-            .iter()
-            .filter(|(_, count)| **count >= interval.component_count)
-            .min_by_key(|(base, count)| (**count, **base))
-            .map(|(base, count)| (*base, *count))
+            .take_best_fit(interval.component_count)?
             .unwrap_or((arena_stop, 0));
 
         if available_count == 0 {
@@ -239,7 +308,6 @@ pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<
                 .checked_add(interval.component_count)
                 .ok_or_else(|| invalid("direct-arena physical component count exceeds u32"))?;
         } else {
-            free.remove(&component_base);
             let remaining = available_count - interval.component_count;
             if remaining != 0 {
                 free.insert(
@@ -247,7 +315,7 @@ pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<
                         .checked_add(interval.component_count)
                         .ok_or_else(|| invalid("direct-arena free range overflows u32"))?,
                     remaining,
-                );
+                )?;
             }
         }
 
@@ -259,11 +327,6 @@ pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<
             last_use: interval.last_use,
         };
         assignments[interval.semantic_value_id as usize] = Some(assignment);
-        active.push(ActiveRange {
-            last_use: interval.last_use,
-            component_base,
-            component_count: interval.component_count,
-        });
         total_semantic_components = total_semantic_components
             .checked_add(u64::from(interval.component_count))
             .ok_or_else(|| invalid("direct-arena semantic component count exceeds u64"))?;
@@ -280,59 +343,12 @@ pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<
             })
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    let layout = DirectArenaLayout {
+    Ok(DirectArenaLayout {
         assignments: assignments.into_boxed_slice(),
         component_count: arena_stop,
         total_semantic_components,
         reused_semantic_components: total_semantic_components - u64::from(arena_stop),
-    };
-    layout.validate()?;
-    Ok(layout)
-}
-
-fn insert_free_range(
-    free: &mut BTreeMap<u32, u32>,
-    mut component_base: u32,
-    mut component_count: u32,
-) -> RusticolResult<()> {
-    if component_count == 0 {
-        return Err(invalid("cannot release an empty direct-arena range"));
-    }
-
-    if let Some((&previous_base, &previous_count)) = free.range(..component_base).next_back() {
-        let previous_stop = previous_base
-            .checked_add(previous_count)
-            .ok_or_else(|| invalid("direct-arena free range overflows u32"))?;
-        if previous_stop > component_base {
-            return Err(invalid("released direct-arena ranges overlap"));
-        }
-        if previous_stop == component_base {
-            component_base = previous_base;
-            component_count = component_count
-                .checked_add(previous_count)
-                .ok_or_else(|| invalid("direct-arena merged range overflows u32"))?;
-            free.remove(&previous_base);
-        }
-    }
-
-    let component_stop = component_base
-        .checked_add(component_count)
-        .ok_or_else(|| invalid("direct-arena free range overflows u32"))?;
-    if let Some((&next_base, &next_count)) = free.range(component_base..).next() {
-        if component_stop > next_base {
-            return Err(invalid("released direct-arena ranges overlap"));
-        }
-        if component_stop == next_base {
-            component_count = component_count
-                .checked_add(next_count)
-                .ok_or_else(|| invalid("direct-arena merged range overflows u32"))?;
-            free.remove(&next_base);
-        }
-    }
-    if free.insert(component_base, component_count).is_some() {
-        return Err(invalid("released direct-arena range repeats its base"));
-    }
-    Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -341,6 +357,59 @@ mod tests {
 
     fn interval(id: u32, first: u64, last: u64, count: u32) -> DirectArenaInterval {
         DirectArenaInterval::new(id, first, last, count).unwrap()
+    }
+
+    fn assign_naively(intervals: &[DirectArenaInterval]) -> DirectArenaLayout {
+        let mut ordered = intervals.to_vec();
+        ordered.sort_by_key(|row| (row.first_use, row.semantic_value_id));
+        let mut assignments = vec![None::<DirectArenaAssignment>; intervals.len()];
+        let mut arena_stop = 0_u32;
+        let mut total_semantic_components = 0_u64;
+        for row in ordered {
+            let mut occupied = vec![false; arena_stop as usize];
+            for assignment in assignments.iter().flatten() {
+                if assignment.last_use < row.first_use {
+                    continue;
+                }
+                let stop = assignment.component_base + assignment.component_count;
+                occupied[assignment.component_base as usize..stop as usize].fill(true);
+            }
+            let mut best = None::<(u32, u32)>;
+            let mut cursor = 0usize;
+            while cursor < occupied.len() {
+                if occupied[cursor] {
+                    cursor += 1;
+                    continue;
+                }
+                let start = cursor;
+                while cursor < occupied.len() && !occupied[cursor] {
+                    cursor += 1;
+                }
+                let count = (cursor - start) as u32;
+                let candidate = (count, start as u32);
+                if count >= row.component_count && best.is_none_or(|current| candidate < current) {
+                    best = Some(candidate);
+                }
+            }
+            let component_base = best.map_or(arena_stop, |(_, base)| base);
+            if best.is_none() {
+                arena_stop += row.component_count;
+            }
+            assignments[row.semantic_value_id as usize] = Some(DirectArenaAssignment {
+                semantic_value_id: row.semantic_value_id,
+                component_base,
+                component_count: row.component_count,
+                first_use: row.first_use,
+                last_use: row.last_use,
+            });
+            total_semantic_components += u64::from(row.component_count);
+        }
+        DirectArenaLayout {
+            assignments: assignments.into_iter().map(Option::unwrap).collect(),
+            component_count: arena_stop,
+            total_semantic_components,
+            reused_semantic_components: total_semantic_components - u64::from(arena_stop),
+        }
     }
 
     #[test]
@@ -396,6 +465,32 @@ mod tests {
         let expected = assign_direct_arena(&intervals).unwrap();
         for _ in 0..32 {
             assert_eq!(assign_direct_arena(&intervals).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn indexed_allocator_matches_naive_best_fit_oracle() {
+        for seed in 0..48_u32 {
+            let mut intervals = (0..32_u32)
+                .map(|id| {
+                    let first = u64::from((id * 7 + seed * 3) % 11);
+                    interval(
+                        id,
+                        first,
+                        first + u64::from((id * 5 + seed) % 6),
+                        1 + (id * 3 + seed * 5) % 7,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let length = intervals.len();
+            intervals.rotate_left(seed as usize % length);
+            if seed % 2 != 0 {
+                intervals.reverse();
+            }
+            assert_eq!(
+                assign_direct_arena(&intervals).unwrap(),
+                assign_naively(&intervals)
+            );
         }
     }
 

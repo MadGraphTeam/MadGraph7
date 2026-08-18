@@ -924,8 +924,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     )?;
 
     let mut current_slots = BTreeSet::new();
-    let mut source_rows = BTreeSet::new();
-    let mut finalization_rows = BTreeSet::new();
+    let mut current_by_source_row = vec![None; parts.sources.len()];
+    let mut current_by_finalization_row = vec![None; parts.finalizations.len()];
     for (index, current) in parts.currents.iter().enumerate() {
         if current.semantic_current_id != index as u32 {
             return Err(invalid(format!(
@@ -981,7 +981,12 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                         "source current {index} must not have a finalization row"
                     )));
                 }
-                if !source_rows.insert(current.source_row_or_sentinel) {
+                let slot = current_by_source_row
+                    .get_mut(current.source_row_or_sentinel as usize)
+                    .ok_or_else(|| {
+                        invalid(format!("source current {index} row is out of bounds"))
+                    })?;
+                if slot.replace(index).is_some() {
                     return Err(invalid(format!(
                         "source row {} is referenced more than once",
                         current.source_row_or_sentinel
@@ -1000,7 +1005,10 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                         current.finalization_row_or_sentinel,
                         finalization_count,
                     )?;
-                    if !finalization_rows.insert(current.finalization_row_or_sentinel) {
+                    let slot = current_by_finalization_row
+                        .get_mut(current.finalization_row_or_sentinel as usize)
+                        .expect("finalization reference was bounds checked");
+                    if slot.replace(index).is_some() {
                         return Err(invalid(format!(
                             "finalization row {} is referenced more than once",
                             current.finalization_row_or_sentinel
@@ -1010,10 +1018,10 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             }
         }
     }
-    if source_rows.len() != parts.sources.len() {
+    if current_by_source_row.iter().any(Option::is_none) {
         return Err(invalid("not every source row is referenced exactly once"));
     }
-    if finalization_rows.len() != parts.finalizations.len() {
+    if current_by_finalization_row.iter().any(Option::is_none) {
         return Err(invalid(
             "not every finalization row is referenced exactly once",
         ));
@@ -1046,11 +1054,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             source.source_template_or_dispatch_domain,
             parts.source_template_or_dispatch_count,
         )?;
-        let current = parts
-            .currents
-            .iter()
-            .find(|current| current.source_row_or_sentinel == index as u32)
-            .expect("source references were validated");
+        let current = &parts.currents[current_by_source_row[index].expect("source row is bound")];
         if source.destination_component_base != current.component_base
             || source.momentum_form_id != current.momentum_form_id
             || source.selector_domain_id != current.selector_domain_id
@@ -1137,11 +1141,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                 variant.source_row_id
             )));
         }
-        let current = parts
-            .currents
-            .iter()
-            .find(|current| current.source_row_or_sentinel == variant.source_row_id)
-            .expect("source references were validated");
+        let current = &parts.currents[current_by_source_row[variant.source_row_id as usize]
+            .expect("source-dispatch row is bound")];
         if variant.embedding_count != u32::from(current.component_count) {
             return Err(invalid(format!(
                 "source-dispatch variant {index} embedding does not cover its full current"
@@ -1358,11 +1359,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             row.selector_domain_id,
             selector_count,
         )?;
-        let current = parts
-            .currents
-            .iter()
-            .find(|current| current.finalization_row_or_sentinel == index as u32)
-            .expect("finalization references were validated");
+        let current =
+            &parts.currents[current_by_finalization_row[index].expect("finalization row is bound")];
         if row.component_base != current.component_base
             || row.component_count != current.component_count
             || row.momentum_form_id != current.momentum_form_id

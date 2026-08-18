@@ -711,7 +711,6 @@ fn build_direct_parts(
     DirectRecurrencePlanParts,
     Option<RecurrenceRelationDiscoveryReport>,
 )> {
-    program.validate()?;
     validate_lowering_boundary(
         program,
         templates,
@@ -725,7 +724,6 @@ fn build_direct_parts(
     let external_source_count = external_source_count(program)?;
     let component_counts = component_counts(program, templates)?;
     let arena = recurrence_direct_arena_layout(program, &component_counts)?;
-    arena.validate()?;
     let selector_domains = lower_selector_domains(program)?;
 
     let (momentum_ids, momentum_forms, momentum_terms) =
@@ -1208,6 +1206,15 @@ fn build_direct_parts(
         )
     });
     let mut closure_row_by_term = vec![DIRECT_NONE_U32; program.closure_terms().len()];
+    let mut proof_group_by_term = vec![None; program.closure_terms().len()];
+    for group in program.closure_proofs().groups() {
+        if let Some(term_id) = group.emitted_runtime_closure_term_id() {
+            let slot = proof_group_by_term
+                .get_mut(term_id as usize)
+                .ok_or_else(|| invalid("closure proof group references an absent runtime term"))?;
+            *slot = Some(group.id());
+        }
+    }
     let mut lowered_proof_groups = program.closure_proofs().groups().to_vec();
     for (row_index, draft) in closure_drafts.iter_mut().enumerate() {
         let row_id = u32_len("closure row", row_index)?;
@@ -1221,15 +1228,22 @@ fn build_direct_parts(
             )));
         }
         *term_slot = row_id;
-        let group = program
-            .closure_proofs()
-            .group_for_runtime_term(draft.semantic_closure_id)
+        let group_id = proof_group_by_term
+            .get(draft.semantic_closure_id as usize)
+            .copied()
+            .flatten()
             .ok_or_else(|| {
                 invalid(format!(
                     "semantic closure term {} has no proof group",
                     draft.semantic_closure_id
                 ))
             })?;
+        let group = program
+            .closure_proofs()
+            .groups()
+            .get(group_id as usize)
+            .filter(|group| group.id() == group_id)
+            .ok_or_else(|| invalid("closure proof group ID is not dense"))?;
         draft.row.flags = group.id();
         let component_start = draft.row.component_factor_start as usize;
         let component_end = component_start
