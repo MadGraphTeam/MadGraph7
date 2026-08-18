@@ -32,15 +32,6 @@ namespace mgOnGpu
 %(channelc2iconfig_lines)s
   };
 
-  // Host copy of channel2iconfig (channel2iconfig itself is device-only on GPU, #917)
-#ifndef MGONGPUCPP_GPUIMPL
-  constexpr const int* hostChannel2iconfig = channel2iconfig;
-#else
-  constexpr int hostChannel2iconfig[%(nb_diag)i] = {
-%(channelc2iconfig_lines)s
-  };
-#endif
-
   // #configs with an associated iconfig for single-diagram enhancement (#917)
   constexpr unsigned int nconfigSDE = %(nb_channel)s;
 
