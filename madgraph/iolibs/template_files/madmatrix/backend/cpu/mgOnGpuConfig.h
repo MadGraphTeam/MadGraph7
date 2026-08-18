@@ -156,41 +156,8 @@ using mgOnGpu::fptype2;
 #ifdef MGONGPU_NOARMNEON
 #undef __ARM_NEON
 #endif
-
-// C++ SIMD vectorization width (this will be used to set neppV)
-#if defined __AVX512VL__ && defined MGONGPU_PVW512 // "512z" AVX512 512-bit: 8 (DOUBLE) or 16 (FLOAT)
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 8
-#else
-#define MGONGPU_CPPSIMD 16
-#endif
-#elif defined __AVX512VL__ // "512y" AVX512 256-bit: 4 (DOUBLE) or 8 (FLOAT) [gcc default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 4
-#else
-#define MGONGPU_CPPSIMD 8
-#endif
-#elif defined __AVX2__ // "avx2" 256-bit: 4 (DOUBLE) or 8 (FLOAT) [clang default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 4
-#else
-#define MGONGPU_CPPSIMD 8
-#endif
-#elif defined __SSE4_2__ // "sse4" SSE4.2 128-bit: 2 (DOUBLE) or 4 (FLOAT) [Power9 default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 2
-#else
-#define MGONGPU_CPPSIMD 4
-#endif
-#elif defined __ARM_NEON // ARM NEON 128-bit: 2 (DOUBLE) or 4 (FLOAT) [ARM default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 2
-#else
-#define MGONGPU_CPPSIMD 4
-#endif
-#else // "none" i.e. no SIMD
 #undef MGONGPU_CPPSIMD
-#endif
+
 
 // No-op debug macros (nsight-based debugging is CUDA-only, unused here)
 #define mgDebugDeclare() /*noop*/
