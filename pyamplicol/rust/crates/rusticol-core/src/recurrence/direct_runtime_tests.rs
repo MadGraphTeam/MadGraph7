@@ -5,7 +5,8 @@ use crate::recurrence::direct_backend::{
     DirectContributionExecutor, DirectContributionFanoutProgram, DirectExecutionCounters,
     DirectExecutorCatalog, DirectExecutorHandle, DirectFactorView, DirectFinalizationExecutor,
     DirectMomentumView, DirectParameterView, DirectSourceExecutor, DirectWorkspace,
-    begin_direct_current_observation, execute_direct_plan, take_direct_current_observation,
+    begin_direct_current_observation, execute_direct_plan,
+    execute_direct_plan_unprofiled_with_fanout, take_direct_current_observation,
 };
 use crate::recurrence::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectClosureRow, DirectContributionRow,
@@ -624,22 +625,22 @@ fn fanout_test_plan() -> DirectRecurrencePlan {
     parts.point_tile_size = 8;
     parts.exact_factors = vec![
         ExactComplexRational::ONE,
+        rational(-1, 1),
+        complex_rational(0, 1, 1, 1),
+        complex_rational(0, 1, -1, 1),
+        rational(5, 7),
+        complex_rational(0, 1, 2, 5),
+        complex_rational(11, 13, -7, 17),
         complex_rational(10_000, 1, 3, 1),
         complex_rational(-10_000, 1, -3, 1),
-        complex_rational(5, 7, 2, 5),
-        complex_rational(-2, 7, -1, 5),
-        complex_rational(11, 13, -7, 17),
-        complex_rational(-5, 19, 3, 23),
-        complex_rational(2, 29, 1, 31),
-        complex_rational(-3, 37, 5, 41),
-        complex_rational(7, 43, -11, 47),
     ];
     let prototype = parts.contributions[0];
-    parts.contributions = (1_u32..=9)
-        .map(|exact_factor_id| DirectContributionRow {
+    parts.contributions = (0_u32..=8)
+        .flat_map(|exact_factor_id| [exact_factor_id; 2])
+        .enumerate()
+        .map(|(row_index, exact_factor_id)| DirectContributionRow {
             exact_factor_id,
-            flags: u32::from(exact_factor_id == 1)
-                * DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            flags: u32::from(row_index == 0) * DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
             ..prototype
         })
         .collect();
@@ -820,12 +821,13 @@ fn output_only_contribution_fanout_matches_direct_under_complex_cancellation() {
         parameter,
     );
     assert_eq!(baseline_census.calls.load(Ordering::Relaxed), 1);
-    assert_eq!(baseline_census.rows.load(Ordering::Relaxed), 9);
+    assert_eq!(baseline_census.rows.load(Ordering::Relaxed), 18);
 
     let optimized_census = ContributionCallCensus::default();
     let optimized_catalog = fanout_test_catalog(&plan, &optimized_census, false);
     let fanout = DirectContributionFanoutProgram::build(&plan, &optimized_catalog).unwrap();
-    assert_eq!(fanout.row_counts(), (9, 1));
+    assert_eq!(fanout.row_counts(), (18, 1));
+    assert_eq!(fanout.scatter_bundle_counts(), (18, 9));
     assert_eq!(fanout.scratch_component_count(), 1);
     assert!(fanout.needs_unit_factor());
     let mut runtime =
@@ -882,13 +884,105 @@ fn output_only_contribution_fanout_matches_direct_under_complex_cancellation() {
 }
 
 #[test]
+fn full_fanout_execution_overwrites_poisoned_destination_without_stage_clear() {
+    let plan = fanout_test_plan();
+    let point_stride = 8_u32;
+    let point_count = 7_u32;
+    let momenta = [0.125, -0.875, 1.75, -3.5, 0.0625, 7.25, -11.0, 0.0];
+    let parameter = (0.375, -1.125);
+    let census = ContributionCallCensus::default();
+    let catalog = fanout_test_catalog(&plan, &census, false);
+    let fanout = DirectContributionFanoutProgram::build(&plan, &catalog).unwrap();
+    let current_plane_count = plan.current_arena_components() + fanout.scratch_component_count();
+    let mut current_re = vec![f64::NAN; current_plane_count as usize * point_stride as usize];
+    let mut current_im = vec![f64::NAN; current_re.len()];
+    let mut amplitude_re = vec![0.0; point_stride as usize];
+    let mut amplitude_im = vec![0.0; point_stride as usize];
+    let mut factors_re = plan
+        .exact_factors()
+        .iter()
+        .map(|factor| factor.real().numerator() as f64 / factor.real().denominator() as f64)
+        .collect::<Vec<_>>();
+    let mut factors_im = plan
+        .exact_factors()
+        .iter()
+        .map(|factor| factor.imag().numerator() as f64 / factor.imag().denominator() as f64)
+        .collect::<Vec<_>>();
+    factors_re.push(1.0);
+    factors_im.push(0.0);
+
+    let execute = |current_re: &mut [f64],
+                   current_im: &mut [f64],
+                   amplitude_re: &mut [f64],
+                   amplitude_im: &mut [f64]| {
+        let mut workspace = DirectWorkspace {
+            current_re,
+            current_im,
+            amplitude_re,
+            amplitude_im,
+            momenta: &momenta,
+            momentum_form_count: plan.momentum_forms().len() as u32,
+            lorentz_component_count: 1,
+            parameters_re: &[parameter.0],
+            parameters_im: &[parameter.1],
+            factors_re: &factors_re,
+            factors_im: &factors_im,
+            point_stride,
+        };
+        execute_direct_plan_unprofiled_with_fanout(
+            &plan,
+            &catalog,
+            &fanout,
+            &mut workspace,
+            point_count,
+        )
+        .unwrap();
+    };
+
+    execute(
+        &mut current_re,
+        &mut current_im,
+        &mut amplitude_re,
+        &mut amplitude_im,
+    );
+    let first = amplitude_re[..point_count as usize]
+        .iter()
+        .copied()
+        .zip(amplitude_im[..point_count as usize].iter().copied())
+        .collect::<Vec<_>>();
+    current_re.fill(f64::NAN);
+    current_im.fill(f64::NAN);
+    amplitude_re.fill(0.0);
+    amplitude_im.fill(0.0);
+    execute(
+        &mut current_re,
+        &mut current_im,
+        &mut amplitude_re,
+        &mut amplitude_im,
+    );
+    let second = amplitude_re[..point_count as usize]
+        .iter()
+        .copied()
+        .zip(amplitude_im[..point_count as usize].iter().copied())
+        .collect::<Vec<_>>();
+
+    assert!(
+        second
+            .iter()
+            .all(|(real, imaginary)| real.is_finite() && imaginary.is_finite())
+    );
+    assert_scale_relative_complex_parity(&first, &second);
+}
+
+#[test]
 fn factor_consuming_contribution_fanout_is_fail_closed() {
     let plan = fanout_test_plan();
     let census = ContributionCallCensus::default();
     let catalog = fanout_test_catalog(&plan, &census, true);
     let fanout = DirectContributionFanoutProgram::build(&plan, &catalog).unwrap();
-    assert_eq!(fanout.row_counts(), (9, 9));
-    assert_eq!(fanout.scratch_component_count(), 0);
+    assert_eq!(fanout.row_counts(), (18, 9));
+    assert_eq!(fanout.scatter_bundle_counts(), (18, 9));
+    assert_eq!(fanout.scratch_component_count(), 9);
     assert!(!fanout.needs_unit_factor());
 
     let mut bad_metadata = vec![None; plan.direct_executor_count() as usize];
@@ -951,7 +1045,7 @@ fn production_gluon_artifacts_certify_the_expected_fanout_reduction() {
         let (logical, evaluated) = output_only_physical_fanout_census(&plan);
         let reduction = 1.0 - evaluated as f64 / logical as f64;
         eprintln!(
-            "{label} output-only physical fanout: logical={logical}, evaluated={evaluated}, reduction={reduction:.6}"
+            "{label} output-only physical fanout: logical={logical}, evaluated={evaluated}, reduction={reduction:.6}",
         );
         assert!(
             reduction >= minimum_reduction,

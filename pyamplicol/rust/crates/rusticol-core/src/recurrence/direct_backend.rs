@@ -512,6 +512,19 @@ struct DirectContributionFanoutRun {
     row_start: u64,
     row_count: u32,
     scratch_component_base: u32,
+    bundle_start: u64,
+    bundle_count: u32,
+}
+
+/// Maximal consecutive fanout outputs which share their effective scale.
+///
+/// `DIRECT_NONE_U32` denotes unity because factor-consuming executors already
+/// applied the authenticated row factor while producing the representative.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectContributionFanoutBundle {
+    row_start: u64,
+    row_count: u32,
+    effective_factor_id_or_sentinel: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -528,7 +541,6 @@ enum DirectContributionFanoutStep {
         run_start: u64,
         run_count: u32,
         destination_component_count: u32,
-        exact_factor_is_kernel_input: bool,
     },
 }
 
@@ -568,6 +580,7 @@ pub(crate) struct DirectContributionFanoutProgram {
     steps: Box<[DirectContributionFanoutStep]>,
     representatives: Box<[DirectContributionRow]>,
     runs: Box<[DirectContributionFanoutRun]>,
+    bundles: Box<[DirectContributionFanoutBundle]>,
     scratch_component_base: u32,
     scratch_component_count: u32,
     unit_factor_id: u32,
@@ -591,6 +604,7 @@ impl DirectContributionFanoutProgram {
         let mut steps = Vec::new();
         let mut representatives = Vec::new();
         let mut runs = Vec::new();
+        let mut bundles = Vec::new();
         let mut scratch_component_count = 0_u32;
         let mut needs_unit_factor = false;
         let destination_component_counts = plan
@@ -676,6 +690,7 @@ impl DirectContributionFanoutProgram {
                             &mut steps,
                             &mut representatives,
                             &mut runs,
+                            &mut bundles,
                             &mut scratch_component_count,
                             &mut needs_unit_factor,
                         )?;
@@ -698,6 +713,7 @@ impl DirectContributionFanoutProgram {
                                 &mut steps,
                                 &mut representatives,
                                 &mut runs,
+                                &mut bundles,
                                 &mut scratch_component_count,
                                 &mut needs_unit_factor,
                             )?;
@@ -714,6 +730,7 @@ impl DirectContributionFanoutProgram {
                     &mut steps,
                     &mut representatives,
                     &mut runs,
+                    &mut bundles,
                     &mut scratch_component_count,
                     &mut needs_unit_factor,
                 )?;
@@ -735,6 +752,7 @@ impl DirectContributionFanoutProgram {
             steps: steps.into_boxed_slice(),
             representatives: representatives.into_boxed_slice(),
             runs: runs.into_boxed_slice(),
+            bundles: bundles.into_boxed_slice(),
             scratch_component_base,
             scratch_component_count,
             unit_factor_id,
@@ -769,6 +787,14 @@ impl DirectContributionFanoutProgram {
             })
             .sum();
         (logical, evaluated)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn scatter_bundle_counts(&self) -> (u64, u64) {
+        (
+            self.runs.iter().map(|run| u64::from(run.row_count)).sum(),
+            self.bundles.len() as u64,
+        )
     }
 
     fn group_steps(
@@ -906,6 +932,7 @@ fn flush_pending_fanout_batch(
     steps: &mut Vec<DirectContributionFanoutStep>,
     representatives: &mut Vec<DirectContributionRow>,
     runs: &mut Vec<DirectContributionFanoutRun>,
+    bundles: &mut Vec<DirectContributionFanoutBundle>,
     scratch_component_count: &mut u32,
     needs_unit_factor: &mut bool,
 ) -> RusticolResult<()> {
@@ -947,11 +974,51 @@ fn flush_pending_fanout_batch(
             .row_start
             .checked_add(relative_start as u64)
             .ok_or_else(|| RusticolError::integrity("direct fanout run start overflows u64"))?;
+        let run_row_count = u32::try_from(run_count)
+            .map_err(|_| RusticolError::integrity("direct fanout run exceeds u32"))?;
+        let bundle_start = u64::try_from(bundles.len())
+            .map_err(|_| RusticolError::integrity("direct fanout bundle count exceeds u64"))?;
+        let run_end = row_index
+            .checked_add(run_count)
+            .ok_or_else(|| RusticolError::integrity("direct fanout run range exceeds usize"))?;
+        let run_rows = plan
+            .contributions()
+            .get(row_index..run_end)
+            .ok_or_else(|| RusticolError::integrity("direct fanout run range is out of bounds"))?;
+        if metadata.exact_factor_is_kernel_input {
+            bundles.push(DirectContributionFanoutBundle {
+                row_start: run_row_start,
+                row_count: run_row_count,
+                effective_factor_id_or_sentinel: DIRECT_NONE_U32,
+            });
+        } else {
+            let mut bundle_offset = 0_usize;
+            while bundle_offset < run_rows.len() {
+                let factor_id = run_rows[bundle_offset].exact_factor_id;
+                let first = bundle_offset;
+                bundle_offset += 1;
+                while bundle_offset < run_rows.len()
+                    && run_rows[bundle_offset].exact_factor_id == factor_id
+                {
+                    bundle_offset += 1;
+                }
+                bundles.push(DirectContributionFanoutBundle {
+                    row_start: run_row_start + first as u64,
+                    row_count: u32::try_from(bundle_offset - first).map_err(|_| {
+                        RusticolError::integrity("direct fanout factor bundle exceeds u32")
+                    })?,
+                    effective_factor_id_or_sentinel: factor_id,
+                });
+            }
+        }
+        let bundle_count = u32::try_from(bundles.len() as u64 - bundle_start)
+            .map_err(|_| RusticolError::integrity("direct fanout run bundle count exceeds u32"))?;
         runs.push(DirectContributionFanoutRun {
             row_start: run_row_start,
-            row_count: u32::try_from(run_count)
-                .map_err(|_| RusticolError::integrity("direct fanout run exceeds u32"))?,
+            row_count: run_row_count,
             scratch_component_base: slot_base,
+            bundle_start,
+            bundle_count,
         });
         logical_row_count = logical_row_count
             .checked_add(u32::try_from(run_count).map_err(|_| {
@@ -973,7 +1040,6 @@ fn flush_pending_fanout_batch(
         run_start: run_table_start,
         run_count: representative_count,
         destination_component_count: metadata.destination_component_count,
-        exact_factor_is_kernel_input: metadata.exact_factor_is_kernel_input,
     });
     pending_runs.clear();
     Ok(())
@@ -1432,7 +1498,15 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             // contribution/finalization/closure schedule.
             continue;
         }
-        if descriptor.role == DirectExecutorRole::Contribution
+        // A full topology/contracted schedule executes every authenticated
+        // initializer, so its writes replace the stage clear. All-flow-union
+        // sources are prepared outside this static row schedule and may leave
+        // additive destinations relying on the clear even without a selected
+        // sector. Selected execution likewise visits only a logical subset.
+        let requires_contribution_stage_clear =
+            selected_sector_id.is_some() || plan.strategy() == RecurrenceStrategy::AllFlowUnion;
+        if requires_contribution_stage_clear
+            && descriptor.role == DirectExecutorRole::Contribution
             && initialized_contribution_stage != Some(descriptor.stage)
         {
             workspace.clear_current_stage(
@@ -1733,7 +1807,6 @@ fn execute_contribution_group_with_fanout(
                 run_start,
                 run_count,
                 destination_component_count,
-                exact_factor_is_kernel_input,
                 ..
             } => {
                 let representative_start = usize::try_from(representative_start).map_err(|_| {
@@ -1780,23 +1853,20 @@ fn execute_contribution_group_with_fanout(
                 let batch_runs = fanout.runs.get(run_start..run_end).ok_or_else(|| {
                     RusticolError::integrity("direct fanout run range is out of bounds")
                 })?;
-                if run_count != representative_count
-                    || batch_runs
+                debug_assert_eq!(run_count, representative_count);
+                debug_assert_eq!(
+                    batch_runs
                         .iter()
                         .map(|run| u64::from(run.row_count))
-                        .sum::<u64>()
-                        != u64::from(row_count)
-                {
-                    return Err(RusticolError::integrity(
-                        "direct fanout batch run coverage is inconsistent",
-                    ));
-                }
+                        .sum::<u64>(),
+                    u64::from(row_count)
+                );
                 for run in batch_runs {
                     scatter_contribution_fanout_run(
                         plan,
+                        fanout,
                         *run,
                         destination_component_count,
-                        exact_factor_is_kernel_input,
                         workspace,
                         point_count,
                     )?;
@@ -1813,30 +1883,107 @@ fn execute_contribution_group_with_fanout(
     Ok(scatter_bytes)
 }
 
+#[derive(Clone, Copy)]
+enum DirectContributionFanoutScale {
+    Unity,
+    NegativeUnity,
+    Real(f64),
+    Imaginary(f64),
+    Complex(f64, f64),
+}
+
+impl DirectContributionFanoutScale {
+    #[inline(always)]
+    fn new(real: f64, imaginary: f64) -> Self {
+        if imaginary == 0.0 {
+            if real == 1.0 {
+                Self::Unity
+            } else if real == -1.0 {
+                Self::NegativeUnity
+            } else {
+                Self::Real(real)
+            }
+        } else if real == 0.0 {
+            Self::Imaginary(imaginary)
+        } else {
+            Self::Complex(real, imaginary)
+        }
+    }
+
+    #[inline(always)]
+    fn apply(self, real: f64, imaginary: f64) -> (f64, f64) {
+        match self {
+            Self::Unity => (real, imaginary),
+            Self::NegativeUnity => (-real, -imaginary),
+            Self::Real(scale) => (real * scale, imaginary * scale),
+            Self::Imaginary(scale) => (-imaginary * scale, real * scale),
+            Self::Complex(scale_re, scale_im) => (
+                real * scale_re - imaginary * scale_im,
+                real * scale_im + imaginary * scale_re,
+            ),
+        }
+    }
+}
+
 fn scatter_contribution_fanout_run(
     plan: &DirectRecurrencePlan,
+    fanout: &DirectContributionFanoutProgram,
     run: DirectContributionFanoutRun,
     destination_component_count: u32,
-    exact_factor_is_kernel_input: bool,
     workspace: &mut DirectWorkspace<'_>,
     point_count: u32,
 ) -> RusticolResult<()> {
-    let start = usize::try_from(run.row_start)
-        .map_err(|_| RusticolError::integrity("direct fanout scatter start exceeds usize"))?;
-    let end = start.checked_add(run.row_count as usize).ok_or_else(|| {
-        RusticolError::integrity("direct fanout scatter row range overflows usize")
-    })?;
-    let rows = plan.contributions().get(start..end).ok_or_else(|| {
-        RusticolError::integrity("direct fanout scatter row range is out of bounds")
-    })?;
     let stride = workspace.point_stride as usize;
     let active_points = point_count as usize;
-    for row in rows {
-        let (factor_re, factor_im) = if exact_factor_is_kernel_input {
-            (1.0, 0.0)
+    let source_end = run
+        .scratch_component_base
+        .checked_add(destination_component_count)
+        .ok_or_else(|| RusticolError::integrity("direct fanout source range overflows u32"))?;
+    let current_plane_count = u32::try_from(workspace.current_re.len() / stride)
+        .map_err(|_| RusticolError::integrity("direct fanout current plane count exceeds u32"))?;
+    if run.scratch_component_base < fanout.scratch_component_base
+        || source_end > current_plane_count
+    {
+        return Err(RusticolError::integrity(
+            "direct fanout source range is outside its private current arena",
+        ));
+    }
+    let bundle_start = usize::try_from(run.bundle_start)
+        .map_err(|_| RusticolError::integrity("direct fanout bundle start exceeds usize"))?;
+    let bundle_end = bundle_start
+        .checked_add(run.bundle_count as usize)
+        .ok_or_else(|| RusticolError::integrity("direct fanout bundle range overflows usize"))?;
+    let bundles = fanout
+        .bundles
+        .get(bundle_start..bundle_end)
+        .ok_or_else(|| RusticolError::integrity("direct fanout bundle range is out of bounds"))?;
+    debug_assert_eq!(
+        bundles
+            .iter()
+            .map(|bundle| u64::from(bundle.row_count))
+            .sum::<u64>(),
+        u64::from(run.row_count)
+    );
+
+    let current_re = workspace.current_re.as_mut_ptr();
+    let current_im = workspace.current_im.as_mut_ptr();
+    for bundle in bundles {
+        let start = usize::try_from(bundle.row_start).map_err(|_| {
+            RusticolError::integrity("direct fanout bundle row start exceeds usize")
+        })?;
+        let end = start
+            .checked_add(bundle.row_count as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity("direct fanout bundle row range overflows usize")
+            })?;
+        let rows = plan.contributions().get(start..end).ok_or_else(|| {
+            RusticolError::integrity("direct fanout bundle row range is out of bounds")
+        })?;
+        let scale = if bundle.effective_factor_id_or_sentinel == DIRECT_NONE_U32 {
+            DirectContributionFanoutScale::Unity
         } else {
-            let factor = row.exact_factor_id as usize;
-            (
+            let factor = bundle.effective_factor_id_or_sentinel as usize;
+            DirectContributionFanoutScale::new(
                 *workspace.factors_re.get(factor).ok_or_else(|| {
                     RusticolError::integrity("direct fanout scatter factor is out of bounds")
                 })?,
@@ -1845,57 +1992,33 @@ fn scatter_contribution_fanout_run(
                 })?,
             )
         };
-        let accumulate = row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION == 0;
         for component in 0..destination_component_count {
-            let source_plane = run
-                .scratch_component_base
-                .checked_add(component)
-                .ok_or_else(|| {
-                    RusticolError::integrity("direct fanout source component overflows u32")
-                })? as usize;
-            let destination_plane = row
-                .destination_component_base
-                .checked_add(component)
-                .ok_or_else(|| {
-                    RusticolError::integrity("direct fanout destination component overflows u32")
-                })? as usize;
-            let source_start = source_plane.checked_mul(stride).ok_or_else(|| {
-                RusticolError::integrity("direct fanout source range overflows usize")
-            })?;
-            let destination_start = destination_plane.checked_mul(stride).ok_or_else(|| {
-                RusticolError::integrity("direct fanout destination range overflows usize")
-            })?;
-            let source_end = source_start.checked_add(active_points).ok_or_else(|| {
-                RusticolError::integrity("direct fanout source range overflows usize")
-            })?;
-            let destination_end =
-                destination_start
-                    .checked_add(active_points)
-                    .ok_or_else(|| {
-                        RusticolError::integrity("direct fanout destination range overflows usize")
-                    })?;
-            if source_end > workspace.current_re.len()
-                || source_end > workspace.current_im.len()
-                || destination_end > workspace.current_re.len()
-                || destination_end > workspace.current_im.len()
-            {
-                return Err(RusticolError::integrity(
-                    "direct fanout scatter source or destination is out of bounds",
-                ));
-            }
+            let source_start = (run.scratch_component_base as usize + component as usize) * stride;
             for point in 0..active_points {
                 let source = source_start + point;
-                let destination = destination_start + point;
-                let source_re = workspace.current_re[source];
-                let source_im = workspace.current_im[source];
-                let scaled_re = source_re * factor_re - source_im * factor_im;
-                let scaled_im = source_re * factor_im + source_im * factor_re;
-                if accumulate {
-                    workspace.current_re[destination] += scaled_re;
-                    workspace.current_im[destination] += scaled_im;
-                } else {
-                    workspace.current_re[destination] = scaled_re;
-                    workspace.current_im[destination] = scaled_im;
+                // SAFETY: the source run is checked against the runtime arena
+                // above. The destination rows and their full component spans
+                // were authenticated by `DirectRecurrencePlan` and matched to
+                // this executor's destination shape when the fanout program
+                // was built. `workspace.validate` established point < stride.
+                let (scaled_re, scaled_im) =
+                    unsafe { scale.apply(*current_re.add(source), *current_im.add(source)) };
+                for row in rows {
+                    let destination =
+                        (row.destination_component_base as usize + component as usize) * stride
+                            + point;
+                    // SAFETY: see the source/destination proof immediately
+                    // above. Scratch components form a private suffix, so none
+                    // of these writes can alias the representative source.
+                    unsafe {
+                        if row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION != 0 {
+                            *current_re.add(destination) = scaled_re;
+                            *current_im.add(destination) = scaled_im;
+                        } else {
+                            *current_re.add(destination) += scaled_re;
+                            *current_im.add(destination) += scaled_im;
+                        }
+                    }
                 }
             }
         }

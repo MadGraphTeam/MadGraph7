@@ -3367,16 +3367,49 @@ pub(super) fn direct_profile_from_delta(
         recurrence_closure_row_count: delta.execution.closure_rows,
         recurrence_direct_packed_input_bytes: delta.execution.packed_input_bytes,
         recurrence_direct_packed_output_bytes: delta.execution.packed_output_bytes,
-        recurrence_direct_scatter_bytes: delta.execution.scatter_bytes,
+        // Fanout broadcasts stay within the persistent Direct-Arena current
+        // workspace. They are not the retired evaluator-boundary scatter.
+        recurrence_direct_scatter_bytes: 0,
         recurrence_direct_packet_input_bytes: delta.traffic.packet_input_bytes,
         recurrence_direct_packet_output_bytes: delta.traffic.packet_output_bytes,
         recurrence_direct_gather_bytes: delta.traffic.gather_bytes,
         recurrence_direct_traffic_scatter_bytes: delta.traffic.scatter_bytes,
         recurrence_direct_remap_bytes: delta.traffic.remap_bytes,
         recurrence_internal_scratch_bytes: delta.internal_scratch_bytes,
-        recurrence_internal_broadcast_bytes: delta.internal_broadcast_bytes,
+        recurrence_internal_broadcast_bytes: delta
+            .internal_broadcast_bytes
+            .saturating_add(delta.execution.scatter_bytes),
         reduction_s: profile_duration_seconds(reduction),
         total_s: profile_duration_seconds(total),
         ..RuntimeProfile::default()
+    }
+}
+
+#[cfg(test)]
+mod direct_profile_tests {
+    use super::*;
+
+    #[test]
+    fn fanout_scatter_is_reported_as_internal_broadcast_traffic() {
+        let profile = direct_profile_from_delta(
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            DirectProfileDelta {
+                execution: DirectExecutionCounters {
+                    scatter_bytes: 96,
+                    ..DirectExecutionCounters::default()
+                },
+                internal_broadcast_bytes: 32,
+                ..DirectProfileDelta::default()
+            },
+        );
+
+        assert_eq!(profile.recurrence_direct_scatter_bytes, 0);
+        assert_eq!(profile.recurrence_internal_broadcast_bytes, 128);
+        profile
+            .validate_recurrence_direct_boundary_traffic()
+            .unwrap();
     }
 }
