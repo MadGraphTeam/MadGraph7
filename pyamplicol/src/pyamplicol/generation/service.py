@@ -845,6 +845,27 @@ def _recurrence_relation_reporting(
     return runtime_inspection, aggregate
 
 
+def _publish_validated_recurrence_baseline(
+    *,
+    baseline: _RustRecurrenceLoweringOutput,
+    final_schedule_path: Path,
+) -> _RustRecurrenceLoweringOutput:
+    """Move one validated mode-off payload to its final destination."""
+
+    if final_schedule_path.exists() or final_schedule_path.is_symlink():
+        raise GenerationError(
+            f"recurrence schedule destination already exists: {final_schedule_path}"
+        )
+    try:
+        final_schedule_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline.payload_path.replace(final_schedule_path)
+    except OSError as exc:
+        raise GenerationError(
+            "failed to publish the validated recurrence baseline payload"
+        ) from exc
+    return replace(baseline, payload_path=final_schedule_path)
+
+
 def _lower_recurrence_after_numerical_warmup(
     *,
     lower_once: Callable[..., _RustRecurrenceLoweringOutput],
@@ -872,27 +893,19 @@ def _lower_recurrence_after_numerical_warmup(
         lane_report=warmup.to_json_dict(),
         zero_certificate_baseline_reused=True,
     )
-    if final_schedule_path.exists() or final_schedule_path.is_symlink():
-        raise GenerationError(
-            f"recurrence schedule destination already exists: {final_schedule_path}"
-        )
-    try:
-        final_schedule_path.parent.mkdir(parents=True, exist_ok=True)
-        baseline.payload_path.replace(final_schedule_path)
-    except OSError as exc:
-        raise GenerationError(
-            "failed to publish the validated recurrence baseline payload"
-        ) from exc
+    published = _publish_validated_recurrence_baseline(
+        baseline=baseline,
+        final_schedule_path=final_schedule_path,
+    )
     return (
         replace(
-            baseline,
+            published,
             inspection_summary=runtime_inspection,
             generation_profile={
                 "schema_version": 1,
                 "native_passes": {"final": dict(baseline.generation_profile)},
             },
             numerical_current_reuse_report=aggregate_report,
-            payload_path=final_schedule_path,
         ),
         False,
     )
@@ -900,7 +913,6 @@ def _lower_recurrence_after_numerical_warmup(
 
 def _complete_recurrence_evidence_envelope_fallback(
     *,
-    lower_once: Callable[..., _RustRecurrenceLoweringOutput],
     final_schedule_path: Path,
     baseline: _RustRecurrenceLoweringOutput,
     baseline_plan: _RecurrenceExactPlan,
@@ -908,7 +920,7 @@ def _complete_recurrence_evidence_envelope_fallback(
     outcome: RecurrenceNumericalEvidenceEnvelopeExceeded,
     warmup_owner: list[RecurrenceNumericalCurrentWarmupResult] | None = None,
 ) -> _RustRecurrenceLoweringOutput:
-    """Finish one certified-reuse geometry fallback through the reuse-off path."""
+    """Publish the validated mode-off baseline after a reuse fallback."""
 
     if warmup_owner is None:
         warmup = None
@@ -920,16 +932,9 @@ def _complete_recurrence_evidence_envelope_fallback(
         warmup = warmup_owner.pop()
         warmup.close()
     # Drop the transport, both captures and their spool owners before the
-    # mode-off lowering begins.  The caller has already cleared exception
+    # baseline payload is published.  The caller has already cleared exception
     # chains and transferred its only warm-up reference through this owner.
     warmup = None
-    output = lower_once(
-        final_schedule_path,
-        mode="off",
-        evidence=None,
-        report_progress=False,
-        timing_name="native-final-generation",
-    )
     lane_report = recurrence_numerical_current_envelope_fallback_report(
         baseline_plan.sections,
         color_accuracy=color_accuracy,
@@ -937,19 +942,20 @@ def _complete_recurrence_evidence_envelope_fallback(
         outcome=outcome,
     )
     runtime_inspection, aggregate_report = _recurrence_relation_reporting(
-        output.inspection_summary,
+        baseline.inspection_summary,
         mode="certified-reuse",
         lane_report=lane_report,
     )
+    published = _publish_validated_recurrence_baseline(
+        baseline=baseline,
+        final_schedule_path=final_schedule_path,
+    )
     return replace(
-        output,
+        published,
         inspection_summary=runtime_inspection,
         generation_profile={
             "schema_version": 1,
-            "native_passes": {
-                "baseline": dict(baseline.generation_profile),
-                "final": dict(output.generation_profile),
-            },
+            "native_passes": {"final": dict(baseline.generation_profile)},
         },
         numerical_current_reuse_report=aggregate_report,
     )
@@ -4939,7 +4945,6 @@ class GenerationBackend:
                             warmup_owner = [warmup]
                             warmup = None
                         return _complete_recurrence_evidence_envelope_fallback(
-                            lower_once=lower_once,
                             final_schedule_path=final_schedule_path,
                             baseline=baseline,
                             baseline_plan=baseline_plan,
@@ -4995,7 +5000,8 @@ class GenerationBackend:
                             # argument through exception frames.  The handler
                             # above detached those frames; close both trusted
                             # spools and drop the result (including the evidence
-                            # transport) before retrying without reuse.
+                            # transport) before publishing the already
+                            # validated reuse-off baseline.
                             fallback_details = native_capacity_fallback.to_json_dict()
                             geometry_details = cast(
                                 Mapping[str, object],
@@ -5026,7 +5032,6 @@ class GenerationBackend:
                             warmup_owner = [warmup]
                             warmup = None
                             return _complete_recurrence_evidence_envelope_fallback(
-                                lower_once=lower_once,
                                 final_schedule_path=final_schedule_path,
                                 baseline=baseline,
                                 baseline_plan=baseline_plan,

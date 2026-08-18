@@ -1331,7 +1331,7 @@ def test_service_only_skips_second_lowering_for_zero_certificates(
         warmup.close()
 
 
-def test_service_fallback_finishes_with_reuse_off_lowering(
+def test_service_fallback_publishes_the_existing_reuse_off_lowering(
     tmp_path: Path,
 ) -> None:
     geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
@@ -1350,12 +1350,6 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
         raw_reason="injected test envelope",
     )
 
-    baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
-    final = _fallback_lowering_output(
-        tmp_path,
-        "final",
-        inspection={"runtime": "original-plan"},
-    )
     calls: list[tuple[Path, dict[str, object]]] = []
 
     def lower_once(
@@ -1363,11 +1357,28 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
         **kwargs: object,
     ) -> generation_service._RustRecurrenceLoweringOutput:
         calls.append((destination, dict(kwargs)))
-        return final
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"validated-mode-off-payload")
+        return replace(
+            _fallback_lowering_output(
+                tmp_path,
+                "baseline",
+                inspection={"runtime": "original-plan"},
+            ),
+            payload_path=destination,
+            payload_size_bytes=destination.stat().st_size,
+        )
 
+    baseline_path = tmp_path / ".baseline" / "recurrence-runtime.pacbin"
+    baseline = lower_once(
+        baseline_path,
+        mode="off",
+        evidence=None,
+        report_progress=True,
+        timing_name="native-baseline-generation",
+    )
     final_schedule_path = tmp_path / "recurrence-runtime.pacbin"
     completed = generation_service._complete_recurrence_evidence_envelope_fallback(
-        lower_once=lower_once,
         final_schedule_path=final_schedule_path,
         baseline=baseline,
         baseline_plan=_topology_replay_plan(),
@@ -1377,22 +1388,22 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
 
     assert calls == [
         (
-            final_schedule_path,
+            baseline_path,
             {
                 "mode": "off",
                 "evidence": None,
-                "report_progress": False,
-                "timing_name": "native-final-generation",
+                "report_progress": True,
+                "timing_name": "native-baseline-generation",
             },
         )
     ]
+    assert completed.payload_path == final_schedule_path
+    assert final_schedule_path.read_bytes() == b"validated-mode-off-payload"
+    assert not baseline_path.exists()
     assert completed.inspection_summary == {"runtime": "original-plan"}
     assert completed.generation_profile == {
         "schema_version": 1,
-        "native_passes": {
-            "baseline": {"pass": "baseline"},
-            "final": {"pass": "final"},
-        },
+        "native_passes": {"final": {"pass": "baseline"}},
     }
     report = completed.numerical_current_reuse_report
     assert isinstance(report, Mapping)
@@ -1405,8 +1416,9 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
     assert report_fallback["geometry"] == geometry.to_json_dict()
 
 
-def test_python_envelope_fallback_detaches_exception_before_retry(
+def test_python_envelope_fallback_detaches_exception_before_publish(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class RetainedFrameResource:
         pass
@@ -1451,18 +1463,28 @@ def test_python_envelope_fallback_detaches_exception_before_retry(
     assert detached.to_json_dict()["geometry"] == geometry.to_json_dict()
 
     baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
-    final = _fallback_lowering_output(tmp_path, "final", inspection={})
+    baseline.payload_path.write_bytes(b"baseline")
+    publish = generation_service._publish_validated_recurrence_baseline
 
-    def retry_without_evidence(
-        _destination: Path,
-        **_kwargs: object,
+    def publish_without_retained_exception(
+        *,
+        baseline: generation_service._RustRecurrenceLoweringOutput,
+        final_schedule_path: Path,
     ) -> generation_service._RustRecurrenceLoweringOutput:
         gc.collect()
         assert retained[0]() is None
-        return final
+        return publish(
+            baseline=baseline,
+            final_schedule_path=final_schedule_path,
+        )
+
+    monkeypatch.setattr(
+        generation_service,
+        "_publish_validated_recurrence_baseline",
+        publish_without_retained_exception,
+    )
 
     generation_service._complete_recurrence_evidence_envelope_fallback(
-        lower_once=retry_without_evidence,
         final_schedule_path=tmp_path / "python-fallback.pacbin",
         baseline=baseline,
         baseline_plan=_topology_replay_plan(),
@@ -1471,8 +1493,9 @@ def test_python_envelope_fallback_detaches_exception_before_retry(
     )
 
 
-def test_native_capacity_fallback_releases_warmup_before_retry(
+def test_native_capacity_fallback_releases_warmup_before_publish(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class RetainedResource:
         pass
@@ -1538,24 +1561,34 @@ def test_native_capacity_fallback_releases_warmup_before_retry(
     warmup_owner = [warmup]
     del warmup
     baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
-    final = _fallback_lowering_output(tmp_path, "final", inspection={})
+    baseline.payload_path.write_bytes(b"baseline")
+    publish = generation_service._publish_validated_recurrence_baseline
 
-    def retry_without_evidence(
-        _destination: Path,
-        **_kwargs: object,
+    def publish_without_evidence(
+        *,
+        baseline: generation_service._RustRecurrenceLoweringOutput,
+        final_schedule_path: Path,
     ) -> generation_service._RustRecurrenceLoweringOutput:
         gc.collect()
-        events.append("retry")
+        events.append("publish")
         assert warmup_owner == []
         assert retained_frames[0]() is None
         assert all(reference() is None for reference in retained_warmup)
         assert detached.__traceback__ is None
         assert detached.__cause__ is None
         assert detached.__context__ is None
-        return final
+        return publish(
+            baseline=baseline,
+            final_schedule_path=final_schedule_path,
+        )
+
+    monkeypatch.setattr(
+        generation_service,
+        "_publish_validated_recurrence_baseline",
+        publish_without_evidence,
+    )
 
     generation_service._complete_recurrence_evidence_envelope_fallback(
-        lower_once=retry_without_evidence,
         final_schedule_path=tmp_path / "native-fallback.pacbin",
         baseline=baseline,
         baseline_plan=plan,
@@ -1563,7 +1596,7 @@ def test_native_capacity_fallback_releases_warmup_before_retry(
         outcome=detached,
         warmup_owner=warmup_owner,  # type: ignore[arg-type]
     )
-    assert events == ["warmup-closed", "retry"]
+    assert events == ["warmup-closed", "publish"]
 
 
 def test_compressed_canonical_transport_round_trips_with_length_and_digest() -> None:
