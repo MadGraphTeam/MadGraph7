@@ -12,8 +12,7 @@
 #define SIGMAKIN_H 1
 
 #include "mgOnGpuConfig.h"
-#include "mgOnGpuCxtypes.h" // for cxtype
-#include "mgOnGpuVectors.h" // for fptype_sv
+#include "mgOnGpuCxtypes.h" // for cxtype, fptype_sv
 #include "GpuAbstraction.h" // for gpuBlasHandle_t, gpuStream_t
 
 namespace madgraph

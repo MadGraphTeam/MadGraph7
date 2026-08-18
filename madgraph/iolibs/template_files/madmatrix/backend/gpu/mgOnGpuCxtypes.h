@@ -722,6 +722,59 @@ namespace madgraph
     return out;
   }
 
+  //--------------------------------------------------------------------------
+
+  // all needed from mgOnGpuVectors.h for gpu
+  const int neppV = 1;
+
+  // Printout to std::cout for user defined types
+  inline __host__ __device__ void
+  print( const fptype& f )
+  {
+    printf( "%f\n", f );
+  }
+  inline __host__ __device__ void
+  print( const cxtype& c )
+  {
+    printf( "[%f, %f]\n", cxreal( c ), cximag( c ) );
+  }
+
+  inline __host__ __device__ fptype
+  fpternary( const bool& mask, const fptype& a, const fptype& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  inline __host__ __device__ cxtype
+  cxternary( const bool& mask, const cxtype& a, const cxtype& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  inline __host__ __device__ bool
+  maskand( const bool& mask )
+  {
+    return mask;
+  }
+
+  //vector is scalar on gpu 
+  typedef bool bool_sv;
+  typedef fptype fptype_sv;
+  typedef fptype2 fptype2_sv;
+  typedef unsigned int uint_sv;
+  typedef cxtype cxtype_sv;
+  typedef cxtype_ref cxtype_sv_ref;
+
+  //vector is scalar on gpu 
+  inline __host__ __device__ cxtype cxzero_sv() { return cxtype( 0, 0 ); }
+
+  // Functions and operators for cxtype_sv
+  inline __host__ __device__ fptype_sv
+  cxabs2( const cxtype_sv& c )
+  {
+    return cxreal( c ) * cxreal( c ) + cximag( c ) * cximag( c );
+  }
+
 } // end namespace madgraph
 
 //==========================================================================

@@ -17,7 +17,11 @@
 
 #include "mgOnGpuConfig.h"
 
-#include "mgOnGpuVectors.h"
+#if __has_include("mgOnGpuVectors.h") // simd only
+#include "mgOnGpuVectors.h"          
+#else
+#include "mgOnGpuCxtypes.h"
+#endif
 
 #include "Parameters.h"
 

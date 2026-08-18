@@ -373,6 +373,55 @@ namespace madgraph
     return out;
   }
 
+  //--------------------------------------------------------------------------
+
+  // all needed from mgOnGpuVectors.h for cpu
+  const int neppV = 1;
+
+#ifndef MGONGPU_CPPCXTYPE_CXSMPL // operator<< for cxsmpl has already been defined!
+  inline std::ostream&
+  operator<<( std::ostream& out, const cxtype& c )
+  {
+    out << "[" << cxreal( c ) << "," << cximag( c ) << "]";
+    return out;
+  }
+#endif
+
+  inline fptype
+  fpternary( const bool& mask, const fptype& a, const fptype& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  inline cxtype
+  cxternary( const bool& mask, const cxtype& a, const cxtype& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  inline bool
+  maskand( const bool& mask )
+  {
+    return mask;
+  }
+
+  //vector is scalar 
+  typedef bool bool_sv;
+  typedef fptype fptype_sv;
+  typedef fptype2 fptype2_sv;
+  typedef unsigned int uint_sv;
+  typedef cxtype cxtype_sv;
+  typedef cxtype_ref cxtype_sv_ref;
+
+  //vector is scalar 
+  inline cxtype cxzero_sv() { return cxtype( 0, 0 ); }
+
+  inline __host__ __device__ fptype_sv
+  cxabs2( const cxtype_sv& c )
+  {
+    return cxreal( c ) * cxreal( c ) + cximag( c ) * cximag( c );
+  }
+
 } // end namespace madgraph
 
 //==========================================================================

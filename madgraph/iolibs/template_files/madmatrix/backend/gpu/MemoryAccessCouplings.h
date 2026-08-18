@@ -197,28 +197,6 @@ namespace madgraph
       return kernelAccessIx2( const_cast<fptype*>( buffer ), ix2 );
     }
 
-    /*
-    // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (const, SCALAR OR VECTOR) ===> const fptype_sv& kernelAccessIx2Const( const fptype* buffer, const int ix2 ) <===]
-    static __host__ __device__ inline const fptype_sv&
-    kernelAccessIx2Const( const fptype* buffer,
-                          const int ix2 )
-    {
-      const fptype& out = kernelAccessIx2Const_s( buffer, ix2 );
-#ifndef MGONGPU_CPPSIMD
-      return out;
-#else
-      // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays
-      constexpr int neppC = MemoryAccessCouplingsBase::neppC;
-      static_assert( neppC >= neppV ); // ASSUME CONTIGUOUS ARRAYS
-      static_assert( neppC % neppV == 0 ); // ASSUME CONTIGUOUS ARRAYS
-      static_assert( madgraph::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      return madgraph::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
-#endif
-    }
-    */
-
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non const, SCALAR OR VECTOR) ===> cxtype_sv_ref kernelAccess( fptype* buffer ) <===]
     static __host__ __device__ inline cxtype_sv_ref
