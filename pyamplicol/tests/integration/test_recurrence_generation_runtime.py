@@ -962,13 +962,8 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         candidate = lane["candidate_capture"]
         verification = lane["verification_capture"]
         assert isinstance(candidate, dict)
-        assert isinstance(verification, dict)
         assert candidate["precision_digits"] == 80
         assert candidate["point_count"] == 2
-        assert verification["point_count"] == 2
-        assert set(candidate["kinematic_sha256s"]).isdisjoint(
-            verification["kinematic_sha256s"]
-        )
         discovery = lane["discovery"]
         assert isinstance(discovery, dict)
         probe_contract = discovery["probe_contract"]
@@ -976,20 +971,40 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         assert probe_contract["algorithm"] == (
             "authenticated-independent-recursive-decimal-raw-probes-v2"
         )
-        assert probe_contract["independent_verification"] is True
         assert probe_contract["current_dimension_bound"] is True
         assert (
             probe_contract["runtime_parameter_schema_sha256"]
             == candidate["runtime_parameter_schema_sha256"]
         )
         assert candidate["parameter_contexts"]
-        assert verification["parameter_contexts"]
-        assert set(candidate["parameter_context_sha256s"]).isdisjoint(
-            verification["parameter_context_sha256s"]
-        )
+        if discovery["numerical_candidate_count"] == 0:
+            assert verification is None
+            assert probe_contract["independent_verification"] is False
+            assert probe_contract["verification_status"] == (
+                "not-required-no-candidate-hypothesis"
+            )
+            assert probe_contract["verification_point_sha256s"] == []
+            assert probe_contract["verification_capture_sha256"] is None
+        else:
+            assert isinstance(verification, dict)
+            assert verification["point_count"] == 2
+            assert set(candidate["kinematic_sha256s"]).isdisjoint(
+                verification["kinematic_sha256s"]
+            )
+            assert probe_contract["independent_verification"] is True
+            assert verification["parameter_contexts"]
+            assert set(candidate["parameter_context_sha256s"]).isdisjoint(
+                verification["parameter_context_sha256s"]
+            )
         persisted = lane["persisted_numerical_evidence"]
         assert persisted["raw_evidence_retained"] is False
-        assert persisted["generation_raw_evidence_bytes"] > 0
+        if verification is None:
+            assert persisted["verification_capture"] is None
+            assert persisted["generation_raw_evidence_bytes"] == 0
+            assert persisted["generation_evidence_transport_bytes"] == 0
+            assert persisted["generation_evidence_encoding"] is None
+        else:
+            assert persisted["generation_raw_evidence_bytes"] > 0
         assert persisted["measured_payload_bytes"] < 64 << 20
         assert (
             persisted["full_census"]["decision_sha256"] == discovery["decision_sha256"]
@@ -1068,6 +1083,9 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
     for capture_name in ("candidate_capture", "verification_capture"):
         diagnostic_capture = lanes["diagnostic"][capture_name]
         certified_capture = lanes["certified-reuse"][capture_name]
+        if diagnostic_capture is None or certified_capture is None:
+            assert diagnostic_capture is certified_capture is None
+            continue
         assert isinstance(diagnostic_capture, dict)
         assert isinstance(certified_capture, dict)
         for key in (
@@ -1388,9 +1406,11 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
     }
     persisted = certified["persisted_numerical_evidence"]
     assert persisted["raw_evidence_retained"] is False
-    assert (
-        persisted["measured_payload_bytes"] < persisted["generation_raw_evidence_bytes"]
-    )
+    assert persisted["generation_raw_evidence_bytes"] == 0
+    assert persisted["generation_evidence_transport_bytes"] == 0
+    assert persisted["generation_evidence_encoding"] is None
+    assert certified["verification_capture"] is None
+    assert persisted["verification_capture"] is None
     assert persisted["full_census"] == {
         "inspected_current_count": 68,
         "tested_hypothesis_count": 0,
@@ -1408,11 +1428,10 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
             "certificate_set_sha256"
         ],
     }
-    for capture_name in ("candidate_capture", "verification_capture"):
-        replay_capture = persisted[capture_name]
-        assert replay_capture["certificate_current_ids"] == []
-        assert replay_capture["observations"] == []
-        assert replay_capture["full_batch_commitment"]["current_count"] == 68
+    replay_capture = persisted["candidate_capture"]
+    assert replay_capture["certificate_current_ids"] == []
+    assert replay_capture["observations"] == []
+    assert replay_capture["full_batch_commitment"]["current_count"] == 68
 
     _assert_runtime_values_match(
         runtimes["certified-reuse"],

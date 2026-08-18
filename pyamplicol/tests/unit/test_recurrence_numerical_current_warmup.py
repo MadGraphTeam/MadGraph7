@@ -15,6 +15,7 @@ from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -599,7 +600,15 @@ def test_warmup_phase_timings_are_diagnostic_only() -> None:
         repeated.close()
 
 
-def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
+def test_recurrence_certified_reuse_uses_two_independent_probe_sets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture = Mock(wraps=recurrence_warmup._capture_recurrence_current_observations)
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_capture_recurrence_current_observations",
+        capture,
+    )
     result = run_recurrence_numerical_current_warmup(
         _topology_replay_plan(),
         candidate_points=_points(1),
@@ -671,6 +680,10 @@ def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
     assert len(json.dumps(persisted, separators=(",", ":"), sort_keys=True)) < len(
         result.evidence_json
     )
+    assert [call.kwargs["domain"] for call in capture.call_args_list] == [
+        "candidate-current-probes-v1",
+        "independent-verification-current-probes-v1",
+    ]
 
     validated = validate_recurrence_numerical_current_application(
         result,
@@ -712,7 +725,15 @@ def test_recurrence_diagnostic_certifies_without_applying_or_warning() -> None:
     assert json.loads(result.evidence_json)["requested_mode"] == "diagnostic"
 
 
-def test_recurrence_no_relation_detaches_all_observations_with_full_census() -> None:
+def test_recurrence_no_relation_skips_independent_verification_with_full_census(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture = Mock(wraps=recurrence_warmup._capture_recurrence_current_observations)
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_capture_recurrence_current_observations",
+        capture,
+    )
     result = run_recurrence_numerical_current_warmup(
         _no_relation_plan(),
         candidate_points=_points(1),
@@ -727,14 +748,68 @@ def test_recurrence_no_relation_detaches_all_observations_with_full_census() -> 
 
     assert result.certificates == ()
     assert result.candidate_capture.current_count == 4
-    assert result.verification_capture.current_count == 4
     assert result.candidate_capture.observations == {}
-    assert result.verification_capture.observations == {}
+    assert result.verification_capture is None
+    assert result.evidence_json == b""
+    assert result.evidence_transport_bytes == 0
+    assert result.evidence_canonical_bytes == 0
+    assert result.evidence_encoding is None
     assert result.discovery_report["inspected_current_count"] == 4
     assert result.discovery_report["tested_hypothesis_count"] > 0
-    evidence = json.loads(result.evidence_json)
-    assert len(evidence["candidate_capture"]["observations"]) == 4
-    assert len(evidence["verification_capture"]["observations"]) == 4
+    assert result.discovery_report["numerical_candidate_count"] == 0
+    probe_contract = result.discovery_report["probe_contract"]
+    assert probe_contract["independent_verification"] is False
+    assert probe_contract["verification_status"] == (
+        "not-required-no-candidate-hypothesis"
+    )
+    assert probe_contract["verification_point_sha256s"] == []
+    assert probe_contract["verification_capture_sha256"] is None
+    report = result.to_json_dict()
+    assert report["verification_capture"] is None
+    persisted = report["persisted_numerical_evidence"]
+    assert persisted["verification_capture"] is None
+    assert persisted["generation_raw_evidence_bytes"] == 0
+    assert persisted["generation_evidence_transport_bytes"] == 0
+    assert persisted["generation_evidence_encoding"] is None
+    assert [call.kwargs["domain"] for call in capture.call_args_list] == [
+        "candidate-current-probes-v1"
+    ]
+    result.close()
+    result.close()
+
+
+def test_recurrence_no_relation_returns_before_compressed_candidate_spooling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_select_raw_evidence_storage_geometry",
+        lambda *_args, **_kwargs: recurrence_warmup._RawEvidenceStorageGeometry(
+            scalar_count=128,
+            row_count=16,
+            canonical_byte_limit=1 << 20,
+            encoding="zlib-canonical-json-v1",
+            producer_resident_upper_bound=1 << 20,
+        ),
+    )
+    result = run_recurrence_numerical_current_warmup(
+        _no_relation_plan(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=71,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+
+    assert result.candidate_capture.observations == {}
+    assert result.verification_capture is None
+    assert "warmup_candidate_spool" not in result.generation_profile_timings
+    assert "warmup_verification_spool" not in result.generation_profile_timings
+    result.close()
+    result.close()
 
 
 def test_application_recapture_rejects_stale_plan_and_capture_commitment() -> None:
@@ -1543,6 +1618,7 @@ def test_compressed_warmup_keeps_relation_rows_spooled_through_validation(
         absolute_tolerance=1.0e-70,
     )
     candidate_spool = result.candidate_capture.observations
+    assert result.verification_capture is not None
     verification_spool = result.verification_capture.observations
     assert isinstance(candidate_spool, _SpooledObservationMapping)
     assert isinstance(verification_spool, _SpooledObservationMapping)

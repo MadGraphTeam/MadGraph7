@@ -260,6 +260,10 @@ class _CanonicalEvidenceCapacityExceeded(ValueError):
     """A valid optional-evidence encoding cannot fit its bounded transport."""
 
 
+class _IndependentVerificationRequired(Exception):
+    """Candidate screening found a hypothesis that needs independent probes."""
+
+
 _NATIVE_OPTIONAL_EVIDENCE_CAPACITY_MARKERS = (
     "raw numerical evidence exceeds the explicit pre-metadata 1 GiB resident "
     "memory envelope",
@@ -738,11 +742,11 @@ class RecurrenceNumericalCurrentWarmupResult:
     source_semantics_sha256: str
     runtime_parameter_schema: Mapping[str, object]
     candidate_capture: RecurrenceCurrentObservationCapture
-    verification_capture: RecurrenceCurrentObservationCapture
+    verification_capture: RecurrenceCurrentObservationCapture | None
     certificates: tuple[RecurrenceNumericalCurrentCertificate, ...]
     evidence_json: bytes
     evidence_transport_bytes: int
-    evidence_encoding: _EvidenceEncoding
+    evidence_encoding: _EvidenceEncoding | None
     evidence_canonical_bytes: int
     discovery_report: Mapping[str, object]
     application_validation: Mapping[str, object]
@@ -796,7 +800,10 @@ class RecurrenceNumericalCurrentWarmupResult:
         """Close any trusted temporary observation stores owned by the result."""
 
         for capture in (self.candidate_capture, self.verification_capture):
-            if isinstance(capture.observations, _SpooledObservationMapping):
+            if capture is not None and isinstance(
+                capture.observations,
+                _SpooledObservationMapping,
+            ):
                 capture.observations.close()
 
     def to_json_dict(self) -> dict[str, object]:
@@ -837,8 +844,10 @@ class RecurrenceNumericalCurrentWarmupResult:
                 applied_current_ids
             ),
             "verification_capture": (
-                self.verification_capture.to_certificate_replay_dict(
-                    applied_current_ids
+                None
+                if self.verification_capture is None
+                else self.verification_capture.to_certificate_replay_dict(
+                    applied_current_ids,
                 )
             ),
             "full_census": {
@@ -916,7 +925,11 @@ class RecurrenceNumericalCurrentWarmupResult:
                 "sha256": self.source_semantics_sha256,
             },
             "candidate_capture": self.candidate_capture.to_provenance_dict(),
-            "verification_capture": (self.verification_capture.to_provenance_dict()),
+            "verification_capture": (
+                None
+                if self.verification_capture is None
+                else self.verification_capture.to_provenance_dict()
+            ),
             "application_capture": (
                 self.application_validation.get("application_capture")
             ),
@@ -1026,15 +1039,6 @@ def run_recurrence_numerical_current_warmup(
         count=len(candidate_points),
         include_defaults=True,
     )
-    verification_parameter_contexts = _build_parameter_probe_contexts(
-        runtime_defaults,
-        probe_policies=probe_policies,
-        precision_digits=precision_digits,
-        seed=seed,
-        domain="independent-verification-current-parameter-probes-v1",
-        count=len(verification_points),
-        include_defaults=False,
-    )
     candidate_spool: _SpooledObservationMapping | None = None
     verification_spool: _SpooledObservationMapping | None = None
     evidence_spool: BinaryIO | None = None
@@ -1077,6 +1081,66 @@ def run_recurrence_numerical_current_warmup(
         generation_profile_timings["warmup_candidate_index"] = (
             time.perf_counter() - candidate_index_started
         )
+        candidate_preflight_started = time.perf_counter()
+        try:
+            certificates, discovery = _discover_relations(
+                plan.sections,
+                candidate,
+                None,
+                source_semantics_sha256=source_digest,
+                precision_digits=precision_digits,
+                seed=seed,
+                relative_tolerance=relative_tolerance,
+                absolute_tolerance=absolute_tolerance,
+                color_accuracy=color_accuracy,
+                contracts=static_context.current_contracts,
+                candidate_indexes=candidate_indexes,
+            )
+        except _IndependentVerificationRequired:
+            generation_profile_timings["warmup_candidate_preflight"] = (
+                time.perf_counter() - candidate_preflight_started
+            )
+        else:
+            generation_profile_timings["warmup_relation_discovery"] = (
+                time.perf_counter() - candidate_preflight_started
+            )
+            if certificates:
+                raise AssertionError(
+                    "candidate-only recurrence discovery produced certificates"
+                )
+            effective_mode = _effective_numerical_relation_mode(
+                plan.sections,
+                requested_mode=mode,
+                certificates=certificates,
+            )
+            candidate = candidate.detached_for_replay(())
+            return RecurrenceNumericalCurrentWarmupResult(
+                requested_mode=mode,
+                effective_mode=effective_mode,
+                color_accuracy=color_accuracy,
+                source_semantics_sha256=source_digest,
+                runtime_parameter_schema=runtime_parameter_schema,
+                candidate_capture=candidate,
+                verification_capture=None,
+                certificates=certificates,
+                evidence_json=b"",
+                evidence_transport_bytes=0,
+                evidence_encoding=None,
+                evidence_canonical_bytes=0,
+                discovery_report=discovery,
+                application_validation={
+                    "status": "not-required-no-applied-relations",
+                    "checked_current_count": 0,
+                    "checked_component_count": 0,
+                    "maximum_absolute_residual": None,
+                    "maximum_relative_residual": None,
+                    "maximum_tolerance_ratio": None,
+                    "application_capture": None,
+                },
+                generation_profile_timings=MappingProxyType(
+                    dict(generation_profile_timings)
+                ),
+            )
         if geometry.encoding == _COMPRESSED_EVIDENCE_ENCODING:
             candidate_spool_started = time.perf_counter()
             candidate_spool = _SpooledObservationMapping(
@@ -1091,6 +1155,15 @@ def run_recurrence_numerical_current_warmup(
             generation_profile_timings["warmup_candidate_spool"] = (
                 time.perf_counter() - candidate_spool_started
             )
+        verification_parameter_contexts = _build_parameter_probe_contexts(
+            runtime_defaults,
+            probe_policies=probe_policies,
+            precision_digits=precision_digits,
+            seed=seed,
+            domain="independent-verification-current-parameter-probes-v1",
+            count=len(verification_points),
+            include_defaults=False,
+        )
         verification_probe_timings: list[float] = []
         verification_capture_started = time.perf_counter()
         verification = _capture_recurrence_current_observations(
@@ -1387,12 +1460,17 @@ def validate_recurrence_numerical_current_application(
                 "application_capture": None,
             }
         )
+    verification_capture = baseline.verification_capture
+    if verification_capture is None:
+        raise ValueError(
+            "applied recurrence numerical relations lack verification observations"
+        )
     application_capture_bound = _spooled_capture_memory_upper_bound(
         current_count=len(baseline_plan.sections.currents),
         component_count=sum(
             current.component_count for current in baseline_plan.sections.currents
         ),
-        maximum_probe_count=len(baseline.verification_capture.points),
+        maximum_probe_count=len(verification_capture.points),
         runtime_parameter_count=len(baseline_plan.runtime_parameter_schema),
         include_candidate_index=False,
     )
@@ -1407,32 +1485,32 @@ def validate_recurrence_numerical_current_application(
     try:
         reference = capture_recurrence_current_observations(
             baseline_plan,
-            baseline.verification_capture.points,
+            verification_capture.points,
             precision_digits=precision_digits,
             source_semantics_sha256=baseline.source_semantics_sha256,
             seed=seed,
             domain="independent-verification-current-probes-v1",
-            parameter_contexts=baseline.verification_capture.parameter_contexts,
+            parameter_contexts=verification_capture.parameter_contexts,
             runtime_parameter_schema_sha256=(
-                baseline.verification_capture.runtime_parameter_schema_sha256
+                verification_capture.runtime_parameter_schema_sha256
             ),
         )
         _validate_recaptured_reference(
-            baseline.verification_capture,
+            verification_capture,
             reference,
         )
         reference_spool = _SpooledObservationMapping(reference.observations)
         reference = replace(reference, observations=reference_spool)
         applied = capture_recurrence_current_observations(
             applied_plan,
-            baseline.verification_capture.points,
+            verification_capture.points,
             precision_digits=precision_digits,
             source_semantics_sha256=baseline.source_semantics_sha256,
             seed=seed,
             domain="independent-verification-current-probes-v1",
-            parameter_contexts=(baseline.verification_capture.parameter_contexts),
+            parameter_contexts=verification_capture.parameter_contexts,
             runtime_parameter_schema_sha256=(
-                baseline.verification_capture.runtime_parameter_schema_sha256
+                verification_capture.runtime_parameter_schema_sha256
             ),
         )
         validation = _validate_applied_observations(
@@ -2093,7 +2171,7 @@ def _effective_numerical_relation_mode(
 def _discover_relations(
     sections: _RecurrenceExactSectionsV1,
     candidate: RecurrenceCurrentObservationCapture,
-    verification: RecurrenceCurrentObservationCapture,
+    verification: RecurrenceCurrentObservationCapture | None,
     *,
     source_semantics_sha256: str,
     precision_digits: int,
@@ -2156,7 +2234,9 @@ def _discover_relations(
             "abi": _DECISION_CHAIN_ABI,
             "source_semantics_sha256": source_semantics_sha256,
             "candidate_capture_sha256": candidate.capture_contract_sha256,
-            "verification_capture_sha256": verification.capture_contract_sha256,
+            "verification_capture_sha256": (
+                None if verification is None else verification.capture_contract_sha256
+            ),
         }
     )
     rejection_chain = _canonical_sha256(
@@ -2164,7 +2244,9 @@ def _discover_relations(
             "abi": _REJECTION_CHAIN_ABI,
             "source_semantics_sha256": source_semantics_sha256,
             "candidate_capture_sha256": candidate.capture_contract_sha256,
-            "verification_capture_sha256": verification.capture_contract_sha256,
+            "verification_capture_sha256": (
+                None if verification is None else verification.capture_contract_sha256
+            ),
         }
     )
 
@@ -2351,6 +2433,8 @@ def _discover_relations(
                     reason="candidate-observations-not-equal",
                 )
                 continue
+            if verification is None:
+                raise _IndependentVerificationRequired
             candidates += 1
             if verification_current_observations is None:
                 verification_current_observations = verification.observations[
@@ -2503,26 +2587,37 @@ def _discover_relations(
             "relative_tolerance_binary64": relative_tolerance.hex(),
             "absolute_tolerance_binary64": absolute_tolerance.hex(),
             "candidate_point_sha256s": list(candidate.point_sha256s),
-            "verification_point_sha256s": list(verification.point_sha256s),
+            "verification_point_sha256s": (
+                [] if verification is None else list(verification.point_sha256s)
+            ),
             "candidate_context_sha256s": list(candidate.context_sha256s),
-            "verification_context_sha256s": list(verification.context_sha256s),
+            "verification_context_sha256s": (
+                [] if verification is None else list(verification.context_sha256s)
+            ),
             "candidate_parameter_context_sha256s": list(
                 candidate.parameter_context_sha256s
             ),
             "verification_parameter_context_sha256s": list(
-                verification.parameter_context_sha256s
+                () if verification is None else verification.parameter_context_sha256s
             ),
             "runtime_parameter_schema_sha256": (
                 candidate.runtime_parameter_schema_sha256
             ),
             "candidate_capture_sha256": candidate.capture_contract_sha256,
-            "verification_capture_sha256": verification.capture_contract_sha256,
+            "verification_capture_sha256": (
+                None if verification is None else verification.capture_contract_sha256
+            ),
             "candidate_observation_batch_sha256": (candidate.observation_batch_sha256),
             "verification_observation_batch_sha256": (
-                verification.observation_batch_sha256
+                None if verification is None else verification.observation_batch_sha256
             ),
             "deterministic": True,
-            "independent_verification": True,
+            "independent_verification": verification is not None,
+            **(
+                {"verification_status": ("not-required-no-candidate-hypothesis")}
+                if verification is None
+                else {}
+            ),
             "current_dimension_bound": True,
         },
         "inspected_current_count": len(sections.currents),
