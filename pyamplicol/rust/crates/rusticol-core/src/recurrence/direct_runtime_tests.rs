@@ -2,8 +2,11 @@
 
 use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectContributionExecutionMetadata,
-    DirectContributionExecutor, DirectContributionFanoutProgram, DirectExecutionCounters,
-    DirectExecutorCatalog, DirectExecutorHandle, DirectFactorView, DirectFinalizationExecutor,
+    DirectContributionExecutor, DirectContributionFanoutBatch,
+    DirectContributionFanoutExecutorHandle, DirectContributionFanoutProgram,
+    DirectExecutionCounters, DirectExecutorCatalog, DirectExecutorHandle, DirectFactorView,
+    DirectFinalizationExecutor, DirectInteractionBundleBatch, DirectInteractionExecutorContexts,
+    DirectInteractionIntrinsicKind, DirectInteractionOperands, DirectInteractionVectorParent,
     DirectMomentumView, DirectParameterView, DirectSourceExecutor, DirectWorkspace,
     begin_direct_current_observation, execute_direct_plan,
     execute_direct_plan_unprofiled_with_fanout, take_direct_current_observation,
@@ -139,6 +142,11 @@ struct ContributionCallCensus {
     rows: AtomicU64,
 }
 
+#[derive(Default)]
+struct InteractionDispatchCensus {
+    calls: AtomicU64,
+}
+
 unsafe extern "C" fn counted_accumulate_contributions(
     context: *const c_void,
     arena: DirectArenaView,
@@ -169,6 +177,55 @@ unsafe extern "C" fn counted_accumulate_contributions(
             point_count,
         )
     }
+}
+
+unsafe fn unexpected_single_point_fanout(
+    _context: *const c_void,
+    _arena: DirectArenaView,
+    _momenta: DirectMomentumView,
+    _parameters: DirectParameterView,
+    _factors: DirectFactorView,
+    _batch: DirectContributionFanoutBatch<'_>,
+) -> crate::RusticolResult<()> {
+    panic!("single-point contribution fanout bypassed the interaction action")
+}
+
+unsafe fn inspect_nonidentity_interaction_dispatch(
+    contexts: DirectInteractionExecutorContexts,
+    _arena: DirectArenaView,
+    _momenta: DirectMomentumView,
+    _parameters: DirectParameterView,
+    _factors: DirectFactorView,
+    batch: DirectInteractionBundleBatch<'_>,
+) -> crate::RusticolResult<()> {
+    assert!(!contexts.color.is_null());
+    assert_eq!(contexts.color, contexts.antisymmetric_tensor_vector);
+    assert_eq!(batch.anchors.len(), 1);
+    assert_eq!(batch.outputs.len(), 2);
+    assert!(batch.atv_before_color);
+
+    let anchor = batch.anchors[0];
+    assert_eq!(anchor.output_start, 0);
+    assert_eq!(anchor.output_end, 2);
+    assert!(matches!(
+        anchor.operands,
+        DirectInteractionOperands::One(operand)
+            if operand.tensor_component_base == 1
+                && operand.vector_parent == DirectInteractionVectorParent::Parent0
+    ));
+    assert_eq!(
+        batch
+            .outputs
+            .iter()
+            .map(|output| output.destination_component_base)
+            .collect::<Vec<_>>(),
+        [3, 2]
+    );
+    assert!(batch.outputs.iter().all(|output| output.initialize));
+
+    let census = unsafe { &*contexts.color.cast::<InteractionDispatchCensus>() };
+    census.calls.fetch_add(1, Ordering::Relaxed);
+    Ok(())
 }
 
 unsafe extern "C" fn finalize_currents(
@@ -679,6 +736,149 @@ fn fanout_test_catalog(
     .unwrap()
 }
 
+fn interaction_dispatch_test_plan() -> DirectRecurrencePlan {
+    let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.point_tile_size = 4;
+    parts.current_arena_components = 4;
+    parts.direct_executor_count = 5;
+
+    let source = parts.currents[0];
+    let current = parts.currents[1];
+    parts.currents[0].component_count = 1;
+    parts.currents[1] = DirectCurrentDescriptor {
+        semantic_current_id: 2,
+        component_base: 2,
+        component_count: 1,
+        last_use: 1,
+        ..current
+    };
+    parts.currents.insert(
+        1,
+        DirectCurrentDescriptor {
+            semantic_current_id: 1,
+            component_base: 1,
+            component_count: 1,
+            source_row_or_sentinel: 1,
+            last_use: 2,
+            ..source
+        },
+    );
+    parts.currents.push(DirectCurrentDescriptor {
+        semantic_current_id: 3,
+        component_base: 3,
+        component_count: 1,
+        last_use: 1,
+        finalization_row_or_sentinel: DIRECT_NONE_U32,
+        ..current
+    });
+
+    let source_row = parts.sources[0];
+    parts.sources.push(DirectSourceRow {
+        destination_component_base: 1,
+        ..source_row
+    });
+
+    let contribution = parts.contributions[0];
+    parts.contributions = vec![
+        DirectContributionRow {
+            parent0_component_base: 1,
+            parent1_component_base_or_sentinel: 0,
+            parent1_momentum_form_id_or_sentinel: 0,
+            destination_component_base: 2,
+            flags: 0,
+            ..contribution
+        },
+        DirectContributionRow {
+            parent0_component_base: 1,
+            parent1_component_base_or_sentinel: 0,
+            parent1_momentum_form_id_or_sentinel: 0,
+            destination_component_base: 3,
+            flags: 0,
+            ..contribution
+        },
+        DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: 1,
+            parent1_momentum_form_id_or_sentinel: 0,
+            destination_component_base: 3,
+            flags: 0,
+            ..contribution
+        },
+        DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: 1,
+            parent1_momentum_form_id_or_sentinel: 0,
+            destination_component_base: 2,
+            flags: 0,
+            ..contribution
+        },
+    ];
+    parts.finalizations[0].component_base = 2;
+    parts.closures[0].parent0_component_base = 1;
+    parts.row_groups[0].row_count = 2;
+    parts.row_groups[1].row_count = 2;
+    parts.row_groups.insert(
+        2,
+        DirectRowGroupDescriptor {
+            direct_executor_id: 4,
+            row_start: 2,
+            row_count: 2,
+            ..parts.row_groups[1]
+        },
+    );
+    DirectRecurrencePlan::new(parts).unwrap()
+}
+
+fn interaction_dispatch_test_catalog(
+    plan: &DirectRecurrencePlan,
+    ordinary: &ContributionCallCensus,
+    interaction: &InteractionDispatchCensus,
+) -> DirectExecutorCatalog {
+    let ordinary_context = ordinary as *const ContributionCallCensus as *const c_void;
+    let interaction_context = interaction as *const InteractionDispatchCensus as *const c_void;
+    let mut handles = direct_executor_handles();
+    handles[1] = DirectExecutorHandle::Contribution {
+        call: counted_accumulate_contributions,
+        context: ordinary_context,
+    };
+    handles.push(DirectExecutorHandle::Contribution {
+        call: counted_accumulate_contributions,
+        context: ordinary_context,
+    });
+    let mut metadata = vec![None; 5];
+    metadata[1] = Some(DirectContributionExecutionMetadata::new(1, false).unwrap());
+    metadata[4] = Some(DirectContributionExecutionMetadata::new(1, false).unwrap());
+    let mut fanout = vec![None; 5];
+    fanout[1] = Some(DirectContributionFanoutExecutorHandle {
+        call: unexpected_single_point_fanout,
+        context: interaction_context,
+        destination_component_count: 1,
+        parent_component_counts: [1, 1],
+        requires_two_momenta: false,
+        required_parameter_count: 0,
+        interaction_kind: DirectInteractionIntrinsicKind::AntisymmetricTensorVector,
+        interaction_call: None,
+    });
+    fanout[4] = Some(DirectContributionFanoutExecutorHandle {
+        call: unexpected_single_point_fanout,
+        context: interaction_context,
+        destination_component_count: 1,
+        parent_component_counts: [1, 1],
+        requires_two_momenta: false,
+        required_parameter_count: 0,
+        interaction_kind: DirectInteractionIntrinsicKind::ColorOrderedThreeVector,
+        interaction_call: Some(inspect_nonidentity_interaction_dispatch),
+    });
+    DirectExecutorCatalog::new_sparse_with_metadata_and_fanout(
+        plan,
+        plan.direct_template_catalog_digest(),
+        handles.into_iter().map(Some).collect(),
+        metadata,
+        fanout,
+    )
+    .unwrap()
+}
+
 fn direct_baseline(
     plan: &DirectRecurrencePlan,
     executors: &DirectExecutorCatalog,
@@ -778,6 +978,25 @@ fn sparse_executor_catalog_resolves_arbitrary_referenced_ids_and_keeps_unused_ho
     .unwrap();
     assert_eq!(error.kind(), crate::RusticolErrorKind::Evaluation);
     assert!(error.to_string().contains("executor 7 is not loaded"));
+}
+
+#[test]
+fn interaction_dispatch_uses_nonidentity_bijection_and_multipoint_falls_back() {
+    let plan = interaction_dispatch_test_plan();
+    let ordinary = ContributionCallCensus::default();
+    let interaction = InteractionDispatchCensus::default();
+    let catalog = interaction_dispatch_test_catalog(&plan, &ordinary, &interaction);
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, catalog, 1).unwrap();
+    runtime.set_parameters(&[1.0], &[0.0]).unwrap();
+
+    runtime.execute_tile(1).unwrap();
+    assert_eq!(interaction.calls.load(Ordering::Relaxed), 1);
+    assert_eq!(ordinary.calls.load(Ordering::Relaxed), 0);
+
+    runtime.execute_tile(2).unwrap();
+    assert_eq!(interaction.calls.load(Ordering::Relaxed), 1);
+    assert_eq!(ordinary.calls.load(Ordering::Relaxed), 2);
+    assert_eq!(ordinary.rows.load(Ordering::Relaxed), 2);
 }
 
 #[test]

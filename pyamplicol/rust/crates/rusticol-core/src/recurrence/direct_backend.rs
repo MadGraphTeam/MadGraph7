@@ -23,9 +23,7 @@ pub use crate::direct_arena::{
 };
 use crate::{RusticolError, RusticolResult};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_int, c_void};
 use std::mem::size_of;
 use std::time::{Duration, Instant};
@@ -237,6 +235,28 @@ pub(crate) type DirectContributionFanoutExecutor = for<'a> unsafe fn(
     DirectContributionFanoutBatch<'a>,
 ) -> RusticolResult<()>;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DirectInteractionIntrinsicKind {
+    ColorOrderedThreeVector,
+    VectorWedgeVector,
+    AntisymmetricTensorVector,
+}
+
+pub(crate) type DirectInteractionBundleExecutor = for<'a> unsafe fn(
+    DirectInteractionExecutorContexts,
+    DirectArenaView,
+    DirectMomentumView,
+    DirectParameterView,
+    DirectFactorView,
+    DirectInteractionBundleBatch<'a>,
+) -> RusticolResult<()>;
+
+#[derive(Clone, Copy)]
+pub(crate) struct DirectInteractionExecutorContexts {
+    pub(crate) color: *const c_void,
+    pub(crate) antisymmetric_tensor_vector: *const c_void,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct DirectContributionFanoutExecutorHandle {
     pub(crate) call: DirectContributionFanoutExecutor,
@@ -244,6 +264,9 @@ pub(crate) struct DirectContributionFanoutExecutorHandle {
     pub(crate) destination_component_count: u32,
     pub(crate) parent_component_counts: [u32; 2],
     pub(crate) requires_two_momenta: bool,
+    pub(crate) required_parameter_count: u32,
+    pub(crate) interaction_kind: DirectInteractionIntrinsicKind,
+    pub(crate) interaction_call: Option<DirectInteractionBundleExecutor>,
 }
 
 pub type DirectFinalizationExecutor = unsafe extern "C" fn(
@@ -616,6 +639,80 @@ pub(crate) struct DirectContributionFanoutBatch<'a> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DirectInteractionVectorParent {
+    Parent0,
+    Parent1,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DirectInteractionOperand {
+    pub(crate) tensor_component_base: u32,
+    pub(crate) vector_parent: DirectInteractionVectorParent,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DirectInteractionOperands {
+    None,
+    One(DirectInteractionOperand),
+    Two([DirectInteractionOperand; 2]),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DirectInteractionAnchor {
+    pub(crate) parent_component_bases: [u32; 2],
+    pub(crate) parent_momentum_form_ids: [u32; 2],
+    pub(crate) operands: DirectInteractionOperands,
+    pub(crate) output_start: u32,
+    pub(crate) output_end: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DirectInteractionOutput {
+    pub(crate) destination_component_base: u32,
+    /// Color, followed by the zero, one, or two tensor-vector factors in the
+    /// cold-authenticated contribution order. Unused tail entries are ignored.
+    pub(crate) exact_factor_ids: [u32; 3],
+    pub(crate) initialize: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct DirectInteractionRuntimeRequirements {
+    pub(crate) current_component_count: u32,
+    pub(crate) momentum_form_count: u32,
+    pub(crate) parameter_count: u32,
+    pub(crate) factor_count: u32,
+}
+
+impl DirectInteractionRuntimeRequirements {
+    fn include_current_span(&mut self, base: u32, component_count: u32) -> Option<()> {
+        self.current_component_count = self
+            .current_component_count
+            .max(base.checked_add(component_count)?);
+        Some(())
+    }
+
+    fn include_momentum(&mut self, momentum_form_id: u32) -> Option<()> {
+        self.momentum_form_count = self
+            .momentum_form_count
+            .max(momentum_form_id.checked_add(1)?);
+        Some(())
+    }
+
+    fn include_factor(&mut self, exact_factor_id: u32) -> Option<()> {
+        self.factor_count = self.factor_count.max(exact_factor_id.checked_add(1)?);
+        Some(())
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DirectInteractionBundleBatch<'a> {
+    pub(crate) anchors: &'a [DirectInteractionAnchor],
+    pub(crate) outputs: &'a [DirectInteractionOutput],
+    pub(crate) requirements: DirectInteractionRuntimeRequirements,
+    pub(crate) atv_before_color: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DirectContributionFanoutStep {
     Direct {
         row_start: u64,
@@ -656,12 +753,29 @@ struct DirectContributionFanoutGroup {
     step_count: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DirectInteractionGroupAction {
+    Normal,
+    Execute(u32),
+    Consumed,
+}
+
+struct DirectInteractionStage {
+    group_indices: [u32; 2],
+    call: DirectInteractionBundleExecutor,
+    contexts: DirectInteractionExecutorContexts,
+    atv_before_color: bool,
+    anchors: Box<[DirectInteractionAnchor]>,
+    outputs: Box<[DirectInteractionOutput]>,
+    requirements: DirectInteractionRuntimeRequirements,
+    logical_row_count: u64,
+}
+
 /// Immutable, plan-local execution rewrite for contribution kinematics.
 ///
-/// Rows remain the authoritative schedule. This cold-path program merely
-/// evaluates each contiguous authenticated input class once into a bounded
-/// private current-arena window, then applies the original rows' destination
-/// and exact-factor policies in their deterministic lowered order.
+/// Rows remain the authoritative cold schedule. This program copies only the
+/// compact input, destination, and live-factor metadata needed to evaluate
+/// each authenticated input class once and replay its deterministic writes.
 pub(crate) struct DirectContributionFanoutProgram {
     plan_layout_digest: SemanticDigest,
     groups: Box<[DirectContributionFanoutGroup]>,
@@ -673,6 +787,8 @@ pub(crate) struct DirectContributionFanoutProgram {
     scratch_component_count: u32,
     unit_factor_id: u32,
     needs_unit_factor: bool,
+    interaction_actions: Box<[DirectInteractionGroupAction]>,
+    interaction_stages: Box<[DirectInteractionStage]>,
 }
 
 impl DirectContributionFanoutProgram {
@@ -847,6 +963,7 @@ impl DirectContributionFanoutProgram {
                 })?,
             });
         }
+        let interactions = build_direct_interaction_program(plan, executors)?;
         Ok(Self {
             plan_layout_digest: plan.runtime_layout_digest(),
             groups: groups.into_boxed_slice(),
@@ -858,6 +975,8 @@ impl DirectContributionFanoutProgram {
             scratch_component_count,
             unit_factor_id,
             needs_unit_factor,
+            interaction_actions: interactions.actions.into_boxed_slice(),
+            interaction_stages: interactions.stages.into_boxed_slice(),
         })
     }
 
@@ -980,6 +1099,452 @@ impl DirectContributionFanoutProgram {
     }
 }
 
+struct DirectInteractionProgramBuild {
+    actions: Vec<DirectInteractionGroupAction>,
+    stages: Vec<DirectInteractionStage>,
+}
+
+#[derive(Clone, Copy)]
+struct DirectInteractionRawRun {
+    row_start: u64,
+    row_count: u32,
+}
+
+type DirectInteractionInputKey = (u32, u32, u32, u32, u32);
+
+fn interaction_input_key(row: DirectContributionRow) -> DirectInteractionInputKey {
+    (
+        row.selector_domain_id,
+        row.parent0_component_base,
+        row.parent1_component_base_or_sentinel,
+        row.parent0_momentum_form_id,
+        row.parent1_momentum_form_id_or_sentinel,
+    )
+}
+
+fn interaction_raw_runs(
+    plan: &DirectRecurrencePlan,
+    descriptor: &DirectRowGroupDescriptor,
+) -> Option<Vec<DirectInteractionRawRun>> {
+    let start = usize::try_from(descriptor.row_start).ok()?;
+    let end = start.checked_add(descriptor.row_count as usize)?;
+    let rows = plan.contributions().get(start..end)?;
+    if rows
+        .iter()
+        .any(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+    {
+        return None;
+    }
+    let mut runs = Vec::new();
+    let mut offset = 0_usize;
+    while offset < rows.len() {
+        let run_start = offset;
+        let key = interaction_input_key(rows[offset]);
+        offset += 1;
+        while offset < rows.len() && interaction_input_key(rows[offset]) == key {
+            offset += 1;
+        }
+        runs.push(DirectInteractionRawRun {
+            row_start: descriptor.row_start.checked_add(run_start as u64)?,
+            row_count: u32::try_from(offset - run_start).ok()?,
+        });
+    }
+    Some(runs)
+}
+
+fn interaction_rows<'a>(
+    plan: &'a DirectRecurrencePlan,
+    run: DirectInteractionRawRun,
+) -> Option<&'a [DirectContributionRow]> {
+    let start = usize::try_from(run.row_start).ok()?;
+    plan.contributions()
+        .get(start..start.checked_add(run.row_count as usize)?)
+}
+
+fn interaction_destination_offsets(rows: &[DirectContributionRow]) -> Option<BTreeMap<u32, u32>> {
+    let destinations = rows
+        .iter()
+        .enumerate()
+        .map(|(offset, row)| Some((row.destination_component_base, u32::try_from(offset).ok()?)))
+        .collect::<Option<BTreeMap<_, _>>>()?;
+    (destinations.len() == rows.len()).then_some(destinations)
+}
+
+fn interaction_destination_bijection(
+    color: &BTreeMap<u32, u32>,
+    atv: &BTreeMap<u32, u32>,
+) -> Option<Vec<u32>> {
+    if color.len() != atv.len() || !color.keys().eq(atv.keys()) {
+        return None;
+    }
+    let mut row_offsets = vec![DIRECT_NONE_U32; color.len()];
+    for (&destination, &color_offset) in color {
+        let atv_offset = *atv.get(&destination)?;
+        *row_offsets.get_mut(color_offset as usize)? = atv_offset;
+    }
+    (!row_offsets.contains(&DIRECT_NONE_U32)).then_some(row_offsets)
+}
+
+fn interaction_kind(
+    executors: &DirectExecutorCatalog,
+    descriptor: &DirectRowGroupDescriptor,
+) -> Option<DirectInteractionIntrinsicKind> {
+    if descriptor.role != DirectExecutorRole::Contribution
+        || descriptor.direct_executor_id == DIRECT_NONE_U32
+        || executors
+            .contribution_metadata(descriptor.direct_executor_id)
+            .ok()?
+            .exact_factor_is_kernel_input
+    {
+        return None;
+    }
+    Some(
+        executors
+            .contribution_fanout(descriptor.direct_executor_id)?
+            .interaction_kind,
+    )
+}
+
+fn build_direct_interaction_program(
+    plan: &DirectRecurrencePlan,
+    executors: &DirectExecutorCatalog,
+) -> RusticolResult<DirectInteractionProgramBuild> {
+    let mut actions = vec![DirectInteractionGroupAction::Normal; plan.row_groups().len()];
+    let mut stages = Vec::new();
+    let mut stage_groups = BTreeMap::<u16, Vec<usize>>::new();
+    for (group_index, descriptor) in plan.row_groups().iter().enumerate() {
+        if descriptor.role == DirectExecutorRole::Contribution {
+            stage_groups
+                .entry(descriptor.stage)
+                .or_default()
+                .push(group_index);
+        }
+    }
+    let raw_runs = plan
+        .row_groups()
+        .iter()
+        .enumerate()
+        .filter_map(|(group_index, descriptor)| {
+            interaction_kind(executors, descriptor)?;
+            Some((group_index, interaction_raw_runs(plan, descriptor)?))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    for group_indices in stage_groups.values() {
+        let Some(candidate) = match_interaction_stage(plan, executors, group_indices, &raw_runs)
+        else {
+            continue;
+        };
+        let stage_index = u32::try_from(stages.len())
+            .map_err(|_| RusticolError::integrity("direct interaction stage count exceeds u32"))?;
+        let first_group = *candidate.group_indices.iter().min().expect("two groups");
+        for &group_index in &candidate.group_indices {
+            actions[group_index] = if group_index == first_group {
+                DirectInteractionGroupAction::Execute(stage_index)
+            } else {
+                DirectInteractionGroupAction::Consumed
+            };
+        }
+        let stored_group_indices = [
+            u32::try_from(candidate.group_indices[0]).map_err(|_| {
+                RusticolError::integrity("direct interaction group index exceeds u32")
+            })?,
+            u32::try_from(candidate.group_indices[1]).map_err(|_| {
+                RusticolError::integrity("direct interaction group index exceeds u32")
+            })?,
+        ];
+        stages.push(DirectInteractionStage {
+            group_indices: stored_group_indices,
+            call: candidate.call,
+            contexts: candidate.contexts,
+            atv_before_color: candidate.group_indices[1] < candidate.group_indices[0],
+            anchors: candidate.anchors.into_boxed_slice(),
+            outputs: candidate.outputs.into_boxed_slice(),
+            requirements: candidate.requirements,
+            logical_row_count: candidate.logical_row_count,
+        });
+    }
+
+    Ok(DirectInteractionProgramBuild { actions, stages })
+}
+
+struct DirectInteractionStageCandidate {
+    group_indices: [usize; 2],
+    call: DirectInteractionBundleExecutor,
+    contexts: DirectInteractionExecutorContexts,
+    logical_row_count: u64,
+    anchors: Vec<DirectInteractionAnchor>,
+    outputs: Vec<DirectInteractionOutput>,
+    requirements: DirectInteractionRuntimeRequirements,
+}
+
+struct DirectInteractionMatchedSupplement {
+    row_start: u64,
+    vector_parent_side: u8,
+    row_offsets: Vec<u32>,
+}
+
+fn match_interaction_stage(
+    plan: &DirectRecurrencePlan,
+    executors: &DirectExecutorCatalog,
+    group_indices: &[usize],
+    raw_runs: &BTreeMap<usize, Vec<DirectInteractionRawRun>>,
+) -> Option<DirectInteractionStageCandidate> {
+    if !(2..=3).contains(&group_indices.len())
+        || !group_indices.windows(2).all(|pair| pair[1] == pair[0] + 1)
+    {
+        return None;
+    }
+    let mut color = None;
+    let mut wedge = None;
+    let mut atv = None;
+    for &group_index in group_indices {
+        let descriptor = &plan.row_groups()[group_index];
+        let slot = match interaction_kind(executors, descriptor)? {
+            DirectInteractionIntrinsicKind::ColorOrderedThreeVector => &mut color,
+            DirectInteractionIntrinsicKind::VectorWedgeVector => &mut wedge,
+            DirectInteractionIntrinsicKind::AntisymmetricTensorVector => &mut atv,
+        };
+        if slot.replace(group_index).is_some() {
+            return None;
+        }
+    }
+    let (color_index, atv_index) = (color?, atv?);
+    if wedge.is_some() != (group_indices.len() == 3) {
+        return None;
+    }
+    let color = &plan.row_groups()[color_index];
+    let atv = &plan.row_groups()[atv_index];
+    let color_capability = executors.contribution_fanout(color.direct_executor_id)?;
+    let atv_capability = executors.contribution_fanout(atv.direct_executor_id)?;
+    let call = color_capability.interaction_call?;
+    let color_runs = raw_runs.get(&color_index)?.clone();
+    let atv_runs = raw_runs.get(&atv_index)?;
+
+    type AssociationKey = (u32, u32, u32, u32, u32, u32);
+    let mut anchors_by_vector = BTreeMap::<AssociationKey, Vec<(usize, u8)>>::new();
+    let mut color_destination_offsets = Vec::with_capacity(color_runs.len());
+    for (anchor_index, run) in color_runs.iter().copied().enumerate() {
+        let rows = interaction_rows(plan, run)?;
+        let first = *rows.first()?;
+        let destinations = interaction_destination_offsets(rows)?;
+        let minimum_destination = *destinations.keys().next()?;
+        let maximum_destination = *destinations.keys().next_back()?;
+        for (side, base, momentum) in [
+            (
+                0_u8,
+                first.parent0_component_base,
+                first.parent0_momentum_form_id,
+            ),
+            (
+                1_u8,
+                first.parent1_component_base_or_sentinel,
+                first.parent1_momentum_form_id_or_sentinel,
+            ),
+        ] {
+            anchors_by_vector
+                .entry((
+                    first.selector_domain_id,
+                    base,
+                    momentum,
+                    run.row_count,
+                    minimum_destination,
+                    maximum_destination,
+                ))
+                .or_default()
+                .push((anchor_index, side));
+        }
+        color_destination_offsets.push(destinations);
+    }
+    let mut matched_supplements = (0..color_runs.len())
+        .map(|_| Vec::new())
+        .collect::<Vec<Vec<DirectInteractionMatchedSupplement>>>();
+    let mut used_sides = vec![[false; 2]; color_runs.len()];
+    for &atv_run in atv_runs {
+        let atv_rows = interaction_rows(plan, atv_run)?;
+        let representative = *atv_rows.first()?;
+        let atv_destination_offsets = interaction_destination_offsets(atv_rows)?;
+        let minimum_destination = *atv_destination_offsets.keys().next()?;
+        let maximum_destination = *atv_destination_offsets.keys().next_back()?;
+        let candidates = anchors_by_vector.get(&(
+            representative.selector_domain_id,
+            representative.parent1_component_base_or_sentinel,
+            representative.parent1_momentum_form_id_or_sentinel,
+            atv_run.row_count,
+            minimum_destination,
+            maximum_destination,
+        ))?;
+        let mut matches = candidates.iter().copied().filter(|(anchor_index, _)| {
+            color_destination_offsets[*anchor_index]
+                .keys()
+                .eq(atv_destination_offsets.keys())
+        });
+        let (anchor_index, vector_parent_side) = matches.next()?;
+        if matches.next().is_some() || used_sides[anchor_index][vector_parent_side as usize] {
+            return None;
+        }
+        used_sides[anchor_index][vector_parent_side as usize] = true;
+        let row_offsets = interaction_destination_bijection(
+            &color_destination_offsets[anchor_index],
+            &atv_destination_offsets,
+        )?;
+        matched_supplements[anchor_index].push(DirectInteractionMatchedSupplement {
+            row_start: atv_run.row_start,
+            vector_parent_side,
+            row_offsets,
+        });
+    }
+    if matched_supplements.iter().flatten().count() == 0 {
+        return None;
+    }
+
+    // Identical destination ranges are expected across formula groups and
+    // repeated interactions. Distinct partially-overlapping ranges would make
+    // a single aggregated write ambiguous, so reject that stage.
+    let mut destination_widths = BTreeMap::<u32, u32>::new();
+    for &group_index in group_indices {
+        let descriptor = &plan.row_groups()[group_index];
+        let capability = executors.contribution_fanout(descriptor.direct_executor_id)?;
+        let start = usize::try_from(descriptor.row_start).ok()?;
+        let rows = plan
+            .contributions()
+            .get(start..start.checked_add(descriptor.row_count as usize)?)?;
+        for row in rows {
+            if destination_widths
+                .insert(
+                    row.destination_component_base,
+                    capability.destination_component_count,
+                )
+                .is_some_and(|width| width != capability.destination_component_count)
+            {
+                return None;
+            }
+        }
+    }
+    let mut previous_end = 0_u32;
+    for (&base, &width) in &destination_widths {
+        if base < previous_end {
+            return None;
+        }
+        previous_end = base.checked_add(width)?;
+    }
+
+    let mut seen_vector_destinations = BTreeSet::new();
+    let mut candidate_anchors = Vec::with_capacity(color_runs.len());
+    let mut candidate_outputs = Vec::with_capacity(color.row_count as usize);
+    let mut requirements = DirectInteractionRuntimeRequirements {
+        parameter_count: color_capability
+            .required_parameter_count
+            .max(atv_capability.required_parameter_count),
+        ..DirectInteractionRuntimeRequirements::default()
+    };
+    for (anchor_index, color_run) in color_runs.into_iter().enumerate() {
+        let color_rows = interaction_rows(plan, color_run)?;
+        let representative = *color_rows.first()?;
+        requirements.include_current_span(
+            representative.parent0_component_base,
+            color_capability.parent_component_counts[0],
+        )?;
+        requirements.include_current_span(
+            representative.parent1_component_base_or_sentinel,
+            color_capability.parent_component_counts[1],
+        )?;
+        requirements.include_momentum(representative.parent0_momentum_form_id)?;
+        requirements.include_momentum(representative.parent1_momentum_form_id_or_sentinel)?;
+
+        let supplements_for_anchor = &matched_supplements[anchor_index];
+        if supplements_for_anchor.len() > 2 {
+            return None;
+        }
+        let mut compiled_operands = [DirectInteractionOperand {
+            tensor_component_base: 0,
+            vector_parent: DirectInteractionVectorParent::Parent0,
+        }; 2];
+        let mut supplement_rows = [None; 2];
+        for (slot, supplement) in supplements_for_anchor.iter().enumerate() {
+            let rows = interaction_rows(
+                plan,
+                DirectInteractionRawRun {
+                    row_start: supplement.row_start,
+                    row_count: color_run.row_count,
+                },
+            )?;
+            let atv_representative = *rows.first()?;
+            let vector_parent = match supplement.vector_parent_side {
+                0 => DirectInteractionVectorParent::Parent0,
+                1 => DirectInteractionVectorParent::Parent1,
+                _ => return None,
+            };
+            requirements.include_current_span(
+                atv_representative.parent0_component_base,
+                atv_capability.parent_component_counts[0],
+            )?;
+            compiled_operands[slot] = DirectInteractionOperand {
+                tensor_component_base: atv_representative.parent0_component_base,
+                vector_parent,
+            };
+            supplement_rows[slot] = Some(rows);
+        }
+        let operands = match supplements_for_anchor.len() {
+            0 => DirectInteractionOperands::None,
+            1 => DirectInteractionOperands::One(compiled_operands[0]),
+            2 => DirectInteractionOperands::Two(compiled_operands),
+            _ => unreachable!("interaction supplement count was bounded above"),
+        };
+
+        let output_start = u32::try_from(candidate_outputs.len()).ok()?;
+        for (offset, color_row) in color_rows.iter().enumerate() {
+            requirements.include_current_span(
+                color_row.destination_component_base,
+                color_capability.destination_component_count,
+            )?;
+            requirements.include_factor(color_row.exact_factor_id)?;
+            let mut exact_factor_ids = [color_row.exact_factor_id, 0, 0];
+            for (slot, supplement) in supplements_for_anchor.iter().enumerate() {
+                let atv_offset = *supplement.row_offsets.get(offset)?;
+                let atv_row = *supplement_rows[slot]?.get(atv_offset as usize)?;
+                if atv_row.destination_component_base != color_row.destination_component_base {
+                    return None;
+                }
+                requirements.include_factor(atv_row.exact_factor_id)?;
+                exact_factor_ids[slot + 1] = atv_row.exact_factor_id;
+            }
+            candidate_outputs.push(DirectInteractionOutput {
+                destination_component_base: color_row.destination_component_base,
+                exact_factor_ids,
+                initialize: seen_vector_destinations.insert(color_row.destination_component_base),
+            });
+        }
+        let output_end = u32::try_from(candidate_outputs.len()).ok()?;
+        candidate_anchors.push(DirectInteractionAnchor {
+            parent_component_bases: [
+                representative.parent0_component_base,
+                representative.parent1_component_base_or_sentinel,
+            ],
+            parent_momentum_form_ids: [
+                representative.parent0_momentum_form_id,
+                representative.parent1_momentum_form_id_or_sentinel,
+            ],
+            operands,
+            output_start,
+            output_end,
+        });
+    }
+
+    Some(DirectInteractionStageCandidate {
+        group_indices: [color_index, atv_index],
+        call,
+        contexts: DirectInteractionExecutorContexts {
+            color: color_capability.context,
+            antisymmetric_tensor_vector: atv_capability.context,
+        },
+        logical_row_count: u64::from(color.row_count) + u64::from(atv.row_count),
+        anchors: candidate_anchors,
+        outputs: candidate_outputs,
+        requirements,
+    })
+}
+
 fn validate_fused_fanout_row(
     row: DirectContributionRow,
     parent_component_counts: [u32; 2],
@@ -1019,6 +1584,42 @@ fn validate_fused_fanout_row(
 mod fused_fanout_validation_tests {
     use super::*;
 
+    fn interaction_row(destination_component_base: u32) -> DirectContributionRow {
+        DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: 4,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: 1,
+            destination_component_base,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        }
+    }
+
+    #[test]
+    fn interaction_destination_bijection_accepts_nonidentity_and_rejects_nonsets() {
+        let color = [interaction_row(8), interaction_row(16), interaction_row(24)];
+        let permuted = [interaction_row(24), interaction_row(8), interaction_row(16)];
+        let color = interaction_destination_offsets(&color).unwrap();
+        let permuted = interaction_destination_offsets(&permuted).unwrap();
+        assert_eq!(
+            interaction_destination_bijection(&color, &permuted).unwrap(),
+            [1, 2, 0]
+        );
+
+        assert!(
+            interaction_destination_offsets(&[interaction_row(8), interaction_row(8),]).is_none()
+        );
+        let different = interaction_destination_offsets(&[
+            interaction_row(8),
+            interaction_row(16),
+            interaction_row(28),
+        ])
+        .unwrap();
+        assert!(interaction_destination_bijection(&color, &different).is_none());
+    }
+
     #[test]
     fn rejects_short_parent_spans_and_missing_momentum_forms() {
         let row = DirectContributionRow {
@@ -1034,6 +1635,47 @@ mod fused_fanout_validation_tests {
         assert!(validate_fused_fanout_row(row, [9, 4], false, 8, 2).is_err());
         assert!(validate_fused_fanout_row(row, [4, 4], true, 8, 1).is_err());
         validate_fused_fanout_row(row, [4, 4], true, 8, 2).unwrap();
+    }
+
+    #[test]
+    fn interaction_execution_gate_is_full_unselected_single_point_only() {
+        let plan = crate::recurrence::direct_plan::tests::valid_plan();
+        let groups = plan.row_groups();
+        assert!(direct_interaction_execution_enabled(
+            RecurrenceStrategy::TopologyReplay,
+            groups,
+            groups,
+            None,
+            1,
+        ));
+        assert!(!direct_interaction_execution_enabled(
+            RecurrenceStrategy::TopologyReplay,
+            groups,
+            groups,
+            None,
+            2,
+        ));
+        assert!(!direct_interaction_execution_enabled(
+            RecurrenceStrategy::TopologyReplay,
+            groups,
+            groups,
+            Some(0),
+            1,
+        ));
+        assert!(!direct_interaction_execution_enabled(
+            RecurrenceStrategy::AllFlowUnion,
+            groups,
+            groups,
+            None,
+            1,
+        ));
+        assert!(!direct_interaction_execution_enabled(
+            RecurrenceStrategy::ContractedColorUnion,
+            groups,
+            &groups[1..],
+            None,
+            1,
+        ));
     }
 }
 
@@ -1645,8 +2287,15 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             "direct contribution fanout program belongs to a different plan",
         ));
     }
+    let interaction_enabled = direct_interaction_execution_enabled(
+        plan.strategy(),
+        plan.row_groups(),
+        row_groups,
+        selected_sector_id,
+        point_count,
+    );
     let mut initialized_contribution_stage = None;
-    for descriptor in row_groups {
+    for (group_index, descriptor) in row_groups.iter().enumerate() {
         if descriptor.role == DirectExecutorRole::Source
             && descriptor.direct_executor_id == DIRECT_NONE_U32
             && plan.strategy() == RecurrenceStrategy::AllFlowUnion
@@ -1655,6 +2304,71 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             // `DirectRecurrenceExecutionRuntime` before entering this static
             // contribution/finalization/closure schedule.
             continue;
+        }
+        if interaction_enabled && let Some(fanout) = fanout {
+            match fanout
+                .interaction_actions
+                .get(group_index)
+                .copied()
+                .unwrap_or(DirectInteractionGroupAction::Normal)
+            {
+                DirectInteractionGroupAction::Normal => {}
+                DirectInteractionGroupAction::Consumed => continue,
+                DirectInteractionGroupAction::Execute(stage_index) => {
+                    let started = PROFILE.then(Instant::now);
+                    execute_direct_interaction_stage(fanout, stage_index, workspace)?;
+                    let stage = fanout
+                        .interaction_stages
+                        .get(stage_index as usize)
+                        .ok_or_else(|| {
+                            RusticolError::integrity(
+                                "direct interaction stage index is out of bounds",
+                            )
+                        })?;
+                    if PROFILE {
+                        counters.contribution_calls += 2;
+                        counters.contribution_rows += stage.logical_row_count;
+                        timings.contribution += started
+                            .expect("profiled interaction stage has a start time")
+                            .elapsed();
+                        if let Some(traffic) = traffic.as_deref_mut() {
+                            for logical_group in stage.group_indices {
+                                let logical_group = logical_group as usize;
+                                let logical = &row_groups[logical_group];
+                                traffic.record_call(logical.row_count, point_count);
+                            }
+                        }
+                    }
+                    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+                    for logical_group in stage.group_indices {
+                        let logical_group = logical_group as usize;
+                        let logical = &row_groups[logical_group];
+                        let start = usize::try_from(logical.row_start).map_err(|_| {
+                            RusticolError::integrity(
+                                "direct interaction observation row start exceeds usize",
+                            )
+                        })?;
+                        let end =
+                            start
+                                .checked_add(logical.row_count as usize)
+                                .ok_or_else(|| {
+                                    RusticolError::integrity(
+                                        "direct interaction observation row range overflows usize",
+                                    )
+                                })?;
+                        observe_direct_current_rows(
+                            plan,
+                            logical,
+                            start,
+                            end,
+                            selected_sector_id,
+                            workspace,
+                            point_count,
+                        )?;
+                    }
+                    continue;
+                }
+            }
         }
         // A full topology/contracted schedule executes every authenticated
         // initializer, so its writes replace the stage clear. All-flow-union
@@ -1878,6 +2592,48 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
         )?;
     }
     Ok(())
+}
+
+fn direct_interaction_execution_enabled(
+    strategy: RecurrenceStrategy,
+    authoritative_groups: &[DirectRowGroupDescriptor],
+    requested_groups: &[DirectRowGroupDescriptor],
+    selected_sector_id: Option<u32>,
+    point_count: u32,
+) -> bool {
+    point_count == 1
+        && selected_sector_id.is_none()
+        && strategy != RecurrenceStrategy::AllFlowUnion
+        && requested_groups.len() == authoritative_groups.len()
+        && std::ptr::eq(requested_groups.as_ptr(), authoritative_groups.as_ptr())
+}
+
+fn execute_direct_interaction_stage(
+    fanout: &DirectContributionFanoutProgram,
+    stage_index: u32,
+    workspace: &mut DirectWorkspace<'_>,
+) -> RusticolResult<()> {
+    let stage = fanout
+        .interaction_stages
+        .get(stage_index as usize)
+        .ok_or_else(|| RusticolError::integrity("direct interaction stage is out of bounds"))?;
+
+    let (arena, momenta, parameters, factors) = workspace.raw_views()?;
+    unsafe {
+        (stage.call)(
+            stage.contexts,
+            arena,
+            momenta,
+            parameters,
+            factors,
+            DirectInteractionBundleBatch {
+                anchors: &stage.anchors,
+                outputs: &stage.outputs,
+                requirements: stage.requirements,
+                atv_before_color: stage.atv_before_color,
+            },
+        )
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
