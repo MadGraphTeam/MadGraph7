@@ -664,7 +664,7 @@ def test_contracted_pure_gluon_replay_projects_six_n5_template_orbits() -> None:
     assert contraction_destinations[-1] == (719, 3)
 
 
-def test_symmetric_group_anchor_is_opt_in_and_serializes() -> None:
+def test_symmetric_group_anchor_falls_back_for_complete_contracted_replay() -> None:
     model = BuiltinSMModel()
     process = build_process_ir("g g > g g", color_accuracy="full")
     color_plan = build_color_plan(process, color_accuracy="full")
@@ -693,42 +693,10 @@ def test_symmetric_group_anchor_is_opt_in_and_serializes() -> None:
     assert {sector.closure_proof_algorithm for sector in direct.physical_sectors} == {
         "canonical-lc-closure-anchor-v2"
     }
-    assert {sector.closure_proof_algorithm for sector in anchored.physical_sectors} == {
-        "canonical-lc-closure-anchor-v4"
-    }
-    assert {sector.closure_source_slot for sector in anchored.physical_sectors} == {0}
+    assert anchored.physical_sectors == direct.physical_sectors
     assert anchored.public_flows == direct.public_flows
     assert anchored.replay_partitions == direct.replay_partitions
-    assert tuple(
-        (
-            sector.sector_id,
-            sector.public_id,
-            sector.kind,
-            sector.open_strings,
-            sector.trace_source_slots,
-            sector.singlet_source_slots,
-            sector.word_source_slots,
-            sector.support_mask,
-        )
-        for sector in anchored.physical_sectors
-    ) == tuple(
-        (
-            sector.sector_id,
-            sector.public_id,
-            sector.kind,
-            sector.open_strings,
-            sector.trace_source_slots,
-            sector.singlet_source_slots,
-            sector.word_source_slots,
-            sector.support_mask,
-        )
-        for sector in direct.physical_sectors
-    )
-    assert all(
-        target.source_slot_permutation[0] == 0
-        for partition in anchored.replay_partitions
-        for target in partition.targets
-    )
+    assert anchored.replay_partitions
     build_recurrence_builder_input_v1(anchored)
 
 
@@ -870,7 +838,8 @@ def test_symmetric_group_anchor_falls_back_without_exact_template_contract() -> 
     assert logical.physical_sectors[0].closure_source_slot == 3
 
 
-def test_symmetric_group_anchor_preserves_n7_n8_factorial_trace_domains() -> None:
+def test_symmetric_group_anchor_preserves_n7_n8_factorial_trace_domains_without_replay(
+) -> None:
     model = BuiltinSMModel()
     catalog = build_recurrence_template_catalog(
         model,
@@ -884,13 +853,11 @@ def test_symmetric_group_anchor_preserves_n7_n8_factorial_trace_domains() -> Non
             color_accuracy="full",
         )
         color_plan = build_color_plan(process, color_accuracy="full")
-        replay = build_color_topology_replay_certificate(color_plan, model)
         logical = project_recurrence_process_v1(
             process,
             color_plan,
             catalog,
             layout="contracted-color-union",
-            topology_replay=replay,
             normalization=_normalization(),
             model=model,
             prefer_symmetric_group_closure_anchor=True,
@@ -902,14 +869,7 @@ def test_symmetric_group_anchor_preserves_n7_n8_factorial_trace_domains() -> Non
             and sector.closure_source_slot == 0
             for sector in logical.physical_sectors
         )
-        assert sum(
-            len(partition.targets) for partition in logical.replay_partitions
-        ) == math.factorial(total_gluons - 1)
-        assert all(
-            target.source_slot_permutation[0] == 0
-            for partition in logical.replay_partitions
-            for target in partition.targets
-        )
+        assert logical.replay_partitions == ()
 
 
 def test_contracted_color_owner_map_rejects_an_unproved_missing_sector() -> None:

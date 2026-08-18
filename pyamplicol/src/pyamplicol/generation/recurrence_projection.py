@@ -1149,6 +1149,13 @@ def _project_cyclic_trace_closure_anchors(
     replay-incompatible channel retains its established v2/v3 anchor.
     """
 
+    # Replay and reflection folding choose their canonical owners independently.
+    # A replay representative can therefore be the non-canonical member of a
+    # reflection orbit whose owner belongs to another replay partition.  Keep
+    # the established per-sector anchors until those two proofs are composed.
+    if replay_partitions:
+        return sectors
+
     state_template_id = _cyclic_trace_state_template_id(
         external_legs,
         template_catalog,

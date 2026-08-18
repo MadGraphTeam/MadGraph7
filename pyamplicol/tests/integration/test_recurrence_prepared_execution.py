@@ -21,6 +21,7 @@ from pyamplicol.config import (
     Action,
     ColorAccuracy,
     ColorConfig,
+    ColorContraction,
     EvaluatorConfig,
     EvaluatorExecutionMode,
     EvaluatorOptimizationConfig,
@@ -97,11 +98,14 @@ def _require_native_direct_arena() -> None:
 def _generation_config(
     *,
     lc_flow_layout: LCFlowLayout = LCFlowLayout.TOPOLOGY_REPLAY,
+    color_accuracy: ColorAccuracy = ColorAccuracy.LC,
+    color_contraction: ColorContraction = ColorContraction.DIRECT,
 ) -> RunConfig:
     return RunConfig(
         action=Action.GENERATE,
         color=ColorConfig(
-            accuracy=ColorAccuracy.LC,
+            accuracy=color_accuracy,
+            contraction=color_contraction,
             lc_flow_layout=lc_flow_layout,
         ),
         generation=GenerationConfig(
@@ -479,6 +483,34 @@ def test_direct_arena_pure_gluon_replay_matches_reflection_oracle(
         expected_total,
         relative_tolerance=5.0e-12 if model_source == "ufo-sm" else 1.0e-12,
     )
+
+
+def test_symmetric_group_complete_gluon_replay_lowers_all_materialized_sectors(
+    tmp_path: Path,
+) -> None:
+    """Lower the complete-helicity FullColour replay that exercises reflection."""
+
+    _require_native_direct_arena()
+    artifact = tmp_path / "symmetric-group-complete-gluon-replay"
+    config = _generation_config(
+        color_accuracy=ColorAccuracy.FULL,
+        color_contraction=ColorContraction.SYMMETRIC_GROUP_FFT,
+    )
+    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
+        Generator(config).generate(
+            _GG_EXPRESSION,
+            artifact,
+            model=ModelSource.from_path(prepared_model),
+        )
+
+    execution_path = next((artifact / "processes").glob("*/execution.json"))
+    execution = json.loads(execution_path.read_text(encoding="utf-8"))
+    summary = execution["recurrence_summary"]
+    schedule = execution["plan"]["inspection_summary"]["schedule"]
+    assert summary["lc_flow_layout"] == "contracted-color-union"
+    assert schedule["replay_target_count"] == 6
+    assert schedule["resolved_helicity_count"] == 3
+    assert schedule["amplitude_destination_count"] == 9
 
 
 @pytest.mark.parametrize("model_source", ["built-in", "ufo-sm"])
