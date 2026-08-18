@@ -3498,6 +3498,16 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # yet). --use_crossing (bare) or --use_crossing=True turns it on,
         # --use_crossing=False is the default. --standalone does not affect it.
         use_crossing = self.pop_use_crossing_flag(args)
+        # The flag has to be popped HERE, before check_add sees `args`, but it
+        # is resolved into self._use_crossing further down -- after check_add.
+        # See the comment there.
+
+        # Check the validity of the arguments
+        self.check_add(args)
+
+        if args[0] == 'model':
+            return self.add_model(args[1:])
+
         # Resolve what THIS line means for the definition as a whole. With the
         # default off, the old `and` accumulator below could never be lifted
         # (False and True is False), so an explicit --use_crossing=True was
@@ -3505,6 +3515,18 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # explicit False switches it off for good (a multi-line definition must
         # not end up half crossed), and a line with no flag inherits what the
         # definition already chose -- which starts off.
+        #
+        # AFTER check_add, and that is load-bearing: with no model imported yet
+        # check_generate imports the Standard Model for the user, and do_import
+        # calls clean_process(), which resets exactly these attributes. Setting
+        # them earlier left the LOCAL merge_crossing below enabled while
+        # self._use_crossing went back to False -- so the crossings were folded
+        # onto their base at generation and the exporter, which reads the
+        # attribute, then wrote no decoder for them. `p p > j j
+        # --use_crossing=True` came out as 3 subprocess directories covering 15
+        # of its 65 flavor columns, with the other 50 unreachable and an
+        # extended FLAV_IDX returning 0 in silence -- but only in a script that
+        # had not imported a model of its own first, which is why it survived.
         if use_crossing is False:
             self._use_crossing_off = True
         elif use_crossing is True:
@@ -3536,14 +3558,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         if os.environ.get('MG_MERGE_CROSSING') == 'off':
             merge_crossing = False
 
-        # Check the validity of the arguments
-        self.check_add(args)
-
-        if args[0] == 'model':
-            return self.add_model(args[1:])
-
-        # self._use_crossing is already the definition-wide choice (resolved
-        # above, reset by clean_process/do_generate); the exporter reads it.
+        # self._use_crossing is the definition-wide choice resolved just above
+        # (and reset per definition by clean_process/do_generate); the exporter
+        # reads that attribute, `merge_crossing` here only drives generation.
 
         # special option for 1->N to avoid generation of kinematically forbidden
         #decay.
