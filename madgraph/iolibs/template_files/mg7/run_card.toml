@@ -1,6 +1,6 @@
 [run]
 run_name = %(run.run_name)s
-# options: cuda, hip, cpu_scalar, cpu_128b, cpu_256b, cpu_512b_y, cpu_512b, cpu
+# options: cpu (auto-detected SIMD width), cpu_scalar, cpu_128b, cpu_256b, cpu_512b_y, cpu_512b, cuda, hip
 devices = %(run.devices)s
 # options:
 #   -1 to choose automatically
