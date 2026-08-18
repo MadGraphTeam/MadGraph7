@@ -954,7 +954,9 @@ fn load_evaluator_payload_container(
             || member.logical_path() == extension.path
             || !matches!(
                 member.kind(),
-                PacbinMemberKind::SymjitApplication | PacbinMemberKind::SymbolicaExactState
+                PacbinMemberKind::SymjitApplication
+                    | PacbinMemberKind::SymbolicaExactState
+                    | PacbinMemberKind::ColorContraction
             )
         {
             return Err(RusticolError::integrity(format!(

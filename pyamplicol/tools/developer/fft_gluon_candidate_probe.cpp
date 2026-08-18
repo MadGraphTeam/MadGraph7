@@ -339,7 +339,8 @@ int main(int argc, char **argv) {
         if (runtime_string(handle, rusticol_runtime_color_accuracy) != "full") {
             throw std::runtime_error("candidate artifact is not full colour");
         }
-        if (execution_mode != "on-the-fly" && execution_mode != "recurrence") {
+        if (execution_mode != "on-the-fly" && execution_mode != "recurrence" &&
+            execution_mode != "compiled") {
             throw std::runtime_error("candidate artifact has an unsupported execution mode");
         }
         std::size_t external_count = 0;

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
-use crate::pacbin::{PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
+use crate::pacbin::{PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEST_ARTIFACT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -41,9 +40,9 @@ fn compiled_plane_arena_is_a_known_artifact_capability() {
 
 #[test]
 fn typed_compiled_color_member_is_required_and_kind_checked() {
-    let artifact = TestArtifact::new();
+    let mut artifact = TestArtifact::new();
     let destination = artifact.root.join("evaluators.pacbin");
-    write_pacbin_atomic(
+    let index = write_pacbin_atomic(
         &destination,
         vec![
             PacbinWriteMember::from_bytes(
@@ -62,14 +61,30 @@ fn typed_compiled_color_member_is_required_and_kind_checked() {
         PacbinWriteOptions::default(),
     )
     .unwrap();
-    let store = EvaluatorPayloadStore {
-        artifact_root: artifact.root.clone(),
-        relative_root: artifact.root.join("processes/p0"),
-        container: Some(Arc::new(PacbinReader::open(&destination).unwrap())),
-        payloads: None,
-        #[cfg(feature = "f64-compiled")]
-        native_library_cache: Arc::new(Mutex::new(BTreeMap::new())),
-    };
+    let container = fs::read(&destination).expect("read evaluator container");
+    add_test_payload(
+        &mut artifact,
+        "evaluators.pacbin",
+        "evaluator-state",
+        &container,
+        None,
+        true,
+    );
+    artifact.manifest["extensions"]["evaluator_payload_container"] = json!({
+        "kind": "pyamplicol-evaluator-payload-container",
+        "schema_version": 1,
+        "storage_abi": "pacbin-v1",
+        "path": "evaluators.pacbin",
+        "member_count": index.members().len(),
+        "unpacked_size_bytes": index.members().iter().map(|member| member.length()).sum::<u64>(),
+        "index_sha256": hex_digest(index.index_sha256()),
+    });
+    artifact.write_manifest();
+
+    let verified = VerifiedArtifact::open(&artifact.root).expect("typed color artifact");
+    let store = verified
+        .evaluator_payload_store(&artifact.root.join("processes/p0"))
+        .expect("process evaluator payload store");
 
     assert_eq!(
         store
