@@ -869,8 +869,38 @@ impl PreparedKernelPackManifest {
                 "prepared model has no Direct-Arena recurrence template catalog; recompile the model",
             )
         })?;
-        let catalog: RecurrenceDirectTemplateCatalogManifest = serde_json::from_value(raw.clone())
-            .map_err(|error| {
+        self.parse_recurrence_direct_template_catalog(
+            raw,
+            expected_prepared_pack_digest,
+            expected_catalog_digest,
+        )
+    }
+
+    pub(super) fn take_recurrence_direct_template_catalog(
+        &mut self,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<RecurrenceDirectTemplateCatalogManifest> {
+        let raw = self.recurrence_direct_template.take().ok_or_else(|| {
+            RusticolError::compatibility(
+                "prepared model has no Direct-Arena recurrence template catalog; recompile the model",
+            )
+        })?;
+        self.parse_recurrence_direct_template_catalog(
+            &raw,
+            expected_prepared_pack_digest,
+            expected_catalog_digest,
+        )
+    }
+
+    fn parse_recurrence_direct_template_catalog(
+        &self,
+        raw: &Value,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<RecurrenceDirectTemplateCatalogManifest> {
+        let catalog =
+            RecurrenceDirectTemplateCatalogManifest::deserialize(raw).map_err(|error| {
                 RusticolError::serialization(format!(
                     "could not parse prepared Direct-Arena recurrence template catalog: {error}"
                 ))

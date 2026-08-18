@@ -57,13 +57,13 @@ pub(super) fn load_recurrence_native_runtime(
     manifest: &RecurrenceExecutionManifest,
     physics: &ProcessPhysicsV1,
 ) -> RusticolResult<LoadedRecurrenceRuntime> {
-    let (pack_bytes, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
+    let (pack_bytes, mut pack, payload_root) = load_prepared_pack(artifact, manifest)?;
     drop(pack_bytes);
     let plan = load_plan(artifact, evaluator_root, manifest)?;
     let (mut common, parameter_defaults, parameter_projection, source_domains) =
         build_common_runtime(&plan, manifest, physics)?;
     let loaded_backend = NativeRecurrenceDirectExecutorBackend::load_from_verified_artifact(
-        &pack,
+        &mut pack,
         artifact,
         &payload_root,
         &plan,
@@ -2348,7 +2348,7 @@ impl NativeRuntime {
             &recurrence_evaluator_root,
             &recurrence_manifest,
         )?;
-        let (recurrence_pack_bytes, recurrence_pack, recurrence_payload_root) =
+        let (recurrence_pack_bytes, mut recurrence_pack, recurrence_payload_root) =
             load_prepared_pack(&recurrence_artifact, &recurrence_manifest)?;
         drop(recurrence_pack_bytes);
         let recurrence_direct_manifest = recurrence_pack.recurrence_direct_template_catalog(
@@ -2401,7 +2401,7 @@ impl NativeRuntime {
             &recurrence_runtime_slots,
         )?;
         let backend = NativeRecurrenceDirectExecutorBackend::load_from_verified_artifact(
-            &recurrence_pack,
+            &mut recurrence_pack,
             &recurrence_artifact,
             &recurrence_payload_root,
             &plan,

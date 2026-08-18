@@ -162,7 +162,7 @@ impl NativeRecurrenceDirectExecutorBackend {
     /// indices must match `DirectSourceRow::source_template_or_dispatch_domain`.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn load_from_verified_artifact(
-        pack: &PreparedKernelPackManifest,
+        pack: &mut PreparedKernelPackManifest,
         artifact: &VerifiedArtifact,
         payload_root: impl AsRef<Path>,
         plan: &DirectRecurrencePlan,
@@ -183,7 +183,7 @@ impl NativeRecurrenceDirectExecutorBackend {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn load_from_store(
-        pack: &PreparedKernelPackManifest,
+        pack: &mut PreparedKernelPackManifest,
         payloads: &EvaluatorPayloadStore,
         plan: &DirectRecurrencePlan,
         expected_prepared_pack_digest: &str,
@@ -231,7 +231,7 @@ impl NativeRecurrencePreparedExecutorPool {
     ) -> RusticolResult<Self> {
         #[cfg(not(any(feature = "f64-symjit", feature = "f64-compiled")))]
         let _ = payloads;
-        let pack: PreparedKernelPackManifest =
+        let mut pack: PreparedKernelPackManifest =
             serde_json::from_slice(manifest_json).map_err(|error| {
                 RusticolError::serialization(format!(
                     "could not parse prepared Direct-Arena kernel pack: {error}"
@@ -239,7 +239,7 @@ impl NativeRecurrencePreparedExecutorPool {
             })?;
         pack.validate()?;
         Self::load_from_validated_pack(
-            &pack,
+            &mut pack,
             payloads,
             None,
             expected_prepared_pack_digest,
@@ -251,7 +251,7 @@ impl NativeRecurrencePreparedExecutorPool {
     /// plan while retaining the complete prepared-catalog identity and index
     /// domain. The caller has already validated `pack` at the artifact boundary.
     fn load_for_direct_plan_from_validated_pack(
-        pack: &PreparedKernelPackManifest,
+        pack: &mut PreparedKernelPackManifest,
         payloads: &EvaluatorPayloadStore,
         plan: &DirectRecurrencePlan,
         expected_prepared_pack_digest: &str,
@@ -267,7 +267,7 @@ impl NativeRecurrencePreparedExecutorPool {
     }
 
     fn load_from_validated_pack(
-        pack: &PreparedKernelPackManifest,
+        pack: &mut PreparedKernelPackManifest,
         payloads: &EvaluatorPayloadStore,
         plan: Option<&DirectRecurrencePlan>,
         expected_prepared_pack_digest: &str,
@@ -275,7 +275,7 @@ impl NativeRecurrencePreparedExecutorPool {
     ) -> RusticolResult<Self> {
         #[cfg(not(any(feature = "f64-symjit", feature = "f64-compiled")))]
         let _ = payloads;
-        let direct = pack.recurrence_direct_template_catalog(
+        let direct = pack.take_recurrence_direct_template_catalog(
             expected_prepared_pack_digest,
             expected_catalog_digest,
         )?;
