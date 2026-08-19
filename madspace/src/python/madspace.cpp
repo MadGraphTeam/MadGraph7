@@ -1634,6 +1634,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 nested_vector2<std::tuple<int, int>>,
                 std::unordered_map<int, int>,
                 nested_vector2<double>,
+                nested_vector3<int>,
                 nested_vector3<int>>(),
             py::arg("process_id") = 0,
             py::arg("topologies") = std::vector<Topology>{},
@@ -1643,7 +1644,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("color_flows") = nested_vector2<std::tuple<int, int>>{},
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("helicities") = nested_vector2<double>{},
-            py::arg("pdg_ids") = nested_vector3<int>{}
+            py::arg("pdg_ids") = nested_vector3<int>{},
+            py::arg("diagram_propagator_pdgs") = nested_vector3<int>{}
         )
         .def_readwrite("process_id", &LHECompleter::SubprocArgs::process_id)
         .def_readwrite("topologies", &LHECompleter::SubprocArgs::topologies)
@@ -1655,7 +1657,11 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("color_flows", &LHECompleter::SubprocArgs::color_flows)
         .def_readwrite("pdg_color_types", &LHECompleter::SubprocArgs::pdg_color_types)
         .def_readwrite("helicities", &LHECompleter::SubprocArgs::helicities)
-        .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids);
+        .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids)
+        .def_readwrite(
+            "diagram_propagator_pdgs",
+            &LHECompleter::SubprocArgs::diagram_propagator_pdgs
+        );
     py::classh<std::mt19937>(m, "RandGen")
         .def(py::init<>())
         .def(py::init<std::mt19937::result_type>(), py::arg("seed"));

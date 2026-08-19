@@ -141,12 +141,42 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 if diag.has_flavor(flavor):
                     active_flavors.extend(indices)
 
+    def diagram_propagator_pdgs(self, diagram):
+        """Signed pdg id of each internal line of `diagram`, in the same order
+        as a channel's shared "propagators" list (which is color-blind and
+        only reliable for mass/width, since merge_same_topologies can merge
+        diagrams whose propagators differ in color, e.g. gluon vs. quark)."""
+        diag_vertices = diagram.get("vertices")
+        pdgs = []
+        for i_vert, vertex in enumerate(diag_vertices):
+            if i_vert == len(diag_vertices) - 1:
+                # Closing vertex: its last leg is a pre-existing external edge,
+                # not a new internal line.
+                continue
+            legs = vertex.get("legs")
+            final_part = self.model.get_particle(legs[-1].get("id"))
+            sign = (
+                1
+                if final_part.get("is_part") or final_part.get("self_antipart") else
+                -1
+            )
+            pdgs.append(sign * final_part.get("pdg_code"))
+        return pdgs
+
     def set_channels_colors_map(self):
         if self.color_basis:
             diag_jamps = defaultdict(list)
+            # Only leading-Nc jamps are planar-compatible with a diagram's own
+            # topology; like export_v4's get_icolamp_lines, drop the rest.
+            max_Nc = max(
+                v[4] - v[5]
+                for val in self.color_basis.values()
+                for v in val
+            )
             for ijamp, col_basis_elem in enumerate(sorted(self.color_basis.keys())):
                 for diag_tuple in self.color_basis[col_basis_elem]:
-                    diag_jamps[diag_tuple[0]].append(ijamp)
+                    if diag_tuple[4] - diag_tuple[5] == max_Nc:
+                        diag_jamps[diag_tuple[0]].append(ijamp)
 
         self.channels = []
         channel_indices = []
@@ -174,6 +204,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                         "permutation": sym_perm,
                         "active_flavors": active_flavors,
                         "active_colors": active_colors,
+                        "propagator_pdgs": self.diagram_propagator_pdgs(diagram),
                     }
                 )
                 channel_indices.append(-1)
@@ -221,6 +252,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                             "permutation": sym_perm,
                             "active_flavors": active_flavors,
                             "active_colors": active_colors,
+                            "propagator_pdgs": propagators,
                         }
                     ],
                 }

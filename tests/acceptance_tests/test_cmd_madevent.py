@@ -1046,6 +1046,106 @@ class TestMECmdShell(unittest.TestCase):
                 'e+ e- > e+ e-: beams are different particles, flavor %s must '
                 'not be mirrored (that doubles the cross-section)' % (flavor,))
 
+    def test_color_flow_consistency_mg7(self):
+        """LHECompleter (madspace/src/driver/lhe_output.cpp) must build
+        without error for p p > j j j: it walks each diagram's vertices,
+        cancelling color/anti-color indices (compute_decay_color), and raises
+        if a color flow doesn't close. Exercises the real C++ code directly
+        against every (channel, diagram, active color) in subprocesses.json."""
+        import json
+        # Prefer the locally-built module (madspace/install) over whatever
+        # madspace happens to be on the system path, since this test exercises
+        # local C++ source changes (diagram_propagator_pdgs).
+        local_install = pjoin(MG5DIR, 'madspace', 'install')
+        if os.path.isdir(local_install):
+            if local_install not in sys.path:
+                sys.path.insert(0, local_install)
+            for mod_name in [m for m in sys.modules if m.startswith('madspace')]:
+                mod_file = getattr(sys.modules[mod_name], '__file__', '') or ''
+                if not mod_file.startswith(local_install):
+                    del sys.modules[mod_name]
+        try:
+            import madspace as ms
+            has_mg7 = hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs')
+        except ImportError:
+            has_mg7 = False
+        if not has_mg7:
+            self.skipTest('mg7 runtime stack (madspace) unavailable')
+
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        for c in ['set automatic_html_opening False --no_save',
+                  'import model sm',
+                  'define p = g u c d s u~ c~ d~ s~',
+                  'define j = g u c d s u~ c~ d~ s~',
+                  'generate p p > j j j']:
+            mg.exec_cmd(c)
+        out_dir = pjoin(self.path, 'MG7_color_flow_consistency')
+        mg.exec_cmd('output mg7 %s' % out_dir)
+        meta_list = json.load(open(pjoin(out_dir, 'SubProcesses',
+                                          'subprocesses.json')))
+
+        checked = 0
+        for subproc_index, meta in enumerate(meta_list):
+            n_particles = len(meta['incoming']) + len(meta['outgoing'])
+            incoming_masses = [0.0] * len(meta['incoming'])
+            outgoing_masses = [0.0] * len(meta['outgoing'])
+            topologies, permutations = [], []
+            diagram_indices, diagram_color_indices = [], []
+            diagram_propagator_pdgs = []
+            for channel in meta['channels']:
+                # mass/width don't affect color computation, only whether a
+                # propagator counts as resonant -- use 0.0 throughout so every
+                # propagator's color still gets validated.
+                propagators = [
+                    ms.Propagator(mass=0.0, width=0.0, integration_order=0,
+                                  e_min=0.0, e_max=0.0, pdg_id=pid)
+                    for pid in channel['propagators']
+                ]
+                diagram = ms.Diagram(incoming_masses, outgoing_masses,
+                                      propagators, channel['vertices'])
+                topo = ms.Topology.topologies(diagram)[0]
+                diagrams = channel['diagrams']
+                topologies.append(topo)
+                permutations.append([d['permutation'] for d in diagrams])
+                diagram_indices.append([d['diagram'] for d in diagrams])
+                diagram_color_indices.append(
+                    [d['active_colors'] for d in diagrams]
+                )
+                diagram_propagator_pdgs.append(
+                    [d['propagator_pdgs'] for d in diagrams]
+                )
+                checked += sum(len(d['active_colors']) for d in diagrams)
+
+            subproc_args = ms.SubprocArgs(
+                process_id=subproc_index,
+                topologies=topologies,
+                permutations=permutations,
+                diagram_indices=diagram_indices,
+                diagram_color_indices=diagram_color_indices,
+                diagram_propagator_pdgs=diagram_propagator_pdgs,
+                color_flows=meta['color_flows'],
+                pdg_color_types={
+                    int(k): v for k, v in meta['pdg_color_types'].items()
+                },
+                helicities=[[0] * n_particles],
+                pdg_ids=[flavor['options'] for flavor in meta['flavors']],
+            )
+            try:
+                ms.LHECompleter([subproc_args], bw_cutoff=15.0)
+            except Exception as err:
+                self.fail(
+                    'LHECompleter rejected subprocess %s (incoming=%s '
+                    'outgoing=%s): %s'
+                    % (subproc_index, meta['incoming'], meta['outgoing'], err)
+                )
+
+        self.assertGreater(
+            checked, 0,
+            'no (subprocess, channel, diagram, color) combination was found '
+            'to check -- p p > j j j should generate plenty'
+        )
+
     def test_single_qcd_order_mg7(self):
         """The mg7 output records the single alpha_s power (single_qcd_order in
         SubProcesses/proc_characteristics) whenever the QCD power of |M|^2 is the

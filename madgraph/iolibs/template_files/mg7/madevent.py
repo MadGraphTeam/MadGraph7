@@ -150,6 +150,7 @@ class MultiChannelData(NamedTuple):
     channel_weight_indices: list[list[list[int]]]
     diagram_indices: list[list[int]]
     diagram_color_indices: list[list[list[int]]]
+    diagram_propagator_pdgs: list[list[list[int]]]
     active_flavors: list[list[list[int]]]
     qcd_s_channel_count: list[int]
 
@@ -818,6 +819,7 @@ class MadgraphProcess:
                 permutations = mcdata.permutations,
                 diagram_indices = mcdata.diagram_indices,
                 diagram_color_indices = mcdata.diagram_color_indices,
+                diagram_propagator_pdgs = mcdata.diagram_propagator_pdgs,
                 color_flows = meta["color_flows"],
                 pdg_color_types = {
                     int(key): value
@@ -1002,6 +1004,7 @@ def build_multi_channel_data(
     channel_weight_indices = []
     diagram_indices = []
     diagram_color_indices = []
+    diagram_propagator_pdgs = []
     active_flavors = []
     channel_index = 0
     qcd_s_channel_count = []
@@ -1081,6 +1084,9 @@ def build_multi_channel_data(
         diagram_indices.append([d["diagram"] for d in diagrams])
         if unmerged_meta is None:
             diagram_color_indices.append([d["active_colors"] for d in diagrams])
+            diagram_propagator_pdgs.append(
+                [d["propagator_pdgs"] for d in diagrams]
+            )
         active_flavors.append([d["active_flavors"] for d in diagrams])
 
     return MultiChannelData(
@@ -1092,6 +1098,7 @@ def build_multi_channel_data(
         channel_weight_indices,
         diagram_indices,
         diagram_color_indices,
+        diagram_propagator_pdgs,
         active_flavors,
         qcd_s_channel_count,
     )
@@ -1481,6 +1488,7 @@ class MadgraphSubprocess:
         channel_weight_indices = []
         diagram_indices = []
         diagram_color_indices = []
+        diagram_propagator_pdgs = []
         active_flavors = []
         qcd_s_channel_count = []
         channel_index = 0
@@ -1519,6 +1527,10 @@ class MadgraphSubprocess:
             diagram_indices.append(chan_diagram_indices)
             if mcdata.diagram_color_indices:
                 diagram_color_indices.append(mcdata.diagram_color_indices[group])
+            if mcdata.diagram_propagator_pdgs:
+                diagram_propagator_pdgs.append(
+                    mcdata.diagram_propagator_pdgs[group]
+                )
             active_flavors.append(mcdata.active_flavors[group])
             qcd_s_channel_count.append(mcdata.qcd_s_channel_count[group])
 
@@ -1531,6 +1543,7 @@ class MadgraphSubprocess:
             channel_weight_indices,
             diagram_indices,
             diagram_color_indices,
+            diagram_propagator_pdgs,
             active_flavors,
             qcd_s_channel_count,
         )

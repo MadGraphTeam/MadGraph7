@@ -214,10 +214,17 @@ void LHECompleter::init_propagator_data(
     resonant_prop_indices.clear();
     resonant_prop_indices.resize(decay_count, -1);
 
+    // permutation maps external leg -> topology slot; invert it here, since
+    // using it directly mismatches whenever it isn't self-inverse.
+    std::vector<std::size_t> inv_permutation(permutation.size());
+    for (std::size_t leg = 0; leg < permutation.size(); ++leg) {
+        inv_permutation.at(permutation.at(leg)) = leg;
+    }
+
     for (auto [index, mass, perm_index] :
          zip(topo.outgoing_indices(),
              topo.outgoing_masses(),
-             std::span(permutation.begin() + 2, permutation.end()))) {
+             std::span(inv_permutation.begin() + 2, inv_permutation.end()))) {
         e_min.at(index) = mass;
         momentum_masks.at(index) = 1 << perm_index;
         for (std::size_t i = 0; std::size_t color_index : colors) {
@@ -232,27 +239,20 @@ void LHECompleter::find_resonant_propagators(
     const Topology& topo,
     const SubprocArgs& args,
     const std::vector<std::size_t>& colors,
+    const std::vector<int>& propagator_pdgs,
     std::size_t prop_offset,
     std::vector<double>& e_min,
     std::vector<int>& momentum_masks,
     std::vector<std::tuple<int, int>>& prop_colors,
     std::vector<int>& resonant_prop_indices
 ) {
+    // Pass 1: resonance status from mass/width alone, no color involved.
     for (auto& decay : std::views::reverse(topo.decays())) {
         if (decay.child_indices.size() == 0) {
             continue;
         }
         if (decay.index == 0 && topo.t_integration_order().size() > 0) {
             continue;
-        }
-
-        int color_type = pdg_color_type(decay.pdg_id, args.pdg_color_types);
-        int sign_flip = 1;
-        for (std::size_t i = 0; std::size_t color_index : colors) {
-            prop_colors.at(colors.size() * decay.index + i) = compute_decay_color(
-                decay, i, colors.size(), color_type, prop_colors, sign_flip
-            );
-            ++i;
         }
 
         double& e_min_item = e_min.at(decay.index);
@@ -272,12 +272,65 @@ void LHECompleter::find_resonant_propagators(
 
         resonant_prop_indices.at(decay.index) = _propagators.size() - prop_offset;
         _propagators.push_back({
-            .pdg_id = sign_flip * decay.pdg_id,
+            .pdg_id = decay.pdg_id,
             .momentum_mask = momentum_mask,
             .child_prop_mask = child_prop_mask,
             .mass = decay.mass,
             .width = decay.width,
         });
+    }
+
+    if (_propagators.size() == prop_offset) {
+        // Nothing resonant: no color is needed, and skipping it sidesteps
+        // color flows that never get validated for non-resonant parts.
+        return;
+    }
+
+    // Pass 2: a decay needs its color computed only if it (or something
+    // further down its own decay chain) is resonant.
+    std::vector<bool> needed(topo.decays().size(), false);
+    for (auto& decay : topo.decays()) {
+        if (decay.child_indices.size() == 0) {
+            continue;
+        }
+        bool is_needed = resonant_prop_indices.at(decay.index) != -1;
+        if (!is_needed && decay.parent_index != decay.index) {
+            is_needed = needed.at(decay.parent_index);
+        }
+        needed.at(decay.index) = is_needed;
+    }
+
+    // Pass 3: compute colors, only for decays marked needed above.
+    for (auto& decay : std::views::reverse(topo.decays())) {
+        if (decay.child_indices.size() == 0 || !needed.at(decay.index)) {
+            continue;
+        }
+        if (decay.index == 0 && topo.t_integration_order().size() > 0) {
+            continue;
+        }
+
+        // Prefer this diagram's own pdg (merge_same_topologies can share a
+        // topology across diagrams with different particles per slot).
+        int propagator_pdg = decay.pdg_id;
+        if (decay.flat_propagator_index != Topology::no_propagator &&
+            decay.flat_propagator_index < propagator_pdgs.size()) {
+            propagator_pdg = propagator_pdgs.at(decay.flat_propagator_index);
+        }
+
+        int color_type = pdg_color_type(propagator_pdg, args.pdg_color_types);
+        int sign_flip = 1;
+        for (std::size_t i = 0; std::size_t color_index : colors) {
+            prop_colors.at(colors.size() * decay.index + i) = compute_decay_color(
+                decay, i, colors.size(), color_type, prop_colors, sign_flip
+            );
+            ++i;
+        }
+
+        int prop_index = resonant_prop_indices.at(decay.index);
+        if (prop_index != -1) {
+            _propagators.at(prop_offset + prop_index).pdg_id =
+                sign_flip * propagator_pdg;
+        }
     }
 }
 
@@ -316,15 +369,29 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
     std::vector<std::tuple<int, int>> prop_colors;
     std::vector<int> resonant_prop_indices;
 
+    static const nested_vector2<int> no_channel_propagator_pdgs;
+    static const std::vector<int> no_diagram_propagator_pdgs;
+
     std::size_t diagram_count = 0;
     std::size_t max_prop_count = 0;
-    for (auto [topo, permutations, diag_indices, diag_colors] :
+    for (std::size_t channel_index = 0;
+         auto [topo, permutations, diag_indices, diag_colors] :
          zip(args.topologies,
              args.permutations,
              args.diagram_indices,
              args.diagram_color_indices)) {
-        for (auto [permutation, diag_index, colors] :
+        // diagram_propagator_pdgs is optional; fall back to decay.pdg_id if absent.
+        const nested_vector2<int>& channel_propagator_pdgs =
+            channel_index < args.diagram_propagator_pdgs.size()
+            ? args.diagram_propagator_pdgs.at(channel_index)
+            : no_channel_propagator_pdgs;
+        for (std::size_t diag_in_channel = 0;
+             auto [permutation, diag_index, colors] :
              zip(permutations, diag_indices, diag_colors)) {
+            const std::vector<int>& propagator_pdgs =
+                diag_in_channel < channel_propagator_pdgs.size()
+                ? channel_propagator_pdgs.at(diag_in_channel)
+                : no_diagram_propagator_pdgs;
             if (diag_index >= diagram_count) {
                 diagram_count = diag_index + 1;
             }
@@ -343,6 +410,7 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
                 topo,
                 args,
                 colors,
+                propagator_pdgs,
                 prop_offset,
                 e_min,
                 momentum_masks,
@@ -361,7 +429,9 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
             if (prop_count > max_prop_count) {
                 max_prop_count = prop_count;
             }
+            ++diag_in_channel;
         }
+        ++channel_index;
     }
     return {diagram_count, max_prop_count};
 }
