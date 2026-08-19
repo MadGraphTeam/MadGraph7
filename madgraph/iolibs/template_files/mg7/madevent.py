@@ -1223,25 +1223,13 @@ class MadgraphSubprocess:
         if drop_threshold >= 0 and channel_count > drop_threshold:
             mcdata = self.drop_qcd_s_channels(mcdata)
 
-        (
-            amp2_remaps,
-            symfact,
-            topologies,
-            permutations,
-            channel_indices,
-            channel_weight_indices,
-            _,
-            _,
-            all_active_flavors,
-            _,
-        ) = mcdata
-
         channels = []
         t_channel_mode = self.t_channel_mode(
             self.process.run_card["phasespace"]["t_channel"]
         )
         for channel_id, (chan_topologies, chan_permutations, chan_indices, active_flavors) in enumerate(zip(
-            topologies, permutations, channel_weight_indices, all_active_flavors
+            mcdata.topologies, mcdata.permutations, mcdata.channel_weight_indices,
+            mcdata.active_flavors
         )):
             topo_count = len(chan_topologies)
             for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
@@ -1270,22 +1258,28 @@ class MadgraphSubprocess:
                     active_flavors = active_flavors,
                 ))
 
-        remapped_chan_count = sum(len(indices) for indices in channel_indices)
+        remapped_chan_count = sum(
+            len(indices) for indices in mcdata.channel_indices
+        )
         if self.process.run_card["phasespace"]["sde_strategy"] == "denominators":
             prop_chan_weights = ms.PropagatorChannelWeights(
-                [topo[0] for topo in topologies], permutations, channel_indices
+                [topo[0] for topo in mcdata.topologies], mcdata.permutations,
+                mcdata.channel_indices
             )
             chan_weight_remap = []
         else:
             prop_chan_weights = None
             chan_weight_remap = [
-                [len(symfact) if remap == -1 else remap for remap in amp2_remap]
-                for amp2_remap in amp2_remaps
+                [
+                    len(mcdata.symfact) if remap == -1 else remap
+                    for remap in amp2_remap
+                ]
+                for amp2_remap in mcdata.amp2_remaps
             ]
 
-        if any(len(topos) > 1 for topos in topologies):
+        if any(len(topos) > 1 for topos in mcdata.topologies):
             subchan_weights = ms.SubchannelWeights(
-                topologies, permutations, channel_indices
+                mcdata.topologies, mcdata.permutations, mcdata.channel_indices
             )
         else:
             subchan_weights = None
@@ -1295,7 +1289,7 @@ class MadgraphSubprocess:
             channels=channels,
             first_chan_weight_remap=chan_weight_remap,
             first_remapped_chan_count=remapped_chan_count,
-            symfact=symfact,
+            symfact=mcdata.symfact,
             prop_chan_weights=prop_chan_weights,
             subchan_weights=subchan_weights,
         )
