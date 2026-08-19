@@ -31,7 +31,7 @@ use crate::recurrence::on_the_fly::{
     OnTheFlyExternalColorRoleV1, OnTheFlyProcessSeedV1, decode_on_the_fly_process_seed_v1,
     validate_on_the_fly_source_mass_bindings_v1,
 };
-use crate::recurrence::template_json::project_recurrence_template_catalog_json_v1;
+use crate::recurrence::template_json::project_owned_recurrence_template_catalog_json_v1;
 use crate::recurrence::{
     FactorizedColorContractionKind, RecurrenceColorAccuracy, RecurrenceColorContraction,
     RecurrenceColorStorage,
@@ -69,13 +69,13 @@ pub(super) fn load_on_the_fly_native_runtime(
             "on-the-fly execution metadata does not identify its decoded process seed",
         ));
     }
-    let (pack_bytes, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
-    let raw_templates = pack.recurrence_template.as_ref().ok_or_else(|| {
+    let (mut pack, payload_root) = load_prepared_pack(artifact, manifest)?;
+    let raw_templates = pack.recurrence_template.take().ok_or_else(|| {
         RusticolError::compatibility(
             "on-the-fly execution requires the prepared recurrence template catalog",
         )
     })?;
-    let templates = project_recurrence_template_catalog_json_v1(raw_templates)?.validate()?;
+    let templates = project_owned_recurrence_template_catalog_json_v1(raw_templates)?.validate()?;
     let summary = templates.summary();
     if seed.template_catalog_digest() != summary.catalog_digest
         || seed.model_digest() != summary.compiled_model_digest
@@ -100,8 +100,8 @@ pub(super) fn load_on_the_fly_native_runtime(
     validate_on_the_fly_source_mass_bindings_v1(&seed, &templates, &parameter_projection)?;
 
     let payloads = artifact.evaluator_payload_store(&payload_root)?;
-    let pool = NativeRecurrencePreparedExecutorPool::load_from_store(
-        &pack_bytes,
+    let pool = NativeRecurrencePreparedExecutorPool::load_without_plan_from_validated_pack(
+        &mut pack,
         &payloads,
         &seed.prepared_pack_digest().to_string(),
         &seed.direct_catalog_digest().to_string(),
@@ -525,7 +525,7 @@ fn load_process_seed(
 fn load_prepared_pack(
     artifact: &VerifiedArtifact,
     manifest: &OnTheFlyExecutionManifest,
-) -> RusticolResult<(Vec<u8>, PreparedKernelPackManifest, PathBuf)> {
+) -> RusticolResult<(PreparedKernelPackManifest, PathBuf)> {
     let path = confined_internal_path(
         &manifest.kernel_pack.manifest_path,
         "on-the-fly prepared kernel-pack manifest path",
@@ -550,7 +550,7 @@ fn load_prepared_pack(
         &manifest.kernel_pack.payload_root,
         "on-the-fly prepared kernel payload root",
     )?);
-    Ok((bytes, pack, payload_root))
+    Ok((pack, payload_root))
 }
 
 fn build_common_runtime(

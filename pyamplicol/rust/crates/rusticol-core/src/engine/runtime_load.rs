@@ -3413,10 +3413,26 @@ impl ExecutionRuntime {
             std::mem::take(&mut manifest.helicity_selector_executions);
         let color_selector_manifests = std::mem::take(&mut manifest.color_selector_executions);
         let compiled_color_payload = manifest.color_contraction_payload.take();
-        let stage_evaluators = manifest.compiled.stage_evaluators.clone();
-        let model_parameter_evaluator = manifest.compiled.model_parameter_evaluator.clone();
+        let stage_evaluators = manifest.compiled.stage_evaluators.take();
+        let model_parameter_evaluator = manifest.compiled.model_parameter_evaluator.take();
+        let replay_materialized_sector_ids =
+            build_lc_topology_replay_data(manifest.compiled.lc_topology_replay.as_ref())?
+                .materialized_sector_ids;
+        let compiled_color_execution_plan = stage_evaluators
+            .as_ref()
+            .map(|evaluators| {
+                build_compiled_color_execution_plan(
+                    evaluators,
+                    &manifest.runtime_schema,
+                    &replay_materialized_sector_ids,
+                )
+            })
+            .transpose()?
+            .flatten();
+        drop(replay_materialized_sector_ids);
         let amplitude_stage_manifest = manifest.runtime_schema.amplitude_stage.clone();
         let mut runtime = Self::from_manifest(manifest)?;
+        runtime.compiled_color_execution_plan = compiled_color_execution_plan;
         let sizing_physics = if let Some(reduction) = runtime.physics_reduction_override.as_ref() {
             let mut manifest = inherited_sizing_physics.manifest.clone();
             manifest.reduction = reduction.clone();

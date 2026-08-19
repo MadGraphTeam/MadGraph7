@@ -223,6 +223,7 @@ impl NativeRecurrenceDirectExecutorBackend {
 impl NativeRecurrencePreparedExecutorPool {
     /// Load and authenticate model-level prepared executors without binding a
     /// process source domain or a recurrence plan.
+    #[cfg(feature = "on-the-fly-test-support")]
     pub(super) fn load_from_store(
         manifest_json: &[u8],
         payloads: &EvaluatorPayloadStore,
@@ -238,8 +239,23 @@ impl NativeRecurrencePreparedExecutorPool {
                 ))
             })?;
         pack.validate()?;
-        Self::load_from_validated_pack(
+        Self::load_without_plan_from_validated_pack(
             &mut pack,
+            payloads,
+            expected_prepared_pack_digest,
+            expected_catalog_digest,
+        )
+    }
+
+    /// Load a model-level pool from a pack already validated at the artifact boundary.
+    pub(super) fn load_without_plan_from_validated_pack(
+        pack: &mut PreparedKernelPackManifest,
+        payloads: &EvaluatorPayloadStore,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<Self> {
+        Self::load_from_validated_pack(
+            pack,
             payloads,
             None,
             expected_prepared_pack_digest,
