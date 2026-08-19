@@ -230,16 +230,19 @@ struct Arguments {
     std::string artifact;
     std::string process;
     double target_seconds = 0.25;
+    double alpha_s = kUnitCouplingAlphaS;
     std::size_t samples = kWarmSampleCount;
     bool first_ready_only = false;
+    bool load_only = false;
     std::vector<std::string> event_paths;
 };
 
 Arguments parse_arguments(int argc, char **argv) {
-    if (argc < 6) {
+    if (argc < 3) {
         throw std::runtime_error(
             "usage: fft_gluon_candidate_probe ARTIFACT PROCESS "
-            "--target-seconds S --samples N [--first-ready-only] EVENT...");
+            "[--alpha-s A] [--load-only] [--target-seconds S --samples N "
+            "[--first-ready-only] EVENT...]");
     }
     Arguments arguments;
     arguments.artifact = argv[1];
@@ -251,6 +254,11 @@ Arguments parse_arguments(int argc, char **argv) {
                 throw std::runtime_error("--target-seconds requires a value");
             }
             arguments.target_seconds = std::stod(argv[index]);
+        } else if (token == "--alpha-s") {
+            if (++index >= argc) {
+                throw std::runtime_error("--alpha-s requires a value");
+            }
+            arguments.alpha_s = std::stod(argv[index]);
         } else if (token == "--samples") {
             if (++index >= argc) {
                 throw std::runtime_error("--samples requires a value");
@@ -258,20 +266,30 @@ Arguments parse_arguments(int argc, char **argv) {
             arguments.samples = static_cast<std::size_t>(std::stoull(argv[index]));
         } else if (token == "--first-ready-only") {
             arguments.first_ready_only = true;
+        } else if (token == "--load-only") {
+            arguments.load_only = true;
         } else if (!token.empty() && token[0] == '-') {
             throw std::runtime_error("unknown option: " + token);
         } else {
             arguments.event_paths.push_back(token);
         }
     }
-    if (!std::isfinite(arguments.target_seconds) ||
-        arguments.target_seconds < 0.25) {
+    if (!std::isfinite(arguments.alpha_s) || arguments.alpha_s <= 0.0) {
+        throw std::runtime_error("--alpha-s must be finite and positive");
+    }
+    if (!arguments.load_only &&
+        (!std::isfinite(arguments.target_seconds) ||
+         arguments.target_seconds < 0.25)) {
         throw std::runtime_error("calibration target must be at least 0.25 seconds");
     }
-    if (arguments.samples != kWarmSampleCount) {
+    if (!arguments.load_only && arguments.samples != kWarmSampleCount) {
         throw std::runtime_error("the acceptance probe requires exactly 10 samples");
     }
-    if (arguments.event_paths.size() != kPointCount) {
+    if (arguments.load_only &&
+        (arguments.first_ready_only || !arguments.event_paths.empty())) {
+        throw std::runtime_error("--load-only does not accept events or warm-up options");
+    }
+    if (!arguments.load_only && arguments.event_paths.size() != kPointCount) {
         throw std::runtime_error("the acceptance probe requires exactly 10 events");
     }
     return arguments;
@@ -312,13 +330,17 @@ int main(int argc, char **argv) {
         for (const auto &path : arguments.event_paths) {
             events.push_back(read_event(path));
         }
-        const auto expected_helicity = events.front().helicities;
-        const std::size_t point_size = events.front().momenta.size();
-        for (const auto &event : events) {
-            if (event.momenta.size() != point_size ||
-                event.helicities != expected_helicity) {
-                throw std::runtime_error(
-                    "all candidate events must share one multiplicity and helicity");
+        std::vector<std::int32_t> expected_helicity;
+        std::size_t point_size = 0;
+        if (!arguments.load_only) {
+            expected_helicity = events.front().helicities;
+            point_size = events.front().momenta.size();
+            for (const auto &event : events) {
+                if (event.momenta.size() != point_size ||
+                    event.helicities != expected_helicity) {
+                    throw std::runtime_error(
+                        "all candidate events must share one multiplicity and helicity");
+                }
             }
         }
 
@@ -331,7 +353,7 @@ int main(int argc, char **argv) {
         check_rusticol(rusticol_runtime_set_model_parameter(
             handle,
             "normalization.alpha_s_me_check",
-            kUnitCouplingAlphaS,
+            arguments.alpha_s,
             0.0));
         const std::string process = runtime_string(handle, rusticol_runtime_process_key);
         const std::string execution_mode =
@@ -345,6 +367,18 @@ int main(int argc, char **argv) {
         }
         std::size_t external_count = 0;
         check_rusticol(rusticol_runtime_external_count(handle, &external_count));
+        if (arguments.load_only) {
+            const double load_seconds = process_cpu_seconds() - load_start;
+            std::cout << std::setprecision(17) << std::scientific
+                      << "FFT_CANDIDATE_LOAD_ONLY_V1\n"
+                      << "PROCESS " << process << "\n"
+                      << "EXECUTION_MODE " << execution_mode << "\n"
+                      << "TIMER_SOURCE process-cpu-time\n"
+                      << "ALPHA_S " << arguments.alpha_s << "\n"
+                      << "LOAD_SECONDS " << load_seconds << "\n"
+                      << "MAX_RSS_KIB " << process_peak_rss_kib() << "\n";
+            return 0;
+        }
         if (external_count * 4 != point_size) {
             throw std::runtime_error("candidate event multiplicity does not match artifact");
         }
