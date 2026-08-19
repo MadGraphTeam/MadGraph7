@@ -768,8 +768,17 @@ endif
 # Target (and build rules): common (src) library
 commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
 
+# The common library is shared by every P* directory. When several of them are
+# built concurrently (SubProcesses/makefile fanning out under 'make -j N'), they
+# must not all recurse into src/ and race on the same objects: the dispatcher
+# builds the common library once, up front, and sets MADMATRIX_COMMONLIB_EXTERNAL=1
+# to say so. Building a P* directory on its own (the default) is unaffected.
+ifeq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
+$(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: ;
+else
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(SRC)/*.h $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
 	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+endif
 
 #-------------------------------------------------------------------------------
 
@@ -818,32 +827,52 @@ bld512z:
 	@echo
 	$(MAKE) $(_BLDFLAGS) BACKEND=cpu_512b
 
+# The C++/SIMD backends that are worth building on this machine...
 ifeq ($(UNAME_P),ppc64le)
-bldavxs: bldnone bldsse4
+  BLDAVXS = cpu_scalar cpu_128b
 else ifneq (,$(filter $(UNAME_M),arm64 aarch64))
-bldavxs: bldnone bldsse4
+  BLDAVXS = cpu_scalar cpu_128b
 else
-bldavxs: bldnone bldsse4 bldavx2 bld512y bld512z
+  BLDAVXS = cpu_scalar cpu_128b cpu_256b cpu_512b_y cpu_512b
 endif
 
+# ...plus the GPU backends whose compiler was found. This is the single place
+# where the list of 'bldall' backends is defined: SubProcesses/makefile drives
+# multi-backend builds through the bldall/bldcommonlib targets below.
+BLDBACKENDS = $(BLDAVXS)
+ifneq ($(CUDA_HOME),)
+  BLDBACKENDS := cuda $(BLDBACKENDS)
+endif
 ifneq ($(HIP_HOME),)
-ifneq ($(CUDA_HOME),)
-bldall: bldhip bldcuda bldavxs
-else
-bldall: bldhip bldavxs
+  BLDBACKENDS := hip $(BLDBACKENDS)
 endif
-else
-ifneq ($(CUDA_HOME),)
-bldall: bldcuda bldavxs
-else
-bldall: bldavxs
-endif
-endif
+
+# The bld* targets keep their historical short names, which do not follow the
+# backend names, so map them explicitly rather than editing the backend string.
+BLDTARGET_cpu_scalar = bldnone
+BLDTARGET_cpu_128b   = bldsse4
+BLDTARGET_cpu_256b   = bldavx2
+BLDTARGET_cpu_512b_y = bld512y
+BLDTARGET_cpu_512b   = bld512z
+BLDTARGET_cuda       = bldcuda
+BLDTARGET_hip        = bldhip
+
+bldavxs: $(foreach backend,$(BLDAVXS),$(BLDTARGET_$(backend)))
+bldall: $(foreach backend,$(BLDBACKENDS),$(BLDTARGET_$(backend)))
+
+# Target: the common (src) library in all BACKEND modes. Used by the
+# SubProcesses dispatcher, which owns the common library during a 'bldall'
+# (see MADMATRIX_COMMONLIB_EXTERNAL above).
+.PHONY: bldcommonlib $(addprefix commonlib.,$(BLDBACKENDS))
+bldcommonlib: $(addprefix commonlib.,$(BLDBACKENDS))
+
+$(addprefix commonlib.,$(BLDBACKENDS)): commonlib.%%:
+	+$(MAKE) $(_BLDFLAGS) BACKEND=$* commonlib
 
 #-------------------------------------------------------------------------------
 
 # Target: clean the builds
-.PHONY: clean cleanall
+.PHONY: clean cleanall cleancommon cleanallcommon
 
 # clean: remove objects and libraries for the selected BACKEND only.
 clean:
@@ -853,14 +882,27 @@ else
 	rm -f $(BUILDDIR)/.build.* $(BUILDDIR)/*.o
 	rm -f $(LIBDIR)/lib$(MADMATRIX_LIB).so
 	rm -f $(BACKEND_LOG)
+ifneq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
 	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
 endif
- 
+endif
+
 # cleanall: remove objects and libraries for ALL backends.
 cleanall:
 	rm -rf build.*
 	rm -f ./.build.* ./*.o
 	rm -f $(LIBDIR)/libmadmatrix_$(processid_short)_*.so
+ifneq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
+	$(MAKE) -C $(SRC) cleanall LIBDIR=$(LIBDIR)
+endif
+
+# Clean only the common (src) part. These are the counterparts of 'commonlib'
+# for the SubProcesses dispatcher, which owns the common library while the P*
+# directories are cleaned in parallel with MADMATRIX_COMMONLIB_EXTERNAL=1.
+cleancommon:
+	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+
+cleanallcommon:
 	$(MAKE) -C $(SRC) cleanall LIBDIR=$(LIBDIR)
 
 #-------------------------------------------------------------------------------

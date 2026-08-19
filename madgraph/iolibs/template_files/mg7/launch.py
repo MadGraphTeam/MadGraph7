@@ -115,6 +115,51 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
+def resolve_cpu_backend(build_path: str) -> str:
+    """Ask the matrix-element Makefile to resolve ``cpu``.
+
+    Given the produced shared library will have its name taken from the resolved
+    backend name, we need to make sure the detection is taking place correctly
+    and catch any possible error.
+    """
+    command = ["make", "-n", "BACKEND=cpu", "detect-backend"]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=build_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not run make to resolve cpu in '{build_path}': {exc}"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        output = "\n".join(
+            part.strip() for part in (exc.stdout, exc.stderr) if part.strip()
+        )
+        detail = f"\nmake output:\n{output}" if output else ""
+        raise RuntimeError(
+            f"Could not resolve cpu in '{build_path}': "
+            f"Exit status {exc.returncode}.{detail}"
+        ) from exc
+
+    match = re.search(
+        r"^BACKEND=(\S+) \(was cpu\)$", result.stdout, re.MULTILINE
+    )
+    if match is None or match.group(1) == "cpu":
+        output = "\n".join(
+            part.strip() for part in (result.stdout, result.stderr) if part.strip()
+        )
+        detail = f"\nmake output:\n{output}" if output else ""
+        raise RuntimeError(
+            f"Could not resolve cpu in '{build_path}': "
+            f"make failed to report a backend.{detail}"
+        )
+    return match.group(1)
+
+
 @dataclass
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
@@ -398,9 +443,86 @@ class MadgraphProcess:
         self.event_generator = None
 
     def init_subprocesses(self) -> None:
+        self.backends = self.compile_matrix_elements()
         self.subprocesses = []
         for subproc_id, meta in enumerate(self.subprocess_data):
             self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+
+    def compile_matrix_elements(self) -> list[str]:
+        """Build the matrix-element library of every subprocess, and return the
+        list of requested devices with 'cpu' replaced by the backend it
+        resolves to on this machine.
+
+        SubProcesses/makefile is a dispatcher over the P* directories, so a
+        single 'make -j N' there builds all the subprocesses at once with one
+        shared pool of N jobs: no subprocess is built with N jobs while the
+        others wait, and none is limited to N/#subprocesses jobs either.
+        """
+        backends = self.run_card["run"]["devices"]
+        if not isinstance(backends, list):
+            backends = [backends]
+        if not self.subprocess_data:
+            return backends
+
+        first_proc_path = self.subprocess_data[0]["path"]
+        subproc_path = os.path.dirname(first_proc_path)
+
+        # Resolve 'cpu' once (the build rules pick the best SIMD backend
+        # available here), so that all subprocesses agree on the library names.
+        cpu_backend = None
+        if "cpu" in backends:
+            cpu_backend = resolve_cpu_backend(first_proc_path)
+            logger.info("Device 'cpu' resolved as '%s'", cpu_backend)
+        resolved = [
+            cpu_backend if backend == "cpu" else backend
+            for backend in backends
+        ]
+
+        nb_core = self.run_card["run"]["cpu_thread_pool_size"]
+        if not nb_core or nb_core < 0:
+            nb_core = os.cpu_count() or 1
+
+        log_path = os.path.join(self.run_path, "compile_subprocesses.log")
+        for backend in resolved:
+            missing = [
+                meta for meta in self.subprocess_data
+                if not os.path.isfile(meta["me_path"].format(device=backend))
+            ]
+            if not missing:
+                continue
+            logger.info(
+                f"Start compilation of SubProcesses for device '{backend}' "
+                f"({len(missing)} subprocess(es), {nb_core} parallel job(s)), "
+                f"see log detail in {log_path}"
+            )
+            start_time = time.time()
+            self.make_subprocesses(
+                subproc_path, [f"BACKEND={backend}", "USEBUILDDIR=1"],
+                nb_core, log_path,
+            )
+            logger.info(
+                f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
+            )
+        return resolved
+
+    @staticmethod
+    def make_subprocesses(
+        subproc_path: str, args: list[str], nb_core: int, log_path: str
+    ) -> None:
+        """Run 'make -j nb_core' in SubProcesses/, appending the full build
+        output to log_path (one run per device, so the file is appended to)."""
+        command = ["make", f"-j{nb_core}"] + args
+        with open(log_path, "a") as log:
+            log.write(f"\n$ cd {subproc_path} && {' '.join(command)}\n")
+            log.flush()
+            returncode = subprocess.call(
+                command, cwd=subproc_path, stdout=log, stderr=subprocess.STDOUT
+            )
+        if returncode != 0:
+            raise RuntimeError(
+                f"Compilation of the SubProcesses failed with exit status "
+                f"{returncode}; see {log_path} for details"
+            )
 
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
@@ -967,29 +1089,11 @@ class MadgraphSubprocess:
         self.subproc_id = subproc_id
         self.multi_channel_data = None
 
-        api_path_format = self.meta["me_path"]
-        subproc_path = self.meta["path"]
-        devices = self.process.run_card["run"]["devices"]
-        api_paths = []
-        if not isinstance(devices, list):
-            devices = [devices]
-        for device in devices:
-            subproc_dir = os.path.dirname(subproc_path)
-            # 'cpu' resolve quick fix
-            resolved = device
-            if device == "cpu":
-                out = subprocess.run(
-                    ["make", "-n", "BACKEND=cpu", "detect-backend"],
-                    cwd=subproc_path, capture_output=True, text=True,
-                ).stdout
-                match = re.search(r"BACKEND=(\S+) \(was cpu\)", out)
-                if match:
-                    resolved = match.group(1)
-            api_path = api_path_format.format(device=resolved)
-            if not os.path.isfile(api_path):
-                logger.info(f"Compiling subprocess {subproc_dir}, for device '{device}'")
-                misc.compile(arg = [f"BACKEND={device}", "USEBUILDDIR=1"], cwd = subproc_path)
-            api_paths.append(api_path)
+        # The libraries were all built up front by MadgraphProcess.compile_matrix_elements
+        api_paths = [
+            self.meta["me_path"].format(device=backend)
+            for backend in self.process.backends
+        ]
 
         self.incoming_masses = [
             self.process.get_mass(pid) for pid in clean_pids(self.meta["incoming"])

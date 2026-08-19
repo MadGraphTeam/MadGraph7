@@ -185,7 +185,65 @@ def find_test_in_file(path):
                     continue
                 all.append(arg)
     return all
-            
+
+# an expression made only of those characters designates a single test by name,
+# anything else is a regular expression which is allowed to select nothing.
+re_syntax = re.compile(r'[*+?\[\]{}()|\\^$]')
+
+def find_test_definition(name):
+    """ Look for the file(s) where a test called 'name' would be defined, either
+    as a function or as a module. This does not import anything: it is only used
+    to tell where a test has gone when it is not found in the requested package.
+    """
+
+    out = []
+    definition = re.compile(r'^\s*def\s+%s\s*\(' % re.escape(name), re.M)
+    for directory, dirnames, filenames in os.walk(pjoin(root_path, 'tests')):
+        dirnames[:] = [d for d in dirnames
+                            if d not in ('input_files', '__pycache__')]
+        for filename in filenames:
+            if not filename.endswith('.py'):
+                continue
+            filepath = pjoin(directory, filename)
+            if filename[:-3] != name:
+                try:
+                    text = open(filepath).read()
+                except (IOError, UnicodeDecodeError):
+                    continue
+                if not definition.search(text):
+                    continue
+            out.append(os.path.relpath(filepath, root_path))
+    return out
+
+def report_unmatched(unmatched, package):
+    """ Warn about the requested expressions which selected no test at all and
+    return those of them which are plain names. A plain name selecting nothing
+    is a typo or a test which has been renamed/moved/removed, and must not be
+    reported as a successful run.
+    """
+
+    fatal = [expr for expr in unmatched if not re_syntax.search(expr)]
+    loose = [expr for expr in unmatched if re_syntax.search(expr)]
+
+    if loose:
+        print(colored % (34, "WARNING: no test selected by: %s" %
+                                                             ' '.join(loose)))
+    if fatal:
+        print(colored % (31, "ERROR: the following requested test(s) do not "
+                             "exist in '%s':" % package))
+        for expr in fatal:
+            elsewhere = find_test_definition(expr)
+            if elsewhere:
+                print(colored % (31, "   %s (still defined in %s: wrong -p "
+                            "option?)" % (expr, ', '.join(elsewhere))))
+            else:
+                print(colored % (31, "   %s" % expr))
+        print(colored % (31, "Such a name selected no test at all: it is a "
+                    "typo, or the test has been renamed, moved or removed."))
+
+    return fatal
+
+
 #===============================================================================
 # run
 #===============================================================================
@@ -217,17 +275,23 @@ def run(expression='', re_opt=0, package='./tests/unit_tests', verbosity=1,
         exclude = []
 
 
-    for test_fct in TestFinder(package=package, expression=expression, \
-                                   re_opt=re_opt, excluded=exclude):
-        data = collect.loadTestsFromName(test_fct)        
-        assert(isinstance(data,unittest.TestSuite))        
+    finder = TestFinder(package=package, expression=expression, \
+                                   re_opt=re_opt, excluded=exclude)
+    for test_fct in finder:
+        data = collect.loadTestsFromName(test_fct)
+        assert(isinstance(data,unittest.TestSuite))
         data.__class__ = TestSuiteModified
 
         testsuite.addTest(data)
-        
+
     output =  MyTextTestRunner(verbosity=verbosity).run(testsuite)
-    
-    
+
+    # a name explicitly asked for which selects nothing has to be an error,
+    # otherwise a test removed/renamed silently keeps on being "OK" forever.
+    output.unmatched_names = report_unmatched(finder.unmatched_expressions(),
+                                              package)
+
+
     
     
     if TestSuiteModified.time_limit < 0:
@@ -649,7 +713,8 @@ class TestFinder(list):
 
         self.package = package
         self.rule = []
-        if self.package[-1] != '/': 
+        self.collected = False
+        if self.package[-1] != '/':
             self.package += '/'
         self.restrict_to(expression, re_opt)
         self.launch_pos = ''
@@ -659,11 +724,12 @@ class TestFinder(list):
             self.excluded = excluded
 
     def _check_if_obj_build(self):
-        """ Check if a collect is already done 
+        """ Check if a collect is already done
             Uses to have smart __iter__ and __contain__ functions
         """
-        if len(self) == 0:
+        if len(self) == 0 and not self.collected:
             start = time.time()
+            self.collected = True
             self.collect_dir(self.package, checking=True)
             print('loading test takes %ss'  % (time.time()-start))
     def __iter__(self):
@@ -763,15 +829,20 @@ class TestFinder(list):
         """
 
         if isinstance(expression, list):
-            pass
+            requested = list(expression)
         elif isinstance(expression, str):
             if expression in '':
                 expression = ['.*'] #made an re authorizing all regular name
+                requested = [] # nothing asked for: everything is selected
             else:
                 expression = [expression]
+                requested = list(expression)
         else:
             raise self.TestFinderError('obj should be list or string')
 
+        # what the caller explicitly asked for, aligned with self.rule, so that
+        # we can tell afterwards which of those selected no test at all.
+        self.requested = requested
         self.rule = []
         for expr in expression:
             #fix the beginning/end of the regular expression
@@ -889,6 +960,52 @@ class TestFinder(list):
         add_to_possibility(out, new_pos)
 
         return out
+
+    def collected_possibility(self, name):
+        """ return the different names under which a collected test, given in
+        the 'module.path.TestClass.test_function' format, could have been asked
+        for: the function, the class, the file or any of its parent directories.
+        """
+
+        pieces = name.split('.')
+        if len(pieces) < 2:
+            return [name]
+
+        out = [name, pieces[-1], pieces[-2], '.'.join(pieces[-2:])]
+        directories = pieces[:-2]
+        # the module itself (with the .py extension) and each directory above it
+        for i in range(len(directories), 0, -1):
+            pos = '/'.join(directories[:i])
+            if i == len(directories):
+                pos += '.py'
+            for possibility in self.format_possibility(pos):
+                if possibility not in out:
+                    out.append(possibility)
+
+        return out
+
+    def unmatched_expressions(self):
+        """ return the explicitly requested expressions which do not select any
+        of the collected tests, i.e. those pointing to a test which does not
+        exist (anymore) in this package.
+        """
+
+        if not self.requested:
+            return []
+
+        self._check_if_obj_build()
+        aliases = set()
+        for name in self:
+            aliases.update(self.collected_possibility(name))
+
+        unmatched = []
+        for expr, rule in zip(self.requested, self.rule):
+            if not expr:
+                continue
+            if not any(rule.search(alias) for alias in aliases):
+                unmatched.append(expr)
+
+        return unmatched
 
     def go_to_root(self):
         """ 
@@ -1171,6 +1288,8 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
         output = runIOTests(args,update=options.IOTests=='U',force=force,
                                                 synchronize=options.synchronize)
 
+    # keep it aside: output is replaced by a string by the notification below
+    unmatched_names = getattr(output, 'unmatched_names', [])
 
     if 0 < float(options.notification) < time.time()-start_time:
         if isinstance(output, unittest.runner.TextTestResult):
@@ -1189,6 +1308,9 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
                                (output.failures, output.errors, output.skipped)))
         if failed or errored or skipped:
             sys.exit(1)
+
+    if unmatched_names:
+        sys.exit(1)
 #some example
 #    run('iolibs')
 #    run('test_test_manager.py')

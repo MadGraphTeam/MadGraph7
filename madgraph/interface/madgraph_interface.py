@@ -1542,10 +1542,10 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('%s : Not a valid directory' % path)
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
-        elif os.path.isfile(pjoin(subproc_path, 'madmatrix.mk')):
+        elif os.path.isfile(pjoin(subproc_path, 'madmatrix_standalone.mk')):
             # the `standalone` (madmatrix) export writes
-            # SubProcesses/madmatrix.mk explicitly (the regular mg7 export
-            # does not).
+            # SubProcesses/madmatrix_standalone.mk (the regular mg7 export only
+            # writes madmatrix.mk, so testing for that would match it too).
             return 'standalone'
         elif os.path.isfile(pjoin(card_path, 'run_card.toml')):
             return 'mg7'
