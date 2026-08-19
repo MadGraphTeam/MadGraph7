@@ -13,6 +13,30 @@
 
 //----------------------------------------------------------------------------
 
+// Index of the event owned by the current thread
+static __device__ inline int
+gpuKernelEvt()
+{
+#if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+  return blockIdx.x;
+#else
+  return blockDim.x * blockIdx.x + threadIdx.x; 
+#endif
+}
+
+// Total number of events in the grid launched
+static __device__ inline int
+gpuKernelNevt()
+{
+#if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+  return gridDim.x;
+#else
+  return gridDim.x * blockDim.x;
+#endif
+}
+
+//----------------------------------------------------------------------------
+
 // A templated helper class that includes the boilerplate code for MemoryAccess classes
 template<class T, typename FT = fptype>
 class MemoryAccessHelper
@@ -106,7 +130,7 @@ public:
     }
     else
     {
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
+      const int ievt = gpuKernelEvt();
       //printf( "kernelAccessRecord: ievt=%d threadId=%d\n", ievt, threadIdx.x );
       return T::ieventAccessRecord( buffer, ievt ); // NB fptype and fptype_sv coincide for CUDA
     }

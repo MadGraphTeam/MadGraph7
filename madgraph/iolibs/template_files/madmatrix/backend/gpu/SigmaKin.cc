@@ -86,15 +86,15 @@ namespace madmatrix
     static __device__ inline fptype&
     kernelAccessIcol( fptype* buffer, const int icol )
     {
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      const int nevt = gpuKernelNevt();
+      const int ievt = gpuKernelEvt();
       return buffer[icol * nevt + ievt];
     }
     static __device__ inline const fptype&
     kernelAccessIcolConst( const fptype* buffer, const int icol )
     {
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      const int nevt = gpuKernelNevt();
+      const int ievt = gpuKernelEvt();
       return buffer[icol * nevt + ievt];
     }
   };
@@ -195,7 +195,7 @@ namespace madmatrix
       const fptype* momenta = allmomenta;
       const fptype* COUPs[nxcoup];
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
+      const int ievt = gpuKernelEvt(); // index of event (thread) in grid
       fptype* numerators = &allNumerators[ievt * ndiagrams];
       fptype* denominators = allDenominators;
       // Create an array of views over the Flavor Couplings
@@ -392,9 +392,9 @@ namespace madmatrix
                     bool mulChannelWeight,             // if true, multiply matrix element by channel weight
                     const fptype globaldenom)
   {
-    const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    const int ievt = gpuKernelEvt(); // index of event (thread)
     allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor(iflavorVec[ievt]) / globaldenom;
-    const int nevt = gridDim.x * blockDim.x;
+    const int nevt = gpuKernelNevt();
     if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
     {
       fptype* totAllNumerators = ghelAllNumerators;     // reuse "helicity #0" buffer to compute the total over all helicities
@@ -428,7 +428,7 @@ namespace madmatrix
                       fptype* allMEs,          // output: allMEs[nevt], final sum over helicities
                       const int nevt )         // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
-    const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    const int ievt = gpuKernelEvt(); // index of event (thread)
     // Compute the sum of MEs over all good helicities (defer this after the helicity loop to avoid breaking streams parallelism)
     for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
     {
@@ -461,7 +461,7 @@ namespace madmatrix
                        const fptype* allDenominators,     // input: all denominators
                        const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
-    const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    const int ievt = gpuKernelEvt(); // index of event (thread)
     // SCALAR channelId for the current event (CUDA)
     unsigned int channelId = gpu_channelId( allChannelIds );
     // Event-by-event random choice of channel
