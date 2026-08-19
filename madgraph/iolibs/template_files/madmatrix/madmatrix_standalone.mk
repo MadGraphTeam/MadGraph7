@@ -19,7 +19,8 @@ include madmatrix.mk
 #=== Standalone driver (check_sa.exe) configuration
 
 # Standalone-only object files (compiled via the generic %%.o pattern rule from
-# madmatrix.mk).
+# madmatrix.mk; RamboSamplingKernels.cc/CommonRandomNumberKernel.cc are found
+# in ../../src/rambo/ via the vpath in madmatrix.mk
 override standalone_objects = $(BUILDDIR)/RamboSamplingKernels.o \
                               $(BUILDDIR)/CommonRandomNumberKernel.o \
                               $(BUILDDIR)/check_sa.o
