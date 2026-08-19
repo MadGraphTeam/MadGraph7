@@ -89,6 +89,13 @@
 //#undef MGONGPU_HARDCODE_PARAM // default
 ////#define MGONGPU_HARDCODE_PARAM 1
 
+// Choose the CUDA/HIP thread/block layout for calculate_jamps (event-vs-helicity parallelism)
+// EVENT layout (default): one block == one helicity, one thread == one event 
+// HELICITY layout: one block == one event, one thread == one helicity (threads.x = cNGoodHel)
+#if not defined MGONGPU_HELBLOCK_LAYOUT_EVENT and not defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+#define MGONGPU_HELBLOCK_LAYOUT_EVENT 1 
+#endif
+
 /* clang-format off */
 // Complex type in CUDA: thrust or cucomplex or cxsmpl (CHOOSE ONLY ONE)
 // (NB THIS IS MGONGPU_*CU*CXTYPE_xxx)
@@ -141,6 +148,11 @@
 #endif
 #if defined MGONGPU_FPTYPE2_DOUBLE and defined MGONGPU_FPTYPE_FLOAT
 #error You cannot use double precision for color algebra and single precision elsewhere
+#endif
+
+// SANITY CHECKS (calculate_jamps thread/block layout)
+#if defined MGONGPU_HELBLOCK_LAYOUT_EVENT and defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_HELBLOCK_LAYOUT_EVENT or MGONGPU_HELBLOCK_LAYOUT_HELICITY
 #endif
 
 // SANITY CHECKS (CUDA complex number implementation)
