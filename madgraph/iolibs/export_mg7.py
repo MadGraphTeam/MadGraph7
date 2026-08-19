@@ -174,18 +174,49 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 if diag.has_flavor(flavor):
                     active_flavors.extend(indices)
 
-    def diagram_propagator_pdgs(self, diagram):
-        """Signed pdg id of each internal line of `diagram`, in the same order
-        as a channel's shared "propagators" list (which is color-blind and
-        only reliable for mass/width, since merge_same_topologies can merge
-        diagrams whose propagators differ in color, e.g. gluon vs. quark)."""
+    def diagram_edge_leg_sets(self, diagram, sym_perm=None):
+        """For each internal line of `diagram`, in vertex-list order, the
+        frozenset of external edge names behind it -- a vertex-order-
+        independent identity, unlike diagram.get("vertices") position.
+        `sym_perm` translates this diagram's leg numbers to the
+        representative's; leave None for the representative itself."""
+        def canonical_name(leg_number):
+            if sym_perm is not None:
+                leg_number = sym_perm[leg_number - 1] + 1
+            return self.edge_names[leg_number]
+
+        diagram_edge_names = {}
+        edge_leg_sets = {name: frozenset((name,)) for name in self.edge_names.values()}
+        leg_sets = []
         diag_vertices = diagram.get("vertices")
-        pdgs = []
         for i_vert, vertex in enumerate(diag_vertices):
+            legs = vertex.get("legs")
+            input_names = [
+                diagram_edge_names.get(leg.get("number"))
+                or canonical_name(leg.get("number"))
+                for leg in legs[:-1]
+            ]
+            downstream = frozenset().union(*(edge_leg_sets[name] for name in input_names))
             if i_vert == len(diag_vertices) - 1:
                 # Closing vertex: its last leg is a pre-existing external edge,
                 # not a new internal line.
                 continue
+            prop_name = f"p{len(leg_sets)}"
+            diagram_edge_names[legs[-1].get("number")] = prop_name
+            edge_leg_sets[prop_name] = downstream
+            leg_sets.append(downstream)
+        return leg_sets
+
+    def diagram_propagator_pdgs(self, diagram, channel_leg_sets, sym_perm):
+        """Signed pdg id of each internal line of `diagram`, reordered to
+        match `channel_leg_sets` (the order used for
+        Topology::Decay::flat_propagator_index) rather than this diagram's
+        own vertex order, which need not agree even for a diagram merged
+        into the channel by merge_same_topologies."""
+        diag_vertices = diagram.get("vertices")
+        leg_sets = self.diagram_edge_leg_sets(diagram, sym_perm)
+        pdg_by_leg_set = {}
+        for i_vert, vertex in enumerate(diag_vertices[:-1]):
             legs = vertex.get("legs")
             final_part = self.model.get_particle(legs[-1].get("id"))
             sign = (
@@ -193,8 +224,8 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 if final_part.get("is_part") or final_part.get("self_antipart") else
                 -1
             )
-            pdgs.append(sign * final_part.get("pdg_code"))
-        return pdgs
+            pdg_by_leg_set[leg_sets[i_vert]] = sign * final_part.get("pdg_code")
+        return [pdg_by_leg_set[leg_set] for leg_set in channel_leg_sets]
 
     def set_channels_colors_map(self):
         if self.color_basis:
@@ -212,6 +243,10 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                         diag_jamps[diag_tuple[0]].append(ijamp)
 
         self.channels = []
+        # Index-aligned with self.channels; kept separate (not serialized --
+        # frozensets aren't JSON-able) and only needed transiently to reorder
+        # merged diagrams' propagator_pdgs, see diagram_propagator_pdgs.
+        channel_leg_sets = []
         channel_indices = []
         self.diagram_tags = []
         for diagram_index, (sym_index, sym_perm) in enumerate(zip(self.sym_indices, self.sym_perms)):
@@ -237,7 +272,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                         "permutation": sym_perm,
                         "active_flavors": active_flavors,
                         "active_colors": active_colors,
-                        "propagator_pdgs": self.diagram_propagator_pdgs(diagram),
+                        "propagator_pdgs": self.diagram_propagator_pdgs(
+                            diagram, channel_leg_sets[chan_index], sym_perm
+                        ),
                     }
                 )
                 channel_indices.append(-1)
@@ -274,6 +311,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             chan_index = len(self.channels)
             self.diagram_tags.append([IdentifyTopologyTag(diagram, self.model)])
             channel_indices.append(chan_index)
+            channel_leg_sets.append(self.diagram_edge_leg_sets(diagram))
             self.channels.append(
                 {
                     "propagators": propagators,

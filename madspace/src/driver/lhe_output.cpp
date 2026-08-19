@@ -74,7 +74,7 @@ std::tuple<int, int> compute_decay_color(
         }
         return {0, 0};
     } else if (color_type == 3) {
-        if (decay_colors.size() == 0 || decay_anti_colors.size() == 1) {
+        if (decay_colors.size() == 0 && decay_anti_colors.size() == 1) {
             sign_flip = -1;
             return {0, decay_anti_colors.at(0)};
         }
@@ -83,7 +83,7 @@ std::tuple<int, int> compute_decay_color(
         }
         return {decay_colors.at(0), 0};
     } else if (color_type == -3) {
-        if (decay_colors.size() == 1 || decay_anti_colors.size() == 0) {
+        if (decay_colors.size() == 1 && decay_anti_colors.size() == 0) {
             sign_flip = -1;
             return {decay_colors.at(0), 0};
         }
