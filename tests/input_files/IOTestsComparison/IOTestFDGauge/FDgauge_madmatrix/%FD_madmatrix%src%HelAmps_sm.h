@@ -1,13 +1,94 @@
-! Copyright (C) 2010 The ALOHA Development team and Contributors.
-! Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-! Created by: J. Alwall (Sep 2010) for the MG5aMC CPP backend.
-!==========================================================================
-! Copyright (C) 2020-2026 CERN and UCLouvain.
-! Licensed under the GNU Lesser General Public License (version 3 or later).
-! Modified originally by: F. Stloukal (Mar 2026) for the MG5aMC CUDACPP plugin.
-! Further modified by: D. Massaro, F. Stloukal
-! Integrated with the MadGraph7 project in Feb 2026.
-!==========================================================================
+// Copyright (C) 2010 The ALOHA Development team and Contributors.
+// Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
+// Created by: J. Alwall (Sep 2010) for the MG5aMC backend.
+//==========================================================================
+// Copyright (C) 2020-2026 CERN and UCLouvain.
+// Licensed under the GNU Lesser General Public License (version 3 or later).
+// Modified originally by: A. Valassi (Sep 2021) for the MG5aMC CUDACPP plugin.
+// Further modified by: J. Teig, A. Valassi (2021-2024) for the MG5aMC CUDACPP plugin.
+// Integrated with the MadGraph7 project in Feb 2026.
+//==========================================================================
+// This file has been automatically generated for CUDA/C++ standalone by
+//  MadGraph5_aMC@NLO v. %(version)s, %(date)s
+//  By the MadGraph5_aMC@NLO Development Team
+//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+//==========================================================================
+
+#ifndef HelAmps_sm_H
+#define HelAmps_sm_H 1
+
+#include "mgOnGpuConfig.h"
+
+#include "mgOnGpuVectors.h"
+
+#include "Parameters.h"
+
+#include <cassert>
+//#include <cmath>
+//#include <cstdlib>
+//#include <iomanip>
+//#include <iostream>
+
+#ifdef MGONGPUCPP_GPUIMPL
+namespace mg5amcGpu
+#else
+namespace mg5amcCpu
+#endif
+{
+
+  // ALOHA-style object for easy flavor consolidation and non-template API
+  struct ALOHAOBJ {
+
+      static constexpr int np4 = 4; // dimensions of 4-momenta (E,px,py,pz)
+      static constexpr int nw6 = 5; // dimensions of each wavefunction (notice, this is +1 in case of FD gauge)
+      fptype_sv * pvec;
+      fptype * w;
+      int flv_index;
+
+      __host__ __device__ ALOHAOBJ() {}
+      __host__ __device__ ALOHAOBJ(fptype_sv * pvec_sv, cxtype_sv * w_sv, int flv = -1)
+          : pvec(pvec_sv), w(reinterpret_cast<fptype*>(w_sv)), flv_index(flv) {}
+  };
+
+  struct FLV_COUPLING_VIEW {
+
+      const int* const partner1;
+      const int* const partner2;
+      const fptype* const value;
+
+      __host__ __device__
+      FLV_COUPLING_VIEW(const int* p1, const int* p2, const fptype* v)
+      : partner1(p1), partner2(p2), value(v) {}
+  };
+
+  // FSTRIDE is the number of fptype's used to store one flavor slot of the value buffer:
+  //  - independent (fixed) flavored couplings: FSTRIDE = nx2 = 2 (a single scalar complex, broadcast across the SIMD vector)
+  //  - dependent (event-by-event, running-alphas) flavored couplings: FSTRIDE = nx2*neppC (an AOSOA SIMD record)
+  // It must match C_ACCESS::flv_stride of the access type the consuming vertex routine is instantiated with.
+  template<int SIZE, int STRIDE, int FSTRIDE = 2>
+  class FLV_COUPLING_ARRAY {
+
+      static_assert(SIZE >= 0, "flvCOUPs SIZE must be non-negative");
+      static_assert(STRIDE > 0, "flvCOUPs STRIDE must be positive");
+      static_assert(FSTRIDE > 0, "flvCOUPs FSTRIDE must be positive");
+      const int* const partner1;
+      const int* const partner2;
+      const fptype* const value;
+
+    public:
+      __host__ __device__
+      FLV_COUPLING_ARRAY(const int* p1, const int* p2, const fptype* v)
+      : partner1(p1), partner2(p2), value(v) {}
+
+      __host__ __device__
+      FLV_COUPLING_VIEW operator[](const int i) const {
+        return FLV_COUPLING_VIEW{
+          partner1 + i*STRIDE,
+          partner2 + i*STRIDE,
+          value + i*FSTRIDE*STRIDE
+        };
+      }
+  };
   //--------------------------------------------------------------------------
 
 #ifdef MGONGPU_INLINE_HELAMPS
@@ -1119,3 +1200,913 @@
   }
   //--------------------------------------------------------------------------
   //==========================================================================
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV1MP0_3( const ALOHAOBJ  & F1,
+             const ALOHAOBJ  & F2,
+             const FLV_COUPLING_VIEW &MCOUP,
+             const double Ccoeff,
+             const fptype & M3,
+             const fptype & W3,
+             ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV6M_3( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & F2,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           const fptype & M3,
+           const fptype & W3,
+           ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV6_2M_3( const ALOHAOBJ  & F1,
+             const ALOHAOBJ  & F2,
+             const FLV_COUPLING_VIEW &MCOUP1,
+             const double Ccoeff1,
+             const FLV_COUPLING_VIEW &MCOUP2,
+             const double Ccoeff2,
+             const fptype & M3,
+             const fptype & W3,
+             ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV2M_0( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & F2,
+           const ALOHAOBJ  & V3,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'F2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV2M_2( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & V3,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           const fptype & M2,
+           const fptype & W2,
+           ALOHAOBJ  & F2 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  FFV2M_3( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & F2,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           const fptype & M3,
+           const fptype & W3,
+           ALOHAOBJ  & V3 ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VVS1_VSV2_VSS1_0( const ALOHAOBJ  & V1,
+                         const ALOHAOBJ  & V2,
+                         const ALOHAOBJ  & V3,
+                         const fptype allCOUP1[],
+                         const double Ccoeff1,
+                         const fptype allCOUP2[],
+                         const double Ccoeff2,
+                         const fptype allCOUP3[],
+                         const double Ccoeff3,
+                         const fptype allCOUP4[],
+                         const double Ccoeff4,
+                         fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0( const ALOHAOBJ  & V1,
+                                   const ALOHAOBJ  & V2,
+                                   const ALOHAOBJ  & V3,
+                                   const fptype allCOUP1[],
+                                   const double Ccoeff1,
+                                   const fptype allCOUP2[],
+                                   const double Ccoeff2,
+                                   const fptype allCOUP3[],
+                                   const double Ccoeff3,
+                                   const fptype allCOUP4[],
+                                   const double Ccoeff4,
+                                   const fptype allCOUP5[],
+                                   const double Ccoeff5,
+                                   const fptype allCOUP6[],
+                                   const double Ccoeff6,
+                                   fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VVS1_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSV2_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS1_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  VSS2_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVV2_0( const ALOHAOBJ  & S1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SVS2_0( const ALOHAOBJ  & S1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ INLINE void
+  SSV3_0( const ALOHAOBJ  & S1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] ) ALWAYS_INLINE;
+
+  //==========================================================================
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV1MP0_3( const ALOHAOBJ  & F1,
+             const ALOHAOBJ  & F2,
+             const FLV_COUPLING_VIEW &MCOUP,
+             const double Ccoeff,
+             const fptype & M3,
+             const fptype & W3,
+             ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_sv* wF2 = W_ACCESS::kernelAccessConst( F2.w );
+    cxtype_sv COUP;
+    cxtype_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    V3.pvec[0] = +F1.pvec[0] + F2.pvec[0];
+    V3.pvec[1] = +F1.pvec[1] + F2.pvec[1];
+    V3.pvec[2] = +F1.pvec[2] + F2.pvec[2];
+    V3.pvec[3] = +F1.pvec[3] + F2.pvec[3];
+    const fptype_sv P3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    cxtype_sv FDQ[5] = { cxmake( -V3.pvec[0], 0. ), cxmake( -V3.pvec[1], 0. ), cxmake( -V3.pvec[2], 0. ), cxmake( -V3.pvec[3], 0. ), cxmake( fptype_sv{ 0 }, -M3 + fptype_sv{ 0 } ) };
+    fptype_sv FDN[5];
+    define_gauge_dir( FDQ, FDN );
+    const fptype_sv FDNQ = FDN[0] * FDQ[0].real() - FDN[1] * FDQ[1].real() - FDN[2] * FDQ[2].real() - FDN[3] * FDQ[3].real();
+    const int & flv_index1 = F1.flv_index;
+    const int & flv_index2 = F2.flv_index;
+    if(flv_index1 == -1 || flv_index2 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    int flv_sel = -1;
+    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
+    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
+    if(flv_sel == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    const cxtype_sv denom = Ccoeff * COUP / ( ( P3[0] * P3[0] ) - ( P3[1] * P3[1] ) - ( P3[2] * P3[2] ) - ( P3[3] * P3[3] ) - M3 * ( M3 - cI * W3 ) );
+    wV3[0] = denom * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] + wF2[0] * wF1[2] + wF2[1] * wF1[3] );
+    wV3[1] = denom * ( -cI ) * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] + wF2[1] * wF1[2] + wF2[0] * wF1[3] );
+    wV3[2] = denom * ( -cI ) * ( -cI * ( wF2[3] * wF1[0] + wF2[0] * wF1[3] ) + cI * ( wF2[2] * wF1[1] + wF2[1] * wF1[2] ) );
+    wV3[3] = denom * ( -cI ) * ( -wF2[2] * wF1[0] - wF2[1] * wF1[3] + wF2[3] * wF1[1] + wF2[0] * wF1[2] );
+    const cxtype_sv FDJS1 = ( FDN[0] * wV3[0] - FDN[1] * wV3[1] - FDN[2] * wV3[2] - FDN[3] * wV3[3] ) / FDNQ;
+    const cxtype_sv FDJS2 = ( FDQ[0] * wV3[0] - FDQ[1] * wV3[1] - FDQ[2] * wV3[2] - FDQ[3] * wV3[3] - cxconj( FDQ[4] ) * wV3[4] ) / FDNQ;
+    wV3[0] = wV3[0] - FDQ[0] * FDJS1 - FDN[0] * FDJS2;
+    wV3[1] = wV3[1] - FDQ[1] * FDJS1 - FDN[1] * FDJS2;
+    wV3[2] = wV3[2] - FDQ[2] * FDJS1 - FDN[2] * FDJS2;
+    wV3[3] = wV3[3] - FDQ[3] * FDJS1 - FDN[3] * FDJS2;
+    wV3[4] = wV3[4] - FDQ[4] * FDJS1 - FDN[4] * FDJS2;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV6M_3( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & F2,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           const fptype & M3,
+           const fptype & W3,
+           ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_sv* wF2 = W_ACCESS::kernelAccessConst( F2.w );
+    cxtype_sv COUP;
+    cxtype_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    V3.pvec[0] = +F1.pvec[0] + F2.pvec[0];
+    V3.pvec[1] = +F1.pvec[1] + F2.pvec[1];
+    V3.pvec[2] = +F1.pvec[2] + F2.pvec[2];
+    V3.pvec[3] = +F1.pvec[3] + F2.pvec[3];
+    const fptype_sv P3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    cxtype_sv FDQ[5] = { cxmake( -V3.pvec[0], 0. ), cxmake( -V3.pvec[1], 0. ), cxmake( -V3.pvec[2], 0. ), cxmake( -V3.pvec[3], 0. ), cxmake( fptype_sv{ 0 }, -M3 + fptype_sv{ 0 } ) };
+    fptype_sv FDN[5];
+    define_gauge_dir( FDQ, FDN );
+    const fptype_sv FDNQ = FDN[0] * FDQ[0].real() - FDN[1] * FDQ[1].real() - FDN[2] * FDQ[2].real() - FDN[3] * FDQ[3].real();
+    const int & flv_index1 = F1.flv_index;
+    const int & flv_index2 = F2.flv_index;
+    if(flv_index1 == -1 || flv_index2 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    int flv_sel = -1;
+    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
+    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
+    if(flv_sel == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    const cxtype_sv denom = Ccoeff * COUP / ( ( P3[0] * P3[0] ) - ( P3[1] * P3[1] ) - ( P3[2] * P3[2] ) - ( P3[3] * P3[3] ) - M3 * ( M3 - cI * W3 ) );
+    wV3[0] = denom * ( -cI ) * ( wF2[0] * wF1[2] + wF2[1] * wF1[3] );
+    wV3[1] = denom * ( -cI ) * ( wF2[1] * wF1[2] + wF2[0] * wF1[3] );
+    wV3[2] = denom * ( -cI ) * ( +cI * ( wF2[1] * wF1[2] ) - cI * ( wF2[0] * wF1[3] ) );
+    wV3[3] = denom * ( -cI ) * ( wF2[0] * wF1[2] - wF2[1] * wF1[3] );
+    const cxtype_sv FDJS1 = ( FDN[0] * wV3[0] - FDN[1] * wV3[1] - FDN[2] * wV3[2] - FDN[3] * wV3[3] ) / FDNQ;
+    const cxtype_sv FDJS2 = ( FDQ[0] * wV3[0] - FDQ[1] * wV3[1] - FDQ[2] * wV3[2] - FDQ[3] * wV3[3] - cxconj( FDQ[4] ) * wV3[4] ) / FDNQ;
+    wV3[0] = wV3[0] - FDQ[0] * FDJS1 - FDN[0] * FDJS2;
+    wV3[1] = wV3[1] - FDQ[1] * FDJS1 - FDN[1] * FDJS2;
+    wV3[2] = wV3[2] - FDQ[2] * FDJS1 - FDN[2] * FDJS2;
+    wV3[3] = wV3[3] - FDQ[3] * FDJS1 - FDN[3] * FDJS2;
+    wV3[4] = wV3[4] - FDQ[4] * FDJS1 - FDN[4] * FDJS2;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV6_2M_3( const ALOHAOBJ  & F1,
+             const ALOHAOBJ  & F2,
+             const FLV_COUPLING_VIEW &MCOUP1,
+             const double Ccoeff1,
+             const FLV_COUPLING_VIEW &MCOUP2,
+             const double Ccoeff2,
+             const fptype & M3,
+             const fptype & W3,
+             ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_sv* wF2 = W_ACCESS::kernelAccessConst( F2.w );
+    cxtype_sv COUP1;
+    cxtype_sv COUP2;
+    cxtype_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    V3.pvec[0] = +F1.pvec[0] + F2.pvec[0];
+    V3.pvec[1] = +F1.pvec[1] + F2.pvec[1];
+    V3.pvec[2] = +F1.pvec[2] + F2.pvec[2];
+    V3.pvec[3] = +F1.pvec[3] + F2.pvec[3];
+    const fptype_sv P3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    cxtype_sv FDQ[5] = { cxmake( -V3.pvec[0], 0. ), cxmake( -V3.pvec[1], 0. ), cxmake( -V3.pvec[2], 0. ), cxmake( -V3.pvec[3], 0. ), cxmake( fptype_sv{ 0 }, -M3 + fptype_sv{ 0 } ) };
+    fptype_sv FDN[5];
+    define_gauge_dir( FDQ, FDN );
+    const fptype_sv FDNQ = FDN[0] * FDQ[0].real() - FDN[1] * FDQ[1].real() - FDN[2] * FDQ[2].real() - FDN[3] * FDQ[3].real();
+    const int & flv_index1 = F1.flv_index;
+    const int & flv_index2 = F2.flv_index;
+    int zero_coup1 = 0;
+    int zero_coup2 = 0;
+    if(flv_index1 != flv_index2 || flv_index1 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    if(flv_index1 == -1 || flv_index2 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    if(MCOUP1.partner1[flv_index1] != flv_index2 || MCOUP1.partner2[flv_index1] != flv_index2) {
+      zero_coup1 = 1;
+      COUP1 = cxzero_sv();
+    }
+    if(MCOUP2.partner1[flv_index1] != flv_index2 || MCOUP2.partner2[flv_index1] != flv_index2) {
+      zero_coup2 = 1;
+      COUP2 = cxzero_sv();
+    }
+    if(zero_coup1 ==0) { COUP1 = C_ACCESS::kernelAccessConst( MCOUP1.value + C_ACCESS::flv_stride*flv_index1 ); }
+    if(zero_coup2 ==0) { COUP2 = C_ACCESS::kernelAccessConst( MCOUP2.value + C_ACCESS::flv_stride*flv_index1 ); }
+    const cxtype_sv denom1 = Ccoeff1 * COUP1 / ( ( P3[0] * P3[0] ) - ( P3[1] * P3[1] ) - ( P3[2] * P3[2] ) - ( P3[3] * P3[3] ) - M3 * ( M3 - cI * W3 ) );
+    wV3[0] = wV3[0] + denom1 * ( -cI ) * ( wF2[0] * wF1[2] + wF2[1] * wF1[3] );
+    wV3[1] = wV3[1] + denom1 * ( -cI ) * ( wF2[1] * wF1[2] + wF2[0] * wF1[3] );
+    wV3[2] = wV3[2] + denom1 * ( -cI ) * ( +cI * ( wF2[1] * wF1[2] ) - cI * ( wF2[0] * wF1[3] ) );
+    wV3[3] = wV3[3] + denom1 * ( -cI ) * ( wF2[0] * wF1[2] - wF2[1] * wF1[3] );
+    const cxtype_sv denom2 = Ccoeff2 * COUP2 / ( ( P3[0] * P3[0] ) - ( P3[1] * P3[1] ) - ( P3[2] * P3[2] ) - ( P3[3] * P3[3] ) - M3 * ( M3 - cI * W3 ) );
+    wV3[0] = wV3[0] + denom2 * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] );
+    wV3[1] = wV3[1] + denom2 * ( -cI ) * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] );
+    wV3[2] = wV3[2] + denom2 * ( -cI ) * ( -cI * ( wF2[3] * wF1[0] ) + cI * ( wF2[2] * wF1[1] ) );
+    wV3[3] = wV3[3] + denom2 * ( -cI ) * ( -wF2[2] * wF1[0] + wF2[3] * wF1[1] );
+    const cxtype_sv FDJS1 = ( FDN[0] * wV3[0] - FDN[1] * wV3[1] - FDN[2] * wV3[2] - FDN[3] * wV3[3] ) / FDNQ;
+    const cxtype_sv FDJS2 = ( FDQ[0] * wV3[0] - FDQ[1] * wV3[1] - FDQ[2] * wV3[2] - FDQ[3] * wV3[3] - cxconj( FDQ[4] ) * wV3[4] ) / FDNQ;
+    wV3[0] = wV3[0] - FDQ[0] * FDJS1 - FDN[0] * FDJS2;
+    wV3[1] = wV3[1] - FDQ[1] * FDJS1 - FDN[1] * FDJS2;
+    wV3[2] = wV3[2] - FDQ[2] * FDJS1 - FDN[2] * FDJS2;
+    wV3[3] = wV3[3] - FDQ[3] * FDJS1 - FDN[3] * FDJS2;
+    wV3[4] = wV3[4] - FDQ[4] * FDJS1 - FDN[4] * FDJS2;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV2M_0( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & F2,
+           const ALOHAOBJ  & V3,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_sv* wF2 = W_ACCESS::kernelAccessConst( F2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv COUP;
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const int & flv_index1 = F1.flv_index;
+    const int & flv_index2 = F2.flv_index;
+    if(flv_index1 == -1 || flv_index2 == -1) {
+      *vertex = cxzero_sv();
+      return;
+    }
+    int flv_sel = -1;
+    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
+    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
+    if(flv_sel == -1) {
+      *vertex = cxzero_sv();
+      return;
+    }
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    const cxtype_sv TMP0 = ( wF1[0] * ( wF2[2] * ( wV3[0] + wV3[3] ) + wF2[3] * ( wV3[1] + cI * wV3[2] ) ) + wF1[1] * ( wF2[2] * ( wV3[1] - cI * wV3[2] ) + wF2[3] * ( wV3[0] - wV3[3] ) ) );
+    ( *vertex ) = Ccoeff * COUP * -cI * TMP0;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'F2[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV2M_2( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & V3,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           const fptype & M2,
+           const fptype & W2,
+           ALOHAOBJ  & F2 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv COUP;
+    cxtype_sv* wF2 = W_ACCESS::kernelAccess( F2.w );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    F2.pvec[0] = +F1.pvec[0] + V3.pvec[0];
+    F2.pvec[1] = +F1.pvec[1] + V3.pvec[1];
+    F2.pvec[2] = +F1.pvec[2] + V3.pvec[2];
+    F2.pvec[3] = +F1.pvec[3] + V3.pvec[3];
+    const fptype_sv P2[4] = { -F2.pvec[0], -F2.pvec[1], -F2.pvec[2], -F2.pvec[3] };
+    int flv_index1 = F1.flv_index;
+    if(flv_index1 == -1) {
+      for(int i=0; i<F2.nw6; i++) { wF2[i] = cxzero_sv(); }
+      F2.flv_index = -1;
+      return;
+    }
+    int flv_index2 = MCOUP.partner1[flv_index1];
+    if(flv_index2 == -1){
+      for(int i=0; i<F2.nw6; i++) { wF2[i] = cxzero_sv(); }
+      F2.flv_index = -1;
+      return;
+    }
+    F2.flv_index = flv_index2;
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
+    constexpr fptype one( 1. );
+    const cxtype_sv denom = Ccoeff * COUP / ( ( P2[0] * P2[0] ) - ( P2[1] * P2[1] ) - ( P2[2] * P2[2] ) - ( P2[3] * P2[3] ) - M2 * ( M2 - cI * W2 ) );
+    wF2[0] = denom * cI * ( wF1[0] * ( P2[0] * ( wV3[0] + wV3[3] ) + ( P2[1] * ( -one ) * ( wV3[1] + cI * wV3[2] ) + ( P2[2] * ( +cI * wV3[1] - wV3[2] ) - P2[3] * ( wV3[0] + wV3[3] ) ) ) ) + wF1[1] * ( P2[0] * ( wV3[1] - cI * wV3[2] ) + ( P2[1] * ( -wV3[0] + wV3[3] ) + ( P2[2] * ( +cI * wV3[0] - cI * wV3[3] ) + P2[3] * ( -wV3[1] + cI * wV3[2] ) ) ) ) );
+    wF2[1] = denom * cI * ( wF1[0] * ( P2[0] * ( wV3[1] + cI * wV3[2] ) + ( P2[1] * ( -one ) * ( wV3[0] + wV3[3] ) + ( P2[2] * ( -one ) * ( +cI * ( wV3[0] + wV3[3] ) ) + P2[3] * ( wV3[1] + cI * wV3[2] ) ) ) ) + wF1[1] * ( P2[0] * ( wV3[0] - wV3[3] ) + ( P2[1] * ( -wV3[1] + cI * wV3[2] ) + ( P2[2] * ( -one ) * ( +cI * wV3[1] + wV3[2] ) + P2[3] * ( wV3[0] - wV3[3] ) ) ) ) );
+    wF2[2] = denom * -cI * M2 * ( wF1[0] * ( -one ) * ( wV3[0] + wV3[3] ) + wF1[1] * ( -wV3[1] + cI * wV3[2] ) );
+    wF2[3] = denom * cI * M2 * ( wF1[0] * ( wV3[1] + cI * wV3[2] ) + wF1[1] * ( wV3[0] - wV3[3] ) );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output wavefunction 'V3[6]' from the input wavefunctions 
+  template<class W_ACCESS, class C_ACCESS>
+  __device__ void
+  FFV2M_3( const ALOHAOBJ  & F1,
+           const ALOHAOBJ  & F2,
+           const FLV_COUPLING_VIEW &MCOUP,
+           const double Ccoeff,
+           const fptype & M3,
+           const fptype & W3,
+           ALOHAOBJ  & V3 )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wF1 = W_ACCESS::kernelAccessConst( F1.w );
+    const cxtype_sv* wF2 = W_ACCESS::kernelAccessConst( F2.w );
+    cxtype_sv COUP;
+    cxtype_sv* wV3 = W_ACCESS::kernelAccess( V3.w );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    V3.pvec[0] = +F1.pvec[0] + F2.pvec[0];
+    V3.pvec[1] = +F1.pvec[1] + F2.pvec[1];
+    V3.pvec[2] = +F1.pvec[2] + F2.pvec[2];
+    V3.pvec[3] = +F1.pvec[3] + F2.pvec[3];
+    const fptype_sv P3[4] = { -V3.pvec[0], -V3.pvec[1], -V3.pvec[2], -V3.pvec[3] };
+    wV3[0] = CZERO ;
+    wV3[1] = CZERO ;
+    wV3[2] = CZERO ;
+    wV3[3] = CZERO ;
+    wV3[4] = CZERO ;
+    cxtype_sv FDQ[5] = { cxmake( -V3.pvec[0], 0. ), cxmake( -V3.pvec[1], 0. ), cxmake( -V3.pvec[2], 0. ), cxmake( -V3.pvec[3], 0. ), cxmake( fptype_sv{ 0 }, -M3 + fptype_sv{ 0 } ) };
+    fptype_sv FDN[5];
+    define_gauge_dir( FDQ, FDN );
+    const fptype_sv FDNQ = FDN[0] * FDQ[0].real() - FDN[1] * FDQ[1].real() - FDN[2] * FDQ[2].real() - FDN[3] * FDQ[3].real();
+    const int & flv_index1 = F1.flv_index;
+    const int & flv_index2 = F2.flv_index;
+    if(flv_index1 == -1 || flv_index2 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    int flv_sel = -1;
+    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
+    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
+    if(flv_sel == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
+    }
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    const cxtype_sv denom = Ccoeff * COUP / ( ( P3[0] * P3[0] ) - ( P3[1] * P3[1] ) - ( P3[2] * P3[2] ) - ( P3[3] * P3[3] ) - M3 * ( M3 - cI * W3 ) );
+    wV3[0] = denom * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] );
+    wV3[1] = denom * ( -cI ) * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] );
+    wV3[2] = denom * ( -cI ) * ( -cI * ( wF2[3] * wF1[0] ) + cI * ( wF2[2] * wF1[1] ) );
+    wV3[3] = denom * ( -cI ) * ( -wF2[2] * wF1[0] + wF2[3] * wF1[1] );
+    const cxtype_sv FDJS1 = ( FDN[0] * wV3[0] - FDN[1] * wV3[1] - FDN[2] * wV3[2] - FDN[3] * wV3[3] ) / FDNQ;
+    const cxtype_sv FDJS2 = ( FDQ[0] * wV3[0] - FDQ[1] * wV3[1] - FDQ[2] * wV3[2] - FDQ[3] * wV3[3] - cxconj( FDQ[4] ) * wV3[4] ) / FDNQ;
+    wV3[0] = wV3[0] - FDQ[0] * FDJS1 - FDN[0] * FDJS2;
+    wV3[1] = wV3[1] - FDQ[1] * FDJS1 - FDN[1] * FDJS2;
+    wV3[2] = wV3[2] - FDQ[2] * FDJS1 - FDN[2] * FDJS2;
+    wV3[3] = wV3[3] - FDQ[3] * FDJS1 - FDN[3] * FDJS2;
+    wV3[4] = wV3[4] - FDQ[4] * FDJS1 - FDN[4] * FDJS2;
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const fptype_sv P1[4] = { +V1.pvec[0], +V1.pvec[1], +V1.pvec[2], +V1.pvec[3] };
+    const fptype_sv P2[4] = { +V2.pvec[0], +V2.pvec[1], +V2.pvec[2], +V2.pvec[3] };
+    const fptype_sv P3[4] = { +V3.pvec[0], +V3.pvec[1], +V3.pvec[2], +V3.pvec[3] };
+    const cxtype_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    const cxtype_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    const cxtype_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    const cxtype_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    ( *vertex ) = Ccoeff * COUP * ( TMP1 * ( -cI * TMP2 + cI * TMP3 ) + ( TMP5 * ( +cI * TMP4 - cI * TMP6 ) + TMP7 * ( -cI * TMP8 + cI * TMP9 ) ) );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VVS1_VSV2_VSS1_0( const ALOHAOBJ  & V1,
+                         const ALOHAOBJ  & V2,
+                         const ALOHAOBJ  & V3,
+                         const fptype allCOUP1[],
+                         const double Ccoeff1,
+                         const fptype allCOUP2[],
+                         const double Ccoeff2,
+                         const fptype allCOUP3[],
+                         const double Ccoeff3,
+                         const fptype allCOUP4[],
+                         const double Ccoeff4,
+                         fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const fptype_sv P1[4] = { +V1.pvec[0], +V1.pvec[1], +V1.pvec[2], +V1.pvec[3] };
+    const fptype_sv P2[4] = { +V2.pvec[0], +V2.pvec[1], +V2.pvec[2], +V2.pvec[3] };
+    const fptype_sv P3[4] = { +V3.pvec[0], +V3.pvec[1], +V3.pvec[2], +V3.pvec[3] };
+    ( *vertex ) = cxzero_sv();
+    const cxtype_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    const cxtype_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    const cxtype_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    const cxtype_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    ( *vertex ) = ( *vertex ) + Ccoeff1 * COUP1 * ( TMP1 * ( -cI * TMP2 + cI * TMP3 ) + ( TMP5 * ( +cI * TMP4 - cI * TMP6 ) + TMP7 * ( -cI * TMP8 + cI * TMP9 ) ) );
+    ( *vertex ) = ( *vertex ) + Ccoeff2 * COUP2 * -cI * TMP1 * wV3[4];
+    ( *vertex ) = ( *vertex ) + Ccoeff3 * COUP3 * -cI * TMP5 * wV2[4];
+    ( *vertex ) = ( *vertex ) + Ccoeff4 * COUP4 * wV2[4] * wV3[4] * ( -cI * TMP8 + cI * TMP9 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0( const ALOHAOBJ  & V1,
+                                   const ALOHAOBJ  & V2,
+                                   const ALOHAOBJ  & V3,
+                                   const fptype allCOUP1[],
+                                   const double Ccoeff1,
+                                   const fptype allCOUP2[],
+                                   const double Ccoeff2,
+                                   const fptype allCOUP3[],
+                                   const double Ccoeff3,
+                                   const fptype allCOUP4[],
+                                   const double Ccoeff4,
+                                   const fptype allCOUP5[],
+                                   const double Ccoeff5,
+                                   const fptype allCOUP6[],
+                                   const double Ccoeff6,
+                                   fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP1 = C_ACCESS::kernelAccessConst( allCOUP1 );
+    const cxtype_sv COUP2 = C_ACCESS::kernelAccessConst( allCOUP2 );
+    const cxtype_sv COUP3 = C_ACCESS::kernelAccessConst( allCOUP3 );
+    const cxtype_sv COUP4 = C_ACCESS::kernelAccessConst( allCOUP4 );
+    const cxtype_sv COUP5 = C_ACCESS::kernelAccessConst( allCOUP5 );
+    const cxtype_sv COUP6 = C_ACCESS::kernelAccessConst( allCOUP6 );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const fptype_sv P1[4] = { +V1.pvec[0], +V1.pvec[1], +V1.pvec[2], +V1.pvec[3] };
+    const fptype_sv P2[4] = { +V2.pvec[0], +V2.pvec[1], +V2.pvec[2], +V2.pvec[3] };
+    const fptype_sv P3[4] = { +V3.pvec[0], +V3.pvec[1], +V3.pvec[2], +V3.pvec[3] };
+    ( *vertex ) = cxzero_sv();
+    const cxtype_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    const cxtype_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    const cxtype_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    const cxtype_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    const cxtype_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    const cxtype_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    ( *vertex ) = ( *vertex ) + Ccoeff1 * COUP1 * ( TMP1 * ( -cI * TMP2 + cI * TMP3 ) + ( TMP5 * ( +cI * TMP4 - cI * TMP6 ) + TMP7 * ( -cI * TMP8 + cI * TMP9 ) ) );
+    ( *vertex ) = ( *vertex ) + Ccoeff2 * COUP2 * -cI * TMP5 * wV2[4];
+    ( *vertex ) = ( *vertex ) + Ccoeff3 * COUP3 * wV2[4] * wV3[4] * ( -cI * TMP9 + cI * TMP8 );
+    ( *vertex ) = ( *vertex ) + Ccoeff4 * COUP4 * -cI * TMP7 * wV1[4];
+    ( *vertex ) = ( *vertex ) + Ccoeff5 * COUP5 * wV1[4] * wV3[4] * ( -cI * TMP6 + cI * TMP4 );
+    ( *vertex ) = ( *vertex ) + Ccoeff6 * COUP6 * wV1[4] * wV2[4] * ( -cI * TMP2 + cI * TMP3 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  VVS1_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const cxtype_sv TMP1 = ( wV2[0] * wV1[0] - wV2[1] * wV1[1] - wV2[2] * wV1[2] - wV2[3] * wV1[3] );
+    ( *vertex ) = Ccoeff * COUP * -cI * TMP1 * wS3[4];
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  VSV2_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const cxtype_sv TMP5 = ( wV3[0] * wV1[0] - wV3[1] * wV1[1] - wV3[2] * wV1[2] - wV3[3] * wV1[3] );
+    ( *vertex ) = Ccoeff * COUP * -cI * TMP5 * wS2[4];
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS1_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const fptype_sv P2[4] = { +S2.pvec[0], +S2.pvec[1], +S2.pvec[2], +S2.pvec[3] };
+    const fptype_sv P3[4] = { +S3.pvec[0], +S3.pvec[1], +S3.pvec[2], +S3.pvec[3] };
+    const cxtype_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    ( *vertex ) = Ccoeff * COUP * wS2[4] * wS3[4] * ( -cI * TMP8 + cI * TMP9 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  VSS2_0( const ALOHAOBJ  & V1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wV1 = W_ACCESS::kernelAccessConst( V1.w );
+    const cxtype_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const fptype_sv P2[4] = { +S2.pvec[0], +S2.pvec[1], +S2.pvec[2], +S2.pvec[3] };
+    const fptype_sv P3[4] = { +S3.pvec[0], +S3.pvec[1], +S3.pvec[2], +S3.pvec[3] };
+    const cxtype_sv TMP8 = ( P2[0] * wV1[0] - P2[1] * wV1[1] - P2[2] * wV1[2] - P2[3] * wV1[3] );
+    const cxtype_sv TMP9 = ( wV1[0] * P3[0] - wV1[1] * P3[1] - wV1[2] * P3[2] - wV1[3] * P3[3] );
+    ( *vertex ) = Ccoeff * COUP * wS2[4] * wS3[4] * ( -cI * TMP9 + cI * TMP8 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  SVV2_0( const ALOHAOBJ  & S1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const cxtype_sv TMP7 = ( wV3[0] * wV2[0] - wV3[1] * wV2[1] - wV3[2] * wV2[2] - wV3[3] * wV2[3] );
+    ( *vertex ) = Ccoeff * COUP * -cI * TMP7 * wS1[4];
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  SVS2_0( const ALOHAOBJ  & S1,
+          const ALOHAOBJ  & V2,
+          const ALOHAOBJ  & S3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wS3 = W_ACCESS::kernelAccessConst( S3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const fptype_sv P1[4] = { +S1.pvec[0], +S1.pvec[1], +S1.pvec[2], +S1.pvec[3] };
+    const fptype_sv P3[4] = { +S3.pvec[0], +S3.pvec[1], +S3.pvec[2], +S3.pvec[3] };
+    const cxtype_sv TMP4 = ( wV2[0] * P1[0] - wV2[1] * P1[1] - wV2[2] * P1[2] - wV2[3] * P1[3] );
+    const cxtype_sv TMP6 = ( wV2[0] * P3[0] - wV2[1] * P3[1] - wV2[2] * P3[2] - wV2[3] * P3[3] );
+    ( *vertex ) = Ccoeff * COUP * wS1[4] * wS3[4] * ( -cI * TMP6 + cI * TMP4 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Compute the output amplitude 'vertex' from the input wavefunctions 
+  template<class W_ACCESS, class A_ACCESS, class C_ACCESS>
+  __device__ void
+  SSV3_0( const ALOHAOBJ  & S1,
+          const ALOHAOBJ  & S2,
+          const ALOHAOBJ  & V3,
+          const fptype allCOUP[],
+          const double Ccoeff,
+          fptype allvertexes[] )
+  {
+    mgDebug( 0, __FUNCTION__ );
+    const cxtype_sv* wS1 = W_ACCESS::kernelAccessConst( S1.w );
+    const cxtype_sv* wS2 = W_ACCESS::kernelAccessConst( S2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    const cxtype_sv COUP = C_ACCESS::kernelAccessConst( allCOUP );
+    cxtype_sv* vertex = A_ACCESS::kernelAccess( allvertexes );
+    cxtype_sv CZERO=cxzero_sv(); 
+    const cxtype cI = cxmake( 0., 1. );
+    const fptype_sv P1[4] = { +S1.pvec[0], +S1.pvec[1], +S1.pvec[2], +S1.pvec[3] };
+    const fptype_sv P2[4] = { +S2.pvec[0], +S2.pvec[1], +S2.pvec[2], +S2.pvec[3] };
+    const cxtype_sv TMP2 = ( wV3[0] * P1[0] - wV3[1] * P1[1] - wV3[2] * P1[2] - wV3[3] * P1[3] );
+    const cxtype_sv TMP3 = ( wV3[0] * P2[0] - wV3[1] * P2[1] - wV3[2] * P2[2] - wV3[3] * P2[3] );
+    ( *vertex ) = Ccoeff * COUP * wS1[4] * wS2[4] * ( -cI * TMP2 + cI * TMP3 );
+    mgDebug( 1, __FUNCTION__ );
+    return;
+  }
+
+  //--------------------------------------------------------------------------
+
+} // end namespace
+
+#endif // HelAmps_sm_H
