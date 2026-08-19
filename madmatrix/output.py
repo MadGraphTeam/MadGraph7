@@ -217,7 +217,6 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     template_Sub_make = pjoin(ProcessExporterMadMatrix.madmatrix_templates, 'madmatrix_standalone.mk')
 
     # Standalone-only template files needed to build check_sa.exe
-     symlinked into every P1_*/.
     _standalone_extra_files = ['check_sa.cc', 'nvtx.h', 'timer.h', 'timermap.h']
 
     from_template = dict(ProcessExporterMadMatrix.from_template)
