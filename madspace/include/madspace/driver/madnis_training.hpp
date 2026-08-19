@@ -128,7 +128,7 @@ private:
         double learning_rate,
         bool buffered
     );
-    void drop_channels();
+    void drop_channels(std::size_t batch);
     void freeze_cwnet();
 
     ContextPtr _generator_context;
@@ -158,6 +158,7 @@ private:
     std::vector<std::size_t> _arg_permutation;
     bool _buffer_ready = false;
     std::vector<std::size_t> _active_flavors_count;
+    std::size_t _diverged_batch_count = 0;
 };
 
 class MultiMadnisTraining {

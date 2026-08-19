@@ -138,6 +138,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("elu", &FunctionBuilder::elu, py::arg("in1"));
     fb.def("gelu", &FunctionBuilder::gelu, py::arg("in1"));
     fb.def("sigmoid", &FunctionBuilder::sigmoid, py::arg("in1"));
+    fb.def("scaled_tanh", &FunctionBuilder::scaled_tanh, py::arg("in"));
     fb.def("softplus", &FunctionBuilder::softplus, py::arg("in1"));
     fb.def("rqs_reshape", &FunctionBuilder::rqs_reshape, py::arg("input"), py::arg("bin_count"));
     fb.def("rqs_find_bin", &FunctionBuilder::rqs_find_bin, py::arg("input"), py::arg("in_sizes"), py::arg("out_sizes"), py::arg("derivatives"));

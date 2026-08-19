@@ -552,6 +552,10 @@ Value sigmoid(Value in1) {
     return instruction("sigmoid", {in1})[0];
 }
 
+Value scaled_tanh(Value in) {
+    return instruction("scaled_tanh", {in})[0];
+}
+
 Value softplus(Value in1) {
     return instruction("softplus", {in1})[0];
 }

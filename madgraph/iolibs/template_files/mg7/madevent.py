@@ -551,7 +551,7 @@ class MadgraphProcess:
             config.gpu_generator_batch_granularity = madnis_args["gpu_generator_batch_granularity"]
             config.generator_target_size_factor = madnis_args["generator_target_size_factor"]
             config.batch_size_offset = madnis_args["batch_size_offset"]
-            config.batch_size_per_channel = madnis_args["batch_size_per_channel"]
+            config.batch_size_per_channel = subproc.madnis_settings["batch_size_per_channel"]
             config.uniform_channel_ratio = madnis_args["uniform_channel_ratio"]
             config.lr_schedule = madnis_args["lr_scheduler"]
             config.adam_beta1 = madnis_args["adam_beta1"]
@@ -563,7 +563,7 @@ class MadgraphProcess:
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
             config.buffered_steps = madnis_args["buffered_steps"]
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
-            config.fixed_cwnet_fraction = madnis_args["fixed_cwnet_fraction"]
+            config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
             config.softclip_threshold = madnis_args["softclip_threshold"]
             config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
             phasespace = subproc.build_madnis(phasespace)
@@ -1550,6 +1550,9 @@ class MadgraphSubprocess:
             enable = rsd > 10. or n_events > 1000000 or is_gridpack
         else:
             enable = True
+        fixed_cwnet_fraction = max(0.33, 1.0 - 10000. / train_batches)
+        batch_size_per_channel = min(max(int((7 * rsd) / 32) * 32 + 64, 128), 512)
+
         self.madnis_settings = {
             "enable": enable,
             "flow_layers": flow_layers,
@@ -1558,6 +1561,8 @@ class MadgraphSubprocess:
             "cwnet_hidden_dim": hidden_dim,
             "train_batches": train_batches,
             "lr": lr,
+            "fixed_cwnet_fraction": fixed_cwnet_fraction,
+            "batch_size_per_channel": batch_size_per_channel,
         }
         for key, value in self.madnis_settings.items():
             run_card_value = madnis_args[key]

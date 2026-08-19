@@ -92,7 +92,7 @@ void MadnisTraining::train_step(std::size_t batch_index) {
         while ((job_ids = gen_thread_pool.wait_multiple()).size() != 0) {
             process_job_results(job_ids);
         }
-        drop_channels();
+        drop_channels(batch_index + 1);
     }
     if (batch_index ==
         static_cast<std::size_t>(
@@ -662,7 +662,12 @@ void MadnisTraining::update_history(
     Tensor variances_cpu = results.at(2).cpu();
     double loss = loss_cpu.view<double, 1>()[0];
     if (loss > 1e6) {
-        throw std::runtime_error("MadNIS training diverged. Please restart");
+        ++_diverged_batch_count;
+        if (_diverged_batch_count > 10) {
+            throw std::runtime_error("MadNIS training diverged. Please restart");
+        }
+    } else {
+        _diverged_batch_count = 0;
     }
     if (_loss_history.size() < _config.log_interval) {
         _loss_history.push_back(loss);
@@ -697,7 +702,7 @@ void MadnisTraining::update_history(
     }
 }
 
-void MadnisTraining::drop_channels() {
+void MadnisTraining::drop_channels(std::size_t batch) {
     std::vector<double> abs_means;
     abs_means.reserve(_channels.size());
     double abs_mean_sum = 0.;
@@ -724,10 +729,11 @@ void MadnisTraining::drop_channels() {
     auto mask_view = active_mask.view<double, 2>()[0];
 
     double drop_sum = 0.;
+    double drop_threshold = _config.channel_dropping_threshold * std::min(1000. / batch, 1.);
     std::size_t drop_count = 0;
     for (std::size_t chan_index : indices) {
         drop_sum += abs_means.at(chan_index);
-        if (drop_sum / abs_mean_sum > _config.channel_dropping_threshold) {
+        if (drop_sum / abs_mean_sum > drop_threshold) {
             break;
         }
         auto& channel = _channels.at(chan_index);

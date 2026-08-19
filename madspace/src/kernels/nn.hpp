@@ -92,6 +92,21 @@ KERNELSPEC void backward_kernel_softplus(
 }
 
 template <typename T>
+KERNELSPEC void kernel_scaled_tanh(FIn<T, 0> input, FOut<T, 0> output) {
+    FVal<T> x(input);
+    output = 4. * tanh(x / 4.);
+}
+
+template <typename T>
+KERNELSPEC void backward_kernel_scaled_tanh(
+    FIn<T, 0> output, FIn<T, 0> output_grad, FOut<T, 0> input_grad
+) {
+    FVal<T> g(output_grad);
+    FVal<T> y_scaled = output / 4.;
+    input_grad = g * (1. - y_scaled) * (1. + y_scaled);
+}
+
+template <typename T>
 KERNELSPEC FVal<T> fastexp(FVal<T> x) {
     auto xx = x / 16;
     auto y = 0.5 * (xx + sqrt(xx * xx + 4));

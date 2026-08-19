@@ -2385,6 +2385,19 @@ sigmoid:
   dims: 0
   differentiable: True
 
+scaled_tanh:
+  inputs:
+    - name: in
+      type: [float, ...]
+      desc:
+  outputs:
+    - name: out
+      type: [float, ...]
+      backward_arg: True
+      desc:
+  dims: 0
+  differentiable: True
+
 softplus:
   inputs:
     - name: in1

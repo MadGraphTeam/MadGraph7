@@ -6577,7 +6577,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'train_batches', 1000)
         self.add_toml_param('madnis', 'log_interval', 100)
         self.add_toml_param('madnis', 'batch_size_offset', 512)
-        self.add_toml_param('madnis', 'batch_size_per_channel', 128)
+        self.add_toml_param('madnis', 'batch_size_per_channel', 128, auto=True)
         self.add_toml_param('madnis', 'generator_target_size_factor', 32)
         self.add_toml_param('madnis', 'gpu_generator_batch_granularity', 1000)
         self.add_toml_param('madnis', 'lr', 3e-4, auto=True)
@@ -6604,7 +6604,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'batch_size_threshold', 0.5)
         self.add_toml_param('madnis', 'channel_grouping_mode', "uniform",
             allowed=['none', 'uniform', 'learned'])
-        self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33)
+        self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True)
         self.add_toml_param('madnis', 'softclip_threshold', 30.0)
         self.add_toml_param('madnis', 'compressed_channel_weight_count', 50)
 
