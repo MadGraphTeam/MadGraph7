@@ -16,7 +16,7 @@
 #include <iomanip>
 #include <iostream>
 
-using namespace madgraph;
+using namespace madmatrix;
 
 #ifndef MGONGPU_HARDCODE_PARAM
 

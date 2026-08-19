@@ -26,7 +26,7 @@
 #include "color_sum.h"
 #include "ColorData.h"
 
-namespace madgraph
+namespace madmatrix
 {
   using namespace ProcessData;
   using namespace ProcessTables;

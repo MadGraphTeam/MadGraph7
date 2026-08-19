@@ -58,7 +58,7 @@
 
 namespace
 {
-  using namespace madgraph;
+  using namespace madmatrix;
 
   // Fixed physics inputs
   fptype kEnergy = 1500.;                  // Ecms = 1.5 TeV and changed for the matrix mode to 1TeV

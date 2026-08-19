@@ -18,7 +18,7 @@
 #include <array>
 #include <utility>
 
-using namespace madgraph;
+using namespace madmatrix;
 
 namespace
 {
@@ -347,7 +347,7 @@ extern "C"
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
 
-    std::size_t n_coup = madgraph::Parameters_dependentCouplings::ndcoup;
+    std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
     std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},

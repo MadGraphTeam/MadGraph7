@@ -14,7 +14,7 @@
 #include "ProcessData.h"
 #include "GpuAbstraction.h"
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 

@@ -13,7 +13,7 @@
 
 #include <vector>
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 

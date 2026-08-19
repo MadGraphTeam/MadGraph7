@@ -12,8 +12,8 @@
 #include <algorithm>
 #include <cmath>
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   //==========================================================================
 
@@ -46,6 +46,6 @@ namespace madgraph
 
   //==========================================================================
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MGONGPUFPTYPES_H

@@ -15,7 +15,7 @@
 #include "mgOnGpuCxtypes.h" // for cxtype, fptype_sv
 #include "GpuAbstraction.h" // for gpuBlasHandle_t, gpuStream_t
 
-namespace madgraph
+namespace madmatrix
 {
   __global__ void
   computeDependentCouplings( const fptype* allgs,

@@ -73,7 +73,7 @@ namespace mgOnGpu /* clang-format off */
 using mgOnGpu::cxsmpl;
 
 // Printout to stream for user defined types
-namespace madgraph
+namespace madmatrix
 {
   template<typename FP>
   inline __host__ std::ostream&
@@ -202,7 +202,7 @@ namespace madgraph
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) TYPEDEFS
 //==========================================================================
 
-namespace madgraph
+namespace madmatrix
 {
   // --- Type definitions (complex type: cxtype)
 #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
@@ -223,7 +223,7 @@ namespace madgraph
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) FUNCTIONS AND OPERATORS
 //==========================================================================
 
-namespace madgraph
+namespace madmatrix
 {
 #if defined MGONGPU_CPPCXTYPE_CXSMPL
 
@@ -331,14 +331,14 @@ namespace madgraph
     return cxmake( c.real(), c.imag() );
   }
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 //==========================================================================
 // COMPLEX TYPES: WRAPPER OVER RI FLOATING POINT PAIR (cxtype_ref)
 //==========================================================================
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]
   // It used to be included in the code only when MGONGPU_HAS_CPPCXTYPEV_BRK (originally MGONGPU_HAS_CPPCXTYPE_REF) is defined
@@ -373,7 +373,7 @@ namespace madgraph
     return out;
   }
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 //==========================================================================
 

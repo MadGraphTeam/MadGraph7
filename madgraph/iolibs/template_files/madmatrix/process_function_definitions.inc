@@ -19,7 +19,7 @@
 // physics-parameter/coupling setup (initProc), and the flavor accessor.
 //==========================================================================
 
-namespace madgraph
+namespace madmatrix
 {
   using namespace ProcessData;
   using namespace ProcessTables;

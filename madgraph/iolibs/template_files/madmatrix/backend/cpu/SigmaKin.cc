@@ -28,7 +28,7 @@
 #include <cassert>
 #include <cstring>
 
-namespace madgraph
+namespace madmatrix
 {
   using namespace ProcessData;
   using namespace ProcessTables;

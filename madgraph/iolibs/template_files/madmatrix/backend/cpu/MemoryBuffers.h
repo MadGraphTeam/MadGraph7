@@ -16,7 +16,7 @@
 
 #include <sstream>
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 

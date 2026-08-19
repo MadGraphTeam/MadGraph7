@@ -13,8 +13,8 @@
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   //----------------------------------------------------------------------------
 
@@ -202,21 +202,21 @@ namespace madgraph
           //static bool first=true; if( first ){ std::cout << "WARNING! assume aligned AOSOA, skip check" << std::endl; first=false; } // SLOWER (5.06E6)
           // FASTEST? (5.09E6 in eemumu 512y)
           // This assumes alignment for momenta1d without checking - causes segmentation fault in reinterpret_cast if not aligned!
-          return madgraph::fptypevFromAlignedArray( out ); // use reinterpret_cast
+          return madmatrix::fptypevFromAlignedArray( out ); // use reinterpret_cast
         }
         else if( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 )
         {
           //static bool first=true; if( first ){ std::cout << "WARNING! aligned AOSOA, reinterpret cast" << std::endl; first=false; } // SLOWER (5.00E6)
           // DEFAULT! A tiny bit (<1%) slower because of the alignment check (5.07E6 in eemumu 512y)
           // This explicitly checks buffer alignment to avoid segmentation faults in reinterpret_cast
-          return madgraph::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
+          return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
         }
         else
         {
           //static bool first=true; if( first ){ std::cout << "WARNING! AOSOA but no reinterpret cast" << std::endl; first=false; } // SLOWER (4.93E6)
           // A bit (1%) slower (5.05E6 in eemumu 512y)
           // This does not require buffer alignment, but it requires AOSOA with neppM>=neppV and neppM%neppV==0
-          return madgraph::fptypevFromUnalignedArray( out ); // SIMD bulk load of neppV, do not use reinterpret_cast (fewer SIMD operations)
+          return madmatrix::fptypevFromUnalignedArray( out ); // SIMD bulk load of neppV, do not use reinterpret_cast (fewer SIMD operations)
         }
       }
       else
@@ -228,7 +228,7 @@ namespace madgraph
         auto decoderIeppv = [buffer, ip4, ipar]( int ieppV )
           -> const fptype&
         { return MemoryAccessMomenta::ieventAccessIp4IparConst( buffer, ievt0 + ieppV, ip4, ipar ); };
-        return madgraph::fptypevFromArbitraryArray( decoderIeppv ); // iterate over ieppV in neppV (no SIMD)
+        return madmatrix::fptypevFromArbitraryArray( decoderIeppv ); // iterate over ieppV in neppV (no SIMD)
       }
     }
 
@@ -248,6 +248,6 @@ namespace madgraph
 
   //----------------------------------------------------------------------------
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MemoryAccessMomenta_H

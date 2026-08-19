@@ -31,8 +31,8 @@
 
 #define XTESTID( s ) TESTID( s )
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
 #ifdef MGONGPU_CPPSIMD /* clang-format off */
 #define EXPECT_TRUE_sv( cond ) { bool_v mask( cond ); EXPECT_TRUE( maskand( mask ) ); }
@@ -61,7 +61,7 @@ namespace madgraph
 
 TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
 {
-  using namespace madgraph;
+  using namespace madmatrix;
 
   //--------------------------------------------------------------------------
 

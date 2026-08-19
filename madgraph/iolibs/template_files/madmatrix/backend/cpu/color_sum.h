@@ -13,7 +13,7 @@
 
 #include "ProcessData.h"
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 

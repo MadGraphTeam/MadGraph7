@@ -79,7 +79,7 @@ debug_me_is_abnormal( const fptype& me, size_t ievtALL )
 
 //============================================================================
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 
@@ -183,7 +183,7 @@ namespace madgraph
 
 //============================================================================
 
-namespace madgraph
+namespace madmatrix
 {
 
   /*

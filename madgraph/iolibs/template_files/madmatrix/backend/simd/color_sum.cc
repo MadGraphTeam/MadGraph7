@@ -11,7 +11,7 @@
 #include "ColorData.h" // P1-generated: colorMatrix/colorDenom, channel/config maps
 #include "MemoryAccessMatrixElements.h"
 
-namespace madgraph
+namespace madmatrix
 {
   using namespace ColorMatrixData; // colorMatrix, colorDenom, ncolor
 

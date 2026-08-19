@@ -14,7 +14,7 @@
 #include "mgOnGpuConfig.h"
 #include "mgOnGpuCxtypes.h" // for cxtype
 
-namespace madgraph
+namespace madmatrix
 {
   __global__ void
   computeDependentCouplings( const fptype* allgs,

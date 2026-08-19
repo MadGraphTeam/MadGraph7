@@ -32,8 +32,8 @@
 //#undef MGONGPU_HAS_CPPCXTYPEV_BRK // gcc test (very slightly slower? issue #172)
 #endif
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
 #ifdef MGONGPU_CPPSIMD
 
@@ -152,8 +152,8 @@ namespace madgraph
 
 //==========================================================================
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
 #ifndef MGONGPUCPP_GPUIMPL
 
@@ -919,6 +919,6 @@ namespace madgraph
 
   //==========================================================================
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MGONGPUVECTORS_H

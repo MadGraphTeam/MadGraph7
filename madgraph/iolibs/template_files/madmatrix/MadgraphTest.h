@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-using madgraph::CPPProcess;
+using madmatrix::CPPProcess;
 
 namespace
 {
