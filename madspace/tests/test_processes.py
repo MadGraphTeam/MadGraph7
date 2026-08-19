@@ -11,6 +11,7 @@ import madspace as ms
 
 BATCH_SIZE = 1000
 CM_ENERGY = 13000.0
+INVARIANT_POWER = 0.2
 rng = np.random.default_rng(1234)
 
 
@@ -45,7 +46,10 @@ def mapping(process):
     )
     topology = ms.Topology(diagram)
     return ms.PhaseSpaceMapping(
-        topology, CM_ENERGY, permutations=process["permutations"]
+        topology,
+        CM_ENERGY,
+        permutations=process["permutations"],
+        invariant_power=INVARIANT_POWER,
     )
 
 
@@ -57,6 +61,33 @@ def masses(process):
 @pytest.fixture
 def permutation_count(process):
     return len(process["permutations"])
+
+
+@pytest.fixture
+def mapping_with_propagators(process):
+    # assign a distinct nonzero pdg_id to each distinct nonzero propagator
+    # mass, so returned propagators can be mapped back to a mass
+    mass_by_pid = {}
+    propagators = []
+    for mass, width in process["propagators"]:
+        pid = 0
+        if mass != 0.0:
+            pid = next((p for p, m in mass_by_pid.items() if m == mass), None)
+            if pid is None:
+                pid = len(mass_by_pid) + 1
+                mass_by_pid[pid] = mass
+        propagators.append(ms.Propagator(mass, width, 0, 0.0, 0.0, pid))
+    diagram = ms.Diagram(
+        process["incoming_masses"],
+        process["outgoing_masses"],
+        propagators,
+        process["vertices"],
+    )
+    topology = ms.Topology(diagram)
+    mapping = ms.PhaseSpaceMapping(
+        topology, CM_ENERGY, return_invariants=True, invariant_power=INVARIANT_POWER
+    )
+    return mapping, mass_by_pid
 
 
 def test_process_masses(mapping, masses, permutation_count):
@@ -121,3 +152,44 @@ def test_process_inverse(mapping, masses, permutation_count):
     r_inv, det_inv = mapping.map_inverse(map_out, condition)
     assert r_inv == approx(r, abs=1e-3, rel=1e-3)
     assert det_inv == approx(1 / det, rel=1e-3)
+
+
+def test_process_propagators(mapping_with_propagators):
+    mapping, mass_by_pid = mapping_with_propagators
+    r = rng.random((BATCH_SIZE, mapping.random_dim()))
+    result = mapping.map_forward([r])
+
+    p_ext = result.momenta
+    n_ext = p_ext.shape[1]
+    # momentum_mask bit i always selects p_ext[:, i]; incoming particles (bits
+    # 0 and 1) enter with a flipped sign, since a propagator's momentum is the
+    # incoming momentum minus whatever outgoing momenta have already branched
+    # off. Squaring removes the resulting overall sign ambiguity.
+    signs = np.where(np.arange(n_ext) < 2, -1.0, 1.0)
+
+    # pid and momentum mask are diagram-level constants, broadcast over the batch
+    pids_and_masks = result.invariant_pids_and_masks[0]
+    invariants = result.invariant_masses
+    virtualities = result.invariant_virtualities
+
+    for i, pid_and_mask in enumerate(pids_and_masks):
+        pid = int(pid_and_mask) >> 16
+        momentum_mask = int(pid_and_mask) & 0xFFFF
+
+        bits = ((momentum_mask >> np.arange(n_ext)) & 1).astype(bool)
+        p_sum = np.where(bits[None, :, None], signs[None, :, None] * p_ext, 0.0).sum(
+            axis=1
+        )
+
+        invariant_from_momenta = p_sum[:, 0] ** 2 - np.sum(p_sum[:, 1:] ** 2, axis=1)
+        assert invariant_from_momenta == approx(invariants[:, i], rel=1e-5, abs=1e-5)
+
+        if pid == 0:
+            # pid == 0 stands for a massless particle (or an unused slot), so
+            # mass == 0 and virtuality == invariant
+            assert invariants[:, i] == approx(virtualities[:, i], rel=1e-5, abs=1e-5)
+        else:
+            virtuality_from_mass = invariant_from_momenta - mass_by_pid[pid] ** 2
+            assert virtuality_from_mass == approx(
+                virtualities[:, i], rel=1e-5, abs=1e-5
+            )

@@ -152,6 +152,15 @@ inline IVec operator-(IVec arg1) { return vnegq_s64(arg1); }
 inline IVec operator+(IVec arg1, IVec arg2) { return vaddq_s64(arg1, arg2); }
 inline IVec operator-(IVec arg1, IVec arg2) { return vsubq_s64(arg1, arg2); }
 
+inline IVec operator&(IVec arg1, IVec arg2) { return vandq_s64(arg1, arg2); }
+inline IVec operator|(IVec arg1, IVec arg2) { return vorrq_s64(arg1, arg2); }
+inline IVec operator^(IVec arg1, IVec arg2) { return veorq_s64(arg1, arg2); }
+inline IVec operator~(IVec arg1) { return veorq_s64(arg1, vdupq_n_s64(-1)); }
+inline IVec operator<<(IVec arg1, IVec arg2) { return vshlq_s64(arg1, arg2); }
+inline IVec operator>>(IVec arg1, IVec arg2) {
+    return vshlq_s64(arg1, vnegq_s64(arg2));
+}
+
 inline BVec isnan(FVec arg) { return arg != arg; }
 
 inline FVec sqrt(FVec arg1) { return Sleef_sqrtd2_u05(arg1); }

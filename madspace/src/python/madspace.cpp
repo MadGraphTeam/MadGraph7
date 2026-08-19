@@ -410,10 +410,11 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<Invariant, Mapping>(m, "Invariant")
         .def(
-            py::init<double, double, double>(),
+            py::init<double, double, double, bool>(),
             py::arg("power") = 0.,
             py::arg("mass") = 0.,
-            py::arg("width") = 0.
+            py::arg("width") = 0.,
+            py::arg("return_virtuality") = false
         );
 
     py::classh<Luminosity, Mapping>(m, "Luminosity")
@@ -715,7 +716,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                bool>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -723,7 +725,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = std::vector<Topology>{},
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            py::arg("return_invariants") = false
         )
         .def(
             py::init<
@@ -733,19 +736,23 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                bool>(),
             py::arg("masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            py::arg("return_invariants") = false
         )
         .def("random_dim", &PhaseSpaceMapping::random_dim)
         .def("discrete_dim", &PhaseSpaceMapping::discrete_dim)
         .def("particle_count", &PhaseSpaceMapping::particle_count)
-        .def("channel_count", &PhaseSpaceMapping::channel_count);
+        .def("channel_count", &PhaseSpaceMapping::channel_count)
+        .def("return_invariants", &PhaseSpaceMapping::return_invariants)
+        .def("invariant_count", &PhaseSpaceMapping::invariant_count);
 
     py::classh<MultiChannelFunction, FunctionGenerator>(m, "MultiChannelFunction")
         .def(
@@ -767,6 +774,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"helicity_in", MatrixElement::helicity_in},
             {"diagram_in", MatrixElement::diagram_in},
             {"channel_in", MatrixElement::channel_in},
+            {"invariant_count_in", MatrixElement::invariant_count_in},
+            {"invariant_pids_and_masks_in", MatrixElement::invariant_pids_and_masks_in},
+            {"invariant_masses_in", MatrixElement::invariant_masses_in},
+            {"invariant_virtualities_in", MatrixElement::invariant_virtualities_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
@@ -788,28 +799,33 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
                 std::size_t,
-                bool>(),
+                bool,
+                std::size_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
             py::arg("inputs"),
             py::arg("outputs"),
             py::arg("diagram_count") = 1,
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            py::arg("invariant_count") = 0
         )
         .def(
             py::init<
                 const MatrixElementApi&,
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
-                bool>(),
+                bool,
+                std::size_t>(),
             py::arg("matrix_element_api"),
             py::arg("inputs"),
             py::arg("outputs"),
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            py::arg("invariant_count") = 0
         )
         .def("matrix_element_index", &MatrixElement::diagram_count)
         .def("diagram_count", &MatrixElement::diagram_count)
-        .def("particle_count", &MatrixElement::particle_count);
+        .def("particle_count", &MatrixElement::particle_count)
+        .def("invariant_count", &MatrixElement::invariant_count);
 
     py::classh<MLP, FunctionGenerator> mlp(m, "MLP");
     add_enum<MLP::Activation>(

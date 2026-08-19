@@ -72,6 +72,7 @@ public:
         double e_min;
         double e_max;
         int pdg_id;
+        int momentum_mask;
         bool on_shell;
         bool on_shell_boundary;
     };

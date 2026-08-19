@@ -6539,6 +6539,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('phasespace', 'simplified_channel_count', 10)
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
+        self.add_toml_param('phasespace', 'pass_invariants_to_matrix_element', False)
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False)

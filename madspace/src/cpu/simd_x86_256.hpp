@@ -198,6 +198,15 @@ inline IVec operator-(IVec arg1) {
 inline IVec operator+(IVec arg1, IVec arg2) { return _mm256_add_epi32(arg1, arg2); }
 inline IVec operator-(IVec arg1, IVec arg2) { return _mm256_sub_epi32(arg1, arg2); }
 
+inline IVec operator&(IVec arg1, IVec arg2) { return _mm256_and_si256(arg1, arg2); }
+inline IVec operator|(IVec arg1, IVec arg2) { return _mm256_or_si256(arg1, arg2); }
+inline IVec operator^(IVec arg1, IVec arg2) { return _mm256_xor_si256(arg1, arg2); }
+inline IVec operator~(IVec arg1) {
+    return _mm256_xor_si256(arg1, _mm256_cmpeq_epi64(arg1, arg1));
+}
+inline IVec operator<<(IVec arg1, IVec arg2) { return _mm256_sllv_epi64(arg1, arg2); }
+inline IVec operator>>(IVec arg1, IVec arg2) { return _mm256_srlv_epi64(arg1, arg2); }
+
 inline BVec isnan(FVec arg) { return arg != arg; }
 
 inline FVec sqrt(FVec arg1) { return Sleef_sqrtd4_u05avx2(arg1); }

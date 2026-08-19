@@ -2,6 +2,7 @@
 
 #include "madspace/util.hpp"
 
+#include <algorithm>
 #include <set>
 
 using namespace madspace;
@@ -207,6 +208,9 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     auto acc_float_array = [](int n) {
         return Type(DataType::dt_float, acc_batch_size, {n});
     };
+    auto acc_int_array = [](int n) {
+        return Type(DataType::dt_int, acc_batch_size, {n});
+    };
     auto acc_four_vec_array = [](int n) {
         return Type(DataType::dt_float, acc_batch_size, {n, 4});
     };
@@ -242,6 +246,12 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     }
     ret.push_back("x1_acc", acc_float);
     ret.push_back("x2_acc", acc_float);
+    if (_mapping.return_invariants()) {
+        int invariant_count = static_cast<int>(_mapping.invariant_count());
+        ret.push_back("invariant_pids_and_masks_acc", acc_int_array(invariant_count));
+        ret.push_back("invariant_masses_acc", acc_float_array(invariant_count));
+        ret.push_back("invariant_virtualities_acc", acc_float_array(invariant_count));
+    }
     ret.push_back("flavor_id", acc_int);
     ret.push_back("weight_after_cuts", acc_float);
     if (_madnis_training && !std::holds_alternative<std::monostate>(_discrete_after)) {
@@ -377,6 +387,16 @@ NamedVector<Value> Integrand::build_channel_part(
     std::array<Value, 2> x_acc{
         {fb.batch_gather(indices_acc, x0), fb.batch_gather(indices_acc, x1)}
     };
+    Value invariant_pids_and_masks_acc, invariant_masses_acc,
+        invariant_virtualities_acc;
+    if (_mapping.return_invariants()) {
+        invariant_pids_and_masks_acc =
+            fb.batch_gather(indices_acc, mapping_result["invariant_pids_and_masks"]);
+        invariant_masses_acc =
+            fb.batch_gather(indices_acc, mapping_result["invariant_masses"]);
+        invariant_virtualities_acc =
+            fb.batch_gather(indices_acc, mapping_result["invariant_virtualities"]);
+    }
     for (auto& cond : flow_conditions) {
         cond = fb.batch_gather(indices_acc, cond);
     }
@@ -529,6 +549,11 @@ NamedVector<Value> Integrand::build_channel_part(
     }
     out.push_back("x1_acc", x_acc.at(0));
     out.push_back("x2_acc", x_acc.at(1));
+    if (_mapping.return_invariants()) {
+        out.push_back("invariant_pids_and_masks_acc", invariant_pids_and_masks_acc);
+        out.push_back("invariant_masses_acc", invariant_masses_acc);
+        out.push_back("invariant_virtualities_acc", invariant_virtualities_acc);
+    }
     out.push_back("flavor_id", flavor_id);
     out.push_back("weight_after_cuts", weight_after_cuts);
     if (_madnis_training && extra_weight_after_cuts) {
@@ -597,6 +622,22 @@ NamedVector<Value> Integrand::build_common_part(
         momenta_acc,
         _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
     };
+    if (_mapping.return_invariants()) {
+        // only forward the invariant data if the matrix element actually
+        // declared inputs for it
+        auto external_inputs = _diff_xs.matrix_element().external_inputs();
+        bool wants_invariants =
+            std::find(
+                external_inputs.begin(),
+                external_inputs.end(),
+                MatrixElement::invariant_pids_and_masks_in
+            ) != external_inputs.end();
+        if (wants_invariants) {
+            xs_args.push_back(args.at("invariant_pids_and_masks_acc"));
+            xs_args.push_back(args.at("invariant_masses_acc"));
+            xs_args.push_back(args.at("invariant_virtualities_acc"));
+        }
+    }
     xs_args.push_back(x1_acc);
     xs_args.push_back(x2_acc);
     xs_args.push_back(flavor_id);

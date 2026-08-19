@@ -72,6 +72,7 @@ flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
 simplified_channel_count = %(phasespace.simplified_channel_count)s
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
+pass_invariants_to_matrix_element = %(phasespace.pass_invariants_to_matrix_element)s
 
 [multiparticles]
 $multiparticles

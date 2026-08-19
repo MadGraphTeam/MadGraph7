@@ -130,7 +130,7 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
 `generation.freeze_max_weight_after`, `generation.max_overweight_truncation`,
 `generation.cut_efficiency_threshold`, `generation.max_cut_repetitions`,
 all of `[vegas]`, `phasespace.{mode,t_channel,flat_mode,invariant_power,
-simplified_channel_count,decays}`, all of `[madnis]`.
+simplified_channel_count,decays,pass_invariants_to_matrix_element}`, all of `[madnis]`.
 
 ---
 

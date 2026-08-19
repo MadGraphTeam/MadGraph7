@@ -8,7 +8,8 @@ MatrixElement::MatrixElement(
     const std::vector<MatrixElementInput>& inputs,
     const std::vector<MatrixElementOutput>& outputs,
     std::size_t diagram_count,
-    bool sample_random_inputs
+    bool sample_random_inputs,
+    std::size_t invariant_count
 ) :
     FunctionGenerator(
         "MatrixElement",
@@ -52,6 +53,24 @@ MatrixElement::MatrixElement(
                     break;
                 case channel_in:
                     arg_types.push_back("channel", batch_int);
+                    break;
+                case invariant_count_in:
+                    // host constant, not a graph value; see build_function_impl
+                    break;
+                case invariant_pids_and_masks_in:
+                    arg_types.push_back(
+                        "invariant_pids_and_masks", batch_int_array(invariant_count)
+                    );
+                    break;
+                case invariant_masses_in:
+                    arg_types.push_back(
+                        "invariant_masses", batch_float_array(invariant_count)
+                    );
+                    break;
+                case invariant_virtualities_in:
+                    arg_types.push_back(
+                        "invariant_virtualities", batch_float_array(invariant_count)
+                    );
                     break;
                 default:
                     throw std::invalid_argument("unknown input type");
@@ -148,11 +167,25 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case channel_in:
             input_key = UMAMI_IN_CHANNEL_INDEX;
             break;
+        case invariant_count_in:
+            input_key = UMAMI_IN_INVARIANT_COUNT;
+            break;
+        case invariant_pids_and_masks_in:
+            input_key = UMAMI_IN_INVARIANT_PIDS_AND_MASKS;
+            break;
+        case invariant_masses_in:
+            input_key = UMAMI_IN_INVARIANT_MASSES;
+            break;
+        case invariant_virtualities_in:
+            input_key = UMAMI_IN_INVARIANT_VIRTUALITIES;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));
-        if (_sample_random_inputs &&
-            (input == random_color_in || input == random_helicity_in ||
-             input == random_diagram_in)) {
+        if (input == invariant_count_in) {
+            matrix_args.push_back(static_cast<me_int_t>(invariant_count()));
+        } else if (_sample_random_inputs &&
+                   (input == random_color_in || input == random_helicity_in ||
+                    input == random_diagram_in)) {
             matrix_args.push_back(random.at(random_index));
             ++random_index;
         } else {
@@ -191,6 +224,11 @@ NamedVector<Value> MatrixElement::build_function_impl(
 std::vector<MatrixElement::MatrixElementInput> MatrixElement::external_inputs() const {
     std::vector<MatrixElement::MatrixElementInput> ret;
     for (auto input : _inputs) {
+        // invariant_count_in is a host constant (see build_function_impl), not
+        // supplied as an external graph value
+        if (input == invariant_count_in) {
+            continue;
+        }
         if (!_sample_random_inputs ||
             (input != random_color_in && input != random_helicity_in &&
              input != random_diagram_in)) {

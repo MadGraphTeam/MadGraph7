@@ -93,10 +93,24 @@ typedef enum {
     UMAMI_IN_DIAGRAM_INDEX,
     /** externally selected channel index, type: `unsigned int`, shape: `()` */
     UMAMI_IN_CHANNEL_INDEX,
+    /** single integer specifying the number of invariants passed to the matrix element,
+     * type: `unsigned int` */
+    UMAMI_IN_INVARIANT_COUNT,
+    /** upper 16 bits: 0 if massless invariant was sampled, otherwise PDG ID of the
+     * propagator. Lower 16 bits: binary mask specifying the external momenta entering
+     * the invariant, where the incoming momenta contribute negatively. Type: `int`,
+     * shape: `(invariant count)` */
+    UMAMI_IN_INVARIANT_PIDS_AND_MASKS,
+    /** invariant masses, i.e. `E^2 - p_x^2 - p_y^2 - p_z^2`, type: `double`,
+     * shape: `(invariant count)` */
+    UMAMI_IN_INVARIANT_MASSES,
+    /** virtuality, i.e. `E^2 - p_x^2 - p_y^2 - p_z^2 - m^2`, type: `double`,
+     * shape: `(invariant count)` */
+    UMAMI_IN_INVARIANT_VIRTUALITIES,
 } UmamiInputKey;
 
 /** Number of values in `UmamiInputKey` */
-#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_CHANNEL_INDEX + 1)
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_INVARIANT_VIRTUALITIES + 1)
 
 typedef enum {
     /** value of the matrix element, type: `double`, shape: `()` */

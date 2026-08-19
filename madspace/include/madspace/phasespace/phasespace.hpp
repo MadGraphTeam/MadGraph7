@@ -25,7 +25,8 @@ public:
         TChannelMode t_channel_mode = propagator,
         const std::optional<Cuts>& cuts = std::nullopt,
         const std::vector<std::vector<std::size_t>>& permutations = {},
-        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt
+        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt,
+        bool return_invariants = false
     );
 
     PhaseSpaceMapping(
@@ -35,7 +36,8 @@ public:
         double invariant_power = 0.8,
         TChannelMode mode = rambo,
         const std::optional<Cuts>& cuts = std::nullopt,
-        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt
+        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt,
+        bool return_invariants = false
     );
 
     std::size_t random_dim() const {
@@ -46,6 +48,13 @@ public:
         return _topology.outgoing_masses().size() + 2;
     }
     std::size_t channel_count() const { return _permutations.size(); }
+    bool return_invariants() const { return _return_invariants; }
+    std::size_t invariant_count() const {
+        if (!_return_invariants) {
+            return 0;
+        }
+        return output_types().at("invariant_pids_and_masks").shape.at(0);
+    }
 
 private:
     Result build_forward_impl(
@@ -76,6 +85,7 @@ private:
         _t_mapping;
     std::vector<std::variant<TwoBodyDecay, ThreeBodyDecay, FastRamboMapping>> _s_decays;
     nested_vector2<me_int_t> _permutations;
+    bool _return_invariants;
 };
 
 } // namespace madspace

@@ -199,6 +199,15 @@ inline IVec operator-(IVec arg1) {
 inline IVec operator+(IVec arg1, IVec arg2) { return _mm512_add_epi64(arg1, arg2); }
 inline IVec operator-(IVec arg1, IVec arg2) { return _mm512_sub_epi64(arg1, arg2); }
 
+inline IVec operator&(IVec arg1, IVec arg2) { return _mm512_and_si512(arg1, arg2); }
+inline IVec operator|(IVec arg1, IVec arg2) { return _mm512_or_si512(arg1, arg2); }
+inline IVec operator^(IVec arg1, IVec arg2) { return _mm512_xor_si512(arg1, arg2); }
+inline IVec operator~(IVec arg1) {
+    return _mm512_xor_si512(arg1, _mm512_set1_epi64(-1));
+}
+inline IVec operator<<(IVec arg1, IVec arg2) { return _mm512_sllv_epi64(arg1, arg2); }
+inline IVec operator>>(IVec arg1, IVec arg2) { return _mm512_srlv_epi64(arg1, arg2); }
+
 inline BVec isnan(FVec arg) { return arg != arg; }
 
 inline FVec sqrt(FVec arg1) { return Sleef_sqrtd8_u05avx512f(arg1); }
