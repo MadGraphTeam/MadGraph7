@@ -1334,54 +1334,67 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
-    def test_standalone_mg7_refuses_a_dropped_squared_order(self):
-        """standalone_mg7 must refuse a squared-order constraint it cannot apply.
+    def test_standalone_mg7_split_orders_interference(self):
+        """standalone_mg7 must return the squared-order contribution asked for.
 
-        The madmatrix backend contracts one jamp vector per helicity with the
-        color matrix once, so the |M|^2 it returns is the sum over every
-        squared-order component of the amplitude. Whenever the user's '^2'
-        constraint keeps all of them that is the requested number, and those
-        cases stay supported; when it drops one, the backend has no mask and
-        would hand back the full total instead.
+        The madmatrix jamps carry an amplitude-order index and the color sum
+        pairs them, so a '^2' constraint that keeps only some of the squared
+        orders gets that contribution and not the total. The case that matters
+        is an interference term, which cannot be reached by dropping diagrams
+        at generation: ``u u~ > u u~ QED^2==2`` keeps every diagram and wants
+        the QCD-EW cross term alone, -5.5828747824035893e-02 from the Fortran
+        split-order driver, where a backend with no mask returns the whole
+        +2.7756451181144683.
 
-        ``u u~ > t t~ QED^2==2`` is the case that matters: the interference
-        cannot be reached by dropping diagrams, so all three survive and the
-        Fortran masks the sum down to the QCD-EW cross term alone (-3.4e-18 at
-        the standard RAMBO point) while madmatrix returned the whole
-        0.617412658924358 -- silently, with generated code differing from the
-        unconstrained process by one comment line. It has to say so instead.
-
-        The supported cases are pinned alongside it, since the fix must not
-        turn them into errors: ``QED^2<=4`` keeps all three components and
-        ``QED^2==4`` is resolved by MG5 at generation down to a single one.
+        The three components are checked to sum back to the unconstrained
+        total *as computed by this same backend*. That comparison is the one
+        that pins the pair loop: it uses one set of momenta and one set of
+        parameters, so it is sensitive to the interference algebra alone --
+        in particular to the fact that the color contraction keeps its
+        doubled triangle while the loop over amplitude-order pairs must run
+        over all ordered pairs, since for two different jamp vectors a pair
+        and its transpose are not each other's conjugate.
         """
-        self.do('import model sm')
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
 
-        # Dropped component: refuse, and name what was dropped.
-        self.do('generate u u~ > t t~ QED^2==2')
-        try:
-            self.do('output standalone_mg7 %s -f' % self.out_dir)
-        except InvalidCmd as error:
-            message = str(error)
-        else:
-            self.fail('standalone_mg7 accepted a squared-order constraint it '
-                      'cannot apply')
-        self.assertIn('does not support squared split orders', message)
-        self.assertIn('QED=0', message)  # the components it would have summed
-        self.assertIn('QED=4', message)
-
-        # All components kept: the plain sum is the requested number.
-        for process in ('u u~ > t t~ QED^2<=4',   # three components, all kept
-                        'u u~ > t t~ QED^2==4'):  # resolved at generation
+        def value(constraint):
             if os.path.isdir(self.out_dir):
                 shutil.rmtree(self.out_dir)
-            self.do('generate %s' % process)
+            self.do('generate u u~ > u u~ %s' % constraint)
             self.do('output standalone_mg7 %s -f' % self.out_dir)
             proc_root = pjoin(self.out_dir, 'SubProcesses')
-            self.assertTrue([d for d in os.listdir(proc_root)
-                             if d.startswith('P') and
-                             os.path.isdir(pjoin(proc_root, d))],
-                            'standalone_mg7 wrote no subprocess for %s' % process)
+            dirs = [d for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+            self.assertTrue(dirs, 'no subprocess for %s' % constraint)
+            proc_dir = pjoin(proc_root, dirs[0])
+            # FPTYPE=d: mixed precision hides and fakes differences here
+            self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'],
+                                                stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'standalone_mg7 %s did not build' % constraint)
+            log = pjoin(proc_dir, 'check.log')
+            subprocess.call('./check_sa.exe 1000', shell=True, cwd=proc_dir,
+                            stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+            found = me_re.findall(open(log).read())
+            self.assertTrue(found, 'no matrix element (see %s)' % log)
+            return float(found[0])
+
+        self.do('import model sm')
+        interference = value('QED^2==2')
+        # The Fortran split-order component, to the tolerance this backend is
+        # compared at elsewhere (the EW couplings differ in the last digits)
+        self.assertAlmostEqual(interference, -5.5828747824035893e-02, delta=1e-7)
+        # ... and emphatically not the unmasked total
+        self.assertLess(abs(interference), 1.0)
+
+        components = [value('QED^2==0'), interference, value('QED^2==4')]
+        total = value('QED^2<=4')
+        self.assertAlmostEqual(sum(components), total,
+                               delta=1e-12 * abs(total),
+                               msg='the squared-order components do not add up '
+                                   'to the total this backend computes')
 
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working

@@ -26,7 +26,6 @@ import madgraph.iolibs.files as files
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.export_cpp as export_cpp
 import madgraph.various.misc as misc
-from madgraph import InvalidCmd
 
 from . import launch_plugin
 
@@ -212,59 +211,41 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             open(pjoin(self.dir_path, 'SubProcesses', name), 'w').write(rendered)
 
     def check_split_orders(self, matrix_element):
-        """Refuse a process whose squared-order constraint drops a component.
+        """Report what a squared-order constraint will produce here.
 
-        This backend has no squared-order machinery at all: it builds one jamp
-        vector per helicity and contracts it with the color matrix once, so the
-        |M|^2 it returns is the sum over *every* squared-order component the
-        amplitude has. That is exactly the requested number whenever the
-        constraint keeps all of them -- which covers the single-component case
-        (MG5 has already resolved the constraint at generation, e.g.
-        `p p > j j QCD^2==4`) and the multi-component case that keeps
-        everything (e.g. `u u~ > t t~ QED^2<=4`). Both stay supported, and
-        untouched.
+        Supported: the jamps carry an amplitude-order index and the color sum
+        pairs them (color_sum_splitorders.cc, the Fortran GET_MATRIX contract),
+        so a '^2' constraint that keeps only some squared orders gets the
+        contribution it asked for rather than the total. That is what makes the
+        interference case work -- `u u~ > t t~ QED^2==2` keeps all three
+        diagrams and wants the QCD-EW cross term alone, which no amount of
+        dropping diagrams at generation can produce.
 
-        It is not the requested number when the constraint drops a component,
-        which happens when that component cannot be reached by dropping
-        diagrams -- an interference term, typically: `u u~ > t t~ QED^2==2`
-        keeps all three diagrams and asks for the QCD-EW cross term alone,
-        while this backend would return the full QCD^2 + interference + EW^2
-        total. There is no mask to apply here, so it says so instead.
-
-        Supporting it would mean splitting the jamps by amplitude order and
-        pairing them in the color sum, the Fortran GET_MATRIX contract
-        (JAMP(NCOLOR,NAMPSO) -> RES(NSQAMPSO)). All three color sums here --
-        color_sum_cpu, the CUDA kernel and the BLAS path -- take a single jamp
-        vector per helicity, as do the color folding, the C-parity de-duplication
-        and the good-helicity scan that read their output. Masking alone would at
-        least keep the scalar signature; it is the jamp splitting underneath that
-        this backend has no room for, which is why this refuses rather than
-        computing the requested contribution.
+        Not supported: a GPU build of such a process. The device jamp buffers
+        are sized for one jamp vector per helicity (ncolor, not njampso), and
+        the backend is a make-time choice rather than an output-time one, so
+        the refusal cannot live here: color_sum_splitorders.cc #errors under
+        MGONGPUCPP_GPUIMPL instead. Say so now rather than let a GPU build be
+        the first the user hears of it.
         """
 
+        so = export_v4.split_order_tables(matrix_element)
+        if not so or so['nampso'] <= 1:
+            return
         process = matrix_element.get('processes')[0]
-        split_orders = process.get('split_orders')
-        if not split_orders:
-            return
-        squared_orders, _amp_orders = matrix_element.get_split_orders_mapping()
-        chosen = export_v4.chosen_squared_orders(process, squared_orders)
-        if all(chosen):
-            # The total is what was asked for. The components it is made of are
-            # not available here though, and the Fortran standalone would hand
-            # them back through SMATRIX_SPLITORDERS, so say which of the two
-            # this output is rather than let the user assume the other.
-            if len(squared_orders) > 1:
-                logger.warning(
-                    "%s returns the summed |M|^2 over all %d squared-order "
-                    "components of '%s', which is what its constraint asks "
-                    "for. The individual components are not available from "
-                    "this backend -- use 'output standalone' for those.",
-                    self.__class__.format_name, len(squared_orders),
-                    process.nice_string().replace('Process: ', ''))
-            return
-        raise InvalidCmd(export_v4.split_orders_not_supported_msg(
-            self.__class__.format_name, process, split_orders,
-            squared_orders, chosen))
+        kept = [n for n, k in zip(so['names'], so['chosen']) if k]
+        dropped = [n for n, k in zip(so['names'], so['chosen']) if not k]
+        logger.info(
+            "%s: '%s' has %d squared-order components (%s); keeping %s%s. "
+            "The jamps are split over %d amplitude orders and the color sum "
+            "pairs them; CPU backends only (a GPU build of this process will "
+            "not compile, by design).",
+            self.__class__.format_name,
+            process.nice_string().replace('Process: ', ''),
+            so['nsqampso'], ', '.join(so['names']),
+            ', '.join(kept) if kept else 'nothing',
+            '' if not dropped else ', dropping %s' % ', '.join(dropped),
+            so['nampso'])
 
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):

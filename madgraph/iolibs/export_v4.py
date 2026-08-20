@@ -266,40 +266,59 @@ def chosen_squared_orders(process, squared_orders):
 
     return res
 
-def split_orders_not_supported_msg(format, process, split_orders,
-                                   squared_orders, chosen):
-    """Error text for a backend asked for a strict subset of squared orders.
+def split_order_tables(matrix_element):
+    """The squared split-order bookkeeping a backend needs, or None.
 
-    The backend sums every squared-order component into one |M|^2. That is the
-    number the user asked for as long as the constraint keeps all of them --
-    which is why this is only an error when at least one is dropped. Naming the
-    components, and which of them survive, is the point: the difference between
-    what would be returned and what was asked for is otherwise invisible.
+    Returns a dict with
+
+      nampso      how many amplitude split orders the amplitudes fall into
+      nsqampso    how many squared orders their pairs produce
+      amp_so      {amplitude number -> amplitude-order index}, 0-based
+      sqsoindex   sqsoindex[m][n] -> squared-order index, 0-based. SYMMETRIC,
+                  because a squared order is the SUM of the two amplitude
+                  orders (Fortran SQSOINDEX), which is what lets a masked sum
+                  stay real: (m,n) and (n,m) are kept or dropped together.
+      chosen      [bool] per squared order, the user's constraint
+      names       ['QED=0', ...] per squared order, for comments
+
+    None when the process has no split orders, i.e. when there is one implicit
+    component and every backend already computes it.
     """
 
-    def name(orders):
-        return ' '.join('%s=%d' % (order, value)
-                        for order, value in zip(split_orders, orders)) or 'ALL_ORDERS'
+    process = matrix_element.get('processes')[0]
+    split_orders = process.get('split_orders')
+    if not split_orders:
+        return None
+    squared_orders, amp_orders = matrix_element.get_split_orders_mapping()
+    if not squared_orders:
+        return None
 
-    kept = [name(o) for o, keep in zip(squared_orders, chosen) if keep]
-    dropped = [name(o) for o, keep in zip(squared_orders, chosen) if not keep]
+    amp_so = {}
+    for iampso, (_orders, amp_numbers) in enumerate(amp_orders):
+        for namp in amp_numbers:
+            amp_so[namp] = iampso
 
-    return """The '%(format)s' output format does not support squared split orders.
-Process: %(proc)s
-Its matrix element has %(n)d squared-order components: %(all)s.
-The constraint keeps %(kept)s and drops %(dropped)s, but this backend has no
-squared-order mask: it would sum all %(n)d components and return that total,
-which is not the requested contribution.
-Use 'output standalone' for this process -- the Fortran standalone carries the
-split-order machinery (SMATRIX_SPLITORDERS) and returns the masked total as
-well as each component. Alternatively, constrain the process so that all its
-squared-order components are kept.""" % {
-        'format': format,
-        'proc': process.nice_string().replace('Process: ', ''),
-        'n': len(squared_orders),
-        'all': ', '.join(name(o) for o in squared_orders),
-        'kept': ', '.join(kept) if kept else 'nothing',
-        'dropped': ', '.join(dropped)}
+    # The squared order a pair of amplitude orders lands in: add the two
+    # amplitude orders and look the sum up. A pair whose sum is not in the
+    # list cannot happen (the list is built from exactly these sums), but
+    # guard anyway rather than write a negative index into the generated code.
+    index_of = {tuple(sqso): i for i, sqso in enumerate(squared_orders)}
+    sqsoindex = []
+    for m, (orders_m, _a) in enumerate(amp_orders):
+        row = []
+        for n, (orders_n, _b) in enumerate(amp_orders):
+            key = tuple(om + on for om, on in zip(orders_m, orders_n))
+            row.append(index_of.get(key, -1))
+        sqsoindex.append(row)
+
+    return {'nampso': len(amp_orders),
+            'nsqampso': len(squared_orders),
+            'amp_so': amp_so,
+            'sqsoindex': sqsoindex,
+            'chosen': chosen_squared_orders(process, squared_orders),
+            'names': [' '.join('%s=%d' % (o, v)
+                               for o, v in zip(split_orders, sqso))
+                      for sqso in squared_orders]}
 
 #===============================================================================
 # ProcessExporterFortran
