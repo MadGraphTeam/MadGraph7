@@ -35,6 +35,10 @@ namespace madmatrix
   int
   sigmaKin_setGoodHel( const bool* isGoodHel );
 
+  // Number of good helicities found by the last sigmaKin_setGoodHel call (out of ProcessData::ncomb)
+  int
+  sigmaKin_getNGoodHel();
+
   void
   sigmaKin( const fptype* allmomenta,
             const fptype* allcouplings,

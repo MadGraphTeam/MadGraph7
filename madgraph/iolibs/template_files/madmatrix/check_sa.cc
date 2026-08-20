@@ -29,6 +29,7 @@
 #ifdef MGONGPUCPP_GPUIMPL
 #include "GpuAbstraction.h"
 #include "GpuRuntime.h"
+#include "SigmaKin.h" // sigmaKin_getNGoodHel
 #endif
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
@@ -1017,6 +1018,9 @@ namespace
               << "NumThreadsPerBlock          = " << gputhreads << std::endl
               << "NumIterations               = " << niter << std::endl
               << "FlavorIndex                 = " << flavorID << " / " << CPPProcess::nmaxflavor << std::endl
+#ifdef MGONGPUCPP_GPUIMPL
+              << "GoodHelicities               = " << sigmaKin_getNGoodHel() << " / " << CPPProcess::ncomb << std::endl
+#endif
               << std::string( SEP79, '-' ) << std::endl
               << "NaN/abnormal MEs            = " << nevtABN << std::endl
               << "Zero MEs                    = " << nevtZERO << std::endl

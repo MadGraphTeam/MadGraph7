@@ -353,6 +353,14 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  int
+  sigmaKin_getNGoodHel()
+  {
+    return cNGoodHel;
+  }
+
+  //--------------------------------------------------------------------------
+
   // Decay-aware identical-particle (broken-)symmetry factor, shared with the
   // Fortran / standalone_cpp exporters (_get_broken_symmetry_data). Two
   // entries contribute to the over-counting factor only when they have the
