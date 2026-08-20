@@ -292,10 +292,14 @@ namespace madmatrix
   int MatrixElementKernelDevice::computeGoodHelicities()
   {
     PinnedHostBufferHelicityMask hstIsGoodHel( ProcessData::ncomb );
+#if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+    for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ ) hstIsGoodHel[ihel] = true;
+#else
     // ... 0d1. Compute good helicity mask (a host variable) on the device
     gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_gs.data(), m_couplings.data() );
     const int nevt = m_gpublocks * m_gputhreads;
     sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelJamps->data(), m_pHelNumerators->data(), m_pHelDenominators->data(), hstIsGoodHel.data(), nevt );
+#endif
     // ... 0d3. Set good helicity list in host static memory
     int nGoodHel = sigmaKin_setGoodHel( hstIsGoodHel.data() );
     assert( nGoodHel > 0 ); // SANITY CHECK: there should be at least one good helicity
