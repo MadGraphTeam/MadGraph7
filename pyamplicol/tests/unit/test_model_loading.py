@@ -72,6 +72,38 @@ def test_ufo_sqrt_normalization_is_one_shot_and_idempotent(source: str) -> None:
     assert normalized_again.to_canonical_string() == normalized_text
 
 
+def test_ufo_standard_cmath_normalization_is_scoped_and_restored() -> None:
+    from ufo_model_loader import model, symbolica_processing
+
+    original_processing_parse = symbolica_processing.parse_python_expression_safe
+    original_model_parse = model.parse_python_expression_safe
+
+    with _bounded_ufo_sqrt_normalization():
+        assert model.parse_python_expression_safe is (
+            symbolica_processing.parse_python_expression_safe
+        )
+        normalized = symbolica_processing.parse_python_expression_safe(
+            "cmath.sin(x) + cmath.cos(x) + cmath.asin(y) + cmath.acos(y)"
+        ).to_canonical_string()
+        assert "cmath" not in normalized
+        assert all(f"{name}(" in normalized for name in ("sin", "cos", "asin", "acos"))
+
+    assert (
+        symbolica_processing.parse_python_expression_safe is original_processing_parse
+    )
+    assert model.parse_python_expression_safe is original_model_parse
+
+    with (
+        pytest.raises(RuntimeError, match="scope exit"),
+        _bounded_ufo_sqrt_normalization(),
+    ):
+        raise RuntimeError("scope exit")
+    assert (
+        symbolica_processing.parse_python_expression_safe is original_processing_parse
+    )
+    assert model.parse_python_expression_safe is original_model_parse
+
+
 def test_all_packaged_ufo_sm_parameter_expressions_normalize_once() -> None:
     from ufo_model_loader import symbolica_processing
 
@@ -581,7 +613,8 @@ def test_model_cache_identity_includes_symbolica_serialization_abi(
         cache_dir=cache,
     )
 
-    assert first_fingerprint["symbolica_serialization_abi"] != (
-        second_fingerprint["symbolica_serialization_abi"]
+    assert (
+        first_fingerprint["symbolica_serialization_abi"]
+        != (second_fingerprint["symbolica_serialization_abi"])
     )
     assert first_path != second_path

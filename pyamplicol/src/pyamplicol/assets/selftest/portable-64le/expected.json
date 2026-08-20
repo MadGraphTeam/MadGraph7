@@ -59,7 +59,7 @@
     "source_optimization_level": 2,
     "word_size_bits": 64
   },
-  "source_generation_target": "aarch64-apple-darwin",
+  "source_generation_target": "portable-64le",
   "target": "portable-64le",
   "total": [
     [

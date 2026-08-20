@@ -14,16 +14,39 @@ import importlib.resources
 import json
 import math
 import os
-import re
 import shutil
 import statistics
-import subprocess
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+
+from tools.developer import madgraph_correctness as _correctness
+from tools.developer.madgraph_correctness import (
+    MADGRAPH_DRIVER_SOURCE_SHA256,
+    CommandExecutor,
+    CommandResult,
+    DriverResult,
+    MadGraphAdapterError,
+    StandaloneMadGraphRunner,
+    SubprocessExecutor,
+)
+from tools.developer.madgraph_correctness import (
+    discover_subprocess as _discover_subprocess,
+)
+from tools.developer.madgraph_correctness import (
+    madgraph_command_card as _correctness_command_card,
+)
+from tools.developer.madgraph_correctness import (
+    momenta_rows as _momenta_rows,
+)
+from tools.developer.madgraph_correctness import (
+    reject_failed_generation as _reject_generic_generation,
+)
+from tools.developer.madgraph_correctness import (
+    validate_installation as _validate_base_installation,
+)
 
 from .agreements import DIRECT_AGREEMENT_FIELD
 from .cache import empty_measurement
@@ -36,23 +59,13 @@ from .runner import (
     point_digest,
 )
 
+_DRIVER_SOURCE = _correctness._DRIVER_SOURCE
+_parse_driver_output = _correctness.parse_driver_output
+
 DEFAULT_WARMUP_CALLS = 20
 DEFAULT_MINIMUM_CALLS = 10
 DEFAULT_MAXIMUM_CALLS = 10_000_000
 DEFAULT_MINIMUM_PROFILE_CHUNKS = 5
-_DRIVER_OUTPUT_RE = re.compile(
-    r"^PYAMPLICOL_MG_(VALUE|POINTS|SECONDS|CHECKSUM)\s+(\S+)\s*$",
-    re.MULTILINE,
-)
-_IMPORT_FAILURE_RE = re.compile(
-    r"Traceback \(most recent call last\)|UFOImportError|"
-    r"Error detected in .*import model|Failed to load.*model",
-    re.IGNORECASE,
-)
-
-
-class MadGraphAdapterError(RuntimeError):
-    """The MadGraph authority contract could not be satisfied."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,126 +102,6 @@ class MadGraphSettings:
             or self.worker_deadline_monotonic <= 0.0
         ):
             raise ValueError("worker_deadline_monotonic must be finite and positive")
-
-
-@dataclass(frozen=True, slots=True)
-class CommandResult:
-    args: tuple[str, ...]
-    cwd: Path
-    elapsed_seconds: float
-    returncode: int
-    stdout: str
-    stderr: str
-
-    def record(self) -> dict[str, object]:
-        return {
-            "args": list(self.args),
-            "cwd": os.fspath(self.cwd.resolve(strict=False)),
-            "elapsed_seconds": self.elapsed_seconds,
-            "returncode": self.returncode,
-        }
-
-
-class CommandExecutor(Protocol):
-    def run(
-        self,
-        args: Sequence[str | os.PathLike[str]],
-        *,
-        cwd: Path,
-    ) -> CommandResult: ...
-
-
-class SubprocessExecutor:
-    """Small command seam used by unit tests and worker supervision."""
-
-    def run(
-        self,
-        args: Sequence[str | os.PathLike[str]],
-        *,
-        cwd: Path,
-    ) -> CommandResult:
-        rendered = tuple(os.fspath(item) for item in args)
-        started = time.perf_counter()
-        completed = subprocess.run(
-            rendered,
-            cwd=cwd,
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-        return CommandResult(
-            args=rendered,
-            cwd=cwd,
-            elapsed_seconds=time.perf_counter() - started,
-            returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class DriverResult:
-    value: float
-    points: int
-    seconds: float
-    checksum: float
-    command: CommandResult
-
-
-_DRIVER_SOURCE = """\
-program pyamplicol_madgraph_driver
-  use, intrinsic :: iso_fortran_env, only: int64
-  implicit none
-  include 'nexternal.inc'
-  integer :: i, ios, momentum_unit, repetitions, warmup_calls
-  integer(kind=int64) :: clock_start, clock_end, clock_rate
-  real(kind=8) :: p(0:3,nexternal), answer, reference, checksum, seconds
-  character(len=4096) :: momenta_path, param_card_path, raw_argument
-
-  call get_command_argument(1, momenta_path)
-  call get_command_argument(2, param_card_path)
-  call get_command_argument(3, raw_argument)
-  read(raw_argument, *, iostat=ios) repetitions
-  if (ios /= 0 .or. repetitions < 1) error stop 11
-  call get_command_argument(4, raw_argument)
-  read(raw_argument, *, iostat=ios) warmup_calls
-  if (ios /= 0 .or. warmup_calls < 20) error stop 12
-
-  open(newunit=momentum_unit, file=trim(momenta_path), status='old', &
-       action='read', iostat=ios)
-  if (ios /= 0) error stop 13
-  do i = 1, nexternal
-    read(momentum_unit, *, iostat=ios) p(0,i), p(1,i), p(2,i), p(3,i)
-    if (ios /= 0) error stop 14
-  end do
-  close(momentum_unit)
-
-  call setpara(trim(param_card_path))
-  do i = 1, warmup_calls
-    call smatrix(p, answer)
-  end do
-  call smatrix(p, reference)
-
-  checksum = 0.0d0
-  call system_clock(clock_start, clock_rate)
-  do i = 1, repetitions
-    call smatrix(p, answer)
-    if (answer /= reference) error stop 16
-    checksum = checksum + answer
-  end do
-  call system_clock(clock_end)
-  if (clock_rate <= 0) error stop 15
-  seconds = real(clock_end - clock_start, kind=8) / real(clock_rate, kind=8)
-
-  write(*,'(A,1X,ES25.17E3)') 'PYAMPLICOL_MG_VALUE', reference
-  write(*,'(A,1X,I0)') 'PYAMPLICOL_MG_POINTS', repetitions
-  write(*,'(A,1X,ES25.17E3)') 'PYAMPLICOL_MG_SECONDS', seconds
-  write(*,'(A,1X,ES25.17E3)') 'PYAMPLICOL_MG_CHECKSUM', checksum
-end program pyamplicol_madgraph_driver
-"""
-MADGRAPH_DRIVER_SOURCE_SHA256 = hashlib.sha256(
-    _DRIVER_SOURCE.encode("utf-8")
-).hexdigest()
 
 
 def _sha256(path: Path) -> str:
@@ -550,20 +443,7 @@ def _validate_exact_param_card(
 
 
 def _validate_installation(path: Path) -> tuple[Path, Path, Path]:
-    installation = path.expanduser().resolve(strict=True)
-    if not installation.is_dir():
-        raise MadGraphAdapterError(
-            f"MadGraph installation is not a directory: {installation}"
-        )
-    launcher = installation / "bin" / "mg5_aMC"
-    if (
-        not launcher.is_file()
-        or launcher.is_symlink()
-        or not os.access(launcher, os.X_OK)
-    ):
-        raise MadGraphAdapterError(
-            "MadGraph installation must contain a regular executable bin/mg5_aMC"
-        )
+    installation, launcher = _validate_base_installation(path)
     model = installation / "models" / "sm"
     required_model_files = (model / "parameters.py", model / "restrict_default.dat")
     if (
@@ -578,244 +458,29 @@ def _validate_installation(path: Path) -> tuple[Path, Path, Path]:
 
 
 def madgraph_command_card(process: str) -> str:
-    if "\n" in process or "\r" in process or not process.strip():
-        raise ValueError("MadGraph process must be one non-empty line")
-    return "\n".join(
-        (
-            "import model sm",
-            f"generate {process}",
-            "output standalone standalone -f",
-            "launch -f",
-            "",
-        )
-    )
+    return _correctness_command_card(process)
 
 
 def _reject_failed_generation(
     result: CommandResult,
     standalone: Path,
 ) -> None:
-    output = result.stdout + "\n" + result.stderr
-    if result.returncode != 0:
-        raise MadGraphAdapterError(
-            f"MadGraph exited with {result.returncode}; see madgraph.log"
+    try:
+        _reject_generic_generation(
+            result,
+            standalone,
+            expected_model_import="sm",
         )
-    if _IMPORT_FAILURE_RE.search(output):
-        raise MadGraphAdapterError(
-            "MadGraph reported a UFO import failure; refusing a possible model fallback"
-        )
-    process_card = standalone / "Cards" / "proc_card_mg5.dat"
-    if not process_card.is_file():
-        raise MadGraphAdapterError("MadGraph produced no standalone process card")
-    recorded = process_card.read_text(encoding="utf-8", errors="replace")
-    # MadGraph wraps long process-card commands as ``\\\n`` continuations.
-    recorded = re.sub(r"\\\r?\n", "", recorded)
-    import_lines = re.findall(r"(?m)^import model\s+(\S+)(?:\s+.*)?$", recorded)
-    if not import_lines or set(import_lines) != {"sm"}:
+    except MadGraphAdapterError as error:
+        if "bound exclusively" not in str(error):
+            raise
         raise MadGraphAdapterError(
             "standalone process card is not bound exclusively to MadGraph UFO sm"
-        )
-
-
-def _discover_subprocess(standalone: Path) -> Path:
-    matches = tuple(
-        sorted(
-            path.parent
-            for path in (standalone / "SubProcesses").glob("P*/matrix.f")
-            if path.is_file()
-        )
-    )
-    if len(matches) != 1:
-        raise MadGraphAdapterError(
-            "MadGraph authority requires exactly one generated subprocess; "
-            f"found {len(matches)}"
-        )
-    subprocess_dir = matches[0]
-    required = (
-        subprocess_dir / "matrix.o",
-        standalone / "lib" / "libdhelas.a",
-        standalone / "lib" / "libmodel.a",
-        standalone / "Cards" / "param_card.dat",
-    )
-    missing = tuple(path for path in required if not path.is_file())
-    if missing:
-        raise MadGraphAdapterError(
-            "MadGraph launch did not compile the standalone tree: "
-            + ", ".join(os.fspath(path) for path in missing)
-        )
-    return subprocess_dir
-
-
-def _fortran_compiler(standalone: Path) -> str:
-    make_options = standalone / "Source" / "make_opts"
-    source = make_options.read_text(encoding="utf-8", errors="replace")
-    match = re.search(r"(?m)^DEFAULT_F_COMPILER\s*=\s*(\S+)\s*$", source)
-    configured = match.group(1) if match is not None else "gfortran"
-    compiler = shutil.which(configured)
-    if compiler is None:
-        raise MadGraphAdapterError(
-            f"MadGraph's configured Fortran compiler is unavailable: {configured}"
-        )
-    return compiler
-
-
-def _parse_driver_output(result: CommandResult, expected_points: int) -> DriverResult:
-    if result.returncode != 0:
-        raise MadGraphAdapterError(
-            f"MadGraph driver exited with {result.returncode}; see madgraph.log"
-        )
-    fields: dict[str, str] = {}
-    for field, raw in _DRIVER_OUTPUT_RE.findall(result.stdout + "\n" + result.stderr):
-        if field in fields:
-            raise MadGraphAdapterError(f"MadGraph driver repeated {field}")
-        fields[field] = raw
-    if set(fields) != {"VALUE", "POINTS", "SECONDS", "CHECKSUM"}:
-        raise MadGraphAdapterError(
-            "MadGraph driver output is incomplete: " + ", ".join(sorted(fields))
-        )
-    try:
-        value = float(fields["VALUE"].replace("D", "E").replace("d", "e"))
-        points = int(fields["POINTS"])
-        seconds = float(fields["SECONDS"].replace("D", "E").replace("d", "e"))
-        checksum = float(fields["CHECKSUM"].replace("D", "E").replace("d", "e"))
-    except ValueError as error:
-        raise MadGraphAdapterError(
-            "MadGraph driver emitted malformed numbers"
         ) from error
-    if (
-        points != expected_points
-        or not math.isfinite(value)
-        or value < 0.0
-        or not math.isfinite(seconds)
-        or seconds < 0.0
-        or not math.isfinite(checksum)
-    ):
-        raise MadGraphAdapterError(
-            "MadGraph driver emitted invalid timing or value data"
-        )
-    expected_checksum = points * value
-    # The driver checks every individual value against ``reference``.  The
-    # checksum is accumulated sequentially only to keep the timed calls live,
-    # so allow its standard forward-error bound instead of mistaking ordinary
-    # O(points * epsilon) summation drift for a changed matrix element.
-    unit_roundoff = math.ulp(1.0) / 2.0
-    accumulated_roundoff = points * unit_roundoff
-    checksum_rel_tol = max(
-        5.0e-13,
-        accumulated_roundoff / (1.0 - accumulated_roundoff),
-    )
-    if not math.isclose(
-        checksum,
-        expected_checksum,
-        rel_tol=checksum_rel_tol,
-        abs_tol=1.0e-300,
-    ):
-        raise MadGraphAdapterError("MadGraph repeated evaluations changed their value")
-    return DriverResult(value, points, seconds, checksum, result)
 
 
-def _momenta_rows(points: object) -> tuple[tuple[float, float, float, float], ...]:
-    if not isinstance(points, tuple) or len(points) != 1:
-        raise MadGraphAdapterError("MadGraph authority requires one validation point")
-    raw_point = points[0]
-    if not isinstance(raw_point, tuple):
-        raise MadGraphAdapterError("MadGraph validation point is malformed")
-    rows: list[tuple[float, float, float, float]] = []
-    for raw_row in raw_point:
-        if not isinstance(raw_row, tuple) or len(raw_row) != 4:
-            raise MadGraphAdapterError("MadGraph validation momentum is malformed")
-        row = tuple(float(component) for component in raw_row)
-        if any(not math.isfinite(component) for component in row):
-            raise MadGraphAdapterError("MadGraph validation momentum is not finite")
-        rows.append(row)  # type: ignore[arg-type]
-    return tuple(rows)
-
-
-class MadGraphMeasurementAdapter:
+class MadGraphMeasurementAdapter(StandaloneMadGraphRunner):
     """Generate, drive, and profile one standalone MadGraph matrix element."""
-
-    def __init__(self, *, executor: CommandExecutor | None = None) -> None:
-        self.executor = SubprocessExecutor() if executor is None else executor
-
-    @staticmethod
-    def _run_logged(
-        executor: CommandExecutor,
-        args: Sequence[str | os.PathLike[str]],
-        *,
-        cwd: Path,
-        log_path: Path,
-    ) -> CommandResult:
-        result = executor.run(args, cwd=cwd)
-        with log_path.open("a", encoding="utf-8") as stream:
-            stream.write("$ " + " ".join(os.fspath(item) for item in args) + "\n")
-            stream.write(result.stdout)
-            if result.stdout and not result.stdout.endswith("\n"):
-                stream.write("\n")
-            stream.write(result.stderr)
-            if result.stderr and not result.stderr.endswith("\n"):
-                stream.write("\n")
-        return result
-
-    def _compile_driver(
-        self,
-        standalone: Path,
-        subprocess_dir: Path,
-        *,
-        log_path: Path,
-    ) -> tuple[Path, CommandResult, str]:
-        source_path = subprocess_dir / "pyamplicol_madgraph_driver.f90"
-        executable = subprocess_dir / "pyamplicol_madgraph_driver"
-        source_path.write_text(_DRIVER_SOURCE, encoding="utf-8")
-        compiler = _fortran_compiler(standalone)
-        command = (
-            compiler,
-            "-O3",
-            "-I.",
-            "-I../../Source",
-            "-I../../Source/MODEL",
-            source_path.name,
-            "matrix.o",
-            "-L../../lib",
-            "-ldhelas",
-            "-lmodel",
-            "-o",
-            executable.name,
-        )
-        result = self._run_logged(
-            self.executor,
-            command,
-            cwd=subprocess_dir,
-            log_path=log_path,
-        )
-        if result.returncode != 0 or not executable.is_file():
-            raise MadGraphAdapterError(
-                "custom MadGraph Fortran driver failed to compile; see madgraph.log"
-            )
-        return executable, result, MADGRAPH_DRIVER_SOURCE_SHA256
-
-    def _run_driver(
-        self,
-        executable: Path,
-        *,
-        subprocess_dir: Path,
-        momenta_path: Path,
-        points: int,
-        warmup_calls: int,
-        log_path: Path,
-    ) -> DriverResult:
-        result = self._run_logged(
-            self.executor,
-            (
-                executable,
-                momenta_path,
-                "../../Cards/param_card.dat",
-                str(points),
-                str(warmup_calls),
-            ),
-            cwd=subprocess_dir,
-            log_path=log_path,
-        )
-        return _parse_driver_output(result, points)
 
     @staticmethod
     def _assert_deadline(settings: MadGraphSettings) -> None:
