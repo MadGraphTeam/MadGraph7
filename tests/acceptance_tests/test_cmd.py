@@ -27,6 +27,7 @@ pjoin = os.path.join
 logger = logging.getLogger('test_cmd')
 
 import tests.unit_tests.iolibs.test_file_writers as test_file_writers
+import tests.IOTests as IOTests
 
 import madgraph.interface.master_interface as Cmd
 import madgraph.interface.launch_ext_program as launch_ext
@@ -1536,6 +1537,162 @@ class TestCmdShell2(unittest.TestCase,
                                     atol=1e-7)
         # gauge invariance: unitary-gauge values must also match the FD ones.
         self._assert_me_lists_close(standalone_mg7_no_fd, standalone, atol=1e-7)
+
+    def test_standalone_mg7_fd_vs_fortran(self):
+        """FD gauge: madmatrix and the Fortran standalone must agree on the
+        value, not merely both produce one.
+
+        test_standalone_cpp_fd_output_consistency also compares the two
+        backends in FD gauge, but its process (h + 4 jets) has matrix elements
+        of order 1e-15 to 1e-21 while it asserts with atol=1e-7, so no wrong
+        value can make it fail. Two madmatrix FD bugs lived through it: the
+        Goldstone component of a longitudinal massive vector had the wrong sign
+        on the scalar backends (0.7% off), and on the SIMD ones the FD block of
+        vxxxxx broadcast its constants to the first lane only (nan elsewhere).
+
+        u u~ > w+ w- is the smallest process that pins both down: the W's give
+        a longitudinal polarisation (hence the Goldstone component), the
+        massless initial state makes the two drivers evaluate the same RAMBO
+        point, and |M|^2 is O(1e-3), far above the noise floor -- so the
+        comparison is done with a relative tolerance and no absolute floor.
+        The magnitude is asserted too, to keep this test from silently decaying
+        into a vacuous one.
+
+        madmatrix is checked once per backend: the FD wavefunctions are written
+        twice in helas_fd.h, once under #ifndef MGONGPU_CPPSIMD and once for the
+        vector types, and the two have drifted apart before. Which one a plain
+        'make' builds depends on the host (cppauto), so neither is exercised
+        unless it is asked for by name.
+        """
+        energy = '1000'
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def get_values(output_format, check_exe, build_source=False,
+                       backend=None):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if build_source:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = sorted(d for d in os.listdir(proc_root)
+                          if d.startswith('P') and
+                          os.path.isdir(pjoin(proc_root, d)))
+            self.assertTrue(dirs, 'no subprocess for %s' % output_format)
+            values = []
+            for d in dirs:
+                proc_dir = pjoin(proc_root, d)
+                target = ['make', 'check'] if output_format == 'standalone' \
+                    else ['make'] + (['BACKEND=%s' % backend] if backend else [])
+                subprocess.call(target, stdout=devnull, stderr=devnull,
+                                cwd=proc_dir)
+                log = pjoin(proc_dir, 'check.log')
+                subprocess.call('%s %s' % (check_exe, energy),
+                                stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                                cwd=proc_dir, shell=True)
+                found = me_re.findall(open(log).read())
+                self.assertTrue(found, '%s produced no matrix element (see %s)'
+                                % (output_format, log))
+                values.extend(float(v) for v in found)
+            return values
+
+        self.do('import model sm')
+        self.do('set gauge FD')
+        try:
+            self.do('generate u u~ > w+ w-')
+            standalone = get_values('standalone', './check', build_source=True)
+            # cppnone is the scalar code path, cppsse4 the vector one (it maps
+            # to NEON on arm)
+            mg7 = dict((backend,
+                        get_values('standalone_mg7', './check_sa.exe',
+                                   backend=backend))
+                       for backend in ('cppnone', 'cppsse4'))
+        finally:
+            self.do('set gauge unitary')
+
+        # the comparison is only meaningful if the values are not noise
+        self.assertGreater(max(abs(v) for v in standalone), 1e-6,
+                           'matrix elements too small for a relative '
+                           'comparison to mean anything: %s' % standalone)
+        for backend, values in sorted(mg7.items()):
+            # -ffast-math on the C++ side puts the backends ~3e-8 apart
+            self._assert_me_lists_close(values, standalone, rtol=1e-6)
+
+    def test_standalone_mg7_fd_simd_lanes(self):
+        """FD gauge: the scalar and the vectorised madmatrix backends must
+        compute the same thing, over many events.
+
+        The FD wavefunctions are written twice in helas_fd.h -- once under
+        #ifndef MGONGPU_CPPSIMD, once for the vector types -- and only the first
+        event of the first lane is ever printed by check_sa.exe 'matrix' mode.
+        A vector branch that is right in the first lane and wrong in the others
+        is therefore invisible to a single point: the FD block of vxxxxx built
+        its constants with a braced initialiser, which fills the first lane and
+        zeroes the rest, and that gave nan (and later, once the surrounding code
+        used selects, merely wrong numbers) in every other lane.
+
+        'perf' mode runs many events through every lane, so comparing the mean
+        matrix element of a scalar and a vectorised build covers them all. The
+        two agree to the printed precision when the branches agree, and differed
+        by 8e-5 relative with that bug in place.
+        """
+        devnull = open(os.devnull, 'w')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('set gauge FD')
+        try:
+            self.do('generate u u~ > w+ w-')
+            self.do('output standalone_mg7 %s -f' % self.out_dir)
+        finally:
+            self.do('set gauge unitary')
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertTrue(dirs, 'no subprocess for standalone_mg7')
+
+        def mean_me(proc_dir, backend):
+            """mean |M|^2 over a multi-event run of the given backend"""
+            exe = pjoin(proc_dir, 'check_sa.exe')
+            if os.path.exists(exe):
+                os.remove(exe)
+            # USEBUILDDIR keeps the two backends' objects apart
+            subprocess.call(['make', 'BACKEND=%s' % backend, 'USEBUILDDIR=1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            if not os.path.exists(exe):
+                return None  # backend not available on this host
+            log = pjoin(proc_dir, 'perf_%s.log' % backend)
+            subprocess.call('./check_sa.exe perf 1 32 300',
+                            stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                            cwd=proc_dir, shell=True)
+            out = open(log).read()
+            found = re.search(r'MeanMatrixElemValue\s*=\s*\(\s*([^\s+]+)', out)
+            self.assertTrue(found, 'no mean matrix element (see %s)' % log)
+            value = found.group(1)
+            self.assertNotIn('nan', value.lower(),
+                             'nan matrix element with BACKEND=%s (see %s)'
+                             % (backend, log))
+            return float(value)
+
+        for d in dirs:
+            proc_dir = pjoin(proc_root, d)
+            # cppnone is the scalar code path, cppsse4 the vector one (it maps
+            # to NEON on arm)
+            scalar = mean_me(proc_dir, 'cppnone')
+            self.assertTrue(scalar, 'standalone_mg7 did not build in %s' % proc_dir)
+            self.assertGreater(scalar, 0.,
+                               'null mean matrix element in %s' % proc_dir)
+            vector = mean_me(proc_dir, 'cppsse4')
+            if vector is None:
+                continue  # no vectorised backend here: nothing to compare
+            self.assertLessEqual(abs(vector - scalar), 1e-5 * scalar,
+                                 'the scalar and vectorised backends disagree '
+                                 'in %s: %s vs %s' % (d, scalar, vector))
 
     def test_standalone_mg7_vs_cpp(self):
         """Cross-check that standalone_mg7 (madmatrix) reproduces the
@@ -3643,7 +3800,8 @@ C
 
 C     This File is Automatically generated by ALOHA
 C     The process calculated in this file is:
-C     Gamma(3,2,-1)*ProjM(-1,1)
+C     Coup(1) * (Gamma(3,2,-1)*ProjM(-1,1)) + Coup(2) *
+C      (Gamma(3,2,-1)*ProjM(-1,1) + 2*Gamma(3,2,-1)*ProjP(-1,1))
 C
       SUBROUTINE FFV2_4_3(F1, F2, COUP1, COUP2, M3, W3,V3)
       USE ALOHA_OBJECT
@@ -3659,18 +3817,48 @@ C
       REAL*8 M3
       REAL*8 OM3
       REAL*8 P3(0:3)
+      COMPLEX*16 TMP2
+      COMPLEX*16 TMP5
       TYPE(ALOHA) V3
-      TYPE(ALOHA) VTMP
       REAL*8 W3
       COMPLEX*16 DENOM
-      INTEGER*4 I
-      CALL FFV2_3(F1,F2,COUP1,M3,W3,V3)
-      CALL FFV4_3(F1,F2,COUP2,M3,W3,VTMP)
-      DO I = 1, 4
-        V3 %W(I) = V3%W(I) + VTMP%W(I)
-      ENDDO
+      OM3 = 0D0
+      IF (M3.NE.0D0) OM3=1D0/M3**2
+      V3%P(:) = +F1%P(:)+F2%P(:)
+      P3(:) = -V3 % P (:)
+      FLV_INDEX1 = F1 %FLV_INDEX
+      FLV_INDEX2 = F2 %FLV_INDEX
+      IF(FLV_INDEX1.NE.FLV_INDEX2.OR.FLV_INDEX1.EQ.0)THEN
+        V3%W(:) = (0D0,0D0)
+        RETURN
+      ENDIF
+      TMP2 = (F1 % W(1)*(F2 % W(3)*(P3(0)+P3(3))+F2 % W(4)*(P3(1)+CI
+     $ *(P3(2))))+F1 % W(2)*(F2 % W(3)*(P3(1)-CI*(P3(2)))+F2 % W(4)
+     $ *(P3(0)-P3(3))))
+      TMP5 = (F1 % W(3)*(F2 % W(1)*(P3(0)-P3(3))-F2 % W(2)*(P3(1)+CI
+     $ *(P3(2))))+F1 % W(4)*(F2 % W(1)*(-P3(1)+CI*(P3(2)))+F2 % W(2)
+     $ *(P3(0)+P3(3))))
+      DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI*
+     $  W3))
+      V3%W(1)= DENOM*(-2D0 * CI)*(COUP2*(OM3*-1D0/2D0 * P3(0)*(TMP2
+     $ +2D0*(TMP5))+(+1D0/2D0*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4))
+     $ +F1 % W(3)*F2 % W(1)+F1 % W(4)*F2 % W(2)))+1D0/2D0*(COUP1*(F1 %
+     $  W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4)-P3(0)*OM3*TMP2)))
+      V3%W(2)= DENOM*(-2D0 * CI)*(COUP2*(OM3*-1D0/2D0 * P3(1)*(TMP2
+     $ +2D0*(TMP5))+(-1D0/2D0*(F1 % W(1)*F2 % W(4)+F1 % W(2)*F2 % W(3))
+     $ +F1 % W(3)*F2 % W(2)+F1 % W(4)*F2 % W(1)))-1D0/2D0*(COUP1*(F1 %
+     $  W(1)*F2 % W(4)+F1 % W(2)*F2 % W(3)+P3(1)*OM3*TMP2)))
+      V3%W(3)= DENOM*CI*(COUP2*(OM3*P3(2)*(TMP2+2D0*(TMP5))+(+CI*(F1 %
+     $  W(1)*F2 % W(4))-CI*(F1 % W(2)*F2 % W(3))-2D0 * CI*(F1 % W(3)
+     $ *F2 % W(2))+2D0 * CI*(F1 % W(4)*F2 % W(1))))+COUP1*(+CI*(F1 %
+     $  W(1)*F2 % W(4))-CI*(F1 % W(2)*F2 % W(3))+P3(2)*OM3*TMP2))
+      V3%W(4)= DENOM*2D0 * CI*(COUP2*(OM3*1D0/2D0 * P3(3)*(TMP2+2D0
+     $ *(TMP5))+(+1D0/2D0*(F1 % W(1)*F2 % W(3))-1D0/2D0*(F1 % W(2)*F2
+     $  % W(4))-F1 % W(3)*F2 % W(1)+F1 % W(4)*F2 % W(2)))+1D0/2D0
+     $ *(COUP1*(F1 % W(1)*F2 % W(3)+P3(3)*OM3*TMP2-F1 % W(2)*F2 % W(4))
+     $ ))
       END
-      
+
 
 """
         text = open(os.path.join(self.out_dir,'Source', 'DHELAS', 'FFV2_3.f')).read()
@@ -4659,3 +4847,73 @@ P1_qq_wp_wp_lvl
         self.assertIn("200       = nevents", run_card)
         os.chdir(cwd)
         
+
+
+#===============================================================================
+# IOTestFDGauge
+#===============================================================================
+class IOTestFDGauge(IOTests.IOTestManager):
+    """Reference files for the FD gauge output, on both backends.
+
+    FD gauge writes wavefunctions and routines that no other gauge does: a
+    massive vector and its Goldstone share one 5 component object, the
+    propagator factor is part of the routine, and the Lorentz structures of a
+    vertex are assembled even though they act on different spins. None of that
+    was covered by a reference file, and three madmatrix bugs (a Goldstone sign,
+    a vector constant broadcast to the first lane only, and a gauge direction
+    that differed between the scalar and vector branches) lived in the released
+    templates because of it. Two of them show up as a wrong number, which
+    test_standalone_mg7_fd_vs_fortran and test_standalone_mg7_fd_simd_lanes now
+    catch; the third is a gauge choice, invisible to any matrix element, and
+    only a reference file can hold it still.
+
+    u u~ > w+ w- is small and covers what is specific to FD: the merged flavour
+    routines, a same spin combination (FFV6_2M_3), two mixed spin ones
+    (VVV1_VVS1_VSV2_VSS1_0 and VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0) and the inlined
+    propagator factor of every offshell V/S routine.
+    """
+
+    def setUp(self):
+        super(IOTestFDGauge, self).setUp()
+        self.interface = Cmd.MasterCmd()
+        self.interface.no_notification()
+
+    def generate_fd(self, output_format, path):
+        """u u~ > w+ w- in FD gauge, in the given output format"""
+        cmds = ['import model sm',
+                'set gauge FD',
+                'generate u u~ > w+ w-',
+                'output %s %s -f' % (output_format, path)]
+        try:
+            for cmd in cmds:
+                self.interface.exec_cmd(cmd, errorhandling=False, printcmd=False,
+                                        precmd=True, postcmd=True)
+        finally:
+            # the gauge is global: do not leak it into the next test
+            self.interface.exec_cmd('set gauge unitary', errorhandling=False,
+                                    printcmd=False, precmd=True, postcmd=True)
+
+    @IOTests.createIOTest()
+    def testIO_FDgauge_standalone_fortran(self):
+        r""" target: FD_fortran/Source/DHELAS/FFV6M_3.f
+             target: FD_fortran/Source/DHELAS/VVV1_0.f
+        """
+        # Two files rather than the whole DHELAS, chosen to cover what FD gauge
+        # does that no other gauge does:
+        #  - FFV6M_3.f: the propagator factor written into the body of an
+        #    offshell routine (q, the gauge direction, js1/js2 and the update of
+        #    the 5 components), and a combination merged into one expression
+        #    (FFV6_2M_3);
+        #  - VVV1_0.f: the combinations assembled out of structures that act on
+        #    different spins (VVV1_VVS1_VSV2_VSS1_0 and
+        #    VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0), which only exist because a
+        #    massive vector and its Goldstone are the same wavefunction here.
+        self.generate_fd('standalone', pjoin(self.IOpath, 'FD_fortran'))
+
+    @IOTests.createIOTest()
+    def testIO_FDgauge_madmatrix(self):
+        r""" target: FD_madmatrix/src/HelAmps_sm.h
+        """
+        # one file holds all of it for madmatrix: the generated routines and,
+        # pasted above them, the FD helpers of helas_fd.h
+        self.generate_fd('standalone_mg7', pjoin(self.IOpath, 'FD_madmatrix'))
