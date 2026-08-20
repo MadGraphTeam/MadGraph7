@@ -473,7 +473,13 @@ def multiple_try(nb_try=5, sleep=20):
                     time.sleep(sleep * (i+1))
 
             if __debug__:
-                raise
+                # Re-raise the original error, traceback included. A bare
+                # `raise` here is *outside* the except block, so it does not
+                # re-raise my_error: it fails with "RuntimeError: No active
+                # exception to reraise" and hides the real cause (which, after
+                # nb_try attempts and their sleeps, is the only thing that
+                # explains what went wrong).
+                raise my_error
             raise my_error.__class__('[Fail %i times] \n %s ' % (i+1, my_error))
         return deco_f_retry
     return deco_retry

@@ -104,9 +104,19 @@ def _mg7_datadir_or_skip(test):
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     """Run an mg7 cross-section: execute `setup_cmds` (MG5 lines, ending with
     the generate), `output mg7 run_dir`, drive bin/generate_events with the
-    dynamical HT/2 scale + trimmed event target, and return (cross, error) from
-    the madspace info.json (process.mean / process.error). Assertions are made
-    on the *test* instance."""
+    dynamical HT/2 scale, and return (cross, error) from the madspace info.json
+    (process.mean / process.error). Assertions are made on the *test* instance.
+
+    The event target drives the statistical precision of the returned
+    cross-section: madspace quotes error = rel_std_dev / sqrt(count_opt), and
+    with only 2000 events VEGAS barely adapts, so rel_std_dev stays ~2.4 and the
+    error is ~1.1% -- larger than the tolerance some callers assert, which made
+    them fail at random. 50000 events lets the grid adapt (rel_std_dev ~0.37)
+    and brings the error down to ~0.08%. That costs nothing: the integration
+    itself is ~0.2s wall even at 100000 events. What used to dominate the run
+    time was the LHE systematics post-processing (145 weights per event), which
+    none of the callers look at -- they only read info.json -- so it is switched
+    off here and the higher statistics comes out free (<1s for 50000 events)."""
     import glob, json
     if os.path.isdir(run_dir):
         shutil.rmtree(run_dir)
@@ -119,7 +129,10 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     t = open(toml).read()
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
-    t = re.sub(r'events = \d+', 'events = 2000', t)
+    t = re.sub(r'events = \d+', 'events = 50000', t)
+    # [postprocessing] systematics is the only key defaulting to true; the
+    # [generation] one is already false.
+    t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir
@@ -1284,13 +1297,25 @@ class TestMECmdShell(unittest.TestCase):
 
             self.do('generate_events -f')
 
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            if val == 0:
-                misc.sprint('Warning: cross-section is zero for '
-                             'apply_flavor_grouping=%s/group_subprocesses=%s' % (afg, gsp))
+            # A run that produced nothing leaves cross *and* error at 0 -- most
+            # often a ZeroResult swallowed by nice_error_handling, which only
+            # logs a warning (invisible at the CRITICAL level these tests run
+            # at). Catch it here: the precision check below divides by
+            # cross+1e-99, so 0/1e-99 = 0 < 0.05 sails through, and the zero
+            # would surface only in the pairwise comparison as a misleading
+            # "incompatible cross-sections ... (1e-99 +- 0)" rather than as the
+            # failed run it is. (The check this replaces tested val == 0 after
+            # the +1e-99, so it could never fire.)
+            self.assertTrue(cross,
+                'no cross-section produced for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s, run dir %s)' % (afg, gsp, cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             #check precision is reasonable for each individual run
             self.assertLess(err / val, 0.05,
@@ -1324,14 +1349,15 @@ class TestMECmdShell(unittest.TestCase):
     def test_flavor_grouping_consistency_mg7(self):
         """mg7 equivalent of test_flavor_grouping_consistency for p p > l+ l-.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 currently returns
-        cross-sections that depend on the apply_flavor_grouping setting (e.g.
-        ~1332 pb grouped vs ~511 pb ungrouped) because the broken-symmetry
-        (flavour-consolidation) factor implemented for standalone /
-        standalone_cpp is not yet applied on the mg7 (madmatrix) side. The four
-        settings must agree; the test asserts that and is left undecorated so the
-        mg7 flavour-grouping discrepancy stays visible until broken_sym is ported
-        to mg7. It self-skips where the mg7 runtime stack is unavailable.
+        The four settings must all give the same cross-section. They used not
+        to (~1336 pb grouped vs ~538 pb ungrouped): a matrix element carries
+        flavor multiplicity either in its merged legs (apply_flavor_grouping=
+        True) or in the several processes mapped onto it (grouping off), and the
+        mg7 exporter only enumerated the first, so with grouping off it kept 4
+        of the 16 channels of p p > l+ l- -- dropping c/s in the initial state
+        and mu+ mu- entirely. Both sources are now walked through the shared
+        HelasMatrixElement.get_flavor_pdg_combinations. It self-skips where the
+        mg7 runtime stack is unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
         settings = [
@@ -1350,6 +1376,13 @@ class TestMECmdShell(unittest.TestCase):
                  'set group_subprocesses %s' % gsp,
                  'generate p p > l+ l-'],
                 pjoin(self.path, 'MG7_fg_%d' % i), datadir)
+            # Fail on a run that produced nothing rather than letting it reach
+            # the pairwise comparison: err/(cross+1e-99) is 0 < 0.05 when both
+            # are 0, so the precision check below cannot catch it.
+            self.assertTrue(cross,
+                'mg7 produced no cross-section for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s)' % (afg, gsp, cross, err))
             results.append((cross + 1e-99, err, afg, gsp))
             self.assertLess(err / (cross + 1e-99), 0.05,
                 'mg7 cross-section too imprecise (afg=%s, gsp=%s): %s +- %s'
@@ -1405,13 +1438,25 @@ class TestMECmdShell(unittest.TestCase):
 
             self.do('generate_events -f')
 
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            if val == 0:
-                misc.sprint('Warning: cross-section is zero for '
-                             'apply_flavor_grouping=%s/group_subprocesses=%s' % (afg, gsp))
+            # A run that produced nothing leaves cross *and* error at 0 -- most
+            # often a ZeroResult swallowed by nice_error_handling, which only
+            # logs a warning (invisible at the CRITICAL level these tests run
+            # at). Catch it here: the precision check below divides by
+            # cross+1e-99, so 0/1e-99 = 0 < 0.05 sails through, and the zero
+            # would surface only in the pairwise comparison as a misleading
+            # "incompatible cross-sections ... (1e-99 +- 0)" rather than as the
+            # failed run it is. (The check this replaces tested val == 0 after
+            # the +1e-99, so it could never fire.)
+            self.assertTrue(cross,
+                'no cross-section produced for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s, run dir %s)' % (afg, gsp, cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             #check precision is reasonable for each individual run
             self.assertLess(err / val, 0.05,
@@ -1500,13 +1545,20 @@ class TestMECmdShell(unittest.TestCase):
             self.do('generate_events -f')
 
             # Verify event generation succeeded
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            # Check that we got a valid cross-section
-            self.assertGreater(val, 0,
-                'cross-section is zero for q q~ > q q~ with MLM merging')
+            # Check that we got a valid cross-section. Test the raw cross, not
+            # cross+1e-99: a run that produced nothing leaves cross and error at
+            # 0 (typically a ZeroResult swallowed by nice_error_handling), and
+            # asserting on the padded value can never fail.
+            self.assertTrue(cross,
+                'no cross-section produced for q q~ > q q~ with MLM merging: '
+                'the run failed (cross=%s, error=%s, run dir %s)'
+                % (cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             # Check precision is reasonable
             self.assertLess(err / val, 0.10,
@@ -2989,21 +3041,19 @@ class TestMEfromfile(unittest.TestCase):
         """mg7 (madspace) cross-section for MSSM p p > go go, pinned to the
         madevent reference from test_generation_from_file_1.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: standalone_mg7 already
-        reproduces the per-flavor |M|^2 for p p > go go
-        (test_standalone_mg7_mssm_gogo, ~1e-4), but full mg7 event generation
-        for merged-flavor processes is not wired up yet -- the madspace
-        integrator does not currently produce the cross-section (cf. the SM
-        tracker test_madevent_merged_flavor_uq_mg7, which segfaults). This pins
-        the mg7 cross-section to the madevent reference (run_01 of
-        test_generation_from_file_1, 4.541638 pb) and is expected to fail until
-        the mg7 integrator handles merged-flavor p p > go go; it is left
-        undecorated so the gap stays visible in the mg7 workflow rather than
-        being silently swallowed by expectedFailure. (The mg7 default
-        run_card.toml uses a dynamical HT/2 scale rather than the madevent
-        run_card_matching.dat settings, so a residual scale-driven difference is
-        expected even once the integrator works.) Self-skips where the mg7
-        runtime stack is unavailable.
+        standalone_mg7 reproduces the per-flavor |M|^2 for p p > go go
+        (test_standalone_mg7_mssm_gogo, ~1e-4) and the madspace integrator now
+        lands on the madevent cross-section as well, so this pins the mg7 result
+        to the madevent reference (run_01 of test_generation_from_file_1).
+
+        This used to be red at random rather than for a physics reason: the
+        assertion is at 1%, but with the old 2000-event target a single run
+        carried a ~1.1% statistical error, i.e. the tolerance sat below 1 sigma
+        and the test failed on roughly 40% of runs (observed spread over 12
+        identical local runs: 4.918-5.156, mean 5.030). _run_mg7_xsec now asks
+        for 50000 events, which brings the error to ~0.08% and makes the 1%
+        tolerance a ~13 sigma check. Self-skips where the mg7 runtime stack is
+        unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
         cross, error = _run_mg7_xsec(self,

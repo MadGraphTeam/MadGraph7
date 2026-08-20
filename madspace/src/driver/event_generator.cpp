@@ -7,6 +7,7 @@
 #include <memory>
 #include <numeric>
 #include <ranges>
+#include <stdexcept>
 
 #include "madspace/driver/logger.hpp"
 #include "madspace/driver/random.hpp"
@@ -611,9 +612,16 @@ void EventGenerator::update_integral_status() {
     std::size_t total_integ_count = 0;
     std::size_t iterations = 0;
     bool optimized = true;
+    const ChannelEventGenerator* bad_channel = nullptr;
     for (auto& channel : _channels) {
         auto& status = channel->status();
         auto& cross_section = channel->cross_section();
+        // special case for channels with 0 samples, as they have nan variance
+        if (bad_channel == nullptr && cross_section.count() > 0 &&
+            (!std::isfinite(cross_section.mean()) ||
+             !std::isfinite(cross_section.variance()))) {
+            bad_channel = channel.get();
+        }
         total_mean += cross_section.mean();
         total_var += cross_section.variance() / cross_section.count();
         total_count += status.count;
@@ -626,6 +634,31 @@ void EventGenerator::update_integral_status() {
             optimized = false;
         }
     }
+    if (bad_channel != nullptr || !std::isfinite(total_mean)) {
+        std::string where = bad_channel != nullptr
+            ? std::format(
+                  "channel '{}' after {} samples (mean={}, variance={})",
+                  bad_channel->status().name,
+                  bad_channel->cross_section().count(),
+                  bad_channel->cross_section().mean(),
+                  bad_channel->cross_section().variance()
+              )
+            : std::format("the sum over channels (mean={})", total_mean);
+        throw std::runtime_error(
+            std::format(
+                "non-finite integral in {}. A non-finite weight cannot be recovered "
+                "from by sampling further, so the integration is aborted. This usually "
+                "means the matrix element or the phase-space mapping returned nan/inf "
+                "for "
+                "some phase-space point -- check the process for a zero or negative "
+                "width, "
+                "a parameter point outside the model's validity, or a kinematic "
+                "configuration at a threshold.",
+                where
+            )
+        );
+    }
+
     _status.mean = total_mean;
     _status.error = std::sqrt(total_var);
     _status.rel_std_dev = std::sqrt(total_var * total_integ_count) / total_mean;

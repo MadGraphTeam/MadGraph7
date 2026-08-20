@@ -19,6 +19,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.diagrams = self.amplitude.get("diagrams")
         self.helas_diagrams = self.matrix_element.get("diagrams")
         self.all_flavors, self.all_flavors_pdgs = self.matrix_element.get_external_flavors_with_iden(return_pdgs=True)
+        self.all_flavors = [list(flavors) for flavors in self.all_flavors]
+        self.all_flavors_pdgs = [list(pdgs) for pdgs in self.all_flavors_pdgs]
+        self.expand_flavors_over_processes()
         self.process = self.amplitude.get("process")
         self.legs = self.process.get("legs_with_decays")
         self.color_basis = self.matrix_element.get("color_basis")
@@ -42,6 +45,36 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             else:
                 self.edge_names[number] = f"i{number - 1}"
                 self.incoming[number - 1] = leg.get("id")
+
+    def expand_flavors_over_processes(self):
+        """Add the flavors that live in the *processes* mapped onto this matrix
+        element rather than in its merged legs.
+
+        get_external_flavors_with_iden only expands merged legs (pdg 81/82/...),
+        i.e. the apply_flavor_grouping=True case. With grouping off there are no
+        merged legs and MG5 instead maps every flavor-equivalent process onto a
+        single matrix element -- u u~ > e+ e-, u u~ > mu+ mu-, c c~ > e+ e- and
+        c c~ > mu+ mu- all share one -- so asking only for the merged expansion
+        returns the representative alone and the other channels never make it
+        into subprocesses.json (p p > l+ l- came out at 538 pb instead of
+        1336 pb, i.e. 4 of 16 channels). madevent walks both sources in
+        get_leshouche_lines; use the same shared enumeration here.
+        """
+        combinations = self.matrix_element.get_flavor_pdg_combinations(self.model)
+        # Merged legs: get_external_flavors_with_iden already enumerated
+        # everything, and re-expanding here would double count.
+        if any(has_merged for _, has_merged in combinations):
+            return
+        pdg_lists = [pdgs for pdg_lists, _ in combinations for pdgs in pdg_lists]
+        if len(pdg_lists) <= 1:
+            return
+        # Without merged legs every leg trivially takes flavor index 1, so all
+        # these processes share the single coupling class and its flavor-index
+        # tuple; keep all_flavors aligned with all_flavors_pdgs.
+        if len(self.all_flavors) != 1 or len(self.all_flavors[0]) != 1:
+            return
+        self.all_flavors_pdgs = [pdg_lists]
+        self.all_flavors = [self.all_flavors[0] * len(pdg_lists)]
 
     def set_flavor_indices(self):
         self.all_flavors_same_initial = []
