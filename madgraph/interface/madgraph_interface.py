@@ -3161,7 +3161,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'zerowidth_tchannel',
                     'default_unset_couplings',
                     'nlo_mixed_expansion',
-                    'color_basis'
+                    'color_basis',
+                    'merge_quartic_vertices'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
@@ -3246,7 +3247,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'zerowidth_tchannel': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True,
-                          'color_basis': 'auto'
+                          'color_basis': 'auto',
+                          'merge_quartic_vertices': False
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -3368,7 +3370,18 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         existing amplitudes
         or merge two model
         """
-        
+
+        # The four gluon merging is wanted while the diagrams are generated,
+        # which is below the interface, so it travels on the module. Synced
+        # here rather than only in the setter, since the option can also
+        # arrive from mg5_configuration.txt.
+        madgraph.merge_quartic_vertices = \
+                             self.options.get('merge_quartic_vertices', False)
+        # an added process arrives in the generated order whatever an earlier
+        # output reordered, so the two have to be brought back together --
+        # a value matching neither makes the next output redo all of them
+        self._quartic_order = 'mixed'
+
         args = self.split_arg(line)
 
         
@@ -5017,6 +5030,10 @@ This implies that with decay chains:
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._generate_info = ""
+        # Reset the diagrams kept for an 'auto' merge_quartic_vertices, they
+        # describe the amplitudes just dropped
+        self._quartic_order = None
+        self._quartic_pristine = None
         # Reset polarization-citation marker (a new process definition starts)
         self._uses_polarization = False
         self._uses_density_matrix = False
@@ -9156,6 +9173,49 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self.check_set(args)
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
 
+    def help_set2_merge_quartic_vertices(self):
+        logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
+        logger.info(" > (default: False) [pure gluon amplitudes]")
+        logger.info(" > Sum each four gluon contribution into the cubic")
+        logger.info(" >  amplitude carrying the same colour factor.")
+        logger.info(" > False  : off")
+        logger.info(" > speed  : fewest amplitude calls (best on cpu)")
+        logger.info(" > slots  : smallest wavefunction store (for gpu, where")
+        logger.info(" >          that store is per thread); costs the sums")
+        logger.info(" > auto   : below 6 legs only the amplitude merges, which")
+        logger.info(" >          are free; above, slots when the matrix elements")
+        logger.info(" >          go to a gpu backend and speed otherwise")
+
+    def set2_merge_quartic_vertices(self, args, log=True):
+        """Sum the four gluon contributions into the cubic amplitude carrying
+        the same colour factor.
+
+        Read while the diagrams are generated, so it has to be set before
+        'generate' -- 'speed' and 'slots' fix the diagram order there and an
+        output time option would come too late. 'auto' generates in the
+        'speed' order and lets each output reorder, see
+        apply_quartic_diagram_order.
+
+        Example: set merge_quartic_vertices auto
+        """
+        args = ['merge_quartic_vertices'] + args
+        self.check_set(args)
+        value = args[1].lower()
+        if value in ('slots', 'speed', 'auto'):
+            pass
+        elif value in ('false', '0', 'none', 'off'):
+            value = False
+        elif value in ('true', '1', 'on'):
+            value = 'speed'
+        else:
+            raise self.InvalidCmd(
+                "merge_quartic_vertices takes False, speed, slots or auto,"
+                " not '%s'" % args[1])
+        self.options[args[0]] = value
+        madgraph.merge_quartic_vertices = value
+        if log:
+            logger.info('set merge_quartic_vertices to %s' % value)
+
     def set2_store_rwgt_info(self,args, log=True):
         """Set whether the code should generate systematics information in the output LHE file at NLO
         Default is set to False.
@@ -9577,6 +9637,67 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
         launch_ext.open_file(file_path)
 
+    # Output formats whose matrix elements can run on a gpu, where the
+    # wavefunction store is per thread. See set2_merge_quartic_vertices.
+    _gpu_me_formats = ['mg7', 'mg7_v5', 'standalone_mg7']
+    # Diagram order currently materialised in _curr_amps, and the diagrams as
+    # they came out of the generation. Both only used for 'auto'.
+    _quartic_order = None
+    _quartic_pristine = None
+
+    def apply_quartic_diagram_order(self, options):
+        """Resolve an 'auto' merge_quartic_vertices against the backend which
+        is about to be handed the matrix elements.
+
+        What the two modes disagree on is the diagram order, and that is fixed
+        while the diagrams are generated. 'auto' generates in the 'speed'
+        order and reorders here instead, which is only possible because
+        'slots' is that same order reversed.
+
+        The reordering has to start from the diagrams as generated, not from
+        the ones in hand: an export mutates what it is given, and reversing
+        mutated diagrams gives an equivalent but differently numbered result.
+        """
+
+        if self.options.get('merge_quartic_vertices') != 'auto':
+            return
+
+        target = options['me_exporter'].get('name', self._export_format)
+        gpu = target in self._gpu_me_formats or \
+            options['me_exporter'].get('exporter', options['exporter']) == 'gpu'
+        wanted = 'slots' if gpu else 'speed'
+        madgraph.merge_quartic_vertices = wanted
+
+        # Keep the diagrams of the amplitudes the seed rule applied to -- the
+        # order of any other one is not ours to touch. Both have to be read
+        # before the first export: it is the last moment the diagrams are the
+        # generated ones, and it also drops the marks saying they came from a
+        # seed. Amplitudes added later are picked up on the way past.
+        if self._quartic_pristine is None:
+            self._quartic_pristine = []
+        for amp in self._curr_amps[len(self._quartic_pristine):]:
+            self._quartic_pristine.append(
+                copy.deepcopy(amp.get('diagrams'))
+                if (getattr(amp, 'seed_forbidden_cubic_ids', None) and
+                    getattr(amp, 'quartic_unroll_tags', None)) else None)
+        if all(pristine is None for pristine in self._quartic_pristine):
+            return
+        logger.info("merge_quartic_vertices: '%s' for the %s matrix elements"
+                    % (wanted, target))
+        # the generation leaves them in the 'speed' order
+        if wanted == (self._quartic_order or 'speed'):
+            return
+        for amp, pristine in zip(self._curr_amps, self._quartic_pristine):
+            if pristine is None:
+                continue
+            diagrams = copy.deepcopy(pristine)
+            if wanted == 'slots':
+                diagrams.reverse()
+            amp.set('diagrams', base_objects.DiagramList(diagrams))
+        self._quartic_order = wanted
+        # anything cached was built in the other order
+        self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+
     def do_output(self, line):
         """Main commands: Initialize a new Template or reinitialize one"""
 
@@ -9700,7 +9821,11 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             options['me_exporter']['name'] = me_exporter
         else:
             options['me_exporter'] = {}
-            
+
+        # now that the backend getting the matrix elements is known, an 'auto'
+        # merge_quartic_vertices can be resolved -- before anything is built
+        self.apply_quartic_diagram_order(options)
+
         # check
         if os.path.realpath(self._export_dir) == os.getcwd():
             if len(args) == 0:
