@@ -464,7 +464,7 @@ NamedVector<Value> Integrand::build_channel_part(
             }
         }
         if (has_multi_flavor) {
-            pdf_prior = fb.product(pdf_priors);
+            pdf_prior = fb.abs(fb.product(pdf_priors));
             if (_active_flavors_mask.size() > 0) {
                 Value index = fb.batch_gather(indices_acc, chan_index_in_group);
                 Value mask = fb.gather_vector(index, _active_flavors_mask);

@@ -374,6 +374,17 @@ max:
   desc:
   dims: 0
 
+abs:
+  inputs:
+    - name: in
+      type: [float, ...]
+      desc:
+  outputs:
+    - name: out
+      type: [float, ...]
+      desc:
+  dims: 0
+
 ---
 title: Observables
 
