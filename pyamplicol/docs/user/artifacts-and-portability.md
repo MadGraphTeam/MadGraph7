@@ -20,9 +20,9 @@ mistaking an internal digest for publisher authentication.
 | Process artifact | directory containing `artifact.json` | Standalone selected processes, physics metadata, evaluators/schedules, model-parameter state, and optional API bundle. |
 
 A raw JSON or UFO model can feed process-local **compiled** generation. The
-default **recurrence**, **eager**, and **on-the-fly** modes require a compatible prepared model
-bundle; the installed built-in SM is the exception because wheels already ship
-its portable JIT O2 pack.
+default **recurrence**, **eager**, and **on-the-fly** modes require a compatible
+prepared model bundle; the installed `built-in-sm` and `built-in-sm-heft`
+models are exceptions because wheels already ship their portable JIT O2 packs.
 
 See [Models and Processes](models-and-processes.md) and [Generation Modes and Evaluators](generation-modes-and-evaluators.md) for producing each
 object.

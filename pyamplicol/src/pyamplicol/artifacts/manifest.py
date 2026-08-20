@@ -289,7 +289,13 @@ def _model(value: object) -> Mapping[str, object]:
         optional={"restriction"},
     )
     source_kind = raw.get("source_kind")
-    if source_kind not in {"built-in-sm", "ufo", "ufo-json", "compiled-model"}:
+    if source_kind not in {
+        "built-in-sm",
+        "built-in-sm-heft",
+        "ufo",
+        "ufo-json",
+        "compiled-model",
+    }:
         raise ArtifactError(f"unsupported model.source_kind {source_kind!r}")
     result: dict[str, object] = {
         "name": _string(raw.get("name"), "model.name"),

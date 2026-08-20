@@ -30,7 +30,14 @@ from .compiler_kernels import (
     _spin_slots,
 )
 from .compiler_records import _replace_evaluator_constants
-from .contact_decomposition import canonical_contact_orbit_steps
+from .contact_decomposition import (
+    CONTACT_ORBIT_ALGORITHM,
+    CONTACT_ORBIT_ALGORITHM_VERSION,
+    HEFT_CONTACT_ORBIT_EVALUATOR_CLASS,
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
+    canonical_contact_orbit_steps,
+)
 from .contracts import (
     CompiledOrientedKernel,
     CompiledParticleRecord,
@@ -288,6 +295,7 @@ def _compile_heft_colored_contact_trees(
                 kernels,
                 term=term,
                 node=node,
+                result_leg=result_leg,
                 source_particles=source_particles,
                 factor=factor,
                 left_token=left_token,
@@ -441,6 +449,80 @@ def _compile_heft_colored_contact_trees(
             )
 
     return tuple(auxiliary_particles), tuple(kernels)
+
+
+def _record_heft_contact_orbit_certificates(
+    terms: Sequence[CompiledVertexTerm],
+    particles: Sequence[CompiledParticleRecord],
+    *,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[CompiledVertexTerm, ...]:
+    """Certify the exact physical-assignment orbit of supported HEFT trees."""
+
+    particle_by_name = {particle.name: particle for particle in particles}
+    certified: list[CompiledVertexTerm] = []
+    for term in terms:
+        source_particles = tuple(particle_by_name[name] for name in term.particles)
+        if (
+            _heft_contact_color_topology(
+                term,
+                source_particles,
+                model_symbols=model_symbols,
+            )
+            is None
+        ):
+            certified.append(term)
+            continue
+        if term.contact_orbit_certificate is not None:
+            raise ValueError(
+                f"scalar-HEFT term {term.id} already has a contact-orbit certificate"
+            )
+        equivalence_classes: dict[str, int] = {}
+        leg_classes = tuple(
+            equivalence_classes.setdefault(particle.name, len(equivalence_classes))
+            for particle in source_particles
+        )
+        certified.append(
+            replace(
+                term,
+                contact_orbit_certificate=CompiledContactOrbitCertificate(
+                    algorithm=CONTACT_ORBIT_ALGORITHM,
+                    algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+                    term_id=term.id,
+                    vertex=term.vertex,
+                    particles=term.particles,
+                    color_expression=term.color_expression,
+                    lorentz_expression=term.lorentz_expression,
+                    coupling_expression=term.coupling_expression,
+                    evaluator_class=HEFT_CONTACT_ORBIT_EVALUATOR_CLASS,
+                    physical_leg_equivalence_classes=leg_classes,
+                    reconstruction_factor="1",
+                ),
+            )
+        )
+    return tuple(certified)
+
+
+def _heft_contact_orbit_step(
+    term: CompiledVertexTerm,
+    *,
+    stage: str,
+    result_leg: int,
+    left_covered_legs: tuple[int, ...],
+    right_covered_legs: tuple[int, ...],
+    source_particle_legs: tuple[int, int, int],
+) -> CompiledContactOrbitStep:
+    return CompiledContactOrbitStep(
+        algorithm=CONTACT_ORBIT_ALGORITHM,
+        algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+        term_id=term.id,
+        stage=stage,
+        result_leg=result_leg,
+        left_covered_legs=left_covered_legs,
+        right_covered_legs=right_covered_legs,
+        source_particle_legs=source_particle_legs,
+        reconstruction_factor="1",
+    )
 
 
 def _heft_contact_color_topology(
@@ -808,6 +890,7 @@ def _append_heft_contact_partial_kernels(
     *,
     term: CompiledVertexTerm,
     node: _ContactTreeNode,
+    result_leg: int,
     source_particles: Sequence[CompiledParticleRecord],
     factor: tuple[int, int, int] | None,
     left_token: int | None,
@@ -872,6 +955,11 @@ def _append_heft_contact_partial_kernels(
             actual_right.particle,
             node.particle,
         )
+        source_particle_legs = (
+            _contact_tree_source_leg(actual_left),
+            _contact_tree_source_leg(actual_right),
+            -1,
+        )
         color_source, color_expression, color_power = _heft_trilinear_color(particles)
         kernels.append(
             CompiledOrientedKernel(
@@ -879,11 +967,7 @@ def _append_heft_contact_partial_kernels(
                 term_id=term.id,
                 vertex=f"{term.vertex}::contact-heft-tree-partial",
                 particles=tuple(particle.name for particle in particles),
-                source_particle_legs=(
-                    _contact_tree_source_leg(actual_left),
-                    _contact_tree_source_leg(actual_right),
-                    -1,
-                ),
+                source_particle_legs=source_particle_legs,
                 component_expressions=tuple(
                     _canonicalize_oriented_kernel_component(
                         sign * component
@@ -897,6 +981,16 @@ def _append_heft_contact_partial_kernels(
                 color_expression=color_expression,
                 lc_color_normalization_power=color_power,
                 term_ids=(),
+                contact_orbit_steps=(
+                    _heft_contact_orbit_step(
+                        term,
+                        stage="partial",
+                        result_leg=result_leg,
+                        left_covered_legs=actual_left.legs,
+                        right_covered_legs=actual_right.legs,
+                        source_particle_legs=source_particle_legs,
+                    ),
+                ),
             )
         )
 
@@ -976,6 +1070,11 @@ def _append_heft_contact_final_kernels(
             for component in weighted
         )
         particles = (actual_left.particle, actual_right.particle, result_particle)
+        source_particle_legs = (
+            _contact_tree_source_leg(actual_left),
+            _contact_tree_source_leg(actual_right),
+            result_leg,
+        )
         color_source, color_expression, color_power = _heft_trilinear_color(particles)
         kernels.append(
             CompiledOrientedKernel(
@@ -983,11 +1082,7 @@ def _append_heft_contact_final_kernels(
                 term_id=term.id,
                 vertex=f"{term.vertex}::contact-heft-tree-final",
                 particles=tuple(particle.name for particle in particles),
-                source_particle_legs=(
-                    _contact_tree_source_leg(actual_left),
-                    _contact_tree_source_leg(actual_right),
-                    result_leg,
-                ),
+                source_particle_legs=source_particle_legs,
                 component_expressions=tuple(
                     component.to_canonical_string() for component in oriented_components
                 ),
@@ -998,6 +1093,16 @@ def _append_heft_contact_final_kernels(
                 color_expression=color_expression,
                 lc_color_normalization_power=color_power,
                 term_ids=(term.id,),
+                contact_orbit_steps=(
+                    _heft_contact_orbit_step(
+                        term,
+                        stage="final",
+                        result_leg=result_leg,
+                        left_covered_legs=actual_left.legs,
+                        right_covered_legs=actual_right.legs,
+                        source_particle_legs=source_particle_legs,
+                    ),
+                ),
             )
         )
 

@@ -8,6 +8,10 @@ from collections.abc import Collection
 
 PREPARED_MODEL_ARCHITECTURES = ("aarch64", "x86_64")
 PREPARED_MODEL_ASSET_BASENAME = "built-in-sm-jit-o2"
+PREPARED_MODEL_ASSETS = {
+    PREPARED_MODEL_ASSET_BASENAME: "built-in-sm",
+    "built-in-sm-heft-jit-o2": "built-in-sm-heft",
+}
 
 
 def prepared_model_asset_members(prefix: str) -> frozenset[str]:
@@ -15,14 +19,15 @@ def prepared_model_asset_members(prefix: str) -> frozenset[str]:
 
     root = prefix.rstrip("/")
     members = {f"{root}/__init__.py"}
-    for architecture in PREPARED_MODEL_ARCHITECTURES:
-        stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
-        members.update(
-            {
-                f"{root}/{stem}.metadata.json",
-                f"{root}/{stem}.pyamplicol-model",
-            }
-        )
+    for identifier in PREPARED_MODEL_ASSETS:
+        for architecture in PREPARED_MODEL_ARCHITECTURES:
+            stem = f"{identifier}-{architecture}"
+            members.update(
+                {
+                    f"{root}/{stem}.metadata.json",
+                    f"{root}/{stem}.pyamplicol-model",
+                }
+            )
     return frozenset(members)
 
 
@@ -127,6 +132,7 @@ def missing_required_sdist_members(members: Collection[str]) -> tuple[str, ...]:
 
 __all__ = [
     "PREPARED_MODEL_ARCHITECTURES",
+    "PREPARED_MODEL_ASSETS",
     "PREPARED_MODEL_ASSET_BASENAME",
     "PREPARED_MODEL_SDIST_MEMBERS",
     "REQUIRED_SDIST_MEMBERS",

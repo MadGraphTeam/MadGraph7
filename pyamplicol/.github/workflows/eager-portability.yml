@@ -115,7 +115,7 @@ jobs:
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
-      - name: Produce one host-labelled portable built-in-SM JIT O2 pack
+      - name: Produce host-labelled portable built-in JIT O2 packs
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python tools/ci/eager_portability.py produce

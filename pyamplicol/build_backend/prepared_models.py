@@ -48,11 +48,15 @@ _PRODUCER_KEYS = frozenset(
         "package_version",
     }
 )
-_EXPECTED_ID = "built-in-sm-jit-o2"
+_DEFAULT_ID = "built-in-sm-jit-o2"
+_MODEL_SOURCE_BY_ID = {
+    _DEFAULT_ID: "built-in-sm",
+    "built-in-sm-heft-jit-o2": "built-in-sm-heft",
+}
 
 
-def _asset_names(architecture: str) -> tuple[str, str]:
-    stem = f"{_EXPECTED_ID}-{architecture}"
+def _asset_names(identifier: str, architecture: str) -> tuple[str, str]:
+    stem = f"{identifier}-{architecture}"
     return f"{stem}.metadata.json", f"{stem}.pyamplicol-model"
 
 
@@ -61,8 +65,9 @@ _EXPECTED_FILES = frozenset(
         "__init__.py",
         *(
             name
+            for identifier in _MODEL_SOURCE_BY_ID
             for architecture in _EXPECTED_ARCHITECTURES
-            for name in _asset_names(architecture)
+            for name in _asset_names(identifier, architecture)
         ),
     )
 )
@@ -181,52 +186,65 @@ def stage_packaged_prepared_models(
         )
 
     contract = _load_prepared_contract(package_root / "models" / "prepared.py")
-    for architecture in _EXPECTED_ARCHITECTURES:
-        metadata_name, expected_bundle_name = _asset_names(architecture)
-        metadata = _load_json(
-            asset_root / metadata_name,
-            f"{architecture} prepared-model metadata",
-        )
-        _require_exact_keys(metadata, _METADATA_KEYS, "prepared-model metadata")
-        if metadata.get("schema_version") != 1:
-            raise RuntimeError("unsupported packaged prepared-model metadata schema")
-        if metadata.get("id") != _EXPECTED_ID or metadata.get("model") != "built-in-sm":
-            raise RuntimeError("packaged prepared-model identity is invalid")
-        bundle_name = _required_string(metadata.get("bundle"), "metadata.bundle")
-        if bundle_name != expected_bundle_name:
-            raise RuntimeError("packaged prepared-model bundle name is invalid")
-        bundle_path = asset_root / bundle_name
-        if not bundle_path.is_file() or bundle_path.is_symlink():
-            raise RuntimeError("packaged prepared-model bundle must be a regular file")
-        bundle_bytes = bundle_path.read_bytes()
-        if metadata.get("bundle_size") != len(bundle_bytes):
-            raise RuntimeError(
-                "packaged prepared-model bundle size does not match metadata"
+    for identifier, model_source in _MODEL_SOURCE_BY_ID.items():
+        for architecture in _EXPECTED_ARCHITECTURES:
+            metadata_name, expected_bundle_name = _asset_names(identifier, architecture)
+            metadata = _load_json(
+                asset_root / metadata_name,
+                f"{identifier} {architecture} prepared-model metadata",
             )
-        if metadata.get("bundle_sha256") != hashlib.sha256(bundle_bytes).hexdigest():
-            raise RuntimeError(
-                "packaged prepared-model bundle SHA-256 does not match metadata"
+            _require_exact_keys(metadata, _METADATA_KEYS, "prepared-model metadata")
+            if metadata.get("schema_version") != 1:
+                raise RuntimeError(
+                    "unsupported packaged prepared-model metadata schema"
+                )
+            if (
+                metadata.get("id") != identifier
+                or metadata.get("model") != model_source
+            ):
+                raise RuntimeError("packaged prepared-model identity is invalid")
+            bundle_name = _required_string(metadata.get("bundle"), "metadata.bundle")
+            if bundle_name != expected_bundle_name:
+                raise RuntimeError("packaged prepared-model bundle name is invalid")
+            bundle_path = asset_root / bundle_name
+            if not bundle_path.is_file() or bundle_path.is_symlink():
+                raise RuntimeError(
+                    "packaged prepared-model bundle must be a regular file"
+                )
+            bundle_bytes = bundle_path.read_bytes()
+            if metadata.get("bundle_size") != len(bundle_bytes):
+                raise RuntimeError(
+                    "packaged prepared-model bundle size does not match metadata"
+                )
+            if (
+                metadata.get("bundle_sha256")
+                != hashlib.sha256(bundle_bytes).hexdigest()
+            ):
+                raise RuntimeError(
+                    "packaged prepared-model bundle SHA-256 does not match metadata"
+                )
+            try:
+                bundle = contract.load_prepared_model_bundle(bundle_path)
+            except Exception as error:
+                raise RuntimeError(
+                    f"packaged prepared-model bundle is invalid: {error}"
+                ) from error
+            _validate_bundle(
+                bundle,
+                metadata=metadata,
+                identifier=identifier,
+                model_source=model_source,
+                expected_target={
+                    "portable": True,
+                    "word_bits": 64,
+                    "endianness": "little",
+                    "target_triple": "symjit-storage-v3-portable",
+                    "cpu_features": [],
+                },
+                package_root=package_root,
+                overlay=overlay,
+                mode=mode,
             )
-        try:
-            bundle = contract.load_prepared_model_bundle(bundle_path)
-        except Exception as error:
-            raise RuntimeError(
-                f"packaged prepared-model bundle is invalid: {error}"
-            ) from error
-        _validate_bundle(
-            bundle,
-            metadata=metadata,
-            expected_target={
-                "portable": True,
-                "word_bits": 64,
-                "endianness": "little",
-                "target_triple": "symjit-storage-v3-portable",
-                "cpu_features": [],
-            },
-            package_root=package_root,
-            overlay=overlay,
-            mode=mode,
-        )
 
 
 def write_candidate_packaged_prepared_model_asset(
@@ -235,6 +253,7 @@ def write_candidate_packaged_prepared_model_asset(
     output_directory: Path,
     *,
     architecture: str,
+    identifier: str = _DEFAULT_ID,
 ) -> tuple[Path, Path]:
     """Write one candidate source-ready architecture pack."""
 
@@ -243,6 +262,7 @@ def write_candidate_packaged_prepared_model_asset(
         bundle_path,
         output_directory,
         architecture=architecture,
+        identifier=identifier,
         mode="candidate",
     )
 
@@ -253,6 +273,7 @@ def write_release_packaged_prepared_model_asset(
     output_directory: Path,
     *,
     architecture: str,
+    identifier: str = _DEFAULT_ID,
 ) -> tuple[Path, Path]:
     """Write one release source-ready architecture pack."""
 
@@ -261,6 +282,7 @@ def write_release_packaged_prepared_model_asset(
         bundle_path,
         output_directory,
         architecture=architecture,
+        identifier=identifier,
         mode="release",
     )
 
@@ -271,6 +293,7 @@ def _write_packaged_prepared_model_asset(
     output_directory: Path,
     *,
     architecture: str,
+    identifier: str,
     mode: str,
 ) -> tuple[Path, Path]:
     """Write one source-ready architecture pack and its derived metadata."""
@@ -279,6 +302,14 @@ def _write_packaged_prepared_model_asset(
         raise RuntimeError(f"unsupported prepared-model build mode: {mode}")
     if architecture not in _EXPECTED_ARCHITECTURES:
         raise RuntimeError(f"unsupported prepared-model architecture: {architecture}")
+    try:
+        model_source = _MODEL_SOURCE_BY_ID[identifier]
+    except KeyError as error:
+        choices = ", ".join(_MODEL_SOURCE_BY_ID)
+        raise RuntimeError(
+            f"unsupported packaged prepared-model identifier {identifier!r}; "
+            f"available: {choices}"
+        ) from error
     package_root = overlay / "src" / "pyamplicol"
     release_path = overlay / "dependencies" / "release-lock.toml"
     with release_path.open("rb") as stream:
@@ -351,7 +382,7 @@ def _write_packaged_prepared_model_asset(
         compiled_producer.get("model_compiler_sha256"),
         "compiled_model producer model_compiler_sha256",
     )
-    source_digest = _built_in_source_digest(package_root)
+    source_digest = _built_in_source_digest(package_root, model_source)
     expected_compiled = {
         "compiled_model_schema_version": compiled_schema,
         "model_compiler_version": model_compiler_version,
@@ -359,8 +390,8 @@ def _write_packaged_prepared_model_asset(
     for key, expected in expected_compiled.items():
         if compiled_producer.get(key) != expected:
             raise RuntimeError(f"prepared compiled-model producer {key} is stale")
-    if compiled_source.get("kind") != "built-in-sm":
-        raise RuntimeError("prepared bundle does not contain the built-in SM")
+    if compiled_source.get("kind") != model_source:
+        raise RuntimeError(f"prepared bundle does not contain the {model_source} model")
     if compiled_source.get("digest") != source_digest:
         raise RuntimeError("prepared bundle built-in model source digest is stale")
     if pack.provenance.get("compiled_model_digest") != source_digest:
@@ -370,7 +401,7 @@ def _write_packaged_prepared_model_asset(
         "kernel_pack.provenance.model_source",
     )
     if (
-        pack_model_source.get("kind") != "built-in-sm"
+        pack_model_source.get("kind") != model_source
         or pack_model_source.get("digest") != source_digest
     ):
         raise RuntimeError("prepared kernel-pack model source identity is stale")
@@ -409,7 +440,7 @@ def _write_packaged_prepared_model_asset(
         if pack.dependency_abis.get(key) != expected:
             raise RuntimeError(f"prepared kernel-pack dependency {key} is stale")
 
-    metadata_name, bundle_name = _asset_names(architecture)
+    metadata_name, bundle_name = _asset_names(identifier, architecture)
     metadata: dict[str, object] = {
         "backend": "jit",
         "build_contract": {"mode": mode},
@@ -420,10 +451,10 @@ def _write_packaged_prepared_model_asset(
         "eager_kernel_abi": _literal_assignment(
             package_root / "models" / "prepared.py", "EAGER_KERNEL_ABI"
         ),
-        "id": _EXPECTED_ID,
+        "id": identifier,
         "jit_optimization_level": 2,
         "kernel_count": len(pack.kernels),
-        "model": "built-in-sm",
+        "model": model_source,
         "prepared_model_bundle_schema": _literal_assignment(
             package_root / "models" / "prepared.py",
             "PREPARED_MODEL_BUNDLE_SCHEMA_VERSION",
@@ -462,6 +493,8 @@ def _validate_bundle(
     bundle: Any,
     *,
     metadata: Mapping[str, object],
+    identifier: str,
+    model_source: str,
     expected_target: Mapping[str, object],
     package_root: Path,
     overlay: Path,
@@ -521,8 +554,12 @@ def _validate_bundle(
     producer = _mapping(compiled.get("producer"), "compiled_model.producer")
     source = _mapping(compiled.get("source"), "compiled_model.source")
     model = _mapping(compiled.get("model"), "compiled_model.model")
-    if model.get("name") != "built-in-sm" or source.get("kind") != "built-in-sm":
-        raise RuntimeError("packaged prepared model does not contain the built-in SM")
+    if model.get("name") != model_source or source.get("kind") != model_source:
+        raise RuntimeError(
+            f"packaged prepared model does not contain the {model_source} model"
+        )
+    if metadata.get("id") != identifier or metadata.get("model") != model_source:
+        raise RuntimeError("packaged prepared-model identity is invalid")
 
     compiled_schema = _literal_assignment(
         package_root / "_internal" / "versions.py",
@@ -537,7 +574,7 @@ def _validate_bundle(
         _PRODUCER_KEYS,
         "metadata.producer",
     )
-    model_source_digest = _built_in_source_digest(package_root)
+    model_source_digest = _built_in_source_digest(package_root, model_source)
     # The producer source digest remains useful provenance, but it is not a
     # compatibility boundary. Explicit schema and compiler versions carry
     # that contract without forcing pack regeneration after harmless edits.
@@ -574,7 +611,7 @@ def _validate_bundle(
         raise RuntimeError("prepared kernel-pack compiled-model schema is stale")
     if pack.producer.get("model_compiler_version") != compiler_version:
         raise RuntimeError("prepared kernel-pack model compiler version is stale")
-    if pack.provenance.get("model_name") != "built-in-sm":
+    if pack.provenance.get("model_name") != model_source:
         raise RuntimeError("prepared kernel-pack model provenance is invalid")
     if pack.provenance.get("compiled_model_digest") != model_source_digest:
         raise RuntimeError("prepared kernel-pack compiled-model digest is stale")
@@ -583,7 +620,7 @@ def _validate_bundle(
         "kernel_pack.provenance.model_source",
     )
     if (
-        pack_model_source.get("kind") != "built-in-sm"
+        pack_model_source.get("kind") != model_source
         or pack_model_source.get("digest") != model_source_digest
     ):
         raise RuntimeError("prepared kernel-pack model source identity is stale")
@@ -711,7 +748,14 @@ def _cargo_package_version(overlay: Path, package_name: str) -> str:
     return _required_string(matches[0], f"Cargo.lock {package_name} version")
 
 
-def _built_in_source_digest(package_root: Path) -> str:
+def _built_in_source_digest(
+    package_root: Path,
+    model_source: str = "built-in-sm",
+) -> str:
+    if model_source == "built-in-sm-heft":
+        return _sm_heft_source_digest(package_root)
+    if model_source != "built-in-sm":
+        raise RuntimeError(f"unsupported built-in model source {model_source!r}")
     implementation = hashlib.sha256()
     for path in sorted((package_root / "models" / "builtin").glob("*.py")):
         implementation.update(path.name.encode("utf-8") + b"\0")
@@ -721,6 +765,22 @@ def _built_in_source_digest(package_root: Path) -> str:
     digest.update(b"built-in-sm\0")
     digest.update(implementation.hexdigest().encode("ascii"))
     return digest.hexdigest()
+
+
+def _sm_heft_source_digest(package_root: Path) -> str:
+    path = package_root / "_internal" / "sm_heft.py"
+    module_name = "_pyamplicol_build_sm_heft_source"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load built-in scalar HEFT source from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+        digest = module.source_digest()
+    finally:
+        sys.modules.pop(module_name, None)
+    return _required_sha256(digest, "built-in scalar HEFT source digest")
 
 
 def _literal_assignment(path: Path, name: str) -> str | int:

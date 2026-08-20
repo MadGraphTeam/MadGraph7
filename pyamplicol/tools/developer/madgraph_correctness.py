@@ -29,6 +29,10 @@ _IMPORT_FAILURE_RE = re.compile(
     r"Error detected in .*import model|Failed to load.*model",
     re.IGNORECASE,
 )
+_PARAMETER_VALUE_RE = re.compile(
+    r"^(?P<prefix>.*\s)(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+)"
+    r"(?:[EeDd][+-]?\d+)?)(?P<trailing>\s*)$"
+)
 
 
 class MadGraphAdapterError(RuntimeError):
@@ -365,6 +369,74 @@ def momenta_rows(
     return tuple(rows)
 
 
+def set_parameter_card_values(
+    path: Path,
+    values: Mapping[str, float],
+) -> tuple[str, ...]:
+    """Set named real LHA inputs in an existing MadGraph parameter card."""
+
+    if not values or any(
+        not isinstance(name, str)
+        or not name.isidentifier()
+        or isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        for name, value in values.items()
+    ):
+        raise ValueError("parameter-card values must be finite named real numbers")
+    try:
+        lines = path.read_text(encoding="ascii").splitlines(keepends=True)
+    except OSError as error:
+        raise MadGraphAdapterError(
+            f"cannot read MadGraph parameter card: {path}"
+        ) from error
+
+    observed: set[str] = set()
+    rewritten: list[str] = []
+    for line in lines:
+        body, marker, comment = line.partition("#")
+        name = (
+            comment.strip().split(maxsplit=1)[0] if marker and comment.strip() else ""
+        )
+        if name not in values:
+            rewritten.append(line)
+            continue
+        if name in observed:
+            raise MadGraphAdapterError(
+                f"MadGraph parameter card repeats external parameter {name}"
+            )
+        newline = "\n" if line.endswith("\n") else ""
+        content = body[:-1] if newline and body.endswith("\n") else body
+        match = _PARAMETER_VALUE_RE.fullmatch(content)
+        if match is None:
+            raise MadGraphAdapterError(
+                f"MadGraph parameter card has a malformed value for {name}"
+            )
+        rendered = f"{float(values[name]):.14e}"
+        rewritten.append(
+            match.group("prefix")
+            + rendered
+            + match.group("trailing")
+            + marker
+            + comment.removesuffix("\n")
+            + newline
+        )
+        observed.add(name)
+
+    missing = sorted(set(values).difference(observed))
+    if missing:
+        raise MadGraphAdapterError(
+            f"MadGraph parameter card lacks required external parameters: {missing!r}"
+        )
+    try:
+        path.write_text("".join(rewritten), encoding="ascii")
+    except OSError as error:
+        raise MadGraphAdapterError(
+            f"cannot update MadGraph parameter card: {path}"
+        ) from error
+    return tuple(sorted(observed))
+
+
 class StandaloneMadGraphRunner:
     """Generate and drive standalone tree matrix elements."""
 
@@ -548,5 +620,6 @@ __all__ = [
     "momenta_rows",
     "parse_driver_output",
     "reject_failed_generation",
+    "set_parameter_card_values",
     "validate_installation",
 ]

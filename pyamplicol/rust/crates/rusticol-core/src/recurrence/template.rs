@@ -25,8 +25,9 @@ pub const RECURRENCE_TEMPLATE_CANONICALIZATION_ABI: &str = "pyamplicol-canonical
 pub const RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI: &str = "pyamplicol-exact-complex-rational-v1";
 pub const MISSING_U32: u32 = u32::MAX;
 const CONTACT_ORBIT_ALGORITHM: &str = "compiler-certified-contact-orbit";
-const CONTACT_ORBIT_ALGORITHM_VERSION: u32 = 1;
+const CONTACT_ORBIT_ALGORITHM_VERSION: u32 = 2;
 const CONTACT_ORBIT_EVALUATOR_CLASS: &str = "constant-scalar-literal-singlet-self-conjugate-boson";
+const HEFT_CONTACT_ORBIT_EVALUATOR_CLASS: &str = "scalar-heft-colored-contact-tree";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
@@ -2143,12 +2144,19 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.vertex_string_id,
                 "contact-orbit certificate vertex",
             )?;
-            require_string_value(
+            let evaluator_class = required_string(
                 &catalogs.strings,
                 row.evaluator_class_string_id,
-                CONTACT_ORBIT_EVALUATOR_CLASS,
                 "contact-orbit evaluator class",
             )?;
+            if !matches!(
+                evaluator_class,
+                CONTACT_ORBIT_EVALUATOR_CLASS | HEFT_CONTACT_ORBIT_EVALUATOR_CLASS
+            ) {
+                return Err(RusticolError::compatibility(format!(
+                    "unsupported contact-orbit evaluator class {evaluator_class:?}"
+                )));
+            }
             let particles = u32_sequence(
                 self,
                 row.particle_string_sequence_id,
@@ -2159,9 +2167,9 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.physical_leg_equivalence_sequence_id,
                 "contact-orbit certificate physical-leg equivalence classes",
             )?;
-            if particles.len() != 4 || equivalence_classes.len() != 4 {
+            if !matches!(particles.len(), 4 | 5) || equivalence_classes.len() != particles.len() {
                 return Err(invalid(format!(
-                    "contact-orbit certificate {index} must describe four physical legs"
+                    "contact-orbit certificate {index} must describe four or five physical legs"
                 )));
             }
             for particle in particles {
@@ -2234,8 +2242,18 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 self.contact_orbit_certificates.len(),
                 "contact-orbit step certificate",
             )?;
+            let certificate = self
+                .contact_orbit_certificates
+                .get(row.certificate_id as usize)
+                .ok_or_else(|| invalid("contact-orbit step certificate is absent"))?;
+            let arity = u32_sequence(
+                self,
+                certificate.physical_leg_equivalence_sequence_id,
+                "contact-orbit step certificate arity",
+            )?
+            .len();
             let stage = ContactOrbitStage::try_from(row.stage)?;
-            if row.result_leg >= 4 {
+            if usize::from(row.result_leg) >= arity {
                 return Err(invalid(format!(
                     "contact-orbit step {index} result leg is outside arity"
                 )));
@@ -2250,7 +2268,9 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.right_covered_leg_sequence_id,
                 "contact-orbit right covered legs",
             )?;
-            if left.is_empty() || right.is_empty() || left.iter().chain(right).any(|leg| *leg >= 4)
+            if left.is_empty()
+                || right.is_empty()
+                || left.iter().chain(right).any(|leg| *leg as usize >= arity)
             {
                 return Err(invalid(format!(
                     "contact-orbit step {index} has invalid covered legs"
@@ -2267,7 +2287,7 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.source_particle_leg_sequence_id,
                 "contact-orbit source-particle legs",
             )?;
-            if sources.len() != 3 || sources.iter().any(|leg| !(-1..=3).contains(leg)) {
+            if sources.len() != 3 || sources.iter().any(|leg| *leg < -1 || *leg >= arity as i32) {
                 return Err(invalid(format!(
                     "contact-orbit step {index} has invalid source-particle legs"
                 )));
@@ -2295,20 +2315,17 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                     }
                 }
                 ContactOrbitStage::Final => {
-                    let expected_covered = (0u32..4)
+                    let expected_covered = (0u32..arity as u32)
                         .filter(|leg| *leg != row.result_leg as u32)
                         .collect::<BTreeSet<_>>();
                     let expected_sources = [
-                        if left.len() == 2 { -1 } else { left[0] as i32 },
-                        if right.len() == 2 {
-                            -1
-                        } else {
-                            right[0] as i32
-                        },
+                        if left.len() > 1 { -1 } else { left[0] as i32 },
+                        if right.len() > 1 { -1 } else { right[0] as i32 },
                         row.result_leg as i32,
                     ];
                     if covered != expected_covered
-                        || !matches!((left.len(), right.len()), (1, 2) | (2, 1))
+                        || left.len() > 2
+                        || right.len() > 2
                         || sources != expected_sources
                     {
                         return Err(invalid(format!(

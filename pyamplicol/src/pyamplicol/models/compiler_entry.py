@@ -18,6 +18,7 @@ from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
     _compile_heft_colored_contact_trees,
     _deduplicate_contact_partials,
+    _record_heft_contact_orbit_certificates,
 )
 from .compiler_contacts import (
     _build_contact_decomposition_proof,
@@ -194,6 +195,13 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
     )
     terms = list(
         _record_contact_decomposition_proofs(
+            terms,
+            particles,
+            model_symbols=model_symbols,
+        )
+    )
+    terms = list(
+        _record_heft_contact_orbit_certificates(
             terms,
             particles,
             model_symbols=model_symbols,

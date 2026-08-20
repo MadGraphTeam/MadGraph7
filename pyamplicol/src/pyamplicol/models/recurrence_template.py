@@ -589,9 +589,9 @@ class ContactOrbitCertificateV1(_SemanticRecord):
     algorithm_version: int
     term_id: int
     vertex: str
-    particles: tuple[str, str, str, str]
+    particles: tuple[str, ...]
     evaluator_class: str
-    physical_leg_equivalence_classes: tuple[int, int, int, int]
+    physical_leg_equivalence_classes: tuple[int, ...]
     reconstruction_factor: ExactComplexRationalV1
     semantic_digest: str = ""
 
@@ -608,16 +608,16 @@ class ContactOrbitCertificateV1(_SemanticRecord):
         _require_string_tuple(
             "contact-orbit certificate particles", self.particles, nonempty=True
         )
-        if len(self.particles) != 4:
+        if len(self.particles) not in {4, 5}:
             raise RecurrenceTemplateError(
-                "contact-orbit certificate must describe four physical legs"
+                "contact-orbit certificate must describe four or five physical legs"
             )
         _require_nonempty(
             "contact-orbit certificate evaluator class", self.evaluator_class
         )
         classes = self.physical_leg_equivalence_classes
         if (
-            len(classes) != 4
+            len(classes) != len(self.particles)
             or any(type(value) is not int or value < 0 for value in classes)
         ):
             raise RecurrenceTemplateError(
@@ -634,7 +634,7 @@ class ContactOrbitCertificateV1(_SemanticRecord):
             )
         if self.reconstruction_factor != ExactComplexRationalV1.one():
             raise RecurrenceTemplateError(
-                "scalar contact-orbit reconstruction factor must be exactly one"
+                "contact-orbit reconstruction factor must be exactly one"
             )
         self._finish_semantic_record()
 
@@ -678,7 +678,7 @@ class ContactOrbitStepV1(_SemanticRecord):
                 f"unsupported contact-orbit step stage {self.stage!r}"
             )
         _require_int("contact-orbit step result leg", self.result_leg, minimum=0)
-        if self.result_leg >= 4:
+        if self.result_leg >= 5:
             raise RecurrenceTemplateError("contact-orbit result leg is outside arity")
         for name, values in (
             ("left", self.left_covered_legs),
@@ -688,7 +688,7 @@ class ContactOrbitStepV1(_SemanticRecord):
                 not isinstance(values, tuple)
                 or not values
                 or any(
-                    type(value) is not int or value not in range(4)
+                    type(value) is not int or value not in range(5)
                     for value in values
                 )
             ):
@@ -700,7 +700,7 @@ class ContactOrbitStepV1(_SemanticRecord):
                 "contact-orbit left and right covered legs must be disjoint"
             )
         if len(self.source_particle_legs) != 3 or any(
-            type(value) is not int or value not in {-1, 0, 1, 2, 3}
+            type(value) is not int or value not in {-1, 0, 1, 2, 3, 4}
             for value in self.source_particle_legs
         ):
             raise RecurrenceTemplateError(
@@ -729,17 +729,21 @@ class ContactOrbitStepV1(_SemanticRecord):
                     "contact-orbit partial step lineage is inconsistent"
                 )
         else:
+            arity = len(covered) + 1
             if (
-                set(covered) != (set(range(4)) - {self.result_leg})
+                arity not in {4, 5}
+                or set(covered) != (set(range(arity)) - {self.result_leg})
                 or output_source != self.result_leg
-                or {len(self.left_covered_legs), len(self.right_covered_legs)}
-                != {1, 2}
+                or any(
+                    len(side) not in {1, 2}
+                    for side in (self.left_covered_legs, self.right_covered_legs)
+                )
             ):
                 raise RecurrenceTemplateError(
                     "contact-orbit final step lineage is inconsistent"
                 )
             expected_sources = tuple(
-                -1 if len(side) == 2 else side[0]
+                -1 if len(side) > 1 else side[0]
                 for side in (self.left_covered_legs, self.right_covered_legs)
             )
             if (left_source, right_source) != expected_sources:
@@ -2331,11 +2335,27 @@ class RecurrenceTemplateCatalog:
                 )
         _require_acyclic_parameter_dependencies(parameters)
         for step in self.contact_orbit_steps:
-            _require_reference(
+            certificate = _require_reference(
                 "contact-orbit step certificate",
                 step.certificate_template_id,
                 contact_orbit_certificates,
             )
+            arity = len(certificate.particles)
+            referenced_legs = {
+                step.result_leg,
+                *step.left_covered_legs,
+                *step.right_covered_legs,
+            }
+            if any(leg not in range(arity) for leg in referenced_legs):
+                raise RecurrenceTemplateError(
+                    "contact-orbit step exceeds its certificate arity"
+                )
+            if step.stage == "final" and set(
+                (*step.left_covered_legs, *step.right_covered_legs)
+            ) != (set(range(arity)) - {step.result_leg}):
+                raise RecurrenceTemplateError(
+                    "contact-orbit final step does not cover its certificate"
+                )
         for state in self.current_states:
             _require_optional_reference(
                 "current mass parameter", state.mass_parameter_id, parameters
@@ -3211,9 +3231,9 @@ def _contact_orbit_certificate_from_dict(
         "contact-orbit certificate equivalence classes",
         value["physical_leg_equivalence_classes"],
     )
-    if len(particles) != 4 or len(classes) != 4:
+    if len(particles) not in {4, 5} or len(classes) != len(particles):
         raise RecurrenceTemplateError(
-            "contact-orbit certificate must describe four legs"
+            "contact-orbit certificate must describe four or five legs"
         )
     return ContactOrbitCertificateV1(
         template_id=_require_nonempty(
@@ -3233,16 +3253,11 @@ def _contact_orbit_certificate_from_dict(
         vertex=_require_nonempty(
             "contact-orbit certificate vertex", value["vertex"]
         ),
-        particles=(particles[0], particles[1], particles[2], particles[3]),
+        particles=particles,
         evaluator_class=_require_nonempty(
             "contact-orbit certificate evaluator class", value["evaluator_class"]
         ),
-        physical_leg_equivalence_classes=(
-            classes[0],
-            classes[1],
-            classes[2],
-            classes[3],
-        ),
+        physical_leg_equivalence_classes=classes,
         reconstruction_factor=_decode_ratio(
             "contact-orbit certificate reconstruction factor",
             value["reconstruction_factor"],

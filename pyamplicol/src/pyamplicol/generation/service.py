@@ -1124,9 +1124,7 @@ def _on_the_fly_selector_census_v1(
         # remains the private structural-selector domain bound by the color
         # payload destinations.
         "physical_color_flow_count": (
-            color_flow_count
-            if getattr(process, "color_accuracy", "lc") == "lc"
-            else 1
+            color_flow_count if getattr(process, "color_accuracy", "lc") == "lc" else 1
         ),
     }
     for name, count in census.items():
@@ -3368,8 +3366,7 @@ class GenerationBackend:
                 )
             except ValueError as exc:
                 raise GenerationError(
-                    f"process {process_id!r} on-the-fly color contraction failed: "
-                    f"{exc}"
+                    f"process {process_id!r} on-the-fly color contraction failed: {exc}"
                 ) from exc
         elif projection.color_plan is not None:
             raise GenerationError("LC on-the-fly projection carries a color plan")
@@ -5937,18 +5934,16 @@ class GenerationBackend:
                         )
                     helicities = raw_selectors.get("helicities")
                     color_flows = raw_selectors.get("color_flows")
-                    contracted_color = (
-                        process_record_by_id[process_id].get("color_accuracy")
-                        in {"nlc", "full"}
-                    )
+                    contracted_color = process_record_by_id[process_id].get(
+                        "color_accuracy"
+                    ) in {"nlc", "full"}
                     if (
                         not isinstance(helicities, tuple)
                         or len(helicities) != 1
                         or not isinstance(helicities[0], str)
                         or not helicities[0].startswith("h:")
                         or not isinstance(color_flows, tuple)
-                        or color_flows
-                        != (() if contracted_color else ("1",))
+                        or color_flows != (() if contracted_color else ("1",))
                     ):
                         raise GenerationError(
                             "on-the-fly validation compact selector is malformed "
@@ -6251,13 +6246,20 @@ class GenerationBackend:
                 compiled,
                 use_compiled_process_catalog=not is_builtin,
             )
-        if source.kind == "built-in-sm":
-            if not self._prepared_execution_enabled:
+        if source.kind in {"built-in-sm", "built-in-sm-heft"}:
+            if source.kind == "built-in-sm" and not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
-            source = self._packaged_builtin_eager_source()
-        if source.path is None:
+            if self._prepared_execution_enabled:
+                source = self._packaged_builtin_prepared_source(source.kind)
+        source_input: str | Path
+        if source.kind == "built-in-sm-heft":
+            source_input = "built-in-sm-heft"
+        elif source.path is not None:
+            source_input = source.path
+        else:
             raise ModelError("external model source has no path")
 
+        from .._internal.sm_heft import load_cached_sm_heft_source
         from ..models.loading import load_cached_model_source, load_compiled_model
 
         try:
@@ -6273,15 +6275,19 @@ class GenerationBackend:
                         "pass its CompiledModel"
                     )
                 cache_dir = None if run is None else run.model.cache_dir
-                compiled = load_cached_model_source(
-                    source.path,
-                    restriction=(
-                        "default"
-                        if source.restriction is None
-                        else str(source.restriction)
-                    ),
-                    simplify=source.simplify,
-                    cache_dir=cache_dir,
+                compiled = (
+                    load_cached_sm_heft_source(cache_dir=cache_dir)
+                    if source.kind == "built-in-sm-heft"
+                    else load_cached_model_source(
+                        source_input,
+                        restriction=(
+                            "default"
+                            if source.restriction is None
+                            else str(source.restriction)
+                        ),
+                        simplify=source.simplify,
+                        cache_dir=cache_dir,
+                    )
                 )
                 if compiled is None:
                     raise ModelError(
@@ -6339,12 +6345,19 @@ class GenerationBackend:
                 CompiledUFOModel(compiled),
                 compiled,
             )
-        if source.kind == "built-in-sm":
-            if not self._prepared_execution_enabled:
+        if source.kind in {"built-in-sm", "built-in-sm-heft"}:
+            if source.kind == "built-in-sm" and not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
-            source = self._packaged_builtin_eager_source()
-        if source.path is None:
+            if self._prepared_execution_enabled:
+                source = self._packaged_builtin_prepared_source(source.kind)
+        source_input: str | Path
+        if source.kind == "built-in-sm-heft":
+            source_input = "built-in-sm-heft"
+        elif source.path is not None:
+            source_input = source.path
+        else:
             raise ModelError("external model source has no path")
+        from .._internal.sm_heft import compile_sm_heft_source
         from ..models.external import CompiledUFOModel
         from ..models.loading import compile_model_source, load_compiled_model
 
@@ -6355,16 +6368,23 @@ class GenerationBackend:
                 run = self._run_config
                 use_cache = True if run is None else run.model.cache
                 cache_dir = None if run is None else run.model.cache_dir
-                compiled = compile_model_source(
-                    source.path,
-                    restriction=(
-                        "default"
-                        if source.restriction is None
-                        else str(source.restriction)
-                    ),
-                    simplify=source.simplify,
-                    cache_dir=cache_dir,
-                    use_cache=use_cache,
+                compiled = (
+                    compile_sm_heft_source(
+                        cache_dir=cache_dir,
+                        use_cache=use_cache,
+                    )
+                    if source.kind == "built-in-sm-heft"
+                    else compile_model_source(
+                        source_input,
+                        restriction=(
+                            "default"
+                            if source.restriction is None
+                            else str(source.restriction)
+                        ),
+                        simplify=source.simplify,
+                        cache_dir=cache_dir,
+                        use_cache=use_cache,
+                    )
                 )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
@@ -6378,18 +6398,30 @@ class GenerationBackend:
         return _ResolvedModel(source, CompiledUFOModel(compiled), compiled)
 
     @staticmethod
-    def _packaged_builtin_eager_source() -> ModelSource:
+    def _packaged_builtin_prepared_source(source_kind: str) -> ModelSource:
         from ..assets.prepared_models import (
+            BUILTIN_SM_HEFT_JIT_O2,
+            BUILTIN_SM_JIT_O2,
             PackagedPreparedModelError,
             materialize_packaged_prepared_model,
         )
 
+        identifiers = {
+            "built-in-sm": BUILTIN_SM_JIT_O2,
+            "built-in-sm-heft": BUILTIN_SM_HEFT_JIT_O2,
+        }
         try:
-            path = materialize_packaged_prepared_model()
+            identifier = identifiers[source_kind]
+        except KeyError as exc:  # pragma: no cover - private caller contract
+            raise ModelError(
+                f"no packaged prepared model is registered for {source_kind!r}"
+            ) from exc
+        try:
+            path = materialize_packaged_prepared_model(identifier)
         except (OSError, PackagedPreparedModelError, RuntimeError, ValueError) as exc:
             raise ModelError(
-                "the wheel-owned prepared built-in-SM model is unavailable or stale: "
-                f"{exc}"
+                f"the wheel-owned prepared {source_kind} model is unavailable "
+                f"or stale: {exc}"
             ) from exc
         return ModelSource.from_path(path)
 

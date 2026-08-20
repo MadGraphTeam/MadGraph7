@@ -17,6 +17,8 @@ from ._physics_ir import (
 )
 from .base import QuantumNumberFlow
 from .contact_decomposition import (
+    CONTACT_ORBIT_EVALUATOR_CLASS,
+    HEFT_CONTACT_ORBIT_EVALUATOR_CLASS,
     CompiledContactDecompositionProof,
     CompiledContactDecompositionSplit,
     CompiledContactDummyIndexMapping,
@@ -820,12 +822,8 @@ class CompiledOrientedKernel:
     contact_orbit_steps: tuple[CompiledContactOrbitStep, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.contact_orbit_steps != tuple(
-            sorted(set(self.contact_orbit_steps))
-        ):
-            raise ValueError(
-                "compiled contact-orbit steps must be sorted and unique"
-            )
+        if self.contact_orbit_steps != tuple(sorted(set(self.contact_orbit_steps))):
+            raise ValueError("compiled contact-orbit steps must be sorted and unique")
         if self.lc_recurrence_color_rule_kind is not None and (
             not isinstance(self.lc_recurrence_color_rule_kind, str)
             or not self.lc_recurrence_color_rule_kind
@@ -1202,11 +1200,12 @@ class CompiledModelIR:
         particles = {particle.name: particle for particle in self.particles}
         certificates: dict[int, CompiledContactOrbitCertificate] = {}
         expected_steps: set[CompiledContactOrbitStep] = set()
+        heft_terms: set[int] = set()
         for term in self.vertex_terms:
             certificate = term.contact_orbit_certificate
             proof = term.contact_decomposition_proof
             source_particles = tuple(particles[name] for name in term.particles)
-            certifiable = (
+            scalar_certifiable = (
                 proof is not None
                 and proof.status == "proven"
                 and proof.matches(term)
@@ -1229,8 +1228,23 @@ class CompiledModelIR:
                     ),
                 )
             )
+            heft_certifiable = False
+            if certificate is not None and (
+                certificate.evaluator_class == HEFT_CONTACT_ORBIT_EVALUATOR_CLASS
+            ):
+                from .compiler_contact_trees import _heft_contact_color_topology
+
+                heft_certifiable = (
+                    _heft_contact_color_topology(
+                        term,
+                        source_particles,
+                        model_symbols=symbols.model(self.name),
+                    )
+                    is not None
+                )
+            certifiable = scalar_certifiable or heft_certifiable
             if certificate is None:
-                if certifiable:
+                if scalar_certifiable:
                     raise ValueError(
                         f"certifiable contact term {term.id} has no orbit certificate"
                     )
@@ -1252,31 +1266,83 @@ class CompiledModelIR:
                     f"contact-orbit certificate identity mismatch for term {term.id}"
                 )
             certificates[term.id] = certificate
-            assert proof is not None
-            expected_steps.update(
-                compiled_contact_orbit_step(certificate, split, orientation)
-                for split in proof.splits
-                for orientation in split.orientations
-            )
+            if certificate.evaluator_class == CONTACT_ORBIT_EVALUATOR_CLASS:
+                assert proof is not None
+                expected_steps.update(
+                    compiled_contact_orbit_step(certificate, split, orientation)
+                    for split in proof.splits
+                    for orientation in split.orientations
+                )
+            else:
+                heft_terms.add(term.id)
 
         actual_steps: list[CompiledContactOrbitStep] = []
+        seen_heft_terms: set[int] = set()
         for kernel in self.oriented_kernels:
+            is_heft_kernel = "::contact-heft-tree-" in kernel.vertex
+            if is_heft_kernel:
+                if kernel.term_id not in heft_terms:
+                    raise ValueError(
+                        f"HEFT contact kernel {kernel.kind} has no authenticated term"
+                    )
+                if len(kernel.contact_orbit_steps) != 1:
+                    raise ValueError(
+                        f"HEFT contact kernel {kernel.kind} must carry one orbit step"
+                    )
+                seen_heft_terms.add(kernel.term_id)
             for step in kernel.contact_orbit_steps:
                 if step.term_id not in certificates:
                     raise ValueError(
-                        f"contact-orbit step on kernel {kernel.kind} has no "
-                        "certificate"
+                        f"contact-orbit step on kernel {kernel.kind} has no certificate"
                     )
-                expected_suffix = (
-                    "::contact-partial"
+                expected_suffixes = (
+                    ("::contact-partial", "::contact-heft-tree-partial")
                     if step.stage == "partial"
-                    else "::contact-final"
+                    else (
+                        "::contact-final",
+                        "::contact-final-fused",
+                        "::contact-heft-tree-final",
+                    )
                 )
-                if expected_suffix not in kernel.vertex:
+                if not kernel.vertex.endswith(expected_suffixes):
                     raise ValueError(
                         f"contact-orbit step stage mismatch for kernel {kernel.kind}"
                     )
+                certificate = certificates[step.term_id]
+                arity = len(certificate.particles)
+                referenced_legs = {
+                    step.result_leg,
+                    *step.left_covered_legs,
+                    *step.right_covered_legs,
+                }
+                if any(leg not in range(arity) for leg in referenced_legs):
+                    raise ValueError(
+                        f"contact-orbit step on kernel {kernel.kind} exceeds term arity"
+                    )
+                if is_heft_kernel:
+                    expected_source_legs = (
+                        -1
+                        if len(step.left_covered_legs) > 1
+                        else step.left_covered_legs[0],
+                        -1
+                        if len(step.right_covered_legs) > 1
+                        else step.right_covered_legs[0],
+                        -1 if step.stage == "partial" else step.result_leg,
+                    )
+                    if kernel.source_particle_legs != expected_source_legs:
+                        raise ValueError(
+                            "HEFT contact-orbit lineage mismatch for kernel "
+                            f"{kernel.kind}"
+                        )
+                    expected_steps.add(step)
                 actual_steps.append(step)
+        if seen_heft_terms != heft_terms:
+            missing = sorted(heft_terms - seen_heft_terms)
+            unexpected = sorted(seen_heft_terms - heft_terms)
+            raise ValueError(
+                "HEFT contact-orbit certificates and lowered terms disagree: "
+                f"missing={missing}, unexpected={unexpected}"
+            )
         if len(actual_steps) != len(set(actual_steps)):
             raise ValueError(
                 "compiled contact-orbit lineage contains duplicate retained steps"

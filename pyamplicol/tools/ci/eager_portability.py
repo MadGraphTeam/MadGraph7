@@ -7,11 +7,11 @@ Heavy invocations of this script must be wrapped by::
     python tools/ci/memory_watchdog.py --limit-gib 30 -- \
       python tools/ci/eager_portability.py ...
 
-The producer writes one built-in-SM portable JIT O2 bundle and a numerical
-transfer fixture.  Consumers use that exact archive; they never prepare a
-model pack.  SymJIT application storage v3 at O2 stores portable MIR and may
-cross the supported x86-64 and AArch64 host classes; each consumer recompiles
-that state for its own CPU when loading it.
+The producer writes portable JIT O2 bundles for the built-in SM and scalar-HEFT
+models, plus one SM numerical transfer fixture.  Consumers use that exact SM
+archive; they never prepare a model pack.  SymJIT application storage v3 at O2
+stores portable MIR and may cross the supported x86-64 and AArch64 host
+classes; each consumer recompiles that state for its own CPU when loading it.
 """
 
 from __future__ import annotations
@@ -109,6 +109,9 @@ DEFAULT_PROCESS_ID = "d_dbar_to_z"
 DEFAULT_RTOL = 1.0e-12
 DEFAULT_ATOL = 1.0e-15
 DEFAULT_BUNDLE_NAME = "builtin-sm-jit-o2.pyamplicol-model"
+HEFT_BUNDLE_NAME = "builtin-sm-heft-jit-o2.pyamplicol-model"
+HEFT_MODEL_SOURCE = "built-in-sm-heft"
+HEFT_PACKAGED_MODEL_ID = "built-in-sm-heft-jit-o2"
 DEFAULT_FIXTURE_NAME = "transfer.json"
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -215,14 +218,19 @@ def _run(
         raise PortabilityError(f"command failed: {shlex.join(command)}") from error
 
 
-def _model_compile_command(python: Path, bundle: Path) -> list[str]:
+def _model_compile_command(
+    python: Path,
+    bundle: Path,
+    *,
+    model: str = "built-in-sm",
+) -> list[str]:
     return [
         str(python),
         "-m",
         "pyamplicol",
         "model",
         "compile",
-        "built-in-sm",
+        model,
         str(bundle),
         "--backend",
         "jit",
@@ -343,6 +351,7 @@ def _write_source_ready_candidate_asset(
     output_directory: Path,
     *,
     architecture: str,
+    identifier: str = "built-in-sm-jit-o2",
 ) -> tuple[Path, Path]:
     build_backend = _ROOT / "build_backend"
     inserted = False
@@ -357,6 +366,7 @@ def _write_source_ready_candidate_asset(
             bundle,
             output_directory,
             architecture=architecture,
+            identifier=identifier,
         )
     finally:
         if inserted:
@@ -369,12 +379,14 @@ def _write_source_ready_asset(
     *,
     architecture: str,
     asset_mode: str,
+    identifier: str = "built-in-sm-jit-o2",
 ) -> tuple[Path, Path]:
     if asset_mode == "candidate":
         return _write_source_ready_candidate_asset(
             bundle,
             output_directory,
             architecture=architecture,
+            identifier=identifier,
         )
     if asset_mode != "release":
         raise PortabilityError(f"unsupported prepared-model asset mode: {asset_mode}")
@@ -391,6 +403,7 @@ def _write_source_ready_asset(
             bundle,
             output_directory,
             architecture=architecture,
+            identifier=identifier,
         )
     finally:
         if inserted:
@@ -524,6 +537,36 @@ def produce_transfer(
             architecture=actual_architecture,
             asset_mode=asset_mode,
         )
+        generated_heft_bundle = Path(raw_bundle) / HEFT_BUNDLE_NAME
+        _run(
+            _model_compile_command(
+                python,
+                generated_heft_bundle,
+                model=HEFT_MODEL_SOURCE,
+            ),
+            environment=environment,
+        )
+        heft_audit = audit_architecture_jit_bundle(
+            generated_heft_bundle,
+            contracts=contracts,
+            expected_architecture_class=actual_architecture,
+            expected_model_source=HEFT_MODEL_SOURCE,
+        )
+        if heft_audit["producer_version"] != contracts.package_version:
+            raise PortabilityError(
+                "prepared scalar-HEFT bundle producer version differs from the "
+                "installed package"
+            )
+        heft_audit["preflight_evaluator_count"] = _preflight_all_prepared_applications(
+            generated_heft_bundle
+        )
+        heft_metadata_path, heft_bundle = _write_source_ready_asset(
+            generated_heft_bundle,
+            asset_output,
+            architecture=actual_architecture,
+            asset_mode=asset_mode,
+            identifier=HEFT_PACKAGED_MODEL_ID,
+        )
 
     with tempfile.TemporaryDirectory(
         prefix="pyamplicol-eager-portability-producer-"
@@ -599,6 +642,19 @@ def produce_transfer(
         "fixture": str(fixture_path),
         "kernel_count": audit["kernel_count"],
         "metadata": str(metadata_path),
+        "packaged_models": {
+            "built-in-sm": {
+                "bundle": str(bundle),
+                "metadata": str(metadata_path),
+                "sha256": audit["bundle_sha256"],
+            },
+            HEFT_MODEL_SOURCE: {
+                "bundle": str(heft_bundle),
+                "kernel_count": heft_audit["kernel_count"],
+                "metadata": str(heft_metadata_path),
+                "sha256": heft_audit["bundle_sha256"],
+            },
+        },
         "architecture_class": actual_architecture,
     }
 
@@ -817,8 +873,7 @@ def verify_consumer_artifact(
                 f"{context} f64 plane_application",
             )
             if (
-                plane.get("application_abi")
-                != contracts.symjit_plane_application_abi
+                plane.get("application_abi") != contracts.symjit_plane_application_abi
                 or plane.get("storage_abi") != contracts.symjit_application_abi
             ):
                 raise PortabilityError(
@@ -1086,7 +1141,7 @@ def consume_transfer(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=("Transfer-test a portable built-in-SM JIT O2 model bundle."),
+        description=("Produce and transfer-test portable built-in JIT O2 models."),
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
 

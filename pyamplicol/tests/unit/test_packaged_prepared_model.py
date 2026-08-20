@@ -44,6 +44,7 @@ def test_packaged_builtin_sm_jit_o2_is_discoverable_and_validated(
 
     assert prepared_models.available_prepared_models() == (
         prepared_models.BUILTIN_SM_JIT_O2,
+        prepared_models.BUILTIN_SM_HEFT_JIT_O2,
     )
     with prepared_models.packaged_prepared_model_path(
         prepared_models.BUILTIN_SM_JIT_O2
@@ -73,6 +74,33 @@ def test_packaged_builtin_sm_jit_o2_is_discoverable_and_validated(
         )
         assert bundle.kernel_pack.target["portable"] is True
         assert bundle.kernel_pack.target["cpu_features"] == ()
+
+
+def test_packaged_builtin_sm_heft_jit_o2_is_selectable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol._internal.versions as versions
+    import pyamplicol.models.loading as loading
+
+    architecture = canonical_architecture()
+    stem = f"built-in-sm-heft-jit-o2-{architecture}"
+    metadata = json.loads(
+        (ASSET_ROOT / f"{stem}.metadata.json").read_text(encoding="utf-8")
+    )
+    producer = metadata["producer"]
+    assert isinstance(producer, dict)
+    monkeypatch.setattr(
+        versions, "package_version", lambda: producer["package_version"]
+    )
+    monkeypatch.setattr(loading, "package_version", lambda: producer["package_version"])
+
+    with prepared_models.open_packaged_prepared_model(
+        prepared_models.BUILTIN_SM_HEFT_JIT_O2
+    ) as bundle:
+        assert bundle.compiled_model["model"]["name"] == "built-in-sm-heft"
+        assert bundle.compiled_model["source"]["kind"] == "built-in-sm-heft"
+        assert bundle.backend == "jit"
+        assert len(bundle.kernel_pack.kernels) == metadata["kernel_count"]
 
 
 def test_packaged_prepared_model_materializes_stable_cached_copy(
@@ -159,8 +187,11 @@ def test_packaged_prepared_model_accepts_older_package_producer(
 
     producer = _metadata()["producer"]
     assert isinstance(producer, dict)
-    assert str(producer["package_version"]).startswith("0.1.0")
-    monkeypatch.setattr(versions, "package_version", lambda: "0.1.2")
+    recorded = str(producer["package_version"])
+    release = recorded.split(".dev", maxsplit=1)[0].split("+", maxsplit=1)[0]
+    major, minor, patch = (int(component) for component in release.split("."))
+    active = f"{major}.{minor}.{patch + 1}"
+    monkeypatch.setattr(versions, "package_version", lambda: active)
 
     with prepared_models.packaged_prepared_model_path(
         prepared_models.BUILTIN_SM_JIT_O2
@@ -177,9 +208,7 @@ def test_packaged_prepared_model_accepts_candidate_fingerprint_drift(
     producer = metadata["producer"]
     assert isinstance(producer, dict)
     recorded = str(producer["package_version"])
-    active = recorded.rsplit("+candidate.", maxsplit=1)[0] + (
-        "+candidate." + "0" * 12
-    )
+    active = recorded.rsplit("+candidate.", maxsplit=1)[0] + ("+candidate." + "0" * 12)
     monkeypatch.setattr(versions, "package_version", lambda: active)
 
     with prepared_models.packaged_prepared_model_path(
@@ -200,9 +229,9 @@ def test_packaged_prepared_model_rejects_internal_producer_version_mismatch(
     producer = metadata["producer"]
     assert isinstance(producer, dict)
     recorded = str(producer["package_version"])
-    producer["package_version"] = recorded.rsplit(
-        "+candidate.", maxsplit=1
-    )[0] + ("+candidate." + "0" * 12)
+    producer["package_version"] = recorded.rsplit("+candidate.", maxsplit=1)[0] + (
+        "+candidate." + "0" * 12
+    )
     (copied / f"{ASSET_STEM}.metadata.json").write_text(
         json.dumps(metadata),
         encoding="utf-8",
@@ -219,9 +248,7 @@ def test_packaged_prepared_model_rejects_internal_producer_version_mismatch(
             prepared_models.PackagedPreparedModelError,
             match="package version disagrees with metadata",
         ),
-        prepared_models.packaged_prepared_model_path(
-            prepared_models.BUILTIN_SM_JIT_O2
-        ),
+        prepared_models.packaged_prepared_model_path(prepared_models.BUILTIN_SM_JIT_O2),
     ):
         pass
 

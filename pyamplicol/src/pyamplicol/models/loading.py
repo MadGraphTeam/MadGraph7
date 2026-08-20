@@ -38,7 +38,7 @@ from .contracts import (
 )
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
-MODEL_COMPILER_VERSION = 14
+MODEL_COMPILER_VERSION = 15
 BUILTIN_SM_ALIASES = frozenset(("builtin_sm", "built-in-sm"))
 DEFAULT_MODEL_RESTRICTION = "default"
 NO_MODEL_RESTRICTION = "none"

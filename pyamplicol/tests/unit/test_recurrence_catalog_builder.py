@@ -25,6 +25,7 @@ from pyamplicol.models.contact_decomposition import (
     CONTACT_ORBIT_ALGORITHM,
     CONTACT_ORBIT_ALGORITHM_VERSION,
     CONTACT_ORBIT_EVALUATOR_CLASS,
+    HEFT_CONTACT_ORBIT_EVALUATOR_CLASS,
     CompiledContactOrbitCertificate,
     CompiledContactOrbitStep,
 )
@@ -41,6 +42,7 @@ from pyamplicol.models.prepared_catalog import (
     build_prepared_kernel_catalog,
 )
 from pyamplicol.models.recurrence_catalog_builder import (
+    _canonical_recurrence_vertex_bindings,
     _canonical_transition_alias_key,
     _singleton_contact_orbit_step_groups,
     build_recurrence_template_catalog,
@@ -772,6 +774,96 @@ def _scalar_contact_orbit_contract() -> tuple[
         )
     )
     return (certificate,), steps
+
+
+def _heft_mirror_bindings() -> tuple[
+    PreparedVertexBinding, PreparedVertexBinding
+]:
+    certificate = CompiledContactOrbitCertificate(
+        algorithm=CONTACT_ORBIT_ALGORITHM,
+        algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+        term_id=91,
+        vertex="V_HEFT_HGGG",
+        particles=("g", "g", "g", "H"),
+        color_expression="f(1,2,3)",
+        lorentz_expression="heft-lorentz",
+        coupling_expression="heft-coupling",
+        evaluator_class=HEFT_CONTACT_ORBIT_EVALUATOR_CLASS,
+        physical_leg_equivalence_classes=(0, 0, 0, 1),
+        reconstruction_factor="1",
+    )
+    canonical_step = CompiledContactOrbitStep(
+        algorithm=CONTACT_ORBIT_ALGORITHM,
+        algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+        term_id=91,
+        stage="partial",
+        result_leg=0,
+        left_covered_legs=(2,),
+        right_covered_legs=(3,),
+        source_particle_legs=(2, 3, -1),
+        reconstruction_factor="1",
+    )
+    mirrored_step = replace(
+        canonical_step,
+        left_covered_legs=(3,),
+        right_covered_legs=(2,),
+        source_particle_legs=(3, 2, -1),
+    )
+    gluon = PreparedParticleState(21, "g", "self", "vector", 0, 4)
+    higgs = PreparedParticleState(25, "H", "self", "scalar", 0, 1)
+    auxiliary = PreparedParticleState(
+        9_050_001,
+        "heft-aux",
+        "self",
+        "auxiliary",
+        0,
+        20,
+    )
+    canonical = PreparedVertexBinding(
+        key=VertexKernelKey(100, (21, 25, 9_050_001), 0, 0, 0, (1.0, 0.0)),
+        kernel_id=10,
+        canonical_input_order=(1, 0),
+        equivalence_class="heft-identity",
+        equivalence_factor=(1.0, 0.0),
+        input_exchange_factor=None,
+        left_state=gluon,
+        right_state=higgs,
+        result_state=auxiliary,
+        contact_orbit_certificates=(certificate,),
+        contact_orbit_steps=(canonical_step,),
+    )
+    mirrored = PreparedVertexBinding(
+        key=VertexKernelKey(101, (25, 21, 9_050_001), 0, 0, 0, (1.0, 0.0)),
+        kernel_id=11,
+        canonical_input_order=(0, 1),
+        equivalence_class="heft-identity",
+        equivalence_factor=(1.0, 0.0),
+        input_exchange_factor=None,
+        left_state=higgs,
+        right_state=gluon,
+        result_state=auxiliary,
+        contact_orbit_certificates=(certificate,),
+        contact_orbit_steps=(mirrored_step,),
+    )
+    return canonical, mirrored
+
+
+def test_heft_recurrence_bindings_keep_one_certified_input_orientation() -> None:
+    canonical, mirrored = _heft_mirror_bindings()
+
+    assert _canonical_recurrence_vertex_bindings((mirrored, canonical)) == (
+        canonical,
+    )
+
+
+def test_heft_recurrence_binding_without_its_mirror_fails_closed() -> None:
+    _canonical, mirrored = _heft_mirror_bindings()
+
+    with pytest.raises(
+        PreparedKernelCatalogError,
+        match="no unique compiler-certified canonical orientation",
+    ):
+        _canonical_recurrence_vertex_bindings((mirrored,))
 
 
 class _OrbitScalarModel(_ScalarModel):

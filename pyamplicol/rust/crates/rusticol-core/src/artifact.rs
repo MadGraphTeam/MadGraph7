@@ -98,6 +98,7 @@ pub struct Producer {
 #[serde(rename_all = "kebab-case")]
 pub enum ModelSourceKind {
     BuiltInSm,
+    BuiltInSmHeft,
     Ufo,
     UfoJson,
     CompiledModel,

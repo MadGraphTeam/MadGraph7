@@ -45,6 +45,7 @@ def _write_bundle(
     contracts: portability.RuntimeContracts,
     *,
     architecture: str = "x86_64",
+    model: str = "built-in-sm",
     mutate: Callable[[dict[str, object], dict[str, bytes]], None] | None = None,
 ) -> Path:
     application_path = "kernels/000000/application-0.symjit"
@@ -58,7 +59,7 @@ def _write_bundle(
         model_path: json.dumps(
             {
                 "schema_version": contracts.compiled_model_schema_version,
-                "source": {"kind": "built-in-sm"},
+                "source": {"kind": model},
             },
             sort_keys=True,
         ).encode("utf-8"),
@@ -147,8 +148,8 @@ def _write_bundle(
             },
             "provenance": {
                 "compiled_model_digest": "a" * 64,
-                "model_name": "built-in-sm",
-                "model_source": {"kind": "built-in-sm"},
+                "model_name": model,
+                "model_source": {"kind": model},
             },
             "target": symjit_storage_v3_target(architecture),
         },
@@ -376,6 +377,25 @@ def test_architecture_jit_bundle_audit_accepts_portable_storage_v3_pack(
     assert result["exact_state_count"] == 1
     assert result["architecture_class"] == "portable"
     assert result["target"] == symjit_storage_v3_target(architecture)
+
+
+def test_architecture_jit_bundle_audit_accepts_explicit_heft_model(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+) -> None:
+    bundle = _write_bundle(
+        tmp_path / "heft.pyamplicol-model",
+        contracts,
+        model="built-in-sm-heft",
+    )
+
+    result = portability.audit_architecture_jit_bundle(
+        bundle,
+        contracts=contracts,
+        expected_model_source="built-in-sm-heft",
+    )
+
+    assert result["kernel_count"] == 1
 
 
 def test_architecture_jit_bundle_audit_rejects_wrong_storage_abi(
@@ -946,9 +966,7 @@ def test_portability_workflow_transfers_portable_packs() -> None:
         "symjit_eager_direct.rs",
         "symjit_compiled_direct.rs",
     ):
-        assert (
-            workflow.count(f"rust/crates/rusticol-core/src/evaluator/{adapter}") == 2
-        )
+        assert workflow.count(f"rust/crates/rusticol-core/src/evaluator/{adapter}") == 2
     assert "dependencies/contributor-lock.toml" in trigger
     assert "src/pyamplicol/evaluators/symbolica*.py" in trigger
     assert workflow.count("eager_portability.py produce") == 1

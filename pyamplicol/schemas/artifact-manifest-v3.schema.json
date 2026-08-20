@@ -234,6 +234,7 @@
         "source_kind": {
           "enum": [
             "built-in-sm",
+            "built-in-sm-heft",
             "ufo",
             "ufo-json",
             "compiled-model"

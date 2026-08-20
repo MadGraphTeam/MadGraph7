@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 """Compare scalar HEFT matrix elements with MadGraph standalone ``smatrix``.
 
-This developer command prepares the authenticated upstream UFO locally.  The
-UFO and generated artifacts remain under ignored developer directories and are
-not distribution inputs.
+This developer command prepares the authenticated upstream UFO locally for
+MadGraph and evaluates pyAmpliCol's independently packaged ``built-in-sm-heft``
+model. The UFO and generated artifacts remain under ignored developer
+directories.
 """
 
 from __future__ import annotations
@@ -12,12 +13,23 @@ import argparse
 import json
 import math
 import os
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from pyamplicol import Generator, ModelSource, ProcessRequest, ProcessSet, Runtime
-from pyamplicol.config import (
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pyamplicol import (  # noqa: E402
+    Generator,
+    ModelSource,
+    ProcessRequest,
+    ProcessSet,
+    Runtime,
+)
+from pyamplicol.config import (  # noqa: E402
     ColorConfig,
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
@@ -28,14 +40,20 @@ from pyamplicol.config import (
     ProcessConfig,
     RunConfig,
 )
-from tools.developer.heft_ufo import DEFAULT_HEFT_UFO_ROOT, prepare_heft_ufo
-from tools.developer.madgraph_correctness import StandaloneMadGraphRunner
+from tools.developer.heft_ufo import (  # noqa: E402
+    DEFAULT_HEFT_UFO_ROOT,
+    prepare_heft_ufo,
+)
+from tools.developer.madgraph_correctness import (  # noqa: E402
+    StandaloneMadGraphRunner,
+    set_parameter_card_values,
+)
 
-ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = ROOT / ".artifacts" / "heft-madgraph-acceptance"
 RELATIVE_TOLERANCE = 1.0e-10
 ABSOLUTE_TOLERANCE = 1.0e-300
 VALIDATION_SEED = 101
+_HEFT_INPUTS = ("aEWM1", "Gf", "aS", "MZ", "MT", "MH")
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,10 +155,24 @@ def run_acceptance(
         )
     output_root.mkdir(parents=True)
 
-    compiled_model = ModelSource.from_path(
-        model_root,
-        restriction="none",
-    ).compile(use_cache=False, require_supported=True)
+    compiled_model = ModelSource.built_in_sm_heft().compile(
+        use_cache=False,
+        require_supported=True,
+    )
+    parameters = {parameter.name: parameter for parameter in compiled_model.parameters}
+    missing_inputs = sorted(set(_HEFT_INPUTS).difference(parameters))
+    if missing_inputs:
+        raise HEFTAcceptanceError(
+            f"packaged scalar HEFT model lacks inputs: {missing_inputs!r}"
+        )
+    madgraph_inputs = {}
+    for name in _HEFT_INPUTS:
+        parameter = parameters[name]
+        if parameter.default_imaginary != 0.0:
+            raise HEFTAcceptanceError(
+                f"packaged scalar HEFT input {name} is unexpectedly complex"
+            )
+        madgraph_inputs[name] = parameter.default_real
     process_set = ProcessSet(
         requests=tuple(
             ProcessRequest.parse(spec.expression, name=spec.process_id)
@@ -195,6 +227,10 @@ def run_acceptance(
             model_import=os.fspath(model_root),
             coupling_orders={"HIG": 1},
         )
+        set_parameter_card_values(
+            standalone.standalone / "Cards" / "param_card.dat",
+            madgraph_inputs,
+        )
         madgraph_value = standalone_runner.evaluate(
             standalone,
             momenta,
@@ -226,6 +262,8 @@ def run_acceptance(
 
     return {
         "kind": "pyamplicol-heft-madgraph-acceptance",
+        "model": "built-in-sm-heft",
+        "effective_coupling_momentum_dependent": False,
         "madgraph_version": _madgraph_version(madgraph),
         "precision": 16,
         "validation_seed": VALIDATION_SEED,
