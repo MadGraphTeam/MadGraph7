@@ -15,7 +15,7 @@
 
 // Index of the event owned by the current thread
 static __device__ inline int
-gpuKernelEvt()
+calJampEvt()
 {
 #if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
   return blockIdx.x;
@@ -26,7 +26,7 @@ gpuKernelEvt()
 
 // Total number of events in the grid launched
 static __device__ inline int
-gpuKernelNevt()
+calJampNevt()
 {
 #if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
   return gridDim.x;
@@ -130,7 +130,7 @@ public:
     }
     else
     {
-      const int ievt = gpuKernelEvt();
+      const int ievt = calJampEvt();
       //printf( "kernelAccessRecord: ievt=%d threadId=%d\n", ievt, threadIdx.x );
       return T::ieventAccessRecord( buffer, ievt ); // NB fptype and fptype_sv coincide for CUDA
     }

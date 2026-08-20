@@ -11,6 +11,7 @@
 
 #include "mgOnGpuCxtypes.h"
 
+#include "MemoryAccessHelpers.h"
 #include "ProcessData.h"
 #include "GpuAbstraction.h"
 
@@ -25,8 +26,8 @@ namespace madmatrix
     kernelAccessIcolIhelNhel( fptype* buffer, const int icol, const int ihel, const int nhel )
     {
       const int ncolor = ProcessData::ncolor; // the number of leading colors
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      const int nevt = calJampNevt();
+      const int ievt = calJampEvt();
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
       //return cxtype_ref( buffer[icol * 2 * nevt + ievt], buffer[icol * 2 * nevt + nevt + ievt] ); // "old"
       // (ONE HELICITY) New "new1" striding for cuBLAS: two separate ncolor*nevt matrices for each of real and imag (ievt last)
