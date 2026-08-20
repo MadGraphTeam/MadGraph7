@@ -31,6 +31,12 @@ ifeq ($(HRDCOD),)
   override HRDCOD = 0
 endif
 
+# Set the default HELBLOCK (calculate_jamps thread/block layout: 0=EVENT, 1=HELICITY) choice
+# NB: this is a GPU-only choice (BACKEND=cuda|hip): it has no effect on the C++/SIMD backends
+ifeq ($(HELBLOCK),)
+  override HELBLOCK = 0
+endif
+
 # default USEBUILDDIR = 1
 ifeq ($(USEBUILDDIR),)
   override USEBUILDDIR = 1
@@ -58,6 +64,11 @@ ifneq ($(words $(filter $(HRDCOD), $(SUPPORTED_HRDCODS))),1)
   $(error Invalid hrdcod HRDCOD='$(HRDCOD)': supported hrdcods are $(foreach hrdcod,$(SUPPORTED_HRDCODS),'$(hrdcod)'))
 endif
 
+override SUPPORTED_HELBLOCKS = 0 1
+ifneq ($(words $(filter $(HELBLOCK), $(SUPPORTED_HELBLOCKS))),1)
+  $(error Invalid helblock HELBLOCK='$(HELBLOCK)': supported helblocks are $(foreach helblock,$(SUPPORTED_HELBLOCKS),'$(helblock)'))
+endif
+
 # Stop immediately if BACKEND=cuda but nvcc is missing
 ifeq ($(BACKEND),cuda)
   ifeq ($(shell which nvcc 2>/dev/null),)
@@ -75,7 +86,7 @@ endif
 #=== Configure MADMATRIX_BUILDDIR
 
 # Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
-override DIRTAG := $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+override DIRTAG := $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)_hb$(HELBLOCK)
 
 # Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after potential cppauto resolution
@@ -632,6 +643,15 @@ else ifneq ($(HRDCOD),0)
   $(error Unknown HRDCOD='$(HRDCOD)': only '0' and '1' are supported)
 endif
 
+# Set the build flags appropriate to each HELBLOCK choice (example: "make HELBLOCK=1")
+# NB: GPU-only (GPUFLAGS): the C++/SIMD backends have no HELICITY thread/block layout
+$(info HELBLOCK='$(HELBLOCK)')
+ifeq ($(HELBLOCK),1)
+  GPUFLAGS += -DMGONGPU_HELBLOCK_LAYOUT_HELICITY
+else ifneq ($(HELBLOCK),0)
+  $(error Unknown HELBLOCK='$(HELBLOCK)': only '0' and '1' are supported)
+endif
+
 #=== Set the CUDA/HIP/C++ compiler and linker flags appropriate to user-defined choices of HASBLAS
 
 $(info HASBLAS=$(HASBLAS))
@@ -681,7 +701,7 @@ endif
 #=== Configure build directories and build lockfiles ===
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
-override TAG = $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+override TAG = $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)_hb$(HELBLOCK)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
