@@ -121,6 +121,9 @@ logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # -> stdout include ins
 
 logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # -> stoud for MadLoop tuto
 
+# Central definition of the main interface prompt (bold blue "MG7> ")
+MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
+
 #===============================================================================
 # CmdExtended
 #===============================================================================
@@ -1532,9 +1535,9 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('%s : Not a valid directory' % path)
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
-        elif os.path.isfile(pjoin(subproc_path, 'madmatrix.mk')):
-            # standalone_mg7 writes SubProcesses/madmatrix.mk explicitly
-            # (the regular mg7 export does not).
+        elif os.path.isfile(pjoin(subproc_path, 'madmatrix_standalone.mk')):
+            # standalone_mg7 writes SubProcesses/madmatrix_standalone.mk
+            # (the regular mg7 export only writes madmatrix.mk).
             return 'standalone_mg7'
         elif os.path.isfile(pjoin(card_path, 'run_card.toml')):
             return 'mg7'
@@ -3265,8 +3268,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     def preloop(self):
         """Initializing before starting the main loop"""
 
-        #self.prompt = 'MG5_aMC>'
-        self.prompt = " 🚀 "
+        self.prompt = MG7_PROMPT
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 

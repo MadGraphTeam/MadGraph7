@@ -1125,21 +1125,21 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         card = {0:'done'}
         
         indent = max(len(path2name(card_name)) for card_name in cards)
-        question += '/'+'-'*60+'\\\n'
+        question += '┌'+'─'*60+'┐\n'
         for i, card_name in enumerate(cards):
             imode = path2name(card_name)
             possible_answer.append(i+1)
             possible_answer.append(imode)
-            question += '| %-77s|\n'%((' \x1b[31m%%s\x1b[0m. %%-%ds : \x1b[32m%%s\x1b[0m'%indent)%(i+1, imode, card_name))
+            question += '│ %-77s│\n'%((' \x1b[31m%%s\x1b[0m. %%-%ds : \x1b[32m%%s\x1b[0m'%indent)%(i+1, imode, card_name))
             card[i+1] = imode
-            
+
         if plot and not 'plot_card.dat' in cards:
-            question += '| %-77s|\n'%((' \x1b[31m9\x1b[0m. %%-%ds : \x1b[32mplot_card.dat\x1b[0m'%indent) % 'plot')
+            question += '│ %-77s│\n'%((' \x1b[31m9\x1b[0m. %%-%ds : \x1b[32mplot_card.dat\x1b[0m'%indent) % 'plot')
             possible_answer.append(9)
             possible_answer.append('plot')
             card[9] = 'plot'
 
-        question += '\\'+'-'*60+'/\n'
+        question += '└'+'─'*60+'┘\n'
 
         if 'param_card.dat' in cards:
             # Add the path options
@@ -8179,6 +8179,9 @@ You can also copy/paste, your event file here.''')
         if time.time() - start < .5:
             self.mother_interface.ask("Are you really that fast? If you are using an editor that returns directly. Please confirm that you have finised to edit the file", 'y',
                                       timeout=False)
+        # editor may not have restored the screen; don't trust it for the next redraw
+        if hasattr(self, 'invalidate_display'):
+            self.invalidate_display()
         self.reload_card(path)
         
     def reload_card(self, path): 
@@ -8558,12 +8561,12 @@ class AskforEditCardWithSwitch(object):
         if to_show:
             indent = max(len(label) for _, label, _ in to_show)
             question += '\n\033[92m You can also edit the following cards\033[0m:\n'
-            question += '/' + '-' * 60 + '\\\n'
+            question += '┌' + '─' * 60 + '┐\n'
             fmt = ' \x1b[31m%%s\x1b[0m. %%-%ds : \x1b[32m%%s\x1b[0m' % indent
             for number, label, card in to_show:
-                question += '| %-77s|\n' % (fmt % (number, label, card))
-            question += '\\' + '-' * 60 + '/\n'
-            question += ' you can also\n'
+                question += '│ %-77s│\n' % (fmt % (number, label, card))
+            question += '└' + '─' * 60 + '┘\n'
+            question += '\033[92m you can also\033[0m\n'
             question += '   - enter the path to a valid card or banner.\n'
             question += '   - use the \'set\' command to modify a parameter directly.\n'
 
