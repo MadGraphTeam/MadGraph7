@@ -967,7 +967,8 @@ class OneProcessExporterCPP(object):
         replace_dict['nprocesses'] = self.nprocesses
         
 
-        color_amplitudes = self.matrix_elements[0].get_color_amplitudes()
+        color_amplitudes = self.matrix_elements[0].get_color_amplitudes(
+            merge_quartic_amplitudes=False)
         # Number of color flows
         replace_dict['ncolor'] = len(color_amplitudes)
 
@@ -1045,7 +1046,7 @@ class OneProcessExporterCPP(object):
         # Extract process class name (for the moment same as file name)
         replace_dict['process_class_name'] = self.process_name
 
-        color_amplitudes = [me.get_color_amplitudes() for me in \
+        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False) for me in \
                             self.matrix_elements]
 
         replace_dict['initProc_lines'] = \
@@ -2124,7 +2125,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
         # Extract process class name (for the moment same as file name)
         replace_dict['process_class_name'] = self.process_name
 
-        color_amplitudes = [me.get_color_amplitudes() for me in \
+        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False) for me in \
                             self.matrix_elements]
 
         replace_dict['initProc_lines'] = \
