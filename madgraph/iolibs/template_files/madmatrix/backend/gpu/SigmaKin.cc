@@ -148,7 +148,11 @@ namespace madmatrix
                    const bool processAllHelicities    // input: if true, index helicities from the grid
                    ) /* clang-format on */
   {
+#if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+    using M_ACCESS = SharedAccessMomenta;         // momenta staged once per block in shared memory
+#else
     using M_ACCESS = DeviceAccessMomenta;         // non-trivial access: buffer includes all events
+#endif
     using W_ACCESS = DeviceAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using A_ACCESS = DeviceAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using CD_ACCESS = DeviceAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
@@ -169,6 +173,14 @@ namespace madmatrix
       allNumerators = allNumerators + ighel * nevt * ndiagrams;
       allDenominators = allDenominators + ighel * nevt;
     }
+
+#if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+    __shared__ fptype sh_momenta[npar * np4];
+    for( int ipar = threadIdx.x; ipar < npar; ipar += blockDim.x ) // block-stride (more saint then priest, prob if would be enough)
+      for( int ip4 = 0; ip4 < np4; ip4++ )
+        sh_momenta[ipar * np4 + ip4] = DeviceAccessMomenta::kernelAccessIp4IparConst( allmomenta, ip4, ipar );
+    __syncthreads();
+#endif
 
     fptype_sv pvec_sv[nwf][np4];
     cxtype_sv w_sv[nwf][nw6]; // particle wavefunctions within Feynman diagrams
@@ -196,7 +208,11 @@ namespace madmatrix
 #pragma nv_diagnostic pop
 #endif
       // CUDA kernels take input/output buffers with momenta/MEs for all events
+#if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+      const fptype* momenta = sh_momenta;
+#else
       const fptype* momenta = allmomenta;
+#endif
       const fptype* COUPs[nxcoup];
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
       const int ievt = calJampEvt(); // index of event (thread) in grid

@@ -205,6 +205,20 @@ namespace madmatrix
 
   //----------------------------------------------------------------------------
 
+  // Access to momenta staged in per-block shared memory (HELICITY thread/block layout): the whole
+  // block shares one event, so there is no per-thread event stride.
+  class SharedAccessMomenta
+  {
+  public:
+    static __device__ inline fptype_sv
+    kernelAccessIp4IparConst( const fptype* buffer, const int ip4, const int ipar )
+    {
+      return buffer[ipar * ProcessData::np4 + ip4];
+    }
+  };
+
+  //----------------------------------------------------------------------------
+
 } // end namespace madmatrix
 
 #endif // MemoryAccessMomenta_H
