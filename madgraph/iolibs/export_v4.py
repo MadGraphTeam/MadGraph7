@@ -222,6 +222,86 @@ class VirtualExporter(object):
         return
 
 #===============================================================================
+# Squared split orders: which components the user's constraint keeps
+#===============================================================================
+def chosen_squared_orders(process, squared_orders):
+    """Which entries of squared_orders the user's '^2' constraint keeps.
+
+    squared_orders is the list of squared split-order tuples actually present
+    in the matrix element, as get_split_orders_mapping returns it; the process
+    carries the constraint. A False entry is a component that contributes to
+    the amplitude but that the user asked *not* to have summed into the total,
+    so a backend which cannot mask it does not compute what was asked for.
+
+    This is the boolean form of what set_chosen_SO_index writes as the Fortran
+    CHOSEN_SO_CONFIGS DATA statement, kept here so that a backend can ask the
+    question without parsing that string.
+    """
+
+    user_squared_orders = process.get('squared_orders')
+    split_orders = process.get('split_orders')
+
+    if len(user_squared_orders)==0:
+        return [True]*len(squared_orders)
+
+    res = []
+    for sqsos in squared_orders:
+        is_a_match = True
+        for user_sqso, value in user_squared_orders.items():
+            if user_sqso == 'WEIGHTED' :
+                logger.debug('WEIGHTED^2%s%s encoutered. Please check behavior for' + \
+                        'https://bazaar.launchpad.net/~maddevelopers/mg5amcnlo/3.0.1/revision/613', \
+                        (process.get_squared_order_type(user_sqso), sqsos[split_orders.index(user_sqso)]))
+            if user_sqso not in split_orders:
+                is_a_match = False
+            elif (process.get_squared_order_type(user_sqso) =='==' and \
+                    value!=sqsos[split_orders.index(user_sqso)]) or \
+               (process.get_squared_order_type(user_sqso) in ['<=','='] and \
+                            value<sqsos[split_orders.index(user_sqso)]) or \
+               (process.get_squared_order_type(user_sqso) == '>' and \
+                            value>=sqsos[split_orders.index(user_sqso)]):
+                is_a_match = False
+                break
+        res.append(is_a_match)
+
+    return res
+
+def split_orders_not_supported_msg(format, process, split_orders,
+                                   squared_orders, chosen):
+    """Error text for a backend asked for a strict subset of squared orders.
+
+    The backend sums every squared-order component into one |M|^2. That is the
+    number the user asked for as long as the constraint keeps all of them --
+    which is why this is only an error when at least one is dropped. Naming the
+    components, and which of them survive, is the point: the difference between
+    what would be returned and what was asked for is otherwise invisible.
+    """
+
+    def name(orders):
+        return ' '.join('%s=%d' % (order, value)
+                        for order, value in zip(split_orders, orders)) or 'ALL_ORDERS'
+
+    kept = [name(o) for o, keep in zip(squared_orders, chosen) if keep]
+    dropped = [name(o) for o, keep in zip(squared_orders, chosen) if not keep]
+
+    return """The '%(format)s' output format does not support squared split orders.
+Process: %(proc)s
+Its matrix element has %(n)d squared-order components: %(all)s.
+The constraint keeps %(kept)s and drops %(dropped)s, but this backend has no
+squared-order mask: it would sum all %(n)d components and return that total,
+which is not the requested contribution.
+Use 'output standalone' for this process -- the Fortran standalone carries the
+split-order machinery (SMATRIX_SPLITORDERS) and returns the masked total as
+well as each component. Alternatively, constrain the process so that all its
+squared-order components are kept.""" % {
+        'format': format,
+        'proc': process.nice_string().replace('Process: ', ''),
+        'n': len(squared_orders),
+        'all': ', '.join(name(o) for o in squared_orders),
+        'kept': ', '.join(kept) if kept else 'nothing',
+        'dropped': ', '.join(dropped)}
+
+#===============================================================================
 # ProcessExporterFortran
 #===============================================================================
 class ProcessExporterFortran(VirtualExporter,
@@ -2017,34 +2097,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         finds what indices of the squared_orders list the user intends to pick.
         It returns this as a string of comma-separated successive '.true.' or 
         '.false.' for each index."""
-        
-        user_squared_orders = process.get('squared_orders')
-        split_orders = process.get('split_orders')
-        
-        if len(user_squared_orders)==0:
-            return ','.join(['.true.']*len(squared_orders))
-        
-        res = []
-        for sqsos in squared_orders:
-            is_a_match = True
-            for user_sqso, value in user_squared_orders.items():
-                if user_sqso == 'WEIGHTED' :
-                    logger.debug('WEIGHTED^2%s%s encoutered. Please check behavior for' + \
-                            'https://bazaar.launchpad.net/~maddevelopers/mg5amcnlo/3.0.1/revision/613', \
-                            (process.get_squared_order_type(user_sqso), sqsos[split_orders.index(user_sqso)]))
-                if user_sqso not in split_orders:
-                    is_a_match = False
-                elif (process.get_squared_order_type(user_sqso) =='==' and \
-                        value!=sqsos[split_orders.index(user_sqso)]) or \
-                   (process.get_squared_order_type(user_sqso) in ['<=','='] and \
-                                value<sqsos[split_orders.index(user_sqso)]) or \
-                   (process.get_squared_order_type(user_sqso) == '>' and \
-                                value>=sqsos[split_orders.index(user_sqso)]):
-                    is_a_match = False
-                    break
-            res.append('.true.' if is_a_match else '.false.')
-            
-        return ','.join(res)
+
+        return ','.join('.true.' if keep else '.false.' for keep in
+                        chosen_squared_orders(process, squared_orders))
 
     def get_split_orders_lines(self, orders, array_name, n=5):
         """ Return the split orders definition as defined in the list orders and

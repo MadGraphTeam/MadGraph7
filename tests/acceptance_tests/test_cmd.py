@@ -1334,6 +1334,55 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
+    def test_standalone_mg7_refuses_a_dropped_squared_order(self):
+        """standalone_mg7 must refuse a squared-order constraint it cannot apply.
+
+        The madmatrix backend contracts one jamp vector per helicity with the
+        color matrix once, so the |M|^2 it returns is the sum over every
+        squared-order component of the amplitude. Whenever the user's '^2'
+        constraint keeps all of them that is the requested number, and those
+        cases stay supported; when it drops one, the backend has no mask and
+        would hand back the full total instead.
+
+        ``u u~ > t t~ QED^2==2`` is the case that matters: the interference
+        cannot be reached by dropping diagrams, so all three survive and the
+        Fortran masks the sum down to the QCD-EW cross term alone (-3.4e-18 at
+        the standard RAMBO point) while madmatrix returned the whole
+        0.617412658924358 -- silently, with generated code differing from the
+        unconstrained process by one comment line. It has to say so instead.
+
+        The supported cases are pinned alongside it, since the fix must not
+        turn them into errors: ``QED^2<=4`` keeps all three components and
+        ``QED^2==4`` is resolved by MG5 at generation down to a single one.
+        """
+        self.do('import model sm')
+
+        # Dropped component: refuse, and name what was dropped.
+        self.do('generate u u~ > t t~ QED^2==2')
+        try:
+            self.do('output standalone_mg7 %s -f' % self.out_dir)
+        except InvalidCmd as error:
+            message = str(error)
+        else:
+            self.fail('standalone_mg7 accepted a squared-order constraint it '
+                      'cannot apply')
+        self.assertIn('does not support squared split orders', message)
+        self.assertIn('QED=0', message)  # the components it would have summed
+        self.assertIn('QED=4', message)
+
+        # All components kept: the plain sum is the requested number.
+        for process in ('u u~ > t t~ QED^2<=4',   # three components, all kept
+                        'u u~ > t t~ QED^2==4'):  # resolved at generation
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('generate %s' % process)
+            self.do('output standalone_mg7 %s -f' % self.out_dir)
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            self.assertTrue([d for d in os.listdir(proc_root)
+                             if d.startswith('P') and
+                             os.path.isdir(pjoin(proc_root, d))],
+                            'standalone_mg7 wrote no subprocess for %s' % process)
+
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
 

@@ -26,6 +26,7 @@ import madgraph.iolibs.files as files
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.export_cpp as export_cpp
 import madgraph.various.misc as misc
+from madgraph import InvalidCmd
 
 from . import launch_plugin
 
@@ -53,6 +54,10 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # If sa_symmetry is true, generate fewer matrix elements
     # AV - keep OM's default for this plugin (using grouped_mode=False, "can decide to merge uu~ and u~u anyway")
     sa_symmetry = True
+
+    # The name this exporter is reached by on the 'output' line, for the error
+    # messages that have to name it back to the user.
+    format_name = 'mg7'
 
     # The color sum can run on the (n-2)! Del Duca-Dixon-Maltoni basis for a
     # multi-gluon process, but a color flow still has to be picked among the
@@ -206,8 +211,64 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             rendered = self.read_template_file(pjoin(self.madmatrix_templates, name)) % replace_dict
             open(pjoin(self.dir_path, 'SubProcesses', name), 'w').write(rendered)
 
+    def check_split_orders(self, matrix_element):
+        """Refuse a process whose squared-order constraint drops a component.
+
+        This backend has no squared-order machinery at all: it builds one jamp
+        vector per helicity and contracts it with the color matrix once, so the
+        |M|^2 it returns is the sum over *every* squared-order component the
+        amplitude has. That is exactly the requested number whenever the
+        constraint keeps all of them -- which covers the single-component case
+        (MG5 has already resolved the constraint at generation, e.g.
+        `p p > j j QCD^2==4`) and the multi-component case that keeps
+        everything (e.g. `u u~ > t t~ QED^2<=4`). Both stay supported, and
+        untouched.
+
+        It is not the requested number when the constraint drops a component,
+        which happens when that component cannot be reached by dropping
+        diagrams -- an interference term, typically: `u u~ > t t~ QED^2==2`
+        keeps all three diagrams and asks for the QCD-EW cross term alone,
+        while this backend would return the full QCD^2 + interference + EW^2
+        total. There is no mask to apply here, so it says so instead.
+
+        Supporting it would mean splitting the jamps by amplitude order and
+        pairing them in the color sum, the Fortran GET_MATRIX contract
+        (JAMP(NCOLOR,NAMPSO) -> RES(NSQAMPSO)). All three color sums here --
+        color_sum_cpu, the CUDA kernel and the BLAS path -- take a single jamp
+        vector per helicity, as do the color folding, the C-parity de-duplication
+        and the good-helicity scan that read their output. Masking alone would at
+        least keep the scalar signature; it is the jamp splitting underneath that
+        this backend has no room for, which is why this refuses rather than
+        computing the requested contribution.
+        """
+
+        process = matrix_element.get('processes')[0]
+        split_orders = process.get('split_orders')
+        if not split_orders:
+            return
+        squared_orders, _amp_orders = matrix_element.get_split_orders_mapping()
+        chosen = export_v4.chosen_squared_orders(process, squared_orders)
+        if all(chosen):
+            # The total is what was asked for. The components it is made of are
+            # not available here though, and the Fortran standalone would hand
+            # them back through SMATRIX_SPLITORDERS, so say which of the two
+            # this output is rather than let the user assume the other.
+            if len(squared_orders) > 1:
+                logger.warning(
+                    "%s returns the summed |M|^2 over all %d squared-order "
+                    "components of '%s', which is what its constraint asks "
+                    "for. The individual components are not available from "
+                    "this backend -- use 'output standalone' for those.",
+                    self.__class__.format_name, len(squared_orders),
+                    process.nice_string().replace('Process: ', ''))
+            return
+        raise InvalidCmd(export_v4.split_orders_not_supported_msg(
+            self.__class__.format_name, process, split_orders,
+            squared_orders, chosen))
+
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
+        self.check_split_orders(matrix_element)
         # Propagate the --mask toggle to the helas call writer that emits the
         # guarded wavefunction/amplitude calls, and the output command line as
         # a whole for the --jamp_optim toggle of the color-flow optimisation.
@@ -239,6 +300,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 # an additional wrapper makefile (madmatrix_standalone.mk) on top of madmatrix.mk,
 # so that when running `make` in a P* folder, it builds check_sa.exe as well as the process library (predicatable behaviour)
 class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
+
+    format_name = 'standalone_mg7'
 
     # Each P* directory links madmatrix_standalone.mk (which itself includes
     # madmatrix.mk) as its 'makefile'; both have to be rendered in SubProcesses/
