@@ -1274,6 +1274,23 @@ sure the ratio is not a property of one MINT grid history: 2.2220 before,
 2.0060 after, with the totals agreeing at 0.02 sigma (2.1868e+03 +- 8.8e+00 vs
 2.1871e+03 +- 9.5e+00). The threshold in the test is 2.15.
 
+The full shower step could not be exercised on the development machine: the
+`MG5aMC_PY8_interface` there was installed against MG5aMC v3.5.15 and its C++
+link now fails (`ld: symbol(s) not found for architecture arm64`). That is a
+local toolchain problem, not a polarisation one -- it happens after
+`events.lhe` is written, and the run that hit it had already produced its 1000
+events at 2.212e+03 +- 8.2e+00 pb. Everything under test here happens before
+the handover to PYTHIA8.
+
+#### The test was checked against the unfixed code
+
+`test_polarised_nlo_ps_me_frame` was run twice through `./tests/test_manager.py`:
+it passes on the branch (399 s) and, with `montecarlocounter.f` alone reverted
+to its pre-M5 state, fails on exactly the intended assertion with
+`AssertionError: 2.22732091828047 not less than 2.15`. That reproduces the
+by-hand measurement above to every digit, so the test really drives the code
+path it claims to.
+
 *No frame requested stays bit-identical.* Same process, `me_frame=[1,2]`
 (`FRAME_ID = 6`, the partonic c.m., which `get_me_frame_boost` skips), run
 twice from two copies of one output directory differing only in
