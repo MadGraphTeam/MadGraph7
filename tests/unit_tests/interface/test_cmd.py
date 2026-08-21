@@ -313,7 +313,14 @@ class TestValidCmd(unittest.TestCase):
         # theirs and the perturbation orders do not matter
         cmd.check_process_format('u u~ > z{0} g [virt=QCD]')
         cmd.check_process_format('u u~ > z{0} g [virt=QED QCD]')
-        
+        # loop-induced: 'noborn' goes through the LO madevent template and uses
+        # me_frame as at LO, 'sqrvirt' squares one amplitude standalone. No NLO
+        # restriction applies -- any orders, and colour is not refused either.
+        cmd.check_process_format('g g > z{0} z{0} [noborn=QCD]')
+        cmd.check_process_format('g g > z{0} z{0} [sqrvirt=QCD]')
+        cmd.check_process_format('g g > z{0} z{0} [noborn=QED QCD]')
+        cmd.check_process_format('g{L} g > z z [noborn=QCD]')
+
         # unvalid syntax
         self.wrong(cmd.check_process_format, ' e+ e-')
         self.wrong(cmd.check_process_format, ' e+ e- > e+ e-,')
