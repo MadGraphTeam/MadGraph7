@@ -376,7 +376,7 @@ max:
 
 abs:
   inputs:
-    - name: in
+    - name: input
       type: [float, ...]
       desc:
   outputs:

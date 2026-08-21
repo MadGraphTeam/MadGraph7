@@ -1791,7 +1791,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &EventGenerator::combine_to_lhe,
             py::arg("file_name"),
             py::arg("lhe_completer"),
-            py::arg("meta") = LHEMeta{}
+            py::arg_v("meta", LHEMeta{}, "LHEMeta()")
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)
