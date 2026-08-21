@@ -27,6 +27,7 @@ namespace madmatrix
     friend class MemoryAccessHelper<MemoryAccessIflavorVecBase, unsigned int>;
     friend class KernelAccessHelper<MemoryAccessIflavorVecBase, true, unsigned int>;
     friend class KernelAccessHelper<MemoryAccessIflavorVecBase, false, unsigned int>;
+    friend class KernelAccessHelper<MemoryAccessIflavorVecBase, true, unsigned int, true>; // for HelBlockDeviceAccessIflavorVec
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
@@ -80,7 +81,7 @@ namespace madmatrix
 
   // A class providing access to memory buffers for a given event, based on implicit kernel rules
   // Its methods use the KernelAccessHelper template - note the use of the template keyword in template function instantiations
-  template<bool onDevice>
+  template<bool onDevice, bool useHelBlockEvt = false>
   class KernelAccessIflavorVec
   {
   public:
@@ -90,7 +91,7 @@ namespace madmatrix
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const, SCALAR) ===> const unsigned int& kernelAccessConst( const unsigned int* buffer ) <===]
-    static constexpr auto kernelAccessConst_s = KernelAccessHelper<MemoryAccessIflavorVecBase, onDevice, unsigned int>::template kernelAccessFieldConst<>; // requires cuda 11.4
+    static constexpr auto kernelAccessConst_s = KernelAccessHelper<MemoryAccessIflavorVecBase, onDevice, unsigned int, useHelBlockEvt>::template kernelAccessFieldConst<>; // requires cuda 11.4
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (const, SCALAR OR VECTOR) ===> const uint_sv& kernelAccess( const unsigned int* buffer ) <===]
@@ -106,6 +107,9 @@ namespace madmatrix
 
   typedef KernelAccessIflavorVec<false> HostAccessIflavorVec;
   typedef KernelAccessIflavorVec<true> DeviceAccessIflavorVec;
+
+  // For use as F_ACCESS inside calculate_jamps only 
+  typedef KernelAccessIflavorVec<true, true> HelBlockDeviceAccessIflavorVec;
 
   //----------------------------------------------------------------------------
 

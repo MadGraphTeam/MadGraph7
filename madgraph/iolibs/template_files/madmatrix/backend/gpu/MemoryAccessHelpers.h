@@ -110,7 +110,8 @@ public:
 //----------------------------------------------------------------------------
 
 // A templated helper class that includes the boilerplate code for KernelAccess classes
-template<class T, bool onDevice, typename FT = fptype>
+// useHelBlockEvt: opt-in for accesses in calculate_jamps
+template<class T, bool onDevice, typename FT = fptype, bool useHelBlockEvt = false>
 class KernelAccessHelper : public MemoryAccessHelper<T, FT>
 {
 public:
@@ -130,7 +131,7 @@ public:
     }
     else
     {
-      const int ievt = calJampEvt();
+      const int ievt = useHelBlockEvt ? calJampEvt() : ( blockDim.x * blockIdx.x + threadIdx.x );
       //printf( "kernelAccessRecord: ievt=%d threadId=%d\n", ievt, threadIdx.x );
       return T::ieventAccessRecord( buffer, ievt ); // NB fptype and fptype_sv coincide for CUDA
     }

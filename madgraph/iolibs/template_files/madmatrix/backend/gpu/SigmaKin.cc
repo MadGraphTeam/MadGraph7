@@ -155,11 +155,19 @@ namespace madmatrix
 #endif
     using W_ACCESS = DeviceAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using A_ACCESS = DeviceAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
-    using CD_ACCESS = DeviceAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
-    using CI_ACCESS = DeviceAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
-    using F_ACCESS = DeviceAccessIflavorVec;      // non-trivial access: buffer includes all events
-    using NUM_ACCESS = DeviceAccessNumerators;    // non-trivial access: buffer includes all events
-    using DEN_ACCESS = DeviceAccessDenominators;  // non-trivial access: buffer includes all events
+    // CD_ACCESS/F_ACCESS/DEN_ACCESS: only calculate_jamps's own grid changes shape under HELBLOCK_LAYOUT_HELICITY
+    // (unlike computeDependentCouplings/color_sum_kernel, which always use the plain grid).
+#if defined MGONGPU_HELBLOCK_LAYOUT_HELICITY
+    using CD_ACCESS = HelBlockDeviceAccessCouplings;     // non-trivial access (dependent couplings): buffer includes all events
+    using F_ACCESS = HelBlockDeviceAccessIflavorVec;     // non-trivial access: buffer includes all events
+    using DEN_ACCESS = HelBlockDeviceAccessDenominators; // non-trivial access: buffer includes all events
+#else
+    using CD_ACCESS = DeviceAccessCouplings;     // non-trivial access (dependent couplings): buffer includes all events
+    using F_ACCESS = DeviceAccessIflavorVec;     // non-trivial access: buffer includes all events
+    using DEN_ACCESS = DeviceAccessDenominators; // non-trivial access: buffer includes all events
+#endif
+    using CI_ACCESS = DeviceAccessCouplingsFixed;    // TRIVIAL access (independent couplings): buffer for one event
+    using NUM_ACCESS = DeviceAccessNumerators;       // TRIVIAL access via kernelAccessP: buffer already pre-offset to this event
     mgDebug( 0, __FUNCTION__ );
     if( processAllHelicities )
     {
@@ -178,7 +186,7 @@ namespace madmatrix
     __shared__ fptype sh_momenta[npar * np4];
     for( int ipar = threadIdx.x; ipar < npar; ipar += blockDim.x ) // block-stride (more saint then priest, prob if would be enough)
       for( int ip4 = 0; ip4 < np4; ip4++ )
-        sh_momenta[ipar * np4 + ip4] = DeviceAccessMomenta::kernelAccessIp4IparConst( allmomenta, ip4, ipar );
+        sh_momenta[ipar * np4 + ip4] = MemoryAccessMomenta::ieventAccessIp4IparConst( allmomenta, blockIdx.x, ip4, ipar );
     __syncthreads();
 #endif
 

@@ -69,6 +69,7 @@ namespace madmatrix
     friend class MemoryAccessHelper<MemoryAccessCouplingsBase>;
     friend class KernelAccessHelper<MemoryAccessCouplingsBase, true>;
     friend class KernelAccessHelper<MemoryAccessCouplingsBase, false>;
+    friend class KernelAccessHelper<MemoryAccessCouplingsBase, true, fptype, true>; // for HelBlockDeviceAccessCouplings
 
     // The number of couplings that dependent on the running alphas QCD in this specific process
     static constexpr size_t ndcoup = Parameters_dependentCouplings::ndcoup;
@@ -151,7 +152,7 @@ namespace madmatrix
 
   // A class providing access to memory buffers for a given event, based on implicit kernel rules
   // Its methods use the KernelAccessHelper template - note the use of the template keyword in template function instantiations
-  template<bool onDevice>
+  template<bool onDevice, bool useHelBlockEvt = false>
   class KernelAccessCouplings
   {
   public:
@@ -171,12 +172,12 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non-const, SCALAR) ===> fptype& kernelAccessIx2( fptype* buffer, const int ix2 ) <===]
     static constexpr auto kernelAccessIx2_s =
-      KernelAccessHelper<MemoryAccessCouplingsBase, onDevice>::template kernelAccessField<int>;
+      KernelAccessHelper<MemoryAccessCouplingsBase, onDevice, fptype, useHelBlockEvt>::template kernelAccessField<int>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const, SCALAR) ===> const fptype& kernelAccessIx2Const( const fptype* buffer, const int ix2 ) <===]
     static constexpr auto kernelAccessIx2Const_s =
-      KernelAccessHelper<MemoryAccessCouplingsBase, onDevice>::template kernelAccessFieldConst<int>;
+      KernelAccessHelper<MemoryAccessCouplingsBase, onDevice, fptype, useHelBlockEvt>::template kernelAccessFieldConst<int>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non const, SCALAR OR VECTOR) ===> fptype_sv& kernelAccessIx2( fptype* buffer, const int ix2 ) <===]
@@ -232,6 +233,9 @@ namespace madmatrix
 
   typedef KernelAccessCouplings<false> HostAccessCouplings;
   typedef KernelAccessCouplings<true> DeviceAccessCouplings;
+
+  // For use as CD_ACCESS inside calculate_jamps only 
+  typedef KernelAccessCouplings<true, true> HelBlockDeviceAccessCouplings;
 
   //----------------------------------------------------------------------------
 

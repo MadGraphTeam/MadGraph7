@@ -28,6 +28,7 @@ namespace madmatrix
     friend class MemoryAccessHelper<MemoryAccessGsBase>;
     friend class KernelAccessHelper<MemoryAccessGsBase, true>;
     friend class KernelAccessHelper<MemoryAccessGsBase, false>;
+    friend class KernelAccessHelper<MemoryAccessGsBase, true, fptype, true>; // for HelBlockDeviceAccessDenominators
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
@@ -96,7 +97,7 @@ namespace madmatrix
 
   // A class providing access to memory buffers for a given event, based on implicit kernel rules
   // Its methods use the KernelAccessHelper template - note the use of the template keyword in template function instantiations
-  template<bool onDevice>
+  template<bool onDevice, bool useHelBlockEvt = false>
   class KernelAccessGs
   {
   public:
@@ -107,7 +108,7 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non-const, SCALAR) ===> fptype& kernelAccess( fptype* buffer ) <===]
     static constexpr auto kernelAccess_s =
-      KernelAccessHelper<MemoryAccessGsBase, onDevice>::template kernelAccessField<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessGsBase, onDevice, fptype, useHelBlockEvt>::template kernelAccessField<>; // requires cuda 11.4
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (non-const, SCALAR OR VECTOR) ===> fptype_sv& kernelAccess( fptype* buffer ) <===]
@@ -129,7 +130,7 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const, SCALAR) ===> const fptype& kernelAccessConst( const fptype* buffer ) <===]
     static constexpr auto kernelAccessConst_s =
-      KernelAccessHelper<MemoryAccessGsBase, onDevice>::template kernelAccessFieldConst<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessGsBase, onDevice, fptype, useHelBlockEvt>::template kernelAccessFieldConst<>; // requires cuda 11.4
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (const, SCALAR OR VECTOR) ===> const fptype_sv& kernelAccess( const fptype* buffer ) <===]

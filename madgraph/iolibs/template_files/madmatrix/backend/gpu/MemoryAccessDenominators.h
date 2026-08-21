@@ -20,6 +20,9 @@ namespace madmatrix
   typedef KernelAccessGs<false> HostAccessDenominators;
   typedef KernelAccessGs<true> DeviceAccessDenominators;
 
+  // For use as DEN_ACCESS inside calculate_jamps only 
+  typedef KernelAccessGs<true, true> HelBlockDeviceAccessDenominators;
+
   //----------------------------------------------------------------------------
 
 } // end namespace madmatrix
