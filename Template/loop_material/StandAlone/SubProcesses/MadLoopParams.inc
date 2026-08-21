@@ -11,6 +11,7 @@
      &COLLIERGlobalCache
 
       real*8 MLStabThres,CTStabThres,ZeroThres,OSThres,COLLIERRequiredAccuracy
+      real*8 MLPoleCheckThres
 
       logical UseLoopFilter,LoopInitStartOver,DoubleCheckHelicityFilter,
      &COLLIERComputeIRpoles,COLLIERComputeUVpoles,COLLIERCanOutput
@@ -21,6 +22,7 @@
       common /MADLOOP/CTModeInit,CTModeRun,NRotations_DP,NRotations_QP,
      &COLLIERMode,COLLIERGlobalCache,
      &ImprovePSPoint,CheckCycle, MaxAttempts,UseLoopFilter,MLStabThres,
+     &MLPoleCheckThres,
      &COLLIERRequiredAccuracy,
      &CTStabThres,CTLoopLibrary,LoopInitStartOver,
      &COLLIERComputeIRpoles,COLLIERComputeUVpoles,COLLIERCanOutput,

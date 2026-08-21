@@ -81,6 +81,18 @@
 #MLStabThres
 !1.0d-3
 ! Default :: 1.0d-3
+
+!     Relative threshold above which a non-vanishing pole of a *loop-induced*
+!     process is considered an error and stops the run.
+!     A loop-induced amplitude is finite, so its single and double poles must
+!     cancel; anything else means the result is wrong. This has no effect on
+!     processes with a Born, whose poles are not supposed to vanish.
+!     Set it to a negative value to disable the check.
+!     Note that the check is inactive when the reduction tool in use does not
+!     compute the poles at all (COLLIER with COLLIERComputeUV/IRpoles off).
+#MLPoleCheckThres
+!1.0d-2
+! Default :: 1.0d-2
 !     You can add other evaluation method to check for the stability in DP and QP.
 !     Below you can chose if you want to use zero, one or two rotations of the PS point 
 !     in QP.

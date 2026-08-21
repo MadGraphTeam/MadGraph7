@@ -59,6 +59,9 @@
                  stop 'MLStabThres must be >= 0'
              endif
 
+           else if (buff .eq. '#MLPoleCheckThres') then
+             read(666,*,end=999) MLPoleCheckThres
+
            else if (buff .eq. '#COLLIERRequiredAccuracy') then
              read(666,*,end=999) COLLIERRequiredAccuracy
              if (COLLIERRequiredAccuracy.le.0.0d0.and.
@@ -256,6 +259,7 @@ C     a non existing or malformed parameter file
      $     //TRIM(MLReductionLib_str_save)
       write(*,*) ' > CTModeRun                 = ',CTModeRun
       write(*,*) ' > MLStabThres               = ',MLStabThres
+      write(*,*) ' > MLPoleCheckThres          = ',MLPoleCheckThres
       write(*,*) ' > NRotations_DP             = ',NRotations_DP
       write(*,*) ' > NRotations_QP             = ',NRotations_QP
       write(*,*) ' > CTStabThres               = ',CTStabThres
@@ -324,6 +328,7 @@ C     a non existing or malformed parameter file
       NRotations_DP=0
       NRotations_QP=0
       MLStabThres=1.0d-3
+      MLPoleCheckThres=1.0d-2
       CTStabThres=1.0d-2
       CTLoopLibrary=3
       CheckCycle=3

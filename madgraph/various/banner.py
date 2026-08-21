@@ -7414,6 +7414,7 @@ class MadLoopParam(ConfigFile):
         self.add_param("IREGIRECY", True)
         self.add_param("CTModeRun", -1)
         self.add_param("MLStabThres", 1e-3)
+        self.add_param("MLPoleCheckThres", 1e-2)
         self.add_param("NRotations_DP", 0)
         self.add_param("NRotations_QP", 0)
         self.add_param("ImprovePSPoint", 2)

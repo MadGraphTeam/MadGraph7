@@ -1578,12 +1578,6 @@ ANS(0)=0.0d0
                  WRITE(*,*) '##W03 WARNING Contribution ',I
                  WRITE(*,*) ' is unstable for helicity ',H
                ENDIF
-C                IF(.NOT.%(proc_prefix)sISZERO(ABS(AMPL(2,I))+ABS(AMPL(3,I)),REF,-1,H)) THEN
-C                  WRITE(*,*) '##W04 WARNING Contribution ',I,' for helicity ',H,' has a contribution to the poles.'
-C                  WRITE(*,*) 'Finite contribution         = ',AMPL(1,I)
-C                  WRITE(*,*) 'single pole contribution    = ',AMPL(2,I)
-C                  WRITE(*,*) 'double pole contribution    = ',AMPL(3,I)
-C                ENDIF
                ENDDO
                1227 CONTINUE
                HELPICKED=HELPICKED_BU""")%replace_dict
@@ -1592,10 +1586,9 @@ C                ENDIF
             replace_dict['nbornamps_or_nloopamps']='nloopamps'
             replace_dict['squaring']=\
                     """ANS(1)=ANS(1)+DBLE(CFTOT*AMPL(1,I)*DCONJG(AMPL(1,J)))
-                       IF (J.EQ.1) THEN
-                         ANS(2)=ANS(2)+DBLE(CFTOT*AMPL(2,I))+DIMAG(CFTOT*AMPL(2,I))
-                         ANS(3)=ANS(3)+DBLE(CFTOT*AMPL(3,I))+DIMAG(CFTOT*AMPL(3,I))                         
-                       ENDIF"""      
+C The poles below must cancel: the loop-induced amplitude is finite.
+                       ANS(2)=ANS(2)+DBLE(CFTOT*(AMPL(2,I)*DCONJG(AMPL(1,J))+AMPL(1,I)*DCONJG(AMPL(2,J))))
+                       ANS(3)=ANS(3)+DBLE(CFTOT*(AMPL(3,I)*DCONJG(AMPL(1,J))+AMPL(1,I)*DCONJG(AMPL(3,J))+AMPL(2,I)*DCONJG(AMPL(2,J))))"""
         else:
             replace_dict['compute_born']=\
 """C Compute the born, for a specific helicity if asked so.
@@ -1633,15 +1626,32 @@ PARAMETER (NSQUAREDSO=0)""")
                    "WRITE(*,*) '##W03 WARNING Contribution ',I,' is unstable.'")
             actualize_ans.extend(["ENDIF","ENDDO"])
             replace_dict['actualize_ans']='\n'.join(actualize_ans)
+            replace_dict['loop_induced_pole_check'] = ""
         else:
-            replace_dict['actualize_ans']=\
-            ("""C We add five powers to the reference value to loosen a bit the vanishing pole check.
-C               IF(.NOT.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)).AND..NOT.%(proc_prefix)sISZERO(ABS(ANS(2))+ABS(ANS(3)),ABS(ANS(1))*(10.0d0**5),-1,H)) THEN
-C                 WRITE(*,*) '##W05 WARNING Found a PS point with a contribution to the single pole.'
-C                 WRITE(*,*) 'Finite contribution         = ',ANS(1)
-C                 WRITE(*,*) 'single pole contribution    = ',ANS(2)
-C                 WRITE(*,*) 'double pole contribution    = ',ANS(3)
-C               ENDIF""")%replace_dict
+            replace_dict['actualize_ans']=""
+            # A loop-induced amplitude is finite: a surviving pole means the
+            # result is wrong, so refuse to return it. This output only ever
+            # reduces with CutTools, which always computes the poles.
+            replace_dict['loop_induced_pole_check']=("""
+IF (MLPoleCheckThres.GT.0.0d0.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1).NE.0.0d0) THEN
+  TMPPOLE = (ABS(ANS(2))+ABS(ANS(3)))/ABS(ANS(1))
+C Never demand more than the accuracy MadLoop itself claims for this point.
+  TMPPOLETHRES = MLPoleCheckThres
+  IF (ACCURACY(0).GT.0.0d0) TMPPOLETHRES = MAX(TMPPOLETHRES,10.0d0*ACCURACY(0))
+  IF (TMPPOLE.GT.TMPPOLETHRES) THEN
+    WRITE(*,*) '##E02 ERROR The poles of this loop-induced process do not cancel.'
+    WRITE(*,*) 'Finite contribution         = ',ANS(1)
+    WRITE(*,*) 'single pole contribution    = ',ANS(2)
+    WRITE(*,*) 'double pole contribution    = ',ANS(3)
+    WRITE(*,*) 'relative size of the poles  = ',TMPPOLE
+    WRITE(*,*) 'tolerated (MLPoleCheckThres)= ',TMPPOLETHRES
+    WRITE(*,*) 'Renormalization scale MU_R  = ',MU_R
+    DO I=1,NEXTERNAL
+      WRITE (*,'(i2,1x,4e27.17)') I, P(0,I),P(1,I),P(2,I),P(3,I)
+    ENDDO
+    STOP 1
+  ENDIF
+ENDIF""")%replace_dict
         
         # Write out the color matrix
         (CMNum,CMDenom) = self.get_color_matrix(matrix_element)

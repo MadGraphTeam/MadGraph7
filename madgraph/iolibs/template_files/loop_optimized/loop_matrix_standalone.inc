@@ -185,6 +185,9 @@ C QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATIO
 	  INTEGER ITEMP
 	  LOGICAL LTEMP
 	  %(real_dp_format)s BORNBUFF(0:NSQSO_BORN),TMPR
+## if(LoopInduced){
+	  %(real_dp_format)s TMPD
+## }
 	  %(real_dp_format)s BUFFR(3,0:NSQUAREDSO),BUFFR_BIS(3,0:NSQUAREDSO),TEMP(0:3,0:NSQUAREDSO),TEMP1(0:NSQUAREDSO)
 	  %(complex_dp_format)s CTEMP
 ## if(not AmplitudeReduction){
@@ -534,6 +537,12 @@ C SKIP THE ONES THAT NOT AVAILABLE
   IF(MLReductionLib(1).EQ.0)THEN
      STOP "No available loop reduction lib is provided. Make sure MLReductionLib is correct."
   ENDIF
+## if(LoopInduced){
+C The poles must vanish here, but COLLIER can be asked not to compute them at all.
+  IF (MLPoleCheckThres.GT.0.0d0.AND.MLReductionLib(1).EQ.7.AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles)) THEN
+    WRITE(*,*) '##INFO: The vanishing-pole check of this loop-induced process is disabled because COLLIER is not asked to compute the poles. Set COLLIERComputeUVpoles and COLLIERComputeIRpoles to .TRUE. in MadLoopParams.dat to enable it.'
+  ENDIF
+## }
   J=0
   DO I=1,NLOOPLIB
      IF(LOOPLIBS_QPAVAILABLE(MLReductionLib(I)))THEN
@@ -1879,6 +1888,28 @@ DO I=1,NSQUAREDSO
     ENDDO
   ENDIF
 ENDDO
+
+## if(LoopInduced){
+C A loop-induced amplitude is finite, so its poles must cancel. If they do not,
+C the result is wrong and we must not return it. Skipped when the reduction tool
+C does not compute the poles, since ANS(2:3,0) is then identically zero anyway.
+IF (MLPoleCheckThres.GT.0.0d0.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1,0).NE.0.0d0.AND..NOT.(MLReductionLib(I_LIB).EQ.7.AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles))) THEN
+  TMPR = (ABS(ANS(2,0))+ABS(ANS(3,0)))/ABS(ANS(1,0))
+C Never demand more than the accuracy MadLoop itself claims for this point.
+  TMPD = MLPoleCheckThres
+  IF (ACCURACY(0).GT.0.0d0) TMPD = MAX(TMPD,10.0d0*ACCURACY(0))
+  IF (TMPR.GT.TMPD) THEN
+    WRITE(*,*) '##E02 ERROR The poles of this loop-induced process do not cancel.'
+    WRITE(*,*) 'Finite contribution         = ',ANS(1,0)
+    WRITE(*,*) 'single pole contribution    = ',ANS(2,0)
+    WRITE(*,*) 'double pole contribution    = ',ANS(3,0)
+    WRITE(*,*) 'relative size of the poles  = ',TMPR
+    WRITE(*,*) 'tolerated (MLPoleCheckThres)= ',TMPD
+    CALL %(proc_prefix)sWRITE_MOM(P)
+    STOP 1
+  ENDIF
+ENDIF
+## }
 
 C Reinitialize the default threshold if it was specified by the user
 IF (USER_STAB_PREC.GT.0.0d0) THEN
