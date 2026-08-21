@@ -1222,8 +1222,17 @@ improvement with an alternative method" (capped at 20). It is noise, not a
 failure — PSMC succeeds every time, and "This PS point could not be improved"
 never appears.
 
-**Cross-section.** `g g > z{0} z{0} [noborn=QCD]`, `me_frame=[3]`, nn23lo1,
-fixed scales 91.188: XSEC_PLACEHOLDER
+**Cross-section, and the frame really moves it.** `g g > z{0} z{0}
+[noborn=QCD]`, shipped run card except `nevents=100`, `use_syst=F` and
+`me_frame`:
+
+| `me_frame` | cross-section |
+|---|---|
+| `[3]` (first Z at rest) | **2.534e-02 +- 5.0e-05 pb** |
+| `[1,2]` (partonic c.m., boost skipped) | 5.805e-02 +- 4.8e-04 pb |
+
+A factor 2.3. That gap is what the acceptance test asserts on: a boost that
+were silently skipped could not reproduce the first number.
 
 **What is not touched.** The colour-charged refusal is a separate rule that
 applies in every mode and stays. The QCD-only restriction on the run_card

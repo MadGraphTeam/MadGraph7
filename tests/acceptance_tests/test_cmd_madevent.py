@@ -3794,8 +3794,10 @@ set draw_rivet_plots True
         NLO frame machinery is involved; this test is what says so.
 
         The cross-section is the assertion that the frame actually reached the
-        matrix element: in the partonic c.m. the same process gives PLACEHOLDER_CM pb,
-        a factor PLACEHOLDER_RATIO away, so a silently skipped boost cannot pass.
+        matrix element. Measured with this same card: 2.534e-02 +- 5.0e-05 pb
+        in the Z rest frame against 5.805e-02 +- 4.8e-04 pb in the partonic
+        c.m. (me_frame = [1,2]), a factor 2.3 apart, so a silently skipped
+        boost cannot pass.
         """
         cmd = MGCmd.MasterCmd()
         cmd.no_notification()
@@ -3823,7 +3825,7 @@ set draw_rivet_plots True
         text = open(dsig[0]).read()
         self.assertIn('CALL BOOST_TO_FRAME(PP, FRAME_ID, P1)', text)
 
-        self.check_parton_output(cross=PLACEHOLDER_XSEC, error=PLACEHOLDER_ERR)
+        self.check_parton_output(cross=0.02534, error=5e-4)
 
 
 #===============================================================================
