@@ -63,7 +63,7 @@ is exported through the **LO** madevent template and therefore inherits
 `me_frame` for free. That is why an NLO boost was never needed.
 
 (The claim in that last sentence is now verified at runtime, and the massive
-refusal in the loop-induced modes is lifted — see M5.)
+refusal in the loop-induced modes is lifted — see M6.)
 
 ### Generation is alive and correct
 
@@ -1091,7 +1091,7 @@ Still refused, each for a reason rather than by omission:
   the plan does not cover it. `[virt=QED]` is fine, being standalone.
 `[noborn=…]` / `[sqrvirt=…]` (loop-induced) with a massive polarised particle
 was on this list. It has since been checked end to end and **opened** — see
-M5.
+M6.
 
 `tests/unit_tests/interface/test_cmd.py::test_check_generate` encoded the old
 restriction (`'u u~ > w+{L} [QCD]'` in the *invalid* list) and is updated: the
@@ -1163,102 +1163,7 @@ Remaining:
 - decide whether `[noborn=QCD]` should accept a massive polarised particle.
   It is loop-induced, exported through the LO madevent template, so it has
   `me_frame` already; `check()` has always refused massive there and nothing
-  in this work exercises it. **Done in M5.**
-
-### M5 — Loop-induced: a massive polarised particle — **DONE**
-
-The verdict is **omission, not limitation**. `[noborn=…]` and `[sqrvirt=…]`
-now accept a polarised massive particle, for any perturbation order.
-
-Section 1 claimed loop-induced already had the frame because it is exported
-through the LO madevent template. That was checked end to end rather than
-assumed, on `g g > z{0} z{0} [noborn=QCD]` with `me_frame=[3]` (the first Z at
-rest -- the one-leg selection, which is the case that needs the M2 fix).
-
-**The generated code really boosts.** `SubProcesses/P0_gg_z0z0/auto_dsig1.f`
-carries the LO wrapper unchanged:
-
-```fortran
-      IF(FRAME_ID.NE.6)THEN
-        CALL BOOST_TO_FRAME(PP, FRAME_ID, P1)
-      ELSE
-        P1 = PP
-      ENDIF
-      ...
-      CALL SMATRIX1(P1, IFLAV, RHEL, RCOL, CHANNEL, 1, DSIGUU, ...)
-```
-
-and `SMATRIX1` hands `P1` straight to `ML5_..._SLOOPMATRIX_THRES`. The
-`frame` block appears in the generated LO run_card, and `Source/run_card.inc`
-comes out with `FRAME_ID = 8`, i.e. bit 3, the first Z. The boost routine is
-`Template/LO/SubProcesses/genps.f`'s `boost_to_frame` — the same one M2 fixed,
-so the fix is inherited by construction rather than ported.
-
-**The quantisation axis is exact, and MadLoop does not spoil it.** This was the
-one thing that could not be settled by reading: `improve_ps` deforms the PS
-point before the loop is evaluated (`ImprovePSPoint=2` by default,
-`loop_matrix.f`), and it could have moved the deliberately-zeroed leg off zero
-— which is precisely what flips the HELAS `vxxxxx` branch. Instrumented
-the `gg > z{0} z{0}` MadLoop dir's `loop_matrix.f` to print the selected leg's
-`|p|` and energy immediately before and after the
-`IMPROVE_PS_POINT_PRECISION` call, over a full survey (256 prints, 16 distinct
-phase-space points):
-
-| | `|p_Z1|` | `E_Z1` |
-|---|---|---|
-| into MadLoop | `0.0` exactly, every point | `91.188` to 1e-15 |
-| out of `improve_ps` | `0.0` exactly, every point | `91.188` exactly |
-
-So the leg stays exactly at rest and `improve_ps` even repairs the energy.
-Not a coincidence: the ORIG algorithm's onshellness step is
-`SIGN(SQRT(ABS(E^2-px^2-py^2-m^2)), pz)`, and the PSMC fallback rescales all
-three-momenta by a common factor — both map an exact zero to an exact zero.
-
-Note that `improve_ps` reaches the PSMC fallback on essentially every call in
-a boosted frame: the ORIG algorithm returns `ERRCODE=200` whenever the initial
-state has transverse momentum, which a non-longitudinal `me_frame` boost
-always gives it, so the log fills with "Attempting to rescue the precision
-improvement with an alternative method" (capped at 20). It is noise, not a
-failure — PSMC succeeds every time, and "This PS point could not be improved"
-never appears.
-
-**Cross-section, and the frame really moves it.** `g g > z{0} z{0}
-[noborn=QCD]`, shipped run card except `nevents=100`, `use_syst=F` and
-`me_frame`:
-
-| `me_frame` | cross-section |
-|---|---|
-| `[3]` (first Z at rest) | **2.534e-02 +- 5.0e-05 pb** |
-| `[1,2]` (partonic c.m., boost skipped) | 5.805e-02 +- 4.8e-04 pb |
-
-A factor 2.3. That gap is what the acceptance test asserts on: a boost that
-were silently skipped could not reproduce the first number.
-
-**Cross-checked against the loop-induced pole check** (`MLPoleCheckThres`, on
-`claude/loop-induced-pole-check`). That work and this one are orthogonal: it
-adds a runtime guard, this one adds a spelling, and neither can stand in for
-the other. In particular the pole check cannot see a frame error -- a
-loop-induced amplitude is finite helicity by helicity and a boost is a
-symmetry of it, so the poles cancel in every frame, including the wrong one.
-Nor does polarisation trip it: the same argument makes `ANS(2,0)`/`ANS(3,0)`
-shrink with `ANS(1,0)` when the helicity sum is restricted. Measured, with the
-two changes merged and the check active at its default `1.0d-2`:
-2.543e-02 +- 9.9e-05 pb, zero `##E02`, 0.8 sigma from the number above.
-
-**What is not touched.** The colour-charged refusal is a separate rule that
-applies in every mode and stays. The QCD-only restriction on the run_card
-NLO modes also stays; it does not apply to loop-induced, which has no
-subtraction and therefore no order-dependent counterterms to validate.
-
-**Write `g g`, not `p p`.** `p p > z z [noborn=QCD]` -- the spelling section 1
-uses -- is not a physical request: `q q~ > z z` has a tree-level Born, so
-"no Born" is contradictory for those channels. It generates, and then the
-quark-initiated jobs die at runtime (`STOP energy is not conserved
-(flag:CT692)`, and the survey then aborts on the missing `results.dat`).
-That is correct behaviour, not a bug: it reproduces identically on the
-**unpolarised** process, in the same four G dirs, and has nothing to do with
-polarisation. The loop-induced process to write is `g g > z{0} z{0}
-[noborn=QCD]`.
+  in this work exercises it. **Done in M6.**
 
 ### M5 — NLO+PS (MC@NLO matching) — **DONE**
 
@@ -1498,6 +1403,107 @@ unrelated processes and is its own piece of work. It is recorded because it
 explains why `test_MC` passed on the broken code, and why the M5 validation had
 to be built by hand.
 
+### M6 — Loop-induced: a massive polarised particle — **DONE**
+
+The verdict is **omission, not limitation**. `[noborn=…]` and `[sqrvirt=…]`
+now accept a polarised massive particle, for any perturbation order.
+
+Section 1 claimed loop-induced already had the frame because it is exported
+through the LO madevent template. That was checked end to end rather than
+assumed, on `g g > z{0} z{0} [noborn=QCD]` with `me_frame=[3]` (the first Z at
+rest -- the one-leg selection, which is the case that needs the M2 fix).
+
+**The generated code really boosts.** `SubProcesses/P0_gg_z0z0/auto_dsig1.f`
+carries the LO wrapper unchanged:
+
+```fortran
+      IF(FRAME_ID.NE.6)THEN
+        CALL BOOST_TO_FRAME(PP, FRAME_ID, P1)
+      ELSE
+        P1 = PP
+      ENDIF
+      ...
+      CALL SMATRIX1(P1, IFLAV, RHEL, RCOL, CHANNEL, 1, DSIGUU, ...)
+```
+
+and `SMATRIX1` hands `P1` straight to `ML5_..._SLOOPMATRIX_THRES`. The
+`frame` block appears in the generated LO run_card, and `Source/run_card.inc`
+comes out with `FRAME_ID = 8`, i.e. bit 3, the first Z. The boost routine is
+`Template/LO/SubProcesses/genps.f`'s `boost_to_frame` — the same one M2 fixed,
+so the fix is inherited by construction rather than ported.
+
+**The quantisation axis is exact, and MadLoop does not spoil it.** This was the
+one thing that could not be settled by reading: `improve_ps` deforms the PS
+point before the loop is evaluated (`ImprovePSPoint=2` by default,
+`loop_matrix.f`), and it could have moved the deliberately-zeroed leg off zero
+— which is precisely what flips the HELAS `vxxxxx` branch. Instrumented
+the `gg > z{0} z{0}` MadLoop dir's `loop_matrix.f` to print the selected leg's
+`|p|` and energy immediately before and after the
+`IMPROVE_PS_POINT_PRECISION` call, over a full survey (256 prints, 16 distinct
+phase-space points):
+
+| | `|p_Z1|` | `E_Z1` |
+|---|---|---|
+| into MadLoop | `0.0` exactly, every point | `91.188` to 1e-15 |
+| out of `improve_ps` | `0.0` exactly, every point | `91.188` exactly |
+
+So the leg stays exactly at rest and `improve_ps` even repairs the energy.
+Not a coincidence: the ORIG algorithm's onshellness step is
+`SIGN(SQRT(ABS(E^2-px^2-py^2-m^2)), pz)`, and the PSMC fallback rescales all
+three-momenta by a common factor — both map an exact zero to an exact zero.
+
+**Note for whoever merges this with the loop-induced pole check.** Two costs
+land on the same runs and neither is a bug:
+
+- a non-longitudinal `me_frame` boost gives the initial state transverse
+  momentum, and `improve_ps`'s ORIG algorithm refuses any such point
+  (`ERRCODE=200`), so **every** call falls through to the quad-precision PSMC
+  fallback. The log fills with "Attempting to rescue the precision improvement
+  with an alternative method", capped at 20 lines. PSMC succeeds every time
+  and "This PS point could not be improved" never appears — do not file it.
+- the pole check re-enables `COLLIERComputeUVpoles`/`COLLIERComputeIRpoles`
+  for loop-induced, which were previously off for speed.
+
+A polarised loop-induced run pays both.
+
+**Cross-section, and the frame really moves it.** `g g > z{0} z{0}
+[noborn=QCD]`, shipped run card except `nevents=100`, `use_syst=F` and
+`me_frame`:
+
+| `me_frame` | cross-section |
+|---|---|
+| `[3]` (first Z at rest) | **2.534e-02 +- 5.0e-05 pb** |
+| `[1,2]` (partonic c.m., boost skipped) | 5.805e-02 +- 4.8e-04 pb |
+
+A factor 2.3. That gap is what the acceptance test asserts on: a boost that
+were silently skipped could not reproduce the first number.
+
+**Cross-checked against the loop-induced pole check** (`MLPoleCheckThres`, on
+`claude/loop-induced-pole-check`). That work and this one are orthogonal: it
+adds a runtime guard, this one adds a spelling, and neither can stand in for
+the other. In particular the pole check cannot see a frame error -- a
+loop-induced amplitude is finite helicity by helicity and a boost is a
+symmetry of it, so the poles cancel in every frame, including the wrong one.
+Nor does polarisation trip it: the same argument makes `ANS(2,0)`/`ANS(3,0)`
+shrink with `ANS(1,0)` when the helicity sum is restricted. Measured, with the
+two changes merged and the check active at its default `1.0d-2`:
+2.543e-02 +- 9.9e-05 pb, zero `##E02`, 0.8 sigma from the number above.
+
+**What is not touched.** The colour-charged refusal is a separate rule that
+applies in every mode and stays. The QCD-only restriction on the run_card
+NLO modes also stays; it does not apply to loop-induced, which has no
+subtraction and therefore no order-dependent counterterms to validate.
+
+**Write `g g`, not `p p`.** `p p > z z [noborn=QCD]` -- the spelling section 1
+uses -- is not a physical request: `q q~ > z z` has a tree-level Born, so
+"no Born" is contradictory for those channels. It generates, and then the
+quark-initiated jobs die at runtime (`STOP energy is not conserved
+(flag:CT692)`, and the survey then aborts on the missing `results.dat`).
+That is correct behaviour, not a bug: it reproduces identically on the
+**unpolarised** process, in the same four G dirs, and has nothing to do with
+polarisation. The loop-induced process to write is `g g > z{0} z{0}
+[noborn=QCD]`.
+
 ## 4. Acceptance test
 
 One new test in `tests/acceptance_tests/test_cmd_amcatnlo.py`, modelled on
@@ -1517,6 +1523,7 @@ does it.
 | M3 | `p p > z{0} z{0} j` | `[QCD]` | **run**: `check_poles` 20/20 in all 12 P dirs, 4.779e-01 +- 3.3e-03 pb |
 | M5 | `p p > z{0} j` | `[QCD]` + `generate_events` | **run**: 2.189e+03 +- 8.2e+00 pb, absolute cross-section ratio 2.00 (2.23 before the fix) |
 | M5 | `p p > z{0} z{0} j` | `[QCD]` + `generate_events`, `me_frame=[3,4]` | **run**: 3.134e-01 +- 2.2e-03 pb, `test_ME`/`test_MC`/`check_poles` 20/20 in all 12 P dirs |
+| M6 | `g g > z{0} z{0}` | `[noborn=QCD]`, `me_frame=[3]` | **run**: 2.534e-02 +- 5.0e-05 pb, against 5.805e-02 +- 4.8e-04 pb in the partonic c.m. |
 
 **Which process tests what.** The two are complementary, but not in the obvious
 way:
