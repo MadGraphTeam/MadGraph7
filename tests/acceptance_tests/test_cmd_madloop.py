@@ -186,6 +186,76 @@ class TestCmdLoop(unittest.TestCase):
             raise
         self.setup_logFile_for_logger('madgraph.check_cmd',restore=True)
 
+    def test_improve_ps_keeps_a_leg_at_rest(self):
+        """IMPROVE_PS_POINT_PRECISION must not destroy an exactly-zero
+        three-momentum.
+
+        A polarised matrix element is evaluated in a frame where the selected
+        leg is at rest, and boost_to_frame puts its three-momentum at exactly
+        zero on purpose: HELAS reads the spin quantisation axis of a massive
+        vector off 'pp.eq.rZero'. The PSMC branch of improve_ps used to
+        restore momentum conservation by dumping the residual into leg
+        NEXTERNAL unconditionally, so whenever the at-rest leg was the last
+        one its exact zero came back as a ~1e-14 vector and the longitudinal
+        polarisation vector was built along rounding noise. On g g > z{0}
+        z{0} [noborn=QCD] that split me_frame=[3] from me_frame=[4] by 26%%.
+
+        This drives the routine directly, so the check is exact rather than
+        statistical, and it covers both entry points: the double precision
+        wrapper and the quad routine reached through SET_MP_PS on the
+        stability-escalation path.
+        """
+        out_dir = pjoin(self.tmpdir, 'ML_improve_ps')
+        self.do('import model loop_sm')
+        self.do('generate g g > z z [sqrvirt=QCD]')
+        self.do('output standalone %s -f' % out_dir)
+
+        proc_dir = pjoin(out_dir, 'SubProcesses', 'P0_gg_zz')
+        prefix = open(pjoin(proc_dir, 'proc_prefix.txt')).read().strip()
+
+        # SET_MP_PS is the second entry point; it improves the raw momenta in
+        # quad, so it has to reach the same routine the driver calls.
+        loop_matrix = open(pjoin(proc_dir, 'loop_matrix.f')).read()
+        set_mp_ps = loop_matrix.split('SUBROUTINE %sSET_MP_PS(P)' % prefix)[1]
+        set_mp_ps = set_mp_ps.split('\n      END\n')[0]
+        self.assertIn('CALL %sMP_IMPROVE_PS_POINT_PRECISION' % prefix,
+                      set_mp_ps)
+
+        driver = open(pjoin(_pickle_path,
+                            'improve_ps_at_rest_driver.f')).read()
+        driver = driver.replace('__PFX__', prefix)
+        driver_path = pjoin(proc_dir, 'improve_ps_at_rest_driver.f')
+        open(driver_path, 'w').write(driver)
+
+        exe = pjoin(proc_dir, 'improve_ps_at_rest')
+        compile = subprocess.Popen(
+            ['gfortran', '-ffixed-line-length-132',
+             '-I%s' % proc_dir, '-I%s' % pjoin(out_dir, 'SubProcesses'),
+             driver_path, pjoin(proc_dir, 'improve_ps.f'), '-o', exe],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=proc_dir)
+        (out, _) = compile.communicate()
+        self.assertEqual(compile.returncode, 0,
+                         'could not build the improve_ps driver:\n%s'
+                         % out.decode())
+
+        run = subprocess.Popen([exe], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, cwd=proc_dir)
+        (out, _) = run.communicate()
+        out = out.decode()
+        self.assertEqual(run.returncode, 0, out)
+
+        results = [l.split() for l in out.split('\n')
+                   if l.startswith('RESULT ')]
+        # 2 at-rest legs x 2 ImprovePSPoint settings x 2 entry points
+        self.assertEqual(len(results), 8, out)
+        for _, entry, leg, mode, px, py, pz in results:
+            for label, value in (('px', px), ('py', py), ('pz', pz)):
+                self.assertEqual(
+                    float(value), 0.0,
+                    'improve_ps moved leg %s off rest (%s, entry %s, '
+                    'ImprovePSPoint=%s): %s = %s'
+                    % (leg, label, entry, mode, label, value))
+
     def test_generate_output_semicolon_preserves_loop_process(self):
         """Regression test for combined generate/output in one command line."""
 
