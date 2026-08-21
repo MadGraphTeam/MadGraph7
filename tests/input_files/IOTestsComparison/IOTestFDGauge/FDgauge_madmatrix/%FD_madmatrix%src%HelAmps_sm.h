@@ -50,6 +50,39 @@ namespace mg5amcCpu
           : pvec(pvec_sv), w(reinterpret_cast<fptype*>(w_sv)), flv_index(flv) {}
   };
 
+  // Sum two currents standing for the same off shell line: the four gluon
+  // current and the pair of three gluon vertices it factorises into carry the
+  // same colour factor, so the amplitude reading the sum gets both
+  // contributions from a single call. See
+  // HelasMatrixElement.get_quartic_current_sums. The two share their momentum,
+  // so only the wavefunction is added and the rest is taken from the first.
+  template<class W_ACCESS>
+  __device__ inline void
+  SUMW_1( const ALOHAOBJ& V2, const ALOHAOBJ& V3, ALOHAOBJ& V1 )
+  {
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    for( int i = 0; i < ALOHAOBJ::np4; i++ ) V1.pvec[i] = V2.pvec[i];
+    for( int i = 0; i < ALOHAOBJ::nw6; i++ ) wV1[i] = wV2[i] + wV3[i];
+    V1.flv_index = V2.flv_index;
+    return;
+  }
+
+  // As SUMW_1, for the contributions which enter with a minus sign.
+  template<class W_ACCESS>
+  __device__ inline void
+  SUBW_1( const ALOHAOBJ& V2, const ALOHAOBJ& V3, ALOHAOBJ& V1 )
+  {
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    for( int i = 0; i < ALOHAOBJ::np4; i++ ) V1.pvec[i] = V2.pvec[i];
+    for( int i = 0; i < ALOHAOBJ::nw6; i++ ) wV1[i] = wV2[i] - wV3[i];
+    V1.flv_index = V2.flv_index;
+    return;
+  }
+
   struct FLV_COUPLING_VIEW {
 
       const int* const partner1;
