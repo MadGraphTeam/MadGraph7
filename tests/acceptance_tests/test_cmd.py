@@ -250,6 +250,7 @@ class TestCmdShell1(unittest.TestCase):
                     'heptools_install_dir': './HEPTools',
                     'apply_flavor_grouping': True,
                     'merge_same_topologies': True,
+                    'merge_quartic_vertices': False,
                         }
 
         self.assertEqual(config, expected)

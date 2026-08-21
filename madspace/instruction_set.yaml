@@ -2398,7 +2398,7 @@ sigmoid:
 
 scaled_tanh:
   inputs:
-    - name: in
+    - name: in1
       type: [float, ...]
       desc:
   outputs:
