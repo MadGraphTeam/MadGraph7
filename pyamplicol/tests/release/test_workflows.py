@@ -221,18 +221,11 @@ def test_automatic_tests_cover_generation_config_provenance() -> None:
     assert "tests/unit/test_generation_config_provenance.py" in focused_unit_step
 
 
-def test_candidate_eager_smoke_uses_a_bundled_prepared_pack() -> None:
+def test_candidate_tests_omit_the_manual_eager_performance_campaign() -> None:
     workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
-    match = re.search(
-        r"PYAMPLICOL_EAGER_BUILTIN_PACK: "
-        r"\$\{\{ github\.workspace \}\}/(\S+\.pyamplicol-model)",
-        workflow,
-    )
 
-    assert match is not None
-    relative = Path(match.group(1))
-    assert relative.parent == Path("src/pyamplicol/assets/prepared_models")
-    assert (ROOT / relative).is_file()
+    assert "just eager-smoke" not in workflow
+    assert "PYAMPLICOL_EAGER_BUILTIN_PACK" not in workflow
 
 
 def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
