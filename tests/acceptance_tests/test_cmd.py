@@ -252,6 +252,7 @@ class TestCmdShell1(unittest.TestCase):
                     'enforce_shared_disk': False,
                     'heptools_install_dir': './HEPTools',
                     'apply_flavor_grouping': True,
+                    'merge_quartic_vertices': False,
                         }
 
         self.assertEqual(config, expected)
