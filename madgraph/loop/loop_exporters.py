@@ -1622,7 +1622,7 @@ PARAMETER (NSQUAREDSO=0)""")
             actualize_ans.append(\
                    "WRITE(*,*) '##W03 WARNING Contribution ',I,' is unstable.'")
             actualize_ans.extend(["ENDIF","ENDDO"])
-            replace_dict['actualize_ans']='\n'.join(actualize_ans)
+            replace_dict['actualize_ans']='\n\n'+'\n'.join(actualize_ans)+'\n'
             replace_dict['loop_induced_pole_check'] = ""
             replace_dict['loop_induced_pole_check_decl'] = ""
         else:
@@ -1631,23 +1631,23 @@ PARAMETER (NSQUAREDSO=0)""")
             # result is wrong, so refuse to return it. This output only ever
             # reduces with CutTools, which always computes the poles.
             replace_dict['loop_induced_pole_check_decl']=\
-                "\n\t  %(real_dp_format)s TMPPOLE,TMPPOLETHRES"%replace_dict
-            replace_dict['loop_induced_pole_check']=("""IF (MLPoleCheckThres.GT.0.0d0.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1).NE.0.0d0) THEN
+                ("\n\t  %(real_dp_format)s TMPPOLE"
+                 "\n\t  LOGICAL DO_POLE_CHECK")%replace_dict
+            replace_dict['loop_induced_pole_check']=("""DO_POLE_CHECK = MLPoleCheckThres.GT.0.0d0.AND.NTRY.GT.0
+DO_POLE_CHECK = DO_POLE_CHECK.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED
+DO_POLE_CHECK = DO_POLE_CHECK.AND.RET_CODE_H.NE.4.AND.ANS(1).NE.0.0d0
+IF (DO_POLE_CHECK) THEN
   TMPPOLE = (ABS(ANS(2))+ABS(ANS(3)))/ABS(ANS(1))
-C Never demand more than the accuracy MadLoop itself claims for this point.
-  TMPPOLETHRES = MLPoleCheckThres
-  IF (ACCURACY(0).GT.0.0d0) TMPPOLETHRES = MAX(TMPPOLETHRES,10.0d0*ACCURACY(0))
-  IF (TMPPOLE.GT.TMPPOLETHRES) THEN
-    WRITE(*,*) '##E02 ERROR The poles of this loop-induced process do not cancel.'
+  IF (TMPPOLE.GT.MLPoleCheckThres) THEN
+    WRITE(*,*) '##E03 ERROR The poles of this loop-induced process do not cancel.'
     WRITE(*,*) 'Finite contribution         = ',ANS(1)
     WRITE(*,*) 'single pole contribution    = ',ANS(2)
     WRITE(*,*) 'double pole contribution    = ',ANS(3)
     WRITE(*,*) 'relative size of the poles  = ',TMPPOLE
-    WRITE(*,*) 'tolerated (MLPoleCheckThres)= ',TMPPOLETHRES
-    WRITE(*,*) 'Renormalization scale MU_R  = ',MU_R
-    DO I=1,NEXTERNAL
-      WRITE (*,'(i2,1x,4e27.17)') I, P(0,I),P(1,I),P(2,I),P(3,I)
-    ENDDO
+    WRITE(*,*) 'tolerated                   = ',MLPoleCheckThres
+    WRITE(*,*) 'The finite part returned here cannot be trusted, so the run is stopped.'
+    WRITE(*,*) 'Edit MLPoleCheckThres in MadLoopParams.dat to change this tolerance; a negative value disables the check.'
+    CALL %(proc_prefix)sWRITE_MOM(P)
     STOP 1
   ENDIF
 ENDIF""")%replace_dict

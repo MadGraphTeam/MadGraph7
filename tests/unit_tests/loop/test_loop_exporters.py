@@ -195,12 +195,12 @@ class IOExportMadLoopUnitTest(IOTests.IOTestManager):
                                        orders = {'QCD':2,'QED':0},
                                        files_to_check=IOTests.IOTest.proc_files)
 
-            # And the loop induced g g > h h for good measure 
-            # Use only one exporter only here
+            # And the loop induced g g > h h for good measure.
+            # 'optimized' is the output every real loop-induced run uses.
             self.addIOTestsForProcess( testName = 'gg_hh',
                                        testFolder = 'short_ML_SMQCD_LoopInduced',
                                        particles_ids = [21,21,25,25],
-                                       exporters = 'default',
+                                       exporters = ['default','optimized'],
                                        orders = {'QCD': 2, 'QED': 2} )
 
     def testIO_UnitProcOutputIOTests(self, load_only=False):

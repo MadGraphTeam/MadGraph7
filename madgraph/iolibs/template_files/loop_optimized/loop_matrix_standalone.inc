@@ -186,7 +186,7 @@ C QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATIO
 	  LOGICAL LTEMP
 	  %(real_dp_format)s BORNBUFF(0:NSQSO_BORN),TMPR
 ## if(LoopInduced){
-	  %(real_dp_format)s TMPD
+	  LOGICAL POLES_COMPUTED, DO_POLE_CHECK
 ## }
 	  %(real_dp_format)s BUFFR(3,0:NSQUAREDSO),BUFFR_BIS(3,0:NSQUAREDSO),TEMP(0:3,0:NSQUAREDSO),TEMP1(0:NSQUAREDSO)
 	  %(complex_dp_format)s CTEMP
@@ -540,7 +540,7 @@ C SKIP THE ONES THAT NOT AVAILABLE
 ## if(LoopInduced){
 C The poles must vanish here, but COLLIER can be asked not to compute them at all.
   IF (MLPoleCheckThres.GT.0.0d0.AND.MLReductionLib(1).EQ.7.AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles)) THEN
-    WRITE(*,*) '##INFO: The vanishing-pole check of this loop-induced process is disabled because COLLIER is not asked to compute the poles. Set COLLIERComputeUVpoles and COLLIERComputeIRpoles to .TRUE. in MadLoopParams.dat to enable it.'
+    WRITE(*,*) '##INFO: The vanishing-pole check of this loop-induced process is inactive because COLLIER is not computing the poles. A madevent run turns them off on purpose and the card cannot override that; in a standalone run, set COLLIERComputeUVpoles and COLLIERComputeIRpoles to .TRUE. in MadLoopParams.dat.'
   ENDIF
 ## }
   J=0
@@ -1889,21 +1889,23 @@ DO I=1,NSQUAREDSO
   ENDIF
 ENDDO
 ## if(LoopInduced){
-C A loop-induced amplitude is finite, so its poles must cancel. If they do not,
-C the result is wrong and we must not return it. Skipped when the reduction tool
-C does not compute the poles, since ANS(2:3,0) is then identically zero anyway.
-IF (MLPoleCheckThres.GT.0.0d0.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1,0).NE.0.0d0.AND..NOT.(MLReductionLib(I_LIB).EQ.7.AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles))) THEN
+C A loop-induced amplitude is finite: its poles must cancel.
+C Nothing to compare against if the reduction tool does not compute them.
+POLES_COMPUTED = .NOT.(MLReductionLib(I_LIB).EQ.7.AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles))
+DO_POLE_CHECK = MLPoleCheckThres.GT.0.0d0.AND.POLES_COMPUTED.AND.NTRY.GT.0
+DO_POLE_CHECK = DO_POLE_CHECK.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED
+DO_POLE_CHECK = DO_POLE_CHECK.AND.RET_CODE_H.NE.4.AND.ANS(1,0).NE.0.0d0
+IF (DO_POLE_CHECK) THEN
   TMPR = (ABS(ANS(2,0))+ABS(ANS(3,0)))/ABS(ANS(1,0))
-C Never demand more than the accuracy MadLoop itself claims for this point.
-  TMPD = MLPoleCheckThres
-  IF (ACCURACY(0).GT.0.0d0) TMPD = MAX(TMPD,10.0d0*ACCURACY(0))
-  IF (TMPR.GT.TMPD) THEN
-    WRITE(*,*) '##E02 ERROR The poles of this loop-induced process do not cancel.'
+  IF (TMPR.GT.MLPoleCheckThres) THEN
+    WRITE(*,*) '##E03 ERROR The poles of this loop-induced process do not cancel.'
     WRITE(*,*) 'Finite contribution         = ',ANS(1,0)
     WRITE(*,*) 'single pole contribution    = ',ANS(2,0)
     WRITE(*,*) 'double pole contribution    = ',ANS(3,0)
     WRITE(*,*) 'relative size of the poles  = ',TMPR
-    WRITE(*,*) 'tolerated (MLPoleCheckThres)= ',TMPD
+    WRITE(*,*) 'tolerated                   = ',MLPoleCheckThres
+    WRITE(*,*) 'The finite part returned here cannot be trusted, so the run is stopped.'
+    WRITE(*,*) 'Edit MLPoleCheckThres in MadLoopParams.dat to change this tolerance; a negative value disables the check.'
     CALL %(proc_prefix)sWRITE_MOM(P)
     STOP 1
   ENDIF

@@ -229,7 +229,8 @@ C     the previous points
       DATA FOUND_VALID_REDUCTION_METHOD/.FALSE./
 
       REAL*8 ACC
-      REAL*8 TMPPOLE,TMPPOLETHRES
+      REAL*8 TMPPOLE
+      LOGICAL DO_POLE_CHECK
       REAL*8 DP_RES(3,MAXSTABILITYLENGTH)
 C     QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM
 C      DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
@@ -903,9 +904,6 @@ C      automatically done.
       ENDIF
 
 
-
-
-
  1226 CONTINUE
 
       IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)) THEN
@@ -1178,26 +1176,27 @@ C      compatibility purpose).
       ANSRETURNED(1,0)=ANS(1)
       ANSRETURNED(2,0)=ANS(2)
       ANSRETURNED(3,0)=ANS(3)
-      IF (MLPOLECHECKTHRES.GT.0.0D0.AND..NOT.CHECKPHASE.AND.HELDOUBLECH
-     $ECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1).NE.0.0D0) THEN
+      DO_POLE_CHECK = MLPOLECHECKTHRES.GT.0.0D0.AND.NTRY.GT.0
+      DO_POLE_CHECK =
+     $  DO_POLE_CHECK.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED
+      DO_POLE_CHECK = DO_POLE_CHECK.AND.RET_CODE_H.NE.4.AND.ANS(1)
+     $ .NE.0.0D0
+      IF (DO_POLE_CHECK) THEN
         TMPPOLE = (ABS(ANS(2))+ABS(ANS(3)))/ABS(ANS(1))
-C       Never demand more than the accuracy MadLoop itself claims for
-C        this point.
-        TMPPOLETHRES = MLPOLECHECKTHRES
-        IF (ACCURACY(0).GT.0.0D0) TMPPOLETHRES = MAX(TMPPOLETHRES
-     $   ,10.0D0*ACCURACY(0))
-        IF (TMPPOLE.GT.TMPPOLETHRES) THEN
-          WRITE(*,*) '##E02 ERROR The poles of this loop-induced'
+        IF (TMPPOLE.GT.MLPOLECHECKTHRES) THEN
+          WRITE(*,*) '##E03 ERROR The poles of this loop-induced'
      $     //' process do not cancel.'
           WRITE(*,*) 'Finite contribution         = ',ANS(1)
           WRITE(*,*) 'single pole contribution    = ',ANS(2)
           WRITE(*,*) 'double pole contribution    = ',ANS(3)
           WRITE(*,*) 'relative size of the poles  = ',TMPPOLE
-          WRITE(*,*) 'tolerated (MLPoleCheckThres)= ',TMPPOLETHRES
-          WRITE(*,*) 'Renormalization scale MU_R  = ',MU_R
-          DO I=1,NEXTERNAL
-            WRITE (*,'(i2,1x,4e27.17)') I, P(0,I),P(1,I),P(2,I),P(3,I)
-          ENDDO
+          WRITE(*,*) 'tolerated                   = ',MLPOLECHECKTHRES
+          WRITE(*,*) 'The finite part returned here cannot be trusted,'
+     $     //' so the run is stopped.'
+          WRITE(*,*) 'Edit MLPoleCheckThres in MadLoopParams.dat to'
+     $     //' change this tolerance; a negative value disables the'
+     $     //' check.'
+          CALL ML5_0_WRITE_MOM(P)
           STOP 1
         ENDIF
       ENDIF

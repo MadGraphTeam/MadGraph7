@@ -689,10 +689,7 @@ IF(SKIPLOOPEVAL) THEN
   GOTO 1226
 ENDIF
 
-%(loop_helas_calls)s
-
-%(actualize_ans)s
-
+%(loop_helas_calls)s%(actualize_ans)s
 1226 CONTINUE
 
 IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)) THEN
