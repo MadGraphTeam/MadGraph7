@@ -381,11 +381,11 @@ C stores the result in P and for the quadruple precision
 c version , it also modifies the global variables
 C PS and MP_DONE accordingly.
 
-C     NOTE:: the rotation is an exact axis permutation with sign flips,
-C     so exact zeros survive it. It is NOT a symmetry of a polarised
-C     amplitude with a leg at rest though: HELAS pins that leg's spin
-C     axis to the frame z. NRotations_DP/QP default to 0; turning them
-C     on for a polarised run gives spurious instability flags.
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
 	  SUBROUTINE %(proc_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -431,11 +431,11 @@ C rotation=2 => (xp=-z,yp=y,zp=x)
 	  END
 
 
-C     NOTE:: the rotation is an exact axis permutation with sign flips,
-C     so exact zeros survive it. It is NOT a symmetry of a polarised
-C     amplitude with a leg at rest though: HELAS pins that leg's spin
-C     axis to the frame z. NRotations_DP/QP default to 0; turning them
-C     on for a polarised run gives spurious instability flags.
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
 	  SUBROUTINE %(proc_prefix)s%(mp_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -716,12 +716,12 @@ C     First make sur that the space like momentum is exactly conserved
 		  PBUFF(J)=PBUFF(J)+NEWP(J,I)
 		ENDDO
       ENDDO
-C     Absorb the residual in the final-state leg with the largest |p|,
-C     not in leg NEXTERNAL. That leg is never at rest, so an exactly
-C     vanishing three-momentum survives: HELAS picks the spin axis of a
-C     polarised leg from 'pp.eq.0', so a 1e-14 residual there would flip
-C     the branch and build the longitudinal vector along rounding noise.
-C     It is also the smallest relative distortion available.
+C     Absorb the residual in the final-state leg with the largest
+C     |p|, not in leg NEXTERNAL: that leg is never at rest, so an
+C     exactly vanishing three-momentum survives. HELAS reads the
+C     spin axis of a polarised leg off 'pp.eq.0', so a 1e-14
+C     residual there builds the longitudinal vector along noise.
+C     Largest |p| is also the smallest relative distortion.
       IABSORB=NEXTERNAL
 	  BUFF=ZERO
       DO I=NINITIAL+1,NEXTERNAL
