@@ -1269,6 +1269,11 @@ That pair — total unchanged, absolute cross-section down — is what the
 acceptance test asserts on. A cross-section comparison alone would have seen
 nothing.
 
+Repeated with `iseed=7717` on a freshly generated pair of directories, to make
+sure the ratio is not a property of one MINT grid history: 2.2220 before,
+2.0060 after, with the totals agreeing at 0.02 sigma (2.1868e+03 +- 8.8e+00 vs
+2.1871e+03 +- 9.5e+00). The threshold in the test is 2.15.
+
 *No frame requested stays bit-identical.* Same process, `me_frame=[1,2]`
 (`FRAME_ID = 6`, the partonic c.m., which `get_me_frame_boost` skips), run
 twice from two copies of one output directory differing only in
