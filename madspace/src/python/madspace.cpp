@@ -1800,18 +1800,18 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<ContextPtr>&,
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
+                std::uint64_t,
                 std::shared_ptr<StatusFile>,
-                const GeneratorConfig&,
-                std::optional<std::uint64_t>>(),
+                const GeneratorConfig&>(),
             py::arg("contexts"),
             py::arg("channels"),
+            py::arg("seed"),
             py::arg("status_file") = std::shared_ptr<StatusFile>(),
             py::arg_v(
                 "config",
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
-            ),
-            py::arg("seed") = std::nullopt
+            )
         )
         .def("survey", &EventGenerator::survey, py::arg("survey_pass") = 0)
         .def("generate", &EventGenerator::generate)

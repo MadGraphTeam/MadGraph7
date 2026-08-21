@@ -3,7 +3,6 @@
 #include <chrono>
 #include <deque>
 #include <memory>
-#include <optional>
 #include <set>
 #include <vector>
 
@@ -33,9 +32,9 @@ public:
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
+        std::uint64_t seed,
         std::shared_ptr<StatusFile> status_file = nullptr,
-        const GeneratorConfig& config = default_config,
-        std::optional<std::uint64_t> seed = std::nullopt
+        const GeneratorConfig& config = default_config
     );
     EventGenerator(EventGenerator&&) = default;
     EventGenerator& operator=(EventGenerator&&) = default;
@@ -111,13 +110,13 @@ private:
     // also when the unweight stage is queued.
     std::vector<std::deque<std::size_t>> _channel_unweight_order;
     std::vector<std::set<std::size_t>> _channel_unweight_ready;
-    // generate_deterministic() only: per-context queue of job ids awaiting
-    // unweight-stage dispatch, drained with priority by start_jobs().
+    // generate() only: per-context queue of job ids awaiting unweight-stage
+    // dispatch, drained with priority by start_jobs().
     std::vector<std::vector<std::size_t>> _context_unweight_queue;
     ResultQueue _result_queue;
 
-    // Base seed for reproducible event generation; nullopt means non-deterministic.
-    std::optional<std::uint64_t> _seed;
+    // Base seed for reproducible event generation.
+    std::uint64_t _seed;
 
     // unweight_all() may run more than once per generate() (a channel's target can
     // grow after it looked done, un-finishing it and triggering another round).
@@ -129,9 +128,8 @@ private:
     bool _survey_job = false;
     std::size_t _survey_pass = 0;
 
-    // Deterministic-path state, set from _seed. Generate completions are
-    // committed in ascending job id, with _commit_cursor as the next id due.
-    bool _deterministic = false;
+    // Generate completions are committed in ascending job id, with
+    // _commit_cursor as the next id due.
     std::set<std::size_t> _ready_gen;
     std::size_t _commit_cursor = 0;
 
@@ -143,8 +141,6 @@ private:
     std::shared_ptr<StatusFile> _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
 
-    void survey_deterministic();
-    void generate_deterministic();
     void commit_generate_job(GeneratorBatchJob& job);
     void commit_unweight_job(GeneratorBatchJob& job);
     void finish_channel_job(const GeneratorBatchJob& job);

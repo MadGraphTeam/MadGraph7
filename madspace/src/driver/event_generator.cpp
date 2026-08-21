@@ -19,9 +19,9 @@ const GeneratorConfig EventGenerator::default_config = {};
 EventGenerator::EventGenerator(
     const std::vector<ContextPtr>& contexts,
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
+    std::uint64_t seed,
     std::shared_ptr<StatusFile> status_file,
-    const GeneratorConfig& config,
-    std::optional<std::uint64_t> seed
+    const GeneratorConfig& config
 ) :
     _config(config),
     _status{
@@ -54,209 +54,7 @@ EventGenerator::EventGenerator(
     _channel_unweight_ready(channels.size()),
     _context_unweight_queue(contexts.size()),
     _seed(seed),
-    _deterministic(seed.has_value()),
     _status_file(status_file) {}
-
-void EventGenerator::survey(std::size_t survey_pass) {
-    _survey_job = true;
-    _survey_pass = survey_pass;
-    if (_deterministic) {
-        survey_deterministic();
-        return;
-    }
-    for (auto& context : _contexts) {
-        context->reset_cache();
-    }
-    reset_start_time();
-    bool done = false;
-    std::size_t min_iters = _config.survey_min_iters;
-    std::size_t max_iters = std::max(min_iters, _config.survey_max_iters);
-    double target_precision = _config.survey_target_precision;
-
-    std::size_t total_event_count = 0;
-    std::size_t done_event_count = 0;
-    for (auto& channel : _channels) {
-        std::size_t chan_batch_size = channel->batch_size();
-        for (std::size_t iter = channel->status().iterations; iter < min_iters;
-             ++iter) {
-            total_event_count += chan_batch_size;
-            chan_batch_size = std::min(chan_batch_size * 2, _config.max_batch_size);
-        }
-    }
-    print_survey_init();
-
-    std::size_t iter = 0;
-    for (; !done && iter < max_iters; ++iter) {
-        std::size_t job_count_before = _running_jobs.size();
-        for (std::size_t i = 0; auto channel : _channels) {
-            if (channel->status().iterations > iter) {
-                ++i;
-                continue;
-            }
-            if (iter >= min_iters &&
-                channel->cross_section().rel_error() < target_precision) {
-                ++i;
-                continue;
-            }
-            std::size_t vegas_batch_size = channel->next_vegas_batch_size();
-            _ready_jobs.push_back({
-                .channel_index = i,
-                .unweight = iter >= min_iters - 1,
-                .batch_event_count = vegas_batch_size,
-                .is_vegas_batch = true,
-            });
-            if (iter >= min_iters) {
-                total_event_count += vegas_batch_size;
-            }
-            ++i;
-        }
-        start_jobs();
-        done = true;
-        while (_running_jobs.size() > 0) {
-            std::size_t job_id = _result_queue.wait();
-            _abort_check_function();
-            auto& job = _running_jobs.at(job_id);
-            auto& channel = _channels.at(job.channel_index);
-            auto& channel_job_count = _channel_job_counts.at(job.channel_index);
-            auto& context_job_count = _context_job_counts.at(job.context_index);
-            if (channel_job_count == job.split_job_count) {
-                channel->clear_events();
-            }
-            --channel_job_count;
-            --context_job_count;
-
-            bool keep_job = false;
-            if (job.unweighted_events.size() == 0) {
-                channel->integrate(job);
-                update_integral();
-                channel->update_max_weight(job.weights);
-                if (job.unweight) {
-                    channel->start_unweight_job(job, _result_queue);
-                    ++context_job_count;
-                    keep_job = true;
-                } else {
-                    done = false;
-                }
-            } else {
-                channel->write_events(job.unweighted_events, job.max_weight);
-                update_counts();
-                if (channel_job_count == 0 &&
-                    channel->cross_section().rel_error() < target_precision) {
-                    done = false;
-                }
-            }
-            if (channel_job_count == 0) {
-                channel->optimize_vegas(job);
-                done_event_count += job.batch_event_count;
-            }
-            if (!keep_job) {
-                _running_jobs.erase(job_id);
-            }
-            start_jobs();
-            print_survey_update(false, done_event_count, total_event_count, iter);
-        }
-    }
-    print_survey_update(true, done_event_count, total_event_count, iter - 1);
-}
-
-void EventGenerator::generate() {
-    _survey_job = false;
-    if (_deterministic) {
-        generate_deterministic();
-        return;
-    }
-    reset_start_time();
-    print_gen_init();
-
-    std::size_t target_job_count = 0;
-    for (auto& context : _contexts) {
-        context->reset_cache();
-        target_job_count += 2 * context->thread_pool().thread_count();
-    }
-    std::size_t channel_index = 0;
-    while (true) {
-        _abort_check_function();
-
-        std::size_t job_count_before;
-        do {
-            job_count_before = _ready_jobs.size();
-            for (std::size_t i = 0;
-                 i < _channels.size() && _ready_jobs.size() < target_job_count;
-                 ++i, channel_index = (channel_index + 1) % _channels.size()) {
-                auto& channel = _channels.at(channel_index);
-                std::size_t& channel_job_count = _channel_job_counts.at(channel_index);
-                double integral_frac = _channel_integral_fractions.at(channel_index);
-                if (integral_frac > 0 &&
-                    channel->status().count_unweighted >=
-                        integral_frac * _config.target_count) {
-                    continue;
-                }
-                if (channel->needs_optimization()) {
-                    if (!_channel_optimizing.at(channel_index)) {
-                        _channel_optimizing.at(channel_index) = true;
-                        _ready_jobs.push_back({
-                            .channel_index = channel_index,
-                            .unweight = true,
-                            .batch_event_count = channel->next_vegas_batch_size(),
-                            .is_vegas_batch = true,
-                        });
-                    }
-                } else {
-                    _ready_jobs.push_back({
-                        .channel_index = channel_index,
-                        .unweight = true,
-                        .batch_event_count = 0,
-                    });
-                }
-            }
-        } while (_ready_jobs.size() - job_count_before > 0);
-        start_jobs();
-
-        if (_running_jobs.size() > 0) {
-            std::size_t job_id = _result_queue.wait();
-            auto& job = _running_jobs.at(job_id);
-            auto& channel = _channels.at(job.channel_index);
-            auto& channel_job_count = _channel_job_counts.at(job.channel_index);
-            auto& context_job_count = _context_job_counts.at(job.context_index);
-            if (job.batch_event_count > 0 && channel_job_count == job.split_job_count) {
-                channel->clear_events();
-            }
-            --channel_job_count;
-            --context_job_count;
-
-            bool keep_job = false;
-            if (job.unweighted_events.size() == 0) {
-                channel->integrate(job);
-                update_integral();
-                channel->update_max_weight(job.weights);
-                if (job.unweight) {
-                    channel->start_unweight_job(job, _result_queue);
-                    ++context_job_count;
-                    keep_job = true;
-                }
-            } else {
-                channel->write_events(job.unweighted_events, job.max_weight);
-                update_counts();
-            }
-            if (job.batch_event_count > 0 && channel_job_count == 0) {
-                channel->optimize_vegas(job);
-                _channel_optimizing.at(job.channel_index) = false;
-            }
-            print_gen_update(false);
-            if (!keep_job) {
-                _running_jobs.erase(job_id);
-            }
-        } else {
-            if (_status.done) {
-                unweight_all();
-            }
-            if (_status.done) {
-                break;
-            }
-        }
-    }
-    print_gen_update(true);
-}
 
 // Commits a job's generate stage in per-channel dispatch order. Doesn't write
 // events itself -- if job.unweight, that's deferred to commit_unweight_job().
@@ -304,9 +102,10 @@ void EventGenerator::finish_channel_job(const GeneratorBatchJob& job) {
     }
 }
 
-// Deterministic generate path: jobs still run on the pool, but commit strictly
-// in per-channel dispatch order, so results are a pure function of the seed.
-void EventGenerator::generate_deterministic() {
+// Jobs run on the pool, but commit strictly in per-channel dispatch order, so
+// results are a pure function of the seed.
+void EventGenerator::generate() {
+    _survey_job = false;
     reset_start_time();
     print_gen_init();
 
@@ -394,8 +193,10 @@ void EventGenerator::generate_deterministic() {
     print_gen_update(true);
 }
 
-// Deterministic survey path, same commit-ordering approach as generate_deterministic().
-void EventGenerator::survey_deterministic() {
+// Same commit-ordering approach as generate().
+void EventGenerator::survey(std::size_t survey_pass) {
+    _survey_job = true;
+    _survey_pass = survey_pass;
     reset_start_time();
     _commit_cursor = _job_id;
     _ready_gen.clear();
@@ -566,10 +367,8 @@ std::size_t EventGenerator::start_jobs() {
         // Round-robin through _ready_jobs, one device batch per generation entry per
         // visit, so multiple channels' batches interleave instead of one channel's
         // batch draining before the next is even touched -- see _ready_job_rr_cursor.
-        // A VEGAS batch (or the legacy zero-event-count "poll" job from the
-        // non-deterministic generate() path) is still dispatched atomically in a
-        // single visit: VEGAS needs next_vegas_batch_size()'s exact progression, and
-        // the poll job is inherently a single job.
+        // A VEGAS batch is still dispatched atomically in a single visit: VEGAS needs
+        // next_vegas_batch_size()'s exact progression.
         while (job_count < target_count && !_ready_jobs.empty()) {
             if (_ready_job_rr_cursor >= _ready_jobs.size()) {
                 _ready_job_rr_cursor = 0;
@@ -595,11 +394,9 @@ std::size_t EventGenerator::start_jobs() {
                 auto& job =
                     std::get<0>(_running_jobs.emplace(_job_id, std::move(new_job)))
                         ->second;
-                // Records this channel's commit order; see _channel_gen_order. Only
-                // the deterministic paths consume (and drain) it.
-                if (_deterministic) {
-                    _channel_gen_order.at(job.channel_index).push_back(_job_id);
-                }
+                // Records this channel's commit order; drained by survey()/generate()
+                // -- see _channel_gen_order.
+                _channel_gen_order.at(job.channel_index).push_back(_job_id);
                 _channels.at(job.channel_index)
                     ->start_job(job, _result_queue, _seed, _survey_job, _survey_pass);
                 _channel_job_counts.at(job.channel_index) += 1 + job.unweight;
@@ -614,8 +411,8 @@ std::size_t EventGenerator::start_jobs() {
             bool fully_dispatched = atomic_dispatch || ready_job.batch_event_count == 0;
             if (fully_dispatched) {
                 if (!ready_job.is_vegas_batch) {
-                    // Only meaningful for generate_deterministic(); harmlessly unused
-                    // by the other callers of start_jobs().
+                    // Only meaningful for generate(); harmlessly unused by the other
+                    // callers of start_jobs().
                     _channel_batch_dispatch_done.at(ready_job.channel_index) = true;
                 }
                 _ready_jobs.erase(_ready_jobs.begin() + _ready_job_rr_cursor);
@@ -789,7 +586,7 @@ void EventGenerator::combine_to_lhe_npy(
     const std::string& file_name, LHECompleter& lhe_completer
 ) {
     reset_start_time();
-    std::optional<std::uint64_t> seed = _seed;
+    std::uint64_t seed = _seed;
     MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
     MixMaxRandom rand_gen(DerivedSeed(seed, DerivedSeed::lhe_complete));
     auto [channel_data, particle_count, norm_factor] = init_combine();
@@ -853,7 +650,7 @@ void EventGenerator::combine_to_lhe(
     const std::string& file_name, LHECompleter& lhe_completer, const LHEMeta& meta
 ) {
     reset_start_time();
-    std::optional<std::uint64_t> seed = _seed;
+    std::uint64_t seed = _seed;
     MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
     ThreadPool pool(_config.combine_thread_count);
     auto [channel_data, particle_count, norm_factor] = init_combine();
@@ -1188,7 +985,7 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
     }
     nlohmann::json j{
         {"status", status},
-        {"seed", _seed.value_or(0)},
+        {"seed", _seed},
         {"process", _status},
         {"channels", channel_status()},
         {"run_times", _timing_data},

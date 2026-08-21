@@ -40,6 +40,14 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
+
+
 def main() -> None:
     # load run card and metadata. Use the RunCardMG7 representation when the
     # madgraph package is importable; gridpacks are meant to be portable, so
@@ -69,10 +77,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_name", type=str, default=run_args["run_name"])
     parser.add_argument(
-        "--seed", type=int, default=run_args.get("seed", 0),
-        help="0 draws a fresh random seed; a positive integer makes the run "
-             "reproducible at any --cpu_thread_pool_size (for --output_format lhe "
-             "also set combine_thread_pool_size = 1)"
+        "--seed", type=int, default=run_args.get("seed", -1),
+        help="every run is reproducible from its seed; -1 draws a fresh random "
+             "seed each run instead of fixing one here (still recorded in the "
+             "run's info.json)"
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
@@ -99,6 +107,7 @@ def main() -> None:
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
+    seed = resolve_seed(args.seed)
 
     # initialize event directory
     run_name = args.run_name
@@ -178,7 +187,7 @@ def main() -> None:
         channels=channel_generators,
         status_file=ms.StatusFile(os.path.join(run_path, "info.json")),
         config=config,
-        seed=args.seed,
+        seed=seed,
     )
 
     # run generation

@@ -115,6 +115,14 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
+
+
 def resolve_cppauto_backend(build_path: str) -> str:
     """Ask the matrix-element Makefile to resolve ``cppauto``.
 
@@ -230,6 +238,10 @@ class MadgraphProcess:
 
     def load_cards(self) -> None:
         self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        # Resolved once so every generator built during this run shares the same
+        # seed; the concrete value (even if randomly drawn) is recorded in each
+        # generator's info.json.
+        self.run_seed = resolve_seed(self.run_card["run"]["seed"])
         self.param_card_path = os.path.join("Cards", "param_card.dat")
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
@@ -566,9 +578,7 @@ class MadgraphProcess:
             channels=channel_generators,
             status_file=self.status_file,
             config=self.event_generator_config,
-            # 0 conventionally means "no seed" in the run card; EventGenerator takes
-            # an actual seed or None (non-deterministic), not a 0 sentinel.
-            seed=self.run_card["run"]["seed"] or None,
+            seed=self.run_seed,
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -728,11 +738,11 @@ class MadgraphProcess:
             training_args=training_args,
             verbosity=verbosity,
             status_file=self.status_file,
-            # Reuses the run_card's own seed (also used by build_event_generator()).
+            # Reuses the run's resolved seed (also used by build_event_generator()).
             # Only the single-channel CPU sample-generation path is currently seeded
             # -- buffered training and GPU multi-channel batches are still
             # non-deterministic.
-            seed=run_args["seed"] or None,
+            seed=self.run_seed,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
@@ -936,6 +946,9 @@ class MadgraphProcess:
                 headers.append(ms.LHEHeader(name="MG5ProcCard", content=f.read()))
         headers.append(ms.LHEHeader(name="slha", content=param_text))
         headers.append(ms.LHEHeader(name="MG7RunCard", content=run_text))
+        # The resolved seed (even when the run_card requested a random one via
+        # seed = -1), so the run can be reproduced from the LHE file alone.
+        headers.append(ms.LHEHeader(name="MG7Seed", content=str(self.run_seed)))
         return ms.LHEMeta(
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
@@ -1698,7 +1711,7 @@ class MadgraphSubprocess:
         madnis_args = self.process.run_card["madnis"]
         # Shared across all networks below: initialize_globals() derives an
         # independent, non-colliding stream per tensor from this one base seed.
-        seed = self.process.run_card["run"]["seed"] or None
+        seed = self.process.run_seed
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -1826,7 +1839,7 @@ class MadgraphSubprocess:
             prefix=f"subproc{self.subproc_id}.cwnet",
         )
         cwnet.initialize_globals(
-            self.process.contexts[0], self.process.run_card["run"]["seed"] or None
+            self.process.contexts[0], self.process.run_seed
         )
         return cwnet
 
