@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import struct
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import cast
@@ -430,7 +430,7 @@ def _parse_repeated_contraction(
 
 def _contraction_entries(
     plan: ExactColorReplayPlan,
-):
+) -> Iterator[_ExactColorContractionEntry]:
     if plan.repeated_contraction is None:
         yield from plan.expanded_entries
         return

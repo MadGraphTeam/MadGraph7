@@ -7,12 +7,15 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 import pyamplicol as _pyamplicol
 from pyamplicol.config import EvaluatorConfig
 
 from .errors import ModelError
+
+if TYPE_CHECKING:
+    from pyamplicol.models.loading import CompiledModel
 
 ModelSourceKind: TypeAlias = Literal[
     "built-in-sm",
@@ -285,7 +288,7 @@ def _compile_model_source_payload(
     cache_dir: Path | None,
     use_cache: bool,
     require_supported: bool,
-) -> object:
+) -> CompiledModel:
     """Compile one normalized source through the shared private boundary."""
 
     if source.kind == "built-in-sm-heft":
