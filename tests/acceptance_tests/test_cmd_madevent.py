@@ -3657,7 +3657,7 @@ set draw_rivet_plots True
                                     '%s/Cards/run_card_default.dat'% self.run_dir)
 
         cmd.run_cmd('launch -f')
-        
+
         self.check_parton_output(cross=15.73, error=0.04)
 
     def _get_delphes_path(self):
@@ -3784,6 +3784,46 @@ set draw_rivet_plots True
             if w_fused is not None and w_single is not None:
                 self.assertAlmostEqual(w_fused, w_single,
                                        delta=1e-6 * abs(w_single) + 1e-30)
+
+    def test_polarised_loop_induced_me_frame(self):
+        """Loop-induced with a polarised massive particle, in a chosen frame.
+
+        g g > z{0} z{0} [noborn=QCD] with me_frame = [3]: the matrix element is
+        evaluated with the first Z at rest. Loop-induced is exported through
+        the LO madevent template, so it uses the LO boost in auto_dsig and no
+        NLO frame machinery is involved; this test is what says so.
+
+        The cross-section is the assertion that the frame actually reached the
+        matrix element: in the partonic c.m. the same process gives PLACEHOLDER_CM pb,
+        a factor PLACEHOLDER_RATIO away, so a silently skipped boost cannot pass.
+        """
+        cmd = MGCmd.MasterCmd()
+        cmd.no_notification()
+        cmd.run_cmd('set automatic_html_opening False --no_save')
+        cmd.run_cmd('import model loop_sm')
+        cmd.run_cmd('generate g g > z{0} z{0} [noborn=QCD]')
+        cmd.run_cmd('output madevent %s -f' % self.run_dir)
+
+        card_path = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardLO(card_path)
+        run_card.set('me_frame', [3], user=True)
+        run_card.set('nevents', 100, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.write(card_path,
+                       pjoin(self.run_dir, 'Cards', 'run_card_default.dat'))
+
+        cmd.run_cmd('launch -f')
+
+        # the frame has to survive into the compiled code: bit 3 of frame_id.
+        self.assertIn('FRAME_ID = 8',
+                      open(pjoin(self.run_dir, 'Source', 'run_card.inc')).read())
+        # ... and the generated wrapper has to boost with it before the ME call.
+        dsig = misc.glob(pjoin(self.run_dir, 'SubProcesses', 'P*', 'auto_dsig1.f'))
+        self.assertTrue(dsig, 'no auto_dsig1.f was generated')
+        text = open(dsig[0]).read()
+        self.assertIn('CALL BOOST_TO_FRAME(PP, FRAME_ID, P1)', text)
+
+        self.check_parton_output(cross=PLACEHOLDER_XSEC, error=PLACEHOLDER_ERR)
 
 
 #===============================================================================

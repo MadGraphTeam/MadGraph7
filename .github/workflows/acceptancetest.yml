@@ -1484,3 +1484,20 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_loop_induced -pA -t0 -l INFO
+
+  acceptancetest_107:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_all
+
+      # Loop-induced with a polarised massive particle. Loop-induced goes
+      # through the LO madevent template, so this checks the LO me_frame boost
+      # reaches the MadLoop matrix element.
+      - name: test one of the test test_polarised_loop_induced_me_frame
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_polarised_loop_induced_me_frame -pA -t0 -l INFO

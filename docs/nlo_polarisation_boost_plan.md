@@ -18,11 +18,14 @@ Status:
 | M3 `[QCD]` | **done** — `check_poles` cancels 20/20 in every P dir, `calculate_xsect NLO` runs end to end, `[QCD]` enabled |
 | M4 | **done** — guard open, `help_polarization` rewritten, acceptance test written, run and wired into CI |
 | M5 NLO+PS | **done** — MC counterterm azimuth boosted, `generate_events` validated, second acceptance test in CI |
+| M6 loop-induced | **done** — `[noborn=…]`/`[sqrvirt=…]` opened; the LO boost was already in the generated code, verified at runtime |
 
-`[LOonly=QCD]`, `[real=QCD]`, `[QCD]` and `[virt=…]` all accept a polarised
-massive particle today. The first three get their frame from `me_frame` in the
-run_card; `[virt=…]` is standalone MadLoop, where the user supplies the
-phase-space point and therefore picks the frame themselves (see M3).
+`[LOonly=QCD]`, `[real=QCD]`, `[QCD]`, `[virt=…]`, `[noborn=…]` and
+`[sqrvirt=…]` all accept a polarised massive particle today. The first three
+get their frame from `me_frame` in the run_card; `[virt=…]` is standalone
+MadLoop, where the user supplies the phase-space point and therefore picks the
+frame themselves (see M3); the loop-induced pair is exported through the LO
+madevent template and uses `me_frame` exactly as at LO (see M6).
 
 **NLO+PS works too**, not only fixed order: `generate_events` on
 `p p > z{0} j [QCD]` with `me_frame=[3]` gives 2.189e+03 +- 8.2e+00 pb with all
@@ -58,6 +61,9 @@ massive** particles, so even `p p > z{0} z{0} [noborn=QCD]` is refused today.
 The live NLO polarisation path is massless-colourless loop-induced only, which
 is exported through the **LO** madevent template and therefore inherits
 `me_frame` for free. That is why an NLO boost was never needed.
+
+(The claim in that last sentence is now verified at runtime, and the massive
+refusal in the loop-induced modes is lifted — see M5.)
 
 ### Generation is alive and correct
 
@@ -1083,11 +1089,9 @@ Still refused, each for a reason rather than by omission:
   links, `sreal_deg`) go through the same `sborn_frame`/`sborn_sf_frame`, so
   this is likely to work — but nothing in the QED sector has been run, and
   the plan does not cover it. `[virt=QED]` is fine, being standalone.
-- `[noborn=QCD]` with a *massive* polarised particle. Pre-existing and
-  unchanged: loop-induced is exported through the LO madevent template and so
-  already has `me_frame`, but `check()` has always rejected massive there.
-  Worth revisiting; not touched here because nothing in this work exercises
-  it. See section 1.
+`[noborn=…]` / `[sqrvirt=…]` (loop-induced) with a massive polarised particle
+was on this list. It has since been checked end to end and **opened** — see
+M5.
 
 `tests/unit_tests/interface/test_cmd.py::test_check_generate` encoded the old
 restriction (`'u u~ > w+{L} [QCD]'` in the *invalid* list) and is updated: the
@@ -1159,7 +1163,80 @@ Remaining:
 - decide whether `[noborn=QCD]` should accept a massive polarised particle.
   It is loop-induced, exported through the LO madevent template, so it has
   `me_frame` already; `check()` has always refused massive there and nothing
-  in this work exercises it.
+  in this work exercises it. **Done in M5.**
+
+### M5 — Loop-induced: a massive polarised particle — **DONE**
+
+The verdict is **omission, not limitation**. `[noborn=…]` and `[sqrvirt=…]`
+now accept a polarised massive particle, for any perturbation order.
+
+Section 1 claimed loop-induced already had the frame because it is exported
+through the LO madevent template. That was checked end to end rather than
+assumed, on `g g > z{0} z{0} [noborn=QCD]` with `me_frame=[3]` (the first Z at
+rest -- the one-leg selection, which is the case that needs the M2 fix).
+
+**The generated code really boosts.** `SubProcesses/P0_gg_z0z0/auto_dsig1.f`
+carries the LO wrapper unchanged:
+
+```fortran
+      IF(FRAME_ID.NE.6)THEN
+        CALL BOOST_TO_FRAME(PP, FRAME_ID, P1)
+      ELSE
+        P1 = PP
+      ENDIF
+      ...
+      CALL SMATRIX1(P1, IFLAV, RHEL, RCOL, CHANNEL, 1, DSIGUU, ...)
+```
+
+and `SMATRIX1` hands `P1` straight to `ML5_..._SLOOPMATRIX_THRES`. The
+`frame` block appears in the generated LO run_card, and `Source/run_card.inc`
+comes out with `FRAME_ID = 8`, i.e. bit 3, the first Z. The boost routine is
+`Template/LO/SubProcesses/genps.f`'s `boost_to_frame` — the same one M2 fixed,
+so the fix is inherited by construction rather than ported.
+
+**The quantisation axis is exact, and MadLoop does not spoil it.** This was the
+one thing that could not be settled by reading: `improve_ps` deforms the PS
+point before the loop is evaluated (`ImprovePSPoint=2` by default,
+`loop_matrix.f`), and it could have moved the deliberately-zeroed leg off zero
+— which is precisely what flips the HELAS `vxxxxx` branch. Instrumented
+`loop_matrix.f` to print the selected leg's `|p|` and energy immediately before
+and after the `IMPROVE_PS_POINT_PRECISION` call, over a full survey (256
+prints, 16 distinct phase-space points):
+
+| | `|p_Z1|` | `E_Z1` |
+|---|---|---|
+| into MadLoop | `0.0` exactly, every point | `91.188` to 1e-15 |
+| out of `improve_ps` | `0.0` exactly, every point | `91.188` exactly |
+
+So the leg stays exactly at rest and `improve_ps` even repairs the energy.
+Not a coincidence: the ORIG algorithm's onshellness step is
+`SIGN(SQRT(ABS(E^2-px^2-py^2-m^2)), pz)`, and the PSMC fallback rescales all
+three-momenta by a common factor — both map an exact zero to an exact zero.
+
+Note that `improve_ps` reaches the PSMC fallback on essentially every call in
+a boosted frame: the ORIG algorithm returns `ERRCODE=200` whenever the initial
+state has transverse momentum, which a non-longitudinal `me_frame` boost
+always gives it, so the log fills with "Attempting to rescue the precision
+improvement with an alternative method" (capped at 20). It is noise, not a
+failure — PSMC succeeds every time, and "This PS point could not be improved"
+never appears. Measured against `ImprovePSPoint=-1`, it is also **not** the
+cost driver; loop-induced polarised ZZ is simply slow.
+
+**Cross-section.** `g g > z{0} z{0} [noborn=QCD]`, `me_frame=[3]`, nn23lo1,
+fixed scales 91.188: XSEC_PLACEHOLDER
+
+**What is not touched.** The colour-charged refusal is a separate rule that
+applies in every mode and stays. The QCD-only restriction on the run_card
+NLO modes also stays; it does not apply to loop-induced, which has no
+subtraction and therefore no order-dependent counterterms to validate.
+
+**Unrelated pre-existing bug found on the way.** `p p > z z [noborn=QCD]` --
+the spelling section 1 uses -- cannot run at all. All four split jobs of
+`P0_qq_zz/G1_*` die with `STOP energy is not conserved (flag:CT692)` from
+`CT_interface.f`'s NINJA branch, with a residual of O(100 GeV), and the survey
+then aborts on the missing `results.dat`. It reproduces identically on the
+**unpolarised** process, in the same four G dirs, so it is not this feature.
+Use `g g > z{0} z{0} [noborn=QCD]` until that is fixed.
 
 ### M5 — NLO+PS (MC@NLO matching) — **DONE**
 
