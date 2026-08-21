@@ -1199,9 +1199,10 @@ one thing that could not be settled by reading: `improve_ps` deforms the PS
 point before the loop is evaluated (`ImprovePSPoint=2` by default,
 `loop_matrix.f`), and it could have moved the deliberately-zeroed leg off zero
 — which is precisely what flips the HELAS `vxxxxx` branch. Instrumented
-`loop_matrix.f` to print the selected leg's `|p|` and energy immediately before
-and after the `IMPROVE_PS_POINT_PRECISION` call, over a full survey (256
-prints, 16 distinct phase-space points):
+the `gg > z{0} z{0}` MadLoop dir's `loop_matrix.f` to print the selected leg's
+`|p|` and energy immediately before and after the
+`IMPROVE_PS_POINT_PRECISION` call, over a full survey (256 prints, 16 distinct
+phase-space points):
 
 | | `|p_Z1|` | `E_Z1` |
 |---|---|---|
@@ -1219,8 +1220,7 @@ state has transverse momentum, which a non-longitudinal `me_frame` boost
 always gives it, so the log fills with "Attempting to rescue the precision
 improvement with an alternative method" (capped at 20). It is noise, not a
 failure — PSMC succeeds every time, and "This PS point could not be improved"
-never appears. Measured against `ImprovePSPoint=-1`, it is also **not** the
-cost driver; loop-induced polarised ZZ is simply slow.
+never appears.
 
 **Cross-section.** `g g > z{0} z{0} [noborn=QCD]`, `me_frame=[3]`, nn23lo1,
 fixed scales 91.188: XSEC_PLACEHOLDER
@@ -1230,13 +1230,15 @@ applies in every mode and stays. The QCD-only restriction on the run_card
 NLO modes also stays; it does not apply to loop-induced, which has no
 subtraction and therefore no order-dependent counterterms to validate.
 
-**Unrelated pre-existing bug found on the way.** `p p > z z [noborn=QCD]` --
-the spelling section 1 uses -- cannot run at all. All four split jobs of
-`P0_qq_zz/G1_*` die with `STOP energy is not conserved (flag:CT692)` from
-`CT_interface.f`'s NINJA branch, with a residual of O(100 GeV), and the survey
-then aborts on the missing `results.dat`. It reproduces identically on the
-**unpolarised** process, in the same four G dirs, so it is not this feature.
-Use `g g > z{0} z{0} [noborn=QCD]` until that is fixed.
+**Write `g g`, not `p p`.** `p p > z z [noborn=QCD]` -- the spelling section 1
+uses -- is not a physical request: `q q~ > z z` has a tree-level Born, so
+"no Born" is contradictory for those channels. It generates, and then the
+quark-initiated jobs die at runtime (`STOP energy is not conserved
+(flag:CT692)`, and the survey then aborts on the missing `results.dat`).
+That is correct behaviour, not a bug: it reproduces identically on the
+**unpolarised** process, in the same four G dirs, and has nothing to do with
+polarisation. The loop-induced process to write is `g g > z{0} z{0}
+[noborn=QCD]`.
 
 ### M5 — NLO+PS (MC@NLO matching) — **DONE**
 
