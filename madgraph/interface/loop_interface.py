@@ -298,10 +298,17 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
     def validate_model(self, loop_type='virtual',coupling_type=['QCD'], stop=True):
         """ Upgrade the model sm to loop_sm if needed """
 
-        # Allow to call this function with a string instead of a list of 
+        # Allow to call this function with a string instead of a list of
         # perturbation orders.
         if isinstance(coupling_type,str):
             coupling_type = [coupling_type,]
+
+        # Everything below assumes a model. [virt=]/[real=] get one from
+        # check_generate before we are called, but master_interface calls us
+        # directly for [noborn=], ahead of create_loop_induced's check_add.
+        if not self._curr_model:
+            logger.info("No model currently active, so we import the Standard Model")
+            self.do_import('model sm')
 
         active_interface = getattr(self, 'current_interface', None)
 
