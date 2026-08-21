@@ -1452,8 +1452,9 @@ Not a coincidence: the ORIG algorithm's onshellness step is
 `SIGN(SQRT(ABS(E^2-px^2-py^2-m^2)), pz)`, and the PSMC fallback rescales all
 three-momenta by a common factor — both map an exact zero to an exact zero.
 
-**Note for whoever merges this with the loop-induced pole check.** Two costs
-land on the same runs and neither is a bug:
+**Note for whoever merges this with the loop-induced pole check**
+(`claude/loop-induced-pole-check`). Two costs land on the same runs and
+neither is a bug:
 
 - a non-longitudinal `me_frame` boost gives the initial state transverse
   momentum, and `improve_ps`'s ORIG algorithm refuses any such point
@@ -1466,6 +1467,12 @@ land on the same runs and neither is a bug:
 
 A polarised loop-induced run pays both.
 
+Unrelated but adjacent: `output standalone` on a loop-induced process is being
+fixed on `claude/fix-loop-induced-standalone-flavor` (off `main`) --
+`_flavor_enumeration_context` in `helas_objects.py` counted the L-cut
+wavefunctions as external legs. Nothing here depends on it; the madevent
+output this milestone uses was never affected.
+
 **Cross-section, and the frame really moves it.** `g g > z{0} z{0}
 [noborn=QCD]`, shipped run card except `nevents=100`, `use_syst=F` and
 `me_frame`:
@@ -1477,6 +1484,13 @@ A polarised loop-induced run pays both.
 
 A factor 2.3. That gap is what the acceptance test asserts on: a boost that
 were silently skipped could not reproduce the first number.
+
+Re-measured on top of M5 (`montecarlocounter.f`, `boost_to_frame.f`), where
+nothing should move because loop-induced goes through the LO madevent template
+and never reaches an FKS counterterm: 2.543e-02 +- 9.9e-05 pb, 0.8 sigma from
+the row above -- and bit-identical to the same fresh generation on the pole-
+check branch, both having started from the same `randinit`. The two numbers in
+the table differ only by seed offset (24 vs 21).
 
 **Cross-checked against the loop-induced pole check** (`MLPoleCheckThres`, on
 `claude/loop-induced-pole-check`). That work and this one are orthogonal: it
