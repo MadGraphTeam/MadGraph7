@@ -76,6 +76,9 @@ public:
         std::unordered_map<int, int> pdg_color_types;
         nested_vector2<double> helicities;
         nested_vector3<int> pdg_ids;
+        // Per-diagram pdg override, indexed like diagram_color_indices then by
+        // Decay::flat_propagator_index. Falls back to Decay::pdg_id if empty.
+        nested_vector3<int> diagram_propagator_pdgs;
     };
 
     LHECompleter(const std::vector<SubprocArgs>& subproc_args, double bw_cutoff);
@@ -139,6 +142,7 @@ private:
         const Topology& topo,
         const SubprocArgs& args,
         const std::vector<std::size_t>& colors,
+        const std::vector<int>& propagator_pdgs,
         std::size_t prop_offset,
         std::vector<double>& e_min,
         std::vector<int>& momentum_masks,

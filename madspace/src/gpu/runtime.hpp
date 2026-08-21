@@ -5,6 +5,7 @@
 #include "madspace/driver/backend.hpp"
 #include "madspace/driver/tensor.hpp"
 
+#include <map>
 #include <memory>
 #include <optional>
 

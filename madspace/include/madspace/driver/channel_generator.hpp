@@ -39,6 +39,10 @@ public:
         const std::string& name,
         const std::optional<ObservableHistograms>& histograms
     );
+    ChannelEventGenerator(ChannelEventGenerator&&) = default;
+    ChannelEventGenerator& operator=(ChannelEventGenerator&&) = default;
+    ChannelEventGenerator(const ChannelEventGenerator&) = delete;
+    ChannelEventGenerator& operator=(const ChannelEventGenerator&) = delete;
 
     const GeneratorStatus& status() const { return _status; }
     const RunningIntegral& cross_section() const { return _cross_section; }
@@ -120,6 +124,7 @@ private:
         int color_index, helicity_index, diagram_index, flavor_index;
         int ren_scale, alpha_qcd;
         int x1, fact_scale1, x2, fact_scale2, partial_weight_product;
+        int subprocess_index;
         int random, rest;
     };
 

@@ -62,6 +62,7 @@ NamedVector<Value> ChannelWeightNetwork::build_function_impl(
     //     _preprocessing.build_function(fb, {args["momenta"], args["x1"], args["x2"]});
     // auto net_output = _mlp.build_function(fb, net_input.values()).at(0);
     auto net_output = _mlp.build_function(fb, {args["input"]}).at(0);
+    net_output = fb.scaled_tanh(net_output);
     return {
         {"channel_weights", fb.softmax_prior(net_output, fb.mul(args["prior"], mask))}
     };

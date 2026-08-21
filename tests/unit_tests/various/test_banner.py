@@ -1319,7 +1319,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(rc['generation']['events'], 100000)
         self.assertEqual(rc['beam']['e_cm'], 13000.0)
         self.assertIs(rc['vegas']['enable'], True)
-        self.assertIs(rc['madnis']['enable'], False)
+        self.assertEqual(rc['madnis']['enable'], 'auto')
         self.assertEqual(rc['phasespace']['mode'], 'multichannel')
         # the "enable" key colliding between [vegas] and [madnis] is stored
         # independently, so editing one does not affect the other

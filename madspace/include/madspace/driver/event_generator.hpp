@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <set>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "madspace/driver/generator_data.hpp"
 #include "madspace/driver/io.hpp"
 #include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/status_file.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
 #include "madspace/phasespace.hpp"
 
@@ -31,10 +33,14 @@ public:
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
-        const std::string& status_file = "",
+        std::shared_ptr<StatusFile> status_file = nullptr,
         const GeneratorConfig& config = default_config,
         std::optional<std::uint64_t> seed = std::nullopt
     );
+    EventGenerator(EventGenerator&&) = default;
+    EventGenerator& operator=(EventGenerator&&) = default;
+    EventGenerator(const EventGenerator&) = delete;
+    EventGenerator& operator=(const EventGenerator&) = delete;
     // `survey_pass` salts job seeds so repeated survey() calls on the same
     // channel (e.g. re-survey after simplification) don't share a seed stream.
     void survey(std::size_t survey_pass = 0);
@@ -132,10 +138,9 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;
     std::chrono::time_point<std::chrono::steady_clock> _last_print_time;
-    std::chrono::time_point<std::chrono::steady_clock> _last_status_time;
     PrettyBox _pretty_box_upper;
     PrettyBox _pretty_box_lower;
-    std::string _status_file;
+    std::shared_ptr<StatusFile> _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
 
     void survey_deterministic();

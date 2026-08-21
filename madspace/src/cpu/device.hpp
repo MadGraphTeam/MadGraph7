@@ -49,7 +49,8 @@ public:
         double beta1,
         double beta2,
         double eps,
-        double bias_corr2_sqrt
+        double bias_corr2_sqrt,
+        double weight_decay
     ) const override;
 
     template <typename F>

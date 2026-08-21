@@ -149,6 +149,26 @@ accept_norm:
   class: AcceptNormInstruction
   custom_op: True
 
+batch_split_by_index:
+  inputs:
+    - name: indices
+      type: [int]
+      desc:
+    - name: count
+      type: [int, single]
+      desc:
+  outputs: any
+  class: BatchSplitByIndexInstruction
+  custom_op: True
+
+batch_merge_by_index:
+  inputs: any
+  outputs:
+    - name: output
+      desc:
+  class: BatchMergeByIndexInstruction
+  custom_op: True
+
 ---
 title: Math
 
@@ -253,6 +273,18 @@ reduce_sum_vector:
       desc:
   dims: 0
 
+batch_reduce_sum:
+  inputs:
+    - name: in1
+      type: [float]
+      desc:
+  outputs:
+    - name: out
+      type: [float, single]
+      desc:
+  differentiable: True
+  custom_op: True
+
 batch_reduce_mean:
   inputs:
     - name: in1
@@ -344,7 +376,7 @@ max:
 
 abs:
   inputs:
-    - name: in
+    - name: input
       type: [float, ...]
       desc:
   outputs:
@@ -1660,6 +1692,41 @@ apply_subchannel_weights:
       type: [float, d]
       desc:
 
+compress_channel_weights:
+  inputs:
+    - name: channel_index
+      type: [int]
+      desc:
+    - name: channel_weights
+      type: [float, n]
+      desc:
+    - name: keep_count
+      type: [size, k]
+      desc:
+  outputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+
+restore_channel_weights:
+  inputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+    - name: full_count
+      type: [size, n]
+      desc:
+  outputs:
+    - name: channel_weights
+      type: [float, n]
+      desc:
+
 pt_eta_phi_x:
   inputs:
     - name: p_ext
@@ -2317,6 +2384,19 @@ gelu:
   differentiable: True
 
 sigmoid:
+  inputs:
+    - name: in1
+      type: [float, ...]
+      desc:
+  outputs:
+    - name: out
+      type: [float, ...]
+      backward_arg: True
+      desc:
+  dims: 0
+  differentiable: True
+
+scaled_tanh:
   inputs:
     - name: in1
       type: [float, ...]
