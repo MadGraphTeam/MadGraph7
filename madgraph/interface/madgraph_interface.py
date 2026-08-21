@@ -1643,7 +1643,8 @@ This will take effect only in a NEW terminal
                                           'loop_optimized_output',\
                                           'loop_color_flows',\
                                           'include_lepton_initiated_processes',\
-                                          'low_mem_multicore_nlo_generation']:
+                                          'low_mem_multicore_nlo_generation',\
+                                          'merge_same_topologies']:
             args.append('True')
 
         if len(args) > 2 and '=' == args[1]:
@@ -3159,6 +3160,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'zerowidth_tchannel',
                     'default_unset_couplings',
                     'nlo_mixed_expansion',
+                    'merge_same_topologies',
                     'merge_quartic_vertices'
                     ]
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
@@ -3243,6 +3245,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'zerowidth_tchannel': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True,
+                          'merge_same_topologies': True,
                           'merge_quartic_vertices': False
                         }
 
@@ -9414,8 +9417,15 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
     def set2_apply_flavor_grouping(self, args, log=True):
         """Set whether the code should apply flavor grouping in the generation of LO processes.
         Default: True
-        """    
+        """
         self.options['apply_flavor_grouping'] = banner_module.ConfigFile.format_variable(args[0], bool, 'apply_flavor_grouping')
+
+    def set2_merge_same_topologies(self, args, log=True):
+        """Set whether the mg7 output should merge diagrams sharing the same topology
+        (ignoring spin, color and charge) into a single integration channel.
+        Default: True
+        """
+        self.options['merge_same_topologies'] = banner_module.ConfigFile.format_variable(args[0], bool, 'merge_same_topologies')
 
 
 

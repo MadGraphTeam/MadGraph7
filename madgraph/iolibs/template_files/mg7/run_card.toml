@@ -65,13 +65,16 @@ max_batch_size = %(vegas.max_batch_size)s
 
 [phasespace]
 mode = %(phasespace.mode)s #options: multichannel, flat, both
+merge_subprocesses = %(phasespace.merge_subprocesses)s
 sde_strategy = %(phasespace.sde_strategy)s #options: diagrams, denominators
 decays = %(phasespace.decays)s # options: all, massive, none
 t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
 flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
-simplified_channel_count = %(phasespace.simplified_channel_count)s
+combine_channel_threshold = %(phasespace.combine_channel_threshold)s
+drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # -1 keeps all channels, otherwise drop channels without a QCD s-channel resonance once the channel count would exceed this
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
+adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [multiparticles]
 $multiparticles
@@ -121,6 +124,8 @@ lr_scheduler = %(madnis.lr_scheduler)s # options: none, cosine
 adam_beta1 = %(madnis.adam_beta1)s
 adam_beta2 = %(madnis.adam_beta2)s
 adam_eps = %(madnis.adam_eps)s
+adam_weight_decay = %(madnis.adam_weight_decay)s
+grad_clip_threshold = %(madnis.grad_clip_threshold)s
 train_mcw = %(madnis.train_mcw)s
 buffer_capacity = %(madnis.buffer_capacity)s
 minimum_buffer_size = %(madnis.minimum_buffer_size)s
@@ -136,3 +141,4 @@ batch_size_threshold = %(madnis.batch_size_threshold)s
 channel_grouping_mode = %(madnis.channel_grouping_mode)s # options: none, uniform, learned
 fixed_cwnet_fraction = %(madnis.fixed_cwnet_fraction)s
 softclip_threshold = %(madnis.softclip_threshold)s
+compressed_channel_weight_count = %(madnis.compressed_channel_weight_count)s

@@ -142,9 +142,16 @@ class Context {
 public:
     Context(int thread_count = -1) :
         _device(cpu_device()),
-        _thread_pool(std::make_unique<ThreadPool>(thread_count)) {}
+        _thread_pool(std::make_unique<ThreadPool>(thread_count))
+    {
+        reset_cache();
+    }
     Context(DevicePtr device, int thread_count = -1) :
-        _device(device), _thread_pool(std::make_unique<ThreadPool>(thread_count)) {}
+        _device(device),
+        _thread_pool(std::make_unique<ThreadPool>(thread_count))
+    {
+        reset_cache();
+    }
     Context(Context&&) = default;
     Context& operator=(Context&&) = default;
     Context(const Context&) = delete;
@@ -170,6 +177,12 @@ public:
     void load_globals(const std::string& dir);
     DevicePtr device() { return _device; }
     ThreadPool& thread_pool() { return *_thread_pool; }
+    Tensor cached_tensor(std::size_t size);
+    void reset_cache() {
+        _tensor_cache = ThreadResource<TensorVec>(
+            thread_pool(), []() { return TensorVec{}; }
+        );
+    }
 
 private:
     DevicePtr _device;
@@ -177,6 +190,7 @@ private:
     std::unordered_map<std::string, std::pair<Tensor, bool>> _globals;
     std::vector<std::unique_ptr<MatrixElementApi>> _matrix_elements;
     std::vector<std::string> _param_card_paths;
+    ThreadResource<TensorVec> _tensor_cache;
 };
 
 using ContextPtr = std::shared_ptr<Context>;

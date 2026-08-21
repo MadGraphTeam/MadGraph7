@@ -1,7 +1,6 @@
 #include "madspace/driver/event_generator.hpp"
 
 #include <cmath>
-#include <filesystem>
 #include <format>
 #include <ranges>
 #include <stdexcept>
@@ -16,7 +15,7 @@ const GeneratorConfig EventGenerator::default_config = {};
 EventGenerator::EventGenerator(
     const std::vector<ContextPtr>& contexts,
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
-    const std::string& status_file,
+    std::shared_ptr<StatusFile> status_file,
     const GeneratorConfig& config
 ) :
     _config(config),
@@ -45,6 +44,9 @@ EventGenerator::EventGenerator(
     _status_file(status_file) {}
 
 void EventGenerator::survey() {
+    for (auto& context : _contexts) {
+        context->reset_cache();
+    }
     reset_start_time();
     bool done = false;
     std::size_t min_iters = _config.survey_min_iters;
@@ -142,6 +144,7 @@ void EventGenerator::generate() {
 
     std::size_t target_job_count = 0;
     for (auto& context : _contexts) {
+        context->reset_cache();
         target_job_count += 2 * context->thread_pool().thread_count();
     }
     std::size_t channel_index = 0;
@@ -639,6 +642,8 @@ void EventGenerator::read_and_combine(
     bool has_beam2 = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_beam2;
     bool has_partial =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
+    bool has_subproc_index =
+        _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
 
     std::random_device rand_device;
     std::mt19937 rand_gen(rand_device());
@@ -675,7 +680,9 @@ void EventGenerator::read_and_combine(
         auto event_in = sampled_chan->event_buffer.event(sampled_chan->buffer_index);
         auto event_out = buffer.event(event_index);
         event_out.weight() = std::max(1., weight / channel->max_weight()) * norm_factor;
-        event_out.subprocess_index() = channel->status().subprocess;
+        event_out.subprocess_index() = has_subproc_index
+            ? event_in.subprocess_index().value()
+            : static_cast<int>(channel->status().subprocess);
         event_out.diagram_index() = event_in.diagram_index();
         event_out.color_index() = event_in.color_index();
         event_out.flavor_index() = event_in.flavor_index();
@@ -756,20 +763,13 @@ void EventGenerator::fill_lhe_event(
 }
 
 void EventGenerator::init_status(const std::string& status) {
-    _last_status_time = std::chrono::steady_clock::now();
     write_status(status, true);
 }
 
 void EventGenerator::write_status(const std::string& status, bool force_write) {
-    auto now = std::chrono::steady_clock::now();
-    using namespace std::chrono_literals;
-    if (now - _last_status_time < 10s && !force_write) {
+    if (!_status_file) {
         return;
     }
-    _last_status_time = now;
-
-    std::string status_tmp_file = std::format("{}.tmp", _status_file);
-    std::ofstream f(status_tmp_file);
     nlohmann::json j{
         {"status", status},
         {"process", _status},
@@ -777,10 +777,7 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
         {"run_times", _timing_data},
         {"histograms", histograms()},
     };
-    f << j.dump();
-    // rename atomically deletes the old file and replaces it with the new one
-    // such that the status file exists at all times
-    std::filesystem::rename(status_tmp_file, _status_file);
+    _status_file->write(j, force_write);
 }
 
 void EventGenerator::print_survey_init() {

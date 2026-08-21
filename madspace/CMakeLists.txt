@@ -207,6 +207,7 @@ add_library(
     src/driver/event_generator.cpp
     src/driver/channel_generator.cpp
     src/driver/generator_data.cpp
+    src/driver/status_file.cpp
     src/driver/thread_pool.cpp
     src/driver/io.cpp
     src/driver/vegas_optimizer.cpp
