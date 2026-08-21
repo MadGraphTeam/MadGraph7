@@ -1244,6 +1244,17 @@ The identity that makes the two routes agree,
 convergence table below measures — the generic branch is its left-hand side
 and the reference its right-hand side.
 
+Measured cost of the change: none. A freshly generated directory carrying it,
+run at `me_frame=[3]` with the same card and seed, reproduces `res_0.txt`,
+`res_1.txt` and `res_2.txt` byte for byte against the run made before it
+(ratio 1.999850 both ways), and the LHE differs only in the banner's git hash
+and output path. The same directory at `me_frame=[1,2]` is likewise byte for
+byte identical to the **unmodified base branch** (1.748300e+03 pb, ratio
+1.971314), so the no-frame guarantee survives the follow-up. Neither is a
+surprise -- production kinematics never reach `1-y = 0`, and the only caller
+that passes exactly `y=1` is the counter-event -- but it is cheap to check and
+the branch condition is the kind of thing that is easy to get subtly wrong.
+
 #### What was measured
 
 *The azimuthal phase itself.* A debug print in `get_mbar` next to a call to
