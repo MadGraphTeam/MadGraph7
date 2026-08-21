@@ -813,6 +813,78 @@ class MECmdShell(IOTests.IOTestManager):
             self.assertNotIn('MISCANCELLATION', open(log).read(),
                              'poles do not cancel in %s' % log)
 
+    @set_global()
+    def test_polarised_nlo_ps_me_frame(self):
+        """Polarised NLO+PS (MC@NLO matching) in a chosen rest frame.
+
+        p p > z{0} j [QCD] with me_frame = [3], generating events rather than
+        only a cross-section. On top of what the fixed-order test covers this
+        exercises the MC counterterms and the LHE writing, both of which
+        evaluate the Born and must do so in the same frame as everything else.
+
+        Two assertions carry the physics:
+
+          - the total cross-section must stay the fixed-order one, because the
+            MC counterterm cancels between the S and the H event;
+          - the ratio of the *absolute* cross-section to it must not, because
+            that ratio measures how well the MC subtraction cancels locally,
+            which is exactly what the azimuthal phase of the counterterm
+            controls. With the phase left in the partonic c.m. the ratio was
+            2.23; with it in the me_frame it is 2.00.
+
+        p p > z j is the discriminating channel: the azimuthal term is
+        non-zero only for a gluon-mother ISR configuration, so a process whose
+        ISR mothers are all quarks passes with a completely wrong azimuth.
+        """
+        self.generate('p p > z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the Z rest frame. nn23lo1 rather than lhapdf, scales fixed
+        # and the seed pinned so the run is reproducible.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('nevents', 1000, user=True)
+        run_card.set('req_acc', 0.05, user=True)
+        run_card.set('iseed', 33, user=True)
+        run_card.set('parton_shower', 'PYTHIA8', user=True)
+        run_card.write(card_path)
+
+        # --parton stops before the shower: the shower knows nothing about the
+        # frame, everything under test happens before it.
+        self.do('generate_events aMC@NLO --parton -f')
+
+        # The frame reached the matrix elements: bit 3 set, nothing else.
+        run_inc = open(pjoin(self.path, 'Source', 'run_card.inc')).read()
+        self.assertIn('FRAME_ID = 8', run_inc)
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/events.lhe.gz' % self.path))
+
+        # check_poles and test_ME/test_MC run as part of the launch and would
+        # abort it; assert on the logs anyway so a silent pass is visible.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
+        # res_1.txt ends with the absolute cross-section and the cross-section.
+        res = open(pjoin(self.path, 'Events', 'run_01', 'res_1.txt')).read()
+        totals = re.findall(r'([-\d.eE+]+)\s+\+-', res.split('Total ABS')[-1])
+        self.assertEqual(len(totals), 2, 'cannot read the totals from res_1.txt')
+        xsec_abs, xsec = float(totals[0]), float(totals[1])
+        self.assertAlmostEqual(xsec, 2.19e3, delta=1.0e2)
+        self.assertLess(xsec_abs / xsec, 2.15,
+                        'the MC counterterm does not cancel locally enough; '
+                        'its azimuthal phase is probably not in the me_frame')
+
     def test_amcatnlo_from_file(self):
         """ """
         
