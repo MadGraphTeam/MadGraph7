@@ -11652,8 +11652,28 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             opt['madanalysis5'] = cmd.options['madanalysis5_path']
             
         if format == 'matrix' or format.startswith('standalone'):
+            # A loop-induced ([noborn=]) process reaches this factory through the
+            # MadGraph interface (master_interface switches back to it after
+            # generation), but ProcessExporterFortranSA cannot write a
+            # LoopHelasMatrixElement.  Use the MadLoop standalone exporter, as
+            # the madevent branches below already do for their own format.
+            if format == 'standalone' and cmd._curr_amps and isinstance(
+                    cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+                import madgraph.loop.loop_exporters as loop_exporters
+                if not os.path.isdir(os.path.join(cmd._mgme_dir,
+                                                  'Template/loop_material')):
+                    raise MadGraph5Error(
+                        'MG5_aMC cannot find the \'loop_material\' directory'
+                        ' in %s' % str(cmd._mgme_dir))
+                if cmd.options['loop_optimized_output']:
+                    MadLoop_SA_options['export_format'] = 'madloop_optimized'
+                    ExporterClass = \
+                        loop_exporters.LoopProcessOptimizedExporterFortranSA
+                else:
+                    ExporterClass = loop_exporters.LoopProcessExporterFortranSA
+                return ExporterClass(cmd._export_dir, MadLoop_SA_options)
             return ProcessExporterFortranSA(cmd._export_dir, opt, format=format)
-        
+
         elif format in ['madevent'] and group_subprocesses:
             if isinstance(cmd._curr_amps[0], 
                                          loop_diagram_generation.LoopAmplitude):
