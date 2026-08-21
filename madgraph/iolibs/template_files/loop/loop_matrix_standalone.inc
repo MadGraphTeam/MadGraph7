@@ -217,8 +217,7 @@ c     the previous points
       LOGICAL FOUND_VALID_REDUCTION_METHOD
       DATA FOUND_VALID_REDUCTION_METHOD/.FALSE./
 
-	  %(real_dp_format)s ACC
-	  %(real_dp_format)s TMPPOLE,TMPPOLETHRES
+	  %(real_dp_format)s ACC%(loop_induced_pole_check_decl)s
 	  %(real_dp_format)s DP_RES(3,MAXSTABILITYLENGTH)
 C QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
 	  %(real_dp_format)s QP_RES(3,MAXSTABILITYLENGTH)
@@ -928,9 +927,7 @@ ANSRETURNED(0,0)=ANS(0)
 ANSRETURNED(1,0)=ANS(1)
 ANSRETURNED(2,0)=ANS(2)
 ANSRETURNED(3,0)=ANS(3)
-
 %(loop_induced_pole_check)s
-
 C Reinitialize the check phase logicals and the filters if check bypassed
 IF (BYPASS_CHECK) THEN
   CHECKPHASE = OLD_CHECKPHASE

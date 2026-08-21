@@ -267,13 +267,10 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         # (which is the default for standalone usage), COLLIER is faster than Ninja.
         if self.has_loop_induced:
             MLCard['MLReductionLib'] = "7|6|1"
-            # Computing the poles with COLLIER also unnecessarily slows down the code
-            # It should only be set to True for checks and it's acceptable to remove them
-            # here because for loop-induced processes they should be zero anyway.
-            # We keep it active for non-loop induced processes because COLLIER is not the
-            # main reduction tool in that case, and the poles wouldn't be zero then
-            MLCard['COLLIERComputeUVpoles'] = False
-            MLCard['COLLIERComputeIRpoles'] = False
+            # The COLLIER pole computation is left on here: the poles must vanish
+            # for a loop-induced process and MadLoop only checks that when they are
+            # computed. 'check timing'/'check stability' turn them off themselves,
+            # and so does the madevent event loop, where the cost is not worth it.
 
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
@@ -1627,13 +1624,15 @@ PARAMETER (NSQUAREDSO=0)""")
             actualize_ans.extend(["ENDIF","ENDDO"])
             replace_dict['actualize_ans']='\n'.join(actualize_ans)
             replace_dict['loop_induced_pole_check'] = ""
+            replace_dict['loop_induced_pole_check_decl'] = ""
         else:
             replace_dict['actualize_ans']=""
             # A loop-induced amplitude is finite: a surviving pole means the
             # result is wrong, so refuse to return it. This output only ever
             # reduces with CutTools, which always computes the poles.
-            replace_dict['loop_induced_pole_check']=("""
-IF (MLPoleCheckThres.GT.0.0d0.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1).NE.0.0d0) THEN
+            replace_dict['loop_induced_pole_check_decl']=\
+                "\n\t  %(real_dp_format)s TMPPOLE,TMPPOLETHRES"%replace_dict
+            replace_dict['loop_induced_pole_check']=("""IF (MLPoleCheckThres.GT.0.0d0.AND..NOT.CHECKPHASE.AND.HELDOUBLECHECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1).NE.0.0d0) THEN
   TMPPOLE = (ABS(ANS(2))+ABS(ANS(3)))/ABS(ANS(1))
 C Never demand more than the accuracy MadLoop itself claims for this point.
   TMPPOLETHRES = MLPoleCheckThres

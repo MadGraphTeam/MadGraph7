@@ -1888,7 +1888,6 @@ DO I=1,NSQUAREDSO
     ENDDO
   ENDIF
 ENDDO
-
 ## if(LoopInduced){
 C A loop-induced amplitude is finite, so its poles must cancel. If they do not,
 C the result is wrong and we must not return it. Skipped when the reduction tool

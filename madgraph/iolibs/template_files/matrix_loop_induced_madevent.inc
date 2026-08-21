@@ -415,11 +415,11 @@ c   ----
 	  return
 	endif
 
-	IF (U.NE.7.AND.((OneEps+TwoEps)/finite).gt.(1000d0*PREC).AND.(((OneEps+TwoEps)/finite).gt.1.0d-5)) THEN
+	IF (U.NE.7.AND.((ABS(OneEps)+ABS(TwoEps))/ABS(finite)).gt.(1000d0*PREC).AND.(((ABS(OneEps)+ABS(TwoEps))/ABS(finite)).gt.1.0d-5)) THEN
 	  WARNING_COUNTERS(2) = WARNING_COUNTERS(2) + 1
 	  IF (WARNING_COUNTERS(2).le.10) THEN
 	    WRITE(*,*) "WARNING : The residue of the single and double pole of the loop matrix element being integrated does not seem to vanish."
-		WRITE(*,*) "          Its contribution relative to the finite part is : ",((OneEps+TwoEps)/finite)
+		WRITE(*,*) "          Its contribution relative to the finite part is : ",((ABS(OneEps)+ABS(TwoEps))/ABS(finite))
 		WRITE(*,*) "          while the estimated numerical accuracy is       : ",PREC
 		WRITE(*,*) "          MadLoop results (fin, 1eps, 2eps)               : ",finite, OneEps, TwoEps
 		WRITE(*,*) " The warning above was triggered when processing the following phase space point:"

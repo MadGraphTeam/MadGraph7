@@ -229,6 +229,7 @@ C     the previous points
       DATA FOUND_VALID_REDUCTION_METHOD/.FALSE./
 
       REAL*8 ACC
+      REAL*8 TMPPOLE,TMPPOLETHRES
       REAL*8 DP_RES(3,MAXSTABILITYLENGTH)
 C     QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM
 C      DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
@@ -871,14 +872,6 @@ C         Loop amplitude for loop diagram with ID 16
               WRITE(*,*) '##W03 WARNING Contribution ',I
               WRITE(*,*) ' is unstable for helicity ',H
             ENDIF
-C           IF(.NOT.ML5_0_ISZERO(ABS(AMPL(2,I))+ABS(AMPL(3,I)),REF,-1,H)
-C           ) THEN
-C           WRITE(*,*) '##W04 WARNING Contribution ',I,' for helicity'
-C           //' ',H,' has a contribution to the poles.'
-C           WRITE(*,*) 'Finite contribution         = ',AMPL(1,I)
-C           WRITE(*,*) 'single pole contribution    = ',AMPL(2,I)
-C           WRITE(*,*) 'double pole contribution    = ',AMPL(3,I)
-C           ENDIF
           ENDDO
  1227     CONTINUE
           HELPICKED=HELPICKED_BU
@@ -887,12 +880,13 @@ C           ENDIF
               CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0D0)
               IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
               ANS(1)=ANS(1)+DBLE(CFTOT*AMPL(1,I)*DCONJG(AMPL(1,J)))
-              IF (J.EQ.1) THEN
-                ANS(2)=ANS(2)+DBLE(CFTOT*AMPL(2,I))+DIMAG(CFTOT*AMPL(2
-     $           ,I))
-                ANS(3)=ANS(3)+DBLE(CFTOT*AMPL(3,I))+DIMAG(CFTOT*AMPL(3
-     $           ,I))
-              ENDIF
+C             The poles below must cancel: the loop-induced amplitude
+C              is finite.
+              ANS(2)=ANS(2)+DBLE(CFTOT*(AMPL(2,I)*DCONJG(AMPL(1,J))
+     $         +AMPL(1,I)*DCONJG(AMPL(2,J))))
+              ANS(3)=ANS(3)+DBLE(CFTOT*(AMPL(3,I)*DCONJG(AMPL(1,J))
+     $         +AMPL(1,I)*DCONJG(AMPL(3,J))+AMPL(2,I)*DCONJG(AMPL(2,J))
+     $         ))
             ENDDO
           ENDDO
         ENDIF
@@ -910,16 +904,7 @@ C      automatically done.
 
 
 
-C     We add five powers to the reference value to loosen a bit the
-C      vanishing pole check.
-C     IF(.NOT.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)).AND..NOT.ML5_0_IS
-C     ZERO(ABS(ANS(2))+ABS(ANS(3)),ABS(ANS(1))*(10.0d0**5),-1,H)) THEN
-C     WRITE(*,*) '##W05 WARNING Found a PS point with a contribution'
-C     //' to the single pole.'
-C     WRITE(*,*) 'Finite contribution         = ',ANS(1)
-C     WRITE(*,*) 'single pole contribution    = ',ANS(2)
-C     WRITE(*,*) 'double pole contribution    = ',ANS(3)
-C     ENDIF
+
 
  1226 CONTINUE
 
@@ -1193,7 +1178,29 @@ C      compatibility purpose).
       ANSRETURNED(1,0)=ANS(1)
       ANSRETURNED(2,0)=ANS(2)
       ANSRETURNED(3,0)=ANS(3)
-
+      IF (MLPOLECHECKTHRES.GT.0.0D0.AND..NOT.CHECKPHASE.AND.HELDOUBLECH
+     $ECKED.AND.NTRY.GT.0.AND.RET_CODE_H.NE.4.AND.ANS(1).NE.0.0D0) THEN
+        TMPPOLE = (ABS(ANS(2))+ABS(ANS(3)))/ABS(ANS(1))
+C       Never demand more than the accuracy MadLoop itself claims for
+C        this point.
+        TMPPOLETHRES = MLPOLECHECKTHRES
+        IF (ACCURACY(0).GT.0.0D0) TMPPOLETHRES = MAX(TMPPOLETHRES
+     $   ,10.0D0*ACCURACY(0))
+        IF (TMPPOLE.GT.TMPPOLETHRES) THEN
+          WRITE(*,*) '##E02 ERROR The poles of this loop-induced'
+     $     //' process do not cancel.'
+          WRITE(*,*) 'Finite contribution         = ',ANS(1)
+          WRITE(*,*) 'single pole contribution    = ',ANS(2)
+          WRITE(*,*) 'double pole contribution    = ',ANS(3)
+          WRITE(*,*) 'relative size of the poles  = ',TMPPOLE
+          WRITE(*,*) 'tolerated (MLPoleCheckThres)= ',TMPPOLETHRES
+          WRITE(*,*) 'Renormalization scale MU_R  = ',MU_R
+          DO I=1,NEXTERNAL
+            WRITE (*,'(i2,1x,4e27.17)') I, P(0,I),P(1,I),P(2,I),P(3,I)
+          ENDDO
+          STOP 1
+        ENDIF
+      ENDIF
 C     Reinitialize the check phase logicals and the filters if check
 C      bypassed
       IF (BYPASS_CHECK) THEN
