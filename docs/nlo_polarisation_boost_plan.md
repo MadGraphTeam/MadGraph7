@@ -1255,6 +1255,11 @@ surprise -- production kinematics never reach `1-y = 0`, and the only caller
 that passes exactly `y=1` is the counter-event -- but it is cheap to check and
 the branch condition is the kind of thing that is easy to get subtly wrong.
 
+Read the byte-identity as structural, not as coverage: `xmcsubt_wrap` has no
+production caller at all (all five call sites are in `test_soft_col_limits.f`),
+so after this change the `kperp` branch is unreachable in an integration. The
+change removes the small-`betaT` exposure rather than measuring it.
+
 #### What was measured
 
 *The azimuthal phase itself.* A debug print in `get_mbar` next to a call to
