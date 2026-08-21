@@ -3827,6 +3827,42 @@ set draw_rivet_plots True
 
         self.check_parton_output(cross=0.02534, error=5e-4)
 
+    @unittest.skip("fails until improve_ps is fixed: PSMC's first step "
+                   "(improve_ps.inc:707-714) absorbs the momentum-conservation "
+                   "residual into leg NEXTERNAL unconditionally, so a frame "
+                   "built on the last leg does not stay exactly at rest and "
+                   "HELAS picks a different quantisation axis. Delete this "
+                   "skip once that is fixed.")
+    def test_polarised_loop_induced_me_frame_last_leg(self):
+        """me_frame = [4] must give the same cross-section as me_frame = [3].
+
+        The two Z are identical, so the rest frame of one and the rest frame of
+        the other are the same observable. Measured: 2.543e-02 pb at [3] and
+        3.211e-02 pb at [4], +26% and 34 sigma apart. An LO control on the same
+        final state gives the two bit-identical, so the split is a MadLoop
+        artefact, not physics.
+        """
+        cmd = MGCmd.MasterCmd()
+        cmd.no_notification()
+        cmd.run_cmd('set automatic_html_opening False --no_save')
+        cmd.run_cmd('import model loop_sm')
+        cmd.run_cmd('generate g g > z{0} z{0} [noborn=QCD]')
+        cmd.run_cmd('output madevent %s -f' % self.run_dir)
+
+        card_path = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardLO(card_path)
+        run_card.set('me_frame', [4], user=True)
+        run_card.set('nevents', 100, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.write(card_path,
+                       pjoin(self.run_dir, 'Cards', 'run_card_default.dat'))
+
+        cmd.run_cmd('launch -f')
+
+        self.assertIn('FRAME_ID = 16',
+                      open(pjoin(self.run_dir, 'Source', 'run_card.inc')).read())
+        self.check_parton_output(cross=0.02534, error=5e-4)
+
 
 #===============================================================================
 # TestCmd
