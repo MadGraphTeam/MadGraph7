@@ -286,9 +286,12 @@ class TestLoopInducedOutput(unittest.TestCase):
 
         self.assert_output_refused('standalone_msP')
 
-    def test_refusal_leaves_an_existing_directory_alone(self):
-        """The refusal comes before the rmtree that cleans an existing output
-        directory; an already existing one must survive it."""
+    def assert_refusal_keeps_directory(self, line):
+        """A refused 'output' must not delete the directory it would write to.
+
+        This is why do_output checks ahead of its own rmtree: the factories
+        refuse too, but they only run once the directory is already gone.
+        """
 
         out_dir = pjoin(self.tmpdir, 'existing')
         os.mkdir(out_dir)
@@ -296,10 +299,22 @@ class TestLoopInducedOutput(unittest.TestCase):
         open(sentinel, 'w').write('do not delete me\n')
 
         interface = get_interface()
-        self.assertRaises(InvalidCmd, interface.exec_cmd,
-                          'output mg7 %s -f' % out_dir)
+        self.assertRaises(InvalidCmd, interface.exec_cmd, line % out_dir)
         self.assertTrue(os.path.exists(sentinel),
-                        'the refused output wiped the existing directory')
+                        '%s wiped the existing directory' % (line % out_dir))
+
+    def test_refusal_leaves_an_existing_directory_alone(self):
+        """The refused format is the one asked for."""
+
+        self.assert_refusal_keeps_directory('output mg7 %s -f')
+
+    def test_me_exporter_refusal_leaves_an_existing_directory_alone(self):
+        """--me_exporter= writes into the same directory, so it has to be
+        refused by the same early check; testing _export_format alone let it
+        fall through to the factory, which runs after the rmtree."""
+
+        self.assert_refusal_keeps_directory(
+                                'output madevent %s --me_exporter=mg7 -f')
 
     #===========================================================================
     # ... and the routes that already worked must keep working

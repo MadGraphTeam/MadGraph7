@@ -3562,11 +3562,8 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     opt['output_options'] = cmd_options
     cformat = cmd._export_format
 
-    # None of the C++ exporters below has a MadLoop backend, so a loop-induced
-    # process would reach them as a LoopHelasMatrixElement whose loop legs they
-    # cannot even index (the mg7 exporter builds its edge names from the
-    # external legs alone). Refuse it here instead. Plugins are left alone:
-    # they are free to implement their own loop support.
+    # No C++ exporter has a MadLoop backend (the mg7 one cannot even index the
+    # loop legs: it builds its edge names from the external legs alone).
     if cformat not in export_v4.LOOP_INDUCED_FORMATS and cmd._curr_amps and \
        isinstance(cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
         raise InvalidCmd(export_v4.loop_induced_not_supported_msg(

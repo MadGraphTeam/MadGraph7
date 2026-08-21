@@ -11503,34 +11503,16 @@ c         segments from -DABS(tiny*Ga) to Ga
                                       mssm_convert=True,
                                       write_special=write_special)
 
-# The output formats that can serve a loop-induced ([noborn=]) process coming
-# through the tree-level do_output: 'madevent' has the LoopInducedExporterME*
-# exporters, 'standalone' is routed to the MadLoop standalone exporter, and a
-# plugin is free to bring its own. Every other format sends the
-# LoopHelasMatrixElement to a tree-level exporter that cannot write it.
-# Membership must be tested exactly: 'standalone' is a prefix of
-# standalone_cpp / _mg7 / _msP / _msF / _rw, none of which has a loop backend.
+# Output formats with a loop backend for a loop-induced ([noborn=]) process
+# coming through the tree-level do_output. Test membership EXACTLY: 'standalone'
+# is a prefix of standalone_cpp / _mg7 / _msP / _msF / _rw, which have none.
 LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone']
 
 def loop_induced_not_supported_msg(format, process=None):
-    """Error text for an output format that has no MadLoop backend.
+    """Refusal text for a format that cannot write a LoopHelasMatrixElement."""
 
-    A loop-induced ([noborn=]) process is exported by the *tree-level* output
-    machinery: master_interface only borrows the MadLoop interface to validate
-    the model, then switches back to 'MadGraph' and calls create_loop_induced.
-    So a format whose exporter cannot write a LoopHelasMatrixElement has to say
-    so here rather than let the tree-level exporter fail deep inside.
-
-    The same matrix element is available through [sqrvirt=], which does stay in
-    the MadLoop interface and therefore reaches the MadLoop exporters.
-    """
-
-    orders = 'QCD'
-    if process:
-        try:
-            orders = ' '.join(process.get('perturbation_couplings')) or orders
-        except Exception:
-            pass
+    orders = (' '.join(process.get('perturbation_couplings')) if process
+              else '') or 'QCD'
 
     return """The '%(format)s' output format does not support loop-induced processes.
 Generate the process with [sqrvirt=%(orders)s] rather than [noborn=%(orders)s] to obtain the
@@ -11686,14 +11668,10 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             opt['madanalysis5'] = cmd.options['madanalysis5_path']
             
         if format == 'matrix' or format.startswith('standalone'):
-            # A loop-induced ([noborn=]) process reaches this factory through the
-            # MadGraph interface (master_interface switches back to it after
-            # generation), but ProcessExporterFortranSA cannot write a
-            # LoopHelasMatrixElement.
             if cmd._curr_amps and isinstance(
                     cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
-                # Only plain 'standalone' has a MadLoop backend to route to, as
-                # the madevent branches below have for their own format.
+                # of the formats sharing this branch only 'standalone' has a
+                # MadLoop backend; ProcessExporterFortranSA has none
                 if format not in LOOP_INDUCED_FORMATS:
                     raise InvalidCmd(
                         loop_induced_not_supported_msg(format, curr_proc))
@@ -11731,6 +11709,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             else:
                 return  ProcessExporterFortranME(cmd._export_dir,opt)
         elif format in ['matchbox']:
+            # no loop-induced backstop needed: do_output refuses 'matchbox'
+            # before any factory runs, and loop_interface never comes here
             return ProcessExporterFortranMatchBox(cmd._export_dir,opt)
         elif cmd._export_format in ['madweight'] and group_subprocesses:
 

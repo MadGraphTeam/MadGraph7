@@ -9810,13 +9810,18 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         # create_loop_induced), but only the formats in LOOP_INDUCED_FORMATS
         # have a loop backend to route it to. Refuse the others here, ahead of
         # the directory cleaning just below, so that a guaranteed refusal never
-        # deletes an existing output directory first. The exporter factories
-        # carry the same check as a backstop.
-        if self._export_format not in export_v4.LOOP_INDUCED_FORMATS and \
-           self._curr_amps and isinstance(self._curr_amps[0],
+        # deletes an existing output directory first. The factories carry the
+        # same check, but they run after that cleaning.
+        if self._curr_amps and isinstance(self._curr_amps[0],
                                     loop_diagram_generation.LoopAmplitude):
-            raise self.InvalidCmd(export_v4.loop_induced_not_supported_msg(
-                        self._export_format, self._curr_amps[0].get('process')))
+            # --me_exporter= writes into the same directory, so it has to be
+            # checked here too
+            for format in [self._export_format,
+                           options['me_exporter'].get('name')]:
+                if format and format not in export_v4.LOOP_INDUCED_FORMATS:
+                    raise self.InvalidCmd(
+                        export_v4.loop_induced_not_supported_msg(
+                            format, self._curr_amps[0].get('process')))
 
         # check
         if os.path.realpath(self._export_dir) == os.getcwd():
