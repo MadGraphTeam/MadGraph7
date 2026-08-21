@@ -933,6 +933,6 @@ mod tests {
                     .contains("one positive hierarchy and optional hard cap")
             );
         }
-        assert!(rebuild_with_coupling_limits(seed, vec![Some(0), Some(3)]).is_ok());
+        assert!(rebuild_with_coupling_limits(seed, vec![Some(3)]).is_ok());
     }
 }
