@@ -6456,7 +6456,8 @@ c
       endif
 c
       i=1
-      do while(ckc(i).gt.0.1d0 .and. xseclvc.ne.0d0)
+c Stop at imax: if nothing ever got within 10% the test simply fails.
+      do while(i.lt.imax .and. ckc(i).gt.0.1d0 .and. xseclvc.ne.0d0)
         i=i+1
       enddo
       imin=i
@@ -6591,7 +6592,8 @@ c
       endif
 c
       i=1
-      do while(ckc(i).gt.0.1d0 .and. xseclvc(i).ne.0d0)
+c Stop at imax: if nothing ever got within 10% the test simply fails.
+      do while(i.lt.imax .and. ckc(i).gt.0.1d0 .and. xseclvc(i).ne.0d0)
         i=i+1
       enddo
       imin=i
