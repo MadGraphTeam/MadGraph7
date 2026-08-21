@@ -63,7 +63,8 @@ class CommandExecutor(Protocol):
         args: Sequence[str | os.PathLike[str]],
         *,
         cwd: Path,
-    ) -> CommandResult: ...
+    ) -> CommandResult:
+        raise NotImplementedError
 
 
 class SubprocessExecutor:

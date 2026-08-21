@@ -22,7 +22,6 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
-from tools.developer import madgraph_correctness as _correctness
 from tools.developer.madgraph_correctness import (
     MADGRAPH_DRIVER_SOURCE_SHA256,
     CommandExecutor,
@@ -58,9 +57,6 @@ from .runner import (
     MADGRAPH_RELATIVE_TOLERANCE,
     point_digest,
 )
-
-_DRIVER_SOURCE = _correctness._DRIVER_SOURCE
-_parse_driver_output = _correctness.parse_driver_output
 
 DEFAULT_WARMUP_CALLS = 20
 DEFAULT_MINIMUM_CALLS = 10

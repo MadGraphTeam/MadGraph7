@@ -93,11 +93,13 @@ def test_ufo_standard_cmath_normalization_is_scoped_and_restored() -> None:
     )
     assert model.parse_python_expression_safe is original_model_parse
 
-    with (
-        pytest.raises(RuntimeError, match="scope exit"),
-        _bounded_ufo_sqrt_normalization(),
-    ):
-        raise RuntimeError("scope exit")
+    try:
+        with _bounded_ufo_sqrt_normalization():
+            raise RuntimeError("scope exit")
+    except RuntimeError as error:
+        assert str(error) == "scope exit"
+    else:
+        pytest.fail("normalization scope did not propagate the exception")
     assert (
         symbolica_processing.parse_python_expression_safe is original_processing_parse
     )
