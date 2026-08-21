@@ -462,8 +462,13 @@ void ChannelEventGenerator::start_job(
                 ? _config.cpu_batch_size
                 : _config.gpu_batch_size;
             std::size_t batch_size = max_batch_size;
-            if (job.vegas_batch_size > 0 && batch_size > job.vegas_batch_size) {
-                batch_size = job.vegas_batch_size;
+            // Only VEGAS batches shrink to fit -- they need next_vegas_batch_size()'s
+            // exact geometric progression for correct grid-adaptation statistics.
+            // Generation batches always submit full device-sized jobs; a little
+            // overshoot there is expected and cheaper than a partial job.
+            if (job.is_vegas_batch && job.batch_event_count > 0 &&
+                batch_size > job.batch_event_count) {
+                batch_size = job.batch_event_count;
             }
             std::size_t target_count = batch_size;
 

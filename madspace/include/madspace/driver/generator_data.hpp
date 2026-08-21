@@ -64,10 +64,23 @@ struct GeneratorConfig {
     int combine_thread_count = -1;
     double cut_efficiency_threshold = 0.7;
     std::size_t max_cut_repetitions = 100;
-    // Cap/floor on a steady-state batch's job count; see next_batch_job_count().
-    double generation_batch_fraction = 0.5;
-    std::size_t min_batch_jobs = 1;
+    double finish_remaining_fraction = 0.05;
+    double max_batch_fraction = 0.6;
+    double batch_overshoot_sigma = 1.0;
 };
+
+// Determine number of events to be scheduled in the next step. If close to finishing,
+// return remaining count / efficiency. Otherwise select a count that is safely below
+// the target using the integration uncertainty, and impose an upper limit which
+// fration of the target events can be scheduled in one go.
+std::size_t compute_generation_batch_event_count(
+    std::size_t count_target,
+    double count_unweighted,
+    std::size_t count_opt,
+    std::size_t cross_section_count,
+    double cross_section_rel_error,
+    const GeneratorConfig& config
+);
 
 struct GeneratorStatus {
     std::size_t subprocess;
@@ -98,7 +111,7 @@ struct GeneratorBatchJob {
     std::size_t channel_index;
     bool unweight;
     // Nonzero: start_jobs() splits this into sub-jobs and dispatches them atomically.
-    std::size_t vegas_batch_size;
+    std::size_t batch_event_count;
     std::size_t split_job_count;
     Tensor weights;
     TensorVec events;
@@ -117,7 +130,8 @@ struct GeneratorBatchJob {
     bool rng_is_survey = false;
     std::size_t rng_survey_pass = 0;
     // True for a VEGAS-grid-optimization batch, false for a steady-state generation
-    // batch -- both use vegas_batch_size > 0 for atomic whole-batch dispatch.
+    // batch -- both use batch_event_count > 0 for atomic whole-batch dispatch, but
+    // only VEGAS batches shrink their last job to fit (see start_job()).
     bool is_vegas_batch = false;
 };
 

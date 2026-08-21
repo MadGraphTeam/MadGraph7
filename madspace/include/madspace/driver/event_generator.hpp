@@ -78,7 +78,7 @@ private:
     std::vector<double> _channel_integral_fractions;
     std::vector<std::size_t> _context_job_counts;
     // True while a channel has a steady-state batch dispatched but not yet fully
-    // committed; keeps next_batch_job_count() from double-counting in-flight work.
+    // committed; keeps next_batch_event_count() from double-counting in-flight work.
     std::vector<bool> _channel_batch_pending;
     // generate_deterministic() only: per-channel commit cursor/buffer, analogous
     // to _ready_gen/_commit_cursor but ordered per channel instead of globally.
@@ -128,7 +128,7 @@ private:
     void commit_unweight_job(GeneratorBatchJob& job);
     void finish_channel_job(const GeneratorBatchJob& job);
     void register_dispatched_ids(std::size_t first_id, std::size_t end_id);
-    std::size_t next_batch_job_count(std::size_t channel_index) const;
+    std::size_t next_batch_event_count(std::size_t channel_index) const;
     std::size_t start_jobs();
     void update_integral();
     void update_integral_status();

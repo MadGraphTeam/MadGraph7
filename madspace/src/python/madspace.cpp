@@ -1451,9 +1451,23 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions)
         .def_readwrite(
-            "generation_batch_fraction", &GeneratorConfig::generation_batch_fraction
+            "finish_remaining_fraction", &GeneratorConfig::finish_remaining_fraction
         )
-        .def_readwrite("min_batch_jobs", &GeneratorConfig::min_batch_jobs);
+        .def_readwrite("max_batch_fraction", &GeneratorConfig::max_batch_fraction)
+        .def_readwrite(
+            "batch_overshoot_sigma", &GeneratorConfig::batch_overshoot_sigma
+        );
+
+    m.def(
+        "compute_generation_batch_event_count",
+        &compute_generation_batch_event_count,
+        py::arg("count_target"),
+        py::arg("count_unweighted"),
+        py::arg("count_opt"),
+        py::arg("cross_section_count"),
+        py::arg("cross_section_rel_error"),
+        py::arg("config")
+    );
 
     py::classh<GeneratorStatus>(m, "GeneratorStatus")
         .def(py::init<>())
