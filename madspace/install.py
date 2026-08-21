@@ -396,6 +396,10 @@ def run(cmd: list, env: dict | None = None) -> None:
 def install_build_deps(system: bool = False) -> dict:
     """Install build-system dependencies and return an updated env.
 
+    Reads the list from pyproject.toml's [build-system] requires, which now
+    also includes pyyaml and pybind11-stubgen for the CMake-driven code
+    generation (see CMakeLists.txt).
+
     When *system* is False (default) deps are installed into INSTALL_DIR and
     PYTHONPATH is set so the subsequent pip invocation picks them up.
     When *system* is True deps go to the default site-packages and PYTHONPATH
