@@ -40,10 +40,12 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
+import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.various.banner as banner_mod
 from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 from madgraph.iolibs.files import cp, ln, mv
 
+import madgraph.iolibs.export_v4 as export_v4
 from madgraph.iolibs.export_v4 import VirtualExporter, ProcessExporterFortran
 import madgraph.various.misc as misc
 
@@ -3559,7 +3561,17 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     opt = dict(cmd.options)
     opt['output_options'] = cmd_options
     cformat = cmd._export_format
-    
+
+    # None of the C++ exporters below has a MadLoop backend, so a loop-induced
+    # process would reach them as a LoopHelasMatrixElement whose loop legs they
+    # cannot even index (the mg7 exporter builds its edge names from the
+    # external legs alone). Refuse it here instead. Plugins are left alone:
+    # they are free to implement their own loop support.
+    if cformat not in export_v4.LOOP_INDUCED_FORMATS and cmd._curr_amps and \
+       isinstance(cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+        raise InvalidCmd(export_v4.loop_induced_not_supported_msg(
+                                     cformat, cmd._curr_amps[0].get('process')))
+
     if cformat == 'pythia8':
         return ProcessExporterPythia8(cmd._export_dir, opt)
     elif cformat == 'standalone_cpp':
