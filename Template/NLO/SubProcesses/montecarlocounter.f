@@ -2913,11 +2913,9 @@ c
 c BORN/BORNTILDE
       call me_frame_born_boost(p_born,pboost,me_boosted)
 C check if momenta have to be rotated
-c The R_y(pi) flip only ever served to put a j_fks=2 mother back on +z. In
-c the me_frame the mother is off the beam axis anyway, so the boosted branch
-c below takes the mother azimuth as it comes and the flip is dropped -- as
-c it was in sborncol_isr. It must not be reinstated: for a single-leg frame
-c it would also flip the polarisation axis of the leg put at rest.
+c The R_y(pi) flip only put a j_fks=2 mother back on +z, meaningless once the
+c mother is off the beam axis; dropped under a frame, as in sborncol_isr. Do
+c not reinstate: it would flip the polarisation axis of a leg at rest.
       if ((ileg.eq.1.or.ileg.eq.2) .and.
      &    (j_fks.eq.2 .and. nexternal-1.ne.3) .and. .not.me_boosted) then
 c Rotation according to innerpin.m. Use rotate_invar() if a more 

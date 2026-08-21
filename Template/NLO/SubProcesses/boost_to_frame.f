@@ -96,18 +96,9 @@ c**************************************************************************
 
       subroutine me_frame_born_boost(p_born_in, pboost, boosted)
 c**************************************************************************
-c     The boost that sborn_frame() would apply to these Born momenta.
-c
-c     Exposed for the MC counterterms, which build the azimuthal phase that
-c     multiplies the spin-correlated Born out of momenta of their own (the
-c     emission spinors and the mother direction). Those have to be expressed
-c     in the same frame as the Born, and the frame is defined by the Born.
-c
-c     boosted=.false. means no frame was requested; the caller must then keep
-c     its legacy expression, so unpolarised runs stay bit-identical.
-c
-c     input:  p_born_in(0:3,nexternal-1)
-c     output: pboost(0:3), boosted
+c     The boost sborn_frame() would apply to these Born momenta, exposed so
+c     the MC counterterms can put their azimuthal ingredients in the same
+c     frame. boosted=.false. means no frame was requested.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
@@ -127,13 +118,9 @@ c**************************************************************************
 
       subroutine azifact_from_spinors(pi, pj, azifact)
 c**************************************************************************
-c     <ij>/[ij] from two massless momenta.
-c
-c     Away from the exactly-collinear limit this is a regular function of
-c     the momenta, so unlike xij_aor (see azifact_from_kperp) it can simply
-c     be recomputed on boosted momenta. This is the same expression the
-c     legacy branches build inline; it lives here so the boosted branches of
-c     the MC counterterms can reuse it without touching them.
+c     <ij>/[ij] from two massless momenta -- the expression the legacy
+c     branches build inline. Those keep their own copies on purpose:
+c     rewriting them would break the byte-identity of the no-frame path.
 c**************************************************************************
       USE ALOHA_OBJECT
       implicit none
@@ -165,23 +152,15 @@ c**************************************************************************
      &                            y_ij_fks, pboost, azifact,
      &                            cphi_mother, sphi_mother)
 c**************************************************************************
-c     Azimuthal ingredients of the MC counterterms, in the me_frame.
-c
-c     Returns azifact and the mother azimuth in the *same* convention the
-c     legacy branches use, so the caller keeps its expression unchanged:
+c     Azimuthal ingredients of the MC counterterms, in the me_frame, scaled
+c     so that the caller's existing multiply comes out right:
 c         ISR   -(cphi_mother + i sphi_mother)**2 * conjg(azifact)
 c         FSR   -(cphi_mother - i sphi_mother)**2 *       azifact
-c     both of which collapse to +-exp(-+2 i psi), psi being the emission
-c     azimuth about the mother.
-c
-c     Everything is boosted with the Born's own boost: the phase multiplies
-c     borntilde, which sborn_frame computed in that frame.
-c
-c     input:  p_born_in  Born momenta of this configuration
-c             imother    position of the mother in them
-c             p_i, p_j   emission and splitting momenta (real kinematics)
-c             y_ij_fks   collinear variable, to pick the exact limit
-c             pboost     from me_frame_born_boost()
+c     both = +-exp(-+2 i psi), psi the emission azimuth about the mother.
+c     The boost (pboost, from me_frame_born_boost) is the Born's own, since
+c     the phase multiplies borntilde. azifact is <ij>/[ij] only in the
+c     generic branch; the collinear one pre-cancels the caller's mother
+c     factor instead, so do not assume it if you change the caller.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
@@ -190,8 +169,6 @@ c**************************************************************************
       double precision p_i(0:3), p_j(0:3), y_ij_fks, pboost(0:3)
       double complex azifact
       double precision cphi_mother, sphi_mother
-      double precision vtiny
-      parameter (vtiny=1d-12)
       double precision pm(0:3), kp(0:3), pib(0:3), pjb(0:3)
       double precision xij_kperp(0:3)
       common/cxij_kperp/xij_kperp
@@ -199,10 +176,16 @@ c**************************************************************************
       call boostx(p_born_in(0,imother), pboost, pm)
       call getaziangles(pm, cphi_mother, sphi_mother)
 
-      if (1d0-y_ij_fks.lt.vtiny) then
-c        Exactly collinear: <ij>/[ij] is 0/0 and stays 0/0 in every frame,
-c        so take it from the stored emission direction instead. That gives
-c        -exp(2 i psi); undo the mother azimuth the caller will put back.
+      if (1d0-y_ij_fks.le.0d0) then
+c        Exactly collinear: <ij>/[ij] is 0/0 in every frame, so rebuild it
+c        from the stored emission direction, using
+c            lim_{kt->0} <ij>/[ij] = -exp(2 i psi) * exp(2 i phi_m),
+c        the identity that makes this branch agree with the generic one;
+c        azifact_from_kperp returns only the first factor.
+c
+c        Taken at kt exactly zero and nowhere else, on purpose: the spinors
+c        are exact at any kt>0, while this reconstruction carries an
+c        O((kt/E)/betaT) error, betaT the transverse velocity of the boost.
          call boostx(xij_kperp, pboost, kp)
          call azifact_from_kperp(pm, kp, azifact)
          azifact=azifact*dcmplx(cphi_mother,sphi_mother)**2
