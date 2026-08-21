@@ -107,11 +107,34 @@ struct Histogram {
     std::vector<double> bin_errors;
 };
 
+// Lightweight pending-work entry for EventGenerator::_ready_jobs, before start_jobs()
+// has decided which context/how many sub-jobs to create from it. Kept separate from
+// GeneratorBatchJob so a queue of pending batches doesn't carry the weight of every
+// dispatched job's tensors and RNG bookkeeping.
+struct ReadyJob {
+    std::size_t channel_index;
+    bool unweight;
+    // VEGAS batch: fixed size, start_jobs() dispatches it atomically in one go.
+    // Generation batch: events not yet dispatched -- start_jobs() decrements this in
+    // place as it creates sub-jobs, one device batch at a time, round-robining with
+    // other channels' ReadyJobs over however many calls it takes to reach zero.
+    std::size_t batch_event_count;
+    bool is_vegas_batch = false;
+};
+
 struct GeneratorBatchJob {
     std::size_t channel_index;
     bool unweight;
-    // Nonzero: start_jobs() splits this into sub-jobs and dispatches them atomically.
+    // Copied from the originating ReadyJob at dispatch time. For a VEGAS batch, this
+    // is the batch's fixed total, read by start_job()'s shrink-to-fit and by the
+    // done_event_count accounting in survey()/survey_deterministic(). For a
+    // generation batch it isn't read after dispatch -- generation sub-jobs always
+    // request a full device batch (see start_job()).
     std::size_t batch_event_count;
+    // Total sub-jobs the batch was split into; only meaningful for VEGAS batches
+    // (see commit_generate_job()'s clear_events trigger). Generation batches are
+    // dispatched one sub-job per start_jobs() visit, so this isn't a full-batch count
+    // for them and isn't read.
     std::size_t split_job_count;
     Tensor weights;
     TensorVec events;
@@ -129,9 +152,9 @@ struct GeneratorBatchJob {
     std::size_t rng_job_index = 0;
     bool rng_is_survey = false;
     std::size_t rng_survey_pass = 0;
-    // True for a VEGAS-grid-optimization batch, false for a steady-state generation
-    // batch -- both use batch_event_count > 0 for atomic whole-batch dispatch, but
-    // only VEGAS batches shrink their last job to fit (see start_job()).
+    // True for a VEGAS-grid-optimization batch, dispatched atomically by start_jobs()
+    // and shrunk to fit by start_job(). False for a steady-state generation batch,
+    // dispatched incrementally as device-sized sub-jobs (see ReadyJob).
     bool is_vegas_batch = false;
 };
 

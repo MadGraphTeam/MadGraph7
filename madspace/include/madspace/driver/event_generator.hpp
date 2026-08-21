@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <deque>
 #include <optional>
 #include <set>
 #include <vector>
@@ -71,7 +72,7 @@ private:
     GeneratorStatus _status;
     std::vector<ContextPtr> _contexts;
     std::unordered_map<std::size_t, GeneratorBatchJob> _running_jobs;
-    std::vector<GeneratorBatchJob> _ready_jobs;
+    std::vector<ReadyJob> _ready_jobs;
     std::size_t _job_id;
     std::vector<std::size_t> _channel_job_counts;
     std::vector<bool> _channel_optimizing;
@@ -80,15 +81,30 @@ private:
     // True while a channel has a steady-state batch dispatched but not yet fully
     // committed; keeps next_batch_event_count() from double-counting in-flight work.
     std::vector<bool> _channel_batch_pending;
-    // generate_deterministic() only: per-channel commit cursor/buffer, analogous
-    // to _ready_gen/_commit_cursor but ordered per channel instead of globally.
+    // True once a channel's current generation ReadyJob has had its full event count
+    // dispatched (batch_event_count reached zero). Needed alongside
+    // channel_job_count == 0 before finish_channel_job() clears _channel_batch_pending
+    // -- dispatch now happens incrementally, so channel_job_count can transiently hit
+    // zero mid-batch, between one sub-job's commit and the next one being dispatched.
+    std::vector<bool> _channel_batch_dispatch_done;
+    // Round-robin position into _ready_jobs for generation-batch dispatch, persisted
+    // across start_jobs() calls so multiple channels' batches interleave (one device
+    // batch at a time) instead of one channel's batch draining before the next is
+    // touched.
+    std::size_t _ready_job_rr_cursor = 0;
+    // Per-channel commit ordering, analogous to _ready_gen/_commit_cursor but ordered
+    // per channel instead of globally. _channel_gen_order holds a channel's dispatched
+    // job ids in dispatch order and _channel_ready_gen the ones that have completed;
+    // the front of the order deque is the next commit due. An explicit deque rather
+    // than a "next id" counter because a channel's job ids are not contiguous: dispatch
+    // round-robins between channels, so consecutive ids belong to different channels.
+    std::vector<std::deque<std::size_t>> _channel_gen_order;
     std::vector<std::set<std::size_t>> _channel_ready_gen;
-    std::vector<std::size_t> _channel_commit_cursor;
-    std::vector<bool> _channel_cursor_set;
-    // generate_deterministic() only: same as above, for a job's unweight-stage
-    // completion (tracked separately since it's a distinct completion event).
+    // Same, for a job's unweight-stage completion (tracked separately since it's a
+    // distinct completion event). Order is appended at generate-commit time, which is
+    // also when the unweight stage is queued.
+    std::vector<std::deque<std::size_t>> _channel_unweight_order;
     std::vector<std::set<std::size_t>> _channel_unweight_ready;
-    std::vector<std::size_t> _channel_unweight_cursor;
     // generate_deterministic() only: per-context queue of job ids awaiting
     // unweight-stage dispatch, drained with priority by start_jobs().
     std::vector<std::vector<std::size_t>> _context_unweight_queue;
@@ -127,7 +143,6 @@ private:
     void commit_generate_job(GeneratorBatchJob& job);
     void commit_unweight_job(GeneratorBatchJob& job);
     void finish_channel_job(const GeneratorBatchJob& job);
-    void register_dispatched_ids(std::size_t first_id, std::size_t end_id);
     std::size_t next_batch_event_count(std::size_t channel_index) const;
     std::size_t start_jobs();
     void update_integral();
