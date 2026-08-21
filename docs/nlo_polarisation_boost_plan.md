@@ -1234,6 +1234,17 @@ never appears.
 A factor 2.3. That gap is what the acceptance test asserts on: a boost that
 were silently skipped could not reproduce the first number.
 
+**Cross-checked against the loop-induced pole check** (`MLPoleCheckThres`, on
+`claude/loop-induced-pole-check`). That work and this one are orthogonal: it
+adds a runtime guard, this one adds a spelling, and neither can stand in for
+the other. In particular the pole check cannot see a frame error -- a
+loop-induced amplitude is finite helicity by helicity and a boost is a
+symmetry of it, so the poles cancel in every frame, including the wrong one.
+Nor does polarisation trip it: the same argument makes `ANS(2,0)`/`ANS(3,0)`
+shrink with `ANS(1,0)` when the helicity sum is restricted. Measured, with the
+two changes merged and the check active at its default `1.0d-2`:
+2.543e-02 +- 9.9e-05 pb, zero `##E02`, 0.8 sigma from the number above.
+
 **What is not touched.** The colour-charged refusal is a separate rule that
 applies in every mode and stays. The QCD-only restriction on the run_card
 NLO modes also stays; it does not apply to loop-induced, which has no
