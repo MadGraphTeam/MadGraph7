@@ -90,9 +90,18 @@
 !     Set it to a negative value to disable the check.
 !     Note that the check is inactive when the reduction tool in use does not
 !     compute the poles at all (COLLIER with COLLIERComputeUV/IRpoles off).
+!     The default comes from the measured size of (|1eps|+|2eps|)/|finite| over
+!     ~800 phase-space points of g g > z z / h h / z z g / h h g, whose ceiling
+!     is 6.0d-5, leaving a factor ~20 of headroom. At 1.0d-3 an error of 0.7%
+!     or more on one of the *dominant* pole contributions is caught; an error
+!     on a subdominant amplitude is not, at any usable threshold.
+!     Points sitting on a soft or collinear singularity can legitimately reach
+!     5.0d-2. A madevent run never sees them, since the cuts are applied before
+!     the matrix element, but check_sa and launch feed uncut phase-space points,
+!     so raise this value if you hit it there.
 #MLPoleCheckThres
-!1.0d-2
-! Default :: 1.0d-2
+!1.0d-3
+! Default :: 1.0d-3
 
 !     You can add other evaluation method to check for the stability in DP and QP.
 !     Below you can chose if you want to use zero, one or two rotations of the PS point 

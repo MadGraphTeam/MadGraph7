@@ -328,7 +328,7 @@ C     a non existing or malformed parameter file
       NRotations_DP=0
       NRotations_QP=0
       MLStabThres=1.0d-3
-      MLPoleCheckThres=1.0d-2
+      MLPoleCheckThres=1.0d-3
       CTStabThres=1.0d-2
       CTLoopLibrary=3
       CheckCycle=3
