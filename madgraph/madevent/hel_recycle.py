@@ -964,7 +964,12 @@ def do_multiline(line):
         remaining = line
         while len(remaining) > char_limit:
             split_at = remaining.rfind(' ', 0, char_limit + 1)
-            if split_at <= 0:
+            # A split which leaves nothing but blanks on the current line --
+            # the only space is the statement's own indentation, as for the
+            # space-free Kleiss-Kuijf JAMPF lines -- emits an empty physical
+            # line, and the continuation which follows it is then attached to
+            # the *previous* statement. Break mid-token instead.
+            if split_at <= 0 or not remaining[:split_at+1].strip():
                 split_line.append(remaining[:char_limit])
                 remaining = remaining[char_limit:]
             else:

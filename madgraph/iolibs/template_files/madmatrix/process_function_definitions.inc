@@ -83,6 +83,7 @@ namespace mg5amcCpu
   constexpr int npar = CPPProcess::npar;     // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
   constexpr int ncomb = CPPProcess::ncomb;   // #helicity combinations: e.g. 16 for e+ e- -> mu+ mu- (2**4 = fermion spin up/down ** npar)
   constexpr int ncolor = CPPProcess::ncolor; // the number of leading colors
+  constexpr int ncolor_flow = CPPProcess::ncolor_flow; // the color structures the color flow is picked among
   constexpr int nmaxflavor = CPPProcess::nmaxflavor; // the maximum number of flavor combinations
 
   // [NB: I am currently unable to get the right value of nwf in CPPProcess.h - will hardcode it in CPPProcess.cc instead (#644)]
@@ -770,7 +771,7 @@ namespace mg5amcCpu
                        const fptype* allrndcol,           // input: random numbers[nevt] for color selection
                        const fptype* allrnddiagram,       // input: random numbers[nevt] for diagram selection
                        const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
-                       const fptype_sv* allJamp2s,        // input: jamp2[ncolor][nevt] for color choice (nullptr if disabled)
+                       const fptype_sv* allJamp2s,        // input: jamp2[ncolor_flow][nevt] for color choice (nullptr if disabled)
                        const fptype* allNumerators,       // input: all numerators
                        const fptype* allDenominators,     // input: all denominators
                        const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
@@ -811,10 +812,10 @@ namespace mg5amcCpu
         assert( channelId <= mgOnGpu::nchannels ); // SANITY CHECK #919 #910
       }
       // Determine the jamp2 for this event (TEMPORARY? could do this with a dedicated memory accessor instead...)
-      fptype_sv jamp2_sv[ncolor] = { 0 };
+      fptype_sv jamp2_sv[ncolor_flow] = { 0 };
       assert( allJamp2s != nullptr ); // sanity check
       using J2_ACCESS = DeviceAccessJamp2;
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
         jamp2_sv[icolC] = J2_ACCESS::kernelAccessIcolConst( allJamp2s, icolC );
       // NB (see #877): in the array channel2iconfig, the input index uses C indexing (channelId -1), the output index uses F indexing (iconfig)
       // NB (see #917): mgOnGpu::channel2iconfig returns an int (which may be -1), not an unsigned int!
@@ -829,9 +830,9 @@ namespace mg5amcCpu
         printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%%d (invalid SDE iconfig=%%d\n > nconfig=%%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
         assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
       }
-      fptype targetamp[ncolor] = { 0 };
+      fptype targetamp[ncolor_flow] = { 0 };
       // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
         if( icolC == 0 )
           targetamp[icolC] = 0;
@@ -841,9 +842,9 @@ namespace mg5amcCpu
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       //printf( "sigmaKin: ievt=%%4d rndcol=%%f\n", ievt, allrndcol[ievt] );
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
-        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor - 1] ) )
+        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
           allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
           //printf( "sigmaKin: ievt=%%d icol=%%d\n", ievt, icolC+1 );

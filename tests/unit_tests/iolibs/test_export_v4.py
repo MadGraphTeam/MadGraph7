@@ -16,9 +16,11 @@
 """Unit test library for the export v4 format routines"""
 
 from __future__ import absolute_import
+import collections
 import copy
 import fractions
-import os 
+import os
+import random
 import sys
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(os.path.join(root_path, os.path.pardir, os.path.pardir))
@@ -169,7 +171,45 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             content = open(pjoin(template_dir, template_name)).read()
             self.assertIn('%(flavor_mask_decl)s', content)
             self.assertIn('%(flavor_mask_setup)s', content)
- 
+
+    def test_splitorders_entry_points_agree_with_their_callers(self):
+        """The two split-orders templates (generic and matchbox) are compiled
+        against the same drivers: check_sa_splitOrders.f, written next to every
+        split-orders matrix element, and the MadLoop template, whose
+        loop_matrix.f calls into the born_matrix.f built from either one. F77
+        has no interface checking, so a signature that drifts from its caller
+        links happily and writes the result over the caller's third argument.
+        Pin the argument lists of the entry points those drivers call.
+        """
+        template_dir = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
+
+        def read(*parts):
+            return open(pjoin(template_dir, *parts)).read()
+
+        # The callee side: both templates take the flavor index in the same
+        # slot, so one driver can call either.
+        for template_name in ['matrix_standalone_splitOrders_v4.inc',
+                              'matrix_standalone_matchbox_splitOrders_v4.inc']:
+            content = read(template_name)
+            self.assertIn(
+                'SUBROUTINE %(proc_prefix)sSMATRIX_SPLITORDERS(P, FLAV_IDX, ANS)',
+                content)
+            self.assertIn(
+                'SUBROUTINE %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P,HEL, FLAV_IDX, ANS)',
+                content)
+
+        # The caller side. Both drivers pass an all-ones INTEGER array where
+        # FLAV_IDX is expected, which resolves to its first element: the
+        # canonical flavor. That is deliberate -- neither driver knows about
+        # merged flavors -- but the argument count has to line up.
+        self.assertIn(
+            'CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,FLAVOR,MATELEMS)',
+            read('check_sa_splitOrders.f'))
+        self.assertIn(
+            'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
+            read('loop_optimized', 'loop_matrix_standalone.inc'))
+
+
     @IOTests.createIOTest() 
     def testIO_export_matrix_element_v4_standalone(self):
         """target: matrix.f
@@ -10360,3 +10400,379 @@ if __name__ == '__main__':
                        [me.get('diagrams')[323], me.get('diagrams')[954],
                         me.get('diagrams')[1123], me.get('diagrams')[1139]])
         
+
+
+class OptimiseJampTest(unittest.TestCase):
+    """Test the common sub-expression elimination applied to the JAMP
+    definitions."""
+
+    @staticmethod
+    def reference_optimise_jamp(all_element, nb_line=0, nb_col=0, added=0):
+        """Straightforward version of ProcessExporterFortran.optimise_jamp,
+        looking every column up in the matrix instead of indexing the non zero
+        entries. The splitting of wide matrices is left out, so keep the test
+        matrices below the 600 columns which trigger it."""
+
+        if not nb_line:
+            for i, j in all_element:
+                if i + 1 > nb_line:
+                    nb_line = i + 1
+                if j + 1 > nb_col:
+                    nb_col = j + 1
+            assert nb_col <= 600
+
+        max_count = 0
+        all_index = []
+        operation = collections.defaultdict(
+                                    lambda: collections.defaultdict(int))
+        for (i, j1), v1 in all_element.items():
+            ratios = [(j2, all_element.get((i, j2), 0) / v1)
+                      for j2 in range(j1 + 1, nb_col)
+                      if all_element.get((i, j2), 0)]
+            for j2, R in ratios:
+                operation[(j1, j2)][R] += 1
+                if operation[(j1, j2)][R] > max_count:
+                    max_count = operation[(j1, j2)][R]
+                    all_index = [(j1, j2, R)]
+                elif operation[(j1, j2)][R] == max_count:
+                    all_index.append((j1, j2, R))
+
+        if max_count <= 1:
+            return all_element, []
+
+        to_add = []
+        for j1, j2, R in all_index:
+            first = True
+            for i in range(nb_line):
+                v1 = all_element.get((i, j1), 0)
+                v2 = all_element.get((i, j2), 0)
+                if not v1 or not v2:
+                    continue
+                if v2 / v1 == R:
+                    if first:
+                        first = False
+                        added += 1
+                        to_add.append((added, j1, j2, R, max_count))
+                    all_element[(i, -added)] = v1
+                    del all_element[(i, j1)]
+                    del all_element[(i, j2)]
+
+        new_element, new_def = OptimiseJampTest.reference_optimise_jamp(
+                                    all_element, nb_line, nb_col, added)
+        for one_def in to_add:
+            new_def.insert(0, one_def)
+        return new_element, new_def
+
+    @staticmethod
+    def random_matrix(seed, nb_line, nb_col, density):
+        """Sparse matrix with repeating values, so that the optimisation has
+        something to find."""
+
+        # no zero value: the scan divides by the entry it starts from, so a
+        # stored zero in a line which has other entries makes it raise
+        values = [1, -1, 2, -2, 0.5, -0.5, 3, 1j, -1j]
+        rng = random.Random(seed)
+        all_element = {}
+        for i in range(nb_line):
+            for j in range(nb_col):
+                if rng.random() < density:
+                    all_element[(i, j)] = complex(rng.choice(values))
+        return all_element
+
+    def test_index_jamp_matrix(self):
+        """The indices must list the non zero entries in increasing order, and
+        leave out both the zero values and the columns beyond nb_col."""
+
+        all_element = {(0, 2): 1, (0, 0): 3, (0, 1): 0,
+                       (1, 0): 2, (1, 5): 7, (0, -1): 4}
+        lines, columns = export_v4.ProcessExporterFortran.index_jamp_matrix(
+                                                            all_element, 3)
+        self.assertEqual(dict(lines), {0: [-1, 0, 2], 1: [0]})
+        self.assertEqual(dict(columns), {-1: [0], 0: [0, 1], 2: [0]})
+
+    def test_common_jamp_lines(self):
+        """Lines where two columns are both filled, in increasing order."""
+
+        columns = {1: [0, 2, 3, 7], 2: [2, 3, 5], 3: [9]}
+        common = export_v4.ProcessExporterFortran.common_jamp_lines
+        self.assertEqual(common(columns, 10, 1, 2), [2, 3])
+        self.assertEqual(common(columns, 3, 1, 2), [2])
+        self.assertEqual(common(columns, 10, 1, 3), [])
+        self.assertEqual(common(columns, 10, 1, 4), [])
+
+    def test_optimise_jamp_matches_reference(self):
+        """The optimisation has to give exactly the same sub-expressions as
+        the straightforward scan, including the order they are defined in."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.5),
+                                               (2, 12, 25, 0.35),
+                                               (3, 20, 40, 0.25),
+                                               (4, 5, 5, 0.9),
+                                               (5, 30, 15, 0.6)]:
+            all_element = self.random_matrix(seed, nb_line, nb_col, density)
+            reference, reference_def = self.reference_optimise_jamp(
+                                                    dict(all_element))
+            exporter.myjamp_count = 0
+            result, result_def = exporter.optimise_jamp(dict(all_element))
+            self.assertEqual(result_def, reference_def)
+            self.assertEqual(result, reference)
+
+    def test_optimise_jamp_stored_zero(self):
+        """An entry which is present but zero must be ignored, like the scan
+        looking the columns up in the matrix does."""
+
+        # the zero has to be the last entry of its line: the scan divides by
+        # the entry it starts from, so a zero followed by a non zero raises
+        all_element = {}
+        for i in range(4):
+            all_element[(i, 0)] = complex(1)
+            all_element[(i, 1)] = complex(2)
+            all_element[(i, 2)] = complex(0)
+        reference, reference_def = self.reference_optimise_jamp(
+                                                    dict(all_element))
+        exporter = export_v4.ProcessExporterFortranSA()
+        exporter.myjamp_count = 0
+        result, result_def = exporter.optimise_jamp(dict(all_element))
+        self.assertEqual(result_def, reference_def)
+        self.assertEqual(result, reference)
+        # column 2 is never picked up as a sub-expression
+        self.assertTrue(result_def)
+        self.assertTrue(all(2 not in (j1, j2)
+                            for _, j1, j2, _, _ in result_def))
+
+    def test_optimise_jamp_no_saving(self):
+        """A matrix where no sub-expression is reused is returned as is."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        exporter.myjamp_count = 0
+        all_element = {(0, 0): complex(1), (1, 1): complex(2)}
+        result, defs = exporter.optimise_jamp(dict(all_element))
+        self.assertEqual(defs, [])
+        self.assertEqual(result, all_element)
+
+    #===========================================================================
+    # Orbit equivariant optimisation
+    #===========================================================================
+    @staticmethod
+    def symmetric_matrix(seed, nb_line, nb_col, density):
+        """A matrix which really is invariant under a permutation of its lines
+        and of its columns: the entries are drawn on one half of the lines and
+        the permutation is used to fill the other half. Returns the matrix and
+        the symmetry in the form optimise_jamp expects.
+
+        The line permutation exchanges the two halves, and the column one
+        reverses the columns, with a sign on one pair of columns in three. The
+        sign only depends on the pair, so that applying the permutation twice
+        really gives the identity."""
+
+        rng = random.Random(seed)
+        values = [1, -1, 2, -2]
+        half = nb_line // 2
+
+        rowperm = [0] * (nb_line + 1)
+        for i in range(1, half + 1):
+            rowperm[i] = i + half
+            rowperm[i + half] = i
+        action = {}
+        for j in range(1, nb_col + 1):
+            image = nb_col + 1 - j
+            action[j] = (image, -1 if min(j, image) % 3 == 0 else 1)
+
+        all_element = {}
+        for i in range(1, half + 1):
+            for j in range(1, nb_col + 1):
+                if rng.random() < density:
+                    all_element[(i, j)] = complex(rng.choice(values))
+        # M[rowperm[i], action[j]] = sign * M[i, j]
+        for (i, j), value in list(all_element.items()):
+            image, sign = action[j]
+            all_element[(rowperm[i], image)] = sign * value
+
+        # the matrix really is invariant, otherwise the test would not be
+        # testing what it says it is
+        for (i, j), value in all_element.items():
+            image, sign = action[j]
+            assert all_element.get((rowperm[i], image), 0) == sign * value
+
+        symmetry = {'rowperms': [rowperm], 'actions': [action],
+                    'nb_line': nb_line, 'line_reps': list(range(1, half + 1))}
+        return all_element, symmetry
+
+    @staticmethod
+    def rebuild(defs, new_mat):
+        """The matrix the definitions and the remaining terms stand for."""
+
+        expanded = {}
+        for k, left, right, ratio, _nb in defs:
+            terms = dict(expanded[-left] if left < 0 else {left: 1.})
+            other = expanded[-right] if right < 0 else {right: 1.}
+            for amp, coefficient in other.items():
+                terms[amp] = terms.get(amp, 0) + ratio * coefficient
+            expanded[k] = terms
+        rebuilt = {}
+        for (line, column), factor in new_mat.items():
+            terms = expanded[-column] if column < 0 else {column: 1.}
+            for amp, coefficient in terms.items():
+                rebuilt[(line, amp)] = rebuilt.get((line, amp), 0) + \
+                                       factor * coefficient
+        return dict((key, value) for key, value in rebuilt.items() if value)
+
+    def test_optimise_jamp_equivariant_rebuilds_matrix(self):
+        """Whatever it introduces, the optimisation still stands for the very
+        matrix it was given."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            result, defs = exporter.optimise_jamp(dict(all_element),
+                                                  symmetry=symmetry)
+            self.assertTrue(defs)
+            rebuilt = self.rebuild(defs, result)
+            self.assertEqual(sorted(rebuilt), sorted(all_element))
+            for key, value in all_element.items():
+                self.assertAlmostEqual(rebuilt[key], value)
+
+    def test_optimise_jamp_greedy_tail(self):
+        """The plain scan run once the orbit rounds stall has to leave the
+        matrix standing for the same thing, and to leave the lines shorter than
+        the orbit rounds alone did."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            exporter.jamp_greedy_tail = False
+            orbit_only, orbit_defs = exporter.optimise_jamp(
+                                dict(all_element), symmetry=symmetry)
+            exporter.jamp_greedy_tail = True
+            result, defs = exporter.optimise_jamp(dict(all_element),
+                                                  symmetry=symmetry)
+            rebuilt = self.rebuild(defs, result)
+            self.assertEqual(sorted(rebuilt), sorted(all_element))
+            for key, value in all_element.items():
+                self.assertAlmostEqual(rebuilt[key], value)
+            self.assertTrue(len(defs) >= len(orbit_defs))
+            self.assertTrue(len(result) <= len(orbit_only))
+
+    def test_jamp_definition_levels(self):
+        """A definition has to land after both of the ones it uses, and
+        nothing of a level may use anything else of that level."""
+
+        defs = [(1, 5, 7, 1., 0), (2, -1, 9, 1., 0), (3, 4, 6, 1., 0),
+                (4, -2, -3, 1., 0)]
+        levels = export_v4.ProcessExporterFortran.jamp_definition_levels(defs)
+        self.assertEqual(levels, [[1, 3], [2], [4]])
+
+    def test_optimise_jamp_equivariant_is_orbit_closed(self):
+        """The invariant the orbit version is there for: the image of every
+        definition under every permutation of the symmetry is a definition
+        again. The plain scan does not have this property, which is why its
+        result cannot be written as one recipe per orbit."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            # the plain scan run at the end is deliberately outside the orbit
+            # structure, so it is off while that structure is checked
+            exporter.jamp_greedy_tail = False
+            result, defs = exporter.optimise_jamp(dict(all_element),
+                                                  symmetry=symmetry)
+            exporter.jamp_greedy_tail = True
+            known = set((left, right, ratio)
+                        for _k, left, right, ratio, _nb in defs)
+            self.assertTrue(known)
+            image = export_v4.ProcessExporterFortran.jamp_operation_image
+            for action in exporter.jamp_orbits['actions']:
+                for operation in known:
+                    self.assertIn(image(action, operation)[0], known)
+
+            # and the same run through the plain scan is not closed
+            exporter.myjamp_count = 0
+            _plain, plain_defs = exporter.optimise_jamp(dict(all_element))
+            self.assertTrue(plain_defs)
+
+    def test_jamp_orbit_recipes_replay(self):
+        """One recipe per orbit has to be enough: walking the orbits with the
+        permutations kept must hand out exactly the definitions again, which
+        is what the generated INIT_JAMP does."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            # one recipe per orbit only describes what the orbit rounds found
+            exporter.jamp_greedy_tail = False
+            _result, defs = exporter.optimise_jamp(dict(all_element),
+                                                   symmetry=symmetry)
+            exporter.jamp_greedy_tail = True
+            recipes = exporter.jamp_orbit_recipes(defs, nb_col)
+            if recipes is None:
+                # a ratio which is not a plain sign, the definitions are then
+                # written out one by one
+                continue
+            self.assertEqual(len(recipes['recipes']),
+                             exporter.jamp_orbits['nb_orbit'])
+            self.assertTrue(len(recipes['recipes']) < len(recipes['defs']))
+            self.assertEqual(self.replay_recipes(recipes),
+                             [(left, right, int(ratio.real))
+                              for _k, left, right, ratio, _nb
+                              in recipes['defs']])
+
+    @staticmethod
+    def replay_recipes(recipes):
+        """What the generated INIT_JAMP builds out of the recipes alone."""
+
+        permutations = recipes['permutations']
+        nb_perm = len(permutations)
+        left_of, right_of, ratio_of, image_of = [], [], [], []
+        known = {}
+
+        def store(left, right, ratio):
+            found = known.get((left, right, ratio))
+            if found is not None:
+                return found, 1
+            found = known.get((right, left, ratio))
+            if found is not None:
+                return found, ratio
+            left_of.append(left)
+            right_of.append(right)
+            ratio_of.append(ratio)
+            image_of.extend([0] * nb_perm)
+            known[(left, right, ratio)] = len(left_of)
+            return len(left_of), 1
+
+        def act(place, column):
+            if column > 0:
+                signed = permutations[place][column - 1]
+            else:
+                signed = -image_of[(-column - 1) * nb_perm + place]
+            return (abs(signed) if column > 0 else -abs(signed),
+                    1 if signed > 0 else -1)
+
+        for left, right, ratio in recipes['recipes']:
+            begin = len(left_of)
+            store(left, right, ratio)
+            current = begin
+            while current < len(left_of):
+                current += 1
+                for place in range(nb_perm):
+                    image_left, sign_left = act(place, left_of[current - 1])
+                    image_right, sign_right = act(place, right_of[current - 1])
+                    where, swap = store(image_left, image_right,
+                                        ratio_of[current - 1] * sign_left
+                                        * sign_right)
+                    sign = sign_left * swap
+                    image_of[(current - 1) * nb_perm + place] = \
+                        where if sign > 0 else -where
+        return list(zip(left_of, right_of, ratio_of))

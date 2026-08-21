@@ -649,6 +649,39 @@ GPUFLAGS += $(BLASCXXFLAGS)
 
 #-------------------------------------------------------------------------------
 
+#=== Configure defaults and check if user-defined choices exist for CPPBLAS
+
+# HASBLAS above is about cuBLAS/hipBLAS, which only a GPU build can use. CPPBLAS
+# is the separate question of whether the C++ color sum goes through a host BLAS:
+# the color matrix does not depend on the helicity, so all the good helicities of
+# one event page are the columns of one SYMM call. Whether a BLAS carrying SYMM
+# could be linked was settled when this directory was written out; it is only
+# taken for processes whose color matrix is large enough to be worth it, and for
+# those the generated color_sum.cc carries both paths (example: "make CPPBLAS=hasNoBlas").
+ifeq ($(CPPBLAS),)
+  ifeq ($(GPUCC),) # CPU-only build
+    override CPPBLAS = %(cpp_blas_default)s
+  else # the GPU build does its color sum on the device
+    override CPPBLAS = hasNoBlas
+  endif
+endif
+
+override CPPBLASCXXFLAGS=
+override CPPBLASLIBFLAGS=
+
+ifeq ($(CPPBLAS),hasBlas)
+  override CPPBLASCXXFLAGS += -DMGONGPU_CPP_HAS_BLAS
+  override CPPBLASLIBFLAGS += %(cpp_blas_libflags)s
+else ifneq ($(CPPBLAS),hasNoBlas)
+  $(error Unknown CPPBLAS='$(CPPBLAS)': only 'hasBlas' and 'hasNoBlas' are supported)
+endif
+CXXFLAGS += $(CPPBLASCXXFLAGS)
+
+#$(info CPPBLAS=$(CPPBLAS))
+#$(info CPPBLASLIBFLAGS=$(CPPBLASLIBFLAGS))
+
+#-------------------------------------------------------------------------------
+
 #=== Configure Position-Independent Code
 CXXFLAGS += -fPIC
 GPUFLAGS += $(XCOMPILERFLAG) -fPIC
@@ -788,7 +821,7 @@ endif
 # Target (and build rules): process shared library (C++ or CUDA/HIP, selected by GPUCC)
 ifeq ($(GPUCC),)
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
-	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
+	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(CPPBLASLIBFLAGS)
 else
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
 	$(GPUCC) --shared -o $@ $(objects_lib) $(GPULIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)

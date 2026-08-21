@@ -16,7 +16,7 @@
     const int nevt = gpublocks * gputhreads;
     gpuMemset( allMEs, 0, nevt * sizeof( fptype ) );
     gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype ) );
-    gpuMemset( colAllJamp2s, 0, ncolor * nevt * sizeof( fptype ) );
+    gpuMemset( colAllJamp2s, 0, ncolor_flow * nevt * sizeof( fptype ) );
     gpuMemset( ghelAllNumerators, 0, cNGoodHel * processConfig::ndiagrams * nevt * sizeof( fptype ) );
     gpuMemset( ghelAllDenominators, 0, cNGoodHel * nevt * sizeof( fptype ) );
     gpuMemset( ghelAllMEs, 0, cNGoodHel * nevt * sizeof( fptype ) );
@@ -110,13 +110,13 @@
       const int ievt00 = ipagV2 * neppV; // loop on one SIMD page (neppV events) at a time
 #endif
       // Running sum of partial amplitudes squared for event by event color selection (#402)
-      // (jamp2[nParity][ncolor][neppV] for the SIMD vector - or the two SIMD vectors - of events processed in calculate_jamps)
-      fptype_sv jamp2_sv[nParity * ncolor] = {};
+      // (jamp2[nParity][ncolor_flow][neppV] for the SIMD vector - or the two SIMD vectors - of events processed in calculate_jamps)
+      fptype_sv jamp2_sv[nParity * ncolor_flow] = {};
       fptype_sv MEs_ighel[ncomb] = {};  // sum of MEs for all good helicities up to ighel (for the first - and/or only - neppV page)
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (for the second neppV page)
 #endif
-      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+%(cpp_blas_helicity_loop)s      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
       {
         const int ihel = cGoodHel[ighel];
         cxtype_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
@@ -128,7 +128,7 @@
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         MEs_ighel2[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
-      }
+      }%(cpp_blas_helicity_loop_end)s
       // Event-by-event random choice of helicity #403
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
@@ -235,9 +235,9 @@
             printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%%d (invalid SDE iconfig=%%d\n > nconfig=%%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
             assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
           }
-          fptype targetamp[ncolor] = { 0 };
+          fptype targetamp[ncolor_flow] = { 0 };
           // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
-          for( int icolC = 0; icolC < ncolor; icolC++ )
+          for( int icolC = 0; icolC < ncolor_flow; icolC++ )
           {
             if( icolC == 0 )
               targetamp[icolC] = 0;
@@ -245,17 +245,17 @@
               targetamp[icolC] = targetamp[icolC - 1];
 #ifdef MGONGPU_CPPSIMD
             if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
-              jamp2_sv[icolC + ncolor * ( ieppV / neppV )][ieppV %% neppV];
+              jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )][ieppV %% neppV];
 #else
             if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
-              jamp2_sv[icolC + ncolor * ( ieppV / neppV )];
+              jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )];
 #endif
           }
           const int ievt = ievt00 + ieppV;
           //printf( "sigmaKin: ievt=%%4d rndcol=%%f\n", ievt, allrndcol[ievt] );
-          for( int icolC = 0; icolC < ncolor; icolC++ )
+          for( int icolC = 0; icolC < ncolor_flow; icolC++ )
           {
-            if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor - 1] ) )
+            if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
             {
               allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
               //printf( "sigmaKin: ievt=%%d icol=%%d\n", ievt, icolC+1 );

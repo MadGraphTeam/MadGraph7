@@ -1666,6 +1666,10 @@ class OneProcessExporterCPP(object):
                                      
         replace_dict['jamp_lines'] = self.get_jamp_lines(color_amplitudes)
 
+        # The color sum may run on a smaller basis than the one the color flow
+        # is picked among (see the madmatrix override)
+        self.set_color_flow_lines_cpp(matrix_element, replace_dict)
+
         replace_dict['amp2_lines'] = self.get_amp2_lines(matrix_element)
 
         #specific exporter hack
@@ -1818,6 +1822,15 @@ class OneProcessExporterCPP(object):
 
 
             
+    def set_color_flow_lines_cpp(self, matrix_element, replace_dict):
+        """Tell the process template that the color sum and the color flow use
+        the same basis. Overridden by the backends which can put the color sum
+        on a smaller one."""
+
+        replace_dict['ncolor_flow'] = replace_dict['ncolor']
+        replace_dict['jampflow_lines'] = ''
+        replace_dict['jamp_flow'] = 'jamp_sv'
+
     def get_jamp_lines(self, color_amplitudes):
         """Return the jamp = sum(fermionfactor * amp[i]) lines"""
 
@@ -2689,16 +2702,20 @@ class ProcessExporterCPP(VirtualExporter):
             if self.template_src_make:
                 # Copy src Makefile
                 makefile = self.read_template_file(self.template_src_make) % \
-                               {'model': self.get_model_name(model.get('name')),
-                                'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
+                                        self.get_makefile_replace_dict(model)
                 open(os.path.join('src', 'Makefile'), 'w').write(makefile)
 
             if self.template_Sub_make:
                 # Copy SubProcesses Makefile
                 makefile = self.read_template_file(self.template_Sub_make) % \
-                                        {'model': self.get_model_name(model.get('name')),
-                                         'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
+                                        self.get_makefile_replace_dict(model)
                 open(os.path.join('SubProcesses', 'Makefile'), 'w').write(makefile)
+
+    def get_makefile_replace_dict(self, model):
+        """Template replacements for the src and SubProcesses makefiles."""
+
+        return {'model': self.get_model_name(model.get('name')),
+                'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
 
     #===========================================================================
     # Helper functions

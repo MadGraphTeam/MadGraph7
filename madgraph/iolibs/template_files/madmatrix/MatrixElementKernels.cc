@@ -10,6 +10,7 @@
 #include "GpuRuntime.h" // Includes the abstraction for Nvidia/AMD compilation
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
+#include "color_sum.h" // for blasColorSumTmpSize
 
 #include <cfenv> // for fetestexcept
 #include <iostream>
@@ -310,7 +311,7 @@ namespace mg5amcGpu
     , m_pHelJamps()
     , m_pHelNumerators()
     , m_pHelDenominators()
-    , m_colJamp2s( CPPProcess::ncolor * this->nevt() )
+    , m_colJamp2s( CPPProcess::ncolor_flow * this->nevt() )
 #ifdef MGONGPU_CHANNELID_DEBUG
     , m_hstChannelIds( this->nevt() )
 #endif
@@ -464,14 +465,10 @@ namespace mg5amcGpu
     m_pHelNumerators.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ndiagrams * nevt ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
 #ifndef MGONGPU_HAS_NO_BLAS
-    // Create the "many-helicity" super-buffers of real/imag ncolor*nevt temporary buffers for cuBLAS/hipBLAS intermediate results in color_sum_blas
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-    // Mixed precision mode: need two fptype2[ncolor*2*nevt] buffers and one fptype2[nevt] buffer per good helicity
-    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( nGoodHel * ( 2 * CPPProcess::ncolor * mgOnGpu::nx2 + 1 ) * nevt ) );
-#else
-    // Standard single/double precision mode: need one fptype2[ncolor*2*nevt] buffer per good helicity
-    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
-#endif
+    // Create the "many-helicity" super-buffer of temporary buffers for the cuBLAS/hipBLAS intermediate
+    // results in color_sum_blas, and in mixed precision mode for the converted jamps too
+    // (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
+    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( blasColorSumTmpSize( nGoodHel, nevt ) ) );
 #endif
     // Return the number of good helicities
     return nGoodHel;
