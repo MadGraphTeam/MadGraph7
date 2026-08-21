@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 
 from pyamplicol.config import EvaluatorConfig, JITConfig
+from pyamplicol.generation.recurrence_template_columnar import (
+    RECURRENCE_TEMPLATE_INPUT_ABI,
+    RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION,
+)
 from pyamplicol.models.loading import compile_model_source
 from pyamplicol.models.prepared import PreparedKernelRecord, PreparedModelBundleError
 from pyamplicol.models.prepared_catalog import (
@@ -873,8 +877,8 @@ def _native_result(template_input, authenticated_ids) -> dict[str, object]:
         "kind": "pyamplicol-recurrence-template-validation-result",
         "schema_version": 1,
         "validation_status": "validated",
-        "template_input_abi": "pyamplicol-recurrence-template-input-v1",
-        "template_input_schema_version": 1,
+        "template_input_abi": RECURRENCE_TEMPLATE_INPUT_ABI,
+        "template_input_schema_version": RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION,
         "template_input_sha256": template_input.canonical_digest,
         "catalog_digest": template_input.catalog_digest,
         "compiled_model_digest": template_input.compiled_model_digest,

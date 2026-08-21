@@ -1808,7 +1808,7 @@ def test_eager_exact_rejects_malformed_table_contract(tmp_path: Path) -> None:
 def test_eager_exact_rejects_missing_kernel_and_plan_abi(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
     _build_artifact(missing, invocation_kernel_id=99)
-    with pytest.raises(ArtifactError, match="missing eager kernel 99"):
+    with pytest.raises(ArtifactError, match="missing prepared kernel 99"):
         EagerExactExecutor(
             missing,
             "synthetic",
