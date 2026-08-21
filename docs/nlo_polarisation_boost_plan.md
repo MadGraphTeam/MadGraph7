@@ -1219,6 +1219,31 @@ therefore does *not* carry the polarisation axis with it. Harmless for `{0}`
 `export_fks.py` nor `makefile_fks_dir` mentions it — but the plan named it and
 leaving the two copies inconsistent is a trap.
 
+**The collinear branch is taken at `kt` exactly zero and nowhere else.**
+`azifact_mc_frame` can reach `<ij>/[ij]` two ways: recompute it from the
+boosted spinors, or rebuild its collinear limit from `xij_kperp` through
+`azifact_from_kperp`. The first is exact for any `kt>0`; the second is exact
+only at `kt=0`, and its error away from there was measured in review to scale
+as `(kt/E)/betaT`, with `betaT` the *transverse* velocity of the me_frame
+boost — 1.1e-3 at `kt/E=1e-6, betaT=1e-2`, but 1.36 at `betaT=1e-5`. The
+`betamin` guard in `get_me_frame_boost` bounds `|beta|`, not `betaT`, so it
+does not cover this. The condition is therefore `1-y_ij_fks <= 0` rather than
+the legacy `< 1d-12`: at `y=1` the spinor product is genuinely `0/0` and the
+`kperp` route is the only one available; everywhere else the exact route is.
+
+Not reachable in the channel validated here (`ptj 30` forces the Z's pT above
+30 GeV, so `betaT` is O(1)), but reachable whenever the frame-defining system
+can have small transverse momentum. The change is inside `if (me_boosted)`, so
+the no-frame path is untouched. `azifact_me_frame`, which the fixed-order
+counterterms use and which is *always* handed exactly `y=1`, is deliberately
+left alone: there the `kperp` route is not an approximation but the only
+correct one (B1).
+
+The identity that makes the two routes agree,
+`lim_{kt->0} <ij>/[ij] = -exp(2 i psi) exp(2 i phi_m)`, is what the
+convergence table below measures — the generic branch is its left-hand side
+and the reference its right-hand side.
+
 #### What was measured
 
 *The azimuthal phase itself.* A debug print in `get_mbar` next to a call to
@@ -1273,6 +1298,15 @@ Repeated with `iseed=7717` on a freshly generated pair of directories, to make
 sure the ratio is not a property of one MINT grid history: 2.2220 before,
 2.0060 after, with the totals agreeing at 0.02 sigma (2.1868e+03 +- 8.8e+00 vs
 2.1871e+03 +- 9.5e+00). The threshold in the test is 2.15.
+
+*A two-leg frame.* `p p > z{0} z{0} j [QCD]` with `me_frame=[3,4]`
+(`FRAME_ID = 24`), same cuts and seed, `generate_events aMC@NLO --parton -f`:
+3.134e-01 +- 2.2e-03 pb over 1000 events, with `test_ME`, `test_MC` and
+`check_poles` (20/20) passing in all 12 P dirs and zero miscancellations. That
+agrees at 1.3 sigma with the fixed-order 3.084e-01 +- 3.0e-03 pb of M4. No new
+assertion is added for it: with `nsel >= 2` `boost_to_me_frame` never runs its
+`nsel.eq.1` zeroing, so no leg sits on the HELAS at-rest branch and the two-leg
+case is structurally the safer of the two. The run is here as coverage.
 
 The full shower step could not be exercised on the development machine: the
 `MG5aMC_PY8_interface` there was installed against MG5aMC v3.5.15 and its C++
@@ -1332,6 +1366,16 @@ limit(i)=fx*wgt    ! the value being tested
 unconditionally. The counter-event `sreal` that `fxl(i)` is supposed to hold is
 simply never recomputed for `i>=2`. `ilim=0` has the same shape.
 
+`ilim=0` (`MC/MC(limit)`) is broken twice over: it has the same shape, and it
+also stops outright with `Third bit of MCcntcalled should not be set yet` as
+soon as it reaches the collinear section, because the driver does not reset
+`MCcntcalled` between the counter-event and the real-event calls. Verified to
+happen identically on unmodified code with no frame at all. The split-order
+sub-check of both modes is broken in a third way, pointed out in review: it
+compares the same matrix element under two different jacobians
+(`amp_split_mc*jac_cnt(1)` against `amp_split_mc*wgt`), which prints a
+convincing-looking convergence that means nothing.
+
 This is on `origin/main`, is not related to polarisation, and is **not fixed
 here**: the MC counterterms only reproduce the real emission inside the
 shower's phase space, so switching the comparison on would very likely fail for
@@ -1357,6 +1401,7 @@ does it.
 | M3 | `p p > z{0} z{0}` | `[QCD]` | **run**: `check_poles` 20/20 in all 4 P dirs, 1.217e+00 +- 6.6e-03 pb |
 | M3 | `p p > z{0} z{0} j` | `[QCD]` | **run**: `check_poles` 20/20 in all 12 P dirs, 4.779e-01 +- 3.3e-03 pb |
 | M5 | `p p > z{0} j` | `[QCD]` + `generate_events` | **run**: 2.189e+03 +- 8.2e+00 pb, absolute cross-section ratio 2.00 (2.23 before the fix) |
+| M5 | `p p > z{0} z{0} j` | `[QCD]` + `generate_events`, `me_frame=[3,4]` | **run**: 3.134e-01 +- 2.2e-03 pb, `test_ME`/`test_MC`/`check_poles` 20/20 in all 12 P dirs |
 
 **Which process tests what.** The two are complementary, but not in the obvious
 way:
