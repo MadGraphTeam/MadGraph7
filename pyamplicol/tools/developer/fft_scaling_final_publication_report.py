@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tools.developer import fft_madgraph_selected_runtime as madgraph  # noqa: E402
 from tools.developer import fft_scaling_selected_scalar_report as selected  # noqa: E402
 
 RESULTS = ROOT / "IMPLEMENTATION_DOCS" / "RESULTS" / "fft-scaling-study"
@@ -231,6 +232,13 @@ def _mapping(value: object, *, context: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise PublicationMergeError(f"{context} must be an object")
     return value
+
+
+def _measurement_host(value: object, *, context: str) -> dict[str, Any]:
+    try:
+        return madgraph.validate_measurement_host(value, context=context)
+    except madgraph.SelectedMadGraphError as error:
+        raise PublicationMergeError(str(error)) from error
 
 
 def _sequence(value: object, *, context: str) -> Sequence[Any]:
@@ -748,6 +756,7 @@ def _validate_madgraph_provenance(
     overlay: Document,
     *,
     helicity_workload: str = "fixed",
+    measurement_host: Mapping[str, Any],
 ) -> Document:
     campaign_policy = _mapping(
         campaign.payload.get("policy"), context="campaign policy"
@@ -969,6 +978,14 @@ def _validate_madgraph_provenance(
         raise PublicationMergeError("MadGraph source-report SHA-256 differs")
     if source_document.payload.get("schema_version") != SCHEMA_VERSION:
         raise PublicationMergeError("MadGraph source report has the wrong schema")
+    source_host = _measurement_host(
+        source_document.payload.get("measurement_host"),
+        context="MadGraph source report measurement_host",
+    )
+    if source_host != measurement_host:
+        raise PublicationMergeError(
+            "campaign and MadGraph source report use different measurement hosts"
+        )
     if helicity_workload == "sum":
         source_policy = _mapping(
             source_document.payload.get("policy"), context="MadGraph source policy"
@@ -1097,6 +1114,17 @@ def build_final_report(
 ) -> dict[str, Any]:
     campaign = _load_document("campaign report", campaign_path)
     overlay = _load_document("MadGraph overlay", madgraph_overlay_path)
+    campaign_host = _measurement_host(
+        campaign.payload.get("measurement_host"),
+        context="campaign measurement_host",
+    )
+    overlay_host = _measurement_host(
+        overlay.payload.get("host"), context="MadGraph overlay host"
+    )
+    if campaign_host != overlay_host:
+        raise PublicationMergeError(
+            "campaign and MadGraph overlay use different measurement hosts"
+        )
     campaign_policy = _validate_campaign_policy(campaign)
     helicity_workload = _helicity_workload(campaign_policy)
     campaign_counts = _validate_campaign_cells(
@@ -1106,7 +1134,10 @@ def build_final_report(
         overlay, helicity_workload=helicity_workload
     )
     source_document = _validate_madgraph_provenance(
-        campaign, overlay, helicity_workload=helicity_workload
+        campaign,
+        overlay,
+        helicity_workload=helicity_workload,
+        measurement_host=campaign_host,
     )
 
     report = deepcopy(campaign.payload)
@@ -1191,6 +1222,8 @@ def build_final_report(
             "sha256": source_document.sha256,
             "kind": source_document.payload.get("kind"),
         },
+        "measurement_host": dict(campaign_host),
+        "same_host_authenticated": True,
         "final_state_multiplicities": list(FINAL_MULTIPLICITIES),
         "merge_policy": "fresh-campaign-cells-plus-authenticated-external-series",
     }

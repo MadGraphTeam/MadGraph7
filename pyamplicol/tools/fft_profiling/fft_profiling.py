@@ -602,6 +602,7 @@ def _normalize_executables(arguments: argparse.Namespace) -> None:
 def _identity(arguments: argparse.Namespace, run_directory: Path) -> dict[str, Any]:
     return {
         "run_directory": str(run_directory),
+        "measurement_host": madgraph.measurement_host_identity(),
         "scan": {
             "multiplicity_universe": list(_universe(arguments)),
             "helicity_workload": _helicity_workload(arguments),
@@ -1091,6 +1092,7 @@ def _compose_master(
         curve_sources,
         halt_reason=halt_reason,
     )
+    report["measurement_host"] = madgraph.measurement_host_identity()
     policy = report["policy"]
     assert isinstance(policy, dict)
     measurement = policy["measurement"]
@@ -1436,6 +1438,18 @@ def _attach_partial_overlay(report: dict[str, Any], path: Path) -> None:
                 frozen_progress = Path(directory) / "progress.json"
                 frozen_progress.write_bytes(raw)
                 payload = madgraph.load_runtime_progress(frozen_progress)
+        raw_campaign_host = report.get("measurement_host")
+        if raw_campaign_host is not None:
+            campaign_host = madgraph.validate_measurement_host(
+                raw_campaign_host, context="campaign measurement_host"
+            )
+            overlay_host = madgraph.validate_measurement_host(
+                payload.get("host"), context="MadGraph overlay host"
+            )
+            if campaign_host != overlay_host:
+                raise madgraph.SelectedMadGraphError(
+                    "campaign and MadGraph overlay use different measurement hosts"
+                )
         selected.apply_runtime_series_source(
             report,
             selected.SourceReport(
@@ -1517,9 +1531,23 @@ def _matching_madgraph_overlay(
         )
     except madgraph.SelectedMadGraphError:
         return None
+    try:
+        overlay_host = madgraph.validate_measurement_host(
+            payload.get("host"), context="MadGraph overlay host"
+        )
+    except madgraph.SelectedMadGraphError:
+        if require_exact:
+            return None
+        # Historical overlays remain usable for explicitly nonterminal
+        # anytime rendering, but can never enter the strict final merger.
+        overlay_host = None
     if (
         not isinstance(policy, Mapping)
         or overlay_workload != _helicity_workload(arguments)
+        or (
+            overlay_host is not None
+            and overlay_host != madgraph.measurement_host_identity()
+        )
         or policy.get("maximum_measured_multiplicity")
         != madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
         or policy.get("higher_multiplicity_policy")
@@ -2036,11 +2064,15 @@ def _matching_madgraph_progress(
             if isinstance(policy, Mapping)
             else None
         )
+        progress_host = madgraph.validate_measurement_host(
+            payload.get("host"), context="MadGraph runtime progress host"
+        )
     except madgraph.SelectedMadGraphError:
         return None
     if (
         not isinstance(policy, Mapping)
         or progress_workload != _helicity_workload(arguments)
+        or progress_host != madgraph.measurement_host_identity()
         or policy.get("final_state_multiplicities")
         != list(_requested_multiplicities(arguments, run_directory))
     ):
@@ -2650,7 +2682,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         _diagnostic("Profiling interrupted; rerun the same command to resume.")
         return 130
-    except (OSError, ProfilingError, study.StudyError) as error:
+    except (
+        OSError,
+        ProfilingError,
+        madgraph.SelectedMadGraphError,
+        study.StudyError,
+    ) as error:
         _diagnostic(f"FFT profiling: {error}", colorama.Fore.RED)
         return 2
 

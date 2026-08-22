@@ -138,6 +138,7 @@ def matrix_source(tmp_path_factory: pytest.TempPathFactory) -> Path:
       SUBROUTINE SMATRIX(P,ANS)
       INTEGER NCOMB
       PARAMETER (NCOMB=16)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
       INTEGER IDEN
       DATA IDEN/512/
       ANS=1D0
@@ -235,6 +236,15 @@ def test_source_selection_rejects_changed_event_helicity(
         madgraph.load_source_selection(report)
 
 
+def test_source_selection_rejects_duplicate_event_payloads(tmp_path: Path) -> None:
+    report = _make_source_report(tmp_path)
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    paths = payload["cells"]["gg"]["reference-fft"]["2"]["event_paths"]
+    Path(paths[1]).write_bytes(Path(paths[0]).read_bytes())
+    with pytest.raises(madgraph.SelectedMadGraphError, match="unique event payloads"):
+        madgraph.load_source_selection(report, multiplicities=(2,))
+
+
 def _summed_source_report(tmp_path: Path, source_report: Path) -> Path:
     payload = json.loads(source_report.read_text(encoding="utf-8"))
     measurement = payload["policy"]["measurement"]
@@ -273,7 +283,9 @@ def test_summed_source_uses_candidate_convention_and_native_smatrix(
     assert source.cells["gg"][2].source_mode == "recurrence-fft"
     assert source.cells["ddbar"][2].source_mode == "recurrence-fft"
 
-    body = madgraph.render_check_source(source.cells["gg"][2])
+    body = madgraph.render_check_source(
+        source.cells["gg"][2], summed_helicity_coverage_count=16
+    )
     compact = body.replace(" ", "")
     assert body.count("CALL SMATRIX(") == 3
     assert "USERHEL=-1" in compact
@@ -287,6 +299,7 @@ def test_summed_source_uses_candidate_convention_and_native_smatrix(
         expected_total_external=4,
         expected_events=10,
         helicity_workload="sum",
+        expected_helicity_coverage_count=16,
     )
     assert parsed.evaluations_per_sweep == 1
     assert parsed.helicity_coverage_count == 16
@@ -446,6 +459,7 @@ def test_generated_matrix_audit_proves_general_helicity_and_direct_vector(
         matrix_source, family="gg", final_multiplicity=2
     )
     assert metadata["generation_helicity_coverage"] == "all"
+    assert metadata["generated_helicity_coverage_count"] == 16
     assert metadata["generated_matrix_graphs"] > 0
     assert metadata["colour_flows"] > 0
     assert metadata["smatrix_iden"] == 512
@@ -479,6 +493,31 @@ def test_generated_matrix_audit_rejects_missing_duplicate_or_wrong_iden(
             match="IDEN denominator",
         ):
             madgraph._validate_matrix_source(path, family="gg", final_multiplicity=2)
+
+
+@pytest.mark.parametrize(
+    ("replacement", "message"),
+    (
+        ("PARAMETER (NCOMB=8)", "complete-helicity coverage"),
+        ("INTEGER NHEL(NEXTERNAL,16)", "NHEL\\(NEXTERNAL,NCOMB\\)"),
+    ),
+)
+def test_generated_matrix_audit_requires_exact_ncomb_nhel_coverage(
+    tmp_path: Path,
+    matrix_source: Path,
+    replacement: str,
+    message: str,
+) -> None:
+    fixture = matrix_source.read_text(encoding="utf-8")
+    original = (
+        "PARAMETER (NCOMB=16)"
+        if replacement.startswith("PARAMETER")
+        else "INTEGER NHEL(NEXTERNAL,NCOMB)"
+    )
+    path = tmp_path / "bad-coverage.f"
+    path.write_text(fixture.replace(original, replacement), encoding="utf-8")
+    with pytest.raises(madgraph.SelectedMadGraphError, match=message):
+        madgraph._validate_matrix_source(path, family="gg", final_multiplicity=2)
 
 
 def test_generated_matrix_audit_requires_executable_smatrix_iden_use(

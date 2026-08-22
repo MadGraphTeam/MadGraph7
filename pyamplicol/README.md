@@ -244,7 +244,8 @@ recognized developer checkout and may be set explicitly with
 
 The published fixed-helicity MadGraph series currently has measured points
 through `n=5` for pure gluons and `n=6` for
-`d d~ > d d~ + gluons`; its higher requested cells retain their cutoff status.
+`d d~ > d d~ + gluons`. Pure-gluon `n=6` retains its measured resource cutoff;
+`n=7..9` are explicit protocol-scope not-applicable cells for both families.
 The independent helicity-sum MadGraph series has measured points for both
 families at `n=2..5`. Every admitted point passed the same-workload numerical
 gate before entering the PDFs.

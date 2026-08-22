@@ -59,6 +59,10 @@ PROGRESS_KIND = "pyamplicol-fullcolor-selected-scalar-runtime-series-progress"
 SOURCE_KIND = "pyamplicol-fullcolor-selected-scalar-composite"
 SCALING_STUDY_KIND = "pyamplicol-fullcolor-fft-scaling-study"
 SCHEMA_VERSION = 1
+MEASUREMENT_HOST_SCHEMA_VERSION = 1
+MEASUREMENT_HOST_KEYS = frozenset(
+    {"schema_version", "node_sha256", "system", "machine", "python"}
+)
 MODE = "madgraph-standalone"
 FIXED_LABEL = "MadGraph standalone (fixed h)"
 SUM_LABEL = "MadGraph standalone (helicity sum)"
@@ -143,6 +147,7 @@ class SourceSelection:
     cells: Mapping[str, Mapping[int, SelectedCell]]
     unavailable: Mapping[str, Mapping[int, str]]
     helicity_workload: str
+    measurement_host: Mapping[str, Any] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +218,56 @@ def _mapping(value: object, *, context: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise SelectedMadGraphError(f"{context} must be an object")
     return value
+
+
+def validate_measurement_host(value: object, *, context: str) -> dict[str, Any]:
+    """Validate the stable, non-identifying host identity used by a campaign."""
+
+    host = _mapping(value, context=context)
+    if set(host) != MEASUREMENT_HOST_KEYS:
+        raise SelectedMadGraphError(f"{context} has the wrong fields")
+    schema_version = host.get("schema_version")
+    if (
+        isinstance(schema_version, bool)
+        or schema_version != MEASUREMENT_HOST_SCHEMA_VERSION
+    ):
+        raise SelectedMadGraphError(f"{context} has the wrong schema")
+    for key in ("system", "machine", "python"):
+        if not isinstance(host.get(key), str) or not host[key].strip():
+            raise SelectedMadGraphError(f"{context}.{key} must be nonempty")
+    node_sha256 = host.get("node_sha256")
+    if (
+        not isinstance(node_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", node_sha256) is None
+    ):
+        raise SelectedMadGraphError(
+            f"{context}.node_sha256 must be a lowercase SHA-256"
+        )
+    return {
+        "schema_version": MEASUREMENT_HOST_SCHEMA_VERSION,
+        "node_sha256": node_sha256,
+        "system": str(host["system"]),
+        "machine": str(host["machine"]),
+        "python": str(host["python"]),
+    }
+
+
+def measurement_host_identity() -> dict[str, Any]:
+    """Return the identity that binds performance measurements to one host."""
+
+    node = platform.node().strip()
+    if not node:
+        raise SelectedMadGraphError("cannot determine the measurement host name")
+    return validate_measurement_host(
+        {
+            "schema_version": MEASUREMENT_HOST_SCHEMA_VERSION,
+            "node_sha256": hashlib.sha256(node.encode("utf-8")).hexdigest(),
+            "system": platform.system(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+        },
+        context="local measurement host",
+    )
 
 
 def _finite_number(value: object, *, context: str, nonnegative: bool = False) -> float:
@@ -374,6 +429,14 @@ def load_source_selection(
         SCALING_STUDY_KIND,
     }:
         raise SelectedMadGraphError("source report has the wrong kind")
+    raw_measurement_host = payload.get("measurement_host")
+    measurement_host = (
+        validate_measurement_host(
+            raw_measurement_host, context="source report measurement_host"
+        )
+        if raw_measurement_host is not None
+        else None
+    )
     policy = _mapping(payload.get("policy"), context="source report policy")
     observed_workload = _declared_helicity_workload(policy)
     if observed_workload != helicity_workload:
@@ -469,6 +532,10 @@ def load_source_selection(
                 )
                 for event in paths
             )
+            if len({event.sha256 for event in events}) != POINT_COUNT:
+                raise SelectedMadGraphError(
+                    f"{context}.event_paths must contain ten unique event payloads"
+                )
             if any(event.helicity != helicity for event in events):
                 raise SelectedMadGraphError(f"{context} event helicities differ")
             raw_points = cell.get("point_values")
@@ -503,6 +570,7 @@ def load_source_selection(
         cells=selected,
         unavailable=unavailable,
         helicity_workload=helicity_workload,
+        measurement_host=measurement_host,
     )
 
 
@@ -513,6 +581,7 @@ def parse_driver_output(
     expected_total_external: int,
     expected_events: int,
     helicity_workload: str = "fixed",
+    expected_helicity_coverage_count: int | None = None,
 ) -> DriverResult:
     _workload_label(helicity_workload)
     scalar: dict[str, str] = {}
@@ -585,9 +654,18 @@ def parse_driver_output(
     first_pass = float(scalar["FIRST_SAMPLE_PASS_SECONDS"].replace("D", "E"))
     checksum = float(scalar["CHECKSUM"].replace("D", "E"))
     expected_evaluations = 1
-    expected_coverage = (
-        1 if helicity_workload == "fixed" else 2**expected_total_external
-    )
+    if helicity_workload == "sum":
+        if (
+            isinstance(expected_helicity_coverage_count, bool)
+            or not isinstance(expected_helicity_coverage_count, int)
+            or expected_helicity_coverage_count < 1
+        ):
+            raise SelectedMadGraphError(
+                "summed output validation requires generated NCOMB coverage"
+            )
+        expected_coverage = expected_helicity_coverage_count
+    else:
+        expected_coverage = 1
     evaluations_per_sweep = int(scalar["EVALUATIONS_PER_SWEEP"])
     helicity_coverage_count = int(scalar["HELICITY_COVERAGE_COUNT"])
     if (
@@ -623,7 +701,9 @@ def _fortran_double(value: float) -> str:
     return format(value, ".17e").replace("e", "D")
 
 
-def render_check_source(selected: SelectedCell) -> str:
+def render_check_source(
+    selected: SelectedCell, *, summed_helicity_coverage_count: int | None = None
+) -> str:
     """Render a check driver; the generated MATRIX remains helicity-general."""
 
     n_external = selected.total_external
@@ -639,7 +719,18 @@ def render_check_source(selected: SelectedCell) -> str:
         if summed
         else "MATRIX_DIRECT_VECTOR"
     )
-    helicity_coverage_count = 2**n_external if summed else 1
+    if summed:
+        if (
+            isinstance(summed_helicity_coverage_count, bool)
+            or not isinstance(summed_helicity_coverage_count, int)
+            or summed_helicity_coverage_count < 1
+        ):
+            raise SelectedMadGraphError(
+                "summed driver requires generated NCOMB helicity coverage"
+            )
+        helicity_coverage_count = summed_helicity_coverage_count
+    else:
+        helicity_coverage_count = 1
     lines = [
         "      PROGRAM DRIVER",
         "      IMPLICIT NONE",
@@ -1192,11 +1283,25 @@ def _validate_matrix_source(
             "generated MATRIX has the wrong external multiplicity"
         )
     smatrix = re.search(r"(?ims)^\s*SUBROUTINE SMATRIX\b(.*?)(?=^\s*END\s*$)", text)
-    if smatrix is None or not re.search(
-        r"\bNCOMB\b|\bNHEL\b", smatrix.group(1), re.IGNORECASE
-    ):
+    if smatrix is None:
         raise SelectedMadGraphError(
             "generated standalone source is not helicity-general"
+        )
+    smatrix_body = smatrix.group(1)
+    ncomb = _extract_integer(smatrix_body, "NCOMB")
+    expected_ncomb = 2**expected_external
+    if ncomb != expected_ncomb:
+        raise SelectedMadGraphError(
+            "generated SMATRIX has the wrong complete-helicity coverage: "
+            f"expected NCOMB={expected_ncomb}, observed {ncomb}"
+        )
+    if re.search(
+        r"INTEGER\s+NHEL\s*\(\s*NEXTERNAL\s*,\s*NCOMB\s*\)",
+        smatrix_body,
+        re.IGNORECASE,
+    ) is None:
+        raise SelectedMadGraphError(
+            "generated SMATRIX lacks its NHEL(NEXTERNAL,NCOMB) table"
         )
     iden_matches = re.findall(
         r"^[ \t]{6,}DATA[ \t]+IDEN[ \t]*/[ \t]*(\d+)[ \t]*/[ \t]*$",
@@ -1230,6 +1335,7 @@ def _validate_matrix_source(
         "colour_flows": _extract_integer(body, "NCOLOR"),
         "smatrix_iden": smatrix_iden,
         "generation_helicity_coverage": "all",
+        "generated_helicity_coverage_count": ncomb,
     }
 
 
@@ -1426,7 +1532,14 @@ def _measure_generated_cell(
         cold_to_ready_limit_seconds, generation_resource
     )
     check_source = process_dir.parent / "check_sa.f"
-    check_body = render_check_source(selected)
+    check_body = render_check_source(
+        selected,
+        summed_helicity_coverage_count=(
+            matrix["generated_helicity_coverage_count"]
+            if selected.helicity_workload == "sum"
+            else None
+        ),
+    )
     check_source.write_text(check_body, encoding="ascii")
 
     makefile = process_dir / "makefile"
@@ -1514,6 +1627,11 @@ def _measure_generated_cell(
         expected_total_external=selected.total_external,
         expected_events=POINT_COUNT,
         helicity_workload=selected.helicity_workload,
+        expected_helicity_coverage_count=(
+            int(matrix["generated_helicity_coverage_count"])
+            if selected.helicity_workload == "sum"
+            else None
+        ),
     )
     # Fixed MATRIX is deliberately unaveraged and retains the historical
     # family-specific reference convention.  Summed mode calls SMATRIX, which
@@ -1567,6 +1685,10 @@ def _measure_generated_cell(
     summed = selected.helicity_workload == "sum"
     label = _workload_label(selected.helicity_workload)
     timed_helicity_count = parsed.helicity_coverage_count
+    if summed and timed_helicity_count != matrix["generated_helicity_coverage_count"]:
+        raise SelectedMadGraphError(
+            "MadGraph output helicity coverage differs from generated NCOMB"
+        )
     return {
         "status": "measured",
         "family": selected.family,
@@ -1900,6 +2022,7 @@ def _checkpoint_identity(
     ).hexdigest()
     return {
         "producer_sha256": _sha256(Path(__file__).resolve()),
+        "measurement_host": measurement_host_identity(),
         "source_report_sha256": source.sha256,
         "source_cell_sha256": source_cell_sha256,
         "family": selected.family,
@@ -2050,6 +2173,7 @@ def _runtime_progress_report(
             "path": _display_path(Path(__file__).resolve()),
             "sha256": _sha256(Path(__file__).resolve()),
         },
+        "host": measurement_host_identity(),
         "policy": _runtime_policy(
             selected_multiplicities,
             timeout_seconds=timeout_seconds,
@@ -2078,6 +2202,9 @@ def load_runtime_progress(path: Path) -> dict[str, Any]:
         or payload.get("schema_version") != SCHEMA_VERSION
     ):
         raise SelectedMadGraphError("MadGraph runtime progress has the wrong schema")
+    validate_measurement_host(
+        payload.get("host"), context="MadGraph runtime progress host"
+    )
     status = payload.get("status")
     if status not in {"running", "complete", "complete-with-failures"}:
         raise SelectedMadGraphError("MadGraph runtime progress has an invalid status")
@@ -2385,6 +2512,11 @@ def _build_runtime_report_locked(
         multiplicities=measured_multiplicities,
         helicity_workload=helicity_workload,
     )
+    local_host = measurement_host_identity()
+    if source.measurement_host is not None and source.measurement_host != local_host:
+        raise SelectedMadGraphError(
+            "source campaign and MadGraph runtime must use the same measurement host"
+        )
     cache_dir = cache_dir.expanduser().resolve(strict=False)
     cache_dir.mkdir(parents=True, exist_ok=True)
     selected_families = FAMILIES if family is None else (family,)
@@ -2662,11 +2794,7 @@ def _build_runtime_report_locked(
             memory_limit_gib=memory_limit_gib,
             helicity_workload=helicity_workload,
         ),
-        "host": {
-            "system": platform.system(),
-            "machine": platform.machine(),
-            "python": platform.python_version(),
-        },
+        "host": local_host,
         "summary": {"runtime_series_status_counts": dict(sorted(counts.items()))},
         "runtime_series": runtime_series,
     }

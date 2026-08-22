@@ -9,8 +9,20 @@ from typing import Any
 
 import pytest
 
-from tools.developer import fft_scaling_final_publication_report as final_report
-from tools.developer import fft_scaling_study_plots as plots
+from tools.developer import (
+    fft_scaling_final_publication_report as final_report,
+)
+from tools.developer import (
+    fft_scaling_study_plots as plots,
+)
+
+MEASUREMENT_HOST = {
+    "schema_version": 1,
+    "node_sha256": "0" * 64,
+    "system": "TestOS",
+    "machine": "test-machine",
+    "python": "3.test",
+}
 
 
 def _write_json(path: Path, payload: object) -> Path:
@@ -84,6 +96,7 @@ def _campaign(tmp_path: Path) -> dict[str, Any]:
     return {
         "kind": final_report.CAMPAIGN_KIND,
         "schema_version": 1,
+        "measurement_host": deepcopy(MEASUREMENT_HOST),
         "status": "complete",
         "failure_count": 0,
         "policy": {
@@ -230,6 +243,7 @@ def _overlay(campaign: dict[str, Any], source_path: Path) -> dict[str, Any]:
     return {
         "kind": final_report.selected.RUNTIME_SERIES_OVERLAY_KIND,
         "schema_version": 1,
+        "host": deepcopy(MEASUREMENT_HOST),
         "status": "complete",
         "failure_count": 0,
         "policy": {
@@ -311,6 +325,19 @@ def test_merge_preserves_fresh_cells_and_policy_and_adds_all_metrics(
     assert report["publication_provenance"]["campaign_report"]["sha256"] == (
         _sha256(campaign_path)
     )
+    assert report["publication_provenance"]["same_host_authenticated"] is True
+
+
+def test_merge_rejects_cross_host_madgraph_overlay(tmp_path: Path) -> None:
+    _, campaign_path, overlay, _ = _inputs(tmp_path)
+    overlay["host"]["node_sha256"] = "1" * 64
+    overlay_path = _write_json(tmp_path / "cross-host.json", overlay)
+    with pytest.raises(
+        final_report.PublicationMergeError, match="different measurement"
+    ):
+        final_report.build_final_report(
+            campaign_path=campaign_path, madgraph_overlay_path=overlay_path
+        )
 
 
 def test_merge_authenticates_a_native_smatrix_helicity_sum(

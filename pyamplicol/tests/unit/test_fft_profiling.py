@@ -385,6 +385,7 @@ def test_candidate_core_setting_is_passed_to_generation() -> None:
 
 def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     output = tmp_path / "run"
     arguments = _arguments("--output", str(output), "--multiplicities", "2", "3")
@@ -433,6 +434,14 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
     )
     with pytest.raises(profiling.ProfilingError, match="batch_size"):
         profiling._create_or_resume_manifest(scalar, output)
+
+    other_host = dict(first["identity"]["measurement_host"])
+    other_host["node_sha256"] = "f" * 64
+    monkeypatch.setattr(
+        profiling.madgraph, "measurement_host_identity", lambda: other_host
+    )
+    with pytest.raises(profiling.ProfilingError, match="measurement_host"):
+        profiling._create_or_resume_manifest(arguments, output)
 
 
 def test_status_rejects_workload_mismatch_with_existing_output(tmp_path: Path) -> None:
@@ -1358,6 +1367,7 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
     overlay.write_text(
         json.dumps(
             {
+                "host": profiling.madgraph.measurement_host_identity(),
                 "policy": {
                     "final_state_multiplicities": [2, 3],
                     "maximum_measured_multiplicity": 6,
@@ -1380,6 +1390,18 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
     assert profiling._matching_madgraph_overlay(arguments, output) is None
     assert (
         profiling._matching_madgraph_overlay(arguments, output, require_exact=False)
+        == overlay
+    )
+    assert profiling._madgraph_render_source(arguments, output) == overlay
+
+    legacy_payload = json.loads(overlay.read_text(encoding="utf-8"))
+    legacy_payload.pop("host")
+    overlay.write_text(json.dumps(legacy_payload), encoding="utf-8")
+    assert profiling._matching_madgraph_overlay(arguments, output) is None
+    assert (
+        profiling._matching_madgraph_overlay(
+            arguments, output, require_exact=False
+        )
         == overlay
     )
     assert profiling._madgraph_render_source(arguments, output) == overlay
