@@ -1603,14 +1603,6 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         points,
     )
 
-    # The process-ready image is authenticated before decoding and must never
-    # fall back to the looser JSON path after corruption.
-    if process_expression == _PROCESS:
-        image = bytearray(bootstrap_path.read_bytes())
-        image[len(image) // 2] ^= 1
-        bootstrap_path.write_bytes(image)
-        with pytest.raises(ArtifactError):
-            Runtime.load(recurrence_artifact)
     if process_expression == _PROCESS:
         _assert_recurrence_per_point_selector_patterns(
             recurrence_artifact,
@@ -1635,6 +1627,15 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         compiled,
         points,
     )
+
+    # The process-ready image is authenticated before decoding and must never
+    # fall back to the looser JSON path after corruption.
+    if process_expression == _PROCESS:
+        image = bytearray(bootstrap_path.read_bytes())
+        image[len(image) // 2] ^= 1
+        bootstrap_path.write_bytes(image)
+        with pytest.raises(ArtifactError):
+            Runtime.load(recurrence_artifact)
 
 
 @pytest.mark.parametrize(
