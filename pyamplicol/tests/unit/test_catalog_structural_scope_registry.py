@@ -15,7 +15,7 @@ def test_reviewed_out_of_catalog_scope_is_exact_and_machine_readable() -> None:
     assert scope["review"]["status"] == "reviewed"
     assert {
         item["scope_id"] for item in scope["intentionally_out_of_catalog"]
-    } == {"ufo-compiled-and-eager"}
+    } == {"ufo-compiled-and-eager-lc-nlc"}
     requirements = {
         item["scope_id"]: item for item in scope["candidate_only_requirements"]
     }
@@ -25,8 +25,11 @@ def test_reviewed_out_of_catalog_scope_is_exact_and_machine_readable() -> None:
     contracted = requirements[
         "four-open-quark-lines-contracted-candidate-proof"
     ]
-    assert contracted["catalog_cell_count"] == 8
-    assert contracted["mode_model_workload_plane_count"] == 4
+    assert contracted["catalog_cell_count"] == 10
+    assert contracted["mode_model_workload_plane_count_by_accuracy"] == {
+        "nlc": 4,
+        "full": 6,
+    }
     assert contracted["legacy_comparison"] == {
         "status": "unavailable",
         "reason": "original-amplicol-open-quark-line-limit",

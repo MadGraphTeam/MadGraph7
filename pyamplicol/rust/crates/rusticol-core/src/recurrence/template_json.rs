@@ -72,16 +72,11 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 enum OptionalField<T> {
+    #[default]
     Absent,
     Present(T),
-}
-
-impl<T> Default for OptionalField<T> {
-    fn default() -> Self {
-        Self::Absent
-    }
 }
 
 impl<'de, T> Deserialize<'de> for OptionalField<T>
@@ -397,8 +392,10 @@ struct LCColorTransitionWitnessJson {
     result_port_bindings: OptionalField<Vec<[u32; 2]>>,
 }
 
+type CanonicalPortSlices<'a> = (&'a [[[u32; 2]; 2]], &'a [[u32; 2]]);
+
 impl LCColorTransitionWitnessJson {
-    fn canonical_ports(&self) -> RusticolResult<(&[[[u32; 2]; 2]], &[[u32; 2]])> {
+    fn canonical_ports(&self) -> RusticolResult<CanonicalPortSlices<'_>> {
         match (&self.input_port_pairings, &self.result_port_bindings) {
             (OptionalField::Absent, OptionalField::Absent) => Ok((&[], &[])),
             (OptionalField::Present(pairings), OptionalField::Present(bindings))

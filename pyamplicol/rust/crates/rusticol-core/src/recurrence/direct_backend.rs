@@ -10,9 +10,9 @@ use super::RecurrenceStrategy;
 use super::SemanticDigest;
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
-    DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectExecutorRole,
-    DirectFinalizationRow, DirectNodeKind, DirectRecurrencePlan, DirectRowGroupDescriptor,
-    DirectSourceRow,
+    DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectCurrentDescriptor,
+    DirectExecutorRole, DirectFinalizationRow, DirectNodeKind, DirectRecurrencePlan,
+    DirectRowGroupDescriptor, DirectSourceRow,
 };
 pub use super::direct_plan::{
     DirectResolvedSourceSelection, DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow,
@@ -103,6 +103,16 @@ pub(crate) fn take_direct_current_observation() -> RusticolResult<DirectCurrentO
             )
         })
     })
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+fn direct_current_observation_active() -> bool {
+    DIRECT_CURRENT_OBSERVATION.with(|slot| slot.borrow().is_some())
+}
+
+#[cfg(not(any(test, feature = "on-the-fly-test-support")))]
+const fn direct_current_observation_active() -> bool {
+    false
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -236,6 +246,7 @@ pub(crate) type DirectContributionFanoutExecutor = for<'a> unsafe fn(
 ) -> RusticolResult<()>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum DirectInteractionIntrinsicKind {
     ColorOrderedThreeVector,
     VectorWedgeVector,
@@ -254,6 +265,7 @@ pub(crate) type DirectInteractionBundleExecutor = for<'a> unsafe fn(
 #[derive(Clone, Copy)]
 pub(crate) struct DirectInteractionExecutorContexts {
     pub(crate) color: *const c_void,
+    pub(crate) vector_wedge_vector: *const c_void,
     pub(crate) antisymmetric_tensor_vector: *const c_void,
 }
 
@@ -326,6 +338,7 @@ pub struct DirectExecutorCatalog {
     handles: Box<[Option<DirectExecutorHandle>]>,
     contribution_metadata: Box<[Option<DirectContributionExecutionMetadata>]>,
     contribution_fanout: Box<[Option<DirectContributionFanoutExecutorHandle>]>,
+    packed_singleton_capable: bool,
     plan_layout_digest: SemanticDigest,
     direct_template_catalog_digest: SemanticDigest,
 }
@@ -374,6 +387,7 @@ impl DirectExecutorCatalog {
         )
     }
 
+    #[allow(dead_code)]
     pub(crate) fn new_sparse(
         plan: &DirectRecurrencePlan,
         direct_template_catalog_digest: SemanticDigest,
@@ -456,11 +470,21 @@ impl DirectExecutorCatalog {
             handles: handles.into_boxed_slice(),
             contribution_metadata: contribution_metadata.into_boxed_slice(),
             contribution_fanout: contribution_fanout.into_boxed_slice(),
+            packed_singleton_capable: false,
             plan_layout_digest: plan.runtime_layout_digest(),
             direct_template_catalog_digest,
         };
         catalog.validate_for_plan(plan)?;
         Ok(catalog)
+    }
+
+    pub(crate) const fn packed_singleton_capable(&self) -> bool {
+        self.packed_singleton_capable
+    }
+
+    pub(crate) fn mark_packed_singleton_capable(mut self) -> Self {
+        self.packed_singleton_capable = true;
+        self
     }
 
     fn contribution_metadata(
@@ -664,6 +688,8 @@ pub(crate) struct DirectInteractionAnchor {
     pub(crate) operands: DirectInteractionOperands,
     pub(crate) output_start: u32,
     pub(crate) output_end: u32,
+    pub(crate) tensor_output_start: u32,
+    pub(crate) tensor_output_end: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -673,6 +699,28 @@ pub(crate) struct DirectInteractionOutput {
     /// cold-authenticated contribution order. Unused tail entries are ignored.
     pub(crate) exact_factor_ids: [u32; 3],
     pub(crate) initialize: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DirectInteractionTensorOutput {
+    pub(crate) destination_component_base: u32,
+    pub(crate) exact_factor_id: u32,
+    pub(crate) initialize: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DirectInteractionTerminalClosure {
+    pub(crate) root_component_base: u32,
+    pub(crate) amplitude_destination_id: u32,
+    pub(crate) exact_factor_id: u32,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DirectInteractionTerminalBatch<'a> {
+    pub(crate) partner_component_base: u32,
+    pub(crate) component_factor_start: u32,
+    pub(crate) amplitude_destination_count: u32,
+    pub(crate) closures: &'a [DirectInteractionTerminalClosure],
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -708,8 +756,242 @@ impl DirectInteractionRuntimeRequirements {
 pub(crate) struct DirectInteractionBundleBatch<'a> {
     pub(crate) anchors: &'a [DirectInteractionAnchor],
     pub(crate) outputs: &'a [DirectInteractionOutput],
+    pub(crate) tensor_outputs: &'a [DirectInteractionTensorOutput],
+    pub(crate) terminal: Option<DirectInteractionTerminalBatch<'a>>,
     pub(crate) requirements: DirectInteractionRuntimeRequirements,
     pub(crate) atv_before_color: bool,
+}
+
+/// Authenticated native fanout capability for one contribution executor.
+///
+/// Only intrinsic executors expose this metadata/handle pair. The generic
+/// fanout schedule uses the fused handle directly; the interaction schedule
+/// additionally requires its optional interaction call. Prepared SymJIT/native
+/// calls and nonmatching model/process combinations retain the ordinary row
+/// executor path.
+#[derive(Clone, Copy)]
+pub(crate) struct DirectInteractionExecutorCapability {
+    metadata: DirectContributionExecutionMetadata,
+    fanout: DirectContributionFanoutExecutorHandle,
+}
+
+impl DirectInteractionExecutorCapability {
+    pub(crate) fn new(
+        handle: DirectExecutorHandle,
+        metadata: DirectContributionExecutionMetadata,
+        fanout: DirectContributionFanoutExecutorHandle,
+    ) -> RusticolResult<Self> {
+        if handle.role() != DirectExecutorRole::Contribution {
+            return Err(RusticolError::integrity(
+                "direct interaction capability is attached to a non-contribution executor",
+            ));
+        }
+        if metadata.exact_factor_is_kernel_input
+            || metadata.destination_component_count != fanout.destination_component_count
+        {
+            return Err(RusticolError::integrity(
+                "direct interaction capability conflicts with authenticated contribution metadata",
+            ));
+        }
+        Ok(Self { metadata, fanout })
+    }
+}
+
+#[cfg(test)]
+mod interaction_capability_tests {
+    use super::*;
+
+    unsafe extern "C" fn contribution_stub(
+        _context: *const c_void,
+        _arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        _rows: *const DirectContributionRow,
+        _row_count: u32,
+        _point_count: u32,
+    ) -> c_int {
+        DIRECT_STATUS_OK
+    }
+
+    unsafe extern "C" fn source_stub(
+        _context: *const c_void,
+        _arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        _rows: *const DirectSourceRow,
+        _row_count: u32,
+        _point_count: u32,
+    ) -> c_int {
+        DIRECT_STATUS_OK
+    }
+
+    unsafe fn fanout_stub(
+        _context: *const c_void,
+        _arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        _batch: DirectContributionFanoutBatch<'_>,
+    ) -> RusticolResult<()> {
+        Ok(())
+    }
+
+    fn fanout(destination_component_count: u32) -> DirectContributionFanoutExecutorHandle {
+        DirectContributionFanoutExecutorHandle {
+            call: fanout_stub,
+            context: std::ptr::null(),
+            destination_component_count,
+            parent_component_counts: [4, 4],
+            requires_two_momenta: true,
+            required_parameter_count: 0,
+            interaction_kind: DirectInteractionIntrinsicKind::ColorOrderedThreeVector,
+            interaction_call: None,
+        }
+    }
+
+    #[test]
+    fn interaction_capability_requires_authenticated_output_only_contribution_shape() {
+        let contribution = DirectExecutorHandle::Contribution {
+            call: contribution_stub,
+            context: std::ptr::null(),
+        };
+        let output_only = DirectContributionExecutionMetadata::new(4, false).unwrap();
+        assert!(
+            DirectInteractionExecutorCapability::new(contribution, output_only, fanout(4)).is_ok()
+        );
+        assert!(
+            DirectInteractionExecutorCapability::new(
+                contribution,
+                DirectContributionExecutionMetadata::new(4, true).unwrap(),
+                fanout(4),
+            )
+            .is_err()
+        );
+        assert!(
+            DirectInteractionExecutorCapability::new(contribution, output_only, fanout(6)).is_err()
+        );
+        assert!(
+            DirectInteractionExecutorCapability::new(
+                DirectExecutorHandle::Source {
+                    call: source_stub,
+                    context: std::ptr::null(),
+                },
+                output_only,
+                fanout(4),
+            )
+            .is_err()
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
+enum DirectInteractionRowsView<'a> {
+    Contribution(&'a [DirectContributionRow]),
+    Closure(&'a [DirectClosureRow]),
+    Other,
+}
+
+/// Zero-copy view of one authenticated schedule group.
+#[derive(Clone, Copy)]
+pub(crate) struct DirectInteractionGroupView<'a> {
+    stage: u32,
+    role: DirectExecutorRole,
+    direct_executor_id: u32,
+    handle: Option<DirectExecutorHandle>,
+    capability: Option<DirectInteractionExecutorCapability>,
+    rows: DirectInteractionRowsView<'a>,
+}
+
+impl<'a> DirectInteractionGroupView<'a> {
+    pub(crate) const fn contribution(
+        stage: u32,
+        direct_executor_id: u32,
+        handle: Option<DirectExecutorHandle>,
+        capability: Option<DirectInteractionExecutorCapability>,
+        rows: &'a [DirectContributionRow],
+    ) -> Self {
+        Self {
+            stage,
+            role: DirectExecutorRole::Contribution,
+            direct_executor_id,
+            handle,
+            capability,
+            rows: DirectInteractionRowsView::Contribution(rows),
+        }
+    }
+
+    pub(crate) const fn closure(
+        stage: u32,
+        direct_executor_id: u32,
+        handle: DirectExecutorHandle,
+        rows: &'a [DirectClosureRow],
+    ) -> Self {
+        Self {
+            stage,
+            role: DirectExecutorRole::Closure,
+            direct_executor_id,
+            handle: Some(handle),
+            capability: None,
+            rows: DirectInteractionRowsView::Closure(rows),
+        }
+    }
+
+    pub(crate) const fn other(
+        stage: u32,
+        role: DirectExecutorRole,
+        direct_executor_id: u32,
+        handle: Option<DirectExecutorHandle>,
+    ) -> Self {
+        Self {
+            stage,
+            role,
+            direct_executor_id,
+            handle,
+            capability: None,
+            rows: DirectInteractionRowsView::Other,
+        }
+    }
+
+    fn contributions(self) -> Option<&'a [DirectContributionRow]> {
+        match self.rows {
+            DirectInteractionRowsView::Contribution(rows) => Some(rows),
+            DirectInteractionRowsView::Closure(_) | DirectInteractionRowsView::Other => None,
+        }
+    }
+
+    fn closures(self) -> Option<&'a [DirectClosureRow]> {
+        match self.rows {
+            DirectInteractionRowsView::Closure(rows) => Some(rows),
+            DirectInteractionRowsView::Contribution(_) | DirectInteractionRowsView::Other => None,
+        }
+    }
+}
+
+/// Borrowed authenticated inputs needed by the native interaction compiler.
+/// Row storage remains owned by the direct plan or prepared OTF family.
+pub(crate) struct DirectInteractionScheduleView<'a> {
+    strategy: RecurrenceStrategy,
+    groups: &'a [DirectInteractionGroupView<'a>],
+    currents: &'a [DirectCurrentDescriptor],
+    contribution_row_count: usize,
+}
+
+impl<'a> DirectInteractionScheduleView<'a> {
+    pub(crate) const fn new(
+        strategy: RecurrenceStrategy,
+        groups: &'a [DirectInteractionGroupView<'a>],
+        currents: &'a [DirectCurrentDescriptor],
+        contribution_row_count: usize,
+    ) -> Self {
+        Self {
+            strategy,
+            groups,
+            currents,
+            contribution_row_count,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -754,21 +1036,89 @@ struct DirectContributionFanoutGroup {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DirectInteractionGroupAction {
+enum DirectSingletonFanoutStep {
+    Direct {
+        row_start: u32,
+        row_count: u32,
+    },
+    Fanout {
+        row_start: u32,
+        row_count: u32,
+        run_start: u64,
+        run_count: u32,
+    },
+}
+
+impl DirectSingletonFanoutStep {
+    const fn row_start(self) -> u32 {
+        match self {
+            Self::Direct { row_start, .. } | Self::Fanout { row_start, .. } => row_start,
+        }
+    }
+
+    const fn row_count(self) -> u32 {
+        match self {
+            Self::Direct { row_count, .. } | Self::Fanout { row_count, .. } => row_count,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct DirectSingletonFanoutGroup {
+    direct_executor_id: u32,
+    row_count: u32,
+    step_start: u64,
+    step_count: u32,
+    raw: DirectExecutorHandle,
+    fused: DirectContributionFanoutExecutorHandle,
+}
+
+/// Cold family-local native fanout schedule for singleton-point execution.
+///
+/// Unlike [`DirectContributionFanoutProgram`], this needs no private arena
+/// suffix: authenticated intrinsic fanout executors evaluate one input class
+/// and write every destination directly.  Batched point execution remains on
+/// the ordinary row executor path.
+pub(crate) struct DirectSingletonContributionFanoutProgram {
+    groups: Box<[Option<DirectSingletonFanoutGroup>]>,
+    steps: Box<[DirectSingletonFanoutStep]>,
+    runs: Box<[DirectContributionFanoutRun]>,
+    bundles: Box<[DirectContributionFanoutBundle]>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DirectInteractionGroupAction {
     Normal,
     Execute(u32),
     Consumed,
 }
 
 struct DirectInteractionStage {
-    group_indices: [u32; 2],
+    group_indices: Box<[u32]>,
+    closure_group_index: Option<u32>,
     call: DirectInteractionBundleExecutor,
     contexts: DirectInteractionExecutorContexts,
     atv_before_color: bool,
     anchors: Box<[DirectInteractionAnchor]>,
     outputs: Box<[DirectInteractionOutput]>,
+    tensor_outputs: Box<[DirectInteractionTensorOutput]>,
+    terminal: Option<DirectInteractionTerminalProgram>,
     requirements: DirectInteractionRuntimeRequirements,
     logical_row_count: u64,
+}
+
+struct DirectInteractionTerminalProgram {
+    partner_component_base: u32,
+    component_factor_start: u32,
+    amplitude_destination_count: u32,
+    closures: Box<[DirectInteractionTerminalClosure]>,
+}
+
+/// Cold, schedule-local native interaction rewrite shared by persisted direct
+/// plans and dynamically prepared on-the-fly families.
+pub(crate) struct DirectInteractionProgram {
+    actions: Box<[DirectInteractionGroupAction]>,
+    stages: Box<[DirectInteractionStage]>,
 }
 
 /// Immutable, plan-local execution rewrite for contribution kinematics.
@@ -787,8 +1137,37 @@ pub(crate) struct DirectContributionFanoutProgram {
     scratch_component_count: u32,
     unit_factor_id: u32,
     needs_unit_factor: bool,
-    interaction_actions: Box<[DirectInteractionGroupAction]>,
-    interaction_stages: Box<[DirectInteractionStage]>,
+    interactions: DirectInteractionProgram,
+    full_singleton_steps: Box<[DirectFullSingletonStep]>,
+}
+
+/// Cold-authenticated dispatch for the common full, unselected singleton.
+///
+/// The persisted plan remains authoritative. These steps retain only handles
+/// and already-validated row offsets, avoiding a warmed catalog lookup and
+/// row-range reconstruction for every small group. Selected, observed, and
+/// multi-point execution continue through the generic schedule.
+#[derive(Clone, Copy)]
+enum DirectFullSingletonStep {
+    Interaction {
+        stage_index: u32,
+    },
+    Call {
+        direct_executor_id: u32,
+        handle: DirectExecutorHandle,
+        row_start: usize,
+        row_count: u32,
+    },
+    CertifiedReuse {
+        row_start: usize,
+        row_count: u32,
+    },
+    Fanout {
+        group_index: u32,
+        call: DirectContributionExecutor,
+        context: *const c_void,
+        fused: Option<DirectContributionFanoutExecutorHandle>,
+    },
 }
 
 impl DirectContributionFanoutProgram {
@@ -963,8 +1342,8 @@ impl DirectContributionFanoutProgram {
                 })?,
             });
         }
-        let interactions = build_direct_interaction_program(plan, executors)?;
-        Ok(Self {
+        let interactions = DirectInteractionProgram::build_for_direct_plan(plan, executors)?;
+        let mut program = Self {
             plan_layout_digest: plan.runtime_layout_digest(),
             groups: groups.into_boxed_slice(),
             steps: steps.into_boxed_slice(),
@@ -975,9 +1354,206 @@ impl DirectContributionFanoutProgram {
             scratch_component_count,
             unit_factor_id,
             needs_unit_factor,
-            interaction_actions: interactions.actions.into_boxed_slice(),
-            interaction_stages: interactions.stages.into_boxed_slice(),
-        })
+            interactions,
+            full_singleton_steps: Box::new([]),
+        };
+        program.full_singleton_steps = program.compile_full_singleton_steps(plan, executors)?;
+        Ok(program)
+    }
+
+    fn compile_full_singleton_steps(
+        &self,
+        plan: &DirectRecurrencePlan,
+        executors: &DirectExecutorCatalog,
+    ) -> RusticolResult<Box<[DirectFullSingletonStep]>> {
+        let mut compiled = Vec::with_capacity(plan.row_groups().len());
+        for (group_index, descriptor) in plan.row_groups().iter().enumerate() {
+            match self.interactions.action(group_index) {
+                DirectInteractionGroupAction::Consumed => continue,
+                DirectInteractionGroupAction::Execute(stage_index) => {
+                    compiled.push(DirectFullSingletonStep::Interaction { stage_index });
+                    continue;
+                }
+                DirectInteractionGroupAction::Normal => {}
+            }
+            if descriptor.role == DirectExecutorRole::Source
+                && descriptor.direct_executor_id == DIRECT_NONE_U32
+                && plan.strategy() == RecurrenceStrategy::AllFlowUnion
+            {
+                continue;
+            }
+            let row_start = usize::try_from(descriptor.row_start).map_err(|_| {
+                RusticolError::integrity("flattened direct row-group start exceeds usize")
+            })?;
+            let row_end = row_start
+                .checked_add(descriptor.row_count as usize)
+                .ok_or_else(|| {
+                    RusticolError::integrity("flattened direct row-group range overflows usize")
+                })?;
+            let authoritative_len = match descriptor.role {
+                DirectExecutorRole::Source => plan.sources().len(),
+                DirectExecutorRole::Contribution => plan.contributions().len(),
+                DirectExecutorRole::Finalization => plan.finalizations().len(),
+                DirectExecutorRole::Closure => plan.closures().len(),
+            };
+            if row_end > authoritative_len {
+                return Err(RusticolError::integrity(
+                    "flattened direct row-group range is out of bounds",
+                ));
+            }
+            if descriptor.role == DirectExecutorRole::Contribution
+                && descriptor.direct_executor_id == DIRECT_NONE_U32
+            {
+                compiled.push(DirectFullSingletonStep::CertifiedReuse {
+                    row_start,
+                    row_count: descriptor.row_count,
+                });
+                continue;
+            }
+            let handle = executors.require(descriptor.direct_executor_id, descriptor.role)?;
+            if descriptor.role == DirectExecutorRole::Contribution {
+                let steps = self.group_steps(descriptor)?;
+                if steps
+                    .iter()
+                    .all(|step| matches!(step, DirectContributionFanoutStep::Direct { .. }))
+                {
+                    compiled.push(DirectFullSingletonStep::Call {
+                        direct_executor_id: descriptor.direct_executor_id,
+                        handle,
+                        row_start,
+                        row_count: descriptor.row_count,
+                    });
+                    continue;
+                }
+                let DirectExecutorHandle::Contribution { call, context } = handle else {
+                    return Err(RusticolError::integrity(
+                        "flattened direct contribution handle changed role",
+                    ));
+                };
+                compiled.push(DirectFullSingletonStep::Fanout {
+                    group_index: u32::try_from(group_index).map_err(|_| {
+                        RusticolError::integrity("flattened direct group index exceeds u32")
+                    })?,
+                    call,
+                    context,
+                    fused: executors.contribution_fanout(descriptor.direct_executor_id),
+                });
+                continue;
+            }
+            compiled.push(DirectFullSingletonStep::Call {
+                direct_executor_id: descriptor.direct_executor_id,
+                handle,
+                row_start,
+                row_count: descriptor.row_count,
+            });
+        }
+        Ok(compiled.into_boxed_slice())
+    }
+
+    fn execute_full_singleton_unprofiled(
+        &self,
+        plan: &DirectRecurrencePlan,
+        executors: &DirectExecutorCatalog,
+        workspace: &mut DirectWorkspace<'_>,
+    ) -> RusticolResult<()> {
+        clear_direct_executor_error_detail();
+        workspace.validate(1)?;
+        if executors.plan_layout_digest != plan.runtime_layout_digest()
+            || self.plan_layout_digest != plan.runtime_layout_digest()
+        {
+            return Err(RusticolError::integrity(
+                "flattened direct execution belongs to a different plan",
+            ));
+        }
+        let (arena, momenta, parameters, factors) = workspace.raw_views()?;
+        for step in &self.full_singleton_steps {
+            match *step {
+                DirectFullSingletonStep::Interaction { stage_index } => {
+                    self.interactions.execute::<false>(
+                        stage_index,
+                        arena,
+                        momenta,
+                        parameters,
+                        factors,
+                    )?;
+                }
+                DirectFullSingletonStep::Call {
+                    direct_executor_id,
+                    handle,
+                    row_start,
+                    row_count,
+                } => {
+                    let status = unsafe {
+                        match handle {
+                            DirectExecutorHandle::Source { call, context } => call(
+                                context,
+                                arena,
+                                momenta,
+                                parameters,
+                                factors,
+                                plan.sources().as_ptr().add(row_start),
+                                row_count,
+                                1,
+                            ),
+                            DirectExecutorHandle::Contribution { call, context } => call(
+                                context,
+                                arena,
+                                momenta,
+                                parameters,
+                                factors,
+                                plan.contributions().as_ptr().add(row_start),
+                                row_count,
+                                1,
+                            ),
+                            DirectExecutorHandle::Finalization { call, context } => call(
+                                context,
+                                arena,
+                                momenta,
+                                parameters,
+                                factors,
+                                plan.finalizations().as_ptr().add(row_start),
+                                row_count,
+                                1,
+                            ),
+                            DirectExecutorHandle::Closure { call, context } => call(
+                                context,
+                                arena,
+                                momenta,
+                                parameters,
+                                factors,
+                                plan.closures().as_ptr().add(row_start),
+                                row_count,
+                                1,
+                            ),
+                        }
+                    };
+                    check_status(handle.role(), direct_executor_id, status)?;
+                }
+                DirectFullSingletonStep::CertifiedReuse {
+                    row_start,
+                    row_count,
+                } => {
+                    let row_end = row_start + row_count as usize;
+                    execute_certified_reuse_rows(
+                        &plan.contributions()[row_start..row_end],
+                        workspace,
+                        1,
+                    )?;
+                }
+                DirectFullSingletonStep::Fanout {
+                    group_index,
+                    call,
+                    context,
+                    fused,
+                } => {
+                    let descriptor = &plan.row_groups()[group_index as usize];
+                    execute_contribution_group_with_fanout(
+                        plan, descriptor, self, call, context, fused, workspace, 1,
+                    )?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) const fn scratch_component_count(&self) -> u32 {
@@ -1099,14 +1675,281 @@ impl DirectContributionFanoutProgram {
     }
 }
 
-struct DirectInteractionProgramBuild {
-    actions: Vec<DirectInteractionGroupAction>,
-    stages: Vec<DirectInteractionStage>,
+impl DirectSingletonContributionFanoutProgram {
+    pub(crate) fn build(
+        schedule_groups: &[DirectInteractionGroupView<'_>],
+        arena_component_count: u32,
+        momentum_form_count: u32,
+        parameter_count: u32,
+        factor_count: u32,
+    ) -> RusticolResult<Self> {
+        let mut groups = vec![None; schedule_groups.len()];
+        let mut steps = Vec::new();
+        let mut runs = Vec::new();
+        let mut bundles = Vec::new();
+        for (group_index, group) in schedule_groups.iter().copied().enumerate() {
+            let Some(rows) = group.contributions() else {
+                continue;
+            };
+            let Some(capability) = group.capability else {
+                continue;
+            };
+            let fanout = capability.fanout;
+            if rows.is_empty()
+                || rows.len() > u32::MAX as usize
+                || fanout.required_parameter_count > parameter_count
+                || rows.iter().any(|row| {
+                    row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0
+                        || row.exact_factor_id >= factor_count
+                        || row
+                            .destination_component_base
+                            .checked_add(fanout.destination_component_count)
+                            .is_none_or(|end| end > arena_component_count)
+                })
+            {
+                continue;
+            }
+            for row in rows {
+                validate_fused_fanout_row(
+                    *row,
+                    fanout.parent_component_counts,
+                    fanout.requires_two_momenta,
+                    arena_component_count,
+                    momentum_form_count,
+                )?;
+            }
+
+            let step_start = u64::try_from(steps.len())
+                .map_err(|_| RusticolError::integrity("singleton fanout step count exceeds u64"))?;
+            let mut pending_runs = Vec::<(u32, u32)>::new();
+            let mut offset = 0_usize;
+            while offset < rows.len() {
+                let run_start = offset;
+                offset += 1;
+                while offset < rows.len()
+                    && contribution_fanout_inputs_equal(rows[run_start], rows[offset], false)
+                {
+                    offset += 1;
+                }
+                let run_count = offset - run_start;
+                if run_count == 1 {
+                    flush_singleton_fanout_batch(
+                        rows,
+                        &mut pending_runs,
+                        &mut steps,
+                        &mut runs,
+                        &mut bundles,
+                    )?;
+                    push_singleton_direct_step(
+                        &mut steps,
+                        step_start as usize,
+                        u32::try_from(run_start).map_err(|_| {
+                            RusticolError::integrity(
+                                "singleton fanout direct-row start exceeds u32",
+                            )
+                        })?,
+                        1,
+                    )?;
+                } else {
+                    pending_runs.push((
+                        u32::try_from(run_start).map_err(|_| {
+                            RusticolError::integrity("singleton fanout run start exceeds u32")
+                        })?,
+                        u32::try_from(run_count).map_err(|_| {
+                            RusticolError::integrity("singleton fanout run count exceeds u32")
+                        })?,
+                    ));
+                    if pending_runs.len() == DIRECT_CONTRIBUTION_FANOUT_BATCH_CAPACITY {
+                        flush_singleton_fanout_batch(
+                            rows,
+                            &mut pending_runs,
+                            &mut steps,
+                            &mut runs,
+                            &mut bundles,
+                        )?;
+                    }
+                }
+            }
+            flush_singleton_fanout_batch(
+                rows,
+                &mut pending_runs,
+                &mut steps,
+                &mut runs,
+                &mut bundles,
+            )?;
+            let step_count = u32::try_from(steps.len() as u64 - step_start).map_err(|_| {
+                RusticolError::integrity("singleton fanout group step count exceeds u32")
+            })?;
+            let group_steps = &steps[step_start as usize..];
+            if !group_steps
+                .iter()
+                .any(|step| matches!(step, DirectSingletonFanoutStep::Fanout { .. }))
+            {
+                steps.truncate(step_start as usize);
+                continue;
+            }
+            let raw = group.handle.ok_or_else(|| {
+                RusticolError::integrity("singleton fanout group has no raw contribution handle")
+            })?;
+            if raw.role() != DirectExecutorRole::Contribution {
+                return Err(RusticolError::integrity(
+                    "singleton fanout group has a non-contribution raw handle",
+                ));
+            }
+            groups[group_index] = Some(DirectSingletonFanoutGroup {
+                direct_executor_id: group.direct_executor_id,
+                row_count: rows.len() as u32,
+                step_start,
+                step_count,
+                raw,
+                fused: fanout,
+            });
+        }
+        Ok(Self {
+            groups: groups.into_boxed_slice(),
+            steps: steps.into_boxed_slice(),
+            runs: runs.into_boxed_slice(),
+            bundles: bundles.into_boxed_slice(),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn execute_group(
+        &self,
+        group_index: usize,
+        rows: &[DirectContributionRow],
+        arena: DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        factors: DirectFactorView,
+        point_count: u32,
+    ) -> RusticolResult<bool> {
+        if point_count != 1 {
+            return Ok(false);
+        }
+        let Some(group) = self.groups.get(group_index).and_then(|group| *group) else {
+            return Ok(false);
+        };
+        if rows.len() != group.row_count as usize {
+            return Err(RusticolError::integrity(
+                "singleton fanout rows changed after cold compilation",
+            ));
+        }
+        let step_start = usize::try_from(group.step_start)
+            .map_err(|_| RusticolError::integrity("singleton fanout step start exceeds usize"))?;
+        let step_end = step_start
+            .checked_add(group.step_count as usize)
+            .ok_or_else(|| RusticolError::integrity("singleton fanout step range overflows"))?;
+        let steps = self.steps.get(step_start..step_end).ok_or_else(|| {
+            RusticolError::integrity("singleton fanout step range is out of bounds")
+        })?;
+        let DirectExecutorHandle::Contribution { call, context } = group.raw else {
+            return Err(RusticolError::integrity(
+                "singleton fanout raw handle changed role",
+            ));
+        };
+        let mut covered = 0_u32;
+        for step in steps {
+            if step.row_start() != covered {
+                return Err(RusticolError::integrity(
+                    "singleton fanout steps do not continuously cover their row group",
+                ));
+            }
+            match *step {
+                DirectSingletonFanoutStep::Direct {
+                    row_start,
+                    row_count,
+                } => {
+                    let start = row_start as usize;
+                    let end = start.checked_add(row_count as usize).ok_or_else(|| {
+                        RusticolError::integrity("singleton fanout direct range overflows")
+                    })?;
+                    let direct_rows = rows.get(start..end).ok_or_else(|| {
+                        RusticolError::integrity("singleton fanout direct range is out of bounds")
+                    })?;
+                    let status = unsafe {
+                        call(
+                            context,
+                            arena,
+                            momenta,
+                            parameters,
+                            factors,
+                            direct_rows.as_ptr(),
+                            row_count,
+                            1,
+                        )
+                    };
+                    check_status(
+                        DirectExecutorRole::Contribution,
+                        group.direct_executor_id,
+                        status,
+                    )?;
+                }
+                DirectSingletonFanoutStep::Fanout {
+                    run_start,
+                    run_count,
+                    ..
+                } => {
+                    let start = usize::try_from(run_start).map_err(|_| {
+                        RusticolError::integrity("singleton fanout run start exceeds usize")
+                    })?;
+                    let end = start.checked_add(run_count as usize).ok_or_else(|| {
+                        RusticolError::integrity("singleton fanout run range overflows")
+                    })?;
+                    let runs = self.runs.get(start..end).ok_or_else(|| {
+                        RusticolError::integrity("singleton fanout run range is out of bounds")
+                    })?;
+                    unsafe {
+                        (group.fused.call)(
+                            group.fused.context,
+                            arena,
+                            momenta,
+                            parameters,
+                            factors,
+                            DirectContributionFanoutBatch {
+                                rows,
+                                runs,
+                                bundles: &self.bundles,
+                            },
+                        )
+                    }?;
+                }
+            }
+            covered = covered.checked_add(step.row_count()).ok_or_else(|| {
+                RusticolError::integrity("singleton fanout step coverage overflows u32")
+            })?;
+        }
+        if covered != group.row_count {
+            return Err(RusticolError::integrity(
+                "singleton fanout steps do not cover their row group",
+            ));
+        }
+        Ok(true)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn row_counts(&self) -> (u64, u64) {
+        let logical = self
+            .groups
+            .iter()
+            .flatten()
+            .map(|group| u64::from(group.row_count))
+            .sum();
+        let evaluated = self
+            .steps
+            .iter()
+            .map(|step| match step {
+                DirectSingletonFanoutStep::Direct { row_count, .. } => u64::from(*row_count),
+                DirectSingletonFanoutStep::Fanout { run_count, .. } => u64::from(*run_count),
+            })
+            .sum();
+        (logical, evaluated)
+    }
 }
 
 #[derive(Clone, Copy)]
 struct DirectInteractionRawRun {
-    row_start: u64,
+    row_start: u32,
     row_count: u32,
 }
 
@@ -1122,13 +1965,7 @@ fn interaction_input_key(row: DirectContributionRow) -> DirectInteractionInputKe
     )
 }
 
-fn interaction_raw_runs(
-    plan: &DirectRecurrencePlan,
-    descriptor: &DirectRowGroupDescriptor,
-) -> Option<Vec<DirectInteractionRawRun>> {
-    let start = usize::try_from(descriptor.row_start).ok()?;
-    let end = start.checked_add(descriptor.row_count as usize)?;
-    let rows = plan.contributions().get(start..end)?;
+fn interaction_raw_runs(rows: &[DirectContributionRow]) -> Option<Vec<DirectInteractionRawRun>> {
     if rows
         .iter()
         .any(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
@@ -1145,20 +1982,19 @@ fn interaction_raw_runs(
             offset += 1;
         }
         runs.push(DirectInteractionRawRun {
-            row_start: descriptor.row_start.checked_add(run_start as u64)?,
+            row_start: u32::try_from(run_start).ok()?,
             row_count: u32::try_from(offset - run_start).ok()?,
         });
     }
     Some(runs)
 }
 
-fn interaction_rows<'a>(
-    plan: &'a DirectRecurrencePlan,
+fn interaction_rows(
+    rows: &[DirectContributionRow],
     run: DirectInteractionRawRun,
-) -> Option<&'a [DirectContributionRow]> {
-    let start = usize::try_from(run.row_start).ok()?;
-    plan.contributions()
-        .get(start..start.checked_add(run.row_count as usize)?)
+) -> Option<&[DirectContributionRow]> {
+    let start = run.row_start as usize;
+    rows.get(start..start.checked_add(run.row_count as usize)?)
 }
 
 fn interaction_destination_offsets(rows: &[DirectContributionRow]) -> Option<BTreeMap<u32, u32>> {
@@ -1185,108 +2021,328 @@ fn interaction_destination_bijection(
     (!row_offsets.contains(&DIRECT_NONE_U32)).then_some(row_offsets)
 }
 
+fn interaction_vector_initialization_is_canonical(
+    ordered_groups: &[&[DirectContributionRow]],
+) -> bool {
+    let mut seen = BTreeSet::new();
+    ordered_groups
+        .iter()
+        .flat_map(|rows| rows.iter())
+        .all(|row| {
+            let first = seen.insert(row.destination_component_base);
+            let initializes = row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION != 0;
+            initializes == first
+        })
+}
+
+#[cfg(test)]
+mod interaction_initialization_tests {
+    use super::*;
+
+    fn row(destination_component_base: u32, initializes: bool) -> DirectContributionRow {
+        DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: 4,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: 1,
+            destination_component_base,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: if initializes {
+                DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+            } else {
+                0
+            },
+        }
+    }
+
+    #[test]
+    fn interaction_initialization_requires_the_first_authoritative_write() {
+        let first_group = [row(20, true), row(24, true), row(20, false)];
+        let second_group = [row(24, false)];
+        assert!(interaction_vector_initialization_is_canonical(&[
+            &first_group,
+            &second_group,
+        ]));
+
+        let late_initializer = [row(20, false), row(20, true)];
+        assert!(!interaction_vector_initialization_is_canonical(&[
+            &late_initializer,
+        ]));
+        let duplicate_initializer = [row(20, true), row(20, true)];
+        assert!(!interaction_vector_initialization_is_canonical(&[
+            &duplicate_initializer,
+        ]));
+    }
+}
+
 fn interaction_kind(
-    executors: &DirectExecutorCatalog,
-    descriptor: &DirectRowGroupDescriptor,
+    group: DirectInteractionGroupView<'_>,
 ) -> Option<DirectInteractionIntrinsicKind> {
-    if descriptor.role != DirectExecutorRole::Contribution
-        || descriptor.direct_executor_id == DIRECT_NONE_U32
-        || executors
-            .contribution_metadata(descriptor.direct_executor_id)
-            .ok()?
-            .exact_factor_is_kernel_input
+    if group.role != DirectExecutorRole::Contribution
+        || group.direct_executor_id == DIRECT_NONE_U32
+        || group.capability?.metadata.exact_factor_is_kernel_input
     {
         return None;
     }
-    Some(
-        executors
-            .contribution_fanout(descriptor.direct_executor_id)?
-            .interaction_kind,
-    )
+    Some(group.capability?.fanout.interaction_kind)
 }
 
-fn build_direct_interaction_program(
-    plan: &DirectRecurrencePlan,
+fn direct_interaction_group_views<'a>(
+    plan: &'a DirectRecurrencePlan,
     executors: &DirectExecutorCatalog,
-) -> RusticolResult<DirectInteractionProgramBuild> {
-    let mut actions = vec![DirectInteractionGroupAction::Normal; plan.row_groups().len()];
-    let mut stages = Vec::new();
-    let mut stage_groups = BTreeMap::<u16, Vec<usize>>::new();
-    for (group_index, descriptor) in plan.row_groups().iter().enumerate() {
-        if descriptor.role == DirectExecutorRole::Contribution {
-            stage_groups
-                .entry(descriptor.stage)
-                .or_default()
-                .push(group_index);
-        }
-    }
-    let raw_runs = plan
-        .row_groups()
-        .iter()
-        .enumerate()
-        .filter_map(|(group_index, descriptor)| {
-            interaction_kind(executors, descriptor)?;
-            Some((group_index, interaction_raw_runs(plan, descriptor)?))
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    for group_indices in stage_groups.values() {
-        let Some(candidate) = match_interaction_stage(plan, executors, group_indices, &raw_runs)
-        else {
-            continue;
-        };
-        let stage_index = u32::try_from(stages.len())
-            .map_err(|_| RusticolError::integrity("direct interaction stage count exceeds u32"))?;
-        let first_group = *candidate.group_indices.iter().min().expect("two groups");
-        for &group_index in &candidate.group_indices {
-            actions[group_index] = if group_index == first_group {
-                DirectInteractionGroupAction::Execute(stage_index)
-            } else {
-                DirectInteractionGroupAction::Consumed
-            };
-        }
-        let stored_group_indices = [
-            u32::try_from(candidate.group_indices[0]).map_err(|_| {
-                RusticolError::integrity("direct interaction group index exceeds u32")
-            })?,
-            u32::try_from(candidate.group_indices[1]).map_err(|_| {
-                RusticolError::integrity("direct interaction group index exceeds u32")
-            })?,
-        ];
-        stages.push(DirectInteractionStage {
-            group_indices: stored_group_indices,
-            call: candidate.call,
-            contexts: candidate.contexts,
-            atv_before_color: candidate.group_indices[1] < candidate.group_indices[0],
-            anchors: candidate.anchors.into_boxed_slice(),
-            outputs: candidate.outputs.into_boxed_slice(),
-            requirements: candidate.requirements,
-            logical_row_count: candidate.logical_row_count,
+) -> RusticolResult<Vec<DirectInteractionGroupView<'a>>> {
+    let mut groups = Vec::with_capacity(plan.row_groups().len());
+    for descriptor in plan.row_groups() {
+        let start = usize::try_from(descriptor.row_start)
+            .map_err(|_| RusticolError::integrity("direct interaction row start exceeds usize"))?;
+        let end = start
+            .checked_add(descriptor.row_count as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity("direct interaction row range overflows usize")
+            })?;
+        let stage = u32::from(descriptor.stage);
+        groups.push(match descriptor.role {
+            DirectExecutorRole::Contribution => {
+                let rows = plan.contributions().get(start..end).ok_or_else(|| {
+                    RusticolError::integrity("direct interaction contribution rows are absent")
+                })?;
+                let handle = (descriptor.direct_executor_id != DIRECT_NONE_U32)
+                    .then(|| {
+                        executors.require(
+                            descriptor.direct_executor_id,
+                            DirectExecutorRole::Contribution,
+                        )
+                    })
+                    .transpose()?;
+                let capability = executors
+                    .contribution_fanout(descriptor.direct_executor_id)
+                    .map(|fanout| {
+                        let handle = handle.ok_or_else(|| {
+                            RusticolError::integrity(
+                                "direct interaction capability has no contribution handle",
+                            )
+                        })?;
+                        DirectInteractionExecutorCapability::new(
+                            handle,
+                            executors.contribution_metadata(descriptor.direct_executor_id)?,
+                            fanout,
+                        )
+                    })
+                    .transpose()?;
+                DirectInteractionGroupView::contribution(
+                    stage,
+                    descriptor.direct_executor_id,
+                    handle,
+                    capability,
+                    rows,
+                )
+            }
+            DirectExecutorRole::Closure => {
+                let rows = plan.closures().get(start..end).ok_or_else(|| {
+                    RusticolError::integrity("direct interaction closure rows are absent")
+                })?;
+                DirectInteractionGroupView::closure(
+                    stage,
+                    descriptor.direct_executor_id,
+                    executors.require(descriptor.direct_executor_id, descriptor.role)?,
+                    rows,
+                )
+            }
+            role => DirectInteractionGroupView::other(
+                stage,
+                role,
+                descriptor.direct_executor_id,
+                (descriptor.direct_executor_id != DIRECT_NONE_U32)
+                    .then(|| executors.require(descriptor.direct_executor_id, role))
+                    .transpose()?,
+            ),
         });
     }
+    Ok(groups)
+}
 
-    Ok(DirectInteractionProgramBuild { actions, stages })
+impl DirectInteractionProgram {
+    fn build_for_direct_plan(
+        plan: &DirectRecurrencePlan,
+        executors: &DirectExecutorCatalog,
+    ) -> RusticolResult<Self> {
+        let groups = direct_interaction_group_views(plan, executors)?;
+        let schedule = DirectInteractionScheduleView::new(
+            plan.strategy(),
+            &groups,
+            plan.currents(),
+            plan.contributions().len(),
+        );
+        Self::build(schedule)
+    }
+
+    pub(crate) fn build(schedule: DirectInteractionScheduleView<'_>) -> RusticolResult<Self> {
+        let mut actions = vec![DirectInteractionGroupAction::Normal; schedule.groups.len()];
+        let mut stages = Vec::new();
+        let mut stage_groups = BTreeMap::<u32, Vec<usize>>::new();
+        for (group_index, group) in schedule.groups.iter().enumerate() {
+            if group.role == DirectExecutorRole::Contribution {
+                stage_groups
+                    .entry(group.stage)
+                    .or_default()
+                    .push(group_index);
+            }
+        }
+        let raw_runs = schedule
+            .groups
+            .iter()
+            .enumerate()
+            .filter_map(|(group_index, &group)| {
+                interaction_kind(group)?;
+                Some((group_index, interaction_raw_runs(group.contributions()?)?))
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        for group_indices in stage_groups.values() {
+            let Some(candidate) = match_interaction_stage(&schedule, group_indices, &raw_runs)
+            else {
+                continue;
+            };
+            let stage_index = u32::try_from(stages.len()).map_err(|_| {
+                RusticolError::integrity("direct interaction stage count exceeds u32")
+            })?;
+            let first_group = *candidate
+                .group_indices
+                .iter()
+                .min()
+                .expect("interaction has contribution groups");
+            for &group_index in &candidate.group_indices {
+                actions[group_index] = if group_index == first_group {
+                    DirectInteractionGroupAction::Execute(stage_index)
+                } else {
+                    DirectInteractionGroupAction::Consumed
+                };
+            }
+            if let Some(group_index) = candidate.closure_group_index {
+                actions[group_index] = DirectInteractionGroupAction::Consumed;
+            }
+            let stored_group_indices = candidate
+                .group_indices
+                .iter()
+                .copied()
+                .map(|group_index| {
+                    u32::try_from(group_index).map_err(|_| {
+                        RusticolError::integrity("direct interaction group index exceeds u32")
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?
+                .into_boxed_slice();
+            let closure_group_index = candidate
+                .closure_group_index
+                .map(|group_index| {
+                    u32::try_from(group_index).map_err(|_| {
+                        RusticolError::integrity("direct terminal closure group index exceeds u32")
+                    })
+                })
+                .transpose()?;
+            stages.push(DirectInteractionStage {
+                group_indices: stored_group_indices,
+                closure_group_index,
+                call: candidate.call,
+                contexts: candidate.contexts,
+                atv_before_color: candidate.atv_before_color,
+                anchors: candidate.anchors.into_boxed_slice(),
+                outputs: candidate.outputs.into_boxed_slice(),
+                tensor_outputs: candidate.tensor_outputs.into_boxed_slice(),
+                terminal: candidate.terminal,
+                requirements: candidate.requirements,
+                logical_row_count: candidate.logical_row_count,
+            });
+        }
+
+        Ok(Self {
+            actions: actions.into_boxed_slice(),
+            stages: stages.into_boxed_slice(),
+        })
+    }
+
+    pub(crate) fn action(&self, group_index: usize) -> DirectInteractionGroupAction {
+        self.actions
+            .get(group_index)
+            .copied()
+            .unwrap_or(DirectInteractionGroupAction::Normal)
+    }
+
+    pub(crate) fn execute<const PROFILE: bool>(
+        &self,
+        stage_index: u32,
+        arena: DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        factors: DirectFactorView,
+    ) -> RusticolResult<Duration> {
+        let stage = self.stages.get(stage_index as usize).ok_or_else(|| {
+            RusticolError::integrity("direct interaction stage index is out of bounds")
+        })?;
+        execute_direct_interaction_stage_views::<PROFILE>(
+            stage, arena, momenta, parameters, factors,
+        )
+    }
+
+    pub(crate) fn logical_groups(
+        &self,
+        stage_index: u32,
+    ) -> RusticolResult<(&[u32], Option<u32>, u64)> {
+        let stage = self.stages.get(stage_index as usize).ok_or_else(|| {
+            RusticolError::integrity("direct interaction stage index is out of bounds")
+        })?;
+        Ok((
+            &stage.group_indices,
+            stage.closure_group_index,
+            stage.logical_row_count,
+        ))
+    }
 }
 
 struct DirectInteractionStageCandidate {
-    group_indices: [usize; 2],
+    group_indices: Vec<usize>,
+    closure_group_index: Option<usize>,
     call: DirectInteractionBundleExecutor,
     contexts: DirectInteractionExecutorContexts,
+    atv_before_color: bool,
     logical_row_count: u64,
     anchors: Vec<DirectInteractionAnchor>,
     outputs: Vec<DirectInteractionOutput>,
+    tensor_outputs: Vec<DirectInteractionTensorOutput>,
+    terminal: Option<DirectInteractionTerminalProgram>,
     requirements: DirectInteractionRuntimeRequirements,
 }
 
 struct DirectInteractionMatchedSupplement {
-    row_start: u64,
+    row_start: u32,
     vector_parent_side: u8,
     row_offsets: Vec<u32>,
 }
 
+// The sibling-wedge rewrite adds enough hot code to pay for itself only on
+// large schedules. Keep the narrower color/ATV interaction rewrite below this
+// cold, process-independent workload boundary. Terminal scalarization is a
+// separate win: once the cold liveness proof succeeds it removes an entire
+// four-component root/closure round trip, including on small schedules.
+const DIRECT_LARGE_SCHEDULE_INTERACTION_MIN_ROWS: usize = 1_000_000;
+
+#[inline]
+fn direct_large_schedule_interaction_rewrite_enabled(
+    strategy: RecurrenceStrategy,
+    contribution_row_count: usize,
+) -> bool {
+    strategy == RecurrenceStrategy::ContractedColorUnion
+        && contribution_row_count >= DIRECT_LARGE_SCHEDULE_INTERACTION_MIN_ROWS
+}
+
+#[inline]
+fn direct_terminal_interaction_rewrite_enabled(strategy: RecurrenceStrategy) -> bool {
+    strategy == RecurrenceStrategy::ContractedColorUnion
+}
+
 fn match_interaction_stage(
-    plan: &DirectRecurrencePlan,
-    executors: &DirectExecutorCatalog,
+    schedule: &DirectInteractionScheduleView<'_>,
     group_indices: &[usize],
     raw_runs: &BTreeMap<usize, Vec<DirectInteractionRawRun>>,
 ) -> Option<DirectInteractionStageCandidate> {
@@ -1299,8 +2355,8 @@ fn match_interaction_stage(
     let mut wedge = None;
     let mut atv = None;
     for &group_index in group_indices {
-        let descriptor = &plan.row_groups()[group_index];
-        let slot = match interaction_kind(executors, descriptor)? {
+        let group = schedule.groups[group_index];
+        let slot = match interaction_kind(group)? {
             DirectInteractionIntrinsicKind::ColorOrderedThreeVector => &mut color,
             DirectInteractionIntrinsicKind::VectorWedgeVector => &mut wedge,
             DirectInteractionIntrinsicKind::AntisymmetricTensorVector => &mut atv,
@@ -1313,19 +2369,66 @@ fn match_interaction_stage(
     if wedge.is_some() != (group_indices.len() == 3) {
         return None;
     }
-    let color = &plan.row_groups()[color_index];
-    let atv = &plan.row_groups()[atv_index];
-    let color_capability = executors.contribution_fanout(color.direct_executor_id)?;
-    let atv_capability = executors.contribution_fanout(atv.direct_executor_id)?;
+    let color = schedule.groups[color_index];
+    let atv = schedule.groups[atv_index];
+    let color_group_rows = color.contributions()?;
+    let atv_group_rows = atv.contributions()?;
+    let ordered_vector_groups = if color_index < atv_index {
+        [color_group_rows, atv_group_rows]
+    } else {
+        [atv_group_rows, color_group_rows]
+    };
+    if !interaction_vector_initialization_is_canonical(&ordered_vector_groups) {
+        return None;
+    }
+    let color_capability = color.capability?.fanout;
+    let atv_capability = atv.capability?.fanout;
     let call = color_capability.interaction_call?;
     let color_runs = raw_runs.get(&color_index)?.clone();
     let atv_runs = raw_runs.get(&atv_index)?;
+    let fuse_wedge = direct_large_schedule_interaction_rewrite_enabled(
+        schedule.strategy,
+        schedule.contribution_row_count,
+    );
+    let wedge_program = if let Some(wedge_index) = wedge.filter(|_| fuse_wedge) {
+        let group = schedule.groups[wedge_index];
+        let capability = group.capability?.fanout;
+        if capability.destination_component_count != 6
+            || capability.parent_component_counts != [4, 4]
+            || capability.requires_two_momenta
+        {
+            return None;
+        }
+        let wedge_runs = raw_runs.get(&wedge_index)?.clone();
+        if wedge_runs.len() != color_runs.len() {
+            return None;
+        }
+        for (&color_run, &wedge_run) in color_runs.iter().zip(&wedge_runs) {
+            let color_rows = interaction_rows(color_group_rows, color_run)?;
+            let wedge_rows = interaction_rows(group.contributions()?, wedge_run)?;
+            if color_run.row_count != wedge_run.row_count
+                || interaction_input_key(*color_rows.first()?)
+                    != interaction_input_key(*wedge_rows.first()?)
+                || !color_rows
+                    .iter()
+                    .zip(wedge_rows)
+                    .all(|(color_row, wedge_row)| {
+                        color_row.exact_factor_id == wedge_row.exact_factor_id
+                    })
+            {
+                return None;
+            }
+        }
+        Some((capability, wedge_runs))
+    } else {
+        None
+    };
 
     type AssociationKey = (u32, u32, u32, u32, u32, u32);
     let mut anchors_by_vector = BTreeMap::<AssociationKey, Vec<(usize, u8)>>::new();
     let mut color_destination_offsets = Vec::with_capacity(color_runs.len());
     for (anchor_index, run) in color_runs.iter().copied().enumerate() {
-        let rows = interaction_rows(plan, run)?;
+        let rows = interaction_rows(color_group_rows, run)?;
         let first = *rows.first()?;
         let destinations = interaction_destination_offsets(rows)?;
         let minimum_destination = *destinations.keys().next()?;
@@ -1361,7 +2464,7 @@ fn match_interaction_stage(
         .collect::<Vec<Vec<DirectInteractionMatchedSupplement>>>();
     let mut used_sides = vec![[false; 2]; color_runs.len()];
     for &atv_run in atv_runs {
-        let atv_rows = interaction_rows(plan, atv_run)?;
+        let atv_rows = interaction_rows(atv_group_rows, atv_run)?;
         let representative = *atv_rows.first()?;
         let atv_destination_offsets = interaction_destination_offsets(atv_rows)?;
         let minimum_destination = *atv_destination_offsets.keys().next()?;
@@ -1403,12 +2506,9 @@ fn match_interaction_stage(
     // a single aggregated write ambiguous, so reject that stage.
     let mut destination_widths = BTreeMap::<u32, u32>::new();
     for &group_index in group_indices {
-        let descriptor = &plan.row_groups()[group_index];
-        let capability = executors.contribution_fanout(descriptor.direct_executor_id)?;
-        let start = usize::try_from(descriptor.row_start).ok()?;
-        let rows = plan
-            .contributions()
-            .get(start..start.checked_add(descriptor.row_count as usize)?)?;
+        let group = schedule.groups[group_index];
+        let capability = group.capability?.fanout;
+        let rows = group.contributions()?;
         for row in rows {
             if destination_widths
                 .insert(
@@ -1431,15 +2531,25 @@ fn match_interaction_stage(
 
     let mut seen_vector_destinations = BTreeSet::new();
     let mut candidate_anchors = Vec::with_capacity(color_runs.len());
-    let mut candidate_outputs = Vec::with_capacity(color.row_count as usize);
+    let mut candidate_outputs = Vec::with_capacity(color_group_rows.len());
+    let mut candidate_tensor_outputs = Vec::with_capacity(
+        wedge
+            .and_then(|group_index| schedule.groups[group_index].contributions())
+            .map_or(0, <[DirectContributionRow]>::len),
+    );
     let mut requirements = DirectInteractionRuntimeRequirements {
         parameter_count: color_capability
             .required_parameter_count
             .max(atv_capability.required_parameter_count),
         ..DirectInteractionRuntimeRequirements::default()
     };
+    if let Some((capability, _)) = &wedge_program {
+        requirements.parameter_count = requirements
+            .parameter_count
+            .max(capability.required_parameter_count);
+    }
     for (anchor_index, color_run) in color_runs.into_iter().enumerate() {
-        let color_rows = interaction_rows(plan, color_run)?;
+        let color_rows = interaction_rows(color_group_rows, color_run)?;
         let representative = *color_rows.first()?;
         requirements.include_current_span(
             representative.parent0_component_base,
@@ -1463,7 +2573,7 @@ fn match_interaction_stage(
         let mut supplement_rows = [None; 2];
         for (slot, supplement) in supplements_for_anchor.iter().enumerate() {
             let rows = interaction_rows(
-                plan,
+                atv_group_rows,
                 DirectInteractionRawRun {
                     row_start: supplement.row_start,
                     row_count: color_run.row_count,
@@ -1516,6 +2626,27 @@ fn match_interaction_stage(
             });
         }
         let output_end = u32::try_from(candidate_outputs.len()).ok()?;
+        let tensor_output_start = u32::try_from(candidate_tensor_outputs.len()).ok()?;
+        if let Some((wedge_capability, wedge_runs)) = &wedge_program {
+            let wedge_rows = interaction_rows(
+                schedule.groups[wedge?].contributions()?,
+                *wedge_runs.get(anchor_index)?,
+            )?;
+            for wedge_row in wedge_rows {
+                requirements.include_current_span(
+                    wedge_row.destination_component_base,
+                    wedge_capability.destination_component_count,
+                )?;
+                requirements.include_factor(wedge_row.exact_factor_id)?;
+                candidate_tensor_outputs.push(DirectInteractionTensorOutput {
+                    destination_component_base: wedge_row.destination_component_base,
+                    exact_factor_id: wedge_row.exact_factor_id,
+                    initialize: wedge_row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+                        != 0,
+                });
+            }
+        }
+        let tensor_output_end = u32::try_from(candidate_tensor_outputs.len()).ok()?;
         candidate_anchors.push(DirectInteractionAnchor {
             parent_component_bases: [
                 representative.parent0_component_base,
@@ -1528,21 +2659,417 @@ fn match_interaction_stage(
             operands,
             output_start,
             output_end,
+            tensor_output_start,
+            tensor_output_end,
         });
     }
 
-    Some(DirectInteractionStageCandidate {
-        group_indices: [color_index, atv_index],
+    let tensor_destinations = candidate_tensor_outputs
+        .iter()
+        .map(|output| output.destination_component_base)
+        .collect::<BTreeSet<_>>();
+    if candidate_anchors
+        .iter()
+        .any(|anchor| match anchor.operands {
+            DirectInteractionOperands::None => false,
+            DirectInteractionOperands::One(operand) => {
+                tensor_destinations.contains(&operand.tensor_component_base)
+            }
+            DirectInteractionOperands::Two(operands) => operands
+                .iter()
+                .any(|operand| tensor_destinations.contains(&operand.tensor_component_base)),
+        })
+    {
+        return None;
+    }
+
+    let mut native_group_indices = vec![color_index, atv_index];
+    if let Some(wedge_index) = wedge.filter(|_| fuse_wedge) {
+        native_group_indices.push(wedge_index);
+    }
+    native_group_indices.sort_unstable();
+    let logical_row_count = native_group_indices
+        .iter()
+        .map(|&group_index| {
+            schedule.groups[group_index]
+                .contributions()
+                .map(|rows| rows.len() as u64)
+                .unwrap_or(0)
+        })
+        .sum();
+    let mut candidate = DirectInteractionStageCandidate {
+        group_indices: native_group_indices,
+        closure_group_index: None,
         call,
         contexts: DirectInteractionExecutorContexts {
             color: color_capability.context,
+            vector_wedge_vector: wedge_program
+                .as_ref()
+                .map_or(std::ptr::null(), |(capability, _)| capability.context),
             antisymmetric_tensor_vector: atv_capability.context,
         },
-        logical_row_count: u64::from(color.row_count) + u64::from(atv.row_count),
+        atv_before_color: atv_index < color_index,
+        logical_row_count,
         anchors: candidate_anchors,
         outputs: candidate_outputs,
+        tensor_outputs: candidate_tensor_outputs,
+        terminal: None,
         requirements,
-    })
+    };
+    attach_terminal_interaction_program(schedule, &mut candidate);
+    Some(candidate)
+}
+
+fn attach_terminal_interaction_program(
+    schedule: &DirectInteractionScheduleView<'_>,
+    candidate: &mut DirectInteractionStageCandidate,
+) {
+    let Some((closure_group_index, terminal)) =
+        compile_terminal_interaction_program(schedule, candidate)
+    else {
+        return;
+    };
+    let mut requirements = candidate.requirements;
+    if requirements
+        .include_current_span(terminal.partner_component_base, 4)
+        .is_none()
+    {
+        return;
+    }
+    for component in 0..4 {
+        let Some(factor_id) = terminal.component_factor_start.checked_add(component) else {
+            return;
+        };
+        if requirements.include_factor(factor_id).is_none() {
+            return;
+        }
+    }
+    for closure in terminal.closures.iter() {
+        if requirements
+            .include_factor(closure.exact_factor_id)
+            .is_none()
+        {
+            return;
+        }
+    }
+    candidate.requirements = requirements;
+    candidate.closure_group_index = Some(closure_group_index);
+    candidate.terminal = Some(terminal);
+}
+
+fn compile_terminal_interaction_program(
+    schedule: &DirectInteractionScheduleView<'_>,
+    candidate: &DirectInteractionStageCandidate,
+) -> Option<(usize, DirectInteractionTerminalProgram)> {
+    if !direct_terminal_interaction_rewrite_enabled(schedule.strategy)
+        || !candidate.tensor_outputs.is_empty()
+        || candidate.group_indices.len() != 2
+        || candidate.outputs.is_empty()
+        || schedule.currents.is_empty()
+    {
+        return None;
+    }
+    let mut closure_groups = schedule
+        .groups
+        .iter()
+        .enumerate()
+        .filter(|(_, group)| group.role == DirectExecutorRole::Closure);
+    let (closure_group_index, closure_group) = closure_groups.next()?;
+    if closure_groups.next().is_some() {
+        return None;
+    }
+    let DirectExecutorHandle::Closure { call, .. } = closure_group.handle? else {
+        return None;
+    };
+    if !std::ptr::fn_addr_eq(
+        call,
+        crate::engine::execute_closure_reduce_rows as DirectClosureExecutor,
+    ) {
+        return None;
+    }
+    let interaction_stage = schedule.groups[*candidate.group_indices.first()?].stage;
+    if candidate
+        .group_indices
+        .iter()
+        .any(|&group_index| schedule.groups[group_index].stage != interaction_stage)
+        || interaction_stage.checked_add(1)? != closure_group.stage
+    {
+        return None;
+    }
+    let closure_event = closure_group.stage;
+
+    let current_by_stage_and_base = schedule
+        .currents
+        .iter()
+        .filter(|current| current.node_kind == DirectNodeKind::Current)
+        .map(|current| ((u32::from(current.stage), current.component_base), current))
+        .collect::<BTreeMap<_, _>>();
+    let root_bases = candidate
+        .outputs
+        .iter()
+        .map(|output| output.destination_component_base)
+        .collect::<BTreeSet<_>>();
+    let mut root_semantic_ids = BTreeSet::new();
+    for &base in &root_bases {
+        let root = *current_by_stage_and_base.get(&(interaction_stage, base))?;
+        if root.component_count != 4
+            || root.finalization_row_or_sentinel != DIRECT_NONE_U32
+            || root.last_use != closure_event
+        {
+            return None;
+        }
+        root_semantic_ids.insert(root.semantic_current_id);
+    }
+
+    // Every write to a scalarized root must belong to this native stage.
+    // Otherwise the scalar scratch would omit a contribution or close before
+    // the final writer.
+    let consumed_groups = candidate
+        .group_indices
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for (group_index, group) in schedule.groups.iter().enumerate().filter(|(_, group)| {
+        group.role == DirectExecutorRole::Contribution && group.stage == interaction_stage
+    }) {
+        if group.contributions()?.iter().any(|row| {
+            root_bases.contains(&row.destination_component_base)
+                && !consumed_groups.contains(&group_index)
+        }) {
+            return None;
+        }
+    }
+    // No scalarized root may feed another contribution at this or a later
+    // stage; the closure group below must be its only remaining consumer.
+    for group in schedule.groups.iter().filter(|group| {
+        group.role == DirectExecutorRole::Contribution && group.stage >= interaction_stage
+    }) {
+        if group.contributions()?.iter().any(|row| {
+            root_bases.contains(&row.parent0_component_base)
+                || root_bases.contains(&row.parent1_component_base_or_sentinel)
+        }) {
+            return None;
+        }
+    }
+
+    // At the closure event arena liveness makes these bases unambiguous even
+    // though the arena is reused between earlier stages.
+    let mut live_current_by_base = BTreeMap::new();
+    for current in schedule
+        .currents
+        .iter()
+        .filter(|current| current.last_use == closure_event)
+    {
+        if live_current_by_base
+            .insert(current.component_base, current)
+            .is_some()
+        {
+            return None;
+        }
+    }
+    let mut partner = None;
+    let mut component_factor_start = None;
+    let mut attached_roots = BTreeSet::new();
+    let mut amplitude_destinations = BTreeSet::new();
+    let mut amplitude_destination_count = 0_u32;
+    let closure_rows = closure_group.closures()?;
+    if closure_rows.is_empty() {
+        return None;
+    }
+    let mut closures = Vec::with_capacity(closure_rows.len());
+    for row in closure_rows {
+        if row.component_count != 4 || !amplitude_destinations.insert(row.amplitude_destination_id)
+        {
+            return None;
+        }
+        amplitude_destination_count =
+            amplitude_destination_count.max(row.amplitude_destination_id.checked_add(1)?);
+        let parent0 = *live_current_by_base.get(&row.parent0_component_base)?;
+        let parent1 = *live_current_by_base.get(&row.parent1_component_base_or_sentinel)?;
+        let parent0_is_root = root_semantic_ids.contains(&parent0.semantic_current_id);
+        let parent1_is_root = root_semantic_ids.contains(&parent1.semantic_current_id);
+        if parent0_is_root == parent1_is_root {
+            return None;
+        }
+        let (root, terminal_partner) = if parent0_is_root {
+            (parent0, parent1)
+        } else {
+            (parent1, parent0)
+        };
+        if terminal_partner.component_count != 4
+            || u32::from(terminal_partner.stage) >= interaction_stage
+            || terminal_partner.last_use != closure_event
+            || terminal_partner.finalization_row_or_sentinel != DIRECT_NONE_U32
+        {
+            return None;
+        }
+        let partner_key = (
+            terminal_partner.semantic_current_id,
+            terminal_partner.component_base,
+        );
+        if partner
+            .replace(partner_key)
+            .is_some_and(|seen| seen != partner_key)
+            || component_factor_start
+                .replace(row.component_factor_start)
+                .is_some_and(|seen| seen != row.component_factor_start)
+        {
+            return None;
+        }
+        attached_roots.insert(root.semantic_current_id);
+        closures.push(DirectInteractionTerminalClosure {
+            root_component_base: root.component_base,
+            amplitude_destination_id: row.amplitude_destination_id,
+            exact_factor_id: row.exact_factor_id,
+        });
+    }
+    if attached_roots != root_semantic_ids {
+        return None;
+    }
+    Some((
+        closure_group_index,
+        DirectInteractionTerminalProgram {
+            partner_component_base: partner?.1,
+            component_factor_start: component_factor_start?,
+            amplitude_destination_count,
+            closures: closures.into_boxed_slice(),
+        },
+    ))
+}
+
+#[cfg(test)]
+mod terminal_current_descriptor_tests {
+    use super::*;
+
+    unsafe fn interaction_stub(
+        _contexts: DirectInteractionExecutorContexts,
+        _arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        _batch: DirectInteractionBundleBatch<'_>,
+    ) -> RusticolResult<()> {
+        Ok(())
+    }
+
+    fn candidate() -> DirectInteractionStageCandidate {
+        DirectInteractionStageCandidate {
+            group_indices: vec![0, 1],
+            closure_group_index: None,
+            call: interaction_stub,
+            contexts: DirectInteractionExecutorContexts {
+                color: std::ptr::null(),
+                vector_wedge_vector: std::ptr::null(),
+                antisymmetric_tensor_vector: std::ptr::null(),
+            },
+            atv_before_color: false,
+            logical_row_count: 2,
+            anchors: Vec::new(),
+            outputs: vec![DirectInteractionOutput {
+                destination_component_base: 20,
+                exact_factor_ids: [0; 3],
+                initialize: true,
+            }],
+            tensor_outputs: Vec::new(),
+            terminal: None,
+            requirements: DirectInteractionRuntimeRequirements::default(),
+        }
+    }
+
+    #[test]
+    fn terminal_compiler_requires_and_consumes_current_descriptors() {
+        let contribution = DirectContributionRow {
+            parent0_component_base: 4,
+            parent1_component_base_or_sentinel: 8,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: 1,
+            destination_component_base: 20,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+        };
+        let closure = DirectClosureRow {
+            parent0_component_base: 20,
+            parent1_component_base_or_sentinel: 0,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: 0,
+            amplitude_destination_id: 0,
+            exact_factor_id: 0,
+            component_factor_start: 0,
+            component_count: 4,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let contribution0 = [contribution];
+        let contribution1 = [DirectContributionRow {
+            flags: 0,
+            ..contribution
+        }];
+        let closures = [closure];
+        let groups = [
+            DirectInteractionGroupView::contribution(1, 1, None, None, &contribution0),
+            DirectInteractionGroupView::contribution(1, 2, None, None, &contribution1),
+            DirectInteractionGroupView::closure(
+                2,
+                3,
+                DirectExecutorHandle::Closure {
+                    call: crate::engine::execute_closure_reduce_rows,
+                    context: std::ptr::null(),
+                },
+                &closures,
+            ),
+        ];
+        let currents = [
+            DirectCurrentDescriptor {
+                semantic_current_id: 0,
+                node_kind: DirectNodeKind::Current,
+                state_template_id: 0,
+                component_base: 20,
+                component_count: 4,
+                momentum_form_id: 0,
+                stage: 1,
+                selector_domain_id: 0,
+                first_use: 1,
+                last_use: 2,
+                source_row_or_sentinel: DIRECT_NONE_U32,
+                finalization_row_or_sentinel: DIRECT_NONE_U32,
+            },
+            DirectCurrentDescriptor {
+                semantic_current_id: 1,
+                node_kind: DirectNodeKind::Source,
+                state_template_id: 0,
+                component_base: 0,
+                component_count: 4,
+                momentum_form_id: 0,
+                stage: 0,
+                selector_domain_id: 0,
+                first_use: 0,
+                last_use: 2,
+                source_row_or_sentinel: 0,
+                finalization_row_or_sentinel: DIRECT_NONE_U32,
+            },
+        ];
+        let without_currents = DirectInteractionScheduleView::new(
+            RecurrenceStrategy::ContractedColorUnion,
+            &groups,
+            &[],
+            2,
+        );
+        assert!(compile_terminal_interaction_program(&without_currents, &candidate()).is_none());
+
+        let with_currents = DirectInteractionScheduleView::new(
+            RecurrenceStrategy::ContractedColorUnion,
+            &groups,
+            &currents,
+            2,
+        );
+        let (closure_group, terminal) =
+            compile_terminal_interaction_program(&with_currents, &candidate()).unwrap();
+        assert_eq!(closure_group, 2);
+        assert_eq!(terminal.partner_component_base, 0);
+        assert_eq!(terminal.closures.len(), 1);
+        assert_eq!(terminal.closures[0].root_component_base, 20);
+    }
 }
 
 fn validate_fused_fanout_row(
@@ -1641,35 +3168,42 @@ mod fused_fanout_validation_tests {
     fn interaction_execution_gate_is_full_unselected_single_point_only() {
         let plan = crate::recurrence::direct_plan::tests::valid_plan();
         let groups = plan.row_groups();
-        assert!(direct_interaction_execution_enabled(
+        assert!(direct_interaction_execution_enabled::<true>(
             RecurrenceStrategy::TopologyReplay,
             groups,
             groups,
             None,
             1,
         ));
-        assert!(!direct_interaction_execution_enabled(
+        assert!(!direct_interaction_execution_enabled::<false>(
+            RecurrenceStrategy::TopologyReplay,
+            groups,
+            groups,
+            None,
+            1,
+        ));
+        assert!(!direct_interaction_execution_enabled::<true>(
             RecurrenceStrategy::TopologyReplay,
             groups,
             groups,
             None,
             2,
         ));
-        assert!(!direct_interaction_execution_enabled(
+        assert!(!direct_interaction_execution_enabled::<true>(
             RecurrenceStrategy::TopologyReplay,
             groups,
             groups,
             Some(0),
             1,
         ));
-        assert!(!direct_interaction_execution_enabled(
+        assert!(!direct_interaction_execution_enabled::<true>(
             RecurrenceStrategy::AllFlowUnion,
             groups,
             groups,
             None,
             1,
         ));
-        assert!(!direct_interaction_execution_enabled(
+        assert!(!direct_interaction_execution_enabled::<true>(
             RecurrenceStrategy::ContractedColorUnion,
             groups,
             &groups[1..],
@@ -1677,6 +3211,159 @@ mod fused_fanout_validation_tests {
             1,
         ));
     }
+
+    #[test]
+    fn large_schedule_interaction_rewrite_uses_only_strategy_and_row_count() {
+        assert!(!direct_large_schedule_interaction_rewrite_enabled(
+            RecurrenceStrategy::ContractedColorUnion,
+            DIRECT_LARGE_SCHEDULE_INTERACTION_MIN_ROWS - 1,
+        ));
+        assert!(direct_large_schedule_interaction_rewrite_enabled(
+            RecurrenceStrategy::ContractedColorUnion,
+            DIRECT_LARGE_SCHEDULE_INTERACTION_MIN_ROWS,
+        ));
+        assert!(!direct_large_schedule_interaction_rewrite_enabled(
+            RecurrenceStrategy::TopologyReplay,
+            DIRECT_LARGE_SCHEDULE_INTERACTION_MIN_ROWS,
+        ));
+        assert!(!direct_large_schedule_interaction_rewrite_enabled(
+            RecurrenceStrategy::AllFlowUnion,
+            usize::MAX,
+        ));
+        assert!(direct_terminal_interaction_rewrite_enabled(
+            RecurrenceStrategy::ContractedColorUnion,
+        ));
+        assert!(!direct_terminal_interaction_rewrite_enabled(
+            RecurrenceStrategy::TopologyReplay,
+        ));
+        assert!(!direct_terminal_interaction_rewrite_enabled(
+            RecurrenceStrategy::AllFlowUnion,
+        ));
+    }
+}
+
+fn push_singleton_direct_step(
+    steps: &mut Vec<DirectSingletonFanoutStep>,
+    group_step_start: usize,
+    row_start: u32,
+    row_count: u32,
+) -> RusticolResult<()> {
+    if steps.len() > group_step_start
+        && let Some(DirectSingletonFanoutStep::Direct {
+            row_start: previous_start,
+            row_count: previous_count,
+        }) = steps.last_mut()
+        && previous_start
+            .checked_add(*previous_count)
+            .is_some_and(|end| end == row_start)
+    {
+        *previous_count = previous_count.checked_add(row_count).ok_or_else(|| {
+            RusticolError::integrity("singleton fanout direct-step count exceeds u32")
+        })?;
+        return Ok(());
+    }
+    steps.push(DirectSingletonFanoutStep::Direct {
+        row_start,
+        row_count,
+    });
+    Ok(())
+}
+
+fn flush_singleton_fanout_batch(
+    rows: &[DirectContributionRow],
+    pending_runs: &mut Vec<(u32, u32)>,
+    steps: &mut Vec<DirectSingletonFanoutStep>,
+    runs: &mut Vec<DirectContributionFanoutRun>,
+    bundles: &mut Vec<DirectContributionFanoutBundle>,
+) -> RusticolResult<()> {
+    let Some(&(first_row_start, _)) = pending_runs.first() else {
+        return Ok(());
+    };
+    let run_start = u64::try_from(runs.len())
+        .map_err(|_| RusticolError::integrity("singleton fanout run count exceeds u64"))?;
+    let mut logical_row_count = 0_u32;
+    let mut expected_start = first_row_start;
+    for &(row_start, row_count) in pending_runs.iter() {
+        if row_count < 2 || row_start != expected_start {
+            return Err(RusticolError::integrity(
+                "singleton fanout pending runs are not contiguous reusable classes",
+            ));
+        }
+        push_output_only_fanout_run(rows, u64::from(row_start), row_count, 0, runs, bundles)?;
+        logical_row_count = logical_row_count.checked_add(row_count).ok_or_else(|| {
+            RusticolError::integrity("singleton fanout batch row count exceeds u32")
+        })?;
+        expected_start = expected_start.checked_add(row_count).ok_or_else(|| {
+            RusticolError::integrity("singleton fanout pending-run coverage exceeds u32")
+        })?;
+    }
+    steps.push(DirectSingletonFanoutStep::Fanout {
+        row_start: first_row_start,
+        row_count: logical_row_count,
+        run_start,
+        run_count: u32::try_from(pending_runs.len()).map_err(|_| {
+            RusticolError::integrity("singleton fanout batch run count exceeds u32")
+        })?,
+    });
+    pending_runs.clear();
+    Ok(())
+}
+
+/// Append the shared run/bundle representation used by both persisted direct
+/// plans and family-local singleton fanout. Output-only contribution kernels
+/// leave the authenticated exact factor for this destination replay step.
+fn push_output_only_fanout_run(
+    rows: &[DirectContributionRow],
+    row_start: u64,
+    row_count: u32,
+    scratch_component_base: u32,
+    runs: &mut Vec<DirectContributionFanoutRun>,
+    bundles: &mut Vec<DirectContributionFanoutBundle>,
+) -> RusticolResult<()> {
+    let start = usize::try_from(row_start)
+        .map_err(|_| RusticolError::integrity("direct fanout row start exceeds usize"))?;
+    let end = start
+        .checked_add(row_count as usize)
+        .ok_or_else(|| RusticolError::integrity("direct fanout row range overflows usize"))?;
+    let run_rows = rows
+        .get(start..end)
+        .ok_or_else(|| RusticolError::integrity("direct fanout row range is out of bounds"))?;
+    let bundle_start = u64::try_from(bundles.len())
+        .map_err(|_| RusticolError::integrity("direct fanout bundle count exceeds u64"))?;
+    let mut offset = 0_usize;
+    while offset < run_rows.len() {
+        let factor_id = run_rows[offset].exact_factor_id;
+        let first = offset;
+        offset += 1;
+        while offset < run_rows.len() && run_rows[offset].exact_factor_id == factor_id {
+            offset += 1;
+        }
+        bundles.push(DirectContributionFanoutBundle {
+            row_start: row_start
+                .checked_add(u64::try_from(first).map_err(|_| {
+                    RusticolError::integrity("direct fanout bundle offset exceeds u64")
+                })?)
+                .ok_or_else(|| RusticolError::integrity("direct fanout bundle start overflows"))?,
+            row_count: u32::try_from(offset - first)
+                .map_err(|_| RusticolError::integrity("direct fanout factor bundle exceeds u32"))?,
+            effective_factor_id_or_sentinel: factor_id,
+        });
+    }
+    let bundle_count = u32::try_from(
+        u64::try_from(bundles.len())
+            .map_err(|_| RusticolError::integrity("direct fanout bundle count exceeds u64"))?
+            .checked_sub(bundle_start)
+            .ok_or_else(|| RusticolError::integrity("direct fanout bundle range underflows"))?,
+    )
+    .map_err(|_| RusticolError::integrity("direct fanout run bundle count exceeds u32"))?;
+    runs.push(DirectContributionFanoutRun {
+        row_start,
+        row_count,
+        scratch_component_base,
+        bundle_start,
+        bundle_count,
+    });
+    Ok(())
 }
 
 fn contribution_fanout_inputs_equal(
@@ -1776,50 +3463,31 @@ fn flush_pending_fanout_batch(
             .ok_or_else(|| RusticolError::integrity("direct fanout run start overflows u64"))?;
         let run_row_count = u32::try_from(run_count)
             .map_err(|_| RusticolError::integrity("direct fanout run exceeds u32"))?;
-        let bundle_start = u64::try_from(bundles.len())
-            .map_err(|_| RusticolError::integrity("direct fanout bundle count exceeds u64"))?;
-        let run_end = row_index
-            .checked_add(run_count)
-            .ok_or_else(|| RusticolError::integrity("direct fanout run range exceeds usize"))?;
-        let run_rows = plan
-            .contributions()
-            .get(row_index..run_end)
-            .ok_or_else(|| RusticolError::integrity("direct fanout run range is out of bounds"))?;
         if metadata.exact_factor_is_kernel_input {
+            let bundle_start = u64::try_from(bundles.len())
+                .map_err(|_| RusticolError::integrity("direct fanout bundle count exceeds u64"))?;
             bundles.push(DirectContributionFanoutBundle {
                 row_start: run_row_start,
                 row_count: run_row_count,
                 effective_factor_id_or_sentinel: DIRECT_NONE_U32,
             });
+            runs.push(DirectContributionFanoutRun {
+                row_start: run_row_start,
+                row_count: run_row_count,
+                scratch_component_base: slot_base,
+                bundle_start,
+                bundle_count: 1,
+            });
         } else {
-            let mut bundle_offset = 0_usize;
-            while bundle_offset < run_rows.len() {
-                let factor_id = run_rows[bundle_offset].exact_factor_id;
-                let first = bundle_offset;
-                bundle_offset += 1;
-                while bundle_offset < run_rows.len()
-                    && run_rows[bundle_offset].exact_factor_id == factor_id
-                {
-                    bundle_offset += 1;
-                }
-                bundles.push(DirectContributionFanoutBundle {
-                    row_start: run_row_start + first as u64,
-                    row_count: u32::try_from(bundle_offset - first).map_err(|_| {
-                        RusticolError::integrity("direct fanout factor bundle exceeds u32")
-                    })?,
-                    effective_factor_id_or_sentinel: factor_id,
-                });
-            }
+            push_output_only_fanout_run(
+                plan.contributions(),
+                run_row_start,
+                run_row_count,
+                slot_base,
+                runs,
+                bundles,
+            )?;
         }
-        let bundle_count = u32::try_from(bundles.len() as u64 - bundle_start)
-            .map_err(|_| RusticolError::integrity("direct fanout run bundle count exceeds u32"))?;
-        runs.push(DirectContributionFanoutRun {
-            row_start: run_row_start,
-            row_count: run_row_count,
-            scratch_component_base: slot_base,
-            bundle_start,
-            bundle_count,
-        });
         logical_row_count = logical_row_count
             .checked_add(u32::try_from(run_count).map_err(|_| {
                 RusticolError::integrity("direct fanout logical run count exceeds u32")
@@ -2027,7 +3695,7 @@ pub fn execute_direct_plan(
     counters: &mut DirectExecutionCounters,
 ) -> RusticolResult<()> {
     let mut unused_timings = DirectExecutionRoleTimings::default();
-    execute_direct_plan_impl::<true>(
+    execute_direct_plan_impl::<true, true>(
         plan,
         plan.row_groups(),
         None,
@@ -2049,7 +3717,7 @@ pub fn execute_direct_plan_profiled(
     counters: &mut DirectExecutionCounters,
     timings: &mut DirectExecutionRoleTimings,
 ) -> RusticolResult<()> {
-    execute_direct_plan_impl::<true>(
+    execute_direct_plan_impl::<true, true>(
         plan,
         plan.row_groups(),
         None,
@@ -2063,6 +3731,7 @@ pub fn execute_direct_plan_profiled(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn execute_direct_plan_profiled_with_traffic(
     plan: &DirectRecurrencePlan,
     executors: &DirectExecutorCatalog,
@@ -2072,7 +3741,7 @@ pub(crate) fn execute_direct_plan_profiled_with_traffic(
     timings: &mut DirectExecutionRoleTimings,
     traffic: &mut DirectArenaTrafficCounters,
 ) -> RusticolResult<()> {
-    execute_direct_plan_impl::<true>(
+    execute_direct_plan_impl::<true, true>(
         plan,
         plan.row_groups(),
         None,
@@ -2097,7 +3766,7 @@ pub(crate) fn execute_direct_plan_profiled_with_fanout_and_traffic(
     timings: &mut DirectExecutionRoleTimings,
     traffic: &mut DirectArenaTrafficCounters,
 ) -> RusticolResult<()> {
-    execute_direct_plan_impl::<true>(
+    execute_direct_plan_impl::<true, true>(
         plan,
         plan.row_groups(),
         None,
@@ -2123,7 +3792,7 @@ pub fn execute_direct_plan_unprofiled(
 ) -> RusticolResult<()> {
     let mut unused = DirectExecutionCounters::default();
     let mut unused_timings = DirectExecutionRoleTimings::default();
-    execute_direct_plan_impl::<false>(
+    execute_direct_plan_impl::<false, true>(
         plan,
         plan.row_groups(),
         None,
@@ -2144,9 +3813,15 @@ pub(crate) fn execute_direct_plan_unprofiled_with_fanout(
     workspace: &mut DirectWorkspace<'_>,
     point_count: u32,
 ) -> RusticolResult<()> {
+    if point_count == 1
+        && plan.strategy() != RecurrenceStrategy::AllFlowUnion
+        && !direct_current_observation_active()
+    {
+        return fanout.execute_full_singleton_unprofiled(plan, executors, workspace);
+    }
     let mut unused = DirectExecutionCounters::default();
     let mut unused_timings = DirectExecutionRoleTimings::default();
-    execute_direct_plan_impl::<false>(
+    execute_direct_plan_impl::<false, true>(
         plan,
         plan.row_groups(),
         None,
@@ -2161,6 +3836,7 @@ pub(crate) fn execute_direct_plan_unprofiled_with_fanout(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub(crate) fn execute_direct_plan_selected_profiled_with_traffic(
     plan: &DirectRecurrencePlan,
     row_groups: &[DirectRowGroupDescriptor],
@@ -2172,7 +3848,7 @@ pub(crate) fn execute_direct_plan_selected_profiled_with_traffic(
     timings: &mut DirectExecutionRoleTimings,
     traffic: &mut DirectArenaTrafficCounters,
 ) -> RusticolResult<()> {
-    execute_direct_plan_impl::<true>(
+    execute_direct_plan_impl::<true, false>(
         plan,
         row_groups,
         Some(selected_sector_id),
@@ -2199,7 +3875,7 @@ pub(crate) fn execute_direct_plan_selected_profiled_with_fanout_and_traffic(
     timings: &mut DirectExecutionRoleTimings,
     traffic: &mut DirectArenaTrafficCounters,
 ) -> RusticolResult<()> {
-    execute_direct_plan_impl::<true>(
+    execute_direct_plan_impl::<true, false>(
         plan,
         row_groups,
         Some(selected_sector_id),
@@ -2213,6 +3889,7 @@ pub(crate) fn execute_direct_plan_selected_profiled_with_fanout_and_traffic(
     )
 }
 
+#[allow(dead_code)]
 pub(crate) fn execute_direct_plan_selected_unprofiled(
     plan: &DirectRecurrencePlan,
     row_groups: &[DirectRowGroupDescriptor],
@@ -2223,7 +3900,7 @@ pub(crate) fn execute_direct_plan_selected_unprofiled(
 ) -> RusticolResult<()> {
     let mut unused = DirectExecutionCounters::default();
     let mut unused_timings = DirectExecutionRoleTimings::default();
-    execute_direct_plan_impl::<false>(
+    execute_direct_plan_impl::<false, false>(
         plan,
         row_groups,
         Some(selected_sector_id),
@@ -2248,7 +3925,7 @@ pub(crate) fn execute_direct_plan_selected_unprofiled_with_fanout(
 ) -> RusticolResult<()> {
     let mut unused = DirectExecutionCounters::default();
     let mut unused_timings = DirectExecutionRoleTimings::default();
-    execute_direct_plan_impl::<false>(
+    execute_direct_plan_impl::<false, false>(
         plan,
         row_groups,
         Some(selected_sector_id),
@@ -2263,7 +3940,7 @@ pub(crate) fn execute_direct_plan_selected_unprofiled_with_fanout(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn execute_direct_plan_impl<const PROFILE: bool>(
+fn execute_direct_plan_impl<const PROFILE: bool, const ALLOW_INTERACTION_REWRITE: bool>(
     plan: &DirectRecurrencePlan,
     row_groups: &[DirectRowGroupDescriptor],
     selected_sector_id: Option<u32>,
@@ -2287,13 +3964,18 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             "direct contribution fanout program belongs to a different plan",
         ));
     }
-    let interaction_enabled = direct_interaction_execution_enabled(
+    let observation_active = direct_current_observation_active();
+    let interaction_enabled = direct_interaction_execution_enabled::<ALLOW_INTERACTION_REWRITE>(
         plan.strategy(),
         plan.row_groups(),
         row_groups,
         selected_sector_id,
         point_count,
-    );
+    ) && !observation_active;
+    // Observations promise materialized semantic currents. Bypass both native
+    // interaction rewrites and generic fanout scratch/replay while a capture
+    // is active so every authenticated row writes its ordinary destination.
+    let fanout = if observation_active { None } else { fanout };
     let mut initialized_contribution_stage = None;
     for (group_index, descriptor) in row_groups.iter().enumerate() {
         if descriptor.role == DirectExecutorRole::Source
@@ -2306,41 +3988,48 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             continue;
         }
         if interaction_enabled && let Some(fanout) = fanout {
-            match fanout
-                .interaction_actions
-                .get(group_index)
-                .copied()
-                .unwrap_or(DirectInteractionGroupAction::Normal)
-            {
+            match fanout.interactions.action(group_index) {
                 DirectInteractionGroupAction::Normal => {}
                 DirectInteractionGroupAction::Consumed => continue,
                 DirectInteractionGroupAction::Execute(stage_index) => {
+                    let (logical_groups, closure_group_index, logical_row_count) =
+                        fanout.interactions.logical_groups(stage_index)?;
                     let started = PROFILE.then(Instant::now);
-                    execute_direct_interaction_stage(fanout, stage_index, workspace)?;
-                    let stage = fanout
-                        .interaction_stages
-                        .get(stage_index as usize)
-                        .ok_or_else(|| {
-                            RusticolError::integrity(
-                                "direct interaction stage index is out of bounds",
-                            )
-                        })?;
+                    let (arena, momenta, parameters, factors) = workspace.raw_views()?;
+                    let closure_elapsed = fanout.interactions.execute::<PROFILE>(
+                        stage_index,
+                        arena,
+                        momenta,
+                        parameters,
+                        factors,
+                    )?;
                     if PROFILE {
-                        counters.contribution_calls += 2;
-                        counters.contribution_rows += stage.logical_row_count;
-                        timings.contribution += started
+                        counters.contribution_calls += logical_groups.len() as u64;
+                        counters.contribution_rows += logical_row_count;
+                        if let Some(closure_group_index) = closure_group_index {
+                            let closure = &row_groups[closure_group_index as usize];
+                            counters.closure_calls += 1;
+                            counters.closure_rows += u64::from(closure.row_count);
+                        }
+                        let elapsed = started
                             .expect("profiled interaction stage has a start time")
                             .elapsed();
+                        timings.contribution += elapsed.saturating_sub(closure_elapsed);
+                        timings.closure += closure_elapsed;
                         if let Some(traffic) = traffic.as_deref_mut() {
-                            for logical_group in stage.group_indices {
+                            for &logical_group in logical_groups {
                                 let logical_group = logical_group as usize;
                                 let logical = &row_groups[logical_group];
                                 traffic.record_call(logical.row_count, point_count);
                             }
+                            if let Some(closure_group_index) = closure_group_index {
+                                let closure = &row_groups[closure_group_index as usize];
+                                traffic.record_call(closure.row_count, point_count);
+                            }
                         }
                     }
                     #[cfg(any(test, feature = "on-the-fly-test-support"))]
-                    for logical_group in stage.group_indices {
+                    for &logical_group in logical_groups {
                         let logical_group = logical_group as usize;
                         let logical = &row_groups[logical_group];
                         let start = usize::try_from(logical.row_start).map_err(|_| {
@@ -2594,31 +4283,38 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
     Ok(())
 }
 
-fn direct_interaction_execution_enabled(
+#[inline(always)]
+fn direct_interaction_execution_enabled<const ALLOW_INTERACTION_REWRITE: bool>(
     strategy: RecurrenceStrategy,
     authoritative_groups: &[DirectRowGroupDescriptor],
     requested_groups: &[DirectRowGroupDescriptor],
     selected_sector_id: Option<u32>,
     point_count: u32,
 ) -> bool {
-    point_count == 1
+    ALLOW_INTERACTION_REWRITE
+        && point_count == 1
         && selected_sector_id.is_none()
         && strategy != RecurrenceStrategy::AllFlowUnion
         && requested_groups.len() == authoritative_groups.len()
         && std::ptr::eq(requested_groups.as_ptr(), authoritative_groups.as_ptr())
 }
 
-fn execute_direct_interaction_stage(
-    fanout: &DirectContributionFanoutProgram,
-    stage_index: u32,
-    workspace: &mut DirectWorkspace<'_>,
-) -> RusticolResult<()> {
-    let stage = fanout
-        .interaction_stages
-        .get(stage_index as usize)
-        .ok_or_else(|| RusticolError::integrity("direct interaction stage is out of bounds"))?;
-
-    let (arena, momenta, parameters, factors) = workspace.raw_views()?;
+fn execute_direct_interaction_stage_views<const PROFILE: bool>(
+    stage: &DirectInteractionStage,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
+) -> RusticolResult<Duration> {
+    let terminal = stage
+        .terminal
+        .as_ref()
+        .map(|terminal| DirectInteractionTerminalBatch {
+            partner_component_base: terminal.partner_component_base,
+            component_factor_start: terminal.component_factor_start,
+            amplitude_destination_count: terminal.amplitude_destination_count,
+            closures: &terminal.closures,
+        });
     unsafe {
         (stage.call)(
             stage.contexts,
@@ -2629,11 +4325,20 @@ fn execute_direct_interaction_stage(
             DirectInteractionBundleBatch {
                 anchors: &stage.anchors,
                 outputs: &stage.outputs,
+                tensor_outputs: &stage.tensor_outputs,
+                terminal,
                 requirements: stage.requirements,
                 atv_before_color: stage.atv_before_color,
             },
-        )
+        )?;
     }
+    let closure_started = (PROFILE && terminal.is_some()).then(Instant::now);
+    if let Some(terminal) = terminal {
+        unsafe {
+            crate::engine::execute_interaction_terminal_closures(arena, factors, terminal)?;
+        }
+    }
+    Ok(closure_started.map_or(Duration::ZERO, |started| started.elapsed()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3123,7 +4828,7 @@ fn observe_direct_current_rows(
     })
 }
 
-fn execute_certified_reuse_rows(
+pub(crate) fn execute_certified_reuse_rows(
     rows: &[DirectContributionRow],
     workspace: &mut DirectWorkspace<'_>,
     point_count: u32,
@@ -3177,6 +4882,17 @@ fn execute_certified_reuse_rows(
                 return Err(RusticolError::integrity(
                     "certified-reuse source or destination range is out of bounds",
                 ));
+            }
+            // Certified reuse is an exact algebraic scale-copy. In
+            // particular, an exact zero factor overwrites with zero even when
+            // the representative aliases a freshly initialized destination.
+            // Do not evaluate `NaN * 0.0`: without the former unconditional
+            // stage clear that would preserve stale arena payloads instead of
+            // materializing the certified zero current.
+            if factor_re == 0.0 && factor_im == 0.0 {
+                workspace.current_re[destination_start..destination_end].fill(0.0);
+                workspace.current_im[destination_start..destination_end].fill(0.0);
+                continue;
             }
             for point in 0..point_count {
                 let source_index = source_start + point;

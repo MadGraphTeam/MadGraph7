@@ -806,11 +806,15 @@ def _encode_symmetric_group_convolution(
     residual_pairs = tuple(
         (_entry_left(entry), _entry_right(entry)) for entry in residual_entries
     )
-    expected_residual_pairs = tuple(
-        (left, right)
-        for left in range(local_group_count)
-        for right in range(left, local_group_count)
-        if right >= eligible_group_count
+    expected_residual_pairs = (
+        tuple(
+            (left, right)
+            for left in range(local_group_count)
+            for right in range(left, local_group_count)
+            if right >= eligible_group_count
+        )
+        if block.residual_local_group_indices
+        else ()
     )
     if residual_pairs != expected_residual_pairs:
         raise RecurrenceColorCodecError(

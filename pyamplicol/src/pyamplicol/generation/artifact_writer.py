@@ -62,6 +62,7 @@ from .._internal.versions import (
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
     RUNTIME_PHYSICS_SCHEMA_VERSION,
@@ -100,9 +101,12 @@ from .recurrence_schedule_sharing import (
     RECURRENCE_PROCESS_BINDING_ABI,
     RECURRENCE_SCHEDULE_INDEX_PATH,
     RECURRENCE_SCHEDULE_SHARING_SCHEMA_VERSION,
+    RecurrenceProcessBinding,
+    RecurrenceProcessExecutorPack,
     RecurrenceProcessRemap,
     RecurrenceScheduleSharingPlan,
     intern_recurrence_schedules,
+    recurrence_helicity_selector_schedule_digest,
 )
 from .structural_source_proof import (
     ROLE as STRUCTURAL_SOURCE_PROOF_ROLE,
@@ -161,11 +165,18 @@ _RECURRENCE_RUNTIME_CONTAINER_PATH = "recurrence-runtime.pacbin"
 _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = "schedule/recurrence-direct-schedule-v2.bin"
 _RECURRENCE_COLOR_CONTRACTION_PATH = "recurrence-color.bin"
 _RECURRENCE_SCHEDULE_SHARING_EXTENSION = "recurrence_schedule_sharing"
+_RECURRENCE_HELICITY_SELECTOR_SCHEDULE_ROOT = "recurrence/schedules"
+_RECURRENCE_HELICITY_SELECTOR_BINDING_PATH = "helicity-selector-binding.bin"
+_RECURRENCE_HELICITY_DISPATCH_PATH = "recurrence-helicity-dispatch-v1.bin"
+_RECURRENCE_HELICITY_DISPATCH_ABI = "pyamplicol-recurrence-helicity-dispatch-v1"
 ON_THE_FLY_RUNTIME_KIND = "pyamplicol-runtime-on-the-fly-execution"
 ON_THE_FLY_RUNTIME_CONTAINER_KIND = "pyamplicol-on-the-fly-runtime-container"
 ON_THE_FLY_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
 ON_THE_FLY_RUNTIME_STORAGE_ABI = "pacbin-v1"
 ON_THE_FLY_PUBLIC_METADATA_KIND = "pyamplicol-on-the-fly-public-metadata"
+_RECURRENCE_HELICITY_SELECTOR_COMPANION_V2_KIND = (
+    "pyamplicol-recurrence-helicity-selector-companion-v2"
+)
 _ON_THE_FLY_RUNTIME_CONTAINER_PATH = "on-the-fly-runtime.pacbin"
 _ON_THE_FLY_PROCESS_SEED_MEMBER_PATH = "on-the-fly/process-seed-v1.bin"
 _ON_THE_FLY_COLOR_CONTRACTION_PATH = "on-the-fly-color.bin"
@@ -286,7 +297,42 @@ class RecurrenceProcessArtifact:
     generation_filters: Mapping[str, object]
     generation_profile: Mapping[str, object]
     recurrence_process_remap: RecurrenceProcessRemap
+    recurrence_process_executor_pack: RecurrenceProcessExecutorPack
+    process_digest: str
     process_support_mask: int = 1
+    helicity_selector_companion: RecurrenceHelicitySelectorPlanArtifact | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecurrenceHelicitySelectorPlanArtifact:
+    """Persisted physical-colour schedule for runtime singleton helicities.
+
+    The schedule uses the ordinary recurrence Direct-plan ABI with runtime
+    source-state dispatch.  It deliberately owns neither physics metadata nor
+    prepared-model state: those identities remain authenticated by the
+    enclosing recurrence process.
+    """
+
+    recurrence_schedule_path: Path
+    recurrence_base_schedule_digest: str
+    recurrence_schedule_digest: str
+    recurrence_native_schedule_semantic_digest: str
+    recurrence_schedule_size_bytes: int
+    recurrence_schedule_sha256: str
+    recurrence_schedule_member_count: int
+    recurrence_schedule_unpacked_size_bytes: int
+    recurrence_schedule_index_sha256: str
+    helicity_dispatch_path: Path
+    helicity_dispatch_size_bytes: int
+    helicity_dispatch_sha256: str
+    helicity_dispatch_base_runtime_layout_digest: str
+    helicity_dispatch_resolved_helicity_count: int
+    physical_destination_count: int
+    builder_input_sha256: str
+    inspection_summary: Mapping[str, object]
+    referenced_kernel_ids: frozenset[int]
+    recurrence_process_remap: RecurrenceProcessRemap
+    recurrence_process_executor_pack: RecurrenceProcessExecutorPack
 
 
 @dataclass(frozen=True, slots=True)
@@ -608,6 +654,156 @@ def _write_recurrence_schedule_roots(
     return plan.extension_mapping(index_sha256=index_record.sha256)
 
 
+def _validated_recurrence_helicity_selector_schedule_digest(
+    companion: RecurrenceHelicitySelectorPlanArtifact,
+) -> str:
+    base_digest = _canonical_sha256(
+        companion.recurrence_base_schedule_digest,
+        "recurrence helicity-selector base schedule digest",
+    )
+    native_digest = _canonical_sha256(
+        companion.recurrence_native_schedule_semantic_digest,
+        "recurrence helicity-selector native schedule digest",
+    )
+    if base_digest != native_digest:
+        raise ValueError(
+            "recurrence helicity-selector plan must use relation-free native "
+            "schedule identity"
+        )
+    digest = _canonical_sha256(
+        companion.recurrence_schedule_digest,
+        "recurrence helicity-selector schedule digest",
+    )
+    expected = recurrence_helicity_selector_schedule_digest(
+        base_digest,
+        companion.helicity_dispatch_sha256,
+    )
+    if digest != expected:
+        raise ValueError(
+            "recurrence helicity-selector root digest does not bind its Direct "
+            "plan and helicity dispatch"
+        )
+    return digest
+
+
+def _recurrence_helicity_selector_schedule_path(
+    companion: RecurrenceHelicitySelectorPlanArtifact,
+) -> str:
+    digest = _validated_recurrence_helicity_selector_schedule_digest(companion)
+    return (
+        f"{_RECURRENCE_HELICITY_SELECTOR_SCHEDULE_ROOT}/{digest}/"
+        f"{_RECURRENCE_RUNTIME_CONTAINER_PATH}"
+    )
+
+
+def _recurrence_helicity_dispatch_path(
+    companion: RecurrenceHelicitySelectorPlanArtifact,
+) -> str:
+    digest = _validated_recurrence_helicity_selector_schedule_digest(companion)
+    return (
+        f"{_RECURRENCE_HELICITY_SELECTOR_SCHEDULE_ROOT}/{digest}/"
+        f"{_RECURRENCE_HELICITY_DISPATCH_PATH}"
+    )
+
+
+def _write_recurrence_helicity_selector_schedule_roots(
+    evaluator_payloads: _EvaluatorPayloadCollector,
+    processes: Sequence[ProcessArtifact],
+    *,
+    recurrence_sharing: RecurrenceScheduleSharingPlan | None,
+) -> None:
+    """Stage every persisted selector schedule once by semantic digest."""
+
+    primary_by_digest = (
+        {}
+        if recurrence_sharing is None
+        else {schedule.digest: schedule for schedule in recurrence_sharing.schedules}
+    )
+    selector_by_digest: dict[str, RecurrenceHelicitySelectorPlanArtifact] = {}
+    reused_primary_digests: set[str] = set()
+    for process in processes:
+        if not isinstance(process, RecurrenceProcessArtifact):
+            continue
+        companion = process.helicity_selector_companion
+        if not isinstance(companion, RecurrenceHelicitySelectorPlanArtifact):
+            continue
+        digest = _validated_recurrence_helicity_selector_schedule_digest(companion)
+        primary = primary_by_digest.get(digest)
+        if primary is not None:
+            if (
+                primary.sha256 != companion.recurrence_schedule_sha256
+                or primary.size_bytes != companion.recurrence_schedule_size_bytes
+                or primary.member_count != companion.recurrence_schedule_member_count
+                or primary.unpacked_size_bytes
+                != companion.recurrence_schedule_unpacked_size_bytes
+                or primary.index_sha256 != companion.recurrence_schedule_index_sha256
+            ):
+                raise ValueError(
+                    "recurrence selector and primary schedule share a digest but "
+                    "not an identical payload"
+                )
+            selector_by_digest[digest] = companion
+            reused_primary_digests.add(digest)
+            continue
+        previous = selector_by_digest.get(digest)
+        if previous is not None:
+            if (
+                previous.recurrence_schedule_sha256
+                != companion.recurrence_schedule_sha256
+                or previous.recurrence_schedule_size_bytes
+                != companion.recurrence_schedule_size_bytes
+                or previous.recurrence_schedule_member_count
+                != companion.recurrence_schedule_member_count
+                or previous.recurrence_schedule_unpacked_size_bytes
+                != companion.recurrence_schedule_unpacked_size_bytes
+                or previous.recurrence_schedule_index_sha256
+                != companion.recurrence_schedule_index_sha256
+                or previous.helicity_dispatch_sha256
+                != companion.helicity_dispatch_sha256
+                or previous.helicity_dispatch_size_bytes
+                != companion.helicity_dispatch_size_bytes
+                or previous.helicity_dispatch_base_runtime_layout_digest
+                != companion.helicity_dispatch_base_runtime_layout_digest
+                or previous.helicity_dispatch_resolved_helicity_count
+                != companion.helicity_dispatch_resolved_helicity_count
+            ):
+                raise ValueError(
+                    "recurrence helicity-selector schedule digest maps to "
+                    "different payloads"
+                )
+            continue
+        selector_by_digest[digest] = companion
+
+    for digest, companion in sorted(selector_by_digest.items()):
+        if digest not in reused_primary_digests:
+            record = evaluator_payloads.add_file(
+                _recurrence_helicity_selector_schedule_path(companion),
+                companion.recurrence_schedule_path,
+                process_id=None,
+            )
+            if (
+                record.sha256 != companion.recurrence_schedule_sha256
+                or record.size_bytes != companion.recurrence_schedule_size_bytes
+            ):
+                raise ValueError(
+                    f"persisted recurrence helicity-selector schedule {digest} "
+                    "changed before publication"
+                )
+        dispatch_record = evaluator_payloads.add_file(
+            _recurrence_helicity_dispatch_path(companion),
+            companion.helicity_dispatch_path,
+            process_id=None,
+        )
+        if (
+            dispatch_record.sha256 != companion.helicity_dispatch_sha256
+            or dispatch_record.size_bytes != companion.helicity_dispatch_size_bytes
+        ):
+            raise ValueError(
+                f"persisted recurrence helicity dispatch {digest} changed before "
+                "publication"
+            )
+
+
 def write_schema_v3_artifact(
     destination: str | Path,
     *,
@@ -728,6 +924,11 @@ def write_schema_v3_artifact(
             if recurrence_sharing_plan is not None
             else None
         )
+        _write_recurrence_helicity_selector_schedule_roots(
+            evaluator_payloads,
+            processes,
+            recurrence_sharing=recurrence_sharing_plan,
+        )
         if existing is None:
             if progress_callback is not None:
                 progress_callback(
@@ -746,6 +947,8 @@ def write_schema_v3_artifact(
         retain_recurrence_templates = (
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in required_runtime_capabilities
             or ON_THE_FLY_RUNTIME_CAPABILITY in required_runtime_capabilities
+            or RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+            in required_runtime_capabilities
         )
         eager_kernel_ids = _prepared_kernel_ids(
             output,
@@ -773,6 +976,8 @@ def write_schema_v3_artifact(
                     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
                     in required_runtime_capabilities
                     or ON_THE_FLY_RUNTIME_CAPABILITY in required_runtime_capabilities
+                    or RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+                    in required_runtime_capabilities
                 ),
                 retain_recurrence_templates=retain_recurrence_templates,
             )
@@ -1317,6 +1522,7 @@ def _eager_prepared_pack_identity(
                 ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
                 ON_THE_FLY_RUNTIME_CAPABILITY,
                 ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+                RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
             }.intersection(_required_runtime_capabilities(existing.runtime))
         )
         or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
@@ -1497,6 +1703,46 @@ def _write_process_payloads(
             raise ValueError(
                 "recurrence color-contraction summary has no binary payload"
             )
+        companion_binding = None
+        companion = process.helicity_selector_companion
+        if isinstance(companion, RecurrenceHelicitySelectorPlanArtifact):
+            if process.color_accuracy not in {"nlc", "full"}:
+                raise ValueError(
+                    "persisted recurrence helicity-selector plan requires NLC/full"
+                )
+            companion_binding_record = RecurrenceProcessBinding(
+                process_id=process.process_id,
+                schedule_digest=companion.recurrence_schedule_digest,
+                native_schedule_semantic_digest=(
+                    companion.recurrence_native_schedule_semantic_digest
+                ),
+                process_digest=process.process_digest,
+                process_semantic_digest=companion.builder_input_sha256,
+                process_support_mask=process.process_support_mask,
+                remap=companion.recurrence_process_remap,
+                executor_pack=companion.recurrence_process_executor_pack,
+            )
+            stored_binding = evaluator_payloads.add_bytes(
+                f"{prefix}/{_RECURRENCE_HELICITY_SELECTOR_BINDING_PATH}",
+                companion_binding_record.payload,
+                process_id=process.process_id,
+            )
+            if (
+                stored_binding.sha256 != companion_binding_record.sha256
+                or stored_binding.size_bytes != len(companion_binding_record.payload)
+            ):
+                raise ValueError(
+                    "recurrence helicity-selector process binding changed during "
+                    "publication"
+                )
+            companion_binding = {
+                **companion_binding_record.to_mapping(),
+                "path": _RECURRENCE_HELICITY_SELECTOR_BINDING_PATH,
+            }
+        elif companion is not None:  # pragma: no cover - dataclass typing guard
+            raise TypeError(
+                "recurrence helicity-selector companion must be a persisted Direct plan"
+            )
         execution_record = builder.add_bytes(
             execution_path,
             _bounded_recurrence_execution_summary(
@@ -1504,6 +1750,7 @@ def _write_process_payloads(
                 schedule_path=schedule.artifact_path,
                 binding=binding.to_mapping(),
                 color_contraction_record=color_contraction_record,
+                companion_binding=companion_binding,
             ),
             role="evaluator-manifest",
             media_type="application/json",
@@ -1869,6 +2116,238 @@ def _on_the_fly_execution_summary(
         ) from exc
 
 
+def _recurrence_helicity_selector_companion_v2_manifest(
+    process: RecurrenceProcessArtifact,
+    companion: RecurrenceHelicitySelectorPlanArtifact,
+    *,
+    binding: Mapping[str, object],
+) -> dict[str, object]:
+    """Describe one pre-lowered, runtime-helicity-dispatched selector plan."""
+
+    process_digest = _canonical_sha256(
+        process.process_digest,
+        "recurrence helicity-selector process digest",
+    )
+    if binding.get("process_digest") != process_digest:
+        raise ValueError(
+            "recurrence helicity-selector binding disagrees with its process digest"
+        )
+    if binding.get("process_semantic_digest") != companion.builder_input_sha256:
+        raise ValueError(
+            "recurrence helicity-selector binding disagrees with its builder input"
+        )
+    if binding.get("schedule_digest") != companion.recurrence_schedule_digest:
+        raise ValueError(
+            "recurrence helicity-selector binding disagrees with its schedule"
+        )
+
+    companion_pack = companion.recurrence_process_executor_pack
+    primary_pack = process.recurrence_process_executor_pack
+    for name in (
+        "compiled_model_digest",
+        "recurrence_template_catalog_digest",
+        "prepared_kernel_pack_digest",
+        "direct_template_catalog_digest",
+    ):
+        if getattr(companion_pack, name) != getattr(primary_pack, name):
+            raise ValueError(
+                "recurrence helicity-selector executor pack disagrees with the "
+                f"primary {name.replace('_', ' ')}"
+            )
+    if (
+        companion_pack.prepared_kernel_pack_digest
+        != process.prepared_kernel_pack_digest
+    ):
+        raise ValueError(
+            "recurrence helicity-selector prepared-kernel identity disagrees "
+            "with its process"
+        )
+    if (
+        companion_pack.direct_template_catalog_digest
+        != process.direct_template_catalog_digest
+    ):
+        raise ValueError(
+            "recurrence helicity-selector direct-template identity disagrees "
+            "with its process"
+        )
+
+    primary_color = _deep_plain(process.color_contraction_summary)
+    if not isinstance(primary_color, dict):
+        raise TypeError(
+            "persisted recurrence helicity-selector plan requires the primary "
+            "color-contraction summary"
+        )
+    if (
+        process.color_accuracy not in {"nlc", "full"}
+        or primary_color.get("abi") != "pyamplicol-recurrence-color-contraction-v3"
+        or primary_color.get("color_accuracy") != process.color_accuracy
+    ):
+        raise ValueError(
+            "recurrence helicity-selector primary local-color view requires a "
+            "compatible complete-color reducer"
+        )
+    _validate_symmetric_group_fft_provenance(
+        primary_color,
+        context="recurrence primary color-contraction",
+    )
+    storage = primary_color.get("storage")
+    factorization_raw = primary_color.get("factorization")
+    factorization_kind = (
+        factorization_raw.get("kind")
+        if isinstance(factorization_raw, Mapping)
+        else None
+    )
+    component_count = _nonnegative_integer(
+        primary_color.get("component_count"),
+        "recurrence primary color-contraction component count",
+        minimum=1,
+    )
+    supported_primary_view = (
+        (storage == "expanded" and factorization_raw is None and component_count == 1)
+        or (
+            storage == "repeated"
+            and factorization_kind
+            in {None, "klein-four-walsh", "elementary-abelian-walsh"}
+        )
+        or (
+            storage == "convolution-kernels"
+            and factorization_kind == "symmetric-group-fourier"
+        )
+    )
+    if not supported_primary_view:
+        raise ValueError(
+            "recurrence helicity-selector primary local-color view requires a "
+            "direct, Walsh, or symmetric-group Fourier reducer"
+        )
+    group_count = _nonnegative_integer(
+        primary_color.get("group_count"),
+        "recurrence primary color-contraction group count",
+        minimum=1,
+    )
+    if group_count % component_count:
+        raise ValueError(
+            "recurrence primary color-contraction groups do not form complete "
+            "local component blocks"
+        )
+    local_group_count = group_count // component_count
+    physical_destination_count = _nonnegative_integer(
+        companion.physical_destination_count,
+        "recurrence helicity-selector physical destination count",
+        minimum=1,
+    )
+    if physical_destination_count != local_group_count:
+        raise ValueError(
+            "recurrence helicity-selector physical destinations do not match "
+            "the primary local color-group domain"
+        )
+    runtime_schedule = {
+        "kind": RECURRENCE_RUNTIME_CONTAINER_KIND,
+        "schema_version": RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION,
+        "storage_abi": RECURRENCE_RUNTIME_STORAGE_ABI,
+        "path": _recurrence_helicity_selector_schedule_path(companion),
+        "plan_member_path": _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH,
+        "size_bytes": _nonnegative_integer(
+            companion.recurrence_schedule_size_bytes,
+            "recurrence helicity-selector schedule size",
+            minimum=1,
+        ),
+        "sha256": _canonical_sha256(
+            companion.recurrence_schedule_sha256,
+            "recurrence helicity-selector schedule SHA-256",
+        ),
+        "member_count": _nonnegative_integer(
+            companion.recurrence_schedule_member_count,
+            "recurrence helicity-selector schedule member count",
+            minimum=1,
+        ),
+        "unpacked_size_bytes": _nonnegative_integer(
+            companion.recurrence_schedule_unpacked_size_bytes,
+            "recurrence helicity-selector schedule unpacked size",
+        ),
+        "index_sha256": _canonical_sha256(
+            companion.recurrence_schedule_index_sha256,
+            "recurrence helicity-selector schedule index SHA-256",
+        ),
+    }
+    inspection_summary = _deep_plain(companion.inspection_summary)
+    if not isinstance(inspection_summary, dict):
+        raise TypeError(
+            "recurrence helicity-selector inspection summary must be a mapping"
+        )
+    dispatch_layout_digest = _canonical_sha256(
+        companion.helicity_dispatch_base_runtime_layout_digest,
+        "recurrence helicity-dispatch base runtime-layout digest",
+    )
+    if inspection_summary.get("runtime_layout_digest") != dispatch_layout_digest:
+        raise ValueError(
+            "recurrence helicity dispatch disagrees with its base runtime layout"
+        )
+    native_schedule_digest = _canonical_sha256(
+        binding.get("native_schedule_semantic_digest"),
+        "recurrence helicity-selector binding native schedule digest",
+    )
+    if inspection_summary.get("schedule_digest") != native_schedule_digest:
+        raise ValueError(
+            "recurrence helicity-selector inspection summary disagrees with its "
+            "native Direct-plan identity"
+        )
+    helicity_dispatch = {
+        "abi": _RECURRENCE_HELICITY_DISPATCH_ABI,
+        "path": _recurrence_helicity_dispatch_path(companion),
+        "size_bytes": _nonnegative_integer(
+            companion.helicity_dispatch_size_bytes,
+            "recurrence helicity-dispatch size",
+            minimum=1,
+        ),
+        "sha256": _canonical_sha256(
+            companion.helicity_dispatch_sha256,
+            "recurrence helicity-dispatch SHA-256",
+        ),
+        "base_runtime_layout_digest": dispatch_layout_digest,
+        "resolved_helicity_count": _nonnegative_integer(
+            companion.helicity_dispatch_resolved_helicity_count,
+            "recurrence helicity-dispatch resolved-helicity count",
+            minimum=1,
+        ),
+    }
+    capabilities = list(_recurrence_process_runtime_capabilities(process))
+    plan = {
+        "kind": RECURRENCE_RUNTIME_KIND,
+        "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
+        "recurrence_plan_abi": RECURRENCE_PLAN_ABI,
+        "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_ABI,
+        "direct_template_abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
+        "direct_backend_abi": RECURRENCE_DIRECT_BACKEND_ABI,
+        "builder_input_sha256": _canonical_sha256(
+            companion.builder_input_sha256,
+            "recurrence helicity-selector builder input SHA-256",
+        ),
+        "prepared_kernel_pack_digest": _canonical_sha256(
+            process.prepared_kernel_pack_digest,
+            "recurrence helicity-selector prepared-kernel pack SHA-256",
+        ),
+        "direct_template_catalog_digest": _canonical_sha256(
+            process.direct_template_catalog_digest,
+            "recurrence helicity-selector direct-template catalog SHA-256",
+        ),
+        "required_runtime_capabilities": capabilities,
+        "runtime_schedule": runtime_schedule,
+        "helicity_dispatch": helicity_dispatch,
+        "process_binding": _deep_plain(binding),
+        "inspection_summary": inspection_summary,
+    }
+    return {
+        "schema_version": 2,
+        "kind": _RECURRENCE_HELICITY_SELECTOR_COMPANION_V2_KIND,
+        "process_digest": process_digest,
+        "plan": plan,
+        "color_contraction": {
+            "source": "primary",
+            "view": "primary-local-color-view-v1",
+        },
+    }
+
+
 def _bounded_eager_execution_summary(
     process: EagerPlanV3ProcessArtifact,
 ) -> bytes:
@@ -1974,6 +2453,7 @@ def _bounded_recurrence_execution_summary(
     schedule_path: str,
     binding: Mapping[str, object],
     color_contraction_record: PayloadRecord | None,
+    companion_binding: Mapping[str, object] | None = None,
 ) -> bytes:
     try:
         content = (
@@ -1983,6 +2463,7 @@ def _bounded_recurrence_execution_summary(
                     schedule_path=schedule_path,
                     binding=binding,
                     color_contraction_record=color_contraction_record,
+                    companion_binding=companion_binding,
                 ),
                 ensure_ascii=True,
                 allow_nan=False,
@@ -2004,7 +2485,16 @@ def _recurrence_execution_manifest(
     schedule_path: str,
     binding: Mapping[str, object],
     color_contraction_record: PayloadRecord | None,
+    companion_binding: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
+    primary_process_digest = _canonical_sha256(
+        process.process_digest,
+        "recurrence primary process digest",
+    )
+    if binding.get("process_digest") != primary_process_digest:
+        raise ValueError(
+            "recurrence primary process binding disagrees with its process digest"
+        )
     capabilities = list(_recurrence_process_runtime_capabilities(process))
     runtime_schedule = {
         "kind": RECURRENCE_RUNTIME_CONTAINER_KIND,
@@ -2078,6 +2568,31 @@ def _recurrence_execution_manifest(
             "size_bytes": color_contraction_record.size_bytes,
             "sha256": color_contraction_record.sha256,
         }
+    companion = process.helicity_selector_companion
+    if companion is None:
+        if companion_binding is not None:
+            raise ValueError(
+                "recurrence without a helicity-selector companion carries "
+                "companion metadata"
+            )
+        companion_manifest = None
+        process_digest = None
+    elif isinstance(companion, RecurrenceHelicitySelectorPlanArtifact):
+        if color_contraction_record is None or companion_binding is None:
+            raise ValueError(
+                "persisted recurrence helicity-selector companion is missing its "
+                "authenticated plan or primary color metadata"
+            )
+        process_digest = primary_process_digest
+        companion_manifest = _recurrence_helicity_selector_companion_v2_manifest(
+            process,
+            companion,
+            binding=companion_binding,
+        )
+    else:  # pragma: no cover - dataclass typing guards ordinary construction
+        raise TypeError(
+            "recurrence helicity-selector companion must be a persisted Direct plan"
+        )
     return {
         "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
         "kind": RECURRENCE_RUNTIME_KIND,
@@ -2086,11 +2601,18 @@ def _recurrence_execution_manifest(
         "key": process.process_id,
         "color_accuracy": process.color_accuracy,
         "external_pdg_order": list(process.external_pdgs),
+        "process_digest": process_digest,
         "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
         "recurrence_plan_abi": RECURRENCE_PLAN_ABI,
         "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_ABI,
         "direct_template_abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
         "direct_backend_abi": RECURRENCE_DIRECT_BACKEND_ABI,
+        "compiled_model_digest": (
+            process.recurrence_process_executor_pack.compiled_model_digest
+        ),
+        "recurrence_template_catalog_digest": (
+            process.recurrence_process_executor_pack.recurrence_template_catalog_digest
+        ),
         "prepared_kernel_pack_digest": _canonical_sha256(
             process.prepared_kernel_pack_digest,
             "recurrence prepared-kernel pack SHA-256",
@@ -2108,6 +2630,7 @@ def _recurrence_execution_manifest(
             "workspace_mib": process.workspace_mib,
         },
         "runtime_metadata": runtime_metadata,
+        "helicity_selector_companion": companion_manifest,
         "plan": plan,
         "recurrence_summary": _deep_plain(process.recurrence_summary),
     }
@@ -4250,6 +4773,8 @@ def _recurrence_process_runtime_capabilities(
         RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
         color_capability,
     }
+    if process.helicity_selector_companion is not None:
+        capabilities.add(RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY)
     if _uses_symmetric_group_fft_color_contraction(process):
         capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
     return tuple(sorted(capabilities))
@@ -4634,6 +5159,10 @@ def _validate_recurrence_schedule_sharing(manifest: ArtifactManifest) -> None:
                 f"recurrence process binding {process_id!r} has an invalid ABI"
             )
         _canonical_sha256(
+            binding.get("process_digest"),
+            f"recurrence process binding {process_id!r} process digest",
+        )
+        _canonical_sha256(
             binding.get("process_semantic_digest"),
             f"recurrence process binding {process_id!r} semantic digest",
         )
@@ -4705,17 +5234,8 @@ def _recurrence_binding_native_schedule_semantic_digest(
     *,
     process_id: str,
 ) -> str:
-    # Direct-plan-v2 artifacts published before relation-policy separation
-    # embedded the native identity in schedule_digest. Only an absent field
-    # receives that compatibility fallback; an explicitly malformed value
-    # must still fail closed.
-    value = (
-        binding["native_schedule_semantic_digest"]
-        if "native_schedule_semantic_digest" in binding
-        else binding.get("schedule_digest")
-    )
     return _canonical_sha256(
-        value,
+        binding.get("native_schedule_semantic_digest"),
         (f"recurrence process binding {process_id!r} native schedule semantic digest"),
     )
 
@@ -5038,6 +5558,7 @@ __all__ = [
     "EagerPlanV3ProcessArtifact",
     "OnTheFlyProcessArtifact",
     "ProcessArtifact",
+    "RecurrenceHelicitySelectorPlanArtifact",
     "RecurrenceProcessArtifact",
     "build_api_validation_points",
     "write_schema_v3_artifact",

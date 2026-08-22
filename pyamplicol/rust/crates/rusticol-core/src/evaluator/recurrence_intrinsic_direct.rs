@@ -13,8 +13,8 @@ use crate::recurrence::direct_backend::{
     DirectContributionFanoutScale, DirectExecutorHandle, DirectFactorView,
     DirectFinalizationExecutor, DirectInteractionBundleBatch, DirectInteractionExecutorContexts,
     DirectInteractionIntrinsicKind, DirectInteractionOperand, DirectInteractionOperands,
-    DirectInteractionRuntimeRequirements, DirectInteractionVectorParent, DirectMomentumView,
-    DirectParameterView,
+    DirectInteractionRuntimeRequirements, DirectInteractionTerminalBatch,
+    DirectInteractionVectorParent, DirectMomentumView, DirectParameterView,
 };
 use crate::recurrence::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DIRECT_NONE_U32, DirectContributionRow,
@@ -1288,15 +1288,23 @@ impl DirectContributionFanoutFormula<6> for VectorWedgeVectorToAntisymmetricTens
                 )
             };
         }
-        [
-            left[0].mul(right[1]).sub(left[1].mul(right[0])),
-            left[0].mul(right[2]).sub(left[2].mul(right[0])),
-            left[0].mul(right[3]).sub(left[3].mul(right[0])),
-            left[1].mul(right[2]).sub(left[2].mul(right[1])),
-            left[1].mul(right[3]).sub(left[3].mul(right[1])),
-            left[2].mul(right[3]).sub(left[3].mul(right[2])),
-        ]
+        vector_wedge_vector_loaded(left, right)
     }
+}
+
+#[inline(always)]
+fn vector_wedge_vector_loaded(
+    left: [ComplexValue; 4],
+    right: [ComplexValue; 4],
+) -> [ComplexValue; 6] {
+    [
+        left[0].mul(right[1]).sub(left[1].mul(right[0])),
+        left[0].mul(right[2]).sub(left[2].mul(right[0])),
+        left[0].mul(right[3]).sub(left[3].mul(right[0])),
+        left[1].mul(right[2]).sub(left[2].mul(right[1])),
+        left[1].mul(right[3]).sub(left[3].mul(right[1])),
+        left[2].mul(right[3]).sub(left[3].mul(right[2])),
+    ]
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1311,8 +1319,9 @@ unsafe fn execute_contribution_fanout<F, const N: usize>(
 where
     F: DirectContributionFanoutFormula<N>,
 {
-    // The private batch is produced only by `DirectContributionFanoutProgram`.
-    // Its row spans and all raw views were validated before this call.
+    // The private batch is produced only by a cold-authenticated direct or
+    // family-local fanout program. Its row spans and all raw views were
+    // validated before this call.
     let context = unsafe { &*context.cast::<RecurrenceIntrinsicScale>() };
     let context_scale = effective_context_scale(*context, parameters)
         .map_err(|_| RusticolError::evaluation("fused contribution fanout scale is unavailable"))?
@@ -1460,7 +1469,10 @@ unsafe fn execute_interaction_bundle(
     factors: DirectFactorView,
     batch: DirectInteractionBundleBatch<'_>,
 ) -> RusticolResult<()> {
-    if contexts.color.is_null() || contexts.antisymmetric_tensor_vector.is_null() {
+    if contexts.color.is_null()
+        || contexts.antisymmetric_tensor_vector.is_null()
+        || (!batch.tensor_outputs.is_empty() && contexts.vector_wedge_vector.is_null())
+    {
         return Err(RusticolError::evaluation(
             "direct interaction bundle has a null intrinsic context",
         ));
@@ -1482,6 +1494,56 @@ unsafe fn execute_interaction_bundle(
         .map_err(|_| RusticolError::evaluation("interaction color scale is unavailable"))?;
     let atv_context_scale = effective_context_scale(*atv_context, parameters)
         .map_err(|_| RusticolError::evaluation("interaction tensor-vector scale is unavailable"))?;
+    if batch.tensor_outputs.is_empty() && batch.terminal.is_none() {
+        return unsafe {
+            execute_vector_interaction_bundle(
+                arena,
+                momenta,
+                factors,
+                batch,
+                stride,
+                color_context_scale,
+                atv_context_scale,
+            )
+        };
+    }
+    let wedge_context_scale = if batch.tensor_outputs.is_empty() {
+        None
+    } else {
+        let wedge_context = unsafe {
+            &*contexts
+                .vector_wedge_vector
+                .cast::<RecurrenceIntrinsicScale>()
+        };
+        Some(
+            effective_context_scale(*wedge_context, parameters).map_err(|_| {
+                RusticolError::evaluation("interaction vector-wedge scale is unavailable")
+            })?,
+        )
+    };
+    let terminal_inputs = if let Some(terminal) = batch.terminal {
+        let mut partner = [ComplexValue::ZERO; 4];
+        let mut projection_weights = [ComplexValue::ZERO; 4];
+        for component in 0..4 {
+            partner[component] = unsafe {
+                load_current(
+                    arena,
+                    terminal.partner_component_base + component as u32,
+                    stride,
+                    0,
+                )
+            };
+            let factor_id = terminal.component_factor_start + component as u32;
+            let component_factor = ComplexValue::new(
+                unsafe { *factors.values_re.add(factor_id as usize) },
+                unsafe { *factors.values_im.add(factor_id as usize) },
+            );
+            projection_weights[component] = partner[component].mul(component_factor);
+        }
+        Some(projection_weights)
+    } else {
+        None
+    };
 
     for anchor in batch.anchors {
         let mut left = [ComplexValue::ZERO; 4];
@@ -1527,6 +1589,8 @@ unsafe fn execute_interaction_bundle(
         let color_output =
             color_ordered_three_vector_loaded(left, right, parent0_momentum, parent1_momentum)
                 .map(|value| value.mul(color_context_scale));
+        let wedge_output = wedge_context_scale
+            .map(|scale| vector_wedge_vector_loaded(left, right).map(|value| value.mul(scale)));
 
         let mut atv_outputs = [[ComplexValue::ZERO; 4]; 2];
         let atv_count = match anchor.operands {
@@ -1573,6 +1637,211 @@ unsafe fn execute_interaction_bundle(
             .get(anchor.output_start as usize..anchor.output_end as usize)
             .ok_or_else(|| RusticolError::integrity("interaction output range is out of bounds"))?;
 
+        if let Some(projection_weights) = terminal_inputs {
+            let projected_color = project_terminal_vector(color_output, projection_weights);
+            let mut projected_atv = [ComplexValue::ZERO; 2];
+            for slot in 0..atv_count {
+                projected_atv[slot] =
+                    project_terminal_vector(atv_outputs[slot], projection_weights);
+            }
+            for output in outputs {
+                let color_scale =
+                    unsafe { live_interaction_factor(factors, output.exact_factor_ids[0]) };
+                let scaled_color = apply_fanout_scale(projected_color, color_scale);
+                let mut combined = if batch.atv_before_color {
+                    ComplexValue::ZERO
+                } else {
+                    scaled_color
+                };
+                for (slot, projected) in projected_atv.iter().take(atv_count).enumerate() {
+                    let scale = unsafe {
+                        live_interaction_factor(factors, output.exact_factor_ids[slot + 1])
+                    };
+                    combined = combined.add(apply_fanout_scale(*projected, scale));
+                }
+                if batch.atv_before_color {
+                    combined = combined.add(scaled_color);
+                }
+                let destination = output.destination_component_base as usize * stride;
+                unsafe {
+                    if output.initialize {
+                        *arena.current_re.add(destination) = combined.re;
+                        *arena.current_im.add(destination) = combined.im;
+                    } else {
+                        *arena.current_re.add(destination) += combined.re;
+                        *arena.current_im.add(destination) += combined.im;
+                    }
+                }
+            }
+        } else {
+            for output in outputs {
+                let color_scale =
+                    unsafe { live_interaction_factor(factors, output.exact_factor_ids[0]) };
+                let scaled_color = color_output.map(|value| apply_fanout_scale(value, color_scale));
+                let mut combined = if batch.atv_before_color {
+                    [ComplexValue::ZERO; 4]
+                } else {
+                    scaled_color
+                };
+                for (slot, atv_output) in atv_outputs.iter().take(atv_count).enumerate() {
+                    let scale = unsafe {
+                        live_interaction_factor(factors, output.exact_factor_ids[slot + 1])
+                    };
+                    for component in 0..4 {
+                        combined[component] = combined[component]
+                            .add(apply_fanout_scale(atv_output[component], scale));
+                    }
+                }
+                if batch.atv_before_color {
+                    for component in 0..4 {
+                        combined[component] = combined[component].add(scaled_color[component]);
+                    }
+                }
+                for (component, value) in combined.into_iter().enumerate() {
+                    let destination =
+                        (output.destination_component_base as usize + component) * stride;
+                    unsafe {
+                        if output.initialize {
+                            *arena.current_re.add(destination) = value.re;
+                            *arena.current_im.add(destination) = value.im;
+                        } else {
+                            *arena.current_re.add(destination) += value.re;
+                            *arena.current_im.add(destination) += value.im;
+                        }
+                    }
+                }
+            }
+        }
+        let tensor_outputs = batch
+            .tensor_outputs
+            .get(anchor.tensor_output_start as usize..anchor.tensor_output_end as usize)
+            .ok_or_else(|| {
+                RusticolError::integrity("interaction tensor-output range is out of bounds")
+            })?;
+        if !tensor_outputs.is_empty() {
+            let wedge_output = wedge_output.ok_or_else(|| {
+                RusticolError::integrity("interaction tensor outputs have no wedge evaluation")
+            })?;
+            for output in tensor_outputs {
+                let scale = unsafe { live_interaction_factor(factors, output.exact_factor_id) };
+                for (component, value) in wedge_output.into_iter().enumerate() {
+                    let value = apply_fanout_scale(value, scale);
+                    let destination =
+                        (output.destination_component_base as usize + component) * stride;
+                    unsafe {
+                        if output.initialize {
+                            *arena.current_re.add(destination) = value.re;
+                            *arena.current_im.add(destination) = value.im;
+                        } else {
+                            *arena.current_re.add(destination) += value.re;
+                            *arena.current_im.add(destination) += value.im;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn execute_vector_interaction_bundle(
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+    factors: DirectFactorView,
+    batch: DirectInteractionBundleBatch<'_>,
+    stride: usize,
+    color_context_scale: ComplexValue,
+    atv_context_scale: ComplexValue,
+) -> RusticolResult<()> {
+    for anchor in batch.anchors {
+        let mut left = [ComplexValue::ZERO; 4];
+        let mut right = [ComplexValue::ZERO; 4];
+        let mut parent0_momentum = [0.0; 4];
+        let mut parent1_momentum = [0.0; 4];
+        for component in 0..4 {
+            left[component] = unsafe {
+                load_current(
+                    arena,
+                    anchor.parent_component_bases[0] + component as u32,
+                    stride,
+                    0,
+                )
+            };
+            right[component] = unsafe {
+                load_current(
+                    arena,
+                    anchor.parent_component_bases[1] + component as u32,
+                    stride,
+                    0,
+                )
+            };
+            parent0_momentum[component] = unsafe {
+                load_momentum(
+                    momenta,
+                    anchor.parent_momentum_form_ids[0],
+                    component as u16,
+                    stride,
+                    0,
+                )
+            };
+            parent1_momentum[component] = unsafe {
+                load_momentum(
+                    momenta,
+                    anchor.parent_momentum_form_ids[1],
+                    component as u16,
+                    stride,
+                    0,
+                )
+            };
+        }
+        let color_output =
+            color_ordered_three_vector_loaded(left, right, parent0_momentum, parent1_momentum)
+                .map(|value| value.mul(color_context_scale));
+        let mut atv_outputs = [[ComplexValue::ZERO; 4]; 2];
+        let atv_count = match anchor.operands {
+            DirectInteractionOperands::None => 0,
+            DirectInteractionOperands::One(operand) => {
+                atv_outputs[0] = unsafe {
+                    evaluate_interaction_operand(
+                        operand,
+                        left,
+                        right,
+                        arena,
+                        stride,
+                        atv_context_scale,
+                    )
+                };
+                1
+            }
+            DirectInteractionOperands::Two(operands) => {
+                atv_outputs[0] = unsafe {
+                    evaluate_interaction_operand(
+                        operands[0],
+                        left,
+                        right,
+                        arena,
+                        stride,
+                        atv_context_scale,
+                    )
+                };
+                atv_outputs[1] = unsafe {
+                    evaluate_interaction_operand(
+                        operands[1],
+                        left,
+                        right,
+                        arena,
+                        stride,
+                        atv_context_scale,
+                    )
+                };
+                2
+            }
+        };
+        let outputs = batch
+            .outputs
+            .get(anchor.output_start as usize..anchor.output_end as usize)
+            .ok_or_else(|| RusticolError::integrity("interaction output range is out of bounds"))?;
         for output in outputs {
             let color_scale =
                 unsafe { live_interaction_factor(factors, output.exact_factor_ids[0]) };
@@ -1582,12 +1851,12 @@ unsafe fn execute_interaction_bundle(
             } else {
                 scaled_color
             };
-            for slot in 0..atv_count {
+            for (slot, atv_output) in atv_outputs.iter().take(atv_count).enumerate() {
                 let scale =
                     unsafe { live_interaction_factor(factors, output.exact_factor_ids[slot + 1]) };
                 for component in 0..4 {
-                    combined[component] = combined[component]
-                        .add(apply_fanout_scale(atv_outputs[slot][component], scale));
+                    combined[component] =
+                        combined[component].add(apply_fanout_scale(atv_output[component], scale));
                 }
             }
             if batch.atv_before_color {
@@ -1610,6 +1879,57 @@ unsafe fn execute_interaction_bundle(
         }
     }
     Ok(())
+}
+
+pub(crate) unsafe fn execute_interaction_terminal_closures(
+    arena: DirectArenaView,
+    factors: DirectFactorView,
+    terminal: DirectInteractionTerminalBatch<'_>,
+) -> RusticolResult<()> {
+    if arena.point_stride == 0
+        || arena.current_re.is_null()
+        || arena.current_im.is_null()
+        || arena.amplitude_re.is_null()
+        || arena.amplitude_im.is_null()
+        || factors.values_re.is_null()
+        || factors.values_im.is_null()
+    {
+        return Err(RusticolError::evaluation(
+            "terminal interaction closure arenas are unavailable",
+        ));
+    }
+    let stride = arena.point_stride as usize;
+    let required_amplitude_scalars = u64::from(terminal.amplitude_destination_count)
+        .checked_mul(u64::from(arena.point_stride))
+        .ok_or_else(|| RusticolError::evaluation("terminal amplitude range overflows"))?;
+    if required_amplitude_scalars > arena.amplitude_scalar_len {
+        return Err(RusticolError::evaluation(
+            "terminal interaction amplitude arena is too short",
+        ));
+    }
+    for closure in terminal.closures {
+        let root = unsafe { load_current(arena, closure.root_component_base, stride, 0) };
+        let row_factor = unsafe { live_interaction_factor(factors, closure.exact_factor_id) };
+        let value = apply_fanout_scale(root, row_factor);
+        let destination = closure.amplitude_destination_id as usize * stride;
+        unsafe {
+            *arena.amplitude_re.add(destination) += value.re;
+            *arena.amplitude_im.add(destination) += value.im;
+        }
+    }
+    Ok(())
+}
+
+#[inline(always)]
+fn project_terminal_vector(
+    vector: [ComplexValue; 4],
+    projection_weights: [ComplexValue; 4],
+) -> ComplexValue {
+    let mut projected = ComplexValue::ZERO;
+    for component in 0..4 {
+        projected = projected.add(vector[component].mul(projection_weights[component]));
+    }
+    projected
 }
 
 #[inline(always)]
@@ -2633,9 +2953,10 @@ unsafe fn set_pre_scaled_current_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::DirectClosureRow;
     use crate::recurrence::direct_backend::{
         DirectContributionFanoutBundle, DirectContributionFanoutRun, DirectInteractionAnchor,
-        DirectInteractionOutput,
+        DirectInteractionOutput, DirectInteractionTensorOutput, DirectInteractionTerminalClosure,
     };
 
     #[derive(Clone, Copy, Debug)]
@@ -3481,6 +3802,8 @@ mod tests {
                 }),
                 output_start: 0,
                 output_end: 2,
+                tensor_output_start: 0,
+                tensor_output_end: 0,
             },
             DirectInteractionAnchor {
                 parent_component_bases: [8, 12],
@@ -3491,6 +3814,8 @@ mod tests {
                 }),
                 output_start: 2,
                 output_end: 3,
+                tensor_output_start: 0,
+                tensor_output_end: 0,
             },
         ];
         let outputs = [
@@ -3522,6 +3847,7 @@ mod tests {
         let atv_handle = atv.contribution_handle();
         let contexts = DirectInteractionExecutorContexts {
             color: color_handle.context,
+            vector_wedge_vector: ptr::null(),
             antisymmetric_tensor_vector: atv_handle.context,
         };
 
@@ -3649,6 +3975,8 @@ mod tests {
                         DirectInteractionBundleBatch {
                             anchors: &anchors,
                             outputs: &outputs,
+                            tensor_outputs: &[],
+                            terminal: None,
                             requirements: DirectInteractionRuntimeRequirements {
                                 current_component_count: 48,
                                 momentum_form_count: 4,
@@ -3713,6 +4041,8 @@ mod tests {
                 DirectInteractionBundleBatch {
                     anchors: &anchors,
                     outputs: &outputs,
+                    tensor_outputs: &[],
+                    terminal: None,
                     requirements: DirectInteractionRuntimeRequirements {
                         current_component_count: 48,
                         momentum_form_count: 4,
@@ -3727,6 +4057,457 @@ mod tests {
         assert!(error.to_string().contains("factor catalog"));
         assert_eq!(rejected_re, before_re);
         assert_eq!(rejected_im, before_im);
+    }
+
+    #[test]
+    fn interaction_bundle_fuses_sibling_wedge_with_live_complex_scales() {
+        let mut seed_re = vec![0.0; 48];
+        let mut seed_im = vec![0.0; 48];
+        for component in 0..48 {
+            seed_re[component] = -0.8 + component as f64 * 0.071;
+            seed_im[component] = 0.3 - component as f64 * 0.043;
+        }
+        let momenta_values = [0.7, -1.1, 0.4, 1.6, -0.2, 0.9, -1.3, 0.5];
+        let parameters_re = [0.61];
+        let parameters_im = [-0.29];
+        let factors_re = [1.2, -0.73, 0.44, -1.31];
+        let factors_im = [-0.17, 0.36, 0.28, -0.09];
+        let color_rows = [
+            DirectContributionRow {
+                parent0_component_base: 0,
+                parent1_component_base_or_sentinel: 4,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: 1,
+                destination_component_base: 20,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            },
+            DirectContributionRow {
+                exact_factor_id: 1,
+                flags: 0,
+                ..DirectContributionRow {
+                    parent0_component_base: 0,
+                    parent1_component_base_or_sentinel: 4,
+                    parent0_momentum_form_id: 0,
+                    parent1_momentum_form_id_or_sentinel: 1,
+                    destination_component_base: 20,
+                    exact_factor_id: 0,
+                    selector_domain_id: 0,
+                    flags: 0,
+                }
+            },
+        ];
+        let atv_rows = [
+            DirectContributionRow {
+                parent0_component_base: 8,
+                parent1_component_base_or_sentinel: 0,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: 0,
+                destination_component_base: 20,
+                exact_factor_id: 2,
+                selector_domain_id: 0,
+                flags: 0,
+            },
+            DirectContributionRow {
+                exact_factor_id: 3,
+                ..DirectContributionRow {
+                    parent0_component_base: 8,
+                    parent1_component_base_or_sentinel: 0,
+                    parent0_momentum_form_id: 0,
+                    parent1_momentum_form_id_or_sentinel: 0,
+                    destination_component_base: 20,
+                    exact_factor_id: 2,
+                    selector_domain_id: 0,
+                    flags: 0,
+                }
+            },
+        ];
+        let wedge_rows = [
+            DirectContributionRow {
+                destination_component_base: 40,
+                exact_factor_id: 0,
+                flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+                ..color_rows[0]
+            },
+            DirectContributionRow {
+                destination_component_base: 40,
+                exact_factor_id: 1,
+                flags: 0,
+                ..color_rows[1]
+            },
+        ];
+        let color = LoadedRecurrenceIntrinsicDirectExecutor::load(
+            RecurrenceContributionIntrinsicKind::ColorOrderedThreeVector,
+            RecurrenceIntrinsicScale::new(0.73, -0.21, Some(0)).unwrap(),
+        );
+        let atv = LoadedRecurrenceIntrinsicDirectExecutor::load(
+            RecurrenceContributionIntrinsicKind::AntisymmetricTensorVectorToVector,
+            RecurrenceIntrinsicScale::new(-0.37, 0.42, Some(0)).unwrap(),
+        );
+        let wedge = LoadedRecurrenceIntrinsicDirectExecutor::load(
+            RecurrenceContributionIntrinsicKind::VectorWedgeVectorToAntisymmetricTensor,
+            RecurrenceIntrinsicScale::new(0.28, 0.63, Some(0)).unwrap(),
+        );
+        let color_handle = color.contribution_handle();
+        let atv_handle = atv.contribution_handle();
+        let wedge_handle = wedge.contribution_handle();
+        let momentum_view = DirectMomentumView {
+            values: momenta_values.as_ptr(),
+            scalar_len: momenta_values.len() as u64,
+            form_count: 2,
+            lorentz_component_count: 4,
+            point_stride: 1,
+        };
+        let parameter_view = DirectParameterView {
+            values_re: parameters_re.as_ptr(),
+            values_im: parameters_im.as_ptr(),
+            value_count: 1,
+        };
+        let factor_view = DirectFactorView {
+            values_re: factors_re.as_ptr(),
+            values_im: factors_im.as_ptr(),
+            value_count: factors_re.len() as u32,
+        };
+        let arena = |re: &mut [f64], im: &mut [f64]| DirectArenaView {
+            current_re: re.as_mut_ptr(),
+            current_im: im.as_mut_ptr(),
+            current_scalar_len: re.len() as u64,
+            amplitude_re: ptr::null_mut(),
+            amplitude_im: ptr::null_mut(),
+            amplitude_scalar_len: 0,
+            point_stride: 1,
+        };
+        let mut expected_re = seed_re.clone();
+        let mut expected_im = seed_im.clone();
+        for (handle, rows) in [
+            (color_handle, color_rows.as_slice()),
+            (atv_handle, atv_rows.as_slice()),
+            (wedge_handle, wedge_rows.as_slice()),
+        ] {
+            assert_eq!(
+                unsafe {
+                    (handle.call)(
+                        handle.context,
+                        arena(&mut expected_re, &mut expected_im),
+                        momentum_view,
+                        parameter_view,
+                        factor_view,
+                        rows.as_ptr(),
+                        rows.len() as u32,
+                        1,
+                    )
+                },
+                DIRECT_STATUS_OK
+            );
+        }
+
+        let anchors = [DirectInteractionAnchor {
+            parent_component_bases: [0, 4],
+            parent_momentum_form_ids: [0, 1],
+            operands: DirectInteractionOperands::One(DirectInteractionOperand {
+                tensor_component_base: 8,
+                vector_parent: DirectInteractionVectorParent::Parent0,
+            }),
+            output_start: 0,
+            output_end: 2,
+            tensor_output_start: 0,
+            tensor_output_end: 2,
+        }];
+        let outputs = [
+            DirectInteractionOutput {
+                destination_component_base: 20,
+                exact_factor_ids: [0, 2, 0],
+                initialize: true,
+            },
+            DirectInteractionOutput {
+                destination_component_base: 20,
+                exact_factor_ids: [1, 3, 0],
+                initialize: false,
+            },
+        ];
+        let tensor_outputs = [
+            DirectInteractionTensorOutput {
+                destination_component_base: 40,
+                exact_factor_id: 0,
+                initialize: true,
+            },
+            DirectInteractionTensorOutput {
+                destination_component_base: 40,
+                exact_factor_id: 1,
+                initialize: false,
+            },
+        ];
+        let mut actual_re = seed_re.clone();
+        let mut actual_im = seed_im.clone();
+        unsafe {
+            execute_interaction_bundle(
+                DirectInteractionExecutorContexts {
+                    color: color_handle.context,
+                    vector_wedge_vector: wedge_handle.context,
+                    antisymmetric_tensor_vector: atv_handle.context,
+                },
+                arena(&mut actual_re, &mut actual_im),
+                momentum_view,
+                parameter_view,
+                factor_view,
+                DirectInteractionBundleBatch {
+                    anchors: &anchors,
+                    outputs: &outputs,
+                    tensor_outputs: &tensor_outputs,
+                    terminal: None,
+                    requirements: DirectInteractionRuntimeRequirements {
+                        current_component_count: 46,
+                        momentum_form_count: 2,
+                        parameter_count: 1,
+                        factor_count: 4,
+                    },
+                    atv_before_color: false,
+                },
+            )
+        }
+        .unwrap();
+        for component in (20..24).chain(40..46) {
+            let error = (actual_re[component] - expected_re[component])
+                .hypot(actual_im[component] - expected_im[component]);
+            let scale = actual_re[component]
+                .hypot(actual_im[component])
+                .max(expected_re[component].hypot(expected_im[component]))
+                .max(1.0);
+            assert!(error <= 2.0e-12 * scale, "component {component}: {error:e}");
+        }
+    }
+
+    #[test]
+    fn terminal_interaction_scalarization_matches_materialized_closure_replay() {
+        let mut seed_re = vec![0.0; 40];
+        let mut seed_im = vec![0.0; 40];
+        for component in 0..40 {
+            seed_re[component] = 0.17 - component as f64 * 0.039;
+            seed_im[component] = -0.41 + component as f64 * 0.052;
+        }
+        let momenta_values = [0.8, -0.5, 1.2, -1.4, -0.3, 1.1, 0.6, -0.9];
+        let parameters_re = [0.57];
+        let parameters_im = [0.23];
+        let factors_re = [1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0];
+        let factors_im = [0.0; 10];
+        let closure_rows = [
+            DirectClosureRow {
+                parent0_component_base: 20,
+                parent1_component_base_or_sentinel: 30,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: 0,
+                amplitude_destination_id: 0,
+                exact_factor_id: 8,
+                component_factor_start: 4,
+                component_count: 4,
+                selector_domain_id: 0,
+                flags: 0,
+            },
+            DirectClosureRow {
+                amplitude_destination_id: 1,
+                exact_factor_id: 9,
+                ..DirectClosureRow {
+                    parent0_component_base: 20,
+                    parent1_component_base_or_sentinel: 30,
+                    parent0_momentum_form_id: 0,
+                    parent1_momentum_form_id_or_sentinel: 0,
+                    amplitude_destination_id: 0,
+                    exact_factor_id: 8,
+                    component_factor_start: 4,
+                    component_count: 4,
+                    selector_domain_id: 0,
+                    flags: 0,
+                }
+            },
+        ];
+        let terminal_closures = [
+            DirectInteractionTerminalClosure {
+                root_component_base: 20,
+                amplitude_destination_id: 0,
+                exact_factor_id: 8,
+            },
+            DirectInteractionTerminalClosure {
+                root_component_base: 20,
+                amplitude_destination_id: 1,
+                exact_factor_id: 9,
+            },
+        ];
+        let terminal = DirectInteractionTerminalBatch {
+            partner_component_base: 30,
+            component_factor_start: 4,
+            amplitude_destination_count: 2,
+            closures: &terminal_closures,
+        };
+        let anchor = [DirectInteractionAnchor {
+            parent_component_bases: [0, 4],
+            parent_momentum_form_ids: [0, 1],
+            operands: DirectInteractionOperands::One(DirectInteractionOperand {
+                tensor_component_base: 8,
+                vector_parent: DirectInteractionVectorParent::Parent0,
+            }),
+            output_start: 0,
+            output_end: 2,
+            tensor_output_start: 0,
+            tensor_output_end: 0,
+        }];
+        let outputs = [
+            DirectInteractionOutput {
+                destination_component_base: 20,
+                exact_factor_ids: [0, 2, 0],
+                initialize: true,
+            },
+            DirectInteractionOutput {
+                destination_component_base: 20,
+                exact_factor_ids: [1, 3, 0],
+                initialize: false,
+            },
+        ];
+        let color = LoadedRecurrenceIntrinsicDirectExecutor::load(
+            RecurrenceContributionIntrinsicKind::ColorOrderedThreeVector,
+            RecurrenceIntrinsicScale::new(0.0, 0.69, None).unwrap(),
+        );
+        let atv = LoadedRecurrenceIntrinsicDirectExecutor::load(
+            RecurrenceContributionIntrinsicKind::AntisymmetricTensorVectorToVector,
+            RecurrenceIntrinsicScale::new(0.0, -0.41, None).unwrap(),
+        );
+        let color_handle = color.contribution_handle();
+        let atv_handle = atv.contribution_handle();
+        let contexts = DirectInteractionExecutorContexts {
+            color: color_handle.context,
+            vector_wedge_vector: ptr::null(),
+            antisymmetric_tensor_vector: atv_handle.context,
+        };
+        let momentum_view = DirectMomentumView {
+            values: momenta_values.as_ptr(),
+            scalar_len: momenta_values.len() as u64,
+            form_count: 2,
+            lorentz_component_count: 4,
+            point_stride: 1,
+        };
+        let parameter_view = DirectParameterView {
+            values_re: parameters_re.as_ptr(),
+            values_im: parameters_im.as_ptr(),
+            value_count: 1,
+        };
+        let factor_view = DirectFactorView {
+            values_re: factors_re.as_ptr(),
+            values_im: factors_im.as_ptr(),
+            value_count: factors_re.len() as u32,
+        };
+        let arena = |re: &mut [f64],
+                     im: &mut [f64],
+                     amplitude_re: &mut [f64],
+                     amplitude_im: &mut [f64]|
+         -> DirectArenaView {
+            DirectArenaView {
+                current_re: re.as_mut_ptr(),
+                current_im: im.as_mut_ptr(),
+                current_scalar_len: re.len() as u64,
+                amplitude_re: amplitude_re.as_mut_ptr(),
+                amplitude_im: amplitude_im.as_mut_ptr(),
+                amplitude_scalar_len: amplitude_re.len() as u64,
+                point_stride: 1,
+            }
+        };
+        let requirements = DirectInteractionRuntimeRequirements {
+            current_component_count: 34,
+            momentum_form_count: 2,
+            parameter_count: 0,
+            factor_count: factors_re.len() as u32,
+        };
+
+        let mut expected_re = seed_re.clone();
+        let mut expected_im = seed_im.clone();
+        let mut expected_amplitude_re = vec![0.13, -0.27];
+        let mut expected_amplitude_im = vec![-0.19, 0.08];
+        unsafe {
+            execute_interaction_bundle(
+                contexts,
+                arena(
+                    &mut expected_re,
+                    &mut expected_im,
+                    &mut expected_amplitude_re,
+                    &mut expected_amplitude_im,
+                ),
+                momentum_view,
+                parameter_view,
+                factor_view,
+                DirectInteractionBundleBatch {
+                    anchors: &anchor,
+                    outputs: &outputs,
+                    tensor_outputs: &[],
+                    terminal: None,
+                    requirements,
+                    atv_before_color: false,
+                },
+            )
+        }
+        .unwrap();
+        assert_eq!(
+            unsafe {
+                crate::engine::execute_closure_reduce_rows(
+                    ptr::null(),
+                    arena(
+                        &mut expected_re,
+                        &mut expected_im,
+                        &mut expected_amplitude_re,
+                        &mut expected_amplitude_im,
+                    ),
+                    momentum_view,
+                    parameter_view,
+                    factor_view,
+                    closure_rows.as_ptr(),
+                    closure_rows.len() as u32,
+                    1,
+                )
+            },
+            DIRECT_STATUS_OK
+        );
+
+        let mut actual_re = seed_re.clone();
+        let mut actual_im = seed_im.clone();
+        let mut actual_amplitude_re = vec![0.13, -0.27];
+        let mut actual_amplitude_im = vec![-0.19, 0.08];
+        let actual_arena = arena(
+            &mut actual_re,
+            &mut actual_im,
+            &mut actual_amplitude_re,
+            &mut actual_amplitude_im,
+        );
+        unsafe {
+            execute_interaction_bundle(
+                contexts,
+                actual_arena,
+                momentum_view,
+                parameter_view,
+                factor_view,
+                DirectInteractionBundleBatch {
+                    anchors: &anchor,
+                    outputs: &outputs,
+                    tensor_outputs: &[],
+                    terminal: Some(terminal),
+                    requirements,
+                    atv_before_color: false,
+                },
+            )
+        }
+        .unwrap();
+        unsafe { execute_interaction_terminal_closures(actual_arena, factor_view, terminal) }
+            .unwrap();
+
+        for destination in 0..2 {
+            let error = (actual_amplitude_re[destination] - expected_amplitude_re[destination])
+                .hypot(actual_amplitude_im[destination] - expected_amplitude_im[destination]);
+            let scale = actual_amplitude_re[destination]
+                .hypot(actual_amplitude_im[destination])
+                .max(expected_amplitude_re[destination].hypot(expected_amplitude_im[destination]))
+                .max(1.0);
+            assert!(
+                error <= 2.0e-12 * scale,
+                "destination {destination}: {error:e}"
+            );
+        }
     }
 
     #[test]

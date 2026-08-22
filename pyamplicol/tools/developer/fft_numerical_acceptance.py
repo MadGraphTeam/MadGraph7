@@ -47,7 +47,10 @@ from tools.developer.numerical_acceptance import (  # noqa: E402
 )
 from tools.developer.reference_capture.common import canonical_decimal  # noqa: E402
 from tools.performance_report.catalog import PROCESS_FAMILIES  # noqa: E402
-from tools.performance_report.models import Accuracy  # noqa: E402
+from tools.performance_report.models import (  # noqa: E402
+    Accuracy,
+    open_quark_line_count,
+)
 from tools.performance_report.selector_policy import (  # noqa: E402
     _preferred_helicities,
     fixed_selector_helicity,
@@ -74,9 +77,19 @@ METHODS: tuple[MethodName, ...] = ("direct", "symmetric-group-fft")
 MODELS: tuple[ModelName, ...] = ("built-in-sm", "ufo-sm")
 MODES: tuple[ModeName, ...] = ("recurrence", "on-the-fly")
 ACCURACIES: tuple[AccuracyName, ...] = ("full", "nlc")
-_INSPECTION_METHODS_BY_REQUEST: Mapping[MethodName, tuple[str | None, ...]] = {
-    "direct": (None,),
-    "symmetric-group-fft": (None, "symmetric-group-fourier"),
+
+_PURE_ADJOINT_REFLECTION_CASE_ID = "catalog:gg_gluons:n2"
+_OPEN_LINE_REFLECTION_CASE_ID = "catalog:gg_tt_jets:n2"
+# Query-family closures retain one amplitude destination per requested colour;
+# the certified reflection fold is visible in the shared current finalizations.
+_REFLECTION_CENSUS_FIELDS = (
+    "union_unique_current_count",
+    "union_contribution_rows",
+    "union_finalization_rows",
+)
+_EXPECTED_PURE_ADJOINT_REFLECTION_CENSUS = {
+    "direct": (22, 36, 6),
+    "symmetric-group-fft": (13, 18, 3),
 }
 
 
@@ -99,6 +112,34 @@ class CatalogCase:
     @property
     def artifact_name(self) -> str:
         return self.case_id.replace(":", "_").replace("-", "_")
+
+
+def _symmetric_group_degree(case: CatalogCase) -> int:
+    """Return the nontrivial group degree implied by one catalog process."""
+
+    initial, separator, final = case.process.partition(">")
+    if not separator:
+        raise FFTAcceptanceError(
+            f"catalog case {case.case_id} has no initial/final separator"
+        )
+    tokens = (*initial.split(), *final.split())
+    adjoint_count = sum(token == "g" for token in tokens)
+    try:
+        open_line_count = open_quark_line_count(case.process)
+    except ValueError as error:
+        raise FFTAcceptanceError(
+            f"catalog case {case.case_id} has invalid open-line content"
+        ) from error
+    return adjoint_count if open_line_count else max(adjoint_count - 1, 0)
+
+
+def _expected_inspection_method(
+    request_method: MethodName,
+    case: CatalogCase,
+) -> str | None:
+    if request_method == "direct":
+        return None
+    return "symmetric-group-fourier" if _symmetric_group_degree(case) >= 2 else None
 
 
 def catalog_cases(max_n_final: int = SELECTED_MAX_N_FINAL) -> tuple[CatalogCase, ...]:
@@ -162,6 +203,102 @@ def _mapping(value: object, where: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise FFTAcceptanceError(f"{where} must be an object")
     return cast(Mapping[str, object], value)
+
+
+def _reflection_census_triplet(
+    census: Mapping[str, object],
+    *,
+    label: str,
+) -> tuple[int, int, int]:
+    if (
+        census.get("basis") != "shared-query-family-union-v1"
+        or census.get("scope") != "active-family-union"
+    ):
+        raise FFTAcceptanceError(
+            f"{label} has the wrong active-family census identity: "
+            f"basis={census.get('basis')!r}, scope={census.get('scope')!r}"
+        )
+    values: list[int] = []
+    for field in _REFLECTION_CENSUS_FIELDS:
+        value = census.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise FFTAcceptanceError(
+                f"{label} has invalid {field}: {value!r}"
+            )
+        values.append(value)
+    return cast(tuple[int, int, int], tuple(values))
+
+
+def validate_on_the_fly_reflection_census(
+    *,
+    pure_adjoint_direct: Mapping[str, object],
+    pure_adjoint_fft: Mapping[str, object],
+    open_line_direct: Mapping[str, object],
+    open_line_fft: Mapping[str, object],
+) -> dict[str, object]:
+    """Lock the demonstrated n=2 production reflection boundary."""
+
+    pure = {
+        "direct": _reflection_census_triplet(
+            pure_adjoint_direct,
+            label=f"{_PURE_ADJOINT_REFLECTION_CASE_ID} direct",
+        ),
+        "symmetric-group-fft": _reflection_census_triplet(
+            pure_adjoint_fft,
+            label=f"{_PURE_ADJOINT_REFLECTION_CASE_ID} symmetric-group-fft",
+        ),
+    }
+    for method, expected in _EXPECTED_PURE_ADJOINT_REFLECTION_CENSUS.items():
+        observed = pure[method]
+        if observed != expected:
+            raise FFTAcceptanceError(
+                f"{_PURE_ADJOINT_REFLECTION_CASE_ID} {method} active-family census "
+                f"{_REFLECTION_CENSUS_FIELDS!r} is {observed!r}; expected {expected!r}"
+            )
+
+    open_direct = dict(open_line_direct)
+    open_fft = dict(open_line_fft)
+    open_triplets = {
+        "direct": _reflection_census_triplet(
+            open_direct,
+            label=f"{_OPEN_LINE_REFLECTION_CASE_ID} direct",
+        ),
+        "symmetric-group-fft": _reflection_census_triplet(
+            open_fft,
+            label=f"{_OPEN_LINE_REFLECTION_CASE_ID} symmetric-group-fft",
+        ),
+    }
+    if open_direct != open_fft:
+        differences = {
+            field: {
+                "direct": open_direct.get(field),
+                "symmetric-group-fft": open_fft.get(field),
+            }
+            for field in sorted(open_direct.keys() | open_fft.keys())
+            if open_direct.get(field) != open_fft.get(field)
+        }
+        raise FFTAcceptanceError(
+            f"{_OPEN_LINE_REFLECTION_CASE_ID} has a nontrivial FFT workspace but "
+            "an open color line, so its direct and FFT active-family censuses "
+            f"must be identical; differences={differences!r}"
+        )
+
+    return {
+        "basis": "selected-helicity-production-active-family-census-v1",
+        "source": "Runtime.inspect().on_the_fly_state.active_family_union_census",
+        "pure_adjoint": {
+            "case_id": _PURE_ADJOINT_REFLECTION_CASE_ID,
+            "fields": list(_REFLECTION_CENSUS_FIELDS),
+            "direct": list(pure["direct"]),
+            "symmetric_group_fft": list(pure["symmetric-group-fft"]),
+        },
+        "open_line": {
+            "case_id": _OPEN_LINE_REFLECTION_CASE_ID,
+            "direct_equals_symmetric_group_fft": True,
+            "fields": list(_REFLECTION_CENSUS_FIELDS),
+            "shared": list(open_triplets["direct"]),
+        },
+    }
 
 
 def _sequence(value: object, where: str) -> Sequence[object]:
@@ -1028,10 +1165,19 @@ class NativeArtifactBuilder:
             )
 
         inspection = inspect_artifact(path)
+        cases_by_name = {case.artifact_name: case for case in request.cases}
         public_names: set[str] = set()
         for process in inspection.processes:
-            public_names.add(process.id)
-            public_names.update(alias.id for alias in process.aliases)
+            process_names = (process.id, *(alias.id for alias in process.aliases))
+            public_names.update(process_names)
+            unknown_names = tuple(
+                name for name in process_names if name not in cases_by_name
+            )
+            if unknown_names:
+                raise FFTAcceptanceError(
+                    f"artifact {request.key.slug} contains unknown public process "
+                    f"names {unknown_names!r}"
+                )
             if process.color_accuracy != request.key.accuracy:
                 raise FFTAcceptanceError(
                     f"artifact {request.key.slug} contains the wrong color accuracy"
@@ -1040,12 +1186,22 @@ class NativeArtifactBuilder:
                 raise FFTAcceptanceError(
                     f"artifact {request.key.slug} contains the wrong execution mode"
                 )
+            expected_methods = {
+                _expected_inspection_method(request.key.method, cases_by_name[name])
+                for name in process_names
+            }
+            if len(expected_methods) != 1:
+                raise FFTAcceptanceError(
+                    f"artifact {request.key.slug} aliases processes with different "
+                    "symmetric-group eligibility"
+                )
+            expected_method = expected_methods.pop()
             method = process.recurrence_color_contraction_method
-            expected_methods = _INSPECTION_METHODS_BY_REQUEST[request.key.method]
-            if method not in expected_methods:
+            if method != expected_method:
                 raise FFTAcceptanceError(
                     f"artifact {request.key.slug} carries inspection method "
-                    f"{method!r}; expected one of {expected_methods!r}"
+                    f"{method!r}; expected {expected_method!r} for public "
+                    f"processes {process_names!r}"
                 )
             if request.selected_source_helicities is None:
                 if process.selected_source_helicities:
@@ -1193,6 +1349,7 @@ def _evaluate_scalar(
     case: CatalogCase,
     *,
     selection: SelectionRecord | None,
+    active_family_census: dict[str, object] | None = None,
 ) -> object:
     from pyamplicol import Runtime
 
@@ -1262,6 +1419,34 @@ def _evaluate_scalar(
                 f"{case.case_id}/{record.request.key.slug} returned {len(values)} "
                 "matrix elements for one point"
             )
+        if active_family_census is not None:
+            if record.request.key.mode != "on-the-fly":
+                raise FFTAcceptanceError(
+                    "active-family census capture requires an on-the-fly runtime"
+                )
+            if active_family_census:
+                raise FFTAcceptanceError(
+                    "active-family census capture destination must start empty"
+                )
+            inspect = getattr(runtime, "inspect", None)
+            if not callable(inspect):
+                raise FFTAcceptanceError(
+                    f"{case.case_id}/{record.request.key.slug} has no runtime "
+                    "inspection"
+                )
+            inspection = _mapping(
+                inspect(),
+                f"{case.case_id}/{record.request.key.slug} runtime inspection",
+            )
+            state = _mapping(
+                inspection.get("on_the_fly_state"),
+                f"{case.case_id}/{record.request.key.slug} on-the-fly state",
+            )
+            active = _mapping(
+                state.get("active_family_union_census"),
+                f"{case.case_id}/{record.request.key.slug} active-family census",
+            )
+            active_family_census.update(active)
         return values[0]
     finally:
         runtime.clear()
@@ -1286,6 +1471,9 @@ class NativeAcceptanceHarness:
         self.selections: dict[tuple[ModelName, AccuracyName, str], SelectionRecord] = {}
         self._values: dict[
             tuple[Path, str, tuple[str, tuple[int, ...]] | None], object
+        ] = {}
+        self._reflection_censuses: dict[
+            tuple[str, MethodName], dict[str, object]
         ] = {}
 
         for frozen in fixture.cases:
@@ -1518,9 +1706,81 @@ class NativeAcceptanceHarness:
         existing = self._values.get(key)
         if existing is not None:
             return existing
-        value = _evaluate_scalar(record, case, selection=selection)
+        artifact_key = record.request.key
+        census_key = (
+            (case.case_id, artifact_key.method)
+            if (
+                selection is not None
+                and case.case_id
+                in {
+                    _PURE_ADJOINT_REFLECTION_CASE_ID,
+                    _OPEN_LINE_REFLECTION_CASE_ID,
+                }
+                and artifact_key.model == "built-in-sm"
+                and artifact_key.mode == "on-the-fly"
+                and artifact_key.accuracy == "full"
+                and artifact_key.helicity_scope
+                == "complete-helicity-runtime-query-and-total"
+                and record.request.selected_source_helicities is None
+            )
+            else None
+        )
+        active_family_census: dict[str, object] | None = (
+            {} if census_key is not None else None
+        )
+        if active_family_census is None:
+            value = _evaluate_scalar(record, case, selection=selection)
+        else:
+            value = _evaluate_scalar(
+                record,
+                case,
+                selection=selection,
+                active_family_census=active_family_census,
+            )
+        if census_key is not None:
+            if active_family_census is None:
+                raise FFTAcceptanceError(
+                    f"production census capture was not initialized for {census_key!r}"
+                )
+            previous = self._reflection_censuses.setdefault(
+                census_key,
+                active_family_census,
+            )
+            if previous != active_family_census:
+                raise FFTAcceptanceError(
+                    f"production active-family census changed for {census_key!r}"
+                )
         self._values[key] = value
         return value
+
+    def _validated_reflection_census(self) -> dict[str, object]:
+        def required(case_id: str, method: MethodName) -> Mapping[str, object]:
+            try:
+                return self._reflection_censuses[(case_id, method)]
+            except KeyError as error:
+                raise FFTAcceptanceError(
+                    "the 574-comparison campaign did not evaluate the required "
+                    f"built-in-SM/full/on-the-fly selected census {case_id}/{method}"
+                ) from error
+
+        return validate_on_the_fly_reflection_census(
+            pure_adjoint_direct=required(
+                _PURE_ADJOINT_REFLECTION_CASE_ID,
+                "direct",
+            ),
+            pure_adjoint_fft=required(
+                _PURE_ADJOINT_REFLECTION_CASE_ID,
+                "symmetric-group-fft",
+            ),
+            open_line_direct=required(
+                _OPEN_LINE_REFLECTION_CASE_ID,
+                "direct",
+            ),
+            open_line_fft=required(
+                _OPEN_LINE_REFLECTION_CASE_ID,
+                "symmetric-group-fft",
+            ),
+        )
 
     def _record_direct_fft(
         self,
@@ -1652,6 +1912,7 @@ class NativeAcceptanceHarness:
                 f"campaign produced {len(self.comparisons)} comparisons; "
                 f"expected {len(expected)}"
             )
+        reflection_census = self._validated_reflection_census()
         accepted = all(bool(item["passed"]) for item in self.comparisons)
         cache_payload: list[dict[str, object]] = []
         for request, record in self.cache.entries:
@@ -1671,6 +1932,7 @@ class NativeAcceptanceHarness:
                 "relative_tolerance": canonical_decimal(RELATIVE_TOLERANCE),
                 "absolute_tolerance": None,
             },
+            "on_the_fly_reflection_census": reflection_census,
             "catalog": {
                 "source": "tools/performance_report/catalog.py:PROCESS_FAMILIES",
                 "selected_max_n_final": SELECTED_MAX_N_FINAL,

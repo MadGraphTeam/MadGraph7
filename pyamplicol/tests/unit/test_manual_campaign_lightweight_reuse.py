@@ -22,7 +22,7 @@ from tools.performance_report.artifacts import (
     ArtifactStore,
     ManifestValidationError,
 )
-from tools.performance_report.cache import empty_measurement
+from tools.performance_report.cache import digest_json, empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.manual_campaign import (
     Palette,
@@ -40,12 +40,82 @@ from tools.performance_report.models import (
     ResultStatus,
     Workload,
 )
+from tools.performance_report.runner import pointwise_validation
 from tools.performance_report.scheduler import CampaignSettings, plan_campaign
 from tools.performance_report.service import ReportPaths, ReportService
 from tools.performance_report.source_identity import ReportSourceIdentity
 from tools.performance_report.worker import _portable_current_paths
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _recurrence_validation(cell: CellSpec) -> dict[str, object]:
+    point_digest = "a" * 64
+    ordering = "b" * 64
+
+    def resolved(precision: int, source: str) -> dict[str, object]:
+        point = pointwise_validation(
+            1.0,
+            1.0,
+            candidate_scale=1.0,
+            baseline_scale=1.0,
+            comparison_binding={
+                "abi": "pyamplicol-report-resolved-component-scale-v1",
+                "point_digest": point_digest,
+                "helicity_ids": [],
+                "color_flow_ids": [],
+                "resolved_ordering_sha256": ordering,
+                "resolved_source_sha256": source,
+                "point_index": 0,
+            },
+        )
+        return {
+            "abi": "pyamplicol-report-resolved-sum-validation-v2",
+            "status": ResultStatus.OK.value,
+            "maximum_absolute_difference": 0.0,
+            "maximum_relative_difference": 0.0,
+            "maximum_conditioned_residual": 0.0,
+            "relative_tolerance": 1.0e-12,
+            "point_digest": point_digest,
+            "helicity_ids": [],
+            "color_flow_ids": [],
+            "resolved_ordering_sha256": ordering,
+            "resolved_source_sha256": source,
+            "scale_source": "resolved-component-l1",
+            "precision_digits": precision,
+            "points": [point],
+        }
+
+    binary64 = resolved(16, "c" * 64)
+    precision32 = resolved(32, "d" * 64)
+    selector_identity = {
+        "cell_id": cell.cell_id,
+        "accuracy": cell.measurement.accuracy.value,
+        "workload": cell.workload.value,
+        "selector_contract": None,
+        "value_kind": "matrix-element-p16-versus-p32",
+    }
+    return {
+        "status": ResultStatus.OK.value,
+        DIRECT_AGREEMENT_FIELD: [],
+        "resolved_sum": binary64,
+        "high_precision_resolved_sum": precision32,
+        "high_precision": pointwise_validation(
+            1.0,
+            1.0,
+            candidate_scale=1.0,
+            baseline_scale=1.0,
+            candidate_scale_source="resolved-component-l1-binary64",
+            baseline_scale_source="resolved-component-l1-p32",
+            comparison_binding={
+                "point_digest": point_digest,
+                "selector_component_identity": selector_identity,
+                "selector_component_sha256": digest_json(selector_identity),
+                "candidate_source_sha256": "c" * 64,
+                "baseline_source_sha256": "d" * 64,
+            },
+        ),
+    }
 
 
 def _cell_identity(cell: CellSpec) -> dict[str, object]:
@@ -172,10 +242,15 @@ def _write_lightweight_success_current(
                 "path": str(artifact_root),
                 "process_id": cell.process,
             },
-            "validation": {
-                "status": ResultStatus.OK.value,
-                DIRECT_AGREEMENT_FIELD: [],
-            },
+            "validation": (
+                _recurrence_validation(cell)
+                if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+                and cell.measurement.accuracy is not Accuracy.LC
+                else {
+                    "status": ResultStatus.OK.value,
+                    DIRECT_AGREEMENT_FIELD: [],
+                }
+            ),
             "resources": {},
             "provenance": {
                 "report_source_revision": revision,
@@ -282,10 +357,15 @@ def _publish_success_current(
             "standard_error_seconds_per_point": 0.0,
             "relative_standard_error": 0.0,
             "artifact": {"path": str(artifact), "process_id": cell.process},
-            "validation": {
-                "status": ResultStatus.OK.value,
-                DIRECT_AGREEMENT_FIELD: [],
-            },
+            "validation": (
+                _recurrence_validation(cell)
+                if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+                and cell.measurement.accuracy is not Accuracy.LC
+                else {
+                    "status": ResultStatus.OK.value,
+                    DIRECT_AGREEMENT_FIELD: [],
+                }
+            ),
             "resources": {},
             "provenance": {
                 "report_source_revision": revision,
@@ -584,6 +664,81 @@ def test_lightweight_source_identity_accepts_clean_packed_head(
     assert manual_campaign.lightweight_source_identity(repo).dirty_paths == (
         "<staged index differs from HEAD>",
     )
+
+
+def test_installed_source_identity_uses_candidate_checkout_only_when_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "campaign@example.invalid")
+    _git(repo, "config", "user.name", "Campaign Test")
+    (repo / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _git(repo, "add", "tracked.py")
+    _git(repo, "commit", "-q", "-m", "fixture")
+
+    from pyamplicol._internal import versions
+
+    monkeypatch.setattr(versions, "active_source_revision", lambda: None)
+    monkeypatch.setattr(versions, "active_source_checkout", lambda: repo)
+
+    with pytest.raises(
+        manual_campaign.ManualCampaignError,
+        match="has no source revision",
+    ):
+        manual_campaign.installed_source_identity()
+
+    identity = manual_campaign.installed_source_identity(
+        allow_candidate_checkout=True,
+    )
+    assert identity.revision == _git(repo, "rev-parse", "HEAD")
+    assert identity.tree == _git(repo, "rev-parse", "HEAD^{tree}")
+    assert identity.eligible
+
+
+def test_installed_dry_run_requests_candidate_checkout_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    requested: list[bool] = []
+
+    class IdentityRequested(RuntimeError):
+        pass
+
+    def record_request(*, allow_candidate_checkout: bool = False) -> None:
+        requested.append(allow_candidate_checkout)
+        raise IdentityRequested
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "installed_source_identity",
+        record_request,
+    )
+
+    assert (
+        manual_campaign.main(
+            (
+                "run",
+                "--dry-run",
+                "--table",
+                "scalar_contact",
+                "--multiplicity",
+                "2",
+                "--generation-engine",
+                "compiled",
+                "--no-color",
+            ),
+            repo_root=tmp_path,
+            docs_dir=tmp_path,
+            installed=True,
+            launcher_path_checked=True,
+        )
+        == 2
+    )
+
+    assert requested == [True]
 
 
 def test_measurement_readiness_distinguishes_absent_runtime_revision(
@@ -1444,7 +1599,6 @@ def test_selective_retry_injects_authority_chain_unless_explicitly_disabled(
     assert planned_batches[0][2].prerequisite_cell_ids == (recurrence.cell_id,)
     assert planned_batches[0][2].numerical_authority_cell_ids == (
         recurrence.cell_id,
-        amplicol.cell_id,
     )
 
     opt_out = build_parser().parse_args(

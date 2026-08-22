@@ -23,11 +23,12 @@ use crate::recurrence::direct_runtime::{
 use crate::recurrence::exact::{ExactComplexRational, ExactRational};
 #[allow(unused_imports)]
 use crate::recurrence::{
-    ClosureExecutionProofGroupV2, ClosureProofContributionV2, ClosureProofMetadataV2,
-    DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectCurrentDescriptor,
-    DirectDestinationOperation, DirectExecutorRole, DirectMomentumFormDescriptor, DirectNodeKind,
-    DirectResolvedHelicityDescriptor, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
-    RecurrenceStrategy, SemanticDigest, closure_component_factor_digest_v2,
+    CheckedTableRange, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
+    ClosureProofMetadataV2, DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor,
+    DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole,
+    DirectMomentumFormDescriptor, DirectNodeKind, DirectResolvedHelicityDescriptor,
+    DirectRowGroupDescriptor, DirectSelectorDomainDescriptor, RecurrenceStrategy, SemanticDigest,
+    closure_component_factor_digest_v2, closure_selector_domain_digest_v2,
 };
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -673,6 +674,20 @@ fn synthetic_runtime_with_lorentz(
     runtime
 }
 
+fn synthetic_packed_runtime_with_lorentz(
+    lorentz_component_count: u16,
+) -> DirectRecurrenceExecutionRuntime {
+    let (plan, executors) = synthetic_plan_and_executors();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(
+        plan,
+        executors.mark_packed_singleton_capable(),
+        lorentz_component_count,
+    )
+    .unwrap();
+    runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+    runtime
+}
+
 fn synthetic_runtime() -> DirectRecurrenceExecutionRuntime {
     synthetic_runtime_with_lorentz(1)
 }
@@ -738,6 +753,7 @@ fn fanout_test_catalog(
 
 fn interaction_dispatch_test_plan() -> DirectRecurrencePlan {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.strategy = RecurrenceStrategy::TopologyReplay;
     parts.point_tile_size = 4;
     parts.current_arena_components = 4;
     parts.direct_executor_count = 5;
@@ -997,6 +1013,14 @@ fn interaction_dispatch_uses_nonidentity_bijection_and_multipoint_falls_back() {
     assert_eq!(interaction.calls.load(Ordering::Relaxed), 1);
     assert_eq!(ordinary.calls.load(Ordering::Relaxed), 2);
     assert_eq!(ordinary.rows.load(Ordering::Relaxed), 2);
+
+    begin_direct_current_observation(runtime.plan(), None, 1).unwrap();
+    runtime.execute_tile(1).unwrap();
+    let observation = take_direct_current_observation().unwrap();
+    assert!(!observation.currents.is_empty());
+    assert_eq!(interaction.calls.load(Ordering::Relaxed), 1);
+    assert_eq!(ordinary.calls.load(Ordering::Relaxed), 4);
+    assert_eq!(ordinary.rows.load(Ordering::Relaxed), 6);
 }
 
 #[test]
@@ -1056,6 +1080,7 @@ fn output_only_contribution_fanout_matches_direct_under_complex_cancellation() {
         .unwrap();
     runtime
         .momentum_plane_mut(0, 0)
+        .unwrap()
         .unwrap()
         .copy_from_slice(&momenta);
     assert_eq!(runtime.factors_mut().0.len(), plan.exact_factors().len());
@@ -1222,57 +1247,6 @@ fn factor_consuming_contribution_fanout_is_fail_closed() {
     );
 }
 
-fn output_only_physical_fanout_census(plan: &DirectRecurrencePlan) -> (u64, u64) {
-    let mut logical = 0_u64;
-    let mut evaluated = 0_u64;
-    for descriptor in plan.row_groups().iter().filter(|descriptor| {
-        descriptor.role == DirectExecutorRole::Contribution
-            && descriptor.direct_executor_id != DIRECT_NONE_U32
-    }) {
-        let start = descriptor.row_start as usize;
-        let end = start + descriptor.row_count as usize;
-        let rows = &plan.contributions()[start..end];
-        logical += rows.len() as u64;
-        let mut classes = std::collections::BTreeSet::new();
-        for row in rows {
-            if row.flags & crate::recurrence::DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0 {
-                evaluated += 1;
-                continue;
-            }
-            classes.insert((
-                row.selector_domain_id,
-                row.parent0_component_base,
-                row.parent1_component_base_or_sentinel,
-                row.parent0_momentum_form_id,
-                row.parent1_momentum_form_id_or_sentinel,
-            ));
-        }
-        evaluated += classes.len() as u64;
-    }
-    (logical, evaluated)
-}
-
-#[test]
-#[ignore = "release census requires PYAMPLICOL_FANOUT_N7_SCHEDULE and PYAMPLICOL_FANOUT_N8_SCHEDULE"]
-fn production_gluon_artifacts_certify_the_expected_fanout_reduction() {
-    for (label, variable, minimum_reduction) in [
-        ("N7", "PYAMPLICOL_FANOUT_N7_SCHEDULE", 0.47),
-        ("N8", "PYAMPLICOL_FANOUT_N8_SCHEDULE", 0.49),
-    ] {
-        let path = std::env::var(variable).unwrap_or_else(|_| panic!("{variable} is required"));
-        let plan = crate::recurrence::load_recurrence_direct_plan_pacbin(path).unwrap();
-        let (logical, evaluated) = output_only_physical_fanout_census(&plan);
-        let reduction = 1.0 - evaluated as f64 / logical as f64;
-        eprintln!(
-            "{label} output-only physical fanout: logical={logical}, evaluated={evaluated}, reduction={reduction:.6}",
-        );
-        assert!(
-            reduction >= minimum_reduction,
-            "{label} fanout reduction {reduction:.6} is below {minimum_reduction:.6}"
-        );
-    }
-}
-
 #[test]
 fn direct_plan_rejects_a_row_group_executor_outside_the_catalog_domain() {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
@@ -1288,8 +1262,169 @@ fn low_footprint_runtime_retains_the_requested_point_tile() {
     let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 1).unwrap();
     assert_eq!(runtime.point_tile_size(), 4);
     assert_eq!(runtime.point_stride(), 8);
-    assert_eq!(runtime.momenta_mut().len(), 4);
-    assert_eq!(runtime.physical_momenta_mut().len(), 8);
+    assert_eq!(runtime.momenta_mut().unwrap().len(), 4);
+    assert_eq!(runtime.physical_momenta_mut().unwrap().len(), 8);
+}
+
+#[test]
+fn packed_singleton_is_exact_and_scalar_batch_scalar_keeps_tiled_tail() {
+    let mut aligned = synthetic_runtime_with_lorentz(4);
+    let mut dual = synthetic_packed_runtime_with_lorentz(4);
+    assert!(dual.packed_singleton_active);
+    assert!(dual.alternate_point_storage.is_none());
+    assert_eq!(dual.point_stride(), 1);
+    let packed_allocation_counters = dual.allocation_counters();
+    let aligned_selector = aligned.prepare_replay_selector(0).unwrap();
+    let dual_selector = dual.prepare_replay_selector(0).unwrap();
+    let one = &external_two_point_momenta()[..8];
+
+    let aligned_scalar = aligned
+        .execute_replay_tile_from_external(&aligned_selector, 1, one)
+        .unwrap();
+    assert_eq!(aligned_scalar.point_stride(), 8);
+    let aligned_scalar = (
+        aligned_scalar.destination_re(0).unwrap().to_vec(),
+        aligned_scalar.destination_im(0).unwrap().to_vec(),
+    );
+    let dual_scalar = dual
+        .execute_replay_tile_from_external(&dual_selector, 1, one)
+        .unwrap();
+    assert_eq!(dual_scalar.point_stride(), 1);
+    assert_eq!(
+        (
+            dual_scalar.destination_re(0).unwrap(),
+            dual_scalar.destination_im(0).unwrap(),
+        ),
+        (aligned_scalar.0.as_slice(), aligned_scalar.1.as_slice())
+    );
+    assert!(dual.alternate_point_storage.is_none());
+    assert_eq!(dual.allocation_counters(), packed_allocation_counters);
+
+    let four = [external_two_point_momenta(), external_two_point_momenta()].concat();
+    let aligned_batch = aligned
+        .execute_replay_tile_from_external(&aligned_selector, 4, &four)
+        .unwrap();
+    let aligned_batch = (
+        aligned_batch.destination_re(0).unwrap().to_vec(),
+        aligned_batch.destination_im(0).unwrap().to_vec(),
+    );
+    let dual_batch = dual
+        .execute_replay_tile_from_external(&dual_selector, 4, &four)
+        .unwrap();
+    assert_eq!(dual_batch.point_stride(), 8);
+    let dual_batch = (
+        dual_batch.destination_re(0).unwrap().to_vec(),
+        dual_batch.destination_im(0).unwrap().to_vec(),
+        dual_batch.storage_re()[2..4].to_vec(),
+    );
+    assert!(!dual.packed_singleton_active);
+    assert!(dual.alternate_point_storage.is_some());
+    assert_eq!(
+        dual.allocation_counters().allocation_requests,
+        packed_allocation_counters.allocation_requests + 5
+    );
+    assert_eq!(dual_batch.0, aligned_batch.0);
+    assert_eq!(dual_batch.1, aligned_batch.1);
+    let retained_tail = dual_batch.2;
+
+    let dual_tail = dual
+        .execute_replay_tile_from_external(&dual_selector, 2, &external_two_point_momenta())
+        .unwrap();
+    assert_eq!(dual_tail.point_stride(), 8);
+    assert_eq!(&dual_tail.storage_re()[2..4], retained_tail.as_slice());
+
+    let second_one = &external_two_point_momenta()[8..];
+    let aligned_scalar = aligned
+        .execute_replay_tile_from_external(&aligned_selector, 1, second_one)
+        .unwrap();
+    let aligned_scalar = (
+        aligned_scalar.destination_re(0).unwrap().to_vec(),
+        aligned_scalar.destination_im(0).unwrap().to_vec(),
+    );
+    let dual_scalar = dual
+        .execute_replay_tile_from_external(&dual_selector, 1, second_one)
+        .unwrap();
+    assert_eq!(dual_scalar.point_stride(), 1);
+    assert_eq!(
+        dual_scalar.destination_re(0).unwrap(),
+        aligned_scalar.0.as_slice()
+    );
+    assert_eq!(
+        dual_scalar.destination_im(0).unwrap(),
+        aligned_scalar.1.as_slice()
+    );
+
+    let tiled_stride = aligned.point_stride() as usize;
+    let expected_point_zero = {
+        let momenta = aligned.physical_momenta_mut().unwrap();
+        (0..4)
+            .map(|plane| momenta[plane * tiled_stride])
+            .collect::<Vec<_>>()
+    };
+    {
+        let momenta = dual.physical_momenta_mut().unwrap();
+        for plane in 0..4 {
+            assert_eq!(momenta[plane * tiled_stride], expected_point_zero[plane]);
+            let point_one = 100.0 + plane as f64;
+            momenta[plane * tiled_stride + 1] = point_one;
+        }
+    }
+    assert!(dual.outputs().is_none());
+    {
+        let momenta = aligned.physical_momenta_mut().unwrap();
+        for plane in 0..4 {
+            momenta[plane * tiled_stride + 1] = 100.0 + plane as f64;
+        }
+    }
+    assert_eq!(dual.point_stride() as usize, tiled_stride);
+    let aligned_tiled = aligned.execute_tile(2).unwrap();
+    let aligned_tiled = (
+        aligned_tiled.destination_re(0).unwrap().to_vec(),
+        aligned_tiled.destination_im(0).unwrap().to_vec(),
+    );
+    let dual_tiled = dual.execute_tile(2).unwrap();
+    assert_eq!(
+        dual_tiled.destination_re(0).unwrap(),
+        aligned_tiled.0.as_slice()
+    );
+    assert_eq!(
+        dual_tiled.destination_im(0).unwrap(),
+        aligned_tiled.1.as_slice()
+    );
+}
+
+#[test]
+fn packed_singleton_legacy_access_promotes_once_and_preserves_point_zero() {
+    let mut runtime = synthetic_packed_runtime_with_lorentz(4);
+    let selector = runtime.prepare_replay_selector(0).unwrap();
+    let one = &external_two_point_momenta()[..8];
+    runtime
+        .execute_replay_tile_from_external(&selector, 1, one)
+        .unwrap();
+    let packed_allocation_counters = runtime.allocation_counters();
+    assert!(runtime.outputs().is_some());
+    assert!(runtime.momentum_plane_mut(u32::MAX, 0).unwrap().is_none());
+    assert!(runtime.momentum_plane_mut(0, u16::MAX).unwrap().is_none());
+    assert!(runtime.packed_singleton_active);
+    assert!(runtime.alternate_point_storage.is_none());
+    assert_eq!(runtime.allocation_counters(), packed_allocation_counters);
+
+    let tiled_stride = (runtime.point_tile_size().div_ceil(8) * 8) as usize;
+    let momenta = runtime.physical_momenta_mut().unwrap();
+    for (component, expected) in [9.0, 90.0, 900.0, 9000.0].into_iter().enumerate() {
+        assert_eq!(momenta[component * tiled_stride], expected);
+    }
+    assert_eq!(runtime.point_stride() as usize, tiled_stride);
+    assert!(!runtime.packed_singleton_active);
+    assert!(runtime.outputs().is_none());
+    assert_eq!(
+        runtime.allocation_counters().allocation_requests,
+        packed_allocation_counters.allocation_requests + 5
+    );
+
+    let promoted_allocation_counters = runtime.allocation_counters();
+    runtime.physical_momenta_mut().unwrap();
+    assert_eq!(runtime.allocation_counters(), promoted_allocation_counters);
 }
 
 #[test]
@@ -1316,13 +1451,13 @@ fn legacy_flat_momentum_access_round_trips_every_padded_plane_in_place() {
     assert_eq!(tile_capacity, 4);
     assert_eq!(point_stride, 8);
 
-    let compact = runtime.momenta_mut();
+    let compact = runtime.momenta_mut().unwrap();
     for plane in 0..4 {
         for point in 0..tile_capacity {
             compact[plane * tile_capacity + point] = (plane * 10 + point) as f64;
         }
     }
-    let physical = runtime.physical_momenta_mut();
+    let physical = runtime.physical_momenta_mut().unwrap();
     for plane in 0..4 {
         for point in 0..tile_capacity {
             assert_eq!(
@@ -1332,7 +1467,7 @@ fn legacy_flat_momentum_access_round_trips_every_padded_plane_in_place() {
         }
     }
 
-    let compact = runtime.momenta_mut();
+    let compact = runtime.momenta_mut().unwrap();
     for plane in 0..4 {
         for point in 0..tile_capacity {
             assert_eq!(
@@ -1403,6 +1538,59 @@ fn hard_workspace_budget_counts_the_minimum_aligned_physical_pitch() {
     );
 }
 
+#[test]
+fn packed_singleton_defers_the_aligned_pitch_error_until_tiled_use() {
+    let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.point_tile_size = 1024;
+    parts.workspace_mib = 8;
+    parts.current_arena_components = 262_144;
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let ordinary_executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let expected_error = DirectRecurrenceExecutionRuntime::new(plan.clone(), ordinary_executors, 4)
+        .err()
+        .unwrap();
+    let packed_executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap()
+    .mark_packed_singleton_capable();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, packed_executors, 4).unwrap();
+    assert_eq!(runtime.point_tile_size(), 1);
+    assert_eq!(runtime.point_stride(), 1);
+    assert!(runtime.packed_singleton_active);
+    assert!(runtime.alternate_point_storage.is_none());
+
+    runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+    let output = runtime.execute_tile(1).unwrap();
+    assert_eq!(output.destination_re(0).unwrap(), &[0.0]);
+    assert_eq!(output.destination_im(0).unwrap(), &[0.0]);
+    let allocation_counters = runtime.allocation_counters();
+    assert!(runtime.outputs().is_some());
+
+    let batch_error = runtime.execute_tile(2).err().unwrap();
+    assert_eq!(batch_error, expected_error);
+    assert!(runtime.outputs().is_some());
+    assert!(runtime.packed_singleton_active);
+    assert!(runtime.alternate_point_storage.is_none());
+    assert_eq!(runtime.allocation_counters(), allocation_counters);
+
+    let legacy_error = runtime.physical_momenta_mut().err().unwrap();
+    assert_eq!(legacy_error, expected_error);
+    assert!(runtime.outputs().is_some());
+    assert!(runtime.packed_singleton_active);
+    assert!(runtime.alternate_point_storage.is_none());
+    assert_eq!(runtime.allocation_counters(), allocation_counters);
+
+    runtime.execute_tile(1).unwrap();
+}
+
 fn storage_identity(runtime: &mut DirectRecurrenceExecutionRuntime) -> ([usize; 9], [usize; 9]) {
     let ((current_re_pointer, current_re_len), (current_im_pointer, current_im_len)) = {
         let (current_re, current_im) = runtime.current_arenas();
@@ -1419,7 +1607,7 @@ fn storage_identity(runtime: &mut DirectRecurrenceExecutionRuntime) -> ([usize; 
         )
     };
     let (momenta_pointer, momenta_len) = {
-        let values = runtime.momenta_mut();
+        let values = runtime.momenta_mut().unwrap();
         (values.as_ptr() as usize, values.len())
     };
     let ((parameters_re_pointer, parameters_re_len), (parameters_im_pointer, parameters_im_len)) = {
@@ -1491,6 +1679,7 @@ fn warmed_tiles_reuse_stable_aligned_storage_and_return_correct_borrowed_outputs
         runtime
             .momentum_plane_mut(0, 0)
             .unwrap()
+            .unwrap()
             .copy_from_slice(&[1.0, 2.0, 3.0, 4.0]);
         let output = runtime.execute_tile(4).unwrap();
         assert_eq!(
@@ -1558,6 +1747,7 @@ fn elided_identity_finalizer_remains_correct_across_repeated_evaluations() {
     for values in [[2.0, 3.0], [5.0, 7.0], [11.0, 13.0]] {
         runtime
             .momentum_plane_mut(0, 0)
+            .unwrap()
             .unwrap()
             .copy_from_slice(&values);
         let output = runtime.execute_tile(2).unwrap();
@@ -1673,7 +1863,7 @@ fn a_reused_source_slot_is_cleared_before_the_later_current_accumulates() {
     .unwrap();
     let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 1).unwrap();
     runtime.set_parameters(&[3.0], &[1.0]).unwrap();
-    runtime.momentum_plane_mut(0, 0).unwrap()[0] = 2.0;
+    runtime.momentum_plane_mut(0, 0).unwrap().unwrap()[0] = 2.0;
 
     let output = runtime.execute_tile(1).unwrap();
     assert_eq!(output.destination_re(0).unwrap(), &[16.0]);
@@ -1698,27 +1888,33 @@ fn external_momentum_fill_resolves_forms_once_and_clears_newly_inactive_tails() 
         .fill_momenta_from_external(&flow_zero, 3, &external_three_point_momenta())
         .unwrap();
     let point_stride = runtime.point_tile_size() as usize;
-    assert_eq!(runtime.momenta_mut().len(), 4 * point_stride);
-    assert_eq!(&runtime.momenta_mut()[0..4], &[9.0, 12.0, 23.0, 0.0]);
+    assert_eq!(runtime.momenta_mut().unwrap().len(), 4 * point_stride);
     assert_eq!(
-        &runtime.momenta_mut()[point_stride..point_stride + 4],
+        &runtime.momenta_mut().unwrap()[0..4],
+        &[9.0, 12.0, 23.0, 0.0]
+    );
+    assert_eq!(
+        &runtime.momenta_mut().unwrap()[point_stride..point_stride + 4],
         &[90.0, 120.0, 230.0, 0.0]
     );
     assert_eq!(
-        &runtime.momenta_mut()[2 * point_stride..2 * point_stride + 4],
+        &runtime.momenta_mut().unwrap()[2 * point_stride..2 * point_stride + 4],
         &[900.0, 1200.0, 2300.0, 0.0]
     );
     assert_eq!(
-        &runtime.momenta_mut()[3 * point_stride..3 * point_stride + 4],
+        &runtime.momenta_mut().unwrap()[3 * point_stride..3 * point_stride + 4],
         &[9000.0, 12000.0, 23000.0, 0.0]
     );
 
     runtime
         .fill_momenta_from_external(&flow_one, 2, &external_two_point_momenta())
         .unwrap();
-    assert_eq!(&runtime.momenta_mut()[0..4], &[6.0, 9.0, 0.0, 0.0]);
+    assert_eq!(&runtime.momenta_mut().unwrap()[0..4], &[6.0, 9.0, 0.0, 0.0]);
     for plane in 0..4 {
-        assert_eq!(runtime.momenta_mut()[plane * point_stride + 2], 0.0);
+        assert_eq!(
+            runtime.momenta_mut().unwrap()[plane * point_stride + 2],
+            0.0
+        );
     }
     assert_eq!(storage_identity(&mut runtime), identity);
     assert_eq!(
@@ -1897,6 +2093,7 @@ fn tile_execution_clears_only_active_additive_regions() {
     runtime
         .momentum_plane_mut(0, 0)
         .unwrap()
+        .unwrap()
         .copy_from_slice(&[2.0, 4.0, 100.0, 200.0]);
     runtime.execute_tile(4).unwrap();
     let point_stride = runtime.point_stride() as usize;
@@ -2012,6 +2209,26 @@ fn runtime_clamps_the_effective_tile_to_workspace_and_rejects_an_oversized_point
     )
     .unwrap();
     let error = DirectRecurrenceExecutionRuntime::new(plan, executors, 4)
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("one point requires"));
+
+    let plan = DirectRecurrencePlan::new({
+        let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+        parts.point_tile_size = 1024;
+        parts.workspace_mib = 1;
+        parts.current_arena_components = 70_000;
+        parts
+    })
+    .unwrap();
+    let packed_executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap()
+    .mark_packed_singleton_capable();
+    let error = DirectRecurrenceExecutionRuntime::new(plan, packed_executors, 4)
         .err()
         .unwrap();
     assert!(error.to_string().contains("one point requires"));

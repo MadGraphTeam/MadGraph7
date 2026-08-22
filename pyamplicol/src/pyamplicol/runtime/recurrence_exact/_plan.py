@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
-from pyamplicol._internal.versions import PROCESS_ARTIFACT_SCHEMA_VERSION
+from pyamplicol._internal.versions import (
+    PROCESS_ARTIFACT_SCHEMA_VERSION,
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+)
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
 from pyamplicol.artifacts.manifest import ArtifactManifest
 from pyamplicol.models.prepared import (
@@ -699,10 +702,17 @@ def _validate_execution(
         if layout == "contracted-color-union"
         else _RECURRENCE_COLOR_CAPABILITY
     )
-    if set(_sequence(capabilities, "recurrence capabilities")) != {
+    required_capabilities = {
         RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
         color_capability,
-    }:
+    }
+    actual_capabilities = set(_sequence(capabilities, "recurrence capabilities"))
+    permitted_capabilities = required_capabilities | {
+        RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+    }
+    if not required_capabilities <= actual_capabilities or not (
+        actual_capabilities <= permitted_capabilities
+    ):
         raise CompatibilityError("unsupported recurrence runtime capability contract")
     color_accuracy = execution.get("color_accuracy")
     if (layout == "contracted-color-union") != (color_accuracy in {"nlc", "full"}):

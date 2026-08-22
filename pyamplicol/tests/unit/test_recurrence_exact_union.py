@@ -130,7 +130,8 @@ def test_recurrence_diagnostic_projection_uses_external_source_layout() -> None:
             {"label": 2, "pdg": 6, "role": "final"},
         ]
     }
-    executor._permutation = None
+    executor._representative_physics = executor._physics
+    executor._permutation = (0, 1)
 
     projected, metadata = executor._diagnostic_project_onshell(
         (((-5.0, 0.0, 0.0, 5.0), (24.9, 24.0, 0.0, 0.0)),),
@@ -701,7 +702,7 @@ def test_union_exact_resolved_values_sum_incoherently_by_flow(
         ],
         "color_accuracy": "lc",
     }
-    executor._permutation = None
+    executor._permutation = (0, 1)
     executor._native_runtime = object()
     (
         executor._helicity_representative,

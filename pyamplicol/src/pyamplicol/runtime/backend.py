@@ -20,6 +20,7 @@ from pyamplicol._internal.versions import (
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
     verify_native_module,
 )
@@ -609,7 +610,12 @@ class RusticolRuntimeBackend:
             )
 
     def _on_the_fly_runtime_state_census(self) -> Mapping[str, object] | None:
-        if self._execution_mode != "on-the-fly":
+        owns_companion = (
+            self._execution_mode == "recurrence"
+            and RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+            in self._required_runtime_capabilities
+        )
+        if self._execution_mode != "on-the-fly" and not owns_companion:
             return None
         loader = getattr(
             self._runtime,

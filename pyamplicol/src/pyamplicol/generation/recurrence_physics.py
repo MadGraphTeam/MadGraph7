@@ -54,6 +54,7 @@ _NORMALIZATION_EXTENSION_KEYS = (
     "coupling_policy",
 )
 _GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE = "helicity-equivalence:global-flip-v1"
+_ZERO_SECTOR_OWNER = 0xFFFF_FFFF
 
 
 def build_recurrence_normalization(
@@ -677,6 +678,7 @@ def build_recurrence_color_contraction(
     color_plan: GenericColorPlan,
     resolved_helicities: Sequence[Sequence[int]],
     amplitude_destinations: Sequence[tuple[int, int | None]],
+    certified_structural_zero_sector_ids: Sequence[int],
     *,
     contraction: str = "direct",
 ) -> ColorContractionPlan | None:
@@ -739,6 +741,7 @@ def build_recurrence_color_contraction(
             sector_owner_ids=recurrence_color_sector_owner_map(
                 logical,
                 active_sector_ids,
+                set(certified_structural_zero_sector_ids),
             ),
         )
     else:
@@ -877,6 +880,7 @@ def recurrence_color_contraction_destinations(
 def recurrence_color_sector_owner_map(
     logical: RecurrenceBuilderLogicalInputV1,
     active_sector_ids: set[int],
+    certified_structural_zero_sector_ids: set[int],
 ) -> tuple[int, ...]:
     """Return the independently derived canonical owner of every color sector.
 
@@ -916,23 +920,41 @@ def recurrence_color_sector_owner_map(
         raise ValueError(
             f"recurrence color destinations reference unknown sectors {sorted(unknown)}"
         )
-    result = []
+    certified = set(certified_structural_zero_sector_ids)
+    unknown_certified = certified.difference(range(len(sectors)))
+    if unknown_certified:
+        raise ValueError(
+            "recurrence structural-zero certificate references unknown sectors "
+            f"{sorted(unknown_certified)}"
+        )
+    overlap = certified.intersection(active)
+    if overlap:
+        raise ValueError(
+            "recurrence structural-zero certificate overlaps active sectors "
+            f"{sorted(overlap)}"
+        )
+    members_by_owner: dict[int, set[int]] = {}
     for sector_id, owner_id in enumerate(owners):
+        members_by_owner.setdefault(owner_id, set()).add(sector_id)
+    result = []
+    for _sector_id, owner_id in enumerate(owners):
         if owner_id in active:
             result.append(owner_id)
-        elif sector_id in active:
+            continue
+        active_members = members_by_owner[owner_id].intersection(active)
+        if active_members:
             raise ValueError(
-                f"recurrence color sector {sector_id} is active while its canonical "
-                f"owner {owner_id} is absent"
+                f"recurrence color sector class owned by {owner_id} has active "
+                f"non-owner sectors {sorted(active_members)}"
             )
-        else:
-            # Absence from the Rust-built schedule is not an independent
-            # structural-zero proof. Fail closed until the projection carries
-            # an exact model-owned zero certificate for this complete class.
+        uncertified = members_by_owner[owner_id].difference(certified)
+        if uncertified:
             raise ValueError(
                 f"recurrence color sector class owned by {owner_id} has no active "
-                "destination and no independent structural-zero certificate"
+                "destination and no complete structural-zero certificate; "
+                f"uncertified sectors={sorted(uncertified)}"
             )
+        result.append(_ZERO_SECTOR_OWNER)
     return tuple(result)
 
 

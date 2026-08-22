@@ -16,6 +16,8 @@ use super::{
 };
 use crate::{RusticolError, RusticolResult};
 
+pub const CLOSURE_TARGET_DOMAIN_PROOF_KIND: &str = "complete-recurrence-closure-target-domain-v1";
+
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
 }
@@ -114,6 +116,76 @@ pub struct ClosureProofContributionV2 {
 pub struct ClosureCandidateDomainCertificateV1 {
     accepted_candidate_count: u64,
     accepted_candidate_digest: SemanticDigest,
+}
+
+/// Exact proof that complete physical colour sectors have no retained closure.
+///
+/// The construction pass produces this certificate only after enumerating the
+/// complete physical-sector x resolved-helicity closure domain.  Its digest
+/// binds every target row, including rows with an empty candidate list, plus
+/// every original candidate identity and exact aggregate.  The compact sector
+/// list is therefore a consequence of an exhaustive native proof, not an
+/// inference from missing runtime destinations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClosureTargetDomainCertificateV1 {
+    physical_sector_count: u32,
+    resolved_helicity_count: u32,
+    certified_structural_zero_physical_sector_ids: Box<[u32]>,
+    semantic_digest: SemanticDigest,
+}
+
+impl ClosureTargetDomainCertificateV1 {
+    pub fn new(
+        physical_sector_count: u32,
+        resolved_helicity_count: u32,
+        certified_structural_zero_physical_sector_ids: Vec<u32>,
+        semantic_digest: SemanticDigest,
+    ) -> RusticolResult<Self> {
+        if physical_sector_count == 0 {
+            return Err(invalid(
+                "closure target-domain certificate requires physical sectors",
+            ));
+        }
+        if resolved_helicity_count == 0 {
+            return Err(invalid(
+                "closure target-domain certificate requires resolved helicities",
+            ));
+        }
+        if certified_structural_zero_physical_sector_ids
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+            || certified_structural_zero_physical_sector_ids
+                .iter()
+                .any(|sector_id| *sector_id >= physical_sector_count)
+        {
+            return Err(invalid(
+                "closure target-domain structural-zero sectors are not canonical",
+            ));
+        }
+        Ok(Self {
+            physical_sector_count,
+            resolved_helicity_count,
+            certified_structural_zero_physical_sector_ids:
+                certified_structural_zero_physical_sector_ids.into_boxed_slice(),
+            semantic_digest,
+        })
+    }
+
+    pub const fn physical_sector_count(&self) -> u32 {
+        self.physical_sector_count
+    }
+
+    pub const fn resolved_helicity_count(&self) -> u32 {
+        self.resolved_helicity_count
+    }
+
+    pub fn certified_structural_zero_physical_sector_ids(&self) -> &[u32] {
+        &self.certified_structural_zero_physical_sector_ids
+    }
+
+    pub const fn semantic_digest(&self) -> SemanticDigest {
+        self.semantic_digest
+    }
 }
 
 impl ClosureCandidateDomainCertificateV1 {
@@ -2053,6 +2125,7 @@ pub struct RecurrenceProgram {
     amplitude_destinations: Box<[RecurrenceAmplitudeDestination]>,
     closure_terms: Box<[RecurrenceClosureTerm]>,
     closure_proofs: ClosureProofMetadataV2,
+    closure_target_domain_certificate: Option<ClosureTargetDomainCertificateV1>,
     color_projection_certificate_body: Option<Box<[u8]>>,
 }
 
@@ -2120,6 +2193,7 @@ impl RecurrenceProgram {
             amplitude_destinations: amplitude_destinations.into_boxed_slice(),
             closure_terms: closure_terms.into_boxed_slice(),
             closure_proofs,
+            closure_target_domain_certificate: None,
             color_projection_certificate_body: None,
         };
         program.validate()?;
@@ -2172,6 +2246,44 @@ impl RecurrenceProgram {
 
     pub const fn closure_proofs(&self) -> &ClosureProofMetadataV2 {
         &self.closure_proofs
+    }
+
+    pub fn closure_target_domain_certificate(&self) -> Option<&ClosureTargetDomainCertificateV1> {
+        self.closure_target_domain_certificate.as_ref()
+    }
+
+    pub(crate) fn with_closure_target_domain_certificate(
+        mut self,
+        certificate: ClosureTargetDomainCertificateV1,
+    ) -> RusticolResult<Self> {
+        if self.strategy != RecurrenceStrategy::ContractedColorUnion {
+            return Err(invalid(
+                "closure target-domain certificate is restricted to contracted color",
+            ));
+        }
+        if certificate.physical_sector_count() != self.physical_sector_count
+            || certificate.resolved_helicity_count() as usize != self.resolved_helicities.len()
+        {
+            return Err(invalid(
+                "closure target-domain certificate disagrees with its recurrence domain",
+            ));
+        }
+        let active_sector_ids = self
+            .amplitude_destinations
+            .iter()
+            .map(|destination| destination.target_sector_id())
+            .collect::<BTreeSet<_>>();
+        if certificate
+            .certified_structural_zero_physical_sector_ids()
+            .iter()
+            .any(|sector_id| active_sector_ids.contains(sector_id))
+        {
+            return Err(invalid(
+                "closure target-domain certificate marks an active sector as structural zero",
+            ));
+        }
+        self.closure_target_domain_certificate = Some(certificate);
+        Ok(self)
     }
 
     pub(crate) fn with_color_projection_certificate_body(

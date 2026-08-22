@@ -2351,6 +2351,55 @@ fn portable_64le_target_accepts_only_feature_free_symjit_artifacts() {
     }
 }
 
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn packaged_portable_64le_o2_artifact_loads_through_native_runtime() {
+    let source = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../src/pyamplicol/assets/selftest/portable-64le/artifact"
+    ));
+    let mut staged = TestArtifact::new();
+    fs::remove_dir_all(&staged.root).expect("remove synthetic test artifact");
+    copy_test_artifact_tree(&source, &staged.root);
+    staged.manifest = serde_json::from_slice(
+        &fs::read(staged.root.join(ARTIFACT_MANIFEST_FILE)).expect("read portable manifest"),
+    )
+    .expect("parse portable manifest");
+    let source_artifact_id = staged.manifest["artifact_id"].clone();
+    staged.manifest["producer"]["version"] = json!(env!("CARGO_PKG_VERSION"));
+    staged.manifest["runtime"]["engine_version"] = json!(env!("CARGO_PKG_VERSION"));
+    staged.write_manifest();
+    assert_eq!(staged.manifest["artifact_id"], source_artifact_id);
+
+    let artifact =
+        VerifiedArtifact::open(&staged.root).expect("open staged portable source artifact");
+    assert_eq!(
+        artifact.manifest().producer.target.triple,
+        PORTABLE_64LE_ARTIFACT_TARGET
+    );
+
+    let runtime = crate::NativeRuntime::load(&staged.root, Some("d_dbar_to_z"), None)
+        .expect("load portable O2 artifact through the authoritative runtime");
+    assert_eq!(runtime.metadata().execution_mode, "compiled");
+}
+
+#[cfg(feature = "f64-symjit")]
+fn copy_test_artifact_tree(source: &Path, destination: &Path) {
+    fs::create_dir(destination).expect("create staged portable artifact");
+    for entry in fs::read_dir(source).expect("read portable artifact tree") {
+        let entry = entry.expect("read portable artifact entry");
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry.file_type().expect("read portable artifact file type");
+        if file_type.is_dir() {
+            copy_test_artifact_tree(&source_path, &destination_path);
+        } else {
+            assert!(file_type.is_file(), "portable artifact contains a symlink");
+            fs::copy(&source_path, &destination_path).expect("copy portable artifact payload");
+        }
+    }
+}
+
 #[test]
 fn target_metadata_requires_canonical_sorted_cpu_features() {
     let target = runtime_target_info();

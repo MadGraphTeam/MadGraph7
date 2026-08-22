@@ -380,6 +380,73 @@ def test_incomplete_channel_is_an_exact_direct_residual_and_cross_metric(
     _assert_dense_reconstruction(color_plan, block)
 
 
+def test_nontrivial_degree_without_a_complete_orbit_is_unsupported() -> None:
+    color_plan = _plan("d d~ > u u~ g g")
+    owners, owner_sector_ids, _ = _owner_descriptors(color_plan)
+    sector_id = owner_sector_ids[0]
+    descriptors = (
+        ColorGroupDescriptor(
+            group_id=0,
+            helicity_key=(),
+            sector_id=sector_id,
+            word=color_plan.sectors[sector_id].color_words[0],
+            helicity_weight=1.0,
+        ),
+    )
+
+    partition = certify_symmetric_group_orbits(
+        color_plan,
+        (sector_id,),
+        sector_owner_ids=owners,
+    )
+    contraction = build_symmetric_group_color_contraction_plan(
+        color_plan,
+        descriptors,
+        sector_owner_ids=owners,
+    )
+
+    assert partition.degree == 2
+    assert partition.orbits == ()
+    assert partition.residual_sector_ids == (sector_id,)
+    assert not contraction.supported
+    assert contraction.symmetric_group_block is None
+    assert contraction.reason == (
+        "symmetric-group FFT found no certified orbit at nontrivial degree 2"
+    )
+
+
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_three_open_lines_with_two_adjoints_reconstruct_exact_s_two_interference(
+    accuracy: str,
+) -> None:
+    color_plan = _plan("d d~ > u u~ s s~ g g", accuracy=accuracy)
+    owners, _, descriptors = _owner_descriptors(color_plan)
+
+    contraction = build_symmetric_group_color_contraction_plan(
+        color_plan,
+        descriptors,
+        sector_owner_ids=owners,
+    )
+
+    block = contraction.symmetric_group_block
+    assert block is not None
+    assert block.degree == 2
+    assert block.group_order == 2
+    assert block.channel_count > 1
+    sectors_by_id = {sector.id: sector for sector in color_plan.sectors}
+    assert {
+        len(sectors_by_id[block.local_sector_ids[coset[0]]].open_color_lines)
+        for coset in block.channel_cosets
+    } == {3}
+    dense = reconstruct_symmetric_group_dense_exact(block)
+    assert any(
+        dense.get((left_coset[0], right_coset[0]), Fraction(0)) != 0
+        for left_channel, left_coset in enumerate(block.channel_cosets)
+        for right_coset in block.channel_cosets[left_channel + 1 :]
+    )
+    _assert_dense_reconstruction(color_plan, block)
+
+
 def test_s_zero_and_s_one_use_owner_collapsed_direct_residual() -> None:
     for process in ("d d~ > u u~", "d d~ > u u~ s s~ g"):
         color_plan = _plan(process)

@@ -64,37 +64,6 @@ pub(super) fn parse_complex_parameter_overrides(
     Ok(overrides)
 }
 
-#[cfg(test)]
-mod parameter_json_tests {
-    use super::parse_complex_parameter_overrides;
-    use std::path::Path;
-
-    #[test]
-    fn parameter_json_accepts_real_scalars_and_complex_pairs() {
-        let parsed = parse_complex_parameter_overrides(
-            r#"{"aS": 0.117, "complex": [2.5, -0.25]}"#,
-            Path::new("parameters.json"),
-        )
-        .expect("parameter card should parse");
-
-        assert_eq!(parsed.get("aS"), Some(&(0.117, 0.0)));
-        assert_eq!(parsed.get("complex"), Some(&(2.5, -0.25)));
-    }
-
-    #[test]
-    fn parameter_json_rejects_non_numeric_values() {
-        let error =
-            parse_complex_parameter_overrides(r#"{"aS": "0.117"}"#, Path::new("parameters.json"))
-                .expect_err("string parameter must fail");
-
-        assert!(
-            error
-                .to_string()
-                .contains("must be a real number or [real, imaginary]")
-        );
-    }
-}
-
 impl ExecutionRuntime {
     pub(super) fn apply_model_parameter_overrides(
         &mut self,
@@ -357,4 +326,35 @@ fn validate_particle_mass_class_stability(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod parameter_json_tests {
+    use super::parse_complex_parameter_overrides;
+    use std::path::Path;
+
+    #[test]
+    fn parameter_json_accepts_real_scalars_and_complex_pairs() {
+        let parsed = parse_complex_parameter_overrides(
+            r#"{"aS": 0.117, "complex": [2.5, -0.25]}"#,
+            Path::new("parameters.json"),
+        )
+        .expect("parameter card should parse");
+
+        assert_eq!(parsed.get("aS"), Some(&(0.117, 0.0)));
+        assert_eq!(parsed.get("complex"), Some(&(2.5, -0.25)));
+    }
+
+    #[test]
+    fn parameter_json_rejects_non_numeric_values() {
+        let error =
+            parse_complex_parameter_overrides(r#"{"aS": "0.117"}"#, Path::new("parameters.json"))
+                .expect_err("string parameter must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must be a real number or [real, imaginary]")
+        );
+    }
 }

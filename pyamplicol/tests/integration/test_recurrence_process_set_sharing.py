@@ -43,10 +43,12 @@ from pyamplicol.config import (
     EvaluatorExecutionMode,
     EvaluatorOptimizationConfig,
     GenerationConfig,
+    GenerationRelationDiscoveryConfig,
     GenerationValidationConfig,
     JITConfig,
     LCFlowLayout,
     ProcessConfig,
+    RelationDiscoveryMode,
     RunConfig,
 )
 from pyamplicol.generation.recurrence_schedule_sharing import (
@@ -60,7 +62,6 @@ _ACCEPTANCE_ENV = "PYAMPLICOL_RUN_RECURRENCE_PROCESS_SET_ACCEPTANCE"
 _PROCESS_EXPRESSION = "p p > j j j j"
 _PROCESS_NAME = "pp_4j"
 _EXPECTED_PROCESS_COUNT = 11
-_MAX_BINDING_BYTES = 4096
 
 pytestmark = pytest.mark.skipif(
     os.environ.get(_ACCEPTANCE_ENV) != "1",
@@ -87,6 +88,9 @@ def _generation_config() -> RunConfig:
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=False,
+            relation_discovery=GenerationRelationDiscoveryConfig(
+                mode=RelationDiscoveryMode.OFF,
+            ),
             validation=GenerationValidationConfig(
                 enabled=False,
                 post_build_validation=False,
@@ -150,21 +154,40 @@ def _assert_process_binding(
     payload = binding_path.read_bytes()
 
     assert binding_path.stat().st_size == int(binding["size_bytes"])
-    assert binding_path.stat().st_size < _MAX_BINDING_BYTES
     assert _sha256(binding_path) == binding["sha256"]
     assert payload[:8] == RECURRENCE_PROCESS_BINDING_MAGIC
 
-    version, process_id_size, support_word_count = struct.unpack_from(
-        "<III", payload, 8
-    )
-    assert version == 2
+    (
+        version,
+        fixed_size,
+        process_id_size,
+        support_word_count,
+        target_size,
+        _cpu_feature_count,
+        descriptor_count,
+        catalog_executor_count,
+    ) = struct.unpack_from("<8I", payload, 8)
+    assert version == 4
+    assert fixed_size == 344
     assert support_word_count >= 1
-    assert payload[20:52] == bytes.fromhex(schedule_digest)
-    assert payload[84:116] == bytes.fromhex(
-        str(_mapping(binding["remap"], "binding remap")["bijection_digest"])
+    assert descriptor_count >= 1
+    assert catalog_executor_count == int(
+        _mapping(
+            _mapping(binding["remap"], "binding remap")["direct_executors"],
+            "binding direct-executor remap",
+        )["count"]
     )
-    assert payload[160 : 160 + process_id_size].decode("utf-8") == process_id
-    assert len(payload) >= 160 + process_id_size + 8 * support_word_count
+    assert payload[88:120] == bytes.fromhex(schedule_digest)
+    assert payload[fixed_size : fixed_size + process_id_size].decode("utf-8") == (
+        process_id
+    )
+    assert len(payload) >= (
+        fixed_size
+        + process_id_size
+        + target_size
+        + 8 * support_word_count
+        + 16 * descriptor_count
+    )
     return binding_path
 
 

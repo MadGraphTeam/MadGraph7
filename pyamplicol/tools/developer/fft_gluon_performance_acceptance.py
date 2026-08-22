@@ -6,7 +6,7 @@ The authoritative reference implementation is loaded from the bundled
 ``MultipletRecursion/Benchmark/run_benchmark.py`` and called directly; none of
 its implementation is copied here.  Candidate timing uses the public Rusticol
 C ABI probe in this directory.  Linux uses the reference driver's GNU process
-wrappers.  Darwin translates that wrapper to native ``/usr/bin/time -l`` while
+wrappers.  Darwin translates those wrappers to the study's getrusage worker;
 the common watchdog and subprocess timeout retain the same hard bounds.
 
 This file intentionally is not wired into a default target.  Use ``--dry-run``
@@ -38,13 +38,17 @@ PERFORMANCE_ROOT = ROOT / ".artifacts" / "fft-performance"
 REFERENCE_ROOT = ROOT / "FFT_FEATURE_RESOURCES" / "MultipletRecursion"
 REFERENCE_DRIVER = REFERENCE_ROOT / "Benchmark" / "run_benchmark.py"
 PROBE_SOURCE = ROOT / "tools" / "developer" / "fft_gluon_candidate_probe.cpp"
+SCALING_STUDY_DRIVER = ROOT / "tools" / "developer" / "fft_scaling_study.py"
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
 
 KIND = "pyamplicol-pure-gluon-fft-performance-acceptance"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 7
 REFERENCE_BACKEND = "AmpliGluonTraceDefaultBG"
-# Recurrence is the only generation-specialized acceptance candidate.  Running
-# it first prevents the diagnostic OTF generation from warming its cold path.
+REFERENCE_BUILD_PROGRAM = "benchmark_ampligluon_trace"
+REFERENCE_CLEAN_BUILD_SCOPE = "ampligluon-trace-backend-only"
+# Recurrence is the generation-specialized acceptance candidate.  OTF keeps its
+# complete runtime-selector coverage and is measured as a fixed-helicity
+# diagnostic.  Running recurrence first prevents OTF from warming its cold path.
 LANES = ("recurrence", "on-the-fly")
 MANDATORY_MULTIPLICITIES = tuple(range(4, 10))
 OPTIONAL_MULTIPLICITIES = (10, 11)
@@ -82,6 +86,10 @@ class AcceptanceError(RuntimeError):
 
 class NumericalParityError(AcceptanceError):
     """Raised when an evaluated candidate disagrees with the reference."""
+
+
+class ReferenceColdLimitError(AcceptanceError):
+    """Raised when Reference setup exhausts its aggregate cold-cell budget."""
 
 
 @dataclass(frozen=True)
@@ -159,10 +167,14 @@ class WatchedCompletedProcess(subprocess.CompletedProcess[str]):
         log_write_seconds: float,
         timed_out: bool,
         timeout_cleanup: str,
+        peak_guard_kib: int | None = None,
+        peak_rss_kib: int | None = None,
     ) -> None:
         super().__init__(args, returncode, stdout, stderr)
         self.elapsed_seconds = elapsed_seconds
         self.log_write_seconds = log_write_seconds
+        self.peak_guard_kib = peak_guard_kib
+        self.peak_rss_kib = peak_rss_kib
         self.timed_out = timed_out
         self.timeout_cleanup = timeout_cleanup
 
@@ -172,7 +184,10 @@ class ReferenceMetrics:
     total_gluons: int
     generator_seed: int
     backend: str
+    clean_build_scope: str
+    clean_build_command_count: int
     clean_build_seconds: float
+    setup_to_driver_seconds: float
     initialization_seconds: float
     first_pass_seconds: float
     warm_samples_seconds: tuple[float, ...]
@@ -182,11 +197,32 @@ class ReferenceMetrics:
     selected_path: str
     event_paths: tuple[str, ...]
     matrix_elements: tuple[float, ...]
+    driver_max_rss_kib: int | None = None
+    watchdog_max_rss_kib: int | None = None
+    direct_command_watchdog_max_rss_kib: int | None = None
+    translated_child_max_rss_kib: int | None = None
+    watchdog_max_peak_guard_kib: int | None = None
+    warm_repetitions: tuple[int, ...] = ()
+    warm_repetition_quantum: int | None = None
+    warm_calibration_seconds: tuple[float, ...] = ()
+    helicity_workload: str = "fixed"
+    helicity_coverage_count: int = 1
+    timed_helicity_count: int = 1
+    active_helicity_count: int = 1
+    exhaustive_event_paths: tuple[str, ...] = ()
 
     @property
     def cold_to_ready_seconds(self) -> float:
         return (
             self.clean_build_seconds
+            + self.initialization_seconds
+            + self.first_pass_seconds
+        )
+
+    @property
+    def setup_to_ready_seconds(self) -> float:
+        return (
+            self.setup_to_driver_seconds
             + self.initialization_seconds
             + self.first_pass_seconds
         )
@@ -221,7 +257,7 @@ class _ReferenceRun:
 
 
 def generator_seed(total_gluons: int) -> int:
-    if total_gluons not in (*MANDATORY_MULTIPLICITIES, *OPTIONAL_MULTIPLICITIES):
+    if total_gluons < 4:
         raise AcceptanceError(f"unsupported total-gluon multiplicity {total_gluons}")
     return BASE_SEED + total_gluons
 
@@ -516,13 +552,7 @@ def parse_candidate_first_ready_output(output: str) -> CandidateFirstReadyMetric
 def select_global_lane(
     candidates: Mapping[str, Mapping[int, CandidateMetrics]],
 ) -> str:
-    """Choose one generation-specialized lane from the mandatory set.
-
-    On-the-fly remains a diagnostic measurement because its existing selector
-    contract retains complete generated helicity coverage.  Its single runtime
-    query is paired with the reference query, but its cold metric is not
-    comparable to generation specialized recurrence and cannot win this gate.
-    """
+    """Choose one comparable generation-specialized lane globally."""
 
     eligibility = lane_eligibility(candidates)
     scores: list[tuple[float, str]] = []
@@ -567,20 +597,26 @@ def lane_eligibility(
             for total, record in zip(MANDATORY_MULTIPLICITIES, records, strict=True)
         }
         generation_specialized = all(count == 1 for count in coverage.values())
+        complete_helicity_coverage = all(count > 1 for count in coverage.values())
         eligible = lane == "recurrence" and generation_specialized
         if lane == "on-the-fly":
             reason = (
-                "diagnostic-only: complete generation coverage is not comparable "
-                "to the required generation-specialized cold metric"
+                "diagnostic-only: complete runtime-selector coverage is not "
+                "comparable to generation-specialized cold construction"
             )
+            coverage_contract = "complete-runtime-selector-fixed-helicity-query"
         elif generation_specialized:
-            reason = "eligible: one generation-selected helicity"
+            reason = "eligible: one generation-selected known-nonzero helicity"
+            coverage_contract = "generation-specialized-known-nonzero"
         else:
-            reason = "ineligible: artifact is not generation-specialized"
+            reason = "ineligible: recurrence artifact is not generation-specialized"
+            coverage_contract = "generation-specialized-known-nonzero"
         result[lane] = {
             "eligible": eligible,
             "reason": reason,
+            "coverage_contract": coverage_contract,
             "generation_specialized": generation_specialized,
+            "complete_helicity_coverage": complete_helicity_coverage,
             "mandatory_helicity_coverage_count": coverage,
             "warm_geometric_mean_seconds": math.exp(
                 statistics.fmean(math.log(value) for value in values)
@@ -637,7 +673,8 @@ def evaluate_gates(
 
 def optional_candidate_is_feasible(candidate: CandidateMetrics) -> bool:
     return (
-        candidate.cold_to_ready_seconds <= OPTIONAL_COLD_LIMIT_SECONDS
+        candidate.generation_seconds < OPTIONAL_COLD_LIMIT_SECONDS
+        and candidate.first_warm_seconds < OPTIONAL_COLD_LIMIT_SECONDS
         and candidate.max_rss_kib <= int(MEMORY_LIMIT_GIB * 1024**2)
     )
 
@@ -726,14 +763,50 @@ def candidate_generation_command(
     )
 
 
-def _watchdog_command(command: Sequence[str], *, python: str) -> tuple[str, ...]:
-    return (
+def _watchdog_command(
+    command: Sequence[str],
+    *,
+    python: str,
+    memory_limit_gib: float = MEMORY_LIMIT_GIB,
+    report_json: Path | None = None,
+) -> tuple[str, ...]:
+    command_prefix = (
         python,
         str(WATCHDOG),
         "--limit-gib",
-        f"{MEMORY_LIMIT_GIB:g}",
-        "--",
-        *command,
+        f"{memory_limit_gib:g}",
+    )
+    if report_json is not None:
+        command_prefix = (*command_prefix, "--report-json", str(report_json))
+    return (*command_prefix, "--", *command)
+
+
+def _read_watchdog_usage_kib(report_path: Path) -> tuple[int, int]:
+    """Read exact RSS and enforced-guard peaks from one successful report."""
+
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        enforcement = payload["enforcement"]
+        peak_rss_bytes = enforcement["peak_rss_bytes"]
+        peak_guard_bytes = enforcement["peak_guard_bytes"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise AcceptanceError(
+            f"watchdog report is missing or malformed: {report_path}"
+        ) from error
+    if (
+        payload.get("complete") is not True
+        or payload.get("passes") is not True
+        or not isinstance(peak_rss_bytes, int)
+        or isinstance(peak_rss_bytes, bool)
+        or peak_rss_bytes < 0
+        or not isinstance(peak_guard_bytes, int)
+        or isinstance(peak_guard_bytes, bool)
+        or peak_guard_bytes < 0
+    ):
+        raise AcceptanceError(f"watchdog report is not successful: {report_path}")
+    return (
+        (peak_rss_bytes + 1023) // 1024,
+        (peak_guard_bytes + 1023) // 1024,
     )
 
 
@@ -779,10 +852,17 @@ def _create_workspace_directories(run_root: Path) -> None:
 
 def _translate_darwin_reference_command(
     command: Sequence[str],
+    *,
+    python: str = sys.executable,
 ) -> tuple[tuple[str, ...], bool]:
-    """Replace the reference driver's GNU measurement wrapper on Darwin."""
+    """Use the study's getrusage wrapper instead of unavailable Darwin sysctls."""
 
     original = tuple(str(item) for item in command)
+    if original[:2] == ("/usr/bin/time", "-l"):
+        payload = original[2:]
+        if not payload:
+            raise AcceptanceError("Darwin time wrapper has no payload")
+        return (python, str(SCALING_STUDY_DRIVER), "_time-rss", *payload), True
     if not original or original[0] != "/usr/bin/timeout":
         return original, False
     if (
@@ -806,42 +886,79 @@ def _translate_darwin_reference_command(
     payload = original[9:]
     if not payload:
         raise AcceptanceError("GNU reference measurement wrapper has no payload")
-    return ("/usr/bin/time", "-l", *payload), True
+    return (python, str(SCALING_STUDY_DRIVER), "_time-rss", *payload), True
 
 
-def _parse_darwin_max_rss_kib(stderr: str) -> int:
-    """Parse Darwin ``time -l`` maximum RSS bytes into getrusage-style KiB."""
-
-    matches: list[int] = []
-    for line in stderr.splitlines():
-        match = re.fullmatch(r"\s*(\d+)\s+maximum resident set size\s*", line)
-        if match is not None:
-            matches.append(int(match.group(1)))
-    if len(matches) != 1 or matches[0] < 1024:
-        raise AcceptanceError(
-            "Darwin /usr/bin/time -l did not report one positive maximum RSS"
-        )
-    return matches[0] // 1024
-
-
-def _synthesize_darwin_rss_markers(
+def _synthesize_reference_rss_marker(
     completed: subprocess.CompletedProcess[str],
 ) -> subprocess.CompletedProcess[str]:
-    """Add stable and upstream-compatible KiB markers to Darwin time output."""
+    """Copy the getrusage wrapper's exact FFT RSS into the reference protocol."""
 
-    rss_kib = _parse_darwin_max_rss_kib(completed.stderr)
+    matches: list[int] = []
+    for line in completed.stderr.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] == DARWIN_RSS_MARKER:
+            matches.append(int(fields[1]))
+    if len(matches) != 1 or matches[0] < 1:
+        raise AcceptanceError("Darwin getrusage wrapper did not report exact RSS")
     stderr = completed.stderr.rstrip("\n")
-    marker_rows = (
-        f"{DARWIN_RSS_MARKER} {rss_kib}",
-        # The bundled reference currently consumes this legacy GNU-time row.
-        f"{REFERENCE_RSS_MARKER} {rss_kib}",
-    )
     return subprocess.CompletedProcess(
         args=completed.args,
         returncode=completed.returncode,
         stdout=completed.stdout,
-        stderr="\n".join((stderr, *marker_rows)) + "\n",
+        stderr=f"{stderr}\n{REFERENCE_RSS_MARKER} {matches[0]}\n",
     )
+
+
+def _parse_translated_reference_child_rss_kib(stderr: str) -> int:
+    markers: dict[str, list[int]] = {
+        DARWIN_RSS_MARKER: [],
+        REFERENCE_RSS_MARKER: [],
+    }
+    for line in stderr.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] in markers:
+            try:
+                markers[fields[0]].append(int(fields[1]))
+            except ValueError as error:
+                raise AcceptanceError(
+                    "translated Reference RSS marker is malformed"
+                ) from error
+    fft_values = markers[DARWIN_RSS_MARKER]
+    benchmark_values = markers[REFERENCE_RSS_MARKER]
+    if (
+        len(fft_values) != 1
+        or len(benchmark_values) != 1
+        or fft_values[0] < 1
+        or fft_values != benchmark_values
+    ):
+        raise AcceptanceError(
+            "translated Reference command lacks one matching exact child RSS marker"
+        )
+    return fft_values[0]
+
+
+def _formal_reference_evaluator_rss_kib(
+    driver_child_rss_kib: int,
+    direct_command_watchdog_rss_kib: int,
+    translated_child_rss_kib: int,
+) -> int:
+    values = (
+        driver_child_rss_kib,
+        direct_command_watchdog_rss_kib,
+        translated_child_rss_kib,
+    )
+    if (
+        any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in values
+        )
+        or driver_child_rss_kib < 1
+    ):
+        raise AcceptanceError("Reference evaluator RSS evidence is invalid")
+    # The formal ratio compares the two fresh evaluator processes.  Compiler
+    # and wrapper peaks remain watchdog/cap telemetry, not part of this value.
+    return driver_child_rss_kib
 
 
 def _run_watched(
@@ -851,6 +968,8 @@ def _run_watched(
     environment: Mapping[str, str],
     timeout_seconds: float,
     log_path: Path,
+    memory_limit_gib: float = MEMORY_LIMIT_GIB,
+    watchdog_report_path: Path | None = None,
     normalize_completed: (
         Callable[[subprocess.CompletedProcess[str]], subprocess.CompletedProcess[str]]
         | None
@@ -860,7 +979,20 @@ def _run_watched(
 
     if not _positive_finite(timeout_seconds):
         raise AcceptanceError("watched command timeout must be positive")
-    watched_command = _watchdog_command(command, python=python)
+    if not _positive_finite(memory_limit_gib):
+        raise AcceptanceError("watched command memory limit must be positive")
+    if watchdog_report_path is not None:
+        watchdog_report_path.parent.mkdir(parents=True, exist_ok=True)
+        if watchdog_report_path.exists():
+            raise AcceptanceError(
+                f"watchdog report already exists: {watchdog_report_path}"
+            )
+    watched_command = _watchdog_command(
+        command,
+        python=python,
+        memory_limit_gib=memory_limit_gib,
+        report_json=watchdog_report_path,
+    )
     started = time.perf_counter()
     process = subprocess.Popen(
         watched_command,
@@ -891,8 +1023,24 @@ def _run_watched(
         stdout=stdout,
         stderr=stderr,
     )
-    if normalize_completed is not None:
-        completed = normalize_completed(completed)
+    normalization_error: Exception | None = None
+    if normalize_completed is not None and not timed_out and completed.returncode == 0:
+        try:
+            completed = normalize_completed(completed)
+        except (
+            Exception
+        ) as error:  # Preserve the raw child evidence before surfacing it.
+            normalization_error = error
+    peak_guard_kib: int | None = None
+    peak_rss_kib: int | None = None
+    watchdog_report_error: Exception | None = None
+    if watchdog_report_path is not None and not timed_out and completed.returncode == 0:
+        try:
+            peak_rss_kib, peak_guard_kib = _read_watchdog_usage_kib(
+                watchdog_report_path
+            )
+        except Exception as error:
+            watchdog_report_error = error
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_started = time.perf_counter()
     log_path.write_text(
@@ -907,6 +1055,22 @@ def _run_watched(
                 "stderr": completed.stderr,
                 "timed_out": timed_out,
                 "timeout_cleanup": timeout_cleanup,
+                "normalization_error": (
+                    None
+                    if normalization_error is None
+                    else f"{type(normalization_error).__name__}: {normalization_error}"
+                ),
+                "watchdog_report": (
+                    None if watchdog_report_path is None else str(watchdog_report_path)
+                ),
+                "watchdog_peak_guard_kib": peak_guard_kib,
+                "watchdog_peak_rss_kib": peak_rss_kib,
+                "watchdog_report_error": (
+                    None
+                    if watchdog_report_error is None
+                    else f"{type(watchdog_report_error).__name__}: "
+                    f"{watchdog_report_error}"
+                ),
             },
             indent=2,
             sort_keys=True,
@@ -922,6 +1086,8 @@ def _run_watched(
         completed.stderr,
         elapsed_seconds=elapsed_seconds,
         log_write_seconds=log_write_seconds,
+        peak_guard_kib=peak_guard_kib,
+        peak_rss_kib=peak_rss_kib,
         timed_out=timed_out,
         timeout_cleanup=timeout_cleanup,
     )
@@ -936,6 +1102,10 @@ def _run_watched(
             f"command failed with status {result.returncode}: "
             f"{shlex.join(command)}; see {log_path}"
         )
+    if normalization_error is not None:
+        raise normalization_error
+    if watchdog_report_error is not None:
+        raise watchdog_report_error
     return result
 
 
@@ -970,6 +1140,8 @@ def _reference_arguments(
     fc: str,
     target_seconds: float,
     timeout_seconds: float,
+    memory_limit_gib: float = MEMORY_LIMIT_GIB,
+    repetition_quantum: int | None = None,
 ) -> argparse.Namespace:
     argv = (
         "--min-gluons",
@@ -994,7 +1166,7 @@ def _reference_arguments(
         "1",
         "--skip-initialization-preflight",
         "--max-memory-gib",
-        f"{MEMORY_LIMIT_GIB:g}",
+        f"{memory_limit_gib:g}",
         "--backend-timeout",
         f"{timeout_seconds:g}",
         "--build-dir",
@@ -1002,6 +1174,8 @@ def _reference_arguments(
         "--fc",
         fc,
     )
+    if repetition_quantum is not None:
+        argv = (*argv, "--repetition-quantum", str(repetition_quantum))
     with _arguments(argv):
         parsed = reference.parse_arguments()
     reference.validate_arguments(parsed)
@@ -1029,6 +1203,44 @@ def _reference_representative_warm_samples(
     return values
 
 
+def _bounded_reference_cold_timeout(
+    effective_timeout: float,
+    cold_limit_seconds: float | None,
+    cold_started: float,
+) -> float:
+    if cold_limit_seconds is None:
+        return effective_timeout
+    remaining_cold = cold_limit_seconds - (time.perf_counter() - cold_started)
+    if remaining_cold <= 0.0:
+        raise ReferenceColdLimitError(
+            "reference campaign exhausted its aggregate cold deadline"
+        )
+    return min(effective_timeout, remaining_cold)
+
+
+def _is_reference_backend_build_command(
+    command: Sequence[str],
+    *,
+    build_dir: Path,
+    build_phase_active: bool,
+) -> bool:
+    """Identify compiler/linker commands belonging only to AmpliGluonTrace."""
+
+    if not build_phase_active:
+        return False
+    backend_dir = (build_dir / REFERENCE_BUILD_PROGRAM).resolve()
+    backend_prefix = f"{backend_dir}{os.sep}"
+    include_prefixes = (
+        backend_prefix,
+        f"-I{backend_prefix}",
+        f"-J{backend_prefix}",
+    )
+    return any(
+        str(token) == str(backend_dir) or str(token).startswith(include_prefixes)
+        for token in command
+    )
+
+
 def _run_reference(
     *,
     reference: ModuleType,
@@ -1039,11 +1251,16 @@ def _run_reference(
     fc: str,
     target_seconds: float,
     timeout_seconds: float,
+    cold_limit_seconds: float | None = None,
+    memory_limit_gib: float = MEMORY_LIMIT_GIB,
+    repetition_quantum: int | None = None,
+    sum_helicities: bool = False,
 ) -> _ReferenceRun:
     reference_root = run_root / "reference" / f"N{total_gluons}"
     build_dir = reference_root / "build"
     if build_dir.exists():
         raise AcceptanceError("reference build directory is not clean")
+    effective_repetition_quantum = 1 if sum_helicities else repetition_quantum
     arguments = _reference_arguments(
         reference,
         total_gluons=total_gluons,
@@ -1051,11 +1268,21 @@ def _run_reference(
         fc=fc,
         target_seconds=target_seconds,
         timeout_seconds=timeout_seconds,
+        memory_limit_gib=memory_limit_gib,
+        repetition_quantum=effective_repetition_quantum,
     )
     command_index = 0
     command_log_write_seconds = 0.0
+    watchdog_max_rss_kib = 0
+    direct_command_watchdog_max_rss_kib = 0
+    translated_child_max_rss_kib = 0
+    watchdog_max_peak_guard_kib = 0
+    clean_build_seconds = 0.0
+    clean_build_command_count = 0
+    build_phase_active = False
     original_run_command = reference.run_command
     campaign_timeout_seconds = timeout_seconds
+    cold_started = time.perf_counter()
 
     def watched_reference_command(
         command: Sequence[str],
@@ -1063,13 +1290,23 @@ def _run_reference(
         timeout_seconds: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         nonlocal command_index, command_log_write_seconds
+        nonlocal watchdog_max_peak_guard_kib, watchdog_max_rss_kib
+        nonlocal direct_command_watchdog_max_rss_kib
+        nonlocal translated_child_max_rss_kib
+        nonlocal clean_build_command_count, clean_build_seconds
         command_index += 1
         safe_description = re.sub(r"[^A-Za-z0-9._-]+", "-", description).strip("-")
         translated = False
         command_to_run = tuple(str(item) for item in command)
+        is_clean_backend_build = _is_reference_backend_build_command(
+            command_to_run,
+            build_dir=build_dir,
+            build_phase_active=build_phase_active,
+        )
         if sys.platform == "darwin":
             command_to_run, translated = _translate_darwin_reference_command(
-                command_to_run
+                command_to_run,
+                python=python,
             )
         effective_timeout = (
             campaign_timeout_seconds + 30.0
@@ -1079,18 +1316,41 @@ def _run_reference(
         if translated and timeout_seconds is not None:
             # run_driver already supplies backend_timeout + its cleanup grace.
             effective_timeout = timeout_seconds
+        effective_timeout = _bounded_reference_cold_timeout(
+            effective_timeout, cold_limit_seconds, cold_started
+        )
+        log_path = reference_root / "logs" / f"{command_index:03d}-{safe_description}"
         completed = _run_watched(
             command_to_run,
             python=python,
             environment=environment,
             timeout_seconds=effective_timeout,
-            log_path=(
-                reference_root / "logs" / f"{command_index:03d}-{safe_description}.json"
-            ),
+            log_path=log_path.with_suffix(".json"),
+            memory_limit_gib=memory_limit_gib,
+            watchdog_report_path=log_path.with_suffix(".watchdog.json"),
             normalize_completed=(
-                _synthesize_darwin_rss_markers if translated else None
+                _synthesize_reference_rss_marker if translated else None
             ),
         )
+        if completed.peak_rss_kib is None or completed.peak_guard_kib is None:
+            raise AcceptanceError("reference command has no watchdog RSS evidence")
+        watchdog_max_rss_kib = max(watchdog_max_rss_kib, completed.peak_rss_kib)
+        if translated:
+            translated_child_max_rss_kib = max(
+                translated_child_max_rss_kib,
+                _parse_translated_reference_child_rss_kib(completed.stderr),
+            )
+        else:
+            direct_command_watchdog_max_rss_kib = max(
+                direct_command_watchdog_max_rss_kib,
+                completed.peak_rss_kib,
+            )
+        watchdog_max_peak_guard_kib = max(
+            watchdog_max_peak_guard_kib, completed.peak_guard_kib
+        )
+        if is_clean_backend_build:
+            clean_build_seconds += completed.elapsed_seconds
+            clean_build_command_count += 1
         command_log_write_seconds += completed.log_write_seconds
         return completed
 
@@ -1101,19 +1361,27 @@ def _run_reference(
         if not compiler:
             raise AcceptanceError("reference Fortran compiler is empty")
         compiler_identity = reference.compiler_version(compiler).strip()
-        build_log_write_before = command_log_write_seconds
-        build_started = time.perf_counter()
-        rambo, proxy, executables = reference.build_executables(
-            arguments,
-            compiler,
-            compiler_identity,
-            flags,
-        )
-        clean_build_seconds = (
-            time.perf_counter()
-            - build_started
-            - (command_log_write_seconds - build_log_write_before)
-        )
+        build_phase_active = True
+        try:
+            rambo, proxy, executables = reference.build_executables(
+                arguments,
+                compiler,
+                compiler_identity,
+                flags,
+            )
+        finally:
+            build_phase_active = False
+        reference_executable = executables.get(REFERENCE_BACKEND)
+        expected_build_dir = (build_dir / REFERENCE_BUILD_PROGRAM).resolve()
+        if (
+            reference_executable is None
+            or expected_build_dir not in reference_executable.resolve().parents
+            or clean_build_command_count < 1
+            or not _positive_finite(clean_build_seconds)
+        ):
+            raise AcceptanceError(
+                "reference clean backend build boundary is incomplete"
+            )
         events, _, exhaustive_helicities = reference.generate_events(
             rambo,
             total_gluons,
@@ -1145,17 +1413,70 @@ def _run_reference(
                 representative.helicities,
             )
             uniform_events.append(destination)
-        run = reference.run_driver(
-            REFERENCE_BACKEND,
-            executables[REFERENCE_BACKEND],
-            uniform_events,
-            arguments,
-            False,
+        setup_to_driver_seconds = (
+            time.perf_counter() - cold_started - command_log_write_seconds
         )
+        if not _positive_finite(setup_to_driver_seconds):
+            raise AcceptanceError("reference setup timing is not positive")
+        if sum_helicities:
+            run = reference.run_driver(
+                REFERENCE_BACKEND,
+                reference_executable,
+                events,
+                arguments,
+                False,
+                sum_helicities=True,
+            )
+        else:
+            run = reference.run_driver(
+                REFERENCE_BACKEND,
+                reference_executable,
+                uniform_events,
+                arguments,
+                False,
+            )
     finally:
         reference.run_command = original_run_command
 
     batch_values = _reference_representative_warm_samples(run.cell_timings)
+    warm_repetitions: tuple[int, ...] = ()
+    warm_calibration_seconds: tuple[float, ...] = ()
+    if effective_repetition_quantum is not None:
+        expected_repetition_keys = {
+            (batch, REPRESENTATIVE_POINT, 1)
+            for batch in range(1, WARM_SAMPLE_COUNT + 1)
+        }
+        if (
+            run.cell_repetitions is None
+            or set(run.cell_repetitions) != expected_repetition_keys
+            or any(
+                value < effective_repetition_quantum
+                or value % effective_repetition_quantum != 0
+                for value in run.cell_repetitions.values()
+            )
+        ):
+            raise AcceptanceError(
+                "reference did not use the requested repetition quantum"
+            )
+        warm_repetitions = tuple(
+            run.cell_repetitions[(batch, REPRESENTATIVE_POINT, 1)]
+            for batch in range(1, WARM_SAMPLE_COUNT + 1)
+        )
+        if len(set(warm_repetitions)) != 1:
+            raise AcceptanceError("reference changed repetitions after calibration")
+        expected_calibration_keys = {(REPRESENTATIVE_POINT, 1)}
+        if (
+            run.cell_calibration_seconds is None
+            or set(run.cell_calibration_seconds) != expected_calibration_keys
+            or any(
+                value < target_seconds
+                for value in run.cell_calibration_seconds.values()
+            )
+        ):
+            raise AcceptanceError(
+                "reference repetition calibration did not reach its timing target"
+            )
+        warm_calibration_seconds = tuple(run.cell_calibration_seconds.values())
     if (
         run.first_helicity_sweep is None
         or not _positive_finite(run.first_helicity_sweep)
@@ -1163,31 +1484,102 @@ def _run_reference(
         or run.peak_rss_kib < 1
     ):
         raise AcceptanceError("reference cold/RSS metrics are incomplete")
-    expected_matrix_element_keys = {(point, 1) for point in range(1, POINT_COUNT + 1)}
-    if set(run.matrix_elements) != expected_matrix_element_keys or any(
-        not _positive_finite(value) for value in run.matrix_elements.values()
-    ):
-        raise AcceptanceError(
-            "reference did not confirm the selected helicity at all 10 points"
+    if sum_helicities:
+        exhaustive_keys = set(exhaustive_helicities)
+        if set(run.matrix_elements) != exhaustive_keys or any(
+            not math.isfinite(value) or value < 0.0
+            for value in run.matrix_elements.values()
+        ):
+            raise AcceptanceError(
+                "reference did not return the exhaustive helicity grid"
+            )
+        helicity_coverage_count = len(
+            [key for key in exhaustive_keys if key[0] == REPRESENTATIVE_POINT]
         )
-    matrix_elements = tuple(
-        run.matrix_elements[(point, 1)] for point in range(1, POINT_COUNT + 1)
-    )
+        active_helicity_count = sum(
+            not reference.is_analytic_zero_helicity(helicities)
+            for (point, _), helicities in exhaustive_helicities.items()
+            if point == REPRESENTATIVE_POINT
+        )
+        if (
+            helicity_coverage_count < 1
+            or active_helicity_count < 1
+            or active_helicity_count > helicity_coverage_count
+        ):
+            raise AcceptanceError("reference exhaustive helicity census is invalid")
+        matrix_elements = tuple(
+            math.fsum(
+                run.matrix_elements[key]
+                for key in sorted(exhaustive_keys)
+                if key[0] == point
+            )
+            for point in range(1, POINT_COUNT + 1)
+        )
+        if any(not _positive_finite(value) for value in matrix_elements):
+            raise AcceptanceError("reference helicity sum is zero or non-finite")
+    else:
+        expected_matrix_element_keys = {
+            (point, 1) for point in range(1, POINT_COUNT + 1)
+        }
+        if set(run.matrix_elements) != expected_matrix_element_keys or any(
+            not _positive_finite(value) for value in run.matrix_elements.values()
+        ):
+            raise AcceptanceError(
+                "reference did not confirm the selected helicity at all 10 points"
+            )
+        matrix_elements = tuple(
+            run.matrix_elements[(point, 1)] for point in range(1, POINT_COUNT + 1)
+        )
+        helicity_coverage_count = 1
+        active_helicity_count = 1
+    if watchdog_max_peak_guard_kib > int(memory_limit_gib * 1024**2):
+        raise AcceptanceError("reference exceeded the watchdog peak-guard bound")
     metrics = ReferenceMetrics(
         total_gluons=total_gluons,
         generator_seed=generator_seed(total_gluons),
         backend=REFERENCE_BACKEND,
+        clean_build_scope=REFERENCE_CLEAN_BUILD_SCOPE,
+        clean_build_command_count=clean_build_command_count,
         clean_build_seconds=clean_build_seconds,
+        setup_to_driver_seconds=setup_to_driver_seconds,
         initialization_seconds=run.initialization,
         first_pass_seconds=run.first_helicity_sweep,
         warm_samples_seconds=batch_values,
         warm_median_seconds=statistics.median(batch_values),
-        max_rss_kib=run.peak_rss_kib,
+        max_rss_kib=_formal_reference_evaluator_rss_kib(
+            run.peak_rss_kib,
+            direct_command_watchdog_max_rss_kib,
+            translated_child_max_rss_kib,
+        ),
         selected_helicity=tuple(representative.helicities),
         selected_path=representative.path,
         event_paths=tuple(str(path) for path in uniform_events),
         matrix_elements=matrix_elements,
+        driver_max_rss_kib=run.peak_rss_kib,
+        watchdog_max_rss_kib=watchdog_max_rss_kib,
+        direct_command_watchdog_max_rss_kib=(
+            direct_command_watchdog_max_rss_kib or None
+        ),
+        translated_child_max_rss_kib=translated_child_max_rss_kib or None,
+        watchdog_max_peak_guard_kib=watchdog_max_peak_guard_kib,
+        warm_repetitions=warm_repetitions,
+        warm_repetition_quantum=effective_repetition_quantum,
+        warm_calibration_seconds=warm_calibration_seconds,
+        helicity_workload="sum" if sum_helicities else "fixed",
+        helicity_coverage_count=helicity_coverage_count,
+        timed_helicity_count=active_helicity_count,
+        active_helicity_count=active_helicity_count,
+        exhaustive_event_paths=(
+            tuple(str(path) for path in events) if sum_helicities else ()
+        ),
     )
+    if (
+        cold_limit_seconds is not None
+        and metrics.setup_to_ready_seconds > cold_limit_seconds
+    ):
+        raise ReferenceColdLimitError(
+            "reference setup/initialization/first pass exceeded its cold deadline"
+        )
     return _ReferenceRun(metrics=metrics, event_paths=tuple(uniform_events))
 
 
@@ -1197,6 +1589,7 @@ def _build_probe(
     python: str,
     cxx: str,
     environment: Mapping[str, str],
+    memory_limit_gib: float = MEMORY_LIMIT_GIB,
 ) -> tuple[Path, dict[str, Any]]:
     sdk = _run_watched(
         (python, "-m", "pyamplicol._sdk.config", "--json"),
@@ -1204,6 +1597,7 @@ def _build_probe(
         environment=environment,
         timeout_seconds=60.0,
         log_path=run_root / "logs" / "sdk-config.json",
+        memory_limit_gib=memory_limit_gib,
     )
     try:
         sdk_info = json.loads(sdk.stdout)
@@ -1227,6 +1621,7 @@ def _build_probe(
         "-o",
         str(executable),
         *map(str, sdk_info["link_flags"]),
+        *_candidate_probe_executable_link_flags(sys.platform),
     )
     _run_watched(
         command,
@@ -1234,8 +1629,20 @@ def _build_probe(
         environment=environment,
         timeout_seconds=600.0,
         log_path=run_root / "logs" / "candidate-probe-build.json",
+        memory_limit_gib=memory_limit_gib,
     )
     return executable, sdk_info
+
+
+def _candidate_probe_executable_link_flags(platform_name: str) -> tuple[str, ...]:
+    """Discard SDK code that is unreachable from this standalone probe."""
+
+    if platform_name == "darwin":
+        # Apple ld keeps exported symbols as dead-strip roots.  A standalone
+        # benchmark executable has no plugin ABI, so retaining the static
+        # archive's thousands of Rust globals defeats ordinary link-time GC.
+        return ("-Wl,-dead_strip", "-Wl,-no_exported_symbols")
+    return ()
 
 
 def _candidate_probe_command(
@@ -1265,6 +1672,7 @@ def _validate_candidate_probe_identity(
     *,
     lane: str,
     total_gluons: int,
+    expected_helicities: Sequence[int],
 ) -> None:
     if metrics.execution_mode != lane:
         raise AcceptanceError("candidate probe execution mode differs from its lane")
@@ -1274,10 +1682,17 @@ def _validate_candidate_probe_identity(
         raise AcceptanceError(
             "recurrence candidate did not preserve generation helicity specialization"
         )
-    if lane == "on-the-fly" and metrics.helicity_coverage_count == 1:
+    if lane == "on-the-fly" and metrics.helicity_coverage_count <= 1:
         raise AcceptanceError(
-            "on-the-fly unexpectedly reported generation-specialized coverage; "
-            "update the locked acceptance policy before making it winner-eligible"
+            "on-the-fly candidate did not preserve complete runtime selector coverage"
+        )
+    expected_helicity_id = "h:" + ",".join(
+        f"{helicity:+d}" for helicity in expected_helicities
+    )
+    if metrics.selected_helicity_id != expected_helicity_id:
+        raise AcceptanceError(
+            "candidate probe helicity differs from the generation-selected "
+            "known-nonzero helicity"
         )
 
 
@@ -1292,7 +1707,7 @@ def _run_candidate(
     environment: Mapping[str, str],
     target_seconds: float,
     timeout_seconds: float,
-    cold_limit_seconds: float | None = None,
+    continuation_stage_limit_seconds: float | None = None,
 ) -> CandidateMetrics:
     candidate_root = run_root / "candidate" / lane / f"N{total_gluons}"
     artifact = candidate_root / "artifact"
@@ -1307,15 +1722,15 @@ def _run_candidate(
         helicities=reference.metrics.selected_helicity,
         artifact=artifact,
     )
-    cold_wall_started = time.perf_counter()
-    generation_started = cold_wall_started
+    lane_wall_started = time.perf_counter()
+    generation_started = lane_wall_started
     generation = _run_watched(
         command,
         python=python,
         environment=candidate_environment,
         timeout_seconds=(
-            min(timeout_seconds, cold_limit_seconds)
-            if cold_limit_seconds is not None
+            min(timeout_seconds, continuation_stage_limit_seconds)
+            if continuation_stage_limit_seconds is not None
             else timeout_seconds
         ),
         log_path=candidate_root / "generation.json",
@@ -1325,16 +1740,16 @@ def _run_candidate(
     )
     if not _positive_finite(generation_seconds):
         raise AcceptanceError("candidate generation timing is not positive")
+    if (
+        continuation_stage_limit_seconds is not None
+        and generation_seconds >= continuation_stage_limit_seconds
+    ):
+        raise AcceptanceError(
+            "candidate generation did not remain below the 15 minute continuation cap"
+        )
 
     cold_metrics: CandidateFirstReadyMetrics | None = None
-    if cold_limit_seconds is not None:
-        remaining_cold_wall = cold_limit_seconds - (
-            time.perf_counter() - cold_wall_started
-        )
-        if remaining_cold_wall <= 0.0:
-            raise AcceptanceError(
-                "candidate generation exhausted the 15 minute cold deadline"
-            )
+    if continuation_stage_limit_seconds is not None:
         first_ready = _run_watched(
             _candidate_probe_command(
                 probe=probe,
@@ -1346,29 +1761,32 @@ def _run_candidate(
             ),
             python=python,
             environment=candidate_environment,
-            timeout_seconds=remaining_cold_wall,
+            # The continuation contract limits the reported first warm-up,
+            # independently of artifact load.  Give the fresh process the
+            # enclosing lane deadline so a valid sub-15-minute warm-up is not
+            # killed merely because loading preceded it.
+            timeout_seconds=timeout_seconds,
             log_path=candidate_root / "probe-first-ready.json",
         )
         cold_metrics = parse_candidate_first_ready_output(first_ready.stdout)
         _validate_candidate_probe_identity(
-            cold_metrics, lane=lane, total_gluons=total_gluons
+            cold_metrics,
+            lane=lane,
+            total_gluons=total_gluons,
+            expected_helicities=reference.metrics.selected_helicity,
         )
-        measured_cold = (
-            generation_seconds
-            + cold_metrics.load_seconds
-            + cold_metrics.first_warm_seconds
-        )
-        if measured_cold > cold_limit_seconds:
+        if cold_metrics.first_warm_seconds >= continuation_stage_limit_seconds:
             raise AcceptanceError(
-                "candidate generation/load/first pass exceeded the 15 minute cap"
+                "candidate first warm-up did not remain below the 15 minute "
+                "continuation cap"
             )
         if cold_metrics.max_rss_kib > int(MEMORY_LIMIT_GIB * 1024**2):
             raise AcceptanceError(
                 "candidate first-ready process exceeded the 30 GiB RSS cap"
             )
 
-    if cold_limit_seconds is None:
-        remaining_warm = timeout_seconds - (time.perf_counter() - cold_wall_started)
+    if continuation_stage_limit_seconds is None:
+        remaining_warm = timeout_seconds - (time.perf_counter() - lane_wall_started)
         if remaining_warm <= 0.0:
             raise AcceptanceError("candidate generation exhausted its lane timeout")
     else:
@@ -1395,7 +1813,10 @@ def _run_candidate(
     )
     probe_metrics = parse_candidate_probe_output(completed.stdout)
     _validate_candidate_probe_identity(
-        probe_metrics, lane=lane, total_gluons=total_gluons
+        probe_metrics,
+        lane=lane,
+        total_gluons=total_gluons,
+        expected_helicities=reference.metrics.selected_helicity,
     )
     load_seconds = (
         cold_metrics.load_seconds
@@ -1480,6 +1901,7 @@ def _plain_candidate(candidate: CandidateMetrics) -> dict[str, object]:
 def _plain_reference(reference: ReferenceMetrics) -> dict[str, object]:
     payload = asdict(reference)
     payload["cold_to_ready_seconds"] = reference.cold_to_ready_seconds
+    payload["setup_to_ready_seconds"] = reference.setup_to_ready_seconds
     return payload
 
 
@@ -1530,13 +1952,33 @@ def dry_run_plan(
             "color_contraction": "fft",
             "kinematics": "default-bg",
             "clean_build_per_multiplicity": True,
+            "clean_build_scope": REFERENCE_CLEAN_BUILD_SCOPE,
+            "clean_build_program": REFERENCE_BUILD_PROGRAM,
+            "clean_build_timing": (
+                "sum of watched compiler/linker wall times for the "
+                "AmpliGluonTrace backend; RAMBO and helicity-proxy builds excluded"
+            ),
             "initialization_and_first_pass_separate": True,
+            "formal_cold_to_ready_metric": (
+                "clean AmpliGluonTrace backend build plus initialization plus "
+                "first complete pass"
+            ),
+            "scaling_setup_to_ready_metric": (
+                "all setup through driver plus initialization plus first complete pass"
+            ),
             "process_measurement": (
-                "darwin-time-l-plus-watchdog"
+                "darwin-getrusage-child-plus-watchdog"
                 if host_platform == "darwin"
                 else "reference-gnu-time-timeout-prlimit-plus-watchdog"
             ),
             "rss_marker": DARWIN_RSS_MARKER,
+            "rss_metric": (
+                "fresh evaluator-process peak RSS from the reference driver; "
+                "compiler and wrapper RSS are excluded from the formal ratio"
+            ),
+            "memory_guard_metric": (
+                "max(process-tree RSS, Darwin physical footprint); enforcement only"
+            ),
         },
         "candidate_probe_source": str(PROBE_SOURCE),
         "multiplicities": [
@@ -1568,11 +2010,8 @@ def dry_run_plan(
             "cpu_policy": cpu_policy,
         },
         "helicity_policy": {
-            "recurrence": "generation-specialized",
-            "on-the-fly": (
-                "one explicit runtime query; OTF intentionally retains complete "
-                "generation coverage"
-            ),
+            "recurrence": "generation-specialized-known-nonzero",
+            "on-the-fly": "complete-runtime-selector-fixed-helicity-query",
         },
         "numerical_parity": {
             "reference_values": "ordered-10-AmpliGluonTrace-matrix-elements",
@@ -1589,18 +2028,21 @@ def dry_run_plan(
             "extra_evaluations": 0,
         },
         "global_lane_policy": (
-            "on-the-fly is diagnostic-only under complete generation coverage; "
-            "among generation-specialized lanes, minimum geometric mean candidate "
-            "warm time across N=4..9 selects one lane for every gate"
+            "recurrence is the generation-specialized acceptance lane; on-the-fly "
+            "retains complete runtime-selector coverage and is diagnostic-only; "
+            "one global eligible lane supplies every metric and gate"
         ),
         "thresholds": {
             "warm_ratio_maximum": WARM_RATIO_LIMIT,
             "rss_ratio_maximum": RSS_RATIO_LIMIT,
             "cold_to_ready_ratio_maximum": COLD_RATIO_LIMIT,
-            "optional_generation_load_first_warm_seconds_maximum": (
+            "optional_generation_seconds_maximum_exclusive": (
                 OPTIONAL_COLD_LIMIT_SECONDS
             ),
-            "optional_cold_deadline_is_aggregate": True,
+            "optional_first_warm_seconds_maximum_exclusive": (
+                OPTIONAL_COLD_LIMIT_SECONDS
+            ),
+            "optional_continuation_deadlines_are_independent": True,
         },
         "candidate_generation_template": list(
             candidate_generation_command(
@@ -1765,7 +2207,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
                     environment=environment,
                     target_seconds=arguments.target_seconds,
                     timeout_seconds=MANDATORY_LANE_TIMEOUT_SECONDS,
-                    cold_limit_seconds=OPTIONAL_COLD_LIMIT_SECONDS,
+                    continuation_stage_limit_seconds=OPTIONAL_COLD_LIMIT_SECONDS,
                 )
                 if not candidate.numerical_parity.passes:
                     references[total_gluons] = reference.metrics

@@ -74,6 +74,7 @@ _RECURRENCE_CAPABILITIES = {
 _CONTRACTED_RECURRENCE_CAPABILITIES = {
     "rusticol.recurrence-color.contracted.v1",
     "rusticol.recurrence-direct-arena.complex-f64.v1",
+    "rusticol.recurrence-helicity-selector-companion.v2",
 }
 _UFO_SM_ROOT = (
     Path(__file__).resolve().parents[2]

@@ -176,6 +176,8 @@ pub const RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_LC_COLOR_CAPABILITY;
 pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
+pub const RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY: &str =
+    "rusticol.recurrence-helicity-selector-companion.v2";
 pub const ON_THE_FLY_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.complex-f64.v1";
 pub const ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     "rusticol.on-the-fly.contracted-color.v1";
@@ -254,6 +256,7 @@ pub enum RuntimeCapability {
     RecurrenceRuntimeComplexF64V1,
     RecurrenceLcColorV1,
     RecurrenceContractedColorV1,
+    RecurrenceHelicitySelectorCompanionV2,
     SymmetricGroupFftColorContractionV1,
     OnTheFlyRuntimeComplexF64V1,
     OnTheFlyContractedColorV1,
@@ -286,6 +289,9 @@ impl RuntimeCapability {
             Self::RecurrenceRuntimeComplexF64V1 => RECURRENCE_RUNTIME_CAPABILITY,
             Self::RecurrenceLcColorV1 => RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
             Self::RecurrenceContractedColorV1 => RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            Self::RecurrenceHelicitySelectorCompanionV2 => {
+                RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+            }
             Self::SymmetricGroupFftColorContractionV1 => {
                 SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
             }
@@ -330,6 +336,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -4402,11 +4410,18 @@ struct MaterializedHelicityDirectTotalColorGroup {
 
 #[derive(Clone, Copy, Debug)]
 struct MaterializedHelicityDirectTotalContractionEntry {
-    left_group_index: Option<usize>,
-    right_group_index: Option<usize>,
+    left_group_index: usize,
+    right_group_index: usize,
     weight_re: f64,
     weight_im: f64,
     symmetry_factor: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MaterializedHelicityDirectDefaultPlanCacheEntry {
+    physics_binding_id: u64,
+    helicity_index: usize,
+    plan_index: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -4460,20 +4475,15 @@ enum CompiledDirectReducerKind {
     ColorTopologyReplay { physical_group_count: usize },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum CompiledDirectReductionFootprint {
     /// The maximum reducer working set was derived entirely from authenticated
     /// amplitude, physics, and replay metadata.
     Authenticated { hot_scalar_values_per_point: usize },
     /// A future/legacy execution shape did not expose enough static metadata.
     /// Production Direct tiling must fail closed to one point.
+    #[default]
     Unauthenticated,
-}
-
-impl Default for CompiledDirectReductionFootprint {
-    fn default() -> Self {
-        Self::Unauthenticated
-    }
 }
 
 impl CompiledDirectReductionFootprint {
@@ -4597,6 +4607,8 @@ struct AmplitudeRuntime {
     materialized_helicity_direct_total_plans: Vec<MaterializedHelicityDirectTotalPlan>,
     materialized_helicity_direct_total_plan_capacity: usize,
     materialized_helicity_direct_total_next_replacement: usize,
+    materialized_helicity_direct_default_plan_by_selector_domain:
+        Vec<Option<MaterializedHelicityDirectDefaultPlanCacheEntry>>,
     evaluator_output_order: Option<Vec<usize>>,
     evaluator: Option<EvaluatorGroup>,
 }
@@ -4678,6 +4690,9 @@ mod recurrence_manifest;
 use recurrence_manifest::*;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_process_pack;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod on_the_fly_lane;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod on_the_fly_load;
@@ -4728,11 +4743,13 @@ mod evaluator;
     any(target_os = "linux", target_os = "macos")
 ))]
 pub(crate) use evaluator::native_direct::tests::count_allocations;
+pub(crate) use evaluator::recurrence_closure_direct::execute_closure_reduce_rows;
+pub(crate) use evaluator::recurrence_intrinsic_direct::execute_interaction_terminal_closures;
 #[cfg(all(test, feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_direct::tests::count_allocations;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_eager_direct;
-#[cfg(feature = "f64-symjit")]
+#[cfg(any(test, feature = "python-generation-bridge"))]
 pub(crate) use evaluator::symjit_plane::compile_symbolica_program_to_plane_application_bytes;
 use evaluator::*;
 

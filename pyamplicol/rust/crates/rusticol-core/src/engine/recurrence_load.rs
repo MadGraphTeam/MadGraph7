@@ -11,6 +11,12 @@ use super::recurrence_backend::NativeRecurrenceDirectExecutorBackend;
 #[cfg(feature = "on-the-fly-test-support")]
 use super::recurrence_backend::NativeRecurrencePreparedExecutorPool;
 use super::recurrence_manifest::*;
+use super::recurrence_process_pack::{
+    ProcessDirectExecutorPack, ProcessExecutorBackend, ProcessExecutorIdentities,
+    ProcessExecutorTarget, RECURRENCE_PROCESS_BINDING_HEADER_SIZE_V4,
+    RECURRENCE_PROCESS_BINDING_MAGIC_V4, RECURRENCE_PROCESS_BINDING_VERSION_V4,
+    decode_process_executor_descriptors, read_string, semantic_digest_from_bytes,
+};
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 #[cfg(feature = "on-the-fly-test-support")]
@@ -21,6 +27,8 @@ use crate::recurrence::direct_backend::{
 use crate::recurrence::direct_runtime::{
     DirectRecurrenceExecutionRuntime, DirectReplaySelectorPlan,
 };
+#[cfg(test)]
+use crate::recurrence::on_the_fly::OnTheFlySourceExecutionSpecV1;
 #[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::on_the_fly::hash_current_key;
 #[cfg(feature = "on-the-fly-test-support")]
@@ -30,8 +38,7 @@ use crate::recurrence::on_the_fly::{
     QueryFamilyTraceInput, build_on_the_fly_selected_trace_v1,
 };
 use crate::recurrence::on_the_fly::{
-    OnTheFlyProcessSeedV1, OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
-    OnTheFlySourceWavefunctionFamilyV1,
+    OnTheFlyProcessSeedV1, OnTheFlySourceOrientationV1, OnTheFlySourceWavefunctionFamilyV1,
 };
 #[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::{AuthenticatedRecurrenceBuilderInput, PreparedDirectExecutorCatalog};
@@ -51,35 +58,95 @@ pub(super) struct LoadedRecurrenceRuntime {
     pub(super) lane: RecurrenceNativeRuntime,
 }
 
+fn companion_helicity_coefficient_is_canonical(structural_zero: bool, coefficient: f64) -> bool {
+    coefficient == if structural_zero { 0.0 } else { 1.0 }
+}
+
+pub(super) struct LoadedRecurrencePlan {
+    pub(super) plan: DirectRecurrencePlan,
+    pub(super) process_executors: ProcessDirectExecutorPack,
+}
+
+struct LoadedRecurrenceProcessBinding {
+    remap: RecurrenceProcessRemap,
+    process_executors: ProcessDirectExecutorPack,
+}
+
 pub(super) fn load_recurrence_native_runtime(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
     manifest: &RecurrenceExecutionManifest,
     physics: &ProcessPhysicsV1,
+    _selection: &crate::ArtifactSelection,
 ) -> RusticolResult<LoadedRecurrenceRuntime> {
-    let (pack_bytes, mut pack, payload_root) = load_prepared_pack(artifact, manifest)?;
-    drop(pack_bytes);
-    let plan = load_plan(artifact, evaluator_root, manifest)?;
+    let loaded_plan = load_plan(artifact, evaluator_root, manifest)?;
+    let plan = loaded_plan.plan;
     let (mut common, parameter_defaults, parameter_projection, source_domains) =
         build_common_runtime(&plan, manifest, physics)?;
-    let loaded_backend = NativeRecurrenceDirectExecutorBackend::load_from_verified_artifact(
-        &mut pack,
-        artifact,
-        &payload_root,
-        &plan,
-        &manifest.prepared_kernel_pack_digest,
-        &manifest.direct_template_catalog_digest,
-        source_domains,
-    )?;
-    let (executors, backend_owners) = loaded_backend.into_parts();
+    let payload_root = recurrence_payload_root(artifact, manifest)?;
     let kernel_payloads = artifact.evaluator_payload_store(&payload_root)?;
-    common.model_parameter_evaluator =
+    if manifest.helicity_selector_companion.is_some() {
+        if physics.coverage.helicities != "complete" || physics.coverage.color != "contracted" {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector companion requires complete helicity and contracted-color coverage",
+            ));
+        }
+        if physics.helicities.iter().any(|helicity| {
+            !companion_helicity_coefficient_is_canonical(
+                helicity.structural_zero,
+                helicity.coefficient,
+            )
+        }) {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector companion requires unit physical-helicity coefficients and zero structural-zero coefficients",
+            ));
+        }
+    }
+    common.model_parameter_evaluator = if common
+        .model_parameters
+        .iter()
+        .any(|parameter| parameter.kind == "derived_parameter_component")
+    {
+        let (pack_bytes, mut pack, fallback_payload_root) = load_prepared_pack(artifact, manifest)?;
+        drop(pack_bytes);
+        drop(pack.recurrence_template.take());
+        drop(pack.recurrence_direct_template.take());
+        if fallback_payload_root != payload_root {
+            return Err(RusticolError::integrity(
+                "recurrence parameter fallback resolved a different prepared payload root",
+            ));
+        }
         super::eager_load::load_prepared_model_parameter_evaluator_for_runtime(
             &pack,
             &common.model_parameters,
             &kernel_payloads,
-        )?;
+        )?
+    } else {
+        None
+    };
     common.refresh_derived_model_parameters()?;
+    let helicity_selector_companion = if manifest.helicity_selector_companion.is_some() {
+        Some(
+            super::on_the_fly_load::load_recurrence_helicity_selector_companion(
+                artifact,
+                evaluator_root,
+                manifest,
+                physics,
+                &kernel_payloads,
+                &common,
+            )?
+            .runtime,
+        )
+    } else {
+        None
+    };
+    let loaded_backend = NativeRecurrenceDirectExecutorBackend::load_from_process_pack(
+        &loaded_plan.process_executors,
+        &kernel_payloads,
+        &plan,
+        source_domains,
+    )?;
+    let (executors, backend_owners) = loaded_backend.into_parts();
     let public_flow_ids = public_flow_ids(&plan, &manifest.runtime_metadata, physics)?;
     let direct_helicity_to_physics = direct_helicity_to_physics(&plan, physics)?;
     let color_contraction = load_color_contraction(artifact, evaluator_root, manifest)?;
@@ -92,6 +159,7 @@ pub(super) fn load_recurrence_native_runtime(
         public_flow_ids,
         direct_helicity_to_physics,
         color_contraction,
+        helicity_selector_companion,
     )?;
     Ok(LoadedRecurrenceRuntime { common, lane })
 }
@@ -203,7 +271,7 @@ pub(super) fn load_recurrence_exact_sections(
 ) -> RusticolResult<NativeRecurrenceExactSections> {
     let (pack_bytes, pack, _payload_root) = load_prepared_pack(artifact, manifest)?;
     drop(pack_bytes);
-    let plan = load_plan(artifact, evaluator_root, manifest)?;
+    let plan = load_plan(artifact, evaluator_root, manifest)?.plan;
     let direct = pack.recurrence_direct_template_catalog(
         &manifest.prepared_kernel_pack_digest,
         &manifest.direct_template_catalog_digest,
@@ -376,7 +444,7 @@ fn public_flow_ids(
     Ok(result)
 }
 
-fn direct_helicity_to_physics(
+pub(super) fn direct_helicity_to_physics(
     plan: &DirectRecurrencePlan,
     physics: &ProcessPhysicsV1,
 ) -> RusticolResult<Vec<usize>> {
@@ -461,6 +529,16 @@ fn load_prepared_pack(
     Ok((bytes, pack, payload_root))
 }
 
+fn recurrence_payload_root(
+    artifact: &VerifiedArtifact,
+    manifest: &RecurrenceExecutionManifest,
+) -> RusticolResult<PathBuf> {
+    Ok(artifact.root().join(confined_internal_path(
+        &manifest.kernel_pack.payload_root,
+        "recurrence prepared kernel payload root",
+    )?))
+}
+
 pub(super) fn validate_recurrence_prepared_pack_outer_target(
     outer_target: &crate::Target,
     pack: &PreparedKernelPackManifest,
@@ -472,12 +550,21 @@ fn load_plan(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
     manifest: &RecurrenceExecutionManifest,
-) -> RusticolResult<DirectRecurrencePlan> {
+) -> RusticolResult<LoadedRecurrencePlan> {
+    load_plan_summary(artifact, evaluator_root, manifest, &manifest.plan)
+}
+
+pub(super) fn load_plan_summary(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &RecurrenceExecutionManifest,
+    summary: &RecurrencePlanSummary,
+) -> RusticolResult<LoadedRecurrencePlan> {
     #[cfg(feature = "on-the-fly-test-support")]
     crate::recurrence::on_the_fly::reject_forbidden_work_if_probed(
         crate::recurrence::on_the_fly::OnTheFlyForbiddenWorkV1::DirectPlanLoad,
     )?;
-    let container = &manifest.plan.runtime_schedule;
+    let container = &summary.runtime_schedule;
     let path = artifact.root().join(&container.path);
     let payload = artifact.payload(&container.path)?;
     if payload.role != PayloadRole::EvaluatorState
@@ -492,7 +579,7 @@ fn load_plan(
         ));
     }
 
-    let process_remap = validate_process_binding(artifact, evaluator_root, manifest)?;
+    let process_binding = validate_process_binding(artifact, evaluator_root, manifest, summary)?;
 
     let expected_file_sha = decode_sha256(&container.sha256)?;
     let container_file = artifact.open_payload_file(&container.path)?;
@@ -514,7 +601,7 @@ fn load_plan(
         ));
     }
     let member = reader.member(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
-    let plan_metadata = &manifest.plan.inspection_summary.runtime_container_member;
+    let plan_metadata = &summary.inspection_summary.runtime_container_member;
     if member.kind() != PacbinMemberKind::RecurrenceDirectPlan {
         return Err(RusticolError::compatibility(
             "recurrence runtime PACBIN contains an incompatible plan member",
@@ -528,8 +615,7 @@ fn load_plan(
         ));
     }
     match (
-        manifest
-            .plan
+        summary
             .inspection_summary
             .color_projection_certificate
             .as_ref(),
@@ -568,10 +654,7 @@ fn load_plan(
     let bytes = reader.member_bytes(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
     let plan = decode_recurrence_direct_plan_v2(bytes)?;
     if plan.semantic_digest().to_string()
-        != manifest
-            .plan
-            .process_binding
-            .native_schedule_semantic_digest()
+        != summary.process_binding.native_schedule_semantic_digest()
     {
         return Err(RusticolError::integrity(
             "recurrence native schedule semantic digest disagrees with its process binding",
@@ -585,15 +668,35 @@ fn load_plan(
             "direct recurrence plan authentication digests disagree with execution.json",
         ));
     }
-    apply_process_remap(plan, &process_remap).map(DirectRecurrencePlan::into_runtime_compacted)
+    let root_runtime_layout_digest = plan.runtime_layout_digest();
+    let plan = apply_process_remap(plan, &process_binding.remap)?.into_runtime_compacted();
+    let expected_prepared_pack_digest = semantic_digest_from_bytes(
+        decode_sha256(&manifest.prepared_kernel_pack_digest)?,
+        "prepared-kernel pack",
+    )?;
+    let expected_catalog_digest = semantic_digest_from_bytes(
+        decode_sha256(&manifest.direct_template_catalog_digest)?,
+        "direct-template catalog",
+    )?;
+    process_binding.process_executors.validate_for_plan(
+        &plan,
+        expected_prepared_pack_digest,
+        expected_catalog_digest,
+        root_runtime_layout_digest,
+    )?;
+    Ok(LoadedRecurrencePlan {
+        plan,
+        process_executors: process_binding.process_executors,
+    })
 }
 
 fn validate_process_binding(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
     manifest: &RecurrenceExecutionManifest,
-) -> RusticolResult<RecurrenceProcessRemap> {
-    let binding = &manifest.plan.process_binding;
+    summary: &RecurrencePlanSummary,
+) -> RusticolResult<LoadedRecurrenceProcessBinding> {
+    let binding = &summary.process_binding;
     let relative_root = evaluator_root
         .strip_prefix(artifact.root())
         .map_err(|_| RusticolError::security("recurrence process root escapes the artifact"))?;
@@ -612,8 +715,9 @@ fn validate_process_binding(
         ));
     }
     let bytes = artifact.read_payload(logical)?;
-    const HEADER_SIZE: usize = 160;
-    if bytes.len() < HEADER_SIZE || &bytes[..8] != b"PACRDBN2" {
+    if bytes.len() < RECURRENCE_PROCESS_BINDING_HEADER_SIZE_V4
+        || bytes.get(..8) != Some(RECURRENCE_PROCESS_BINDING_MAGIC_V4.as_slice())
+    {
         return Err(RusticolError::compatibility(
             "unsupported recurrence process-binding payload",
         ));
@@ -625,30 +729,119 @@ fn validate_process_binding(
             .map(u32::from_le_bytes)
             .ok_or_else(|| RusticolError::artifact("truncated recurrence process binding"))
     };
-    if u32_at(8)? != 2 {
+    if u32_at(8)? != RECURRENCE_PROCESS_BINDING_VERSION_V4
+        || usize::try_from(u32_at(12)?).ok() != Some(RECURRENCE_PROCESS_BINDING_HEADER_SIZE_V4)
+    {
         return Err(RusticolError::compatibility(
             "unsupported recurrence process-binding version",
         ));
     }
-    let process_len = usize::try_from(u32_at(12)?)
+    let process_len = usize::try_from(u32_at(16)?)
         .map_err(|_| RusticolError::artifact("recurrence process ID is too large"))?;
-    let word_count = usize::try_from(u32_at(16)?)
+    let word_count = usize::try_from(u32_at(20)?)
         .map_err(|_| RusticolError::artifact("recurrence support mask is too large"))?;
-    let process_start = HEADER_SIZE;
+    let target_len = usize::try_from(u32_at(24)?)
+        .map_err(|_| RusticolError::artifact("recurrence executor target is too large"))?;
+    let cpu_feature_count = u32_at(28)?;
+    let descriptor_count = u32_at(32)?;
+    let catalog_executor_count = u32_at(36)?;
+    let backend = ProcessExecutorBackend::decode(
+        *bytes
+            .get(40)
+            .ok_or_else(|| RusticolError::artifact("truncated executor backend"))?,
+    )?;
+    let portable = match bytes.get(41).copied() {
+        Some(0) => false,
+        Some(1) => true,
+        _ => {
+            return Err(RusticolError::artifact(
+                "recurrence executor portability is not a canonical boolean",
+            ));
+        }
+    };
+    if bytes.get(42) != Some(&64) || bytes.get(43) != Some(&0) {
+        return Err(RusticolError::compatibility(
+            "recurrence process executors require a 64-bit little-endian target",
+        ));
+    }
+    let counts = (0..11)
+        .map(|index| u32_at(44 + index * 4))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    if counts[5] != catalog_executor_count {
+        return Err(RusticolError::integrity(
+            "recurrence executor catalog domain disagrees with its process remap",
+        ));
+    }
+    let schedule_digest = read_header_digest(&bytes, 88, "root schedule")?;
+    let process_semantic_digest = read_header_digest(&bytes, 120, "process semantic")?;
+    let compiled_model_digest = semantic_digest_from_bytes(
+        read_header_digest(&bytes, 152, "compiled model")?,
+        "compiled model",
+    )?;
+    let recurrence_template_catalog_digest = semantic_digest_from_bytes(
+        read_header_digest(&bytes, 184, "recurrence-template catalog")?,
+        "recurrence-template catalog",
+    )?;
+    let prepared_kernel_pack_digest = semantic_digest_from_bytes(
+        read_header_digest(&bytes, 216, "prepared-kernel pack")?,
+        "prepared-kernel pack",
+    )?;
+    let direct_template_catalog_digest = semantic_digest_from_bytes(
+        read_header_digest(&bytes, 248, "direct-template catalog")?,
+        "direct-template catalog",
+    )?;
+    let runtime_layout_digest = semantic_digest_from_bytes(
+        read_header_digest(&bytes, 280, "runtime layout")?,
+        "runtime layout",
+    )?;
+    let process_digest = read_header_digest(&bytes, 312, "process")?;
+    if schedule_digest != decode_sha256(&binding.schedule_digest)?
+        || process_digest != decode_sha256(&binding.process_digest)?
+        || process_semantic_digest != decode_sha256(&binding.process_semantic_digest)?
+        || compiled_model_digest.to_string() != manifest.compiled_model_digest
+        || recurrence_template_catalog_digest.to_string()
+            != manifest.recurrence_template_catalog_digest
+        || prepared_kernel_pack_digest.to_string() != manifest.prepared_kernel_pack_digest
+        || direct_template_catalog_digest.to_string() != manifest.direct_template_catalog_digest
+    {
+        return Err(RusticolError::integrity(
+            "recurrence process-executor identities disagree with execution.json",
+        ));
+    }
+    let process_start = RECURRENCE_PROCESS_BINDING_HEADER_SIZE_V4;
     let process_end = process_start
         .checked_add(process_len)
         .ok_or_else(|| RusticolError::artifact("recurrence process binding overflows"))?;
-    if bytes.get(20..52) != Some(decode_sha256(&binding.schedule_digest)?.as_slice())
-        || bytes.get(52..84) != Some(decode_sha256(&binding.process_semantic_digest)?.as_slice())
-        || bytes.get(84..116) != Some(decode_sha256(&binding.remap.bijection_digest)?.as_slice())
-        || bytes.get(process_start..process_end) != Some(manifest.key.as_bytes())
-        || word_count == 0
-    {
+    let target_end = process_end
+        .checked_add(target_len)
+        .ok_or_else(|| RusticolError::artifact("recurrence executor target range overflows"))?;
+    if bytes.get(process_start..process_end) != Some(manifest.key.as_bytes()) || word_count == 0 {
         return Err(RusticolError::integrity(
             "recurrence process-binding payload is inconsistent",
         ));
     }
-    let mut cursor = process_end;
+    let target_triple =
+        std::str::from_utf8(bytes.get(process_end..target_end).ok_or_else(|| {
+            RusticolError::artifact("truncated recurrence process-executor target")
+        })?)
+        .map_err(|_| RusticolError::artifact("recurrence executor target is not UTF-8"))?
+        .to_owned();
+    if target_triple.is_empty() {
+        return Err(RusticolError::artifact(
+            "recurrence process-executor target is empty",
+        ));
+    }
+    let mut cursor = target_end;
+    let cpu_features = (0..cpu_feature_count)
+        .map(|_| read_string(&bytes, &mut cursor, "executor CPU feature"))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let target = ProcessExecutorTarget {
+        backend,
+        target_triple,
+        portable,
+        cpu_features,
+    };
+    target.validate(&artifact.manifest().producer.target)?;
     let words = read_u64_values(
         &bytes,
         &mut cursor,
@@ -661,9 +854,6 @@ fn validate_process_binding(
             "recurrence process support mask is inconsistent",
         ));
     }
-    let counts = (0..11)
-        .map(|index| u32_at(116 + index * 4))
-        .collect::<RusticolResult<Vec<_>>>()?;
     let source_slots = read_u32_rows(&bytes, &mut cursor, counts[0], 1, "source-slot remap")?
         .into_iter()
         .map(|row| row[0])
@@ -723,11 +913,6 @@ fn validate_process_binding(
         count: counts[6],
         changes: read_u32_pairs(&bytes, &mut cursor, counts[10], "parameter-slot remap")?,
     };
-    if cursor != bytes.len() {
-        return Err(RusticolError::integrity(
-            "recurrence process-binding payload has trailing bytes",
-        ));
-    }
     let decoded = RecurrenceProcessRemap {
         bijection_digest: binding.remap.bijection_digest.clone(),
         source_slots,
@@ -747,7 +932,37 @@ fn validate_process_binding(
             "recurrence process-binding binary remap disagrees with execution.json",
         ));
     }
-    Ok(decoded)
+    let process_executors = decode_process_executor_descriptors(
+        &bytes,
+        &mut cursor,
+        descriptor_count,
+        catalog_executor_count,
+        target,
+        ProcessExecutorIdentities {
+            compiled_model_digest,
+            recurrence_template_catalog_digest,
+            prepared_kernel_pack_digest,
+            direct_template_catalog_digest,
+            runtime_layout_digest,
+        },
+    )?;
+    if cursor != bytes.len() {
+        return Err(RusticolError::integrity(
+            "recurrence process-binding payload has trailing bytes",
+        ));
+    }
+    Ok(LoadedRecurrenceProcessBinding {
+        remap: decoded,
+        process_executors,
+    })
+}
+
+fn read_header_digest(bytes: &[u8], offset: usize, context: &str) -> RusticolResult<[u8; 32]> {
+    bytes
+        .get(offset..offset + 32)
+        .ok_or_else(|| RusticolError::artifact(format!("truncated {context} digest")))?
+        .try_into()
+        .map_err(|_| RusticolError::internal("process-binding digest width drifted"))
 }
 
 fn read_u32_pairs(
@@ -1285,6 +1500,7 @@ fn on_the_fly_prepared_parameters(
     })
 }
 
+#[cfg(feature = "on-the-fly-test-support")]
 pub(super) fn on_the_fly_source_major_momenta(
     seed: &OnTheFlyProcessSeedV1,
     point_major: &[f64],
@@ -2347,7 +2563,8 @@ impl NativeRuntime {
             &recurrence_artifact,
             &recurrence_evaluator_root,
             &recurrence_manifest,
-        )?;
+        )?
+        .plan;
         let (recurrence_pack_bytes, mut recurrence_pack, recurrence_payload_root) =
             load_prepared_pack(&recurrence_artifact, &recurrence_manifest)?;
         drop(recurrence_pack_bytes);
@@ -2859,7 +3076,7 @@ fn build_common_runtime(
     ))
 }
 
-fn build_direct_source_domains(
+pub(super) fn build_direct_source_domains(
     plan: &DirectRecurrencePlan,
     metadata: &RecurrenceRuntimeMetadata,
     runtime_parameter_slots: &BTreeMap<String, RuntimeParameterSlots>,
@@ -3045,6 +3262,7 @@ pub(super) fn build_on_the_fly_source_domains(
     finish_direct_source_domains(variants)
 }
 
+#[cfg(test)]
 fn build_on_the_fly_source_domains_from_specs(
     specs: impl IntoIterator<Item = OnTheFlySourceExecutionSpecV1>,
     domain_count: usize,
@@ -3097,6 +3315,7 @@ fn build_on_the_fly_source_domains_from_specs(
     finish_direct_source_domains(variants)
 }
 
+#[cfg(test)]
 fn bind_on_the_fly_source_spec(
     compact: DirectSourceTemplateSpec,
     authoritative: DirectSourceTemplateSpec,
@@ -3409,8 +3628,8 @@ mod binding_decode_tests {
         RecurrenceMomentumTransform, RecurrenceNormalization, RecurrenceParameterProjection,
         RecurrenceParticleMass, RecurrenceParticleStatistics, RecurrenceRuntimeMetadata,
         RecurrenceSourceOrientation, RecurrenceSourceTemplate, RecurrenceWavefunctionFamily,
-        RuntimeParameterSlots, SemanticDigest, build_on_the_fly_source_domains_from_specs,
-        invert_replay_helicity_map, read_u64_values,
+        RuntimeParameterSlots, build_on_the_fly_source_domains_from_specs,
+        companion_helicity_coefficient_is_canonical, invert_replay_helicity_map, read_u64_values,
     };
     #[cfg(feature = "on-the-fly-test-support")]
     use super::{OnTheFlyQueryTraceCacheV1, validate_on_the_fly_probe_outputs};
@@ -3421,6 +3640,20 @@ mod binding_decode_tests {
         // The replay map is representative ID -> public ID. Public helicity
         // zero is therefore represented by ID one, not by the same index.
         assert_eq!(invert_replay_helicity_map(17, &[2, 0, 1], 0).unwrap(), 1);
+    }
+
+    #[test]
+    fn companion_helicity_coefficients_fail_closed_outside_physical_unit_weights() {
+        assert!(companion_helicity_coefficient_is_canonical(false, 1.0));
+        assert!(companion_helicity_coefficient_is_canonical(true, 0.0));
+        for (structural_zero, coefficient) in
+            [(false, 0.0), (false, 2.0), (true, 1.0), (true, f64::NAN)]
+        {
+            assert!(!companion_helicity_coefficient_is_canonical(
+                structural_zero,
+                coefficient,
+            ));
+        }
     }
 
     #[cfg(feature = "on-the-fly-test-support")]

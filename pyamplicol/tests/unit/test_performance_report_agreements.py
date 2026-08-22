@@ -150,15 +150,15 @@ def test_canonical_n4_direct_agreement_graph_has_exact_locked_counts() -> None:
     assert counts == {
         BUILTIN_UFO_RECURRENCE: 140,
         Z_RECURRENCE_CROSS_MODE: 80,
-        LC_CROSS_LAYOUT_COMPONENT: 246,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 213,
+        LC_CROSS_LAYOUT_COMPONENT: 254,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 221,
         MADGRAPH_FULL_COLOUR: 132,
     }
     assert Counter(
         _direct_replay_category(edge) for edge in agreement_edges(maximum_n_final=4)
     ) == {
-        "fully-replayed-pyamplicol": 433,
-        "replayed-pyamplicol-vs-authenticated-legacy": 213,
+        "fully-replayed-pyamplicol": 441,
+        "replayed-pyamplicol-vs-authenticated-legacy": 221,
         "authenticated-stored-legacy-layout": 33,
         "authenticated-stored-madgraph": 132,
     }
@@ -187,8 +187,8 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     assert counts == {
         BUILTIN_UFO_RECURRENCE: 332,
         Z_RECURRENCE_CROSS_MODE: 180,
-        LC_CROSS_LAYOUT_COMPONENT: 672,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 553,
+        LC_CROSS_LAYOUT_COMPONENT: 690,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 571,
         MADGRAPH_FULL_COLOUR: 200,
     }
     assert {edge.kind for edge in incoming_agreement_edges(candidate)} == {
@@ -210,13 +210,13 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     assert Counter(edge.kind for edge in measurable_edges) == {
         BUILTIN_UFO_RECURRENCE: 332,
         Z_RECURRENCE_CROSS_MODE: 156,
-        LC_CROSS_LAYOUT_COMPONENT: 660,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 541,
+        LC_CROSS_LAYOUT_COMPONENT: 678,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 559,
         MADGRAPH_FULL_COLOUR: 200,
     }
     assert Counter(_direct_replay_category(edge) for edge in measurable_edges) == {
-        "fully-replayed-pyamplicol": 1045,
-        "replayed-pyamplicol-vs-authenticated-legacy": 541,
+        "fully-replayed-pyamplicol": 1063,
+        "replayed-pyamplicol-vs-authenticated-legacy": 559,
         "authenticated-stored-legacy-layout": 103,
         "authenticated-stored-madgraph": 200,
     }

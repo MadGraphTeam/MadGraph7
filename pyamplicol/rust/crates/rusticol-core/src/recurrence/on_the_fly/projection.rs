@@ -317,6 +317,8 @@ pub(super) fn project_query_local_color_aliases(
             contributions: BTreeMap::new(),
             pairing_lineages: Vec::new(),
             stage: representative.stage,
+            reflection: crate::recurrence::construct::CurrentReflection::Unavailable,
+            reflection_certificate: None,
         };
         for member in members {
             extend_pairing_lineages(
@@ -422,6 +424,8 @@ mod tests {
                 unmatched_endpoint: None,
             }],
             stage: 0,
+            reflection: crate::recurrence::construct::CurrentReflection::Unavailable,
+            reflection_certificate: None,
         }
     }
 

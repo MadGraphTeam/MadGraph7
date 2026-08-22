@@ -60,7 +60,7 @@ fn evaluate_direct_helicity_schedule(
             schedule.selector_domain_id
         ))
     })?;
-    direct.evaluate_validated(point_count, direct_schedule)
+    direct.evaluate_validated_materialized_helicity(point_count, direct_schedule)
 }
 
 impl ExecutionRuntime {
@@ -238,6 +238,70 @@ impl ExecutionRuntime {
         self.compiled_helicity_execution_plan.is_some()
     }
 
+    /// Whether a singleton physical-helicity request can bypass a compact
+    /// helicity-sum/topology-replay execution without losing physical colour.
+    ///
+    /// A nested runtime owns a complete non-replay colour DAG. A local
+    /// materialized schedule is safe only when this runtime is itself not a
+    /// replay representative. Parent closures are deliberately not considered
+    /// here: replay-backed closures bypass the physical topology contraction.
+    pub(super) fn has_safe_singleton_helicity_execution(
+        &self,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<bool> {
+        let Some(selected_helicity_ids) = selected_helicity_ids else {
+            return Ok(false);
+        };
+        if selected_helicity_ids.len() != 1 {
+            return Ok(false);
+        }
+        let Some(plan) = self.compiled_helicity_execution_plan.as_ref() else {
+            return Ok(false);
+        };
+        let physics = self.physics.as_ref().ok_or_else(|| {
+            RusticolError::artifact(
+                "helicity recurrence materialization requires resolved physics metadata",
+            )
+        })?;
+        let selected_helicity_id = selected_helicity_ids
+            .iter()
+            .next()
+            .expect("singleton helicity selection checked");
+        let helicity_index = *physics
+            .helicity_index_by_id
+            .get(selected_helicity_id)
+            .ok_or_else(|| {
+                RusticolError::selector(format!(
+                    "unknown resolved helicity id {selected_helicity_id:?}"
+                ))
+            })?;
+        let schedule = plan
+            .schedules_by_physical_helicity
+            .get(helicity_index)
+            .and_then(Option::as_ref)
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "physical helicity {} has no compiled recurrence schedule",
+                    physics.manifest.helicities[helicity_index].id
+                ))
+            })?;
+        if schedule.structural_zero {
+            return Ok(true);
+        }
+        if self
+            .helicity_selector_lane_by_domain
+            .get(&schedule.selector_domain_id)
+            .and_then(|lane_index| {
+                self.helicity_selector_runtime_schedule_modes
+                    .get(*lane_index)
+            })
+            == Some(&HelicitySelectorScheduleMode::NestedRuntime)
+        {
+            return Ok(true);
+        }
+        Ok(!self.color_topology_replay_enabled && !self.lc_topology_replay_enabled)
+    }
+
     pub(super) fn compiled_color_selector_schedule(
         &self,
         materialized_sector_ids: &BTreeSet<i64>,
@@ -364,7 +428,11 @@ impl ExecutionRuntime {
                     .get(*lane_index)
                     .is_some_and(|schedule_mode| {
                         *schedule_mode == HelicitySelectorScheduleMode::NestedRuntime
-                            || selected_color_ids.is_none()
+                            || (*schedule_mode == HelicitySelectorScheduleMode::ParentClosure
+                                && selected_color_ids.is_none()
+                                && !physics.has_contracted_color_axis()
+                                && !self.color_topology_replay_enabled
+                                && !self.lc_topology_replay_enabled)
                     })
             });
         if let Some(lane_index) = selector_lane_index {
@@ -408,6 +476,9 @@ impl ExecutionRuntime {
             return Ok(true);
         }
 
+        if self.color_topology_replay_enabled || self.lc_topology_replay_enabled {
+            return Ok(false);
+        }
         if !self.supports_materialized_helicity_totals() {
             return Ok(false);
         }
@@ -472,8 +543,12 @@ impl ExecutionRuntime {
                         .is_some_and(|schedule_mode| {
                             (*schedule_mode == HelicitySelectorScheduleMode::NestedRuntime
                                 && selected_materialized_sector_ids.is_none())
-                                || (selected_color_ids.is_none()
-                                    && selected_materialized_sector_ids.is_none())
+                                || (*schedule_mode == HelicitySelectorScheduleMode::ParentClosure
+                                    && selected_color_ids.is_none()
+                                    && selected_materialized_sector_ids.is_none()
+                                    && !physics.has_contracted_color_axis()
+                                    && !self.color_topology_replay_enabled
+                                    && !self.lc_topology_replay_enabled)
                         })
                 });
             let mut selected = if let Some(lane_index) = selector_lane_index {
@@ -514,6 +589,11 @@ impl ExecutionRuntime {
                     }
                 }
             } else {
+                if self.color_topology_replay_enabled || self.lc_topology_replay_enabled {
+                    return Err(RusticolError::integrity(
+                        "topology-replay runtime cannot execute its representative materialized helicity schedule directly",
+                    ));
+                }
                 self.run_f64_materialized_helicity_schedule_unprofiled(
                     batch,
                     &physics,
@@ -766,7 +846,8 @@ impl ExecutionRuntime {
             compiled_direct_color_schedules,
             selected_materialized_sector_ids,
         )?;
-        let direct_total_plan = amplitude.bind_materialized_helicity_direct_total_plan(
+        let direct_total_plan = amplitude.bind_default_materialized_helicity_direct_total_plan(
+            schedule.selector_domain_id,
             physics,
             schedule.physical_helicity_index,
             &schedule.root_factors,
@@ -1098,8 +1179,12 @@ impl ExecutionRuntime {
                         .is_some_and(|schedule_mode| {
                             (*schedule_mode == HelicitySelectorScheduleMode::NestedRuntime
                                 && selected_materialized_sector_ids.is_none())
-                                || (selected_color_ids.is_none()
-                                    && selected_materialized_sector_ids.is_none())
+                                || (*schedule_mode == HelicitySelectorScheduleMode::ParentClosure
+                                    && selected_color_ids.is_none()
+                                    && selected_materialized_sector_ids.is_none()
+                                    && !physics.has_contracted_color_axis()
+                                    && !self.color_topology_replay_enabled
+                                    && !self.lc_topology_replay_enabled)
                         })
                 });
             orchestration_elapsed += orchestration_start.elapsed();
@@ -1141,6 +1226,11 @@ impl ExecutionRuntime {
                     }
                 }
             } else {
+                if self.color_topology_replay_enabled || self.lc_topology_replay_enabled {
+                    return Err(RusticolError::integrity(
+                        "topology-replay runtime cannot execute its representative materialized helicity schedule directly",
+                    ));
+                }
                 self.run_f64_materialized_helicity_schedule(
                     batch,
                     &physics,
@@ -1975,6 +2065,32 @@ fn helicity_execution_domain_by_domain(
 mod tests {
     use super::*;
 
+    fn runtime_with_singleton_helicity_schedule(
+        structural_zero: bool,
+    ) -> (ExecutionRuntime, BTreeSet<String>) {
+        let mut runtime = super::super::tests::empty_generic_runtime();
+        let physics = Arc::new(super::super::tests::test_physics_runtime("full"));
+        let selected_helicity_id = physics.manifest.helicities[0].id.clone();
+        let selected_helicity_ids = BTreeSet::from([selected_helicity_id.clone()]);
+        runtime.physics = Some(physics);
+        runtime.compiled_helicity_execution_plan = Some(CompiledHelicityExecutionPlan {
+            schedules_by_physical_helicity: vec![
+                Some(Arc::new(CompiledHelicitySelectorSchedule {
+                    selector_domain_id: 0,
+                    physical_helicity_index: 0,
+                    selected_helicity_ids: BTreeSet::from([selected_helicity_id]),
+                    source_states: Vec::new(),
+                    active_stage_chunk_indices: Vec::new(),
+                    active_amplitude_chunk_indices: Vec::new(),
+                    root_factors: Vec::new(),
+                    structural_zero,
+                })),
+                None,
+            ],
+        });
+        (runtime, selected_helicity_ids)
+    }
+
     #[test]
     fn representative_helicity_is_permuted_into_public_alias_order() {
         let values =
@@ -2017,5 +2133,64 @@ mod tests {
         assert_eq!(execution[7], 2);
         assert_eq!(execution[3], 3);
         assert_eq!(execution[6], 3);
+    }
+
+    #[test]
+    fn replay_owners_only_bypass_the_helicity_sum_through_nested_physical_runtimes() {
+        let (mut runtime, selected_helicity_ids) = runtime_with_singleton_helicity_schedule(false);
+        assert!(
+            runtime
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .unwrap()
+        );
+
+        runtime.color_topology_replay_enabled = true;
+        assert!(
+            !runtime
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .unwrap()
+        );
+
+        runtime
+            .helicity_selector_runtimes
+            .push(Box::new(super::super::tests::empty_generic_runtime()));
+        runtime
+            .helicity_selector_runtime_schedule_modes
+            .push(HelicitySelectorScheduleMode::NestedRuntime);
+        runtime.helicity_selector_lane_by_domain.insert(0, 0);
+        assert!(
+            runtime
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .unwrap()
+        );
+
+        runtime.helicity_selector_runtime_schedule_modes[0] =
+            HelicitySelectorScheduleMode::ParentClosure;
+        assert!(
+            !runtime
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn structural_zero_singletons_are_safe_without_physical_replay() {
+        let (mut runtime, selected_helicity_ids) = runtime_with_singleton_helicity_schedule(true);
+        runtime.color_topology_replay_enabled = true;
+
+        assert!(
+            runtime
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .unwrap()
+        );
+        assert!(!runtime.has_safe_singleton_helicity_execution(None).unwrap());
+        assert!(
+            !runtime
+                .has_safe_singleton_helicity_execution(Some(&BTreeSet::from([
+                    "hel:+-".to_string(),
+                    "hel:-+".to_string(),
+                ])))
+                .unwrap()
+        );
     }
 }

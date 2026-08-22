@@ -1060,10 +1060,13 @@ impl ArtifactManifest {
             .processes
             .iter()
             .flat_map(|process| {
-                process.aliases.iter().filter_map(|alias| {
-                    (normalize_process_expression(&alias.expression) == requested_expression)
-                        .then(|| alias_selection(process, alias))
-                })
+                process
+                    .aliases
+                    .iter()
+                    .filter(|alias| {
+                        normalize_process_expression(&alias.expression) == requested_expression
+                    })
+                    .map(|alias| alias_selection(process, alias))
             })
             .collect::<Vec<_>>();
         match alias_expression_matches.len() {
@@ -2318,6 +2321,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::RecurrenceRuntimeComplexF64V1,
         RuntimeCapability::RecurrenceLcColorV1,
         RuntimeCapability::RecurrenceContractedColorV1,
+        RuntimeCapability::RecurrenceHelicitySelectorCompanionV2,
         RuntimeCapability::SymmetricGroupFftColorContractionV1,
         RuntimeCapability::OnTheFlyRuntimeComplexF64V1,
         RuntimeCapability::OnTheFlyContractedColorV1,

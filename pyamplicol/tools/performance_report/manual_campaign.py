@@ -1992,13 +1992,22 @@ def lightweight_source_identity(repo_root: Path) -> ReportSourceIdentity:
     )
 
 
-def installed_source_identity() -> ReportSourceIdentity:
-    """Bind a copied campaign to the source revision recorded by its wheel."""
+def installed_source_identity(
+    *,
+    allow_candidate_checkout: bool = False,
+) -> ReportSourceIdentity:
+    """Bind a copied campaign to its wheel or a dry-run candidate checkout."""
 
-    from pyamplicol._internal.versions import active_source_revision
+    from pyamplicol._internal.versions import (
+        active_source_checkout,
+        active_source_revision,
+    )
 
     revision = active_source_revision()
     if revision is None:
+        checkout = active_source_checkout() if allow_candidate_checkout else None
+        if checkout is not None:
+            return lightweight_source_identity(checkout)
         raise ManualCampaignError(
             "installed pyAmpliCol has no source revision in its build info; "
             "reinstall a release wheel that retains build provenance"
@@ -10036,7 +10045,12 @@ def main(
         service.bind_measurement_lineage(None)
         service.bind_original_amplicol_seed(None)
         source = (
-            installed_source_identity()
+            installed_source_identity(
+                allow_candidate_checkout=(
+                    arguments.command == "run"
+                    and bool(getattr(arguments, "dry_run", False))
+                )
+            )
             if installed
             else lightweight_source_identity(root)
         )

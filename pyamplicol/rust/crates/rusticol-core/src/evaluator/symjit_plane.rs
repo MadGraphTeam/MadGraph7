@@ -14,8 +14,10 @@ use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
+#[cfg(any(test, feature = "python-generation-bridge"))]
+use symjit::Compiler;
 use symjit::{
-    Applet, Application, Compiled, CompiledPlaneFunc, Compiler, CompilerType, Config, Defuns,
+    Applet, Application, Compiled, CompiledPlaneFunc, CompilerType, Config, Defuns,
     PlaneDescriptor as SymjitPlaneDescriptor, Storage,
 };
 
@@ -737,6 +739,7 @@ fn invoke_range(
 /// This is deliberately a cold-path function. It constructs every SymJIT
 /// option explicitly so a process-local `symjit.toml` cannot alter generated
 /// artifacts.
+#[cfg(any(test, feature = "python-generation-bridge"))]
 pub(crate) fn compile_symbolica_program_to_plane_application_bytes(
     program_repr: &str,
     input_complex_count: usize,

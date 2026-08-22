@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: 0BSD
 
+#![allow(dead_code)] // Query-local proof inspection is retained for opt-in support builds.
+
 use super::sweep::*;
 use super::*;
 
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[cfg(feature = "on-the-fly-test-support")]
 pub(crate) const ON_THE_FLY_WORK_CENSUS_BASIS_V1: &str = "fully-resident-query-local-trace-v1";
 
 /// Authenticated model operation addressed by one semantic executor key.

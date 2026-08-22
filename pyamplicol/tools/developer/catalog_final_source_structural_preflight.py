@@ -7,7 +7,7 @@ proof claims from timings.  Each successful candidate artifact must contain a
 ``structural-preflight-proof.json`` emitted by generation, and each comparable
 legacy artifact must contain ``legacy-structural-proof.json`` emitted by the
 legacy probe.  The producer authenticates those sidecars against their source
-revision and every persisted object before assembling the exact 1,256 rows
+revision and every persisted object before assembling the exact 1,356 rows
 consumed by :mod:`tools.developer.catalog_restart_parity_gate`.
 
 Missing sidecars are reported as missing producer hooks.  Counts or digests are
@@ -442,9 +442,9 @@ def produce(
                 "legacy": _legacy_record(reference, currents.get(reference.cell_id)),
             }
         )
-    if len(rows) != 1256:
+    if len(rows) != 1356:
         raise FinalSourceProducerError(
-            f"catalog producer expected 1256 rows, generated {len(rows)}"
+            f"catalog producer expected 1356 rows, generated {len(rows)}"
         )
     return {"schema": SCHEMA, "source_revision": source_revision, "cells": rows}
 

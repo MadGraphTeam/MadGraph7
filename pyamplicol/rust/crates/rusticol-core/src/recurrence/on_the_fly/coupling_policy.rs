@@ -13,7 +13,6 @@
 
 use std::collections::BTreeMap;
 
-use super::public_query::physical_lc_selector_closure_anchor;
 use super::*;
 use crate::recurrence::contact_orbit_owner::ContactOrbitParentTopologyDomain;
 
@@ -42,6 +41,7 @@ impl OnTheFlyResolvedCouplingPolicyV1 {
         &self.effective_limits
     }
 
+    #[allow(dead_code)] // Retained for the feature-only structural census API.
     pub(crate) const fn census(&self) -> OnTheFlyCouplingPolicyCensusV1 {
         self.census
     }
@@ -244,13 +244,13 @@ fn apply_transition(
     if !topology_quantum_matches(prepared.input_states, prepared.input_spins, parents) {
         return Ok(());
     }
-    if let Some(contact_orbit) = prepared.contact_orbit.as_ref() {
-        if !contact_orbit.accepts_parent_topology_domain([
+    if let Some(contact_orbit) = prepared.contact_orbit.as_ref()
+        && !contact_orbit.accepts_parent_topology_domain([
             contact_orbit_topology_domain(parents[0]),
             contact_orbit_topology_domain(parents[1]),
-        ])? {
-            return Ok(());
-        }
+        ])?
+    {
+        return Ok(());
     }
     // Contact-orbit certificates choose one amplitude owner among the
     // admitted equivalent contributions. Retaining all certified owner
@@ -396,7 +396,7 @@ fn closure_has_canonical_anchor(
 
 fn collect_viable_total_orders(
     seed: &OnTheFlyProcessSeedV1,
-    closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
+    grammar: &PreparedOnTheFlyGrammarV1,
     nodes: &[GlobalTopologyNode],
     census: &mut OnTheFlyCouplingPolicyCensusV1,
 ) -> RusticolResult<Vec<Box<[u32]>>> {
@@ -409,7 +409,7 @@ fn collect_viable_total_orders(
             {
                 continue;
             }
-            let Some(rows) = closures.get(&canonical_state_pair(
+            let Some(rows) = grammar.closures.get(&canonical_state_pair(
                 left.key.current_state_template_id,
                 right.key.current_state_template_id,
             )) else {
@@ -454,7 +454,7 @@ fn collect_viable_total_orders(
                         let closed = witness
                             .witness
                             .closed_components(&parents[0].color, &parents[1].color)?;
-                        let Some(anchor) = physical_lc_selector_closure_anchor(seed, &closed)
+                        let Some(anchor) = grammar.closure_anchor_for_components(seed, &closed)
                         else {
                             continue;
                         };
@@ -531,6 +531,7 @@ fn minimal_envelope(
     Ok(Some(envelope.into_iter().map(Some).collect()))
 }
 
+#[allow(dead_code)] // Compatibility entry point for query-local/test-support callers.
 pub(crate) fn resolve_on_the_fly_coupling_policy_v1(
     templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
@@ -554,7 +555,7 @@ pub(super) fn resolve_on_the_fly_coupling_policy_from_grammar_v1(
     }
     let mut census = OnTheFlyCouplingPolicyCensusV1::default();
     let nodes = build_global_topologies(templates, seed, grammar, &mut census)?;
-    let totals = collect_viable_total_orders(seed, &grammar.closures, &nodes, &mut census)?;
+    let totals = collect_viable_total_orders(seed, grammar, &nodes, &mut census)?;
     let effective_limits = minimal_envelope(&totals, seed.coupling_hierarchies())?
         .unwrap_or_else(|| seed.explicit_coupling_limits().to_vec());
     Ok(OnTheFlyResolvedCouplingPolicyV1 {
@@ -828,6 +829,7 @@ mod tests {
                 &nonzero,
                 false,
                 false,
+                false,
             )
             .unwrap()
             .is_some()
@@ -839,6 +841,7 @@ mod tests {
                 &grammar,
                 policy.effective_limits(),
                 &selector_zero,
+                false,
                 false,
                 false,
             )

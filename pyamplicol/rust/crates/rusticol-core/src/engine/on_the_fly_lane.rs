@@ -446,6 +446,7 @@ impl OnTheFlyNativeRuntime {
             selected_public_flow_id,
             public_helicities,
             true,
+            self.symmetric_group_color_workspace.is_some(),
         )?;
         let request = OnTheFlyLcQueryRequestV1::new(
             selected.query.clone(),
@@ -590,6 +591,7 @@ impl OnTheFlyNativeRuntime {
         logical_point_capacity: u32,
         progress: &mut OnTheFlyWarmUpProgress<'_>,
     ) -> RusticolResult<(bool, PreparedOnTheFlyLcFamilyV1)> {
+        let enable_cyclic_trace_reflection = self.symmetric_group_color_workspace.is_some();
         let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
             RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
         })?;
@@ -620,19 +622,19 @@ impl OnTheFlyNativeRuntime {
         let streamed = build_streamed_query_family_candidate_v1(direct_catalog, |consumer| {
             while processed_query_count < requests.len() {
                 let chunk_end = processed_query_count
-                    .checked_add(query_pool.chunk_capacity())
-                    .unwrap_or(usize::MAX)
+                    .saturating_add(query_pool.chunk_capacity())
                     .min(requests.len());
                 let expected_queries = requests[processed_query_count..chunk_end]
                     .iter()
-                    .map(|request| request.query.clone())
-                    .collect::<Vec<_>>();
+                    .map(|request| grammar.canonicalize_query(seed, request.query.clone()))
+                    .collect::<RusticolResult<Vec<_>>>()?;
                 let outcomes = query_pool.build_chunk(
                     templates,
                     direct_catalog,
                     seed,
                     coupling_policy,
                     grammar,
+                    enable_cyclic_trace_reflection,
                     expected_queries.clone(),
                 )?;
                 if outcomes.len() != expected_queries.len() {
@@ -872,11 +874,12 @@ impl OnTheFlyNativeRuntime {
                 .as_ref()
                 .map(|family| (family.logical_point_capacity, family.census.is_some()))
                 .expect("matching on-the-fly pending family disappeared");
-            if logical_point_capacity > current_capacity && has_executable_family {
-                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
-                    self.discard_pending_lc_queries()?;
-                    return Err(error);
-                }
+            if logical_point_capacity > current_capacity
+                && has_executable_family
+                && let Err(error) = self.executor.resize_active_family(logical_point_capacity)
+            {
+                self.discard_pending_lc_queries()?;
+                return Err(error);
             }
             let family = self
                 .pending_family
@@ -939,20 +942,26 @@ impl OnTheFlyNativeRuntime {
                     progress,
                 );
             }
+            let enable_cyclic_trace_reflection = self.symmetric_group_color_workspace.is_some();
             let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
             })?;
             let grammar = self.prepared_grammar.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly grammar disappeared after preparation")
             })?;
+            let expected_queries = requests
+                .iter()
+                .map(|request| grammar.canonicalize_query(&self.seed, request.query.clone()))
+                .collect::<RusticolResult<Vec<_>>>()?;
             let outcomes = build_selected_lc_query_family_v1(
                 &self.templates,
                 &self.direct_catalog,
                 &self.seed,
                 coupling_policy,
                 grammar,
+                enable_cyclic_trace_reflection,
                 self.effective_query_construction_threads,
-                requests.iter().map(|request| request.query.clone()),
+                expected_queries.iter().cloned(),
             )?;
             if outcomes.len() != requests.len() {
                 return Err(RusticolError::integrity(
@@ -974,10 +983,12 @@ impl OnTheFlyNativeRuntime {
                     "on-the-fly trace-family allocation failed: {error}"
                 ))
             })?;
-            for (request_index, (request, outcome)) in requests.iter().zip(outcomes).enumerate() {
+            for (request_index, (expected_query, outcome)) in
+                expected_queries.into_iter().zip(outcomes).enumerate()
+            {
                 match outcome {
                     OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
-                        if selected.query != request.query {
+                        if selected.query != expected_query {
                             return Err(RusticolError::integrity(
                                 "on-the-fly trace query changed during construction",
                             ));
@@ -986,7 +997,7 @@ impl OnTheFlyNativeRuntime {
                         traces.push(selected);
                     }
                     OnTheFlySelectedQueryOutcomeV1::StructuralZero { query } => {
-                        if query != request.query {
+                        if query != expected_query {
                             return Err(RusticolError::integrity(
                                 "on-the-fly structural-zero query changed during construction",
                             ));
@@ -1189,11 +1200,12 @@ impl OnTheFlyNativeRuntime {
                 .as_ref()
                 .map(|family| (family.logical_point_capacity, family.census.is_some()))
                 .expect("matching contracted pending family disappeared");
-            if logical_point_capacity > current_capacity && has_executable_family {
-                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
-                    self.discard_pending_contracted_queries()?;
-                    return Err(error);
-                }
+            if logical_point_capacity > current_capacity
+                && has_executable_family
+                && let Err(error) = self.executor.resize_active_family(logical_point_capacity)
+            {
+                self.discard_pending_contracted_queries()?;
+                return Err(error);
             }
             let family = self
                 .pending_contracted_family
@@ -1236,6 +1248,7 @@ impl OnTheFlyNativeRuntime {
                 None,
             )?;
             self.ensure_process_prepared()?;
+            let enable_cyclic_trace_reflection = self.symmetric_group_color_workspace.is_some();
             let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
             })?;
@@ -1265,8 +1278,7 @@ impl OnTheFlyNativeRuntime {
             let streamed = build_streamed_query_family_candidate_v1(direct_catalog, |consumer| {
                 while processed_query_count < query_count {
                     let chunk_end = processed_query_count
-                        .checked_add(query_pool.chunk_capacity())
-                        .unwrap_or(usize::MAX)
+                        .saturating_add(query_pool.chunk_capacity())
                         .min(query_count);
                     let mut queries = Vec::new();
                     queries
@@ -1279,11 +1291,12 @@ impl OnTheFlyNativeRuntime {
                     for request_index in processed_query_count..chunk_end {
                         let helicity_position = request_index / structural_color_count;
                         let owner_ordinal = request_index % structural_color_count;
-                        queries.push(selectors.decoded_query_at(
+                        let query = selectors.decoded_query_at(
                             seed,
                             helicity_ordinals[helicity_position],
                             owner_ordinal,
-                        )?);
+                        )?;
+                        queries.push(grammar.canonicalize_query(seed, query)?);
                     }
                     let expected_queries = queries.clone();
                     let outcomes = query_pool.build_chunk(
@@ -1292,6 +1305,7 @@ impl OnTheFlyNativeRuntime {
                         seed,
                         coupling_policy,
                         grammar,
+                        enable_cyclic_trace_reflection,
                         queries,
                     )?;
                     if outcomes.len() != expected_queries.len() {
@@ -1509,11 +1523,11 @@ impl OnTheFlyNativeRuntime {
                 return Ok(false);
             }
             let has_executable_family = family.census.is_some();
-            if has_executable_family {
-                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
-                    self.discard_pending_lc_queries()?;
-                    return Err(error);
-                }
+            if has_executable_family
+                && let Err(error) = self.executor.resize_active_family(logical_point_capacity)
+            {
+                self.discard_pending_lc_queries()?;
+                return Err(error);
             }
             self.pending_family
                 .as_mut()
@@ -2631,7 +2645,9 @@ fn validate_contracted_run_shape(
 ) -> RusticolResult<()> {
     if point_count == 0
         || point_tile_size == 0
-        || point_major_momenta.len() % point_count as usize != 0
+        || !point_major_momenta
+            .len()
+            .is_multiple_of(point_count as usize)
         || !normalization_factor.is_finite()
         || normalization_factor < 0.0
         || actual_output_len != expected_output_len

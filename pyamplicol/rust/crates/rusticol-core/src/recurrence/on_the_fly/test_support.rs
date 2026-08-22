@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
+#![allow(dead_code)] // This module is intentionally a non-default test-support surface.
+
 //! Feature-gated development oracle for the compact on-the-fly builder.
 //!
 //! This is the only on-the-fly module allowed to consume the materialized
@@ -1003,6 +1005,7 @@ pub(crate) fn build_on_the_fly_selected_trace_v1(
         &seed,
         query,
         enable_projection,
+        false,
     )?;
     Ok(OnTheFlySelectedTraceV1 {
         seed,
@@ -1066,6 +1069,7 @@ pub(crate) fn build_on_the_fly_selected_trace_against_seed_v1(
     selected_public_flow_id: u32,
     public_helicities: &[i32],
     enable_projection: bool,
+    enable_cyclic_trace_reflection: bool,
 ) -> RusticolResult<OnTheFlySelectedTraceV1> {
     let oracle = one_public_row_oracle(authenticated, selected_public_flow_id, public_helicities)?;
     let retained_seed = compact_seed(
@@ -1086,6 +1090,7 @@ pub(crate) fn build_on_the_fly_selected_trace_against_seed_v1(
         artifact_seed,
         query,
         enable_projection,
+        enable_cyclic_trace_reflection,
     )?;
     Ok(OnTheFlySelectedTraceV1 {
         seed: artifact_seed.clone(),

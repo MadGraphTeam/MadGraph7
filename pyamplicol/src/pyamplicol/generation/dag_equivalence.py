@@ -4297,6 +4297,29 @@ _ROOT_SECTOR_POLICY = (
 )
 
 
+def dynamic_color_projection_not_applicable_report(
+    dag: GenericDAG,
+) -> dict[str, object]:
+    """Return a count-only report when the LC-only projection cannot apply."""
+
+    if dag.process.color_accuracy == "lc":
+        raise ValueError("LC DAGs require the dynamic-color projection pass")
+    return {
+        "abi": _DYNAMIC_COLOR_PROJECTION_ABI,
+        "applied": False,
+        "color_accuracy": str(dag.process.color_accuracy),
+        "equality_check_status": "not-applicable-color-accuracy",
+        "before_current_count": len(dag.currents),
+        "after_current_count": len(dag.currents),
+        "before_interaction_count": len(dag.interactions),
+        "after_interaction_count": len(dag.interactions),
+        "before_evaluation_count": dag.interaction_evaluation_count,
+        "after_evaluation_count": dag.interaction_evaluation_count,
+        "before_amplitude_root_count": len(dag.amplitude_roots),
+        "after_amplitude_root_count": len(dag.amplitude_roots),
+    }
+
+
 def _initial_dynamic_color_projection_certificate(
     dag: GenericDAG,
     *,
@@ -5656,6 +5679,7 @@ __all__ = [
     "certify_numerical_current_observations",
     "discover_generic_dag_numerical_current_relations",
     "discover_recursive_evaluation_relations",
+    "dynamic_color_projection_not_applicable_report",
     "generic_dag_numerical_capture_output_partition_sha256",
     "generic_dag_numerical_model_parameter_schema_sha256",
     "generic_dag_numerical_runtime_schema_sha256",

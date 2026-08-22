@@ -26,6 +26,21 @@ Release builds use a temporary allowlisted source overlay and an external
 workspace-local cache under `.artifacts/dev-install`; neither mode rewrites
 the source inputs.
 
+## Native Build Identity
+
+The native identity hashes the Rust/Cargo source closure, the pinned Rust and
+Maturin toolchains, effective native Maturin settings, and the declarative
+`tool.pyamplicol.native-build` contract. Python orchestration, distribution
+metadata, documentation, reports, staging paths, provenance-only locks, and an
+explicit inventory of wholly test-only Rust files are excluded. Candidate
+versions use the first twelve digits of this same digest; there is no parallel
+candidate fingerprint.
+
+Rust files that mix production code with inline `#[cfg(test)]` modules remain
+file-granular inputs. Avoiding that conservative invalidation requires moving
+the tests into an explicitly audited test-only module; the identity code does
+not attempt to parse or rewrite Rust source.
+
 ## Dependency Modes
 
 Release mode reads `dependencies/release-lock.toml` and accepts exact published

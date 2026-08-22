@@ -12,10 +12,17 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol._internal import versions
-
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "tools" / "developer" / "prepare_source_runtime.py"
+
+_VERSIONS_SPEC = importlib.util.spec_from_file_location(
+    "source_runtime_versions",
+    ROOT / "src/pyamplicol/_internal/versions.py",
+)
+assert _VERSIONS_SPEC is not None and _VERSIONS_SPEC.loader is not None
+versions = importlib.util.module_from_spec(_VERSIONS_SPEC)
+sys.modules[_VERSIONS_SPEC.name] = versions
+_VERSIONS_SPEC.loader.exec_module(versions)
 
 
 def _module():
@@ -44,7 +51,7 @@ def _source_root(tmp_path: Path) -> Path:
     source = root / "rust/crates/example/src/lib.rs"
     source.parent.mkdir(parents=True)
     source.write_text("pub fn value() -> u32 { 1 }\n", encoding="utf-8")
-    (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (root / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
     (root / "src/pyamplicol").mkdir(parents=True)
     return root
 
@@ -466,6 +473,43 @@ def test_publishable_native_source_identity_uses_wheel_extension(
     assert versions.active_native_source_identity() == ("a" * 40, "b" * 64)
 
 
+def test_active_source_checkout_is_limited_to_local_candidate_builds(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        versions,
+        "_active_build_info",
+        lambda: {
+            "publishable": False,
+            "source_checkout": str(tmp_path),
+        },
+    )
+    assert versions.active_source_checkout() == tmp_path
+
+    monkeypatch.setattr(
+        versions,
+        "_active_build_info",
+        lambda: {
+            "publishable": True,
+            "source_checkout": str(tmp_path),
+        },
+    )
+    assert versions.active_source_checkout() is None
+
+
+def test_active_source_checkout_rejects_relative_path(monkeypatch) -> None:
+    monkeypatch.setattr(
+        versions,
+        "_active_build_info",
+        lambda: {
+            "publishable": False,
+            "source_checkout": "relative/checkout",
+        },
+    )
+    assert versions.active_source_checkout() is None
+
+
 def test_publishable_staged_source_runtime_requires_its_native_build_id(
     monkeypatch,
 ) -> None:
@@ -652,6 +696,169 @@ def test_native_provenance_digest_implementations_match(tmp_path: Path) -> None:
     assert versions._native_build_inputs_digest(source_root) == changed
 
 
+def test_native_digest_v2_projects_only_native_pyproject_inputs(
+    tmp_path: Path,
+) -> None:
+    identity = _native_build_identity_module()
+    source_root = _source_root(tmp_path)
+    pyproject = source_root / "pyproject.toml"
+    original = pyproject.read_text(encoding="utf-8")
+    expected = identity.native_build_inputs_digest(source_root)
+    assert versions._native_build_inputs_digest(source_root) == expected
+
+    packaging_only = original.replace(
+        'description = "Generator using current recursion',
+        'description = "Packaging-only edit; generator using current recursion',
+        1,
+    ).replace("locked = true", "locked = false", 1)
+    packaging_only = packaging_only.replace(
+        '"maturin==1.14.1",\n  "mypy',
+        '"maturin==9.9.9",\n  "mypy',
+        1,
+    )
+    pyproject.write_text(packaging_only, encoding="utf-8")
+    assert identity.native_build_inputs_digest(source_root) == expected
+    assert versions._native_build_inputs_digest(source_root) == expected
+
+    pyproject.write_text(
+        original.replace("maturin==1.14.1", "maturin==1.14.2", 1),
+        encoding="utf-8",
+    )
+    pin_changed = identity.native_build_inputs_digest(source_root)
+    assert pin_changed != expected
+    assert versions._native_build_inputs_digest(source_root) == pin_changed
+
+    pyproject.write_text(
+        original.replace(
+            'features = ["extension-module", "numpy"]',
+            'features = ["extension-module", "numpy", "native-change"]',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    feature_changed = identity.native_build_inputs_digest(source_root)
+    assert feature_changed != expected
+    assert versions._native_build_inputs_digest(source_root) == feature_changed
+
+    pyproject.write_text(
+        original.replace(
+            "/pyamplicol/build",
+            "/pyamplicol/changed-build",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    contract_changed = identity.native_build_inputs_digest(source_root)
+    assert contract_changed != expected
+    assert versions._native_build_inputs_digest(source_root) == contract_changed
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    (
+        "maturin>=1.14.1",
+        "maturin==1.14.1; python_version >= '3.11'",
+        "packaging==26.2",
+        'maturin==1.14.1",\n  "maturin==1.14.1',
+    ),
+)
+def test_native_digest_rejects_unpinned_or_missing_build_maturin(
+    tmp_path: Path,
+    replacement: str,
+) -> None:
+    source_root = _source_root(tmp_path)
+    pyproject = source_root / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            "maturin==1.14.1",
+            replacement,
+            1,
+        ),
+        encoding="utf-8",
+    )
+    for digest in (
+        _native_build_identity_module().native_build_inputs_digest,
+        versions._native_build_inputs_digest,
+    ):
+        with pytest.raises(RuntimeError, match="Maturin"):
+            digest(source_root)
+
+
+def test_native_digest_rejects_unclassified_maturin_configuration(
+    tmp_path: Path,
+) -> None:
+    source_root = _source_root(tmp_path)
+    pyproject = source_root / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            "[tool.maturin]\n",
+            "[tool.maturin]\nfuture-native-option = true\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    for digest in (
+        _native_build_identity_module().native_build_inputs_digest,
+        versions._native_build_inputs_digest,
+    ):
+        with pytest.raises(RuntimeError, match="unclassified Maturin"):
+            digest(source_root)
+
+
+def test_native_digest_rejects_boolean_contract_schema_version(
+    tmp_path: Path,
+) -> None:
+    source_root = _source_root(tmp_path)
+    pyproject = source_root / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            "schema-version = 1",
+            "schema-version = true",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    for digest in (
+        _native_build_identity_module().native_build_inputs_digest,
+        versions._native_build_inputs_digest,
+    ):
+        with pytest.raises(RuntimeError, match="schema-version 1"):
+            digest(source_root)
+
+
+def test_native_digest_uses_explicit_test_only_inventory(tmp_path: Path) -> None:
+    identity = _native_build_identity_module()
+    source_root = _source_root(tmp_path)
+    expected = identity.native_build_inputs_digest(source_root)
+
+    backend_python = source_root / "build_backend/_pyamplicol_build.py"
+    backend_python.parent.mkdir(parents=True)
+    backend_python.write_text("PACKAGING_ONLY = True\n", encoding="utf-8")
+    staging = source_root / "rust/.artifacts/profile/report.json"
+    staging.parent.mkdir(parents=True)
+    staging.write_text("{}\n", encoding="utf-8")
+    ignored = source_root / "rust/crates/rusticol-core/src/artifact_tests.rs"
+    ignored.parent.mkdir(parents=True)
+    ignored.write_text("#[test] fn changed() {}\n", encoding="utf-8")
+    assert identity.native_build_inputs_digest(source_root) == expected
+
+    productive_name = source_root / "rust/crates/example/src/future_tests.rs"
+    productive_name.write_text("pub fn production() {}\n", encoding="utf-8")
+    changed = identity.native_build_inputs_digest(source_root)
+    assert changed != expected
+    assert versions._native_build_inputs_digest(source_root) == changed
+
+    test_support = (
+        source_root
+        / "rust/crates/rusticol-core/src/recurrence/on_the_fly/test_support.rs"
+    )
+    test_support.parent.mkdir(parents=True, exist_ok=True)
+    test_support.write_text("pub fn feature_api() {}\n", encoding="utf-8")
+    feature_changed = identity.native_build_inputs_digest(source_root)
+    assert feature_changed != changed
+    assert versions._native_build_inputs_digest(source_root) == feature_changed
+
+
 def test_candidate_native_digest_is_stable_across_install_and_relocation(
     tmp_path: Path,
 ) -> None:
@@ -681,6 +888,28 @@ def test_candidate_native_digest_is_stable_across_install_and_relocation(
         encoding="utf-8",
     )
     assert identity.native_build_inputs_digest(first) == expected
+
+
+def test_candidate_native_digest_hashes_only_native_checkout_revisions(
+    tmp_path: Path,
+) -> None:
+    identity = _native_build_identity_module()
+    source_root = _source_root(tmp_path)
+    state_path = _write_candidate_native_inputs(source_root, include_legacy=True)
+    expected = identity.native_build_inputs_digest(source_root)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+
+    state["sources"]["gammaloop"]["revision"] = "a" * 40
+    state["sources"]["legacy-amplicol"]["revision"] = "b" * 40
+    state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+    assert identity.native_build_inputs_digest(source_root) == expected
+    assert versions._native_build_inputs_digest(source_root) == expected
+
+    state["sources"]["symbolica"]["revision"] = "c" * 40
+    state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+    changed = identity.native_build_inputs_digest(source_root)
+    assert changed != expected
+    assert versions._native_build_inputs_digest(source_root) == changed
 
 
 def test_candidate_native_digest_requires_the_minimal_install_state_schema(
@@ -739,16 +968,32 @@ def test_candidate_native_digest_rejects_wrong_patch_target(tmp_path: Path) -> N
             digest(source_root)
 
 
-def test_candidate_native_digest_hashes_lock_content_without_state_attestation(
+def test_candidate_native_digest_ignores_provenance_locks_and_hashes_cargo_lock(
     tmp_path: Path,
 ) -> None:
     identity = _native_build_identity_module()
     source_root = _source_root(tmp_path)
     _write_candidate_native_inputs(source_root)
     expected = identity.native_build_inputs_digest(source_root)
-    lock = source_root / "dependencies/contributor-lock.toml"
-    lock.write_text("changed lock\n", encoding="utf-8")
+    dependencies = source_root / "dependencies"
+    for name in (
+        "contributor-lock.toml",
+        "python-runtime-lock.toml",
+        "release-lock.toml",
+    ):
+        (dependencies / name).write_text("changed provenance\n", encoding="utf-8")
+        assert identity.native_build_inputs_digest(source_root) == expected
+        assert versions._native_build_inputs_digest(source_root) == expected
 
+    (source_root / "Cargo.lock").write_text(
+        "unused release resolution\n",
+        encoding="utf-8",
+    )
+    assert identity.native_build_inputs_digest(source_root) == expected
+    assert versions._native_build_inputs_digest(source_root) == expected
+
+    lock = dependencies / "candidate-Cargo.lock"
+    lock.write_text("changed Cargo resolution\n", encoding="utf-8")
     changed = identity.native_build_inputs_digest(source_root)
     assert changed != expected
     assert versions._native_build_inputs_digest(source_root) == changed

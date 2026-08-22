@@ -51,11 +51,16 @@ their defaults and use the runtime selectors below.
 ## Color
 
 - `accuracy: lc | nlc | full = lc`
+- `contraction: direct | symmetric-group-fft = direct`
 - `lc_flow_layout: topology-replay | all-flow-union = topology-replay`
 
 LC generation always includes complete physical flow coverage. Runtime flow
 selectors are configured under `evaluation` or `benchmark`; internal sector,
 topology, replay, and reference-order IDs are not configurable.
+
+`symmetric-group-fft` is an exact contracted-colour reducer for NLC/full
+recurrence and on-the-fly execution. It is rejected for LC, compiled, and eager
+execution. `direct` remains the default.
 
 ## Generation
 

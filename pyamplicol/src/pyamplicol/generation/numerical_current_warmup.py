@@ -30,7 +30,6 @@ from .dag_equivalence import (
     apply_numerical_current_relation_certificates,
     discover_generic_dag_numerical_current_relations,
     generic_dag_numerical_capture_output_partition_sha256,
-    generic_dag_numerical_source_semantics_sha256,
 )
 from .dag_types import GenericDAG
 from .recurrence_numerical_current_warmup import (
@@ -501,7 +500,7 @@ def generic_dag_numerical_current_opt_out_report(
     *,
     execution_mode: Literal["compiled", "eager"],
 ) -> dict[str, object]:
-    """Return stable artifact provenance for the explicit public opt-out."""
+    """Report the explicit opt-out without hashing unused source semantics."""
 
     return {
         "schema_version": 1,
@@ -514,12 +513,6 @@ def generic_dag_numerical_current_opt_out_report(
             "execution_mode": execution_mode,
             "color_accuracy": str(dag.process.color_accuracy),
             "representation": "generic-dag",
-        },
-        "source_semantics": {
-            "sha256": generic_dag_numerical_source_semantics_sha256(
-                dag,
-                execution_mode=execution_mode,
-            ),
         },
         "candidate_capture": None,
         "verification_capture": None,

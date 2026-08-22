@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
+use crate::recurrence::construct::TransitionReflectionIndex;
 use crate::recurrence::fermion_ordering::FermionOrderingContext;
+use crate::recurrence::template::{
+    CurrentOrientation, EvaluatorCallableKind, OutputFactorSource, ParticleStatistics,
+};
 
 /// Immutable grammar prepared once for one loaded on-the-fly runtime.
 /// Query families borrow these exact rows and query-invariant contexts; they
@@ -10,12 +14,42 @@ use crate::recurrence::fermion_ordering::FermionOrderingContext;
 #[derive(Debug)]
 pub(crate) struct PreparedOnTheFlyGrammarV1 {
     pub(super) transitions: BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    pub(super) transition_reflections: TransitionReflectionIndex,
     pub(super) contact_orbits: PreparedContactOrbitIndex,
     pub(super) closures: BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     pub(super) propagators: BTreeMap<u32, Option<u32>>,
     pub(super) sources: BTreeMap<(u32, u32), PreparedOnTheFlySourceContractV1>,
     pub(super) propagator_executors: BTreeMap<u32, PreparedOnTheFlyExecutorContractV1>,
     pub(super) fermion_ordering: FermionOrderingContext,
+    pub(super) closure_anchor_policy: OnTheFlyClosureAnchorPolicyV1,
+}
+
+impl PreparedOnTheFlyGrammarV1 {
+    pub(crate) fn canonicalize_query(
+        &self,
+        seed: &OnTheFlyProcessSeedV1,
+        query: DecodedLcQueryV1,
+    ) -> RusticolResult<DecodedLcQueryV1> {
+        self.closure_anchor_policy.canonicalize_query(seed, query)
+    }
+
+    pub(crate) fn authenticate_canonical_query(
+        &self,
+        seed: &OnTheFlyProcessSeedV1,
+        query: &DecodedLcQueryV1,
+    ) -> RusticolResult<()> {
+        self.closure_anchor_policy
+            .authenticate_canonical_query(seed, query)
+    }
+
+    pub(super) fn closure_anchor_for_components(
+        &self,
+        seed: &OnTheFlyProcessSeedV1,
+        components: &[LCColorComponent],
+    ) -> Option<u32> {
+        self.closure_anchor_policy
+            .closure_anchor_for_components(seed, components)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -39,6 +73,7 @@ pub(super) fn prepare_on_the_fly_grammar_v1(
     seed: &OnTheFlyProcessSeedV1,
 ) -> RusticolResult<PreparedOnTheFlyGrammarV1> {
     let transitions = prepared_transitions(templates, catalog)?;
+    let transition_reflections = TransitionReflectionIndex::new(templates.input(), catalog)?;
     let contact_orbits = PreparedContactOrbitIndex::new(&transitions)?;
     let closures = prepared_closures(templates, catalog)?;
     // Structural-zero queries may trust this immutable domain only because it
@@ -46,15 +81,152 @@ pub(super) fn prepare_on_the_fly_grammar_v1(
     validate_prepared_closure_domain(templates, catalog, &closures)?;
     let propagators = propagator_by_state(templates)?;
     let fermion_ordering = on_the_fly_fermion_ordering_context(seed)?;
+    let closure_anchor_policy =
+        certified_cyclic_trace_closure_anchor_policy(templates.input(), catalog, seed)?;
     Ok(PreparedOnTheFlyGrammarV1 {
         transitions,
+        transition_reflections,
         contact_orbits,
         closures,
         sources: prepared_source_contracts(templates, catalog, seed)?,
         propagator_executors: prepared_propagator_executors(templates, catalog, &propagators)?,
         propagators,
         fermion_ordering,
+        closure_anchor_policy,
     })
+}
+
+/// Infer the v4 cyclic-anchor capability from the compact process seed and
+/// the already-authenticated template catalog.
+///
+/// This deliberately mirrors the generation-side v4 admission proof.  A
+/// false predicate retains the established selector-endpoint policy; malformed
+/// catalog references remain hard errors rather than silently widening the
+/// optimization domain.
+fn certified_cyclic_trace_closure_anchor_policy(
+    input: &crate::recurrence::template::OwnedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
+    seed: &OnTheFlyProcessSeedV1,
+) -> RusticolResult<OnTheFlyClosureAnchorPolicyV1> {
+    let fallback = || Ok(OnTheFlyClosureAnchorPolicyV1::selector_endpoint());
+    if !seed.pairing_classes.is_empty()
+        || seed.source_anchors.iter().any(|anchor| {
+            anchor.is_fermionic || anchor.color_role != OnTheFlyExternalColorRoleV1::Adjoint
+        })
+    {
+        return fallback();
+    }
+    let state_template_ids = seed
+        .source_anchors
+        .iter()
+        .flat_map(|anchor| anchor.states.iter())
+        .map(|state| state.current_state_template_id)
+        .collect::<BTreeSet<_>>();
+    if state_template_ids.len() != 1 {
+        return fallback();
+    }
+    let state_template_id = *state_template_ids
+        .iter()
+        .next()
+        .expect("tested one cyclic-anchor state template");
+    let state = input
+        .current_states
+        .get(state_template_id as usize)
+        .copied()
+        .ok_or_else(|| integrity("cyclic-anchor current-state template is absent"))?;
+    if state.id != state_template_id
+        || CurrentOrientation::try_from(state.orientation)? != CurrentOrientation::SelfConjugate
+        || ParticleStatistics::try_from(state.statistics)? != ParticleStatistics::Boson
+        || state.particle_id != state.anti_particle_id
+        || state.color_representation != 8
+        || catalog.string(
+            state.lc_color_shape_string_id,
+            "cyclic-anchor current-state color shape",
+        )? != "adjoint-segment"
+        || state.auxiliary_kind_string_id != MISSING_U32
+    {
+        return fallback();
+    }
+
+    let mut has_direct_closure = false;
+    for closure in input.closures.iter().copied() {
+        let coupling_order_set = input
+            .coupling_order_ranges
+            .get(closure.coupling_order_set_id as usize)
+            .ok_or_else(|| integrity("cyclic-anchor coupling-order set is absent"))?;
+        if catalog.u32_sequence(
+            closure.input_state_sequence_id,
+            "cyclic-anchor closure input states",
+        )? != [state_template_id, state_template_id]
+            || closure.result_state_template_id != MISSING_U32
+            || !catalog
+                .u32_sequence(
+                    closure.coupling_parameter_sequence_id,
+                    "cyclic-anchor closure coupling parameters",
+                )?
+                .is_empty()
+            || coupling_order_set.range.count != 0
+            || !catalog
+                .u32_sequence(
+                    closure.eligible_quantum_flow_sequence_id,
+                    "cyclic-anchor closure quantum flows",
+                )?
+                .is_empty()
+            || OutputFactorSource::try_from(closure.output_factor_source)?
+                != OutputFactorSource::None
+            || catalog.string(
+                closure.equivalence_class_string_id,
+                "cyclic-anchor closure equivalence class",
+            )? != "direct-contraction"
+        {
+            continue;
+        }
+        let binding = input
+            .evaluator_bindings
+            .get(closure.evaluator_binding_id as usize)
+            .copied()
+            .ok_or_else(|| integrity("cyclic-anchor closure evaluator is absent"))?;
+        if binding.id != closure.evaluator_binding_id
+            || EvaluatorCallableKind::try_from(binding.callable_kind)?
+                != EvaluatorCallableKind::RusticolTemplate
+            || EvaluatorContractKind::try_from(binding.contract_kind)?
+                != EvaluatorContractKind::Closure
+            || catalog.u32_sequence(
+                binding.input_state_sequence_id,
+                "cyclic-anchor evaluator input states",
+            )? != [state_template_id, state_template_id]
+            || binding.output_state_template_id != MISSING_U32
+        {
+            continue;
+        }
+        let color = input
+            .color_contractions
+            .get(closure.color_contraction_template_id as usize)
+            .copied()
+            .ok_or_else(|| integrity("cyclic-anchor color contraction is absent"))?;
+        if color.id == closure.color_contraction_template_id
+            && catalog.i32_sequence(
+                color.input_representation_sequence_id,
+                "cyclic-anchor color input representations",
+            )? == [8, 8]
+            && color.has_output_representation == 0
+        {
+            has_direct_closure = true;
+            break;
+        }
+    }
+    if !has_direct_closure {
+        return fallback();
+    }
+    let minimum = seed
+        .source_anchors
+        .iter()
+        .map(|anchor| anchor.source_slot)
+        .min()
+        .ok_or_else(|| integrity("cyclic-anchor source domain is empty"))?;
+    Ok(OnTheFlyClosureAnchorPolicyV1::certified_cyclic_minimum(
+        minimum,
+    ))
 }
 
 #[derive(Clone, Debug)]
@@ -667,6 +839,112 @@ mod tests {
     use crate::recurrence::fermion_ordering::fermion_ordering_factor;
     use crate::recurrence::validated_template_fixture;
 
+    fn append_string(
+        input: &mut crate::recurrence::template::OwnedRecurrenceTemplateInput,
+        value: &str,
+    ) -> u32 {
+        let id = u32::try_from(input.string_ranges.len()).unwrap();
+        let start = u64::try_from(input.string_bytes.len()).unwrap();
+        input.string_bytes.extend_from_slice(value.as_bytes());
+        input
+            .string_ranges
+            .push(crate::recurrence::CheckedTableRange::new(
+                start,
+                u64::try_from(value.len()).unwrap(),
+            ));
+        id
+    }
+
+    fn four_adjoint_seed(
+        summary: crate::recurrence::template::RecurrenceTemplateValidationSummary,
+    ) -> OnTheFlyProcessSeedV1 {
+        let anchors = (0..4_u32)
+            .map(|source_slot| {
+                let state = OnTheFlySourceStateV1::new(
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    SemanticDigest::new([5; 32]).unwrap(),
+                    SemanticDigest::new([4; 32]).unwrap(),
+                    1,
+                    ExactComplexRational::ONE,
+                    50_000,
+                    0,
+                    vec![21],
+                    0,
+                    SemanticDigest::new([17; 32]).unwrap(),
+                    OnTheFlySourceWavefunctionFamilyV1::Vector,
+                    OnTheFlySourceOrientationV1::SelfConjugate,
+                    None,
+                )
+                .unwrap();
+                OnTheFlySourceAnchorV1::new(
+                    source_slot,
+                    source_slot,
+                    source_slot < 2,
+                    OnTheFlyExternalColorRoleV1::Adjoint,
+                    false,
+                    None,
+                    vec![state],
+                )
+                .unwrap()
+            })
+            .collect();
+        OnTheFlyProcessSeedV1::new(
+            SemanticDigest::new([91; 32]).unwrap(),
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            SemanticDigest::new([0x7d; 32]).unwrap(),
+            SemanticDigest::new([92; 32]).unwrap(),
+            "raw-amplitude-test",
+            ExactComplexRational::ONE,
+            anchors,
+            vec![0, 1, 2, 3],
+            OnTheFlyCouplingOrderPolicyV1::Explicit,
+            vec![1],
+            vec![Some(0)],
+            Vec::new(),
+        )
+        .unwrap()
+    }
+
+    fn cyclic_anchor_template_fixture() -> (
+        crate::recurrence::template::OwnedRecurrenceTemplateInput,
+        OnTheFlyProcessSeedV1,
+    ) {
+        let templates = validated_template_fixture();
+        let seed = four_adjoint_seed(templates.summary());
+        let mut input = templates.into_input();
+        let adjoint_shape = append_string(&mut input, "adjoint-segment");
+        let direct_contraction = append_string(&mut input, "direct-contraction");
+        let empty_sequence = input
+            .u32_sequence_ranges
+            .iter()
+            .find(|row| row.range.count == 0)
+            .unwrap()
+            .id;
+
+        input.current_states[0].color_representation = 8;
+        input.current_states[0].lc_color_shape_string_id = adjoint_shape;
+        let closure = &mut input.closures[0];
+        closure.result_state_template_id = MISSING_U32;
+        closure.eligible_quantum_flow_sequence_id = empty_sequence;
+        closure.equivalence_class_string_id = direct_contraction;
+        input.evaluator_bindings[closure.evaluator_binding_id as usize].callable_kind =
+            EvaluatorCallableKind::RusticolTemplate as u8;
+        let color = &mut input.color_contractions[closure.color_contraction_template_id as usize];
+        let representations = input.i32_sequence_ranges
+            [color.input_representation_sequence_id as usize]
+            .range
+            .as_usize_range(input.i32_sequence_values.len(), "test color inputs")
+            .unwrap();
+        input.i32_sequence_values[representations].copy_from_slice(&[8, 8]);
+        (input, seed)
+    }
+
     #[test]
     fn on_the_fly_prepared_transition_binds_only_certified_contact_metadata() {
         let none = contact_orbit_test_template(ContactOrbitTestBinding::None)
@@ -718,6 +996,10 @@ mod tests {
             grammar.contact_orbits,
             PreparedContactOrbitIndex::new(&grammar.transitions).unwrap(),
         );
+        assert_eq!(
+            grammar.closure_anchor_policy,
+            OnTheFlyClosureAnchorPolicyV1::selector_endpoint(),
+        );
         let fresh_fermion_ordering = on_the_fly_fermion_ordering_context(&seed).unwrap();
         assert_eq!(
             fermion_ordering_factor(
@@ -734,6 +1016,35 @@ mod tests {
                 &fresh_fermion_ordering,
             )
             .unwrap(),
+        );
+    }
+
+    #[test]
+    fn cyclic_anchor_policy_requires_the_exact_v4_template_contract() {
+        let (input, seed) = cyclic_anchor_template_fixture();
+        let catalog = TemplateCatalog::new(&input).unwrap();
+        assert_eq!(
+            certified_cyclic_trace_closure_anchor_policy(&input, &catalog, &seed).unwrap(),
+            OnTheFlyClosureAnchorPolicyV1::certified_cyclic_minimum(0),
+        );
+
+        let mut ineligible = input.clone();
+        let closure = ineligible.closures[0];
+        ineligible.evaluator_bindings[closure.evaluator_binding_id as usize].callable_kind =
+            EvaluatorCallableKind::PreparedKernel as u8;
+        let catalog = TemplateCatalog::new(&ineligible).unwrap();
+        assert_eq!(
+            certified_cyclic_trace_closure_anchor_policy(&ineligible, &catalog, &seed).unwrap(),
+            OnTheFlyClosureAnchorPolicyV1::selector_endpoint(),
+        );
+
+        let mut auxiliary = input;
+        auxiliary.current_states[0].auxiliary_kind_string_id =
+            auxiliary.current_states[0].lc_color_shape_string_id;
+        let catalog = TemplateCatalog::new(&auxiliary).unwrap();
+        assert_eq!(
+            certified_cyclic_trace_closure_anchor_policy(&auxiliary, &catalog, &seed).unwrap(),
+            OnTheFlyClosureAnchorPolicyV1::selector_endpoint(),
         );
     }
 }

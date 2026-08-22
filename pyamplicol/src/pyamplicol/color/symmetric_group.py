@@ -27,6 +27,7 @@ from .contraction_types import (
 from .plan_types import GenericColorPlan, LCColorSector, LCOpenColorLine
 
 _MAX_SYMMETRIC_GROUP_DEGREE = 10
+_ZERO_SECTOR_OWNER = 0xFFFF_FFFF
 _SYMMETRIC_GROUP_ORDERS = tuple(
     math.factorial(degree) for degree in range(_MAX_SYMMETRIC_GROUP_DEGREE + 1)
 )
@@ -258,9 +259,12 @@ def certify_symmetric_group_orbits(
     # destinations of those owners, never additional FFT channels.
     owners = _validated_sector_owner_map(color_plan, sector_owner_ids)
     _validate_owner_structures(color_plan, owners)
-    active_sector_ids = tuple(
-        sorted({owners[sector_id] for sector_id in requested_sector_ids})
-    )
+    active_owners = {owners[sector_id] for sector_id in requested_sector_ids}
+    if _ZERO_SECTOR_OWNER in active_owners:
+        raise ValueError(
+            "symmetric-group active sector is certified as structural zero"
+        )
+    active_sector_ids = tuple(sorted(active_owners))
     permuted_labels, fixed_labels = _adjoint_action_labels(color_plan)
     degree = len(permuted_labels)
     if degree > _MAX_SYMMETRIC_GROUP_DEGREE:
@@ -405,6 +409,14 @@ def build_symmetric_group_color_contraction_plan(
     except ValueError as exc:
         return _unsupported(accuracy, len(descriptors), str(exc))
 
+    if not partition.orbits and partition.degree >= 2:
+        return _unsupported(
+            accuracy,
+            len(descriptors),
+            "symmetric-group FFT found no certified orbit at nontrivial "
+            f"degree {partition.degree}",
+        )
+
     # S_0 and S_1 have no useful transform.  They are intentionally represented
     # by the established exact direct residual rather than an empty FFT payload.
     if not partition.orbits:
@@ -529,31 +541,32 @@ def build_symmetric_group_color_contraction_plan(
         else "deterministic-samples"
     )
 
-    residual_set = set(residual_local_group_indices)
     residual_entries: list[ColorContractionTemplateEntry] = []
     residual_exact_weights: list[Fraction] = []
-    for left_local_index, left_sector_id in enumerate(local_sector_ids):
-        for right_local_index in range(left_local_index, len(local_sector_ids)):
-            if not residual_set.intersection((left_local_index, right_local_index)):
-                continue
-            exact = weight_fraction * exact_color_contraction_factor(
-                color_plan,
-                sector_by_id[left_sector_id],
-                sector_by_id[local_sector_ids[right_local_index]],
-                accuracy=accuracy,
-                full_col_acc=20,
-            )
-            residual_entries.append(
-                ColorContractionTemplateEntry(
-                    left_group_index=left_local_index,
-                    right_group_index=right_local_index,
-                    weight_re=float(exact),
-                    symmetry_factor=(
-                        1.0 if left_local_index == right_local_index else 2.0
-                    ),
+    if residual_local_group_indices:
+        residual_set = set(residual_local_group_indices)
+        for left_local_index, left_sector_id in enumerate(local_sector_ids):
+            for right_local_index in range(left_local_index, len(local_sector_ids)):
+                if not residual_set.intersection((left_local_index, right_local_index)):
+                    continue
+                exact = weight_fraction * exact_color_contraction_factor(
+                    color_plan,
+                    sector_by_id[left_sector_id],
+                    sector_by_id[local_sector_ids[right_local_index]],
+                    accuracy=accuracy,
+                    full_col_acc=20,
                 )
-            )
-            residual_exact_weights.append(exact)
+                residual_entries.append(
+                    ColorContractionTemplateEntry(
+                        left_group_index=left_local_index,
+                        right_group_index=right_local_index,
+                        weight_re=float(exact),
+                        symmetry_factor=(
+                            1.0 if left_local_index == right_local_index else 2.0
+                        ),
+                    )
+                )
+                residual_exact_weights.append(exact)
 
     block = SymmetricGroupColorContractionBlock(
         degree=partition.degree,
@@ -682,6 +695,13 @@ def _rectangular_components(
         for descriptor in descriptors
     ):
         return "symmetric-group color group references an unknown sector"
+    if any(
+        owners[descriptor.sector_id] == _ZERO_SECTOR_OWNER
+        for descriptor in descriptors
+    ):
+        return (
+            "symmetric-group color group references a certified structural-zero sector"
+        )
     reference_owner_ids = tuple(
         sorted({owners[descriptor.sector_id] for descriptor in original_components[0]})
     )
@@ -893,6 +913,8 @@ def _validated_sector_owner_map(
     if len(owners) != sector_count:
         raise ValueError("symmetric-group sector owner map has the wrong size")
     for sector_id, owner_id in enumerate(owners):
+        if owner_id == _ZERO_SECTOR_OWNER:
+            continue
         if owner_id < 0 or owner_id >= sector_count:
             raise ValueError("symmetric-group sector owner map is out of bounds")
         if owners[owner_id] != owner_id:
@@ -910,6 +932,8 @@ def _validate_owner_structures(
     if set(sectors_by_id) != set(range(len(color_plan.sectors))):
         raise ValueError("symmetric-group color sectors are not densely numbered")
     for sector_id, owner_id in enumerate(owners):
+        if owner_id == _ZERO_SECTOR_OWNER:
+            continue
         if _owner_tensor_key(sectors_by_id[sector_id]) != _owner_tensor_key(
             sectors_by_id[owner_id]
         ):

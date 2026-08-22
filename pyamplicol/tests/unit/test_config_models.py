@@ -282,51 +282,18 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane() -> N
             )
             assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
 
-    with pytest.raises(ConfigurationError, match="selected_source_helicities"):
-        RunConfig(
-            action="generate",
-            color=ColorConfig(
-                accuracy="full",
-                contraction="symmetric-group-fft",
-            ),
-            evaluator=EvaluatorConfig(execution_mode="compiled"),
-        )
-    compiled = RunConfig(
+    compiled_direct = RunConfig(
         action="generate",
-        process=ProcessConfig(selected_source_helicities={"1": 1}),
-        color=ColorConfig(
-            accuracy="full",
-            contraction="symmetric-group-fft",
-        ),
+        color=ColorConfig(accuracy="full"),
         evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
-    assert compiled.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
-    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy='full'"):
-        RunConfig(
-            action="generate",
-            process=ProcessConfig(selected_source_helicities={"1": 1}),
-            color=ColorConfig(
-                accuracy="nlc",
-                contraction="symmetric-group-fft",
-            ),
-            evaluator=EvaluatorConfig(execution_mode="compiled"),
-        )
-    with pytest.raises(ConfigurationError, match="unselected total f64"):
-        RunConfig(
-            action="generate",
-            process=ProcessConfig(selected_source_helicities={"1": 1}),
-            color=ColorConfig(
-                accuracy="full",
-                contraction="symmetric-group-fft",
-            ),
-            evaluator=EvaluatorConfig(execution_mode="compiled"),
-            evaluation=EvaluationConfig(resolved=True),
-        )
-    for section in (
-        {"evaluation": EvaluationConfig(precision=32)},
-        {"benchmark": BenchmarkConfig(precision=32)},
-    ):
-        with pytest.raises(ConfigurationError, match="only precision=16"):
+    assert compiled_direct.color.contraction is ColorContraction.DIRECT
+
+    for execution_mode in ("compiled", "eager"):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"requires evaluator\.execution_mode='recurrence' or 'on-the-fly'",
+        ):
             RunConfig(
                 action="generate",
                 process=ProcessConfig(selected_source_helicities={"1": 1}),
@@ -334,21 +301,8 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane() -> N
                     accuracy="full",
                     contraction="symmetric-group-fft",
                 ),
-                evaluator=EvaluatorConfig(execution_mode="compiled"),
-                **section,
+                evaluator=EvaluatorConfig(execution_mode=execution_mode),
             )
-    with pytest.raises(
-        ConfigurationError,
-        match=r"requires evaluator\.execution_mode",
-    ):
-        RunConfig(
-            action="generate",
-            color=ColorConfig(
-                accuracy="full",
-                contraction="symmetric-group-fft",
-            ),
-            evaluator=EvaluatorConfig(execution_mode="eager"),
-        )
 
 
 def test_on_the_fly_execution_supports_every_color_accuracy() -> None:

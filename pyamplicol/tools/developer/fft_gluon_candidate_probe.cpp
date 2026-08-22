@@ -41,6 +41,15 @@ double process_cpu_seconds() {
            static_cast<double>(value.tv_nsec) * 1.0e-9;
 }
 
+double monotonic_wall_seconds() {
+    struct timespec value {};
+    if (clock_gettime(CLOCK_MONOTONIC, &value) != 0) {
+        throw std::runtime_error("clock_gettime(CLOCK_MONOTONIC) failed");
+    }
+    return static_cast<double>(value.tv_sec) +
+           static_cast<double>(value.tv_nsec) * 1.0e-9;
+}
+
 std::string last_rusticol_error() {
     std::size_t required = 0;
     (void)rusticol_last_error_message(nullptr, 0, &required);
@@ -199,6 +208,8 @@ double evaluate_one(
     RusticolRuntimeHandle *runtime,
     const std::vector<double> &point,
     const std::uint32_t *selected_helicity_index,
+    const char *const *selected_color_ids,
+    const std::size_t selected_color_count,
     double &minimum_absolute_value,
     double &sink) {
     double value = 0.0;
@@ -209,8 +220,8 @@ double evaluate_one(
         1,
         nullptr,
         0,
-        nullptr,
-        0,
+        selected_color_ids,
+        selected_color_count,
         selected_helicity_index,
         selected_helicity_index == nullptr ? 0 : 1,
         nullptr,
@@ -226,14 +237,83 @@ double evaluate_one(
     return value;
 }
 
+void evaluate_repeated_batch(
+    RusticolRuntimeHandle *runtime,
+    const std::vector<double> &momenta,
+    const std::vector<std::uint32_t> &selected_helicity_indices,
+    const char *const *selected_color_ids,
+    const std::size_t selected_color_count,
+    std::vector<double> &values) {
+    const std::size_t point_count = values.size();
+    check_rusticol(rusticol_runtime_evaluate_selected_f64(
+        runtime,
+        momenta.data(),
+        momenta.size(),
+        point_count,
+        nullptr,
+        0,
+        selected_color_ids,
+        selected_color_count,
+        selected_helicity_indices.empty()
+            ? nullptr
+            : selected_helicity_indices.data(),
+        selected_helicity_indices.size(),
+        nullptr,
+        0,
+        values.data(),
+        values.size()));
+}
+
+void consume_batch_results(
+    const std::vector<double> &values,
+    double &minimum_absolute_value,
+    double &sink) {
+    for (const double value : values) {
+        if (!std::isfinite(value)) {
+            throw std::runtime_error("Rusticol returned an invalid batched result");
+        }
+        minimum_absolute_value = std::min(minimum_absolute_value, std::abs(value));
+        sink += value;
+    }
+}
+
+double authenticate_batch_results(
+    const std::vector<double> &values,
+    const std::array<double, kPointCount> &expected,
+    double &minimum_absolute_value,
+    double &sink) {
+    double maximum_relative_error = 0.0;
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        const double value = values[index];
+        const double expected_value = expected[index % expected.size()];
+        if (!std::isfinite(value)) {
+            throw std::runtime_error("Rusticol returned an invalid batched result");
+        }
+        const double scale = std::max(
+            {std::abs(value), std::abs(expected_value), 1.0e-300});
+        maximum_relative_error = std::max(
+            maximum_relative_error, std::abs(value - expected_value) / scale);
+        minimum_absolute_value = std::min(minimum_absolute_value, std::abs(value));
+        sink += value;
+    }
+    if (maximum_relative_error > 1.0e-12) {
+        throw std::runtime_error(
+            "batched evaluation disagrees with the scalar representative point");
+    }
+    return maximum_relative_error;
+}
+
 struct Arguments {
     std::string artifact;
     std::string process;
     double target_seconds = 0.25;
     double alpha_s = kUnitCouplingAlphaS;
     std::size_t samples = kWarmSampleCount;
+    std::size_t batch_size = 1;
     bool first_ready_only = false;
-    bool load_only = false;
+    bool report_start_to_first_warm_wall = false;
+    bool sum_helicities = false;
+    std::string color_id;
     std::vector<std::string> event_paths;
 };
 
@@ -241,8 +321,9 @@ Arguments parse_arguments(int argc, char **argv) {
     if (argc < 3) {
         throw std::runtime_error(
             "usage: fft_gluon_candidate_probe ARTIFACT PROCESS "
-            "[--alpha-s A] [--load-only] [--target-seconds S --samples N "
-            "[--first-ready-only] EVENT...]");
+            "[--alpha-s A] [--target-seconds S --samples N "
+            "--batch-size N] [--color-id ID] [--sum-helicities] "
+            "[--first-ready-only] [--report-start-to-first-warm-wall] EVENT...]");
     }
     Arguments arguments;
     arguments.artifact = argv[1];
@@ -264,10 +345,31 @@ Arguments parse_arguments(int argc, char **argv) {
                 throw std::runtime_error("--samples requires a value");
             }
             arguments.samples = static_cast<std::size_t>(std::stoull(argv[index]));
+        } else if (token == "--batch-size") {
+            if (++index >= argc) {
+                throw std::runtime_error("--batch-size requires a value");
+            }
+            arguments.batch_size =
+                static_cast<std::size_t>(std::stoull(argv[index]));
         } else if (token == "--first-ready-only") {
             arguments.first_ready_only = true;
-        } else if (token == "--load-only") {
-            arguments.load_only = true;
+        } else if (token == "--report-start-to-first-warm-wall") {
+            arguments.report_start_to_first_warm_wall = true;
+        } else if (token == "--sum-helicities") {
+            arguments.sum_helicities = true;
+        } else if (token == "--color-id") {
+            if (++index >= argc) {
+                throw std::runtime_error("--color-id requires a value");
+            }
+            const std::string value = argv[index];
+            if (value.empty() || value.front() == '-' ||
+                value.find_first_of(" \t\r\n") != std::string::npos) {
+                throw std::runtime_error("--color-id requires one nonempty ID token");
+            }
+            if (!arguments.color_id.empty()) {
+                throw std::runtime_error("--color-id may be supplied at most once");
+            }
+            arguments.color_id = value;
         } else if (!token.empty() && token[0] == '-') {
             throw std::runtime_error("unknown option: " + token);
         } else {
@@ -277,19 +379,17 @@ Arguments parse_arguments(int argc, char **argv) {
     if (!std::isfinite(arguments.alpha_s) || arguments.alpha_s <= 0.0) {
         throw std::runtime_error("--alpha-s must be finite and positive");
     }
-    if (!arguments.load_only &&
-        (!std::isfinite(arguments.target_seconds) ||
-         arguments.target_seconds < 0.25)) {
+    if (!std::isfinite(arguments.target_seconds) ||
+        arguments.target_seconds < 0.25) {
         throw std::runtime_error("calibration target must be at least 0.25 seconds");
     }
-    if (!arguments.load_only && arguments.samples != kWarmSampleCount) {
+    if (arguments.samples != kWarmSampleCount) {
         throw std::runtime_error("the acceptance probe requires exactly 10 samples");
     }
-    if (arguments.load_only &&
-        (arguments.first_ready_only || !arguments.event_paths.empty())) {
-        throw std::runtime_error("--load-only does not accept events or warm-up options");
+    if (arguments.batch_size == 0) {
+        throw std::runtime_error("--batch-size must be positive");
     }
-    if (!arguments.load_only && arguments.event_paths.size() != kPointCount) {
+    if (arguments.event_paths.size() != kPointCount) {
         throw std::runtime_error("the acceptance probe requires exactly 10 events");
     }
     return arguments;
@@ -298,8 +398,11 @@ Arguments parse_arguments(int argc, char **argv) {
 void write_first_ready(
     const std::string &process,
     const std::string &execution_mode,
+    const std::string &color_accuracy,
+    const std::string &selected_color_id,
     const std::size_t helicity_count,
     const std::string &selected_helicity_id,
+    const bool sum_helicities,
     const double load_seconds,
     const double first_warm_seconds,
     const double warm_up_api_seconds,
@@ -308,11 +411,22 @@ void write_first_ready(
     std::cout << std::setprecision(17) << std::scientific
               << "FFT_CANDIDATE_FIRST_READY_V1\n"
               << "PROCESS " << process << "\n"
-              << "EXECUTION_MODE " << execution_mode << "\n"
-              << "TIMER_SOURCE process-cpu-time\n"
+              << "EXECUTION_MODE " << execution_mode << "\n";
+    if (!selected_color_id.empty()) {
+        std::cout << "COLOR_ACCURACY " << color_accuracy << "\n"
+                  << "SELECTED_COLOR_ID " << selected_color_id << "\n";
+    }
+    std::cout << "TIMER_SOURCE process-cpu-time\n"
               << "HELICITY_COVERAGE_COUNT " << helicity_count << "\n"
-              << "SELECTED_HELICITY_ID " << selected_helicity_id << "\n"
-              << "POINT_COUNT " << kPointCount << "\n"
+              << "SELECTED_HELICITY_ID "
+              << (sum_helicities ? "-" : selected_helicity_id) << "\n";
+    if (sum_helicities) {
+        // This is the complete physical axis requested through the null-selector
+        // C ABI. Backends may eliminate authenticated structural zeros internally.
+        std::cout << "HELICITY_WORKLOAD sum\n"
+                  << "TIMED_HELICITY_COUNT " << helicity_count << "\n";
+    }
+    std::cout << "POINT_COUNT " << kPointCount << "\n"
               << "LOAD_SECONDS " << load_seconds << "\n"
               << "FIRST_WARM_SECONDS " << first_warm_seconds << "\n"
               << "WARM_UP_API_SECONDS " << warm_up_api_seconds << "\n"
@@ -324,23 +438,21 @@ void write_first_ready(
 
 int main(int argc, char **argv) {
     try {
+        const double start_to_first_warm_wall_start = monotonic_wall_seconds();
         const Arguments arguments = parse_arguments(argc, argv);
         std::vector<Event> events;
         events.reserve(arguments.event_paths.size());
         for (const auto &path : arguments.event_paths) {
             events.push_back(read_event(path));
         }
-        std::vector<std::int32_t> expected_helicity;
-        std::size_t point_size = 0;
-        if (!arguments.load_only) {
-            expected_helicity = events.front().helicities;
-            point_size = events.front().momenta.size();
-            for (const auto &event : events) {
-                if (event.momenta.size() != point_size ||
-                    event.helicities != expected_helicity) {
-                    throw std::runtime_error(
-                        "all candidate events must share one multiplicity and helicity");
-                }
+        const std::vector<std::int32_t> expected_helicity =
+            events.front().helicities;
+        const std::size_t point_size = events.front().momenta.size();
+        for (const auto &event : events) {
+            if (event.momenta.size() != point_size ||
+                event.helicities != expected_helicity) {
+                throw std::runtime_error(
+                    "all candidate events must share one multiplicity and helicity");
             }
         }
 
@@ -358,8 +470,15 @@ int main(int argc, char **argv) {
         const std::string process = runtime_string(handle, rusticol_runtime_process_key);
         const std::string execution_mode =
             runtime_string(handle, rusticol_runtime_execution_mode);
-        if (runtime_string(handle, rusticol_runtime_color_accuracy) != "full") {
-            throw std::runtime_error("candidate artifact is not full colour");
+        const std::string color_accuracy =
+            runtime_string(handle, rusticol_runtime_color_accuracy);
+        if (arguments.color_id.empty()) {
+            if (color_accuracy != "full") {
+                throw std::runtime_error("candidate artifact is not full colour");
+            }
+        } else if (color_accuracy != "lc") {
+            throw std::runtime_error(
+                "a selected-color probe requires a leading-colour artifact");
         }
         if (execution_mode != "on-the-fly" && execution_mode != "recurrence" &&
             execution_mode != "compiled") {
@@ -367,20 +486,12 @@ int main(int argc, char **argv) {
         }
         std::size_t external_count = 0;
         check_rusticol(rusticol_runtime_external_count(handle, &external_count));
-        if (arguments.load_only) {
-            const double load_seconds = process_cpu_seconds() - load_start;
-            std::cout << std::setprecision(17) << std::scientific
-                      << "FFT_CANDIDATE_LOAD_ONLY_V1\n"
-                      << "PROCESS " << process << "\n"
-                      << "EXECUTION_MODE " << execution_mode << "\n"
-                      << "TIMER_SOURCE process-cpu-time\n"
-                      << "ALPHA_S " << arguments.alpha_s << "\n"
-                      << "LOAD_SECONDS " << load_seconds << "\n"
-                      << "MAX_RSS_KIB " << process_peak_rss_kib() << "\n";
-            return 0;
-        }
         if (external_count * 4 != point_size) {
             throw std::runtime_error("candidate event multiplicity does not match artifact");
+        }
+        if (arguments.batch_size >
+            std::numeric_limits<std::size_t>::max() / point_size) {
+            throw std::runtime_error("batch momentum size overflows size_t");
         }
         std::size_t runtime_helicity_count = 0;
         check_rusticol(rusticol_runtime_helicity_count(
@@ -413,27 +524,69 @@ int main(int argc, char **argv) {
                 "candidate artifact does not expose one matching selected helicity");
         }
         const std::uint32_t *const evaluation_helicity_index =
-            execution_mode == "compiled" ? nullptr : &selected_helicity_index;
+            arguments.sum_helicities ? nullptr : &selected_helicity_index;
         const char *selected_helicity_ids[] = {selected_helicity_id.c_str()};
+        const char *selected_color_ids[] = {arguments.color_id.c_str()};
+        const char *const *const evaluation_color_ids =
+            arguments.color_id.empty() ? nullptr : selected_color_ids;
+        const std::size_t evaluation_color_count =
+            arguments.color_id.empty() ? 0 : 1;
         const double load_seconds = process_cpu_seconds() - load_start;
 
         double minimum_absolute_value = std::numeric_limits<double>::infinity();
         double sink = 0.0;
         std::array<double, kPointCount> point_values {};
         std::array<bool, kPointCount> point_value_recorded {};
+        std::vector<double> batch_momenta;
+        batch_momenta.reserve(point_size * arguments.batch_size);
+        for (std::size_t point = 0; point < arguments.batch_size; ++point) {
+            const Event &event = events[point % events.size()];
+            batch_momenta.insert(
+                batch_momenta.end(),
+                event.momenta.begin(),
+                event.momenta.end());
+        }
+        std::vector<std::uint32_t> batch_helicity_indices;
+        if (evaluation_helicity_index != nullptr) {
+            batch_helicity_indices.assign(
+                arguments.batch_size, *evaluation_helicity_index);
+        }
+        std::vector<double> batch_values(arguments.batch_size, 0.0);
+
+        const auto evaluate_representative = [&]() {
+            if (arguments.batch_size == 1) {
+                return evaluate_one(
+                    handle,
+                    events[kRepresentativePoint].momenta,
+                    evaluation_helicity_index,
+                    evaluation_color_ids,
+                    evaluation_color_count,
+                    minimum_absolute_value,
+                    sink);
+            }
+            evaluate_repeated_batch(
+                handle,
+                batch_momenta,
+                batch_helicity_indices,
+                evaluation_color_ids,
+                evaluation_color_count,
+                batch_values);
+            return batch_values.front();
+        };
         RusticolWarmUpResult warm_up {};
         double warm_up_api_seconds = 0.0;
+        double batch_max_relative_error = 0.0;
+        double start_to_first_warm_wall_seconds = 0.0;
         const double first_warm_start = process_cpu_seconds();
-        std::size_t first_evaluated_point = 0;
         if (execution_mode == "on-the-fly") {
             check_rusticol(rusticol_runtime_warm_up_f64(
                 handle,
                 events.front().momenta.data(),
                 events.front().momenta.size(),
-                selected_helicity_ids,
-                1,
-                nullptr,
-                0,
+                arguments.sum_helicities ? nullptr : selected_helicity_ids,
+                arguments.sum_helicities ? 0 : 1,
+                evaluation_color_ids,
+                evaluation_color_count,
                 nullptr,
                 nullptr,
                 &warm_up));
@@ -444,21 +597,43 @@ int main(int argc, char **argv) {
                 throw std::runtime_error("Rusticol returned an invalid OTF warm-up result");
             }
             warm_up_api_seconds = warm_up.elapsed_seconds;
-            first_evaluated_point = 1;
         }
-        for (std::size_t point = first_evaluated_point;
-             point < events.size();
-             ++point) {
+        for (std::size_t point = 0; point < events.size(); ++point) {
             point_values[point] = evaluate_one(
                 handle,
                 events[point].momenta,
                 evaluation_helicity_index,
+                evaluation_color_ids,
+                evaluation_color_count,
                 minimum_absolute_value,
                 sink);
             point_value_recorded[point] = true;
         }
+        if (arguments.batch_size > 1) {
+            if (!point_value_recorded[kRepresentativePoint]) {
+                point_values[kRepresentativePoint] = evaluate_one(
+                    handle,
+                    events[kRepresentativePoint].momenta,
+                    evaluation_helicity_index,
+                    evaluation_color_ids,
+                    evaluation_color_count,
+                    minimum_absolute_value,
+                    sink);
+                point_value_recorded[kRepresentativePoint] = true;
+            }
+            (void)evaluate_representative();
+        }
+        start_to_first_warm_wall_seconds =
+            monotonic_wall_seconds() - start_to_first_warm_wall_start;
         const double first_warm_seconds =
             process_cpu_seconds() - first_warm_start;
+        if (arguments.batch_size > 1) {
+            batch_max_relative_error = authenticate_batch_results(
+                batch_values,
+                point_values,
+                minimum_absolute_value,
+                sink);
+        }
 
         std::uint64_t peak_rss_kib = process_peak_rss_kib();
         if (warm_up.peak_rss_available != 0) {
@@ -473,8 +648,11 @@ int main(int argc, char **argv) {
             write_first_ready(
                 process,
                 execution_mode,
+                color_accuracy,
+                arguments.color_id,
                 runtime_helicity_count,
                 selected_helicity_id,
+                arguments.sum_helicities,
                 load_seconds,
                 first_warm_seconds,
                 warm_up_api_seconds,
@@ -488,21 +666,20 @@ int main(int argc, char **argv) {
         std::size_t repetitions = 1;
         for (;;) {
             const double calibration_start = process_cpu_seconds();
+            double last_value = 0.0;
             for (std::size_t repetition = 0;
                  repetition < repetitions;
                  ++repetition) {
-                const double value = evaluate_one(
-                    handle,
-                    events[kRepresentativePoint].momenta,
-                    evaluation_helicity_index,
-                    minimum_absolute_value,
-                    sink);
-                if (!point_value_recorded[kRepresentativePoint]) {
-                    point_values[kRepresentativePoint] = value;
-                    point_value_recorded[kRepresentativePoint] = true;
-                }
+                last_value = evaluate_representative();
             }
             const double elapsed = process_cpu_seconds() - calibration_start;
+            if (arguments.batch_size > 1) {
+                consume_batch_results(batch_values, minimum_absolute_value, sink);
+            }
+            if (!point_value_recorded[kRepresentativePoint]) {
+                point_values[kRepresentativePoint] = last_value;
+                point_value_recorded[kRepresentativePoint] = true;
+            }
             if (elapsed >= arguments.target_seconds) {
                 calibration_calls = repetitions;
                 calibration_seconds = elapsed;
@@ -520,16 +697,15 @@ int main(int argc, char **argv) {
             for (std::size_t repetition = 0;
                  repetition < calibration_calls;
                  ++repetition) {
-                evaluate_one(
-                    handle,
-                    events[kRepresentativePoint].momenta,
-                    evaluation_helicity_index,
-                    minimum_absolute_value,
-                    sink);
+                (void)evaluate_representative();
             }
             warm_cells[sample] =
                 (process_cpu_seconds() - cell_start) /
-                static_cast<double>(calibration_calls);
+                (static_cast<double>(calibration_calls) *
+                 static_cast<double>(arguments.batch_size));
+            if (arguments.batch_size > 1) {
+                consume_batch_results(batch_values, minimum_absolute_value, sink);
+            }
         }
 
         peak_rss_kib = std::max(peak_rss_kib, process_peak_rss_kib());
@@ -552,14 +728,37 @@ int main(int argc, char **argv) {
         std::cout << std::setprecision(17) << std::scientific
                   << "FFT_CANDIDATE_PROBE_V4\n"
                   << "PROCESS " << process << "\n"
-                  << "EXECUTION_MODE " << execution_mode << "\n"
-                  << "TIMER_SOURCE process-cpu-time\n"
+                  << "EXECUTION_MODE " << execution_mode << "\n";
+        if (!arguments.color_id.empty()) {
+            std::cout << "COLOR_ACCURACY " << color_accuracy << "\n"
+                      << "SELECTED_COLOR_ID " << arguments.color_id << "\n";
+        }
+        std::cout << "TIMER_SOURCE process-cpu-time\n"
                   << "HELICITY_COVERAGE_COUNT " << runtime_helicity_count << "\n"
-                  << "SELECTED_HELICITY_ID " << selected_helicity_id << "\n"
-                  << "POINT_COUNT " << events.size() << "\n"
+                  << "SELECTED_HELICITY_ID "
+                  << (arguments.sum_helicities ? "-" : selected_helicity_id)
+                  << "\n";
+        if (arguments.sum_helicities) {
+            std::cout << "HELICITY_WORKLOAD sum\n"
+                      << "TIMED_HELICITY_COUNT " << runtime_helicity_count << "\n";
+        }
+        std::cout << "POINT_COUNT " << events.size() << "\n"
                   << "LOAD_SECONDS " << load_seconds << "\n"
                   << "FIRST_WARM_SECONDS " << first_warm_seconds << "\n"
                   << "WARM_UP_API_SECONDS " << warm_up_api_seconds << "\n";
+        if (arguments.batch_size > 1) {
+            std::cout << "BENCHMARK_BATCH_SIZE " << arguments.batch_size << "\n"
+                      << "BATCH_INPUT_PATTERN cyclic-10-events\n"
+                      << "BATCH_AUTHENTICATED_POINT_COUNT "
+                      << arguments.batch_size << "\n"
+                      << "BATCH_MAX_RELATIVE_ERROR "
+                      << batch_max_relative_error << "\n";
+        }
+        if (arguments.batch_size > 1 ||
+            arguments.report_start_to_first_warm_wall) {
+            std::cout << "START_TO_FIRST_WARM_WALL_SECONDS "
+                      << start_to_first_warm_wall_seconds << "\n";
+        }
         for (std::size_t point = 0; point < events.size(); ++point) {
             std::cout << "POINT_VALUE " << (point + 1) << " "
                       << point_values[point] << "\n";

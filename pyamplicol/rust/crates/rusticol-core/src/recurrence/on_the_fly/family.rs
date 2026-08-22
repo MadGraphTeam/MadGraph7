@@ -290,6 +290,7 @@ pub struct OnTheFlyQueryFamilyCensusV1 {
 }
 
 impl OnTheFlyQueryFamilyCensusV1 {
+    #[allow(dead_code)] // Exposed by the non-default structural census feature.
     pub(crate) fn union_kernel_application_count(self) -> RusticolResult<u32> {
         self.union_source_rows
             .checked_add(self.union_contribution_rows)
@@ -550,435 +551,452 @@ fn build_query_family_from_chunks(
     identity_hash.update(STREAMED_QUERY_FAMILY_IDENTITY_DOMAIN);
     identity_hash.update(direct_catalog.direct_template_catalog_digest().as_bytes());
 
-    let mut consume = |selected: &[QueryFamilyTraceInput<'_>]| -> RusticolResult<Range<u32>> {
-        let first_destination = census.query_count;
-        for selected_query in selected {
-            let query_index = census.query_count as usize;
-            let trace = selected_query.trace;
-            let trace_layout = (
-                trace.layout.source_count,
-                trace.layout.lorentz_component_count,
-                trace.layout.parameter_count,
-            );
-            if layout.is_some_and(|established| established != trace_layout) {
-                return Err(integrity(
-                    "query-family traces do not share one source-frame workspace shape",
-                ));
-            }
-            layout.get_or_insert(trace_layout);
-            identity_hash.update(trace.seed_digest.as_bytes());
-            identity_hash.update(trace.query_digest.as_bytes());
-            identity_hash.update(trace.semantic_digest().as_bytes());
-            identity_hash.update([u8::from(selected_query.projection.enabled)]);
-            identity_hash.update([u8::from(selected_query.projection.applied)]);
-            for value in selected_query
-                .projection
-                .pre
-                .into_iter()
-                .chain(selected_query.projection.post)
-            {
-                identity_hash.update(value.to_le_bytes());
-            }
-            seed_partitions.insert(trace.seed_digest);
-            if !seen_queries.insert(trace.query_digest) {
-                return Err(invalid("query-family repeats a selected query"));
-            }
-            if trace.layout.amplitude_component_count != 1 {
-                return Err(integrity(
-                    "query-local trace does not expose exactly one amplitude destination",
-                ));
-            }
-            if selected_query.projection.applied {
+    {
+        let mut consume = |selected: &[QueryFamilyTraceInput<'_>]| -> RusticolResult<Range<u32>> {
+            let first_destination = census.query_count;
+            for selected_query in selected {
+                let query_index = census.query_count as usize;
+                let trace = selected_query.trace;
+                let trace_layout = (
+                    trace.layout.source_count,
+                    trace.layout.lorentz_component_count,
+                    trace.layout.parameter_count,
+                );
+                if layout.is_some_and(|established| established != trace_layout) {
+                    return Err(integrity(
+                        "query-family traces do not share one source-frame workspace shape",
+                    ));
+                }
+                layout.get_or_insert(trace_layout);
+                identity_hash.update(trace.seed_digest.as_bytes());
+                identity_hash.update(trace.query_digest.as_bytes());
+                identity_hash.update(trace.semantic_digest().as_bytes());
+                identity_hash.update([u8::from(selected_query.projection.enabled)]);
+                identity_hash.update([u8::from(selected_query.projection.applied)]);
+                for value in selected_query
+                    .projection
+                    .pre
+                    .into_iter()
+                    .chain(selected_query.projection.post)
+                {
+                    identity_hash.update(value.to_le_bytes());
+                }
+                seed_partitions.insert(trace.seed_digest);
+                if !seen_queries.insert(trace.query_digest) {
+                    return Err(invalid("query-family repeats a selected query"));
+                }
+                if trace.layout.amplitude_component_count != 1 {
+                    return Err(integrity(
+                        "query-local trace does not expose exactly one amplitude destination",
+                    ));
+                }
+                if selected_query.projection.applied {
+                    add(
+                        &mut census.projection_applied_query_count,
+                        1,
+                        "projection-applied query count",
+                    )?;
+                }
+                for (target, value, label) in [
+                    (
+                        &mut census.projection_pre_current_count,
+                        selected_query.projection.pre[0],
+                        "projection pre-current count",
+                    ),
+                    (
+                        &mut census.projection_pre_contribution_count,
+                        selected_query.projection.pre[1],
+                        "projection pre-contribution count",
+                    ),
+                    (
+                        &mut census.projection_pre_closure_count,
+                        selected_query.projection.pre[2],
+                        "projection pre-closure count",
+                    ),
+                    (
+                        &mut census.projection_post_current_count,
+                        selected_query.projection.post[0],
+                        "projection post-current count",
+                    ),
+                    (
+                        &mut census.projection_post_contribution_count,
+                        selected_query.projection.post[1],
+                        "projection post-contribution count",
+                    ),
+                    (
+                        &mut census.projection_post_closure_count,
+                        selected_query.projection.post[2],
+                        "projection post-closure count",
+                    ),
+                ] {
+                    add(target, value, label)?;
+                }
+                if selected_query.projection.post
+                    != [
+                        trace.proof.current_count(),
+                        trace.proof.contribution_count(),
+                        trace.proof.closure_count(),
+                    ]
+                {
+                    return Err(integrity(
+                        "query-local projection proof does not describe its retained trace",
+                    ));
+                }
+                let current_count = trace.current_keys.len();
+                if current_count != trace.current_colors.len()
+                    || current_count != trace.current_component_ranges.len()
+                    || current_count != trace.proof.current_count() as usize
+                {
+                    return Err(integrity(
+                        "query-local current identity columns have inconsistent lengths",
+                    ));
+                }
                 add(
-                    &mut census.projection_applied_query_count,
-                    1,
-                    "projection-applied query count",
+                    &mut census.dynamic_current_occurrence_count,
+                    checked_u32(current_count, "dynamic current occurrence count")?,
+                    "dynamic current occurrence count",
                 )?;
-            }
-            for (target, value, label) in [
-                (
-                    &mut census.projection_pre_current_count,
-                    selected_query.projection.pre[0],
-                    "projection pre-current count",
-                ),
-                (
-                    &mut census.projection_pre_contribution_count,
-                    selected_query.projection.pre[1],
-                    "projection pre-contribution count",
-                ),
-                (
-                    &mut census.projection_pre_closure_count,
-                    selected_query.projection.pre[2],
-                    "projection pre-closure count",
-                ),
-                (
-                    &mut census.projection_post_current_count,
-                    selected_query.projection.post[0],
-                    "projection post-current count",
-                ),
-                (
-                    &mut census.projection_post_contribution_count,
-                    selected_query.projection.post[1],
-                    "projection post-contribution count",
-                ),
-                (
-                    &mut census.projection_post_closure_count,
-                    selected_query.projection.post[2],
-                    "projection post-closure count",
-                ),
-            ] {
-                add(target, value, label)?;
-            }
-            if selected_query.projection.post
-                != [
-                    trace.proof.current_count(),
-                    trace.proof.contribution_count(),
-                    trace.proof.closure_count(),
-                ]
-            {
-                return Err(integrity(
-                    "query-local projection proof does not describe its retained trace",
-                ));
-            }
-            let current_count = trace.current_keys.len();
-            if current_count != trace.current_colors.len()
-                || current_count != trace.current_component_ranges.len()
-                || current_count != trace.proof.current_count() as usize
-            {
-                return Err(integrity(
-                    "query-local current identity columns have inconsistent lengths",
-                ));
-            }
-            add(
-                &mut census.dynamic_current_occurrence_count,
-                checked_u32(current_count, "dynamic current occurrence count")?,
-                "dynamic current occurrence count",
-            )?;
 
-            let mut local_to_union = Vec::new();
-            local_to_union
-                .try_reserve_exact(current_count)
-                .map_err(|error| {
-                    invalid(format!(
-                        "query-family current map allocation failed: {error}"
-                    ))
-                })?;
-            let mut normalized_keys = Vec::new();
-            normalized_keys
-                .try_reserve_exact(current_count)
-                .map_err(|error| {
-                    invalid(format!(
-                        "query-family current key allocation failed: {error}"
-                    ))
-                })?;
-            let mut bases = BTreeMap::new();
-            for (local_id, ((key, color), [base, count])) in trace
-                .current_keys
-                .iter()
-                .zip(trace.current_colors.iter())
-                .zip(trace.current_component_ranges.iter().copied())
-                .enumerate()
-            {
-                if count == 0 || bases.insert(base, local_id as u32).is_some() {
-                    return Err(integrity(
-                        "query-local current component ranges are empty or ambiguous",
-                    ));
-                }
-                add(
-                    &mut census.dynamic_current_component_occurrence_count,
-                    count,
-                    "dynamic current component occurrence count",
-                )?;
-                let color_id = colors.intern(color.clone())?;
-                let normalized = current_key_with_dynamic_color(key, color_id)?;
-                let family_key = (trace.seed_digest, normalized);
-                let next = checked_u32(union_currents.len(), "query-family union current count")?;
-                let union_id = match union_currents.entry(family_key.clone()) {
-                    std::collections::btree_map::Entry::Vacant(entry) => {
-                        entry.insert(FamilyUnionCurrentRecord {
-                            id: next,
-                            definition: None,
-                        });
-                        next
+                let mut local_to_union = Vec::new();
+                local_to_union
+                    .try_reserve_exact(current_count)
+                    .map_err(|error| {
+                        invalid(format!(
+                            "query-family current map allocation failed: {error}"
+                        ))
+                    })?;
+                let mut normalized_keys = Vec::new();
+                normalized_keys
+                    .try_reserve_exact(current_count)
+                    .map_err(|error| {
+                        invalid(format!(
+                            "query-family current key allocation failed: {error}"
+                        ))
+                    })?;
+                let mut bases = BTreeMap::new();
+                for (local_id, ((key, color), [base, count])) in trace
+                    .current_keys
+                    .iter()
+                    .zip(trace.current_colors.iter())
+                    .zip(trace.current_component_ranges.iter().copied())
+                    .enumerate()
+                {
+                    if count == 0 || bases.insert(base, local_id as u32).is_some() {
+                        return Err(integrity(
+                            "query-local current component ranges are empty or ambiguous",
+                        ));
                     }
-                    std::collections::btree_map::Entry::Occupied(entry) => entry.get().id,
-                };
-                local_to_union.push(union_id);
-                normalized_keys.push(family_key);
-            }
-            #[cfg(any(test, feature = "on-the-fly-test-support"))]
-            {
-                if trace.current_semantic_digests.len() != local_to_union.len() {
-                    return Err(integrity(
-                        "query-local current semantic identities have an inconsistent length",
-                    ));
-                }
-                for (local_id, union_id) in local_to_union.iter().copied().enumerate() {
-                    let semantic_digest = trace.current_semantic_digests[local_id];
-                    let stage = current_stage(&trace.current_keys[local_id])?;
-                    let component_count = trace.current_component_ranges[local_id][1];
-                    match observed_current_identities.entry(union_id) {
+                    add(
+                        &mut census.dynamic_current_component_occurrence_count,
+                        count,
+                        "dynamic current component occurrence count",
+                    )?;
+                    let color_id = colors.intern(color.clone())?;
+                    let normalized = current_key_with_dynamic_color(key, color_id)?;
+                    let family_key = (trace.seed_digest, normalized);
+                    let next =
+                        checked_u32(union_currents.len(), "query-family union current count")?;
+                    let union_id = match union_currents.entry(family_key.clone()) {
                         std::collections::btree_map::Entry::Vacant(entry) => {
-                            entry.insert((semantic_digest, stage, component_count));
+                            entry.insert(FamilyUnionCurrentRecord {
+                                id: next,
+                                definition: None,
+                            });
+                            next
                         }
-                        std::collections::btree_map::Entry::Occupied(entry)
-                            if *entry.get() == (semantic_digest, stage, component_count) => {}
-                        std::collections::btree_map::Entry::Occupied(_) => {
-                            return Err(integrity(
-                                "query-family union current has inconsistent observed identity",
-                            ));
+                        std::collections::btree_map::Entry::Occupied(entry) => entry.get().id,
+                    };
+                    local_to_union.push(union_id);
+                    normalized_keys.push(family_key);
+                }
+                #[cfg(any(test, feature = "on-the-fly-test-support"))]
+                {
+                    if trace.current_semantic_digests.len() != local_to_union.len() {
+                        return Err(integrity(
+                            "query-local current semantic identities have an inconsistent length",
+                        ));
+                    }
+                    for (local_id, union_id) in local_to_union.iter().copied().enumerate() {
+                        let semantic_digest = trace.current_semantic_digests[local_id];
+                        let stage = current_stage(&trace.current_keys[local_id])?;
+                        let component_count = trace.current_component_ranges[local_id][1];
+                        match observed_current_identities.entry(union_id) {
+                            std::collections::btree_map::Entry::Vacant(entry) => {
+                                entry.insert((semantic_digest, stage, component_count));
+                            }
+                            std::collections::btree_map::Entry::Occupied(entry)
+                                if *entry.get() == (semantic_digest, stage, component_count) => {}
+                            std::collections::btree_map::Entry::Occupied(_) => {
+                                return Err(integrity(
+                                    "query-family union current has inconsistent observed identity",
+                                ));
+                            }
                         }
                     }
                 }
-            }
 
-            let mut local_definitions = trace
-                .current_component_ranges
-                .iter()
-                .map(|range| FamilyCurrentDefinition::new(range[1]))
-                .collect::<Vec<_>>();
-            let mut contribution_proofs = trace.contribution_proof_rows.iter();
-            for operation in trace.operations.iter() {
-                match operation {
-                    OnTheFlyTraceOperationV1::Source { key, row } => {
-                        let current_id = current_id_by_component_base(
-                            &bases,
-                            row.destination_component_base,
-                            "source destination",
-                        )?;
-                        let definition = &mut local_definitions[current_id as usize];
-                        let identity = FamilySourceIdentity {
-                            executor: *key,
-                            source_slot: row.source_slot,
-                            momentum: trace_momentum(trace, row.momentum_form_id, "source")?,
-                            source_template_or_dispatch_domain: row
-                                .source_template_or_dispatch_domain,
-                            spin_state_class: row.spin_state_class,
-                            exact_factor: trace_factor(trace, row.exact_factor_id, "source")?,
-                            selector_domain_id: row.selector_domain_id,
-                        };
-                        if definition.source.replace(identity).is_some() {
-                            return Err(integrity("query-local current repeats its source row"));
+                let mut local_definitions = trace
+                    .current_component_ranges
+                    .iter()
+                    .map(|range| FamilyCurrentDefinition::new(range[1]))
+                    .collect::<Vec<_>>();
+                let mut contribution_proofs = trace.contribution_proof_rows.iter();
+                for operation in trace.operations.iter() {
+                    match operation {
+                        OnTheFlyTraceOperationV1::Source { key, row } => {
+                            let current_id = current_id_by_component_base(
+                                &bases,
+                                row.destination_component_base,
+                                "source destination",
+                            )?;
+                            let definition = &mut local_definitions[current_id as usize];
+                            let identity = FamilySourceIdentity {
+                                executor: *key,
+                                source_slot: row.source_slot,
+                                momentum: trace_momentum(trace, row.momentum_form_id, "source")?,
+                                source_template_or_dispatch_domain: row
+                                    .source_template_or_dispatch_domain,
+                                spin_state_class: row.spin_state_class,
+                                exact_factor: trace_factor(trace, row.exact_factor_id, "source")?,
+                                selector_domain_id: row.selector_domain_id,
+                            };
+                            if definition.source.replace(identity).is_some() {
+                                return Err(integrity(
+                                    "query-local current repeats its source row",
+                                ));
+                            }
+                            add(&mut census.dynamic_source_rows, 1, "dynamic source rows")?;
                         }
-                        add(&mut census.dynamic_source_rows, 1, "dynamic source rows")?;
-                    }
-                    OnTheFlyTraceOperationV1::Contribution { key: executor, row } => {
-                        let proof = contribution_proofs.next().ok_or_else(|| {
-                            integrity("query-local contribution has no cold semantic identity")
-                        })?;
-                        let result = current_id_by_component_base(
-                            &bases,
-                            row.destination_component_base,
-                            "contribution destination",
-                        )?;
-                        if result != proof.result_current_id
-                            || trace_factor(trace, row.exact_factor_id, "contribution")?
-                                != proof.exact_factor
-                        {
-                            return Err(integrity(
-                                "query-local contribution row disagrees with its cold identity",
-                            ));
+                        OnTheFlyTraceOperationV1::Contribution { key: executor, row } => {
+                            let proof = contribution_proofs.next().ok_or_else(|| {
+                                integrity("query-local contribution has no cold semantic identity")
+                            })?;
+                            let result = current_id_by_component_base(
+                                &bases,
+                                row.destination_component_base,
+                                "contribution destination",
+                            )?;
+                            if result != proof.result_current_id
+                                || trace_factor(trace, row.exact_factor_id, "contribution")?
+                                    != proof.exact_factor
+                            {
+                                return Err(integrity(
+                                    "query-local contribution row disagrees with its cold identity",
+                                ));
+                            }
+                            let mut physical_parents = [
+                                current_id_by_component_base(
+                                    &bases,
+                                    row.parent0_component_base,
+                                    "contribution parent 0",
+                                )?,
+                                current_id_by_component_base(
+                                    &bases,
+                                    row.parent1_component_base_or_sentinel,
+                                    "contribution parent 1",
+                                )?,
+                            ];
+                            let mut semantic_parents = proof.parent_current_ids;
+                            physical_parents.sort_unstable();
+                            semantic_parents.sort_unstable();
+                            if physical_parents != semantic_parents
+                                || !matches!(
+                                    row.flags,
+                                    0 | DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+                                )
+                            {
+                                return Err(integrity(
+                                    "query-local contribution physical row is not its semantic binary row",
+                                ));
+                            }
+                            let identity = FamilyContributionIdentity {
+                                executor: *executor,
+                                key: remapped_contribution_key(proof, &local_to_union)?,
+                                exact_factor: proof.exact_factor,
+                                selector_domain_id: row.selector_domain_id,
+                            };
+                            if !local_definitions[result as usize]
+                                .contributions
+                                .insert(identity)
+                            {
+                                return Err(integrity(
+                                    "query-local current repeats an exact contribution row",
+                                ));
+                            }
+                            add(
+                                &mut census.dynamic_contribution_rows,
+                                1,
+                                "dynamic contribution rows",
+                            )?;
                         }
-                        let mut physical_parents = [
-                            current_id_by_component_base(
+                        OnTheFlyTraceOperationV1::Finalization { key, row } => {
+                            let current_id = current_id_by_component_base(
+                                &bases,
+                                row.component_base,
+                                "finalization destination",
+                            )?;
+                            let identity = FamilyFinalizationIdentity {
+                                executor: *key,
+                                momentum: trace_momentum(
+                                    trace,
+                                    row.momentum_form_id,
+                                    "finalization",
+                                )?,
+                                component_count: row.component_count,
+                                exact_factor: trace_factor(
+                                    trace,
+                                    row.exact_factor_id,
+                                    "finalization",
+                                )?,
+                                selector_domain_id: row.selector_domain_id,
+                                flags: row.flags,
+                            };
+                            let definition = &mut local_definitions[current_id as usize];
+                            if u32::from(row.component_count) != definition.component_count
+                                || definition.finalization.replace(identity).is_some()
+                            {
+                                return Err(integrity(
+                                    "query-local current has an invalid finalization row",
+                                ));
+                            }
+                            add(
+                                &mut census.dynamic_finalization_rows,
+                                1,
+                                "dynamic finalization rows",
+                            )?;
+                        }
+                        OnTheFlyTraceOperationV1::Closure { key, row } => {
+                            if row.amplitude_destination_id != 0 {
+                                return Err(integrity(
+                                    "query-local closure does not target its sole amplitude",
+                                ));
+                            }
+                            let parent0 = current_id_by_component_base(
                                 &bases,
                                 row.parent0_component_base,
-                                "contribution parent 0",
-                            )?,
-                            current_id_by_component_base(
+                                "closure parent 0",
+                            )?;
+                            let parent1 = current_id_by_component_base(
                                 &bases,
                                 row.parent1_component_base_or_sentinel,
-                                "contribution parent 1",
-                            )?,
-                        ];
-                        let mut semantic_parents = proof.parent_current_ids;
-                        physical_parents.sort_unstable();
-                        semantic_parents.sort_unstable();
-                        if physical_parents != semantic_parents
-                            || !matches!(
-                                row.flags,
-                                0 | DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
-                            )
-                        {
-                            return Err(integrity(
-                                "query-local contribution physical row is not its semantic binary row",
+                                "closure parent 1",
+                            )?;
+                            let component_start = row.component_factor_start as usize;
+                            let component_end = component_start
+                                .checked_add(usize::from(row.component_count))
+                                .ok_or_else(|| {
+                                    integrity("closure component-factor span overflows")
+                                })?;
+                            let component_factors = trace
+                                .exact_factors
+                                .get(component_start..component_end)
+                                .ok_or_else(|| {
+                                    integrity("closure component-factor span is absent")
+                                })?
+                                .to_vec()
+                                .into_boxed_slice();
+                            let amplitude_destination_id =
+                                checked_u32(query_index, "query-family amplitude destination ID")?;
+                            closure_definitions.push(FamilyClosureIdentity {
+                                seed_digest: trace.seed_digest,
+                                query_digest: trace.query_digest,
+                                stage: current_stage(&trace.current_keys[parent0 as usize])?
+                                    .max(current_stage(&trace.current_keys[parent1 as usize])?),
+                                executor: *key,
+                                parent_current_ids: [
+                                    local_to_union[parent0 as usize],
+                                    local_to_union[parent1 as usize],
+                                ],
+                                parent_momenta: [
+                                    trace_momentum(
+                                        trace,
+                                        row.parent0_momentum_form_id,
+                                        "closure parent 0",
+                                    )?,
+                                    trace_momentum(
+                                        trace,
+                                        row.parent1_momentum_form_id_or_sentinel,
+                                        "closure parent 1",
+                                    )?,
+                                ],
+                                exact_factor: trace_factor(trace, row.exact_factor_id, "closure")?,
+                                component_factors,
+                                component_count: row.component_count,
+                                selector_domain_id: row.selector_domain_id,
+                                proof_group_id: row.flags,
+                                amplitude_destination_id,
+                            });
+                            closure_groups.insert((
+                                trace.seed_digest,
+                                current_stage(&trace.current_keys[parent0 as usize])?
+                                    .max(current_stage(&trace.current_keys[parent1 as usize])?),
+                                prepared_executor_id(direct_catalog, *key)?,
                             ));
+                            add(&mut census.dynamic_closure_rows, 1, "dynamic closure rows")?;
                         }
-                        let identity = FamilyContributionIdentity {
-                            executor: *executor,
-                            key: remapped_contribution_key(proof, &local_to_union)?,
-                            exact_factor: proof.exact_factor,
-                            selector_domain_id: row.selector_domain_id,
-                        };
-                        if !local_definitions[result as usize]
-                            .contributions
-                            .insert(identity)
-                        {
-                            return Err(integrity(
-                                "query-local current repeats an exact contribution row",
-                            ));
-                        }
-                        add(
-                            &mut census.dynamic_contribution_rows,
-                            1,
-                            "dynamic contribution rows",
-                        )?;
-                    }
-                    OnTheFlyTraceOperationV1::Finalization { key, row } => {
-                        let current_id = current_id_by_component_base(
-                            &bases,
-                            row.component_base,
-                            "finalization destination",
-                        )?;
-                        let identity = FamilyFinalizationIdentity {
-                            executor: *key,
-                            momentum: trace_momentum(trace, row.momentum_form_id, "finalization")?,
-                            component_count: row.component_count,
-                            exact_factor: trace_factor(trace, row.exact_factor_id, "finalization")?,
-                            selector_domain_id: row.selector_domain_id,
-                            flags: row.flags,
-                        };
-                        let definition = &mut local_definitions[current_id as usize];
-                        if u32::from(row.component_count) != definition.component_count
-                            || definition.finalization.replace(identity).is_some()
-                        {
-                            return Err(integrity(
-                                "query-local current has an invalid finalization row",
-                            ));
-                        }
-                        add(
-                            &mut census.dynamic_finalization_rows,
-                            1,
-                            "dynamic finalization rows",
-                        )?;
-                    }
-                    OnTheFlyTraceOperationV1::Closure { key, row } => {
-                        if row.amplitude_destination_id != 0 {
-                            return Err(integrity(
-                                "query-local closure does not target its sole amplitude",
-                            ));
-                        }
-                        let parent0 = current_id_by_component_base(
-                            &bases,
-                            row.parent0_component_base,
-                            "closure parent 0",
-                        )?;
-                        let parent1 = current_id_by_component_base(
-                            &bases,
-                            row.parent1_component_base_or_sentinel,
-                            "closure parent 1",
-                        )?;
-                        let component_start = row.component_factor_start as usize;
-                        let component_end = component_start
-                            .checked_add(usize::from(row.component_count))
-                            .ok_or_else(|| integrity("closure component-factor span overflows"))?;
-                        let component_factors = trace
-                            .exact_factors
-                            .get(component_start..component_end)
-                            .ok_or_else(|| integrity("closure component-factor span is absent"))?
-                            .to_vec()
-                            .into_boxed_slice();
-                        let amplitude_destination_id =
-                            checked_u32(query_index, "query-family amplitude destination ID")?;
-                        closure_definitions.push(FamilyClosureIdentity {
-                            seed_digest: trace.seed_digest,
-                            query_digest: trace.query_digest,
-                            stage: current_stage(&trace.current_keys[parent0 as usize])?
-                                .max(current_stage(&trace.current_keys[parent1 as usize])?),
-                            executor: *key,
-                            parent_current_ids: [
-                                local_to_union[parent0 as usize],
-                                local_to_union[parent1 as usize],
-                            ],
-                            parent_momenta: [
-                                trace_momentum(
-                                    trace,
-                                    row.parent0_momentum_form_id,
-                                    "closure parent 0",
-                                )?,
-                                trace_momentum(
-                                    trace,
-                                    row.parent1_momentum_form_id_or_sentinel,
-                                    "closure parent 1",
-                                )?,
-                            ],
-                            exact_factor: trace_factor(trace, row.exact_factor_id, "closure")?,
-                            component_factors,
-                            component_count: row.component_count,
-                            selector_domain_id: row.selector_domain_id,
-                            proof_group_id: row.flags,
-                            amplitude_destination_id,
-                        });
-                        closure_groups.insert((
-                            trace.seed_digest,
-                            current_stage(&trace.current_keys[parent0 as usize])?
-                                .max(current_stage(&trace.current_keys[parent1 as usize])?),
-                            prepared_executor_id(direct_catalog, *key)?,
-                        ));
-                        add(&mut census.dynamic_closure_rows, 1, "dynamic closure rows")?;
                     }
                 }
-            }
-            if contribution_proofs.next().is_some() {
-                return Err(integrity(
-                    "query-local cold contribution identities outnumber direct rows",
-                ));
-            }
-
-            for ((family_key, definition), union_id) in normalized_keys
-                .into_iter()
-                .zip(local_definitions)
-                .zip(local_to_union)
-            {
-                let key = &family_key.1;
-                match key.node_kind() {
-                    RecurrenceNodeKind::Source
-                        if definition.source.is_none()
-                            || !definition.contributions.is_empty()
-                            || definition.finalization.is_some() =>
-                    {
-                        return Err(integrity(
-                            "query-family source current has a non-source definition",
-                        ));
-                    }
-                    RecurrenceNodeKind::Current
-                        if definition.source.is_some() || definition.contributions.is_empty() =>
-                    {
-                        return Err(integrity(
-                            "query-family non-source current has no contribution definition",
-                        ));
-                    }
-                    _ => {}
-                }
-                let record = union_currents.get_mut(&family_key).ok_or_else(|| {
-                    integrity("query-family normalized current lost its union identity")
-                })?;
-                if record.id != union_id {
+                if contribution_proofs.next().is_some() {
                     return Err(integrity(
-                        "query-family normalized current changed its union identity",
+                        "query-local cold contribution identities outnumber direct rows",
                     ));
                 }
-                match record.definition.as_ref() {
-                    None => record.definition = Some(definition),
-                    Some(established) if established == &definition => {}
-                    Some(_) => {
-                        return Err(integrity(format!(
-                            "query-family semantic current {union_id} has conflicting definitions"
-                        )));
+
+                for ((family_key, definition), union_id) in normalized_keys
+                    .into_iter()
+                    .zip(local_definitions)
+                    .zip(local_to_union)
+                {
+                    let key = &family_key.1;
+                    match key.node_kind() {
+                        RecurrenceNodeKind::Source
+                            if definition.source.is_none()
+                                || !definition.contributions.is_empty()
+                                || definition.finalization.is_some() =>
+                        {
+                            return Err(integrity(
+                                "query-family source current has a non-source definition",
+                            ));
+                        }
+                        RecurrenceNodeKind::Current
+                            if definition.source.is_some()
+                                || definition.contributions.is_empty() =>
+                        {
+                            return Err(integrity(
+                                "query-family non-source current has no contribution definition",
+                            ));
+                        }
+                        _ => {}
+                    }
+                    let record = union_currents.get_mut(&family_key).ok_or_else(|| {
+                        integrity("query-family normalized current lost its union identity")
+                    })?;
+                    if record.id != union_id {
+                        return Err(integrity(
+                            "query-family normalized current changed its union identity",
+                        ));
+                    }
+                    match record.definition.as_ref() {
+                        None => record.definition = Some(definition),
+                        Some(established) if established == &definition => {}
+                        Some(_) => {
+                            return Err(integrity(format!(
+                                "query-family semantic current {union_id} has conflicting definitions"
+                            )));
+                        }
                     }
                 }
+                add(&mut census.query_count, 1, "query-family query count")?;
+                add(
+                    &mut census.union_amplitude_destination_count,
+                    1,
+                    "query-family amplitude destination count",
+                )?;
             }
-            add(&mut census.query_count, 1, "query-family query count")?;
-            add(
-                &mut census.union_amplitude_destination_count,
-                1,
-                "query-family amplitude destination count",
-            )?;
-        }
-        Ok(first_destination..census.query_count)
-    };
-    produce(&mut consume)?;
-    drop(consume);
+            Ok(first_destination..census.query_count)
+        };
+        produce(&mut consume)?;
+    }
 
     let Some((source_count, lorentz_component_count, parameter_count)) = layout else {
         return Ok(None);
@@ -1141,6 +1159,7 @@ pub(crate) fn build_streamed_query_family_candidate_v1(
     })
 }
 
+#[allow(dead_code)] // Used only by the feature-only query-family census API.
 fn query_family_census_from_traces(
     direct_catalog: &PreparedDirectExecutorCatalog,
     selected: &[QueryFamilyTraceInput<'_>],
@@ -1666,17 +1685,17 @@ fn ordered_family_row_groups(
         for ((seed_digest, direct_executor_id), mut drafts) in
             contribution_groups.remove(&stage).unwrap_or_default()
         {
-            drafts.sort_by_key(|draft| {
-                (
-                    draft.destination_current_id,
-                    draft.row.parent0_component_base,
-                    draft.row.parent1_component_base_or_sentinel,
-                    draft.row.parent0_momentum_form_id,
-                    draft.row.parent1_momentum_form_id_or_sentinel,
-                    draft.row.exact_factor_id,
-                    draft.key,
-                )
-            });
+            crate::recurrence::direct_lowering::order_contributions_for_runtime_fanout_by(
+                &mut drafts,
+                |draft| {
+                    (
+                        draft.stage,
+                        draft.direct_executor_id,
+                        draft.row,
+                        (draft.destination_current_id, draft.key),
+                    )
+                },
+            );
             if drafts.iter().any(|draft| {
                 draft.seed_digest != seed_digest
                     || draft.stage != stage
@@ -1835,6 +1854,7 @@ impl OnTheFlyFamilyWorkspaceV1 {
     fn new(
         family: &OnTheFlyBuiltQueryFamilyV1,
         logical_point_capacity: u32,
+        packed_singleton_capable: bool,
     ) -> RusticolResult<Self> {
         if family.source_count == 0
             || family.lorentz_component_count == 0
@@ -1848,7 +1868,11 @@ impl OnTheFlyFamilyWorkspaceV1 {
                 "query-family has an empty authenticated workspace shape",
             ));
         }
-        let point_stride = checked_aligned_point_stride(logical_point_capacity)?;
+        let point_stride = if logical_point_capacity == 1 && packed_singleton_capable {
+            1
+        } else {
+            checked_aligned_point_stride(logical_point_capacity)?
+        };
         let current_len = family_scalar_len(
             family.current_component_count,
             point_stride,
@@ -2151,6 +2175,12 @@ struct BoundOnTheFlyQueryFamilyV1 {
     family: OnTheFlyBuiltQueryFamilyV1,
     workspace: OnTheFlyFamilyWorkspaceV1,
     resolved_groups: Box<[ResolvedOnTheFlyExecutor]>,
+    /// Cold, process-bound conjunction over every executor used by this
+    /// family. It is reused when a retained workspace grows, so a packed
+    /// singleton can never survive a later batched activation.
+    packed_singleton_capable: bool,
+    interaction_program: DirectInteractionProgram,
+    singleton_fanout_program: DirectSingletonContributionFanoutProgram,
     applied_parameter_version: u64,
     descriptor_exposed: bool,
 }
@@ -2233,6 +2263,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             .map(|family| family.family.census)
     }
 
+    #[allow(dead_code)] // Test-support inspection seam.
     pub(crate) const fn retained_family_count(&self) -> usize {
         self.families.len()
     }
@@ -2299,6 +2330,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             .row_groups
             .iter()
             .map(|group| {
+                let mut all_members_are_packed_singleton_capable = true;
                 for &(key, expected_permutation) in group.member_bindings.iter() {
                     let resolved = self.resolver.resolve(key)?;
                     if resolved.direct_executor_id != group.direct_executor_id
@@ -2309,8 +2341,10 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                             "query-family prepared executor binding changed after row materialization",
                         ));
                     }
+                    all_members_are_packed_singleton_capable &=
+                        resolved.packed_singleton_capable;
                 }
-                let resolved = self.resolver.resolve(group.representative_key)?;
+                let mut resolved = self.resolver.resolve(group.representative_key)?;
                 if resolved.direct_executor_id != group.direct_executor_id
                     || resolved.handle.role() != group.role
                 {
@@ -2318,10 +2352,110 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                         "query-family representative executor differs from its row group",
                     ));
                 }
+                resolved.packed_singleton_capable &=
+                    all_members_are_packed_singleton_capable;
                 Ok(resolved)
             })
             .collect::<RusticolResult<Vec<_>>>()
             .map(Vec::into_boxed_slice)
+    }
+
+    fn resolved_groups_are_packed_singleton_capable(
+        family: &OnTheFlyBuiltQueryFamilyV1,
+        resolved_groups: &[ResolvedOnTheFlyExecutor],
+    ) -> bool {
+        !family.row_groups.is_empty()
+            && family.row_groups.len() == resolved_groups.len()
+            && family
+                .row_groups
+                .iter()
+                .zip(resolved_groups)
+                .all(|(group, resolved)| {
+                    resolved.packed_singleton_capable
+                        && resolved.direct_executor_id == group.direct_executor_id
+                        && resolved.handle.role() == group.role
+                })
+    }
+
+    fn direct_group_views<'a>(
+        family: &'a OnTheFlyBuiltQueryFamilyV1,
+        resolved_groups: &[ResolvedOnTheFlyExecutor],
+    ) -> RusticolResult<(Vec<DirectInteractionGroupView<'a>>, usize)> {
+        if family.row_groups.len() != resolved_groups.len() {
+            return Err(integrity(
+                "query-family direct-program binding has the wrong group count",
+            ));
+        }
+        let mut groups = Vec::with_capacity(family.row_groups.len());
+        let mut contribution_row_count = 0_usize;
+        for (group, resolved) in family.row_groups.iter().zip(resolved_groups) {
+            groups.push(match &group.rows {
+                OnTheFlyFamilyRowsV1::Contribution(rows) => {
+                    contribution_row_count = contribution_row_count
+                        .checked_add(rows.len())
+                        .ok_or_else(|| invalid("query-family contribution count exceeds usize"))?;
+                    DirectInteractionGroupView::contribution(
+                        group.stage,
+                        group.direct_executor_id,
+                        Some(resolved.handle),
+                        resolved.interaction_capability,
+                        rows,
+                    )
+                }
+                OnTheFlyFamilyRowsV1::Closure(rows) => DirectInteractionGroupView::closure(
+                    group.stage,
+                    group.direct_executor_id,
+                    resolved.handle,
+                    rows,
+                ),
+                OnTheFlyFamilyRowsV1::Source(_) | OnTheFlyFamilyRowsV1::Finalization(_) => {
+                    DirectInteractionGroupView::other(
+                        group.stage,
+                        group.role,
+                        group.direct_executor_id,
+                        Some(resolved.handle),
+                    )
+                }
+            });
+        }
+        Ok((groups, contribution_row_count))
+    }
+
+    fn bind_interaction_program(
+        family: &OnTheFlyBuiltQueryFamilyV1,
+        resolved_groups: &[ResolvedOnTheFlyExecutor],
+        strategy: RecurrenceStrategy,
+    ) -> RusticolResult<DirectInteractionProgram> {
+        let (groups, contribution_row_count) = Self::direct_group_views(family, resolved_groups)?;
+        // OTF families do not persist authenticated liveness descriptors.
+        // Empty currents deliberately keep the terminal scalarization rewrite
+        // disabled while sharing the base color/ATV interaction program.
+        DirectInteractionProgram::build(DirectInteractionScheduleView::new(
+            strategy,
+            &groups,
+            &[],
+            contribution_row_count,
+        ))
+    }
+
+    fn bind_singleton_fanout_program(
+        family: &OnTheFlyBuiltQueryFamilyV1,
+        resolved_groups: &[ResolvedOnTheFlyExecutor],
+    ) -> RusticolResult<DirectSingletonContributionFanoutProgram> {
+        let (groups, _) = Self::direct_group_views(family, resolved_groups)?;
+        DirectSingletonContributionFanoutProgram::build(
+            &groups,
+            family.current_component_count,
+            checked_u32(
+                family.momentum_forms.len(),
+                "query-family momentum-form count",
+            )?,
+            family.parameter_count,
+            checked_u32(
+                family.exact_factors.len(),
+                "query-family exact-factor count",
+            )?,
+        )
     }
 
     fn invalidate_exposed_row_tables(&mut self) -> RusticolResult<()> {
@@ -2406,7 +2540,11 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             .logical_point_capacity
             .lt(&logical_point_capacity)
             .then(|| {
-                OnTheFlyFamilyWorkspaceV1::new(&self.families[index].family, logical_point_capacity)
+                OnTheFlyFamilyWorkspaceV1::new(
+                    &self.families[index].family,
+                    logical_point_capacity,
+                    self.families[index].packed_singleton_capable,
+                )
             })
             .transpose()?;
         if self
@@ -2453,8 +2591,11 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             if logical_point_capacity <= pending.workspace.logical_point_capacity {
                 return Ok(false);
             }
-            let replacement =
-                OnTheFlyFamilyWorkspaceV1::new(&pending.family, logical_point_capacity)?;
+            let replacement = OnTheFlyFamilyWorkspaceV1::new(
+                &pending.family,
+                logical_point_capacity,
+                pending.packed_singleton_capable,
+            )?;
             self.invalidate_exposed_row_tables()?;
             let pending = self
                 .pending
@@ -2499,7 +2640,11 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                 .as_ref()
                 .filter(|pending| logical_point_capacity > pending.workspace.logical_point_capacity)
                 .map(|pending| {
-                    OnTheFlyFamilyWorkspaceV1::new(&pending.family, logical_point_capacity)
+                    OnTheFlyFamilyWorkspaceV1::new(
+                        &pending.family,
+                        logical_point_capacity,
+                        pending.packed_singleton_capable,
+                    )
                 })
                 .transpose()?;
             if let Some(replacement) = replacement {
@@ -2524,8 +2669,21 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                 "executable query families currently require one compact source frame",
             ));
         }
-        let workspace = OnTheFlyFamilyWorkspaceV1::new(&family, logical_point_capacity)?;
         let resolved_groups = self.bind_groups(&family)?;
+        let packed_singleton_capable =
+            Self::resolved_groups_are_packed_singleton_capable(&family, &resolved_groups);
+        let workspace = OnTheFlyFamilyWorkspaceV1::new(
+            &family,
+            logical_point_capacity,
+            packed_singleton_capable,
+        )?;
+        let interaction_program = Self::bind_interaction_program(
+            &family,
+            &resolved_groups,
+            RecurrenceStrategy::TopologyReplay,
+        )?;
+        let singleton_fanout_program =
+            Self::bind_singleton_fanout_program(&family, &resolved_groups)?;
         if self.families.capacity() == 0 {
             self.families.try_reserve_exact(1).map_err(|error| {
                 invalid(format!(
@@ -2538,6 +2696,9 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             family,
             workspace,
             resolved_groups,
+            packed_singleton_capable,
+            interaction_program,
+            singleton_fanout_program,
             applied_parameter_version: u64::MAX,
             descriptor_exposed: false,
         };
@@ -2575,7 +2736,11 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                 .as_ref()
                 .filter(|pending| logical_point_capacity > pending.workspace.logical_point_capacity)
                 .map(|pending| {
-                    OnTheFlyFamilyWorkspaceV1::new(&pending.family, logical_point_capacity)
+                    OnTheFlyFamilyWorkspaceV1::new(
+                        &pending.family,
+                        logical_point_capacity,
+                        pending.packed_singleton_capable,
+                    )
                 })
                 .transpose()?;
             if let Some(replacement) = replacement {
@@ -2596,8 +2761,21 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                 "executable query families currently require one compact source frame",
             ));
         }
-        let workspace = OnTheFlyFamilyWorkspaceV1::new(&family, logical_point_capacity)?;
         let resolved_groups = self.bind_groups(&family)?;
+        let packed_singleton_capable =
+            Self::resolved_groups_are_packed_singleton_capable(&family, &resolved_groups);
+        let workspace = OnTheFlyFamilyWorkspaceV1::new(
+            &family,
+            logical_point_capacity,
+            packed_singleton_capable,
+        )?;
+        let interaction_program = Self::bind_interaction_program(
+            &family,
+            &resolved_groups,
+            RecurrenceStrategy::ContractedColorUnion,
+        )?;
+        let singleton_fanout_program =
+            Self::bind_singleton_fanout_program(&family, &resolved_groups)?;
         if self.families.capacity() == 0 {
             self.families.try_reserve_exact(1).map_err(|error| {
                 invalid(format!(
@@ -2610,6 +2788,9 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             family,
             workspace,
             resolved_groups,
+            packed_singleton_capable,
+            interaction_program,
+            singleton_fanout_program,
             applied_parameter_version: u64::MAX,
             descriptor_exposed: false,
         };
@@ -2772,10 +2953,9 @@ impl<R: OnTheFlyPreparedExecutorResolver> Drop for OnTheFlyQueryFamilyExecutorV1
             .pending
             .as_ref()
             .is_some_and(|family| family.descriptor_exposed)
+            && let Some(pending) = self.pending.take()
         {
-            if let Some(pending) = self.pending.take() {
-                std::mem::forget(pending);
-            }
+            std::mem::forget(pending);
         }
     }
 }
@@ -2791,14 +2971,47 @@ where
 {
     clear_direct_executor_error_detail();
     let (arena, momenta, parameters, factors) = cached.workspace.raw_views()?;
-    for (group, resolved) in cached
+    for (group_index, (group, resolved)) in cached
         .family
         .row_groups
         .iter()
         .zip(cached.resolved_groups.iter().copied())
+        .enumerate()
     {
         let row_count = checked_u32(group.rows.len(), "query-family row-group count")?;
         record_group(&mut report, group.role, row_count)?;
+        // The native bundle intentionally specializes point zero. Preserve
+        // the ordinary authenticated row path for every batched execution.
+        if point_count == 1 {
+            match cached.interaction_program.action(group_index) {
+                DirectInteractionGroupAction::Normal => {
+                    if let OnTheFlyFamilyRowsV1::Contribution(rows) = &group.rows
+                        && cached.singleton_fanout_program.execute_group(
+                            group_index,
+                            rows,
+                            arena,
+                            momenta,
+                            parameters,
+                            factors,
+                            point_count,
+                        )?
+                    {
+                        continue;
+                    }
+                }
+                DirectInteractionGroupAction::Consumed => continue,
+                DirectInteractionGroupAction::Execute(stage_index) => {
+                    cached.interaction_program.execute::<false>(
+                        stage_index,
+                        arena,
+                        momenta,
+                        parameters,
+                        factors,
+                    )?;
+                    continue;
+                }
+            }
+        }
         let status: c_int = unsafe {
             match (&group.rows, resolved.handle) {
                 (
@@ -2873,7 +3086,7 @@ where
 /// Build exactly the requested LC queries with the existing query-local
 /// machinery, then compute their cold structural union census.
 #[doc(hidden)]
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[cfg(feature = "on-the-fly-test-support")]
 pub fn on_the_fly_query_family_census_v1(
     authenticated: &crate::recurrence::AuthenticatedRecurrenceBuilderInput,
     direct_catalog: &PreparedDirectExecutorCatalog,
@@ -2914,11 +3127,18 @@ pub fn on_the_fly_query_family_census_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::direct_backend::{
+        DIRECT_STATUS_OK, DirectContributionExecutionMetadata, DirectContributionFanoutBatch,
+        DirectContributionFanoutExecutorHandle, DirectInteractionBundleBatch,
+        DirectInteractionExecutorContexts, DirectInteractionIntrinsicKind,
+    };
+    use crate::recurrence::direct_plan::DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE;
     use crate::recurrence::{
         ExactRational, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,
     };
     use std::cell::{Cell, RefCell};
     use std::ffi::c_void;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     const TEST_STATUS_BOUNDS: c_int = 2;
     const TEST_STATUS_FAILED: c_int = 4;
@@ -2929,6 +3149,187 @@ mod tests {
         fail_role: Cell<Option<DirectExecutorRole>>,
         record_failure_detail: Cell<bool>,
         invalidations: Cell<u32>,
+    }
+
+    #[derive(Default)]
+    struct InteractionPathCensus {
+        native_calls: AtomicU64,
+        raw_calls: AtomicU64,
+        raw_rows: AtomicU64,
+    }
+
+    #[derive(Default)]
+    struct FanoutPathCensus {
+        native_calls: AtomicU64,
+        native_runs: AtomicU64,
+        raw_calls: AtomicU64,
+        raw_rows: AtomicU64,
+    }
+
+    unsafe fn execute_fanout_test_rows(
+        arena: DirectArenaView,
+        factors: DirectFactorView,
+        rows: &[DirectContributionRow],
+        point_count: u32,
+    ) -> c_int {
+        let stride = arena.point_stride as usize;
+        for row in rows {
+            if row.exact_factor_id >= factors.value_count {
+                return TEST_STATUS_BOUNDS;
+            }
+            let factor = unsafe { *factors.values_re.add(row.exact_factor_id as usize) };
+            for point in 0..point_count as usize {
+                let parent0 = row.parent0_component_base as usize * stride + point;
+                let parent1 = row.parent1_component_base_or_sentinel as usize * stride + point;
+                let destination = row.destination_component_base as usize * stride + point;
+                if parent0 >= arena.current_scalar_len as usize
+                    || parent1 >= arena.current_scalar_len as usize
+                    || destination >= arena.current_scalar_len as usize
+                {
+                    return TEST_STATUS_BOUNDS;
+                }
+                let value = unsafe {
+                    (10.0 * *arena.current_re.add(parent0) + *arena.current_re.add(parent1))
+                        * factor
+                };
+                unsafe {
+                    if row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION != 0 {
+                        *arena.current_re.add(destination) = value;
+                        *arena.current_im.add(destination) = 0.0;
+                    } else {
+                        *arena.current_re.add(destination) += value;
+                    }
+                }
+            }
+        }
+        DIRECT_STATUS_OK
+    }
+
+    unsafe extern "C" fn fanout_test_raw(
+        context: *const c_void,
+        arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        factors: DirectFactorView,
+        rows: *const DirectContributionRow,
+        row_count: u32,
+        point_count: u32,
+    ) -> c_int {
+        let census = unsafe { &*context.cast::<FanoutPathCensus>() };
+        census.raw_calls.fetch_add(1, Ordering::Relaxed);
+        census
+            .raw_rows
+            .fetch_add(u64::from(row_count), Ordering::Relaxed);
+        let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
+        unsafe { execute_fanout_test_rows(arena, factors, rows, point_count) }
+    }
+
+    unsafe fn fanout_test_native(
+        context: *const c_void,
+        arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        factors: DirectFactorView,
+        batch: DirectContributionFanoutBatch<'_>,
+    ) -> RusticolResult<()> {
+        let census = unsafe { &*context.cast::<FanoutPathCensus>() };
+        census.native_calls.fetch_add(1, Ordering::Relaxed);
+        census
+            .native_runs
+            .fetch_add(batch.runs.len() as u64, Ordering::Relaxed);
+        for run in batch.runs {
+            let start = run.row_start as usize;
+            let end = start + run.row_count as usize;
+            let rows = batch
+                .rows
+                .get(start..end)
+                .ok_or_else(|| integrity("test native fanout run is outside its row group"))?;
+            let representative = *rows
+                .first()
+                .ok_or_else(|| integrity("test native fanout run is empty"))?;
+            let stride = arena.point_stride as usize;
+            let parent0 = representative.parent0_component_base as usize * stride;
+            let parent1 = representative.parent1_component_base_or_sentinel as usize * stride;
+            let value =
+                unsafe { 10.0 * *arena.current_re.add(parent0) + *arena.current_re.add(parent1) };
+            let bundle_start = run.bundle_start as usize;
+            let bundle_end = bundle_start + run.bundle_count as usize;
+            for bundle in batch
+                .bundles
+                .get(bundle_start..bundle_end)
+                .ok_or_else(|| integrity("test native fanout bundle range is out of bounds"))?
+            {
+                let factor = unsafe {
+                    *factors
+                        .values_re
+                        .add(bundle.effective_factor_id_or_sentinel as usize)
+                };
+                let start = bundle.row_start as usize;
+                let end = start + bundle.row_count as usize;
+                for row in batch
+                    .rows
+                    .get(start..end)
+                    .ok_or_else(|| integrity("test native fanout rows are out of bounds"))?
+                {
+                    let destination = row.destination_component_base as usize * stride;
+                    unsafe {
+                        if row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION != 0 {
+                            *arena.current_re.add(destination) = value * factor;
+                            *arena.current_im.add(destination) = 0.0;
+                        } else {
+                            *arena.current_re.add(destination) += value * factor;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    unsafe extern "C" fn interaction_raw_contributions(
+        context: *const c_void,
+        _arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        _rows: *const DirectContributionRow,
+        row_count: u32,
+        _point_count: u32,
+    ) -> c_int {
+        let census = unsafe { &*context.cast::<InteractionPathCensus>() };
+        census.raw_calls.fetch_add(1, Ordering::Relaxed);
+        census
+            .raw_rows
+            .fetch_add(u64::from(row_count), Ordering::Relaxed);
+        DIRECT_STATUS_OK
+    }
+
+    unsafe fn interaction_fanout_unreachable(
+        _context: *const c_void,
+        _arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        _batch: DirectContributionFanoutBatch<'_>,
+    ) -> RusticolResult<()> {
+        panic!("OTF interaction dispatch unexpectedly used generic contribution fanout")
+    }
+
+    unsafe fn count_otf_interaction(
+        contexts: DirectInteractionExecutorContexts,
+        _arena: DirectArenaView,
+        _momenta: DirectMomentumView,
+        _parameters: DirectParameterView,
+        _factors: DirectFactorView,
+        batch: DirectInteractionBundleBatch<'_>,
+    ) -> RusticolResult<()> {
+        assert_eq!(contexts.color, contexts.antisymmetric_tensor_vector);
+        assert_eq!(batch.anchors.len(), 1);
+        assert_eq!(batch.outputs.len(), 2);
+        assert!(batch.atv_before_color);
+        let census = unsafe { &*contexts.color.cast::<InteractionPathCensus>() };
+        census.native_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 
     impl ProbeState {
@@ -3153,6 +3554,7 @@ mod tests {
     struct ProbeResolver {
         catalog: PreparedDirectExecutorCatalog,
         state: Box<ProbeState>,
+        packed_singleton_capabilities: [bool; 4],
     }
 
     impl ProbeResolver {
@@ -3160,7 +3562,29 @@ mod tests {
             Self {
                 catalog,
                 state: Box::new(ProbeState::default()),
+                packed_singleton_capabilities: [false; 4],
             }
+        }
+
+        fn packed_singleton(catalog: PreparedDirectExecutorCatalog) -> Self {
+            Self {
+                catalog,
+                state: Box::new(ProbeState::default()),
+                packed_singleton_capabilities: [true; 4],
+            }
+        }
+
+        fn role_index(role: DirectExecutorRole) -> usize {
+            match role {
+                DirectExecutorRole::Source => 0,
+                DirectExecutorRole::Contribution => 1,
+                DirectExecutorRole::Finalization => 2,
+                DirectExecutorRole::Closure => 3,
+            }
+        }
+
+        fn disable_packed_singleton_role(&mut self, role: DirectExecutorRole) {
+            self.packed_singleton_capabilities[Self::role_index(role)] = false;
         }
     }
 
@@ -3190,6 +3614,9 @@ mod tests {
                 direct_executor_id,
                 handle,
                 parent_permutation,
+                packed_singleton_capable: self.packed_singleton_capabilities
+                    [Self::role_index(key.role())],
+                interaction_capability: None,
             })
         }
 
@@ -3228,6 +3655,582 @@ mod tests {
             ],
         )
         .unwrap()
+    }
+
+    #[test]
+    fn family_contributions_use_direct_fanout_order_before_first_write_flags() {
+        let seed_digest = SemanticDigest::new([0x31; 32]).unwrap();
+        let catalog_digest = SemanticDigest::new([0x32; 32]).unwrap();
+        let operation_digest = SemanticDigest::new([0x33; 32]).unwrap();
+        let binding_digest = SemanticDigest::new([0x34; 32]).unwrap();
+        let executor_key = OnTheFlyExecutorKeyV1::PreparedOperation {
+            direct_catalog_digest: catalog_digest,
+            role: DirectExecutorRole::Contribution,
+            operation_kind: OnTheFlyOperationKindV1::Transition,
+            operation_id: 7,
+            operation_semantic_digest: operation_digest,
+            evaluator_binding_id: 9,
+            evaluator_binding_semantic_digest: binding_digest,
+        };
+        let row = |parents: [u32; 2], destination: u32, factor: u32| DirectContributionRow {
+            parent0_component_base: parents[0],
+            parent1_component_base_or_sentinel: parents[1],
+            parent0_momentum_form_id: parents[0] / 4,
+            parent1_momentum_form_id_or_sentinel: parents[1] / 4,
+            destination_component_base: destination,
+            exact_factor_id: factor,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        // A and C are reusable input classes; B is deliberately interleaved
+        // in the cold semantic input to catch destination-major ordering.
+        let specs = [
+            ([0, 4], 20, 1),
+            ([8, 12], 24, 2),
+            ([0, 4], 28, 1),
+            ([16, 20], 20, 4),
+            ([16, 20], 24, 0),
+        ];
+        let drafts = specs
+            .iter()
+            .map(|&(parents, destination, factor)| FamilyContributionDraft {
+                seed_digest,
+                stage: 1,
+                destination_current_id: destination,
+                direct_executor_id: 2,
+                key: executor_key,
+                parent_permutation: [0, 1],
+                row: row(parents, destination, factor),
+            })
+            .collect::<Vec<_>>();
+        let expected_multiset = drafts
+            .iter()
+            .map(|draft| {
+                let row = draft.row;
+                (
+                    row.parent0_component_base,
+                    row.parent1_component_base_or_sentinel,
+                    row.parent0_momentum_form_id,
+                    row.parent1_momentum_form_id_or_sentinel,
+                    row.destination_component_base,
+                    row.exact_factor_id,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        let mut contribution_groups = BTreeMap::new();
+        contribution_groups.insert(1, BTreeMap::from([((seed_digest, 2), drafts)]));
+        let groups = ordered_family_row_groups(
+            BTreeMap::new(),
+            contribution_groups,
+            BTreeMap::new(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let [group] = groups.as_slice() else {
+            panic!("expected one contribution row group");
+        };
+        let OnTheFlyFamilyRowsV1::Contribution(rows) = &group.rows else {
+            panic!("expected contribution rows");
+        };
+        let actual_multiset = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.parent0_component_base,
+                    row.parent1_component_base_or_sentinel,
+                    row.parent0_momentum_form_id,
+                    row.parent1_momentum_form_id_or_sentinel,
+                    row.destination_component_base,
+                    row.exact_factor_id,
+                    row.selector_domain_id,
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual_multiset, expected_multiset);
+        assert_eq!(
+            rows.iter()
+                .map(|row| (
+                    row.parent0_component_base,
+                    row.destination_component_base,
+                    row.exact_factor_id,
+                ))
+                .collect::<Vec<_>>(),
+            vec![(0, 20, 1), (0, 28, 1), (16, 24, 0), (16, 20, 4), (8, 24, 2)],
+        );
+
+        let input_key = |row: &DirectContributionRow| {
+            (
+                row.selector_domain_id,
+                row.parent0_component_base,
+                row.parent1_component_base_or_sentinel,
+                row.parent0_momentum_form_id,
+                row.parent1_momentum_form_id_or_sentinel,
+            )
+        };
+        let mut positions = BTreeMap::<_, Vec<usize>>::new();
+        for (index, row) in rows.iter().enumerate() {
+            positions.entry(input_key(row)).or_default().push(index);
+        }
+        for indices in positions.values() {
+            assert_eq!(indices.last().unwrap() - indices[0] + 1, indices.len());
+        }
+        let repeated_end = positions
+            .values()
+            .filter(|indices| indices.len() > 1)
+            .flat_map(|indices| indices.iter().copied())
+            .max()
+            .unwrap();
+        let singleton_start = positions
+            .values()
+            .filter(|indices| indices.len() == 1)
+            .map(|indices| indices[0])
+            .min()
+            .unwrap();
+        assert!(repeated_end < singleton_start);
+
+        let mut initialize_counts = BTreeMap::<u32, usize>::new();
+        let mut seen_destinations = BTreeSet::new();
+        for row in rows {
+            let initializes = row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION != 0;
+            assert_eq!(
+                initializes,
+                seen_destinations.insert(row.destination_component_base)
+            );
+            if initializes {
+                *initialize_counts
+                    .entry(row.destination_component_base)
+                    .or_default() += 1;
+            }
+        }
+        assert_eq!(
+            initialize_counts,
+            BTreeMap::from([(20, 1), (24, 1), (28, 1)])
+        );
+    }
+
+    #[test]
+    fn otf_singleton_fanout_preserves_values_and_batched_raw_fallback() {
+        let catalog = direct_catalog();
+        let (trace, projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let mut family = build_query_family_from_traces(
+            &catalog,
+            &[QueryFamilyTraceInput {
+                trace: &trace,
+                projection,
+            }],
+        )
+        .unwrap();
+        let seed_digest = trace.seed_digest;
+        let key = OnTheFlyExecutorKeyV1::PreparedOperation {
+            direct_catalog_digest: catalog.direct_template_catalog_digest(),
+            role: DirectExecutorRole::Contribution,
+            operation_kind: OnTheFlyOperationKindV1::Transition,
+            operation_id: 0,
+            operation_semantic_digest: SemanticDigest::new([0x82; 32]).unwrap(),
+            evaluator_binding_id: 1,
+            evaluator_binding_semantic_digest: SemanticDigest::new([0x83; 32]).unwrap(),
+        };
+        let row = |parents: [u32; 2], destination_component_base, exact_factor_id| {
+            DirectContributionRow {
+                parent0_component_base: parents[0],
+                parent1_component_base_or_sentinel: parents[1],
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: 0,
+                destination_component_base,
+                exact_factor_id,
+                selector_domain_id: 0,
+                flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+            }
+        };
+        family.source_count = 1;
+        family.lorentz_component_count = 1;
+        family.parameter_count = 0;
+        family.current_component_count = 5;
+        family.amplitude_destination_count = 1;
+        family.momentum_forms = vec![
+            CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                source_slot: 0,
+                coefficient: 1,
+            }])
+            .unwrap(),
+        ]
+        .into_boxed_slice();
+        family.exact_factors = vec![factor(1), factor(2)].into_boxed_slice();
+        family.row_groups = vec![OnTheFlyFamilyRowGroupV1 {
+            seed_digest,
+            stage: 1,
+            role: DirectExecutorRole::Contribution,
+            direct_executor_id: 2,
+            representative_key: key,
+            member_bindings: vec![(key, [0, 1])].into_boxed_slice(),
+            rows: OnTheFlyFamilyRowsV1::Contribution(
+                vec![row([0, 1], 2, 0), row([0, 1], 3, 1), row([1, 0], 4, 0)].into_boxed_slice(),
+            ),
+        }]
+        .into_boxed_slice();
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
+        {
+            family.observed_currents = Box::new([]);
+        }
+
+        let census = FanoutPathCensus::default();
+        let context = (&census as *const FanoutPathCensus).cast::<c_void>();
+        let raw_handle = DirectExecutorHandle::Contribution {
+            call: fanout_test_raw,
+            context,
+        };
+        let capability = DirectInteractionExecutorCapability::new(
+            raw_handle,
+            DirectContributionExecutionMetadata::new(1, false).unwrap(),
+            DirectContributionFanoutExecutorHandle {
+                call: fanout_test_native,
+                context,
+                destination_component_count: 1,
+                parent_component_counts: [1, 1],
+                requires_two_momenta: false,
+                required_parameter_count: 0,
+                interaction_kind: DirectInteractionIntrinsicKind::VectorWedgeVector,
+                interaction_call: None,
+            },
+        )
+        .unwrap();
+        let raw_only_groups = vec![ResolvedOnTheFlyExecutor {
+            direct_executor_id: 2,
+            handle: raw_handle,
+            parent_permutation: [0, 1],
+            packed_singleton_capable: false,
+            interaction_capability: None,
+        }]
+        .into_boxed_slice();
+        let raw_only_program =
+            OnTheFlyQueryFamilyExecutorV1::<ProbeResolver>::bind_singleton_fanout_program(
+                &family,
+                &raw_only_groups,
+            )
+            .unwrap();
+        assert_eq!(raw_only_program.row_counts(), (0, 0));
+        let resolved_groups = vec![ResolvedOnTheFlyExecutor {
+            direct_executor_id: 2,
+            handle: raw_handle,
+            parent_permutation: [0, 1],
+            packed_singleton_capable: false,
+            interaction_capability: Some(capability),
+        }]
+        .into_boxed_slice();
+        let OnTheFlyFamilyRowsV1::Contribution(rows) = &mut family.row_groups[0].rows else {
+            panic!("expected contribution rows");
+        };
+        rows[0].flags |= DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE;
+        let reuse_program =
+            OnTheFlyQueryFamilyExecutorV1::<ProbeResolver>::bind_singleton_fanout_program(
+                &family,
+                &resolved_groups,
+            )
+            .unwrap();
+        assert_eq!(reuse_program.row_counts(), (0, 0));
+        let OnTheFlyFamilyRowsV1::Contribution(rows) = &mut family.row_groups[0].rows else {
+            unreachable!();
+        };
+        rows[0].flags &= !DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE;
+        let workspace = OnTheFlyFamilyWorkspaceV1::new(&family, 2, false).unwrap();
+        let interaction_program =
+            OnTheFlyQueryFamilyExecutorV1::<ProbeResolver>::bind_interaction_program(
+                &family,
+                &resolved_groups,
+                RecurrenceStrategy::ContractedColorUnion,
+            )
+            .unwrap();
+        assert_eq!(
+            interaction_program.action(0),
+            DirectInteractionGroupAction::Normal
+        );
+        let singleton_fanout_program =
+            OnTheFlyQueryFamilyExecutorV1::<ProbeResolver>::bind_singleton_fanout_program(
+                &family,
+                &resolved_groups,
+            )
+            .unwrap();
+        assert_eq!(singleton_fanout_program.row_counts(), (3, 2));
+        let mut bound = BoundOnTheFlyQueryFamilyV1 {
+            identity: QueryFamilyCacheIdentityV1::Streamed {
+                direct_catalog_digest: catalog.direct_template_catalog_digest(),
+                query_count: 1,
+                ordered_query_digest: SemanticDigest::new([0x84; 32]).unwrap(),
+            },
+            family,
+            workspace,
+            resolved_groups,
+            packed_singleton_capable: false,
+            interaction_program,
+            singleton_fanout_program,
+            applied_parameter_version: 0,
+            descriptor_exposed: false,
+        };
+        let record = |report: &mut OnTheFlyQueryFamilyExecutionReportV1, role, row_count| {
+            assert_eq!(role, DirectExecutorRole::Contribution);
+            add(&mut report.contribution_calls, 1, "test contribution calls")?;
+            add(
+                &mut report.contribution_rows,
+                row_count,
+                "test contribution rows",
+            )
+        };
+        let stride = bound.workspace.point_stride as usize;
+
+        bound.workspace.current_re.as_mut_slice()[0] = 3.0;
+        bound.workspace.current_re.as_mut_slice()[stride] = 4.0;
+        let singleton = execute_bound_family(
+            &mut bound,
+            1,
+            OnTheFlyQueryFamilyExecutionReportV1::default(),
+            record,
+        )
+        .unwrap();
+        assert_eq!(
+            (singleton.contribution_calls, singleton.contribution_rows),
+            (1, 3)
+        );
+        assert_eq!(census.native_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(census.native_runs.load(Ordering::Relaxed), 1);
+        assert_eq!(census.raw_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(census.raw_rows.load(Ordering::Relaxed), 1);
+        assert_eq!(bound.workspace.current_re.as_slice()[2 * stride], 34.0);
+        assert_eq!(bound.workspace.current_re.as_slice()[3 * stride], 68.0);
+        assert_eq!(bound.workspace.current_re.as_slice()[4 * stride], 43.0);
+
+        bound.workspace.current_re.as_mut_slice().fill(0.0);
+        bound.workspace.current_im.as_mut_slice().fill(0.0);
+        bound.workspace.current_re.as_mut_slice()[0] = 3.0;
+        bound.workspace.current_re.as_mut_slice()[1] = 5.0;
+        bound.workspace.current_re.as_mut_slice()[stride] = 4.0;
+        bound.workspace.current_re.as_mut_slice()[stride + 1] = 6.0;
+        let batched = execute_bound_family(
+            &mut bound,
+            2,
+            OnTheFlyQueryFamilyExecutionReportV1::default(),
+            record,
+        )
+        .unwrap();
+        assert_eq!(
+            (batched.contribution_calls, batched.contribution_rows),
+            (1, 3)
+        );
+        assert_eq!(census.native_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(census.native_runs.load(Ordering::Relaxed), 1);
+        assert_eq!(census.raw_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(census.raw_rows.load(Ordering::Relaxed), 4);
+        assert_eq!(
+            &bound.workspace.current_re.as_slice()[2 * stride..2 * stride + 2],
+            &[34.0, 56.0]
+        );
+        assert_eq!(
+            &bound.workspace.current_re.as_slice()[3 * stride..3 * stride + 2],
+            &[68.0, 112.0]
+        );
+        assert_eq!(
+            &bound.workspace.current_re.as_slice()[4 * stride..4 * stride + 2],
+            &[43.0, 65.0]
+        );
+    }
+
+    #[test]
+    fn otf_interaction_dispatch_is_singleton_only_and_preserves_logical_counters() {
+        let catalog = direct_catalog();
+        let (trace, projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x91, factor(1));
+        let mut family = build_query_family_from_traces(
+            &catalog,
+            &[QueryFamilyTraceInput {
+                trace: &trace,
+                projection,
+            }],
+        )
+        .unwrap();
+        let seed_digest = trace.seed_digest;
+        let key = OnTheFlyExecutorKeyV1::PreparedOperation {
+            direct_catalog_digest: catalog.direct_template_catalog_digest(),
+            role: DirectExecutorRole::Contribution,
+            operation_kind: OnTheFlyOperationKindV1::Transition,
+            operation_id: 0,
+            operation_semantic_digest: SemanticDigest::new([0x92; 32]).unwrap(),
+            evaluator_binding_id: 1,
+            evaluator_binding_semantic_digest: SemanticDigest::new([0x93; 32]).unwrap(),
+        };
+        let row = |parents: [u32; 2], destination_component_base: u32, initializes: bool| {
+            DirectContributionRow {
+                parent0_component_base: parents[0],
+                parent1_component_base_or_sentinel: parents[1],
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: 0,
+                destination_component_base,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: if initializes {
+                    DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+                } else {
+                    0
+                },
+            }
+        };
+        family.source_count = 1;
+        family.lorentz_component_count = 1;
+        family.parameter_count = 0;
+        family.current_component_count = 4;
+        family.amplitude_destination_count = 1;
+        family.momentum_forms = vec![
+            CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                source_slot: 0,
+                coefficient: 1,
+            }])
+            .unwrap(),
+        ]
+        .into_boxed_slice();
+        family.exact_factors = vec![ExactComplexRational::ONE].into_boxed_slice();
+        family.row_groups = vec![
+            OnTheFlyFamilyRowGroupV1 {
+                seed_digest,
+                stage: 1,
+                role: DirectExecutorRole::Contribution,
+                direct_executor_id: 2,
+                representative_key: key,
+                member_bindings: vec![(key, [0, 1])].into_boxed_slice(),
+                rows: OnTheFlyFamilyRowsV1::Contribution(
+                    vec![row([1, 0], 2, true), row([1, 0], 3, true)].into_boxed_slice(),
+                ),
+            },
+            OnTheFlyFamilyRowGroupV1 {
+                seed_digest,
+                stage: 1,
+                role: DirectExecutorRole::Contribution,
+                direct_executor_id: 5,
+                representative_key: key,
+                member_bindings: vec![(key, [0, 1])].into_boxed_slice(),
+                rows: OnTheFlyFamilyRowsV1::Contribution(
+                    vec![row([0, 1], 3, false), row([0, 1], 2, false)].into_boxed_slice(),
+                ),
+            },
+        ]
+        .into_boxed_slice();
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
+        {
+            family.observed_currents = Box::new([]);
+        }
+
+        let census = InteractionPathCensus::default();
+        let context = (&census as *const InteractionPathCensus).cast::<c_void>();
+        let raw_handle = DirectExecutorHandle::Contribution {
+            call: interaction_raw_contributions,
+            context,
+        };
+        let capability = |kind, interaction_call| {
+            DirectInteractionExecutorCapability::new(
+                raw_handle,
+                DirectContributionExecutionMetadata::new(1, false).unwrap(),
+                DirectContributionFanoutExecutorHandle {
+                    call: interaction_fanout_unreachable,
+                    context,
+                    destination_component_count: 1,
+                    parent_component_counts: [1, 1],
+                    requires_two_momenta: false,
+                    required_parameter_count: 0,
+                    interaction_kind: kind,
+                    interaction_call,
+                },
+            )
+            .unwrap()
+        };
+        let resolved_groups = vec![
+            ResolvedOnTheFlyExecutor {
+                direct_executor_id: 2,
+                handle: raw_handle,
+                parent_permutation: [0, 1],
+                packed_singleton_capable: false,
+                interaction_capability: Some(capability(
+                    DirectInteractionIntrinsicKind::AntisymmetricTensorVector,
+                    None,
+                )),
+            },
+            ResolvedOnTheFlyExecutor {
+                direct_executor_id: 5,
+                handle: raw_handle,
+                parent_permutation: [0, 1],
+                packed_singleton_capable: false,
+                interaction_capability: Some(capability(
+                    DirectInteractionIntrinsicKind::ColorOrderedThreeVector,
+                    Some(count_otf_interaction),
+                )),
+            },
+        ]
+        .into_boxed_slice();
+        let workspace = OnTheFlyFamilyWorkspaceV1::new(&family, 2, false).unwrap();
+        let interaction_program =
+            OnTheFlyQueryFamilyExecutorV1::<ProbeResolver>::bind_interaction_program(
+                &family,
+                &resolved_groups,
+                RecurrenceStrategy::ContractedColorUnion,
+            )
+            .unwrap();
+        let singleton_fanout_program =
+            OnTheFlyQueryFamilyExecutorV1::<ProbeResolver>::bind_singleton_fanout_program(
+                &family,
+                &resolved_groups,
+            )
+            .unwrap();
+        let mut bound = BoundOnTheFlyQueryFamilyV1 {
+            identity: QueryFamilyCacheIdentityV1::Streamed {
+                direct_catalog_digest: catalog.direct_template_catalog_digest(),
+                query_count: 1,
+                ordered_query_digest: SemanticDigest::new([0x94; 32]).unwrap(),
+            },
+            family,
+            workspace,
+            resolved_groups,
+            packed_singleton_capable: false,
+            interaction_program,
+            singleton_fanout_program,
+            applied_parameter_version: 0,
+            descriptor_exposed: false,
+        };
+        let record = |report: &mut OnTheFlyQueryFamilyExecutionReportV1, role, row_count| {
+            assert_eq!(role, DirectExecutorRole::Contribution);
+            add(&mut report.contribution_calls, 1, "test contribution calls")?;
+            add(
+                &mut report.contribution_rows,
+                row_count,
+                "test contribution rows",
+            )
+        };
+
+        let singleton = execute_bound_family(
+            &mut bound,
+            1,
+            OnTheFlyQueryFamilyExecutionReportV1::default(),
+            record,
+        )
+        .unwrap();
+        assert_eq!(
+            (singleton.contribution_calls, singleton.contribution_rows),
+            (2, 4)
+        );
+        assert_eq!(census.native_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(census.raw_calls.load(Ordering::Relaxed), 0);
+
+        let batched = execute_bound_family(
+            &mut bound,
+            2,
+            OnTheFlyQueryFamilyExecutionReportV1::default(),
+            record,
+        )
+        .unwrap();
+        assert_eq!(
+            (batched.contribution_calls, batched.contribution_rows),
+            (2, 4)
+        );
+        assert_eq!(census.native_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(census.raw_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(census.raw_rows.load(Ordering::Relaxed), 4);
     }
 
     fn streamed_pair_candidate(
@@ -3612,6 +4615,94 @@ mod tests {
             momenta.extend(std::iter::repeat_n(0.0, 3 * point_count));
         }
         momenta
+    }
+
+    #[test]
+    fn packed_singleton_family_requires_every_executor_role() {
+        let catalog = direct_catalog();
+        let (trace, projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let selected = [QueryFamilyTraceInput {
+            trace: &trace,
+            projection,
+        }];
+
+        for missing_role in [
+            DirectExecutorRole::Source,
+            DirectExecutorRole::Contribution,
+            DirectExecutorRole::Finalization,
+            DirectExecutorRole::Closure,
+        ] {
+            let mut resolver = ProbeResolver::packed_singleton(catalog.clone());
+            resolver.disable_packed_singleton_role(missing_role);
+            let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
+            assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
+            let pending = executor.pending.as_ref().unwrap();
+            assert!(
+                !pending.packed_singleton_capable,
+                "missing {missing_role:?}"
+            );
+            assert_eq!(
+                pending.workspace.point_stride,
+                checked_aligned_point_stride(1).unwrap(),
+                "missing {missing_role:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn packed_singleton_family_promotes_once_for_batched_execution() {
+        let catalog = direct_catalog();
+        let resolver = ProbeResolver::packed_singleton(catalog.clone());
+        let (trace, projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let selected = [QueryFamilyTraceInput {
+            trace: &trace,
+            projection,
+        }];
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
+
+        assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
+        let pending = executor.pending.as_ref().unwrap();
+        assert!(pending.packed_singleton_capable);
+        assert_eq!(pending.workspace.point_stride, 1);
+        let mut scalar_output = [(0.0, 0.0)];
+        executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut scalar_output)
+            .unwrap();
+        assert_eq!(scalar_output, [(46.0, 0.0)]);
+        assert_eq!(executor.resolver().state.invalidations.get(), 0);
+
+        assert!(executor.resize_active_family(2).unwrap());
+        assert_eq!(executor.resolver().state.invalidations.get(), 1);
+        let retained = &executor.families[executor.last_used.unwrap()];
+        assert!(retained.packed_singleton_capable);
+        assert_eq!(retained.workspace.logical_point_capacity, 2);
+        assert_eq!(
+            retained.workspace.point_stride,
+            checked_aligned_point_stride(2).unwrap()
+        );
+
+        let mut batched_output = [(0.0, 0.0); 2];
+        executor
+            .execute_into(
+                &source_major_momenta(&[2.0, 4.0], &[3.0, 5.0]),
+                2,
+                &mut batched_output,
+            )
+            .unwrap();
+        assert_eq!(batched_output, [(46.0, 0.0), (180.0, 0.0)]);
+
+        executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut scalar_output)
+            .unwrap();
+        assert_eq!(scalar_output, [(46.0, 0.0)]);
+        assert_eq!(
+            executor.families[executor.last_used.unwrap()]
+                .workspace
+                .point_stride,
+            checked_aligned_point_stride(2).unwrap()
+        );
     }
 
     #[test]

@@ -1460,6 +1460,22 @@ fn build_helicity_recurrence_runtime(
     build_helicity_recurrence_runtime_from_view(recurrence, &view)
 }
 
+fn detach_compiled_helicity_load_inputs(
+    manifest: &mut ExecutionManifest,
+) -> RusticolResult<(
+    Option<GenericStageEvaluatorArtifactsManifest>,
+    Option<HelicityRecurrenceRuntime>,
+)> {
+    let helicity_recurrence = build_helicity_recurrence_runtime(manifest)?;
+    let stage_evaluators = manifest.compiled.stage_evaluators.take();
+    // The authenticated runtime owns every derived selector schedule.  Hide the
+    // source contract from the metadata-only constructor after its serialized
+    // evaluators have moved into the payload loader so it cannot rederive the
+    // schedules against an artificially empty evaluator set.
+    manifest.runtime_schema.helicity_recurrence = None;
+    Ok((stage_evaluators, helicity_recurrence))
+}
+
 fn build_helicity_recurrence_runtime_from_view(
     recurrence: Option<&HelicityRecurrenceManifest>,
     schema: &HelicityRecurrenceSchemaView,
@@ -3413,7 +3429,8 @@ impl ExecutionRuntime {
             std::mem::take(&mut manifest.helicity_selector_executions);
         let color_selector_manifests = std::mem::take(&mut manifest.color_selector_executions);
         let compiled_color_payload = manifest.color_contraction_payload.take();
-        let stage_evaluators = manifest.compiled.stage_evaluators.take();
+        let (stage_evaluators, helicity_recurrence) =
+            detach_compiled_helicity_load_inputs(&mut manifest)?;
         let model_parameter_evaluator = manifest.compiled.model_parameter_evaluator.take();
         let replay_materialized_sector_ids =
             build_lc_topology_replay_data(manifest.compiled.lc_topology_replay.as_ref())?
@@ -3432,6 +3449,7 @@ impl ExecutionRuntime {
         drop(replay_materialized_sector_ids);
         let amplitude_stage_manifest = manifest.runtime_schema.amplitude_stage.clone();
         let mut runtime = Self::from_manifest(manifest)?;
+        runtime.helicity_recurrence = helicity_recurrence;
         runtime.compiled_color_execution_plan = compiled_color_execution_plan;
         let sizing_physics = if let Some(reduction) = runtime.physics_reduction_override.as_ref() {
             let mut manifest = inherited_sizing_physics.manifest.clone();
@@ -3819,6 +3837,18 @@ fn validate_helicity_selector_executions(manifest: &ExecutionManifest) -> Rustic
         }
         match record.schedule_mode {
             HelicitySelectorScheduleMode::ParentClosure => {
+                if selector_manifest.compiled.lc_topology_replay.is_some()
+                    || selector_manifest.compiled.color_topology_replay.is_some()
+                    || selector_manifest
+                        .runtime_schema
+                        .amplitude_stage
+                        .color_topology_replay
+                        .is_some()
+                {
+                    return Err(RusticolError::integrity(
+                        "parent-closure helicity-selector execution cannot own colour-topology replay",
+                    ));
+                }
                 if selector_manifest
                     .runtime_schema
                     .helicity_recurrence
@@ -4753,6 +4783,132 @@ mod helicity_recurrence_contract_tests {
 
     #[cfg(feature = "f64-symjit")]
     #[test]
+    fn compiled_parent_detach_preserves_selected_materialized_stage_schedule() {
+        const DIRECT: &str = "symjit.application.complex-f64.v1";
+        let mut value = crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a > a",
+            DIRECT,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        );
+        value["external_pdg_order"] = json!([1]);
+        value["runtime_schema"]["external_particles"]
+            .as_array_mut()
+            .expect("external-particle fixture")
+            .truncate(1);
+        value["runtime_schema"]["current_storage"]["current_slots"][1]["is_source"] = json!(false);
+        value["runtime_schema"]["source_fill"]["source_count"] = json!(1);
+        value["runtime_schema"]["source_fill"]["sources"]
+            .as_array_mut()
+            .expect("source fixture")
+            .truncate(1);
+        let source = &mut value["runtime_schema"]["source_fill"]["sources"][0];
+        source["source_helicity"] = json!(-1);
+        source["chirality"] = json!(-1);
+        source["spin_state"] = json!(-1);
+        source["source_ir"]["states"] = json!([
+            {"helicity": -1, "chirality": -1, "spin_state": -1},
+            {"helicity": 1, "chirality": 1, "spin_state": 1},
+        ]);
+        let root = &mut value["runtime_schema"]["amplitude_stage"]["roots"][0];
+        root["left_current_id"] = json!(1);
+        root["right_current_id"] = json!(0);
+
+        let evaluators = &mut value["compiled"]["stage_evaluators"];
+        evaluators["parameter_layout"] = json!("stage-local-value-momentum");
+        evaluators["parameter_count"] = json!(0);
+        evaluators["value_parameter_count"] = json!(0);
+        evaluators["momentum_parameter_count"] = json!(0);
+        evaluators["real_valued_inputs"] = json!([]);
+        evaluators["stage_count"] = json!(2);
+        let mut current_stage = evaluators["amplitude_stage"].clone();
+        current_stage["stage_index"] = json!(1);
+        current_stage["stage_kind"] = json!("current-combine");
+        current_stage["subset_size"] = json!(1);
+        current_stage["evaluator_label"] = json!("materialized_current");
+        current_stage["parameter_layout"] = json!("stage-local-value-momentum");
+        current_stage["output_slots"] = json!([{
+            "value_slot_id": 1,
+            "current_id": 1,
+            "variant": "unpropagated",
+            "component_start": 0,
+            "component_stop": 1,
+            "output_start": 0,
+            "output_stop": 1,
+        }]);
+        current_stage["input_value_slot_ids"] = json!([0]);
+        current_stage["output_value_slot_ids"] = json!([1]);
+        current_stage["input_components"] = json!([{
+            "kind": "value",
+            "source_id": 0,
+            "component": 0,
+            "global_component": 0,
+            "parameter_index": 0,
+            "real_valued": false,
+        }]);
+        current_stage["parameter_count"] = json!(1);
+        current_stage["value_parameter_count"] = json!(1);
+        current_stage["momentum_parameter_count"] = json!(0);
+        current_stage["real_valued_inputs"] = json!([]);
+        current_stage["evaluator"]["input_len"] = json!(1);
+        evaluators["stages"] = json!([current_stage]);
+
+        let amplitude = &mut evaluators["amplitude_stage"];
+        amplitude["parameter_layout"] = json!("stage-local-value-momentum");
+        amplitude["input_components"] = json!([
+            {
+                "kind": "value", "source_id": 0, "component": 0,
+                "global_component": 0, "parameter_index": 0,
+                "real_valued": false,
+            },
+            {
+                "kind": "value", "source_id": 1, "component": 0,
+                "global_component": 1, "parameter_index": 1,
+                "real_valued": false,
+            },
+        ]);
+        amplitude["parameter_count"] = json!(2);
+        amplitude["value_parameter_count"] = json!(2);
+        amplitude["momentum_parameter_count"] = json!(0);
+        amplitude["real_valued_inputs"] = json!([]);
+        amplitude["evaluator"]["input_len"] = json!(2);
+
+        let mut manifest = serde_json::from_value::<ExecutionManifest>(value)
+            .expect("deserialize compiled-parent fixture");
+        let (recurrence, _) = valid_materialized_contract();
+        manifest.runtime_schema.helicity_recurrence = Some(recurrence);
+
+        let (stage_evaluators, helicity_recurrence) =
+            detach_compiled_helicity_load_inputs(&mut manifest).unwrap();
+
+        assert!(stage_evaluators.is_some());
+        assert!(manifest.compiled.stage_evaluators.is_none());
+        assert!(manifest.runtime_schema.helicity_recurrence.is_none());
+        let materialization = helicity_recurrence
+            .as_ref()
+            .and_then(|recurrence| recurrence.materialization.as_ref())
+            .expect("compiled parent retained its selected-helicity schedule");
+        assert_eq!(
+            materialization.selector_schedules[0].active_stage_chunk_indices,
+            vec![vec![0]]
+        );
+        assert_eq!(
+            materialization.selector_schedules[0].active_amplitude_chunk_indices,
+            vec![0]
+        );
+
+        let mut runtime = ExecutionRuntime::from_manifest(manifest).unwrap();
+        runtime.helicity_recurrence = helicity_recurrence;
+        assert!(
+            runtime
+                .helicity_recurrence
+                .as_ref()
+                .is_some_and(|recurrence| recurrence.materialization.is_some())
+        );
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    #[test]
     fn helicity_selector_lane_rejects_parent_layout_mismatch() {
         let value = crate::artifact::tests::minimal_helicity_selector_lane_execution();
         let mut manifest = serde_json::from_value::<ExecutionManifest>(value)
@@ -4770,6 +4926,26 @@ mod helicity_recurrence_contract_tests {
             error
                 .to_string()
                 .contains("layout does not match its primary execution"),
+            "{error}"
+        );
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    #[test]
+    fn parent_closure_helicity_selector_lane_rejects_topology_replay() {
+        let mut value = crate::artifact::tests::minimal_helicity_selector_lane_execution();
+        value["helicity_selector_executions"][0]["execution"]["compiled"]["color_topology_replay"] =
+            json!({"enabled": true});
+        let manifest = serde_json::from_value::<ExecutionManifest>(value)
+            .expect("deserialize replay-owning selector-lane fixture");
+
+        let error = validate_helicity_selector_executions(&manifest).unwrap_err();
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("cannot own colour-topology replay"),
             "{error}"
         );
     }

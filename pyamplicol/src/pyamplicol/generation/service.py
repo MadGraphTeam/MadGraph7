@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from pyamplicol._internal.versions import (
     SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
-    active_native_source_identity,
     active_source_revision,
     verify_native_module,
 )
@@ -72,7 +71,7 @@ from ..models.recurrence_direct_template import (
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from ..runtime.recurrence_exact._plan import _RecurrenceExactPlan
-from ..runtime.recurrence_exact._plan_v2 import _parse_exact_sections
+from ..runtime.recurrence_exact._plan_v2 import DIRECT_NONE_U32, _parse_exact_sections
 from .artifact_writer import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
     EAGER_PLAN_V3_ABI,
@@ -95,6 +94,7 @@ from .artifact_writer import (
     CompiledProcessArtifact,
     EagerPlanV3ProcessArtifact,
     OnTheFlyProcessArtifact,
+    RecurrenceHelicitySelectorPlanArtifact,
     RecurrenceProcessArtifact,
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
@@ -112,6 +112,7 @@ from .dag_compiler import _restrict_color_plan, compile_generic_dag
 from .dag_equivalence import (
     NUMERICAL_CURRENT_RELATION_WARNING,
     NUMERICAL_CURRENT_RELATION_WARNING_CODE,
+    dynamic_color_projection_not_applicable_report,
     project_rectangular_dynamic_color_classes,
 )
 from .dag_types import GenericDAG
@@ -155,6 +156,7 @@ from .recurrence_color import (
 from .recurrence_columnar import (
     RECURRENCE_BUILDER_INPUT_ABI,
     RecurrenceBuilderInputV1,
+    RecurrenceBuilderLogicalInputV1,
     build_recurrence_builder_input_v1,
 )
 from .recurrence_numerical_current_warmup import (
@@ -189,9 +191,15 @@ from .recurrence_projection import (
     RecurrenceGenerationSliceV1,
     project_recurrence_process_v1,
 )
+from .recurrence_projection import (
+    _digest as _recurrence_projection_digest,
+)
 from .recurrence_schedule_sharing import (
+    RecurrenceProcessRemap,
     RecurrenceScheduleLoweringCache,
     _recurrence_schedule_semantic_digests,
+    build_recurrence_process_executor_pack,
+    recurrence_helicity_selector_schedule_digest,
 )
 from .recurrence_template_columnar import (
     RECURRENCE_TEMPLATE_INPUT_ABI,
@@ -222,12 +230,16 @@ _ProcessInput = TypeVar("_ProcessInput")
 _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
 _LOGGER = logging.getLogger("pyamplicol.generation")
-_MAX_FUSED_LC_HELICITY_SELECTOR_SECTORS = 128
+_MAX_FUSED_HELICITY_SELECTOR_SECTORS = 128
 _MAX_POST_BUILD_RESOLVED_COMPONENTS = 1_000_000
 _EAGER_LOWERING_RESULT_KIND = "pyamplicol-eager-runtime-lowering-result"
 _EAGER_LOWERING_RESULT_SCHEMA_VERSION = 1
 _RECURRENCE_LOWERING_RESULT_KIND = "pyamplicol-recurrence-direct-lowering-result"
-_RECURRENCE_LOWERING_RESULT_SCHEMA_VERSION = 2
+_RECURRENCE_LOWERING_RESULT_SCHEMA_VERSION = 4
+_RECURRENCE_HELICITY_DISPATCH_ABI = "pyamplicol-recurrence-helicity-dispatch-v1"
+_RECURRENCE_STRUCTURAL_ZERO_SECTOR_PROOF_KIND = (
+    "complete-recurrence-closure-target-domain-v1"
+)
 _RECURRENCE_GENERATION_PROFILE_TIMINGS = frozenset(
     {
         "transition-catalog",
@@ -457,8 +469,6 @@ class _RustRecurrenceLoweringBinding(Protocol):
         destination: str,
         /,
         *,
-        source_revision: str,
-        native_build_inputs_sha256: str,
         point_tile_size: int,
         workspace_mib: int,
         relation_discovery_mode: str,
@@ -470,6 +480,7 @@ class _RustRecurrenceLoweringBinding(Protocol):
         relation_discovery_seed: int,
         color_accuracy: str,
         relation_discovery_evidence_json: bytes | None,
+        helicity_dispatch_destination: str | None,
         progress_callback: Callable[[Mapping[str, object]], None] | None,
     ) -> object: ...
 
@@ -501,10 +512,30 @@ class _RustEagerLoweringOutput:
 
 
 @dataclass(frozen=True, slots=True)
+class _RustRecurrenceHelicityDispatchOutput:
+    payload_path: Path
+    payload_size_bytes: int
+    payload_sha256: str
+    base_runtime_layout_digest: str
+    resolved_helicity_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _RustRecurrenceStructuralZeroSectorCertificate:
+    sector_ids: tuple[int, ...]
+    semantic_digest: str
+    sector_count: int
+    resolved_helicity_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class _RustRecurrenceLoweringOutput:
     inspection_summary: Mapping[str, object]
     resolved_helicities: tuple[tuple[int, ...], ...]
     amplitude_destinations: tuple[tuple[int, int | None], ...]
+    structural_zero_physical_sector_certificate: (
+        _RustRecurrenceStructuralZeroSectorCertificate | None
+    )
     exact_sections: Mapping[str, object]
     generation_profile: Mapping[str, object]
     numerical_current_reuse_report: Mapping[str, object] | None
@@ -514,6 +545,77 @@ class _RustRecurrenceLoweringOutput:
     member_count: int
     unpacked_size_bytes: int
     index_sha256: str
+    helicity_dispatch: _RustRecurrenceHelicityDispatchOutput | None = None
+
+
+def _process_scoped_recurrence_inspection_summary(
+    inspection_summary: Mapping[str, object],
+    *,
+    process_id: str,
+    semantic_digest: str,
+    schedule_digest: str,
+) -> dict[str, object]:
+    """Bind native inspection metadata to its published process identity."""
+
+    result = dict(inspection_summary)
+    result["process_id"] = process_id
+    result["semantic_digest"] = semantic_digest
+    result["schedule_digest"] = schedule_digest
+    return result
+
+
+def _required_process_direct_executor_ids(
+    exact_sections: Mapping[str, object],
+    remap: object,
+) -> tuple[int, ...]:
+    raw_groups = exact_sections.get("row_groups")
+    if isinstance(raw_groups, str | bytes) or not isinstance(raw_groups, Sequence):
+        raise GenerationError(
+            "recurrence exact sections have no typed row-group sequence"
+        )
+    root_ids: set[int] = set()
+    for index, raw_group in enumerate(raw_groups):
+        if (
+            isinstance(raw_group, str | bytes)
+            or not isinstance(raw_group, Sequence)
+            or len(raw_group) != 6
+        ):
+            raise GenerationError(
+                f"recurrence row group {index} does not match plan-v2"
+            )
+        raw_executor_id = raw_group[3]
+        if (
+            isinstance(raw_executor_id, bool)
+            or not isinstance(raw_executor_id, int)
+            or raw_executor_id < 0
+            or raw_executor_id > DIRECT_NONE_U32
+        ):
+            raise GenerationError(
+                f"recurrence row group {index} has an invalid executor ID"
+            )
+        if raw_executor_id != DIRECT_NONE_U32:
+            root_ids.add(raw_executor_id)
+    changes = getattr(remap, "direct_executor_changes", None)
+    count = getattr(remap, "direct_executor_count", None)
+    if (
+        not isinstance(changes, tuple)
+        or isinstance(count, bool)
+        or not isinstance(count, int)
+    ):
+        raise GenerationError("recurrence process has no typed executor remap")
+    mapping = dict(changes)
+    result = tuple(
+        sorted(mapping.get(executor_id, executor_id) for executor_id in root_ids)
+    )
+    if (
+        len(result) != len(root_ids)
+        or len(set(result)) != len(result)
+        or any(executor_id < 0 or executor_id >= count for executor_id in result)
+    ):
+        raise GenerationError(
+            "recurrence process executor remap does not preserve its required set"
+        )
+    return result
 
 
 def _validated_recurrence_evidence_fallback(
@@ -1561,6 +1663,7 @@ def _invoke_rust_recurrence_lowering_v2(
     relation_discovery_seed: int,
     color_accuracy: str,
     relation_discovery_evidence_json: bytes | None = None,
+    helicity_dispatch_destination: Path | None = None,
     progress_callback: Callable[[Mapping[str, object]], None] | None = None,
     direct_template_catalog_json: bytes | None = None,
 ) -> _RustRecurrenceLoweringOutput:
@@ -1579,17 +1682,21 @@ def _invoke_rust_recurrence_lowering_v2(
             "_lower_recurrence_direct_v2 binding"
         )
     binding = cast(_RustRecurrenceLoweringBinding, candidate)
-    try:
-        source_revision, native_build_inputs_sha256 = active_native_source_identity()
-    except RuntimeError as exc:
-        raise GenerationError(
-            "recurrence generation requires authenticated native source identity"
-        ) from exc
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
         raise GenerationError(
             f"Rust recurrence lowering destination already exists: {destination}"
         )
+    if helicity_dispatch_destination is not None:
+        helicity_dispatch_destination.parent.mkdir(parents=True, exist_ok=True)
+        if (
+            helicity_dispatch_destination.exists()
+            or helicity_dispatch_destination.is_symlink()
+        ):
+            raise GenerationError(
+                "Rust recurrence helicity-dispatch destination already exists: "
+                f"{helicity_dispatch_destination}"
+            )
     try:
         encoded_direct_template_catalog = (
             json.dumps(
@@ -1609,8 +1716,6 @@ def _invoke_rust_recurrence_lowering_v2(
             prepared_kernel_pack_digest,
             schedule_semantic_digest,
             os.fspath(destination),
-            source_revision=source_revision,
-            native_build_inputs_sha256=native_build_inputs_sha256,
             point_tile_size=point_tile_size,
             workspace_mib=workspace_mib,
             relation_discovery_mode=relation_discovery_mode,
@@ -1628,6 +1733,11 @@ def _invoke_rust_recurrence_lowering_v2(
             relation_discovery_seed=relation_discovery_seed,
             color_accuracy=color_accuracy,
             relation_discovery_evidence_json=relation_discovery_evidence_json,
+            helicity_dispatch_destination=(
+                None
+                if helicity_dispatch_destination is None
+                else os.fspath(helicity_dispatch_destination)
+            ),
             progress_callback=progress_callback,
         )
         result = _validate_rust_recurrence_lowering_result(
@@ -1636,6 +1746,7 @@ def _invoke_rust_recurrence_lowering_v2(
             template_input=template_input,
             prepared_kernel_pack_digest=prepared_kernel_pack_digest,
             direct_template_catalog_digest=direct_template_catalog.catalog_digest,
+            expect_helicity_dispatch=(helicity_dispatch_destination is not None),
         )
         if destination.is_symlink() or not destination.is_file():
             raise GenerationError(
@@ -1659,8 +1770,48 @@ def _invoke_rust_recurrence_lowering_v2(
                 "with the emitted runtime container"
             )
         payload_sha256 = _file_sha256(destination)
+        dispatch_output = None
+        dispatch_metadata = result["helicity_dispatch"]
+        if helicity_dispatch_destination is not None:
+            if (
+                helicity_dispatch_destination.is_symlink()
+                or not helicity_dispatch_destination.is_file()
+            ):
+                raise GenerationError(
+                    "Rust recurrence lowering did not produce a regular "
+                    "helicity-dispatch payload"
+                )
+            if not isinstance(dispatch_metadata, Mapping):
+                raise AssertionError(
+                    "validated recurrence lowering omitted helicity dispatch"
+                )
+            dispatch_size = helicity_dispatch_destination.stat().st_size
+            dispatch_sha256 = _file_sha256(helicity_dispatch_destination)
+            if (
+                dispatch_size != dispatch_metadata["size_bytes"]
+                or dispatch_sha256 != dispatch_metadata["sha256"]
+            ):
+                raise GenerationError(
+                    "Rust recurrence helicity-dispatch metadata disagrees with "
+                    "the emitted payload"
+                )
+            dispatch_output = _RustRecurrenceHelicityDispatchOutput(
+                payload_path=helicity_dispatch_destination,
+                payload_size_bytes=dispatch_size,
+                payload_sha256=dispatch_sha256,
+                base_runtime_layout_digest=cast(
+                    str,
+                    dispatch_metadata["base_runtime_layout_digest"],
+                ),
+                resolved_helicity_count=cast(
+                    int,
+                    dispatch_metadata["resolved_helicity_count"],
+                ),
+            )
     except Exception as exc:
         _discard_rust_eager_output(destination)
+        if helicity_dispatch_destination is not None:
+            _discard_rust_eager_output(helicity_dispatch_destination)
         if isinstance(exc, GenerationError | ArtifactError):
             raise
         raise GenerationError(f"Rust recurrence lowering failed: {exc}") from exc
@@ -1673,6 +1824,10 @@ def _invoke_rust_recurrence_lowering_v2(
             tuple[tuple[int, int | None], ...],
             result["amplitude_destinations"],
         ),
+        structural_zero_physical_sector_certificate=cast(
+            _RustRecurrenceStructuralZeroSectorCertificate | None,
+            result["structural_zero_physical_sector_certificate"],
+        ),
         exact_sections=cast(Mapping[str, object], result["exact_sections"]),
         generation_profile=cast(Mapping[str, object], result["generation_profile"]),
         numerical_current_reuse_report=None,
@@ -1682,6 +1837,7 @@ def _invoke_rust_recurrence_lowering_v2(
         member_count=cast(int, result["member_count"]),
         unpacked_size_bytes=cast(int, result["unpacked_size_bytes"]),
         index_sha256=cast(str, result["index_sha256"]),
+        helicity_dispatch=dispatch_output,
     )
 
 
@@ -1692,6 +1848,7 @@ def _validate_rust_recurrence_lowering_result(
     template_input: RecurrenceTemplateInputV1,
     prepared_kernel_pack_digest: str,
     direct_template_catalog_digest: str,
+    expect_helicity_dispatch: bool,
 ) -> dict[str, object]:
     result = _strict_mapping(
         value,
@@ -1713,6 +1870,8 @@ def _validate_rust_recurrence_lowering_result(
             "inspection_summary",
             "resolved_helicities",
             "amplitude_destinations",
+            "structural_zero_physical_sector_certificate",
+            "helicity_dispatch",
             "exact_sections",
             "generation_profile",
         },
@@ -1811,6 +1970,58 @@ def _validate_rust_recurrence_lowering_result(
         inspection=inspection,
         unpacked_size_bytes=unpacked_size,
     )
+    raw_dispatch = result["helicity_dispatch"]
+    dispatch: dict[str, object] | None
+    if raw_dispatch is None:
+        if expect_helicity_dispatch:
+            raise GenerationError(
+                "Rust recurrence lowering omitted the requested helicity dispatch"
+            )
+        dispatch = None
+    else:
+        if not expect_helicity_dispatch:
+            raise GenerationError(
+                "Rust recurrence lowering emitted an unrequested helicity dispatch"
+            )
+        dispatch = _strict_mapping(
+            raw_dispatch,
+            "Rust recurrence helicity-dispatch metadata",
+            {
+                "abi",
+                "size_bytes",
+                "sha256",
+                "base_runtime_layout_digest",
+                "resolved_helicity_count",
+            },
+        )
+        if dispatch["abi"] != _RECURRENCE_HELICITY_DISPATCH_ABI:
+            raise GenerationError(
+                "Rust recurrence helicity dispatch has an incompatible ABI"
+            )
+        dispatch["size_bytes"] = _result_integer(
+            dispatch["size_bytes"],
+            "Rust recurrence helicity-dispatch size",
+            minimum=1,
+        )
+        dispatch["sha256"] = _result_sha256(
+            dispatch["sha256"],
+            "Rust recurrence helicity-dispatch SHA-256",
+        )
+        dispatch["base_runtime_layout_digest"] = _result_sha256(
+            dispatch["base_runtime_layout_digest"],
+            "Rust recurrence helicity-dispatch runtime-layout digest",
+        )
+        dispatch["resolved_helicity_count"] = _result_integer(
+            dispatch["resolved_helicity_count"],
+            "Rust recurrence helicity-dispatch resolved-helicity count",
+            minimum=1,
+        )
+        if dispatch["base_runtime_layout_digest"] != inspection.get(
+            "runtime_layout_digest"
+        ):
+            raise GenerationError(
+                "Rust recurrence helicity dispatch disagrees with its runtime layout"
+            )
     raw_helicities = result["resolved_helicities"]
     if isinstance(raw_helicities, str | bytes) or not isinstance(
         raw_helicities, Sequence
@@ -1829,6 +2040,13 @@ def _validate_rust_recurrence_lowering_result(
         resolved_helicities.append(row)
     if len(set(resolved_helicities)) != len(resolved_helicities):
         raise GenerationError("Rust recurrence resolved helicities are not unique")
+    if dispatch is not None and dispatch["resolved_helicity_count"] != len(
+        resolved_helicities
+    ):
+        raise GenerationError(
+            "Rust recurrence helicity dispatch disagrees with the resolved-helicity "
+            "domain"
+        )
     raw_destinations = result["amplitude_destinations"]
     if isinstance(raw_destinations, str | bytes) or not isinstance(
         raw_destinations, Sequence
@@ -1865,15 +2083,133 @@ def _validate_rust_recurrence_lowering_result(
         raise GenerationError(
             "Rust recurrence amplitude destinations repeat a sector/helicity pair"
         )
+    raw_zero_certificate = result["structural_zero_physical_sector_certificate"]
+    zero_certificate: _RustRecurrenceStructuralZeroSectorCertificate | None
+    if raw_zero_certificate is None:
+        if builder_input.layout == "contracted-color-union":
+            raise GenerationError(
+                "Rust contracted recurrence lowering omitted its complete "
+                "structural-zero physical-sector certificate"
+            )
+        zero_certificate = None
+    else:
+        if builder_input.layout != "contracted-color-union":
+            raise GenerationError(
+                "Rust recurrence lowering emitted a structural-zero physical-sector "
+                "certificate outside contracted color"
+            )
+        certificate = _strict_mapping(
+            raw_zero_certificate,
+            "Rust recurrence structural-zero physical-sector certificate",
+            {
+                "proof_kind",
+                "sector_ids",
+                "semantic_digest",
+                "sector_count",
+                "resolved_helicity_count",
+            },
+        )
+        if certificate["proof_kind"] != _RECURRENCE_STRUCTURAL_ZERO_SECTOR_PROOF_KIND:
+            raise GenerationError(
+                "Rust recurrence structural-zero physical-sector certificate "
+                "has an incompatible proof kind"
+            )
+        sector_count = _result_integer(
+            certificate["sector_count"],
+            "Rust recurrence structural-zero certificate sector count",
+            minimum=1,
+        )
+        inspection_sector_count = _result_integer(
+            inspection.get("sector_count"),
+            "Rust recurrence inspection sector count",
+            minimum=1,
+        )
+        if sector_count != inspection_sector_count:
+            raise GenerationError(
+                "Rust recurrence structural-zero certificate disagrees with the "
+                "physical-sector domain"
+            )
+        resolved_count = _result_integer(
+            certificate["resolved_helicity_count"],
+            "Rust recurrence structural-zero certificate resolved-helicity count",
+            minimum=1,
+        )
+        if resolved_count != len(resolved_helicities):
+            raise GenerationError(
+                "Rust recurrence structural-zero certificate disagrees with the "
+                "resolved-helicity domain"
+            )
+        raw_sector_ids = certificate["sector_ids"]
+        if isinstance(raw_sector_ids, str | bytes) or not isinstance(
+            raw_sector_ids, Sequence
+        ):
+            raise GenerationError(
+                "Rust recurrence structural-zero physical-sector IDs must be a list"
+            )
+        sector_ids = tuple(
+            _result_integer(
+                value,
+                "Rust recurrence certified structural-zero physical-sector ID",
+                minimum=0,
+            )
+            for value in raw_sector_ids
+        )
+        if tuple(sorted(set(sector_ids))) != sector_ids or any(
+            sector_id >= sector_count for sector_id in sector_ids
+        ):
+            raise GenerationError(
+                "Rust recurrence certified structural-zero physical-sector IDs "
+                "are not canonical"
+            )
+        active_sector_ids = {sector_id for sector_id, _ in amplitude_destinations}
+        if active_sector_ids.intersection(sector_ids):
+            raise GenerationError(
+                "Rust recurrence structural-zero certificate overlaps active "
+                "amplitude destinations"
+            )
+        zero_certificate = _RustRecurrenceStructuralZeroSectorCertificate(
+            sector_ids=sector_ids,
+            semantic_digest=_result_sha256(
+                certificate["semantic_digest"],
+                "Rust recurrence structural-zero certificate semantic digest",
+            ),
+            sector_count=sector_count,
+            resolved_helicity_count=resolved_count,
+        )
+        provenance = _strict_mapping(
+            inspection.get("structural_zero_physical_sector_certificate"),
+            "Rust recurrence structural-zero physical-sector provenance",
+            {
+                "proof_kind",
+                "semantic_digest",
+                "sector_count",
+                "resolved_helicity_count",
+                "certified_structural_zero_sector_count",
+            },
+        )
+        expected_provenance = {
+            "proof_kind": _RECURRENCE_STRUCTURAL_ZERO_SECTOR_PROOF_KIND,
+            "semantic_digest": zero_certificate.semantic_digest,
+            "sector_count": zero_certificate.sector_count,
+            "resolved_helicity_count": zero_certificate.resolved_helicity_count,
+            "certified_structural_zero_sector_count": len(zero_certificate.sector_ids),
+        }
+        if provenance != expected_provenance:
+            raise GenerationError(
+                "Rust recurrence structural-zero physical-sector provenance "
+                "disagrees with its certificate"
+            )
     return {
         "inspection_summary": inspection,
         "resolved_helicities": tuple(resolved_helicities),
         "amplitude_destinations": tuple(amplitude_destinations),
+        "structural_zero_physical_sector_certificate": zero_certificate,
         "exact_sections": exact_sections,
         "generation_profile": generation_profile,
         "member_count": member_count,
         "unpacked_size_bytes": unpacked_size,
         "index_sha256": index_sha256,
+        "helicity_dispatch": dispatch,
     }
 
 
@@ -2494,8 +2830,10 @@ def _compiled_symmetric_group_color_contraction_payload(
     block = contraction.symmetric_group_block
     if block is None:
         raise GenerationError(
-            "compiled symmetric-group FFT diagnostic execution requires a "
-            "certified nontrivial symmetric-group orbit"
+            "compiled symmetric-group FFT is not applicable to this process: "
+            "color planning found no certified nontrivial symmetric-group orbit "
+            "to Fourier transform; compiled direct contraction remains supported "
+            "with color.contraction='direct'"
         )
     if block.component_count != 1:
         raise GenerationError(
@@ -2530,6 +2868,7 @@ def _compiled_symmetric_group_color_contraction_payload(
         descriptor_by_group[destination_id].sector_id
         for destination_id in destination_by_group
     )
+    active_sector_ids = frozenset(group_sector_ids)
     return encode_recurrence_color_contraction(
         contraction,
         sector_count=dag.color_plan.sector_count,
@@ -2539,7 +2878,10 @@ def _compiled_symmetric_group_color_contraction_payload(
         destination_count=group_count,
         group_sector_ids=group_sector_ids,
         group_component_ids=(0,) * group_count,
-        sector_owner_ids=tuple(range(dag.color_plan.sector_count)),
+        sector_owner_ids=tuple(
+            sector_id if sector_id in active_sector_ids else MISSING_U32
+            for sector_id in range(dag.color_plan.sector_count)
+        ),
         exact_coefficients=recurrence_exact_color_coefficients(
             dag.color_plan,
             contraction,
@@ -2570,10 +2912,14 @@ def _compiled_helicity_selector_closure_lanes(
     schema: RuntimeExpressionSchema,
     model: Model,
 ) -> tuple[_HelicitySelectorLane, ...]:
-    """Compile one reusable evaluator lane per exact helicity closure class."""
+    """Compile no-replay LC evaluator lanes for exact helicity closures."""
 
     materialization = dag.helicity_materialization
-    if materialization is None:
+    if (
+        materialization is None
+        or dag.lc_topology_replay is not None
+        or dag.color_topology_replay is not None
+    ):
         return ()
     grouped_domains: dict[
         tuple[tuple[int, ...], tuple[int, ...]],
@@ -3561,6 +3907,19 @@ class GenerationBackend:
                 "remove " + ", ".join(incompatible)
             )
 
+    def _recurrence_helicity_selector_plan_enabled(self) -> bool:
+        """Return whether generation can retain the complete selector plan."""
+
+        selection = self._process_selection
+        return self._color_accuracy in {"nlc", "full"} and all(
+            value is None
+            for value in (
+                selection.max_color_sectors,
+                selection.selected_color_sector_ids,
+                selection.selected_source_helicities,
+            )
+        )
+
     def _construct_on_the_fly_artifact(
         self,
         projected: _ProjectedOnTheFlyProcess,
@@ -4137,11 +4496,21 @@ class GenerationBackend:
             if parity_preweighted
             else prune_global_helicity_flip_equivalent_roots(process.dag, model)
         )
-        reduced, dynamic_color_projection = project_rectangular_dynamic_color_classes(
-            reduced,
-            model,
-            source_revision=active_source_revision(),
-        )
+        if reduced.process.color_accuracy == "lc":
+            reduced, dynamic_color_projection_certificate = (
+                project_rectangular_dynamic_color_classes(
+                    reduced,
+                    model,
+                    source_revision=active_source_revision(),
+                )
+            )
+            dynamic_color_projection = (
+                dynamic_color_projection_certificate.to_json_dict()
+            )
+        else:
+            dynamic_color_projection = dynamic_color_projection_not_applicable_report(
+                reduced
+            )
         helicity_sum_dag: GenericDAG | None = None
         helicity_selector_union_dag: GenericDAG | None = None
         all_flow_union = self._all_flow_union_enabled
@@ -4179,7 +4548,7 @@ class GenerationBackend:
                 )
                 if not all_flow_union:
                     helicity_selector_union_dag = (
-                        self._compile_complete_lc_helicity_selector_union(
+                        self._compile_complete_color_helicity_selector_union(
                             process,
                             model,
                         )
@@ -4351,7 +4720,7 @@ class GenerationBackend:
                 "after_amplitude_roots": len(reduced.amplitude_roots),
                 "mode": "proven global-helicity-flip equivalence",
             },
-            "dynamic_color_projection": dynamic_color_projection.to_json_dict(),
+            "dynamic_color_projection": dict(dynamic_color_projection),
             "relation_discovery": relation_discovery_payload,
             **(
                 {}
@@ -4424,7 +4793,7 @@ class GenerationBackend:
             "interaction_count": len(reduced.interactions),
             "interaction_evaluation_count": reduced.interaction_evaluation_count,
             "amplitude_root_count": len(reduced.amplitude_roots),
-            "dynamic_color_projection": dynamic_color_projection.to_json_dict(),
+            "dynamic_color_projection": dict(dynamic_color_projection),
             "relation_discovery": relation_discovery_payload,
             **(
                 {}
@@ -4502,6 +4871,205 @@ class GenerationBackend:
             prepared_kernel_pack_digest=(catalog.header.prepared_kernel_pack_digest),
         )
 
+    def _lower_recurrence_helicity_selector_plan(
+        self,
+        logical: RecurrenceBuilderLogicalInputV1,
+        color_plan: GenericColorPlan,
+        model_inputs: _RecurrenceModelInputs,
+        temporary_root: Path,
+        *,
+        process_id: str,
+        progress_callback: Callable[[Mapping[str, object]], None] | None = None,
+    ) -> RecurrenceHelicitySelectorPlanArtifact:
+        """Lower and bind one persisted physical-colour/runtime-H schedule.
+
+        The native lowering emits the authenticated dispatch sidecar together
+        with the ordinary Direct plan; no OTF seed or query family is built.
+        """
+
+        if logical.layout != "all-flow-union" or logical.replay_partitions:
+            raise GenerationError(
+                "recurrence helicity-selector plan requires physical "
+                "all-flow-union without replay"
+            )
+        if color_plan.color_accuracy not in {"nlc", "full"}:
+            raise GenerationError(
+                "recurrence helicity-selector plan requires complete NLC/full color"
+            )
+        run = self._run_config
+        if run is None:  # pragma: no cover - recurrence requires RunConfig
+            raise GenerationError(
+                "recurrence helicity-selector lowering has no evaluator config"
+            )
+        recurrence_evaluator = run.evaluator.recurrence
+        builder_input = build_recurrence_builder_input_v1(logical)
+        native_schedule_digest, base_schedule_digest, sharing_domain_digest = (
+            _recurrence_schedule_semantic_digests(
+                logical,
+                prepared_kernel_pack_digest=(model_inputs.prepared_kernel_pack_digest),
+                direct_template_catalog_digest=(
+                    model_inputs.direct_template_catalog.catalog_digest
+                ),
+                point_tile_size=recurrence_evaluator.point_tile_size,
+                workspace_mib=recurrence_evaluator.workspace_mib,
+                relation_discovery=None,
+            )
+        )
+
+        relation_discovery = self._generation_config.relation_discovery
+
+        def lower_schedule() -> _RustRecurrenceLoweringOutput:
+            output_root = (
+                temporary_root
+                / "recurrence-helicity-selector-schedules"
+                / base_schedule_digest
+            )
+            return _invoke_rust_recurrence_lowering_v2(
+                builder_input,
+                model_inputs.template_input,
+                model_inputs.direct_template_catalog,
+                model_inputs.prepared_kernel_pack_digest,
+                native_schedule_digest,
+                output_root / "recurrence-runtime.pacbin",
+                point_tile_size=recurrence_evaluator.point_tile_size,
+                workspace_mib=recurrence_evaluator.workspace_mib,
+                relation_discovery_mode="off",
+                relation_discovery_precision_digits=(
+                    relation_discovery.precision_digits
+                ),
+                relation_discovery_probe_count=relation_discovery.probe_count,
+                relation_discovery_verification_probe_count=(
+                    relation_discovery.verification_probe_count
+                ),
+                relation_discovery_relative_tolerance=(
+                    relation_discovery.relative_tolerance
+                ),
+                relation_discovery_absolute_tolerance=(
+                    relation_discovery.absolute_tolerance
+                ),
+                relation_discovery_seed=relation_discovery.seed,
+                color_accuracy=str(color_plan.color_accuracy),
+                helicity_dispatch_destination=(
+                    output_root / "recurrence-helicity-dispatch-v1.bin"
+                ),
+                progress_callback=progress_callback,
+                direct_template_catalog_json=(
+                    model_inputs.direct_template_catalog_json
+                ),
+            )
+
+        process_scoped_cache = RecurrenceScheduleLoweringCache[
+            _RustRecurrenceLoweringOutput
+        ]()
+        shared = process_scoped_cache.lower_process(
+            logical,
+            schedule_digest=base_schedule_digest,
+            sharing_domain_digest=sharing_domain_digest,
+            native_schedule_semantic_digest=native_schedule_digest,
+            direct_executor_count=len(model_inputs.direct_template_catalog.templates),
+            parameter_slot_count=len(model_inputs.catalog.parameters),
+            lower=lower_schedule,
+        )
+        expected_identity_remap = RecurrenceProcessRemap.identity(
+            logical,
+            direct_executor_count=len(model_inputs.direct_template_catalog.templates),
+            parameter_slot_count=len(model_inputs.catalog.parameters),
+        )
+        if shared.remap != expected_identity_remap:
+            raise GenerationError(
+                "recurrence helicity-selector AllFlow plan acquired a nonidentity "
+                "cross-process remap"
+            )
+        output = shared.output
+        dispatch = output.helicity_dispatch
+        if dispatch is None:
+            raise GenerationError(
+                "native recurrence helicity-selector lowering omitted its exact "
+                "dispatch"
+            )
+        if output.inspection_summary.get("lc_flow_layout") != "all-flow-union":
+            raise GenerationError(
+                "native recurrence helicity-selector lowering changed its layout"
+            )
+        resolved_helicities = shared.remap.remap_resolved_helicities(
+            output.resolved_helicities
+        )
+        if dispatch.resolved_helicity_count != len(resolved_helicities):
+            raise GenerationError(
+                "recurrence helicity dispatch does not cover the auxiliary full "
+                "helicity domain"
+            )
+        try:
+            destinations = tuple(
+                (
+                    shared.remap.physical_sector_ids[sector_id],
+                    helicity_id,
+                )
+                for sector_id, helicity_id in output.amplitude_destinations
+            )
+        except IndexError as exc:
+            raise GenerationError(
+                "recurrence helicity-selector destination lies outside its "
+                "physical-owner binding"
+            ) from exc
+        expected_destinations = tuple(
+            (sector_id, None) for sector_id in range(len(logical.physical_sectors))
+        )
+        if destinations != expected_destinations:
+            raise GenerationError(
+                "recurrence helicity-selector destinations are not dense "
+                "runtime-helicity physical owners"
+            )
+
+        required_direct_executor_ids = _required_process_direct_executor_ids(
+            output.exact_sections,
+            shared.remap,
+        )
+        process_executor_pack = build_recurrence_process_executor_pack(
+            direct_catalog=model_inputs.direct_template_catalog,
+            kernel_pack=model_inputs.bundle.kernel_pack,
+            required_executor_ids=required_direct_executor_ids,
+            runtime_layout_digest=dispatch.base_runtime_layout_digest,
+        )
+        selector_schedule_digest = recurrence_helicity_selector_schedule_digest(
+            shared.schedule_digest,
+            dispatch.payload_sha256,
+        )
+        inspection_summary = _process_scoped_recurrence_inspection_summary(
+            output.inspection_summary,
+            process_id=process_id,
+            semantic_digest=builder_input.digest,
+            schedule_digest=shared.schedule_digest,
+        )
+        return RecurrenceHelicitySelectorPlanArtifact(
+            recurrence_schedule_path=output.payload_path,
+            recurrence_base_schedule_digest=shared.schedule_digest,
+            recurrence_schedule_digest=selector_schedule_digest,
+            recurrence_native_schedule_semantic_digest=(
+                shared.native_schedule_semantic_digest
+            ),
+            recurrence_schedule_size_bytes=output.payload_size_bytes,
+            recurrence_schedule_sha256=output.payload_sha256,
+            recurrence_schedule_member_count=output.member_count,
+            recurrence_schedule_unpacked_size_bytes=output.unpacked_size_bytes,
+            recurrence_schedule_index_sha256=output.index_sha256,
+            helicity_dispatch_path=dispatch.payload_path,
+            helicity_dispatch_size_bytes=dispatch.payload_size_bytes,
+            helicity_dispatch_sha256=dispatch.payload_sha256,
+            helicity_dispatch_base_runtime_layout_digest=(
+                dispatch.base_runtime_layout_digest
+            ),
+            helicity_dispatch_resolved_helicity_count=(
+                dispatch.resolved_helicity_count
+            ),
+            physical_destination_count=len(destinations),
+            builder_input_sha256=builder_input.digest,
+            inspection_summary=inspection_summary,
+            referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
+            recurrence_process_remap=shared.remap,
+            recurrence_process_executor_pack=process_executor_pack,
+        )
+
     def _construct_recurrence_artifact(
         self,
         expanded: _ExpandedProcess,
@@ -4517,6 +5085,7 @@ class GenerationBackend:
         process_name = expanded.request.name
         profile_started = time.perf_counter()
         profile: dict[str, float] = {}
+        selector_plan_enabled = self._recurrence_helicity_selector_plan_enabled()
         with phase.child(
             process_name,
             f"{process_name}: compact recurrence construction",
@@ -4660,6 +5229,7 @@ class GenerationBackend:
             (
                 native_schedule_semantic_digest,
                 request_schedule_digest,
+                sharing_domain_digest,
             ) = _recurrence_schedule_semantic_digests(
                 logical,
                 prepared_kernel_pack_digest=(model_inputs.prepared_kernel_pack_digest),
@@ -5112,6 +5682,8 @@ class GenerationBackend:
                 shared = lowering_cache.lower_process(
                     logical,
                     schedule_digest=request_schedule_digest,
+                    sharing_domain_digest=sharing_domain_digest,
+                    native_schedule_semantic_digest=(native_schedule_semantic_digest),
                     direct_executor_count=len(
                         model_inputs.direct_template_catalog.templates
                     ),
@@ -5123,6 +5695,7 @@ class GenerationBackend:
                 )
                 output = shared.output
                 schedule_digest = shared.schedule_digest
+                native_schedule_semantic_digest = shared.native_schedule_semantic_digest
                 process_remap = shared.remap
             task.update(
                 3,
@@ -5132,6 +5705,99 @@ class GenerationBackend:
                     "step": "compact recurrence runtime ready",
                 },
             )
+        companion_artifact = None
+        if selector_plan_enabled:
+            selector_phase_total = len(expanded.process_ir.legs) + 2
+            with phase.child(
+                f"{process_name}:helicity-selector",
+                f"{process_name}: persisted helicity-selector plan",
+                total=selector_phase_total,
+                unit="phases",
+                details={
+                    "process": process_name,
+                    "step": "physical-color selector projection",
+                },
+            ) as selector_task:
+                companion_projection_started = time.perf_counter()
+                companion_logical = project_recurrence_process_v1(
+                    expanded.process_ir,
+                    prepared.complete_color_plan,
+                    model_inputs.catalog,
+                    layout="all-flow-union",
+                    normalization=normalization_contract,
+                    topology_replay=None,
+                    generation_slice=RecurrenceGenerationSliceV1(),
+                    coupling_order_limits=prepared.coupling_order_limits,
+                    model=model,
+                    prefer_symmetric_group_closure_anchor=(
+                        run.color.contraction.value == "symmetric-group-fft"
+                    ),
+                    contracted_physical_color_union=True,
+                )
+                profile["helicity-selector-physical-projection"] = (
+                    time.perf_counter() - companion_projection_started
+                )
+                selector_task.update(
+                    1,
+                    message="physical-color selector input ready",
+                    details={
+                        "process": process_name,
+                        "step": "physical-color selector input ready",
+                        "color_sector_count": len(companion_logical.physical_sectors),
+                    },
+                )
+
+                def report_selector(details: Mapping[str, object]) -> None:
+                    phase_index = int(details.get("phase_index", 0))
+                    phase_total = int(
+                        details.get("phase_total", selector_phase_total - 1)
+                    )
+                    selector_task.update(
+                        1 + phase_index,
+                        total=1 + phase_total,
+                        message=str(
+                            details.get(
+                                "step",
+                                "persisted helicity-selector construction",
+                            )
+                        ),
+                        details={
+                            "process": process_name,
+                            "step": str(
+                                details.get(
+                                    "step",
+                                    "persisted helicity-selector construction",
+                                )
+                            ),
+                            "current_count": int(details.get("current_count", 0)),
+                            "contribution_count": int(
+                                details.get("contribution_count", 0)
+                            ),
+                        },
+                    )
+
+                companion_lowering_started = time.perf_counter()
+                companion_artifact = self._lower_recurrence_helicity_selector_plan(
+                    companion_logical,
+                    prepared.complete_color_plan,
+                    model_inputs,
+                    temporary_root / f"recurrence-helicity-selector-process-{index}",
+                    process_id=process_name,
+                    progress_callback=(
+                        report_selector if selector_task.sink is not None else None
+                    ),
+                )
+                profile["helicity-selector-physical-lowering"] = (
+                    time.perf_counter() - companion_lowering_started
+                )
+                selector_task.update(
+                    selector_task.total or selector_task.completed,
+                    message="persisted helicity-selector plan ready",
+                    details={
+                        "process": process_name,
+                        "step": "persisted helicity-selector plan ready",
+                    },
+                )
         phase.advance(
             message=process_name,
             details={"process": process_name, "step": "recurrence runtime ready"},
@@ -5153,6 +5819,9 @@ class GenerationBackend:
             )
             for sample_index in range(sample_count)
         )
+        process_digest = _recurrence_projection_digest(
+            expanded.process_ir.to_json_dict()
+        )
         resolved_helicities = process_remap.remap_resolved_helicities(
             output.resolved_helicities
         )
@@ -5169,6 +5838,29 @@ class GenerationBackend:
                 "shared recurrence schedule references a physical sector outside "
                 "the concrete process binding"
             ) from exc
+        structural_zero_certificate = output.structural_zero_physical_sector_certificate
+        if structural_zero_certificate is None:
+            certified_structural_zero_sector_ids: tuple[int, ...] = ()
+        else:
+            if structural_zero_certificate.sector_count != len(
+                process_remap.physical_sector_ids
+            ):
+                raise GenerationError(
+                    "shared recurrence structural-zero certificate disagrees with "
+                    "its physical-sector remap"
+                )
+            try:
+                certified_structural_zero_sector_ids = tuple(
+                    sorted(
+                        process_remap.physical_sector_ids[sector_id]
+                        for sector_id in structural_zero_certificate.sector_ids
+                    )
+                )
+            except IndexError as exc:
+                raise GenerationError(
+                    "shared recurrence structural-zero certificate lies outside "
+                    "the concrete process binding"
+                ) from exc
         profile["process-binding-and-validation-points"] = (
             time.perf_counter() - process_binding_started
         )
@@ -5211,16 +5903,19 @@ class GenerationBackend:
                 else 0
             ),
         }
-        inspection_summary = dict(output.inspection_summary)
-        inspection_summary["process_id"] = process_name
-        inspection_summary["semantic_digest"] = builder_input.digest
-        inspection_summary["schedule_digest"] = schedule_digest
+        inspection_summary = _process_scoped_recurrence_inspection_summary(
+            output.inspection_summary,
+            process_id=process_name,
+            semantic_digest=builder_input.digest,
+            schedule_digest=schedule_digest,
+        )
         color_contraction_started = time.perf_counter()
         color_contraction = build_recurrence_color_contraction(
             logical,
             prepared.complete_color_plan,
             resolved_helicities,
             amplitude_destinations,
+            certified_structural_zero_sector_ids,
             contraction=run.color.contraction.value,
         )
         color_contraction_payload = None
@@ -5303,6 +5998,7 @@ class GenerationBackend:
                 sector_owner_ids=recurrence_color_sector_owner_map(
                     logical,
                     set(group_sector_ids),
+                    set(certified_structural_zero_sector_ids),
                 ),
                 exact_coefficients=recurrence_exact_color_coefficients(
                     prepared.complete_color_plan,
@@ -5399,6 +6095,16 @@ class GenerationBackend:
             )
         relation_discovery_payload = dict(numerical_current_reuse)
         artifact_record_started = time.perf_counter()
+        required_direct_executor_ids = _required_process_direct_executor_ids(
+            output.exact_sections,
+            process_remap,
+        )
+        process_executor_pack = build_recurrence_process_executor_pack(
+            direct_catalog=model_inputs.direct_template_catalog,
+            kernel_pack=model_inputs.bundle.kernel_pack,
+            required_executor_ids=required_direct_executor_ids,
+            runtime_layout_digest=str(inspection_summary["runtime_layout_digest"]),
+        )
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,
@@ -5424,7 +6130,14 @@ class GenerationBackend:
             direct_template_catalog_digest=(
                 model_inputs.direct_template_catalog.catalog_digest
             ),
-            referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
+            referenced_kernel_ids=(
+                recurrence_referenced_kernel_ids(logical)
+                if companion_artifact is None
+                else frozenset(
+                    kernel.kernel_id
+                    for kernel in model_inputs.bundle.kernel_pack.kernels
+                )
+            ),
             inspection_summary=inspection_summary,
             runtime_metadata=runtime_metadata,
             color_contraction_payload=color_contraction_payload,
@@ -5441,6 +6154,9 @@ class GenerationBackend:
             generation_profile=output.generation_profile,
             process_support_mask=1 << index,
             recurrence_process_remap=process_remap,
+            recurrence_process_executor_pack=process_executor_pack,
+            helicity_selector_companion=companion_artifact,
+            process_digest=process_digest,
         )
         profile["artifact-record-assembly"] = (
             time.perf_counter() - artifact_record_started
@@ -5550,16 +6266,10 @@ class GenerationBackend:
                                 union_schema,
                             ),
                             schedule_mode="nested-runtime",
-                            child_lanes=(
-                                _compiled_helicity_selector_closure_lanes(
-                                    union_dag,
-                                    union_schema,
-                                    model,
-                                )
-                            ),
+                            child_lanes=(),
                         ),
                     )
-                else:
+                elif process.dag.process.color_accuracy == "lc":
                     helicity_selector_lanes = _compiled_helicity_selector_closure_lanes(
                         process.dag,
                         schema,
@@ -7342,30 +8052,38 @@ class GenerationBackend:
                 "flow and helicity coverage; remove " + ", ".join(incompatible)
             )
 
-    def _compile_complete_lc_helicity_selector_union(
+    def _compile_complete_color_helicity_selector_union(
         self,
         process: _DagProcess,
         model: Model,
     ) -> GenericDAG | None:
         """Build a bounded all-colour lane for runtime helicity selection.
 
-        The ordinary complete LC artifact keeps topology replay for fast
-        runtime flow selection and helicity sums.  Replaying that compact DAG
-        once per physical flow is inefficient for the complementary
-        all-flows/selected-helicity workload, so bounded color spaces receive
-        an auxiliary complete-color recurrence quotient.
+        The ordinary complete artifact keeps topology replay for fast runtime
+        colour selection and helicity sums. Replaying that compact DAG once per
+        physical colour sector is inefficient for the complementary
+        all-colours/selected-helicity workload, so bounded colour spaces receive
+        an auxiliary complete-colour recurrence quotient.
         """
 
         parent = process.dag
+        accuracy = parent.process.color_accuracy
+        replay = (
+            parent.lc_topology_replay
+            if accuracy == "lc"
+            else parent.color_topology_replay
+            if accuracy in {"nlc", "full"}
+            else None
+        )
         if (
             self._eager_execution_enabled
-            or parent.process.color_accuracy != "lc"
+            or accuracy not in {"lc", "nlc", "full"}
             or parent.color_coverage != "complete"
             or parent.selected_color_sector_ids
             or parent.selected_source_helicities
             or parent.helicity_coverage != "complete"
-            or parent.lc_topology_replay is None
-            or len(parent.color_plan.sectors) > _MAX_FUSED_LC_HELICITY_SELECTOR_SECTORS
+            or replay is None
+            or len(parent.color_plan.sectors) > _MAX_FUSED_HELICITY_SELECTOR_SECTORS
         ):
             return None
 

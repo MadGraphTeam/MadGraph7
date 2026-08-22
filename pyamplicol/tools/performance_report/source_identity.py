@@ -112,6 +112,28 @@ def _generated_report_path(value: str) -> bool:
         return True
     if (
         len(parts) >= 5
+        and parts[:3] == ("src", "pyamplicol", "_profiling_campaign")
+        and parts[3] == "campaign_artifacts"
+    ):
+        return True
+    if (
+        len(parts) == 5
+        and parts[:4]
+        == ("src", "pyamplicol", "_profiling_campaign", "results")
+        and parts[4].endswith(".json")
+    ):
+        return True
+    if (
+        len(parts) == 4
+        and parts[:3] == ("src", "pyamplicol", "_profiling_campaign")
+    ):
+        return _generated_publication_member(
+            parts[3],
+            allow_auxiliary=True,
+            allow_environment=True,
+        )
+    if (
+        len(parts) >= 5
         and parts[:2] == ("docs", "performance_reports")
         and parts[2] not in {"", ".", ".."}
         and parts[3] == "campaign_artifacts"

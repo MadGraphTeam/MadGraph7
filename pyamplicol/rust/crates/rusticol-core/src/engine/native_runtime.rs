@@ -5,15 +5,19 @@ use super::*;
 use std::sync::OnceLock;
 
 enum DeferredProcessPhysicsV1 {
+    #[expect(
+        dead_code,
+        reason = "retained for the lazy dense-metadata compatibility path"
+    )]
     Dense {
-        artifact: VerifiedArtifact,
+        artifact: Box<VerifiedArtifact>,
         selection: crate::ArtifactSelection,
     },
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     OnTheFly {
         metadata: super::on_the_fly_public_metadata::OnTheFlyPublicMetadataV1,
         selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
-        selection: crate::ArtifactSelection,
+        selection: Box<crate::ArtifactSelection>,
     },
 }
 
@@ -44,18 +48,22 @@ impl LazyProcessPhysicsV1 {
         }
     }
 
-    const fn deferred(artifact: VerifiedArtifact, selection: crate::ArtifactSelection) -> Self {
+    #[expect(
+        dead_code,
+        reason = "retained for the lazy dense-metadata compatibility path"
+    )]
+    fn deferred(artifact: VerifiedArtifact, selection: crate::ArtifactSelection) -> Self {
         Self {
             value: OnceLock::new(),
             deferred: Some(DeferredProcessPhysicsV1::Dense {
-                artifact,
+                artifact: Box::new(artifact),
                 selection,
             }),
         }
     }
 
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-    pub(super) const fn deferred_on_the_fly(
+    pub(super) fn deferred_on_the_fly(
         metadata: super::on_the_fly_public_metadata::OnTheFlyPublicMetadataV1,
         selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
         selection: crate::ArtifactSelection,
@@ -65,7 +73,7 @@ impl LazyProcessPhysicsV1 {
             deferred: Some(DeferredProcessPhysicsV1::OnTheFly {
                 metadata,
                 selectors,
-                selection,
+                selection: Box::new(selection),
             }),
         }
     }
@@ -203,8 +211,10 @@ struct OnTheFlyWarmUpPreparedSelectionV1 {
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 enum OnTheFlyReductionV1 {
     Lc,
-    Contracted(super::on_the_fly_load::LoadedOnTheFlyColorContractionV1),
+    Contracted(Box<super::on_the_fly_load::LoadedOnTheFlyColorContractionV1>),
 }
+
+type OnTheFlySelectedOrdinalsV1 = (Option<Box<[usize]>>, Option<Box<[usize]>>);
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(super) struct OnTheFlyExecutionRuntime {
@@ -227,8 +237,9 @@ impl OnTheFlyExecutionRuntime {
         Self {
             lane,
             selectors,
-            reduction: color_contraction
-                .map_or(OnTheFlyReductionV1::Lc, OnTheFlyReductionV1::Contracted),
+            reduction: color_contraction.map_or(OnTheFlyReductionV1::Lc, |plan| {
+                OnTheFlyReductionV1::Contracted(Box::new(plan))
+            }),
             prepared_selections: Vec::new(),
             last_prepared_selection: None,
             pending_prepared_selection: None,
@@ -236,7 +247,7 @@ impl OnTheFlyExecutionRuntime {
         }
     }
 
-    fn clear(&mut self) -> RusticolResult<()> {
+    pub(super) fn clear(&mut self) -> RusticolResult<()> {
         self.lane.clear()?;
         self.pending_prepared_selection = None;
         self.prepared_selections.clear();
@@ -307,7 +318,7 @@ impl OnTheFlyExecutionRuntime {
     }
 
     /// Private read-only production introspection of retained compact state.
-    fn state_census(&self, process_id: &str) -> RusticolResult<Value> {
+    pub(super) fn state_census(&self, process_id: &str) -> RusticolResult<Value> {
         let retained = self.lane.retained_state_census();
         let active_family_union_census = self.lane.prepared_census().map(|census| {
             serde_json::json!({
@@ -624,7 +635,7 @@ impl OnTheFlyExecutionRuntime {
                     .map(|position| selection.color_id_at(position))
                     .collect::<RusticolResult<Vec<_>>>()?;
                 let requests = selection.iter().collect::<RusticolResult<Vec<_>>>()?;
-                if let Some(progress) = progress.as_deref_mut() {
+                if let Some(progress) = progress {
                     self.lane.prepare_lc_queries_for_warm_up(
                         &requests,
                         family_point_capacity,
@@ -649,7 +660,7 @@ impl OnTheFlyExecutionRuntime {
                         "on-the-fly contracted owner basis disagrees with compact structural selectors",
                     ));
                 }
-                if let Some(progress) = progress.as_deref_mut() {
+                if let Some(progress) = progress {
                     self.lane.prepare_contracted_queries_for_warm_up(
                         &self.selectors,
                         &helicity_indices,
@@ -863,7 +874,7 @@ impl OnTheFlyExecutionRuntime {
         })
     }
 
-    fn run_total_into_unprofiled(
+    pub(super) fn run_total_into_unprofiled(
         &mut self,
         common: &ExecutionRuntime,
         batch: F64MomentumBatchView<'_>,
@@ -911,7 +922,7 @@ impl OnTheFlyExecutionRuntime {
         }
     }
 
-    fn run_total_into(
+    pub(super) fn run_total_into(
         &mut self,
         common: &ExecutionRuntime,
         batch: F64MomentumBatchView<'_>,
@@ -1756,6 +1767,7 @@ impl NativeRuntime {
                         &evaluator_root,
                         &manifest,
                         &physics_v1,
+                        &selection,
                     )?;
                     (
                         representative_process,
@@ -2343,21 +2355,36 @@ impl NativeRuntime {
         Ok(None)
     }
 
-    /// Return private read-only production introspection for the loaded OTF lane.
+    /// Return private read-only production introspection for the loaded compact
+    /// query-family lane.
     ///
     /// This observes the same retained selector/family caches used by public
     /// evaluation. It does not construct selectors or open dense physics
-    /// metadata. Non-OTF lanes return `None`.
+    /// metadata. A recurrence lane reports the same census only when it owns
+    /// the authenticated singleton-helicity companion; other lanes return
+    /// `None`.
     pub fn on_the_fly_runtime_state_census_json(&self) -> RusticolResult<Option<String>> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        if let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane {
-            let census = runtime.state_census(&self.process_key)?;
-            return serde_json::to_string(&census).map(Some).map_err(|error| {
+        {
+            let census = match &self.execution_lane {
+                NativeExecutionLane::OnTheFly(runtime) => {
+                    Some(runtime.state_census(&self.process_key)?)
+                }
+                NativeExecutionLane::Recurrence(runtime) => {
+                    runtime.helicity_selector_companion_state_census(&self.process_key)?
+                }
+                _ => None,
+            };
+            let Some(census) = census else {
+                return Ok(None);
+            };
+            serde_json::to_string(&census).map(Some).map_err(|error| {
                 RusticolError::serialization(format!(
                     "could not serialize on-the-fly runtime state census: {error}"
                 ))
-            });
+            })
         }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         Ok(None)
     }
 
@@ -2651,23 +2678,36 @@ impl NativeRuntime {
             }
 
             self.record_resolved_warnings(helicity_ids, color_ids)?;
-            output_totals.resize(point_count, 0.0);
-            output_totals.fill(0.0);
             if let PointSelectorPlan::Homogeneous(key) = plan {
-                let point_helicities = key.helicity_index.map(|index| &helicity_singletons[index]);
-                let point_colors = key.color_index.map(|index| &color_singletons[index]);
+                // Selecting the sole retained value of an axis is identical
+                // to leaving that axis unselected.  Generation-specialized
+                // recurrence artifacts use exactly this shape in scalar
+                // performance and event-loop calls; route it through the
+                // ordinary borrowed-output path so we do not rescan singleton
+                // string sets or stage through a second output buffer.
+                let point_helicities = key.helicity_index.and_then(|index| {
+                    (physics.manifest.helicities.len() != 1).then(|| &helicity_singletons[index])
+                });
+                let point_colors = key.color_index.and_then(|index| {
+                    (physics.manifest.color_components.len() != 1).then(|| &color_singletons[index])
+                });
                 let effective_helicities = point_helicities.or(selected_helicities);
                 let effective_colors = point_colors.or(selected_colors);
-                self.run_selected_f64_batch_into(
-                    batch,
-                    effective_helicities,
-                    effective_colors,
-                    output_totals,
-                )?;
-                output.copy_from_slice(output_totals);
+                if effective_helicities.is_none() && effective_colors.is_none() {
+                    self.run_f64_batch_into(batch, output)?;
+                } else {
+                    self.run_selected_f64_batch_into(
+                        batch,
+                        effective_helicities,
+                        effective_colors,
+                        output,
+                    )?;
+                }
                 return Ok(());
             }
 
+            output_totals.resize(point_count, 0.0);
+            output_totals.fill(0.0);
             let partition_count = planner.partitions().len();
             for partition_index in 0..partition_count {
                 let partition = planner.partitions()[partition_index];
@@ -2876,7 +2916,7 @@ impl NativeRuntime {
         &self,
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
-    ) -> RusticolResult<(Option<Box<[usize]>>, Option<Box<[usize]>>)> {
+    ) -> RusticolResult<OnTheFlySelectedOrdinalsV1> {
         let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane else {
             return Err(RusticolError::internal(
                 "compact selector ordinals require an on-the-fly execution lane",
@@ -4167,8 +4207,18 @@ impl NativeRuntime {
     /// corresponding query-family cache and therefore treat this as a no-op.
     pub fn clear(&mut self) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        if let NativeExecutionLane::OnTheFly(runtime) = &mut self.execution_lane {
-            runtime.clear()?;
+        match &mut self.execution_lane {
+            NativeExecutionLane::OnTheFly(runtime) => runtime.clear()?,
+            NativeExecutionLane::Recurrence(runtime) => {
+                runtime.clear_helicity_selector_companion()?
+            }
+            _ => {}
+        }
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if matches!(
+            &self.execution_lane,
+            NativeExecutionLane::OnTheFly(_) | NativeExecutionLane::Recurrence(_)
+        ) {
             self.point_selector_scratch = PointSelectorExecutionScratch::default();
         }
         Ok(())

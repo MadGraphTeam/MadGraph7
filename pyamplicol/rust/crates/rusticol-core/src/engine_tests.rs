@@ -252,6 +252,120 @@ pub(super) fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
     .unwrap()
 }
 
+#[test]
+fn total_selector_canonicalization_elides_only_exact_authenticated_axes() {
+    let physics = test_physics_runtime("lc");
+    let all_helicities = physics
+        .manifest
+        .helicities
+        .iter()
+        .map(|helicity| helicity.id.clone())
+        .collect::<BTreeSet<_>>();
+    let all_colors = physics
+        .manifest
+        .color_components
+        .iter()
+        .map(|color| color.id().to_string())
+        .collect::<BTreeSet<_>>();
+    assert!(
+        physics
+            .canonical_total_helicity_selector(Some(&all_helicities))
+            .is_none()
+    );
+    assert!(
+        physics
+            .canonical_total_color_selector(Some(&all_colors))
+            .is_none()
+    );
+
+    let helicity_subset = BTreeSet::from(["hel:+-".to_string()]);
+    let color_subset = BTreeSet::from(["flow:0".to_string()]);
+    assert_eq!(
+        physics.canonical_total_helicity_selector(Some(&helicity_subset)),
+        Some(&helicity_subset)
+    );
+    assert_eq!(
+        physics.canonical_total_color_selector(Some(&color_subset)),
+        Some(&color_subset)
+    );
+
+    let same_size_unknown_helicities = BTreeSet::from([
+        "hel:+-".to_string(),
+        "hel:-+".to_string(),
+        "hel:unknown".to_string(),
+    ]);
+    let same_size_unknown_colors =
+        BTreeSet::from(["flow:0".to_string(), "flow:unknown".to_string()]);
+    let retained_helicities =
+        physics.canonical_total_helicity_selector(Some(&same_size_unknown_helicities));
+    let retained_colors = physics.canonical_total_color_selector(Some(&same_size_unknown_colors));
+    assert_eq!(retained_helicities, Some(&same_size_unknown_helicities));
+    assert_eq!(retained_colors, Some(&same_size_unknown_colors));
+    assert_eq!(
+        physics
+            .selected_helicity_indices(retained_helicities)
+            .unwrap_err()
+            .kind(),
+        crate::RusticolErrorKind::Selector
+    );
+    assert_eq!(
+        physics
+            .selected_color_indices(retained_colors)
+            .unwrap_err()
+            .kind(),
+        crate::RusticolErrorKind::Selector
+    );
+
+    let mut selected_manifest = test_physics_runtime("full").manifest;
+    selected_manifest.helicities.truncate(1);
+    selected_manifest.reduction.groups[0]
+        .physical_helicity_ids
+        .truncate(1);
+    selected_manifest.coverage.helicities = "selected".to_string();
+    let selected_physics = PhysicsRuntime::new(selected_manifest).unwrap();
+    let sole_helicity = BTreeSet::from([selected_physics.manifest.helicities[0].id.clone()]);
+    assert!(
+        selected_physics
+            .canonical_total_helicity_selector(Some(&sole_helicity))
+            .is_none()
+    );
+}
+
+#[test]
+fn compiled_symmetric_group_rejects_exhaustive_runtime_selector_before_canonicalization() {
+    let physics = test_physics_runtime("full");
+    let all_helicities = physics
+        .manifest
+        .helicities
+        .iter()
+        .map(|helicity| helicity.id.clone())
+        .collect::<BTreeSet<_>>();
+    let plan = crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+        vec![0; 13],
+        13,
+    );
+    let contraction = ColorContractionRuntime {
+        group_count: 0,
+        entries: Vec::new(),
+        repeated_block: None,
+        symmetric_group: Some(CompiledSymmetricGroupColorContraction {
+            plan,
+            ordered_group_indices: Vec::new(),
+            workspace: None,
+        }),
+        group_scratch_f64: Vec::new(),
+    };
+    let mut runtime = empty_generic_runtime();
+    runtime.physics = Some(Arc::new(physics));
+    runtime.amplitude_stage = Some(test_amplitude_runtime(Vec::new(), Some(contraction)));
+    let batch = F64MomentumBatchView::from_contiguous_prevalidated(&[], 1, 0, None).unwrap();
+    let error = runtime
+        .run_f64_selected_into_unprofiled(batch, Some(&all_helicities), None, &mut [0.0])
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+    assert!(error.message().contains("runtime selectors"));
+}
+
 fn test_external_particle(
     index: usize,
     particle: &str,
@@ -1109,6 +1223,7 @@ fn test_amplitude_runtime(
         materialized_helicity_direct_total_plans: Vec::new(),
         materialized_helicity_direct_total_plan_capacity: 0,
         materialized_helicity_direct_total_next_replacement: 0,
+        materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
         evaluator_output_order: None,
         evaluator: Some(empty_evaluator_group()),
     }
@@ -1944,6 +2059,105 @@ fn plane_native_nlc_and_full_resolved_match_row_major_odd_tail() {
 }
 
 #[test]
+fn materialized_contracted_plan_keeps_only_selected_helicity_entries_and_caches_domain() {
+    let mut physics_manifest = test_physics_runtime("full").manifest.clone();
+    physics_manifest.reduction.groups = vec![
+        crate::ReductionGroup {
+            id: "group:7".to_string(),
+            representative_helicity_id: "hel:+-".to_string(),
+            physical_helicity_ids: vec!["hel:+-".to_string()],
+            representative_color_id: "contracted".to_string(),
+            physical_color_ids: vec!["contracted".to_string()],
+        },
+        crate::ReductionGroup {
+            id: "group:8".to_string(),
+            representative_helicity_id: "hel:-+".to_string(),
+            physical_helicity_ids: vec!["hel:-+".to_string()],
+            representative_color_id: "contracted".to_string(),
+            physical_color_ids: vec!["contracted".to_string()],
+        },
+    ];
+    let physics = PhysicsRuntime::new(physics_manifest).unwrap();
+    let groups = vec![
+        RawSumGroup {
+            id: 7,
+            indices: vec![0],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        },
+        RawSumGroup {
+            id: 8,
+            indices: vec![1],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        },
+    ];
+    let contraction = ColorContractionRuntime::new(
+        &groups,
+        vec![
+            ColorContractionEntry {
+                left_group_index: 0,
+                right_group_index: 0,
+                weight_re: 2.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+            },
+            ColorContractionEntry {
+                left_group_index: 1,
+                right_group_index: 1,
+                weight_re: 2.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+            },
+        ],
+    );
+    let mut amplitude = test_amplitude_runtime(
+        vec![c64(3.0, 0.0), c64(f64::NAN, f64::NAN)],
+        Some(contraction),
+    );
+    amplitude.output_length = 2;
+    amplitude.raw_sum_weights = vec![1.0; 2];
+    amplitude.raw_sum_all_sector_weights = vec![1.0; 2];
+    amplitude.raw_sum_color_sector_ids = vec![None; 2];
+    amplitude.raw_sum_groups = groups;
+    let root_factors = [Some(c64(1.0, 0.0)), None];
+
+    let plan_index = amplitude
+        .bind_default_materialized_helicity_direct_total_plan(4, &physics, 0, &root_factors, None)
+        .unwrap();
+    let MaterializedHelicityDirectTotalReduction::Contracted { entries } =
+        &amplitude.materialized_helicity_direct_total_plans[plan_index].reduction
+    else {
+        panic!("FullColour materialized plan must use contracted reduction");
+    };
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].left_group_index, 0);
+    assert_eq!(entries[0].right_group_index, 0);
+
+    assert_eq!(
+        amplitude
+            .bind_default_materialized_helicity_direct_total_plan(
+                4,
+                &physics,
+                0,
+                &root_factors,
+                None,
+            )
+            .unwrap(),
+        plan_index
+    );
+    assert_eq!(amplitude.materialized_helicity_direct_total_plans.len(), 1);
+    assert_eq!(
+        amplitude.materialized_helicity_direct_default_plan_by_selector_domain[4]
+            .expect("selector-domain plan cache")
+            .plan_index,
+        plan_index
+    );
+}
+
+#[test]
 fn plane_native_materialized_helicity_resolved_and_add_into_match_lc_odd_tail() {
     const POINT_COUNT: usize = 129;
     const OUTPUT_COUNT: usize = 2;
@@ -2491,6 +2705,7 @@ fn reduction_test_amplitude(
         materialized_helicity_direct_total_plans: Vec::new(),
         materialized_helicity_direct_total_plan_capacity: 0,
         materialized_helicity_direct_total_next_replacement: 0,
+        materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
         evaluator_output_order: None,
         evaluator: Some(empty_evaluator_group()),
     }
@@ -2557,6 +2772,42 @@ fn compiled_symmetric_group_reducer_binds_group_ids_and_multi_root_odd_tail() {
     };
     assert_eq!(duplicate_error.kind(), crate::RusticolErrorKind::Integrity);
     assert!(duplicate_error.message().contains("symmetric-group FFT"));
+
+    let sparse_groups = groups
+        .iter()
+        .map(|group| RawSumGroup {
+            id: group.id,
+            indices: group.indices.clone(),
+            weight: group.weight,
+            all_sector_weight: group.all_sector_weight,
+            sector_ids: group
+                .sector_ids
+                .iter()
+                .map(|sector| 2 * sector + 1)
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    let sparse_plan =
+        crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+            destination_ids.clone(),
+            GROUP_COUNT as u32,
+        )
+        .with_sparse_sector_domain_for_runtime_test();
+    let sparse_contraction = build_compiled_symmetric_group_color_contraction_runtime(
+        Some(&manifest),
+        &sparse_groups,
+        sparse_plan,
+    )
+    .expect("inactive physical sectors must not block a compiled FFT reducer");
+    assert_eq!(
+        sparse_contraction
+            .symmetric_group
+            .as_ref()
+            .unwrap()
+            .plan
+            .active_sector_count(),
+        GROUP_COUNT,
+    );
 
     let plan = crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
         destination_ids.clone(),
@@ -3813,7 +4064,7 @@ fn numeric_reduction_binding_preserves_manifest_order_and_weights() {
     }
 }
 
-fn empty_generic_runtime() -> ExecutionRuntime {
+pub(super) fn empty_generic_runtime() -> ExecutionRuntime {
     ExecutionRuntime {
         process: "a b > c".to_string(),
         key: "p0".to_string(),
@@ -4827,7 +5078,7 @@ fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
 fn on_the_fly_warm_up_rejects_more_than_one_point() {
     let mut runtime = scalar_on_the_fly_native_runtime();
     let error = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&vec![0.0; 2 * 2 * 4], None, None, None)
+        .warm_up_on_the_fly_f64_with_selectors(&[0.0; 2 * 2 * 4], None, None, None)
         .unwrap_err();
     assert!(error.to_string().contains("exactly one point"));
 }

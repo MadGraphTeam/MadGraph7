@@ -27,7 +27,7 @@ impl DirectPlaneShape {
                 "direct {label} point stride must be positive"
             )));
         }
-        if scalar_len % u64::from(point_stride) != 0 {
+        if !scalar_len.is_multiple_of(u64::from(point_stride)) {
             return Err(invalid(format!(
                 "direct {label} scalar length {scalar_len} is not a whole number of \
                  point-contiguous planes with stride {point_stride}"
@@ -373,7 +373,7 @@ fn require_split_pair(
 }
 
 fn require_arena_alignment(values: *const f64, scalar_len: u64, label: &str) -> RusticolResult<()> {
-    if scalar_len != 0 && (values as usize) % DIRECT_ARENA_ALIGNMENT != 0 {
+    if scalar_len != 0 && !(values as usize).is_multiple_of(DIRECT_ARENA_ALIGNMENT) {
         return Err(invalid(format!(
             "direct {label} base is not {DIRECT_ARENA_ALIGNMENT}-byte aligned"
         )));
@@ -382,6 +382,11 @@ fn require_arena_alignment(values: *const f64, scalar_len: u64, label: &str) -> 
 }
 
 fn require_plane_stride_alignment(point_stride: u32, label: &str) -> RusticolResult<()> {
+    // Packed singleton views are a separate, explicit ABI layout. Every
+    // other pitch must retain per-plane alignment for tiled SIMD execution.
+    if point_stride == 1 {
+        return Ok(());
+    }
     let stride_bytes = usize::try_from(point_stride)
         .ok()
         .and_then(|stride| stride.checked_mul(size_of::<f64>()))
@@ -505,13 +510,30 @@ mod tests {
         let bad_pitch = DirectArenaView {
             current_re: values_re.as_mut_ptr(),
             current_im: values_im.as_mut_ptr(),
+            current_scalar_len: 6,
+            amplitude_re: std::ptr::null_mut(),
+            amplitude_im: std::ptr::null_mut(),
+            amplitude_scalar_len: 0,
+            point_stride: 3,
+        };
+        assert!(bad_pitch.validate().is_err());
+    }
+
+    #[test]
+    fn packed_singleton_views_are_validated_as_an_explicit_layout() {
+        let mut current_re = AlignedF64Buffer::zeroed(2, "packed current real").unwrap();
+        let mut current_im = AlignedF64Buffer::zeroed(2, "packed current imag").unwrap();
+        DirectArenaView {
+            current_re: current_re.as_mut_ptr(),
+            current_im: current_im.as_mut_ptr(),
             current_scalar_len: 2,
             amplitude_re: std::ptr::null_mut(),
             amplitude_im: std::ptr::null_mut(),
             amplitude_scalar_len: 0,
             point_stride: 1,
-        };
-        assert!(bad_pitch.validate().is_err());
+        }
+        .validate()
+        .unwrap();
     }
 
     #[test]

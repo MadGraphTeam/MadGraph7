@@ -33,6 +33,12 @@ pub(super) const ON_THE_FLY_PROCESS_SEED_MEMBER: &str = "on-the-fly/process-seed
 pub(super) const ON_THE_FLY_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const ON_THE_FLY_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 pub(super) const ON_THE_FLY_COLOR_CONTRACTION_PATH: &str = "on-the-fly-color.bin";
+#[expect(
+    dead_code,
+    reason = "retained to reject legacy v1 companion manifests explicitly"
+)]
+pub(super) const RECURRENCE_HELICITY_SELECTOR_COMPANION_KIND: &str =
+    "pyamplicol-recurrence-helicity-selector-companion-v1";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -120,6 +126,73 @@ pub(super) struct OnTheFlyRuntimeContainer {
     pub(super) seed_member_path: String,
 }
 
+/// Lane-only OTF state embedded by a complete contracted recurrence artifact.
+///
+/// Runtime parameters, external legs, normalization, and point tiling remain
+/// owned by the enclosing recurrence manifest.  The companion retains only
+/// the compact seed identity and policy needed to construct a selected query
+/// family plus its independent one-component color reducer.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    dead_code,
+    reason = "retained to reject legacy v1 companion manifests explicitly"
+)]
+pub(super) struct OnTheFlyHelicitySelectorCompanionManifest {
+    pub(super) schema_version: u32,
+    pub(super) kind: String,
+    pub(super) process_digest: String,
+    pub(super) process_seed_identity: OnTheFlyProcessSeedIdentityV1,
+    pub(super) query_construction_threads: u32,
+    pub(super) selector_policy: OnTheFlySelectorPolicy,
+    pub(super) runtime_container: OnTheFlyRuntimeContainer,
+    pub(super) color_contraction: RecurrenceColorContractionReference,
+}
+
+impl OnTheFlyHelicitySelectorCompanionManifest {
+    #[expect(
+        dead_code,
+        reason = "retained to reject legacy v1 companion manifests explicitly"
+    )]
+    pub(super) fn validate(
+        &self,
+        process_digest: Option<&str>,
+        color_accuracy: &str,
+    ) -> RusticolResult<()> {
+        if self.schema_version != 1 || self.kind != RECURRENCE_HELICITY_SELECTOR_COMPANION_KIND {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence helicity-selector companion; regenerate the artifact",
+            ));
+        }
+        if process_digest != Some(self.process_digest.as_str())
+            || self.process_seed_identity.process_digest != self.process_digest
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector companion disagrees with the process digest",
+            ));
+        }
+        if self.query_construction_threads == 0 {
+            return Err(RusticolError::artifact(
+                "recurrence helicity-selector companion query thread count must be positive",
+            ));
+        }
+        if !matches!(color_accuracy, "nlc" | "full") {
+            return Err(RusticolError::integrity(
+                "only contracted recurrence may carry a helicity-selector companion",
+            ));
+        }
+        self.selector_policy.validate(color_accuracy)?;
+        self.runtime_container.validate()?;
+        validate_contracted_color_reference(&self.color_contraction, color_accuracy)?;
+        if self.color_contraction.component_count != 1 {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector companion color payload must have one component",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl OnTheFlyExecutionManifest {
     fn validate(&self, outer: &ArtifactProcess) -> RusticolResult<()> {
         if self.schema_version != PROCESS_ARTIFACT_SCHEMA_VERSION
@@ -199,7 +272,7 @@ impl OnTheFlyExecutionManifest {
 }
 
 impl OnTheFlySelectorPolicy {
-    fn validate(&self, color_accuracy: &str) -> RusticolResult<()> {
+    pub(super) fn validate(&self, color_accuracy: &str) -> RusticolResult<()> {
         if let Some(word) = &self.reference_color_word
             && (word.is_empty()
                 || word.contains(&0)
@@ -636,7 +709,7 @@ fn validate_contracted_color_reference(
 }
 
 impl OnTheFlyRuntimeContainer {
-    fn validate(&self) -> RusticolResult<()> {
+    pub(super) fn validate(&self) -> RusticolResult<()> {
         if self.kind != ON_THE_FLY_RUNTIME_CONTAINER_KIND
             || self.schema_version != ON_THE_FLY_RUNTIME_CONTAINER_SCHEMA
             || self.storage_abi != ON_THE_FLY_RUNTIME_STORAGE_ABI

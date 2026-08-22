@@ -12,6 +12,9 @@ from pathlib import Path
 
 import pytest
 
+from pyamplicol._internal.versions import (
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+)
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.artifacts.manifest import ArtifactManifest, PayloadRecord
 from pyamplicol.color import (
@@ -28,13 +31,18 @@ from pyamplicol.generation.recurrence_columnar import ExactComplexRationalV1
 from pyamplicol.runtime.recurrence_exact import _executor as executor_module
 from pyamplicol.runtime.recurrence_exact._color import (
     RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+    RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
     _contract_color_amplitudes,
     _decode_recurrence_color_contraction,
     _load_recurrence_color_contraction,
 )
 from pyamplicol.runtime.recurrence_exact._executor import RecurrenceExactExecutor
-from pyamplicol.runtime.recurrence_exact._plan import _RecurrenceExactPlan
+from pyamplicol.runtime.recurrence_exact._plan import (
+    _RecurrenceExactPlan,
+    _validate_execution,
+)
 from pyamplicol.runtime.recurrence_exact._plan_v2 import (
+    RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
     RECURRENCE_EXACT_SECTIONS_ABI,
     RECURRENCE_RUNTIME_LAYOUT_V2_ABI,
     _AmplitudeDestination,
@@ -49,6 +57,47 @@ _HEADER = struct.Struct("<8s14I7Q")
 _ENTRY = struct.Struct("<IIdddI")
 _EXACT_FACTOR_BYTES = 64
 _U32 = struct.Struct("<I")
+
+
+def _contracted_execution_with_capabilities(
+    capabilities: tuple[str, ...],
+) -> dict[str, object]:
+    return {
+        "schema_version": 3,
+        "kind": "pyamplicol-runtime-recurrence-execution",
+        "key": "synthetic_contracted",
+        "recurrence_plan_abi": "pyamplicol-recurrence-plan-v2",
+        "runtime_layout_abi": "pyamplicol-recurrence-runtime-layout-v2",
+        "recurrence_summary": {"lc_flow_layout": "contracted-color-union"},
+        "required_runtime_capabilities": capabilities,
+        "color_accuracy": "full",
+    }
+
+
+def test_exact_execution_permits_only_the_ignored_v2_helicity_companion() -> None:
+    core = (
+        RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
+        RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+    )
+    _validate_execution(
+        _contracted_execution_with_capabilities(
+            (*core, RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY)
+        ),
+        "synthetic_contracted",
+    )
+
+    for capabilities in (
+        (core[0], RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY),
+        (*core, "rusticol.recurrence-unknown.v1"),
+    ):
+        with pytest.raises(
+            CompatibilityError,
+            match="unsupported recurrence runtime capability contract",
+        ):
+            _validate_execution(
+                _contracted_execution_with_capabilities(capabilities),
+                "synthetic_contracted",
+            )
 
 
 def _color_payload(
@@ -434,6 +483,39 @@ def test_color_encoder_emits_canonical_symmetric_group_kernel_rows() -> None:
             group_component_ids=(0, 0, 0),
             sector_owner_ids=(0, 1, 2),
             exact_coefficients=(*exact[:-1], ExactComplexRationalV1(6)),
+            destination_count=3,
+        )
+
+    object.__setattr__(
+        block,
+        "residual_entries",
+        (
+            block.residual_entries[1],
+            block.residual_entries[0],
+            block.residual_entries[2],
+        ),
+    )
+    object.__setattr__(
+        block,
+        "residual_exact_weights",
+        (
+            block.residual_exact_weights[1],
+            block.residual_exact_weights[0],
+            block.residual_exact_weights[2],
+        ),
+    )
+
+    with pytest.raises(RecurrenceColorCodecError, match="do not exhaust"):
+        encode_recurrence_color_contraction(
+            plan,
+            sector_count=3,
+            component_count=1,
+            ordered_group_ids=(0, 1, 2),
+            destination_by_group=(2, 0, 1),
+            group_sector_ids=(0, 1, 2),
+            group_component_ids=(0, 0, 0),
+            sector_owner_ids=(0, 1, 2),
+            exact_coefficients=(*exact[:2], exact[3], exact[2], exact[4]),
             destination_count=3,
         )
 

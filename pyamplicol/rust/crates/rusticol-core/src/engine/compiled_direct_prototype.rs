@@ -1172,6 +1172,27 @@ impl CompiledDirectEnginePrototype {
         )
     }
 
+    /// Execute an authenticated materialized-helicity schedule without
+    /// clearing amplitude planes outside its active root closure.
+    ///
+    /// Materialized-helicity reducers consume only roots carried by the same
+    /// authenticated selector schedule. Inactive planes may therefore retain
+    /// values from an earlier tile and must not impose an all-helicity memory
+    /// pass on a singleton-helicity execution.
+    pub(crate) fn evaluate_validated_materialized_helicity(
+        &mut self,
+        point_count: usize,
+        schedule: &CompiledDirectValidatedSchedule,
+    ) -> RusticolResult<()> {
+        evaluate_validated_schedule(
+            &mut self.stages,
+            &mut self.amplitude,
+            schedule,
+            point_count_u32(point_count, self.arena.active_point_count())?,
+            &mut self.traffic,
+        )
+    }
+
     fn clear_inactive_amplitude_components(
         &mut self,
         schedule: &CompiledDirectValidatedSchedule,
@@ -4188,52 +4209,156 @@ extern "C" int native_direct_leaf_direct_application_v1(
             }
         }
 
-        let selector_batch = F64MomentumBatchView::from_contiguous_prevalidated(
-            &selector_momenta,
-            selector_points,
-            direct.runtime.external_count,
-            direct.input_crossing_map.as_deref(),
-        )
-        .expect("borrow retained selector batch");
-        for (label, selected_helicities, selected_colors) in [
-            ("all-components", None, None),
-            (
-                "all-flows-single-helicity",
-                Some(BTreeSet::from([selected_helicity.clone()])),
-                None,
-            ),
-        ] {
-            let mut candidate_values = vec![f64::NAN; selector_points];
-            let mut oracle_values = vec![f64::NAN; selector_points];
-            direct
-                .runtime
-                .run_f64_selected_into_unprofiled(
-                    selector_batch,
-                    selected_helicities.as_ref(),
-                    selected_colors.as_ref(),
-                    &mut candidate_values,
+        let compiled_symmetric_group = direct
+            .runtime
+            .amplitude_stage
+            .as_ref()
+            .and_then(|amplitude| amplitude.color_contraction.as_ref())
+            .is_some_and(ColorContractionRuntime::is_symmetric_group);
+        if helicities.len() == 1
+            && direct.metadata().color_accuracy == "full"
+            && !compiled_symmetric_group
+        {
+            let sole_helicity = [selected_helicity.clone()];
+            let explicit_total = direct
+                .evaluate_f64_with_selectors(
+                    &selector_momenta,
+                    selector_points,
+                    Some(&sole_helicity),
+                    None,
+                    None,
+                    None,
                 )
-                .expect("evaluate allocation-free replay candidate");
-            direct
-                .runtime
-                .run_f64_selected_into_resolved_replay_oracle(
-                    selector_batch,
-                    selected_helicities.as_ref(),
-                    selected_colors.as_ref(),
-                    &mut oracle_values,
+                .expect("evaluate selected FullColour explicit sole-helicity total");
+            let unselected_total = direct
+                .evaluate_f64(&selector_momenta, selector_points)
+                .expect("evaluate selected FullColour implicit sole-helicity total");
+            let resolved = direct
+                .evaluate_resolved_f64(
+                    &selector_momenta,
+                    selector_points,
+                    Some(&sole_helicity),
+                    None,
                 )
-                .expect("evaluate resolved replay oracle");
-            for (point_index, (candidate_value, oracle_value)) in candidate_values
+                .expect("resolve selected FullColour sole-helicity values");
+            assert_eq!(resolved.helicity_ids.as_slice(), sole_helicity.as_slice());
+            assert_eq!(resolved.color_ids.len(), 1);
+            assert_eq!(resolved.point_count, selector_points);
+            assert_eq!(resolved.values.len(), selector_points);
+            let resolved_total = resolved.totals();
+            for (point_index, ((explicit, unselected), resolved)) in explicit_total
                 .iter()
                 .copied()
-                .zip(oracle_values.iter().copied())
+                .zip(unselected_total.iter().copied())
+                .zip(resolved_total.iter().copied())
                 .enumerate()
             {
                 assert_close_real(
-                    candidate_value,
-                    oracle_value,
-                    &format!("{label} replay candidate/oracle point={point_index}"),
+                    explicit,
+                    unselected,
+                    &format!("sole-helicity explicit/unselected total point={point_index}"),
                 );
+                assert_close_real(
+                    explicit,
+                    resolved,
+                    &format!("sole-helicity total/resolved point={point_index}"),
+                );
+            }
+
+            let sole_helicity_index =
+                u32::try_from(helicities[0].index).expect("sole public helicity index fits u32");
+            let helicity_by_point = vec![sole_helicity_index; selector_points];
+            let mut per_point_total = vec![f64::NAN; selector_points];
+            direct
+                .evaluate_f64_into_with_selectors(
+                    &selector_momenta,
+                    selector_points,
+                    None,
+                    None,
+                    Some(&helicity_by_point),
+                    None,
+                    &mut per_point_total,
+                )
+                .expect("warm selected FullColour per-point sole-helicity total");
+            let (result, allocations, allocated_bytes) = count_test_allocations(|| {
+                direct.evaluate_f64_into_with_selectors(
+                    &selector_momenta,
+                    selector_points,
+                    None,
+                    None,
+                    Some(&helicity_by_point),
+                    None,
+                    &mut per_point_total,
+                )
+            });
+            result.expect("repeat selected FullColour per-point sole-helicity total");
+            assert_eq!(allocations, 0, "warmed sole-helicity total allocated");
+            assert_eq!(
+                allocated_bytes, 0,
+                "warmed sole-helicity total allocated bytes"
+            );
+            for (point_index, (per_point, explicit)) in per_point_total
+                .iter()
+                .copied()
+                .zip(explicit_total.iter().copied())
+                .enumerate()
+            {
+                assert_close_real(
+                    per_point,
+                    explicit,
+                    &format!("sole-helicity per-point/global total point={point_index}"),
+                );
+            }
+        }
+
+        if direct.runtime.lc_topology_replay_enabled {
+            let selector_batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                &selector_momenta,
+                selector_points,
+                direct.runtime.external_count,
+                direct.input_crossing_map.as_deref(),
+            )
+            .expect("borrow retained selector batch");
+            for (label, selected_helicities, selected_colors) in [
+                ("all-components", None, None),
+                (
+                    "all-flows-single-helicity",
+                    Some(BTreeSet::from([selected_helicity.clone()])),
+                    None,
+                ),
+            ] {
+                let mut candidate_values = vec![f64::NAN; selector_points];
+                let mut oracle_values = vec![f64::NAN; selector_points];
+                direct
+                    .runtime
+                    .run_f64_selected_into_unprofiled(
+                        selector_batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                        &mut candidate_values,
+                    )
+                    .expect("evaluate allocation-free replay candidate");
+                direct
+                    .runtime
+                    .run_f64_selected_into_resolved_replay_oracle(
+                        selector_batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                        &mut oracle_values,
+                    )
+                    .expect("evaluate resolved replay oracle");
+                for (point_index, (candidate_value, oracle_value)) in candidate_values
+                    .iter()
+                    .copied()
+                    .zip(oracle_values.iter().copied())
+                    .enumerate()
+                {
+                    assert_close_real(
+                        candidate_value,
+                        oracle_value,
+                        &format!("{label} replay candidate/oracle point={point_index}"),
+                    );
+                }
             }
         }
 

@@ -200,6 +200,22 @@ pub struct RuntimeSymmetricGroupKernel {
     fourier_coefficients: Box<[f64]>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct RuntimeSymmetricGroupLowRankBlock {
+    rank: usize,
+    /// Column-major `dimension x rank` real factor in the FFT block's
+    /// original Young-basis order.
+    factors: Box<[f64]>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct RuntimeSymmetricGroupLowRankKernel {
+    /// Block-aligned scalar factors for the corresponding dense kernel.
+    /// Empty for cross-channel kernels and diagonal kernels with no accepted
+    /// factor.
+    blocks: Box<[Option<RuntimeSymmetricGroupLowRankBlock>]>,
+}
+
 impl RuntimeSymmetricGroupKernel {
     pub fn left_channel_index(&self) -> u32 {
         self.left_channel_index
@@ -231,6 +247,7 @@ pub struct RuntimeSymmetricGroupColorContraction {
     local_group_count: usize,
     fft_plan: Arc<SymmetricGroupFftPlan>,
     kernels: Arc<[RuntimeSymmetricGroupKernel]>,
+    scalar_same_channel_low_rank_kernels: Option<Arc<[RuntimeSymmetricGroupLowRankKernel]>>,
     residual_entries: Arc<[RuntimeFactorizedColorContractionEntry]>,
 }
 
@@ -241,6 +258,8 @@ impl PartialEq for RuntimeSymmetricGroupColorContraction {
             && self.channel_count == other.channel_count
             && self.local_group_count == other.local_group_count
             && self.kernels.as_ref() == other.kernels.as_ref()
+            && self.scalar_same_channel_low_rank_kernels
+                == other.scalar_same_channel_low_rank_kernels
             && self.residual_entries.as_ref() == other.residual_entries.as_ref()
     }
 }
@@ -359,6 +378,26 @@ impl RuntimeSymmetricGroupColorContraction {
             )?;
         }
 
+        if let Some(low_rank_kernels) = self.scalar_same_channel_low_rank_kernels.as_deref() {
+            self.reduce_transformed_low_rank(
+                workspace,
+                lane_count,
+                channel_stride,
+                low_rank_kernels,
+            );
+        } else {
+            self.reduce_transformed_dense(workspace, lane_count, channel_stride);
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn reduce_transformed_dense(
+        &self,
+        workspace: &mut RuntimeSymmetricGroupColorWorkspace,
+        lane_count: usize,
+        channel_stride: usize,
+    ) {
         let normalization = 1.0 / self.group_order as f64;
         for kernel in self.kernels.iter() {
             let left_channel = kernel.left_channel_index as usize;
@@ -399,13 +438,96 @@ impl RuntimeSymmetricGroupColorContraction {
                 }
             }
         }
-        Ok(())
+    }
+
+    #[inline(never)]
+    fn reduce_transformed_low_rank(
+        &self,
+        workspace: &mut RuntimeSymmetricGroupColorWorkspace,
+        lane_count: usize,
+        channel_stride: usize,
+        low_rank_kernels: &[RuntimeSymmetricGroupLowRankKernel],
+    ) {
+        debug_assert_eq!(low_rank_kernels.len(), self.kernels.len());
+        let normalization = 1.0 / self.group_order as f64;
+        for (kernel_index, kernel) in self.kernels.iter().enumerate() {
+            let left_channel = kernel.left_channel_index as usize;
+            let right_channel = kernel.right_channel_index as usize;
+            let left = &workspace.transformed
+                [left_channel * channel_stride..(left_channel + 1) * channel_stride];
+            let right = &workspace.transformed
+                [right_channel * channel_stride..(right_channel + 1) * channel_stride];
+            if left_channel == right_channel {
+                let scalar_blocks: &[Option<RuntimeSymmetricGroupLowRankBlock>] = low_rank_kernels
+                    .get(kernel_index)
+                    .map(|kernel| kernel.blocks.as_ref())
+                    .unwrap_or_default();
+                if scalar_blocks.is_empty() {
+                    for block in self.fft_plan.blocks() {
+                        let dimension = block.dimension();
+                        let offset = block.coefficient_offset();
+                        let coefficients = &kernel.fourier_coefficients
+                            [offset..offset + block.coefficient_count()];
+                        let block_weight = dimension as f64 * normalization * kernel.pair_scale;
+                        contract_real_hermitian_same_channel_block(
+                            left,
+                            coefficients,
+                            dimension,
+                            offset,
+                            lane_count,
+                            lane_count,
+                            block_weight,
+                            &mut workspace.reduced,
+                        );
+                    }
+                } else {
+                    for (block_index, block) in self.fft_plan.blocks().enumerate() {
+                        let dimension = block.dimension();
+                        let offset = block.coefficient_offset();
+                        let coefficients = &kernel.fourier_coefficients
+                            [offset..offset + block.coefficient_count()];
+                        let block_weight = dimension as f64 * normalization * kernel.pair_scale;
+                        contract_real_hermitian_same_channel_block_opportunistic(
+                            left,
+                            coefficients,
+                            scalar_blocks.get(block_index).and_then(Option::as_ref),
+                            dimension,
+                            offset,
+                            lane_count,
+                            lane_count,
+                            block_weight,
+                            &mut workspace.reduced,
+                        );
+                    }
+                }
+            } else {
+                for block in self.fft_plan.blocks() {
+                    let dimension = block.dimension();
+                    let offset = block.coefficient_offset();
+                    let coefficients =
+                        &kernel.fourier_coefficients[offset..offset + block.coefficient_count()];
+                    let block_weight = dimension as f64 * normalization * kernel.pair_scale;
+                    contract_general_cross_block(
+                        left,
+                        right,
+                        coefficients,
+                        dimension,
+                        offset,
+                        lane_count,
+                        lane_count,
+                        block_weight,
+                        &mut workspace.reduced,
+                    );
+                }
+            }
+        }
     }
 }
 
 /// Process-local mutable storage shared by the recurrence and on-the-fly
-/// contraction seams.  Capacity is fixed at load and every transform keeps
-/// the point lane as its innermost coordinate.
+/// contraction seams. Capacity is chosen from the bounded point-tile size no
+/// later than the lane's first reduction and retained thereafter; every
+/// transform keeps the point lane as its innermost coordinate.
 #[derive(Debug)]
 pub(crate) struct RuntimeSymmetricGroupColorWorkspace {
     degree: u32,
@@ -507,6 +629,267 @@ impl RuntimeSymmetricGroupColorWorkspace {
         }
         Ok(&self.reduced[..lane_count])
     }
+}
+
+const LOW_RANK_PIVOT_TOLERANCE_MULTIPLIER: f64 = 64.0;
+const LOW_RANK_MODE_BLOCK: usize = 4;
+
+fn compile_scalar_same_channel_low_rank_block(
+    kernel: &[f64],
+    dimension: usize,
+) -> Option<RuntimeSymmetricGroupLowRankBlock> {
+    if dimension == 0 || kernel.len() != dimension.checked_mul(dimension)? {
+        return None;
+    }
+
+    // The scalar dense evaluator pairs K_ci and K_ic.  Factor exactly that
+    // effective real-symmetric matrix rather than either rounded triangle.
+    let mut effective = vec![0.0; kernel.len()];
+    for column in 0..dimension {
+        for row in 0..=column {
+            let value = if row == column {
+                kernel[column * dimension + row]
+            } else {
+                0.5 * kernel[column * dimension + row] + 0.5 * kernel[row * dimension + column]
+            };
+            if !value.is_finite() {
+                return None;
+            }
+            effective[column * dimension + row] = value;
+            effective[row * dimension + column] = value;
+        }
+    }
+
+    let scale = (0..dimension)
+        .map(|index| effective[index * dimension + index])
+        .fold(f64::NEG_INFINITY, f64::max);
+    if !scale.is_finite() || scale < 0.0 {
+        return None;
+    }
+    let tolerance = LOW_RANK_PIVOT_TOLERANCE_MULTIPLIER * f64::EPSILON * dimension as f64 * scale;
+    if !tolerance.is_finite() {
+        return None;
+    }
+
+    let mut residual_diagonal = (0..dimension)
+        .map(|index| effective[index * dimension + index])
+        .collect::<Vec<_>>();
+    if residual_diagonal.iter().any(|&value| value < -tolerance) {
+        return None;
+    }
+    for value in &mut residual_diagonal {
+        if *value < 0.0 {
+            *value = 0.0;
+        }
+    }
+
+    let mut selected = vec![false; dimension];
+    let mut factors = Vec::<f64>::with_capacity(kernel.len());
+    let mut rank = 0usize;
+    loop {
+        // Ascending traversal plus strict comparison makes equal pivots choose
+        // the lowest original Young-basis index deterministically.
+        let mut pivot = None;
+        for index in 0..dimension {
+            if selected[index] {
+                continue;
+            }
+            if residual_diagonal[index] < -tolerance {
+                return None;
+            }
+            if pivot.is_none_or(|best| residual_diagonal[index] > residual_diagonal[best]) {
+                pivot = Some(index);
+            }
+        }
+        let Some(pivot) = pivot else {
+            break;
+        };
+        let pivot_value = residual_diagonal[pivot];
+        if pivot_value <= tolerance {
+            break;
+        }
+        let pivot_root = pivot_value.sqrt();
+        if !pivot_root.is_finite() || pivot_root == 0.0 {
+            return None;
+        }
+
+        let mut factor_column = vec![0.0; dimension];
+        factor_column[pivot] = pivot_root;
+        for row in 0..dimension {
+            if row == pivot || selected[row] {
+                continue;
+            }
+            let mut value = effective[pivot * dimension + row];
+            for previous in 0..rank {
+                value = (-factors[previous * dimension + row])
+                    .mul_add(factors[previous * dimension + pivot], value);
+            }
+            value /= pivot_root;
+            if !value.is_finite() {
+                return None;
+            }
+            factor_column[row] = value;
+        }
+
+        selected[pivot] = true;
+        residual_diagonal[pivot] = 0.0;
+        for row in 0..dimension {
+            if selected[row] {
+                continue;
+            }
+            let value = factor_column[row];
+            let updated = (-value).mul_add(value, residual_diagonal[row]);
+            if !updated.is_finite() || updated < -tolerance {
+                return None;
+            }
+            residual_diagonal[row] = if updated < 0.0 { 0.0 } else { updated };
+        }
+        factors.extend_from_slice(&factor_column);
+        rank += 1;
+        // Factor cost grows monotonically with rank. Once this block cannot
+        // clear the conservative warm-work gate, no later pivot can recover.
+        if !low_rank_scalar_cost_is_profitable(dimension, rank) {
+            return None;
+        }
+    }
+
+    if !low_rank_scalar_cost_is_profitable(dimension, rank)
+        || !low_rank_factor_reconstructs_effective_kernel(
+            &effective, dimension, rank, &factors, tolerance,
+        )
+    {
+        return None;
+    }
+    Some(RuntimeSymmetricGroupLowRankBlock {
+        rank,
+        factors: factors.into_boxed_slice(),
+    })
+}
+
+fn low_rank_scalar_cost_is_profitable(dimension: usize, rank: usize) -> bool {
+    let dimension = dimension as u128;
+    let rank = rank as u128;
+    let factor_cost = dimension * rank * (dimension + 1);
+    let dense_cost = dimension * (dimension + 1) * (dimension + 1) / 2;
+    factor_cost * 10 <= dense_cost * 9
+}
+
+fn compact_scalar_same_channel_blocks(
+    blocks: Vec<Option<RuntimeSymmetricGroupLowRankBlock>>,
+) -> Box<[Option<RuntimeSymmetricGroupLowRankBlock>]> {
+    if blocks.iter().all(Option::is_none) {
+        Box::default()
+    } else {
+        blocks.into_boxed_slice()
+    }
+}
+
+fn low_rank_factor_reconstructs_effective_kernel(
+    effective: &[f64],
+    dimension: usize,
+    rank: usize,
+    factors: &[f64],
+    pivot_tolerance: f64,
+) -> bool {
+    if effective.len() != dimension.saturating_mul(dimension)
+        || factors.len() != dimension.saturating_mul(rank)
+    {
+        return false;
+    }
+    if !pivot_tolerance.is_finite() {
+        return false;
+    }
+    for column in 0..dimension {
+        for row in 0..dimension {
+            let mut reconstructed = 0.0;
+            for mode in 0..rank {
+                reconstructed = factors[mode * dimension + row]
+                    .mul_add(factors[mode * dimension + column], reconstructed);
+            }
+            let residual = effective[column * dimension + row] - reconstructed;
+            if !residual.is_finite() || residual.abs() > pivot_tolerance {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn contract_real_hermitian_same_channel_block_opportunistic(
+    amplitudes: &[SymmetricGroupComplex64],
+    kernel: &[f64],
+    low_rank: Option<&RuntimeSymmetricGroupLowRankBlock>,
+    dimension: usize,
+    coefficient_offset: usize,
+    lane_capacity: usize,
+    lane_count: usize,
+    weight: f64,
+    reduced: &mut [f64],
+) {
+    if lane_count == 1
+        && let Some(low_rank) = low_rank
+        && low_rank.factors.len() == dimension.saturating_mul(low_rank.rank)
+    {
+        contract_real_hermitian_same_channel_low_rank_block_scalar(
+            amplitudes,
+            low_rank,
+            dimension,
+            coefficient_offset,
+            lane_capacity,
+            weight,
+            reduced,
+        );
+        return;
+    }
+    contract_real_hermitian_same_channel_block(
+        amplitudes,
+        kernel,
+        dimension,
+        coefficient_offset,
+        lane_capacity,
+        lane_count,
+        weight,
+        reduced,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn contract_real_hermitian_same_channel_low_rank_block_scalar(
+    amplitudes: &[SymmetricGroupComplex64],
+    low_rank: &RuntimeSymmetricGroupLowRankBlock,
+    dimension: usize,
+    coefficient_offset: usize,
+    lane_capacity: usize,
+    weight: f64,
+    reduced: &mut [f64],
+) {
+    let mut norm = 0.0;
+    for row in 0..dimension {
+        for mode_start in (0..low_rank.rank).step_by(LOW_RANK_MODE_BLOCK) {
+            let mode_width = (low_rank.rank - mode_start).min(LOW_RANK_MODE_BLOCK);
+            let mut projected_re = [0.0; LOW_RANK_MODE_BLOCK];
+            let mut projected_im = [0.0; LOW_RANK_MODE_BLOCK];
+            for column in 0..dimension {
+                let amplitude =
+                    amplitudes[(coefficient_offset + column * dimension + row) * lane_capacity];
+                for mode_local in 0..mode_width {
+                    let factor = low_rank.factors[(mode_start + mode_local) * dimension + column];
+                    projected_re[mode_local] =
+                        factor.mul_add(amplitude.0, projected_re[mode_local]);
+                    projected_im[mode_local] =
+                        factor.mul_add(amplitude.1, projected_im[mode_local]);
+                }
+            }
+            for mode_local in 0..mode_width {
+                norm = projected_re[mode_local].mul_add(
+                    projected_re[mode_local],
+                    projected_im[mode_local].mul_add(projected_im[mode_local], norm),
+                );
+            }
+        }
+    }
+    reduced[0] = weight.mul_add(norm, reduced[0]);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -966,6 +1349,21 @@ impl RecurrenceColorContraction {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_sparse_sector_domain_for_runtime_test(mut self) -> Self {
+        self.sector_count = 27;
+        self.sector_by_group = self
+            .sector_by_group
+            .iter()
+            .map(|sector| 2 * sector + 1)
+            .collect();
+        self.owner_by_sector = vec![ZERO_SECTOR_OWNER; self.sector_count as usize];
+        for sector in &self.sector_by_group {
+            self.owner_by_sector[*sector as usize] = *sector;
+        }
+        self
+    }
+
     /// Evaluate the complete dense quadratic form owned by the synthetic S3
     /// runtime fixture without entering the symmetric-group reducer.
     ///
@@ -1373,10 +1771,16 @@ pub fn decode_recurrence_color_contraction_v3(
         destination_count,
         stored_entry_count: entry_count,
         stored_logical_entry_count: declared_logical_entry_count,
-        entries: retain_wire_catalog.then_some(entries).unwrap_or_default(),
-        exact_factors: retain_wire_catalog
-            .then_some(exact_factors)
-            .unwrap_or_default(),
+        entries: if retain_wire_catalog {
+            entries
+        } else {
+            Default::default()
+        },
+        exact_factors: if retain_wire_catalog {
+            exact_factors
+        } else {
+            Default::default()
+        },
         ordered_group_ids,
         destination_by_group,
         sector_by_group,
@@ -2021,6 +2425,9 @@ fn build_runtime_symmetric_group_convolution(
         .and_then(|value| value.checked_mul(group_order))
         .ok_or_else(|| malformed("symmetric-group runtime kernel count overflows usize"))?;
     let mut kernels = Vec::with_capacity(channel_count * (channel_count + 1) / 2);
+    let mut scalar_same_channel_low_rank_kernels =
+        Vec::with_capacity(channel_count * (channel_count + 1) / 2);
+    let mut has_scalar_same_channel_low_rank = false;
     let mut inverse_kernel = vec![(0.0, 0.0); group_order];
     let mut transformed_kernel = vec![(0.0, 0.0); group_order];
     let inverse_relative_indices = (0..group_order)
@@ -2077,6 +2484,29 @@ fn build_runtime_symmetric_group_convolution(
             // certified zero, retaining a runtime block would only add warmed
             // traffic and immutable RSS.
             if transformed_kernel.iter().any(|value| value.0 != 0.0) {
+                let fourier_coefficients = transformed_kernel
+                    .iter()
+                    .map(|value| value.0)
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                let scalar_same_channel_blocks = if left_channel_index == right_channel_index {
+                    let blocks = fft_plan
+                        .blocks()
+                        .map(|block| {
+                            let start = block.coefficient_offset();
+                            let end = start + block.coefficient_count();
+                            compile_scalar_same_channel_low_rank_block(
+                                &fourier_coefficients[start..end],
+                                block.dimension(),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    compact_scalar_same_channel_blocks(blocks)
+                } else {
+                    Box::default()
+                };
+                has_scalar_same_channel_low_rank |=
+                    scalar_same_channel_blocks.iter().any(Option::is_some);
                 kernels.push(RuntimeSymmetricGroupKernel {
                     left_channel_index: left_channel_index as u32,
                     right_channel_index: right_channel_index as u32,
@@ -2085,17 +2515,19 @@ fn build_runtime_symmetric_group_convolution(
                     } else {
                         2.0
                     },
-                    fourier_coefficients: transformed_kernel
-                        .iter()
-                        .map(|value| value.0)
-                        .collect::<Vec<_>>()
-                        .into_boxed_slice(),
+                    fourier_coefficients,
+                });
+                scalar_same_channel_low_rank_kernels.push(RuntimeSymmetricGroupLowRankKernel {
+                    blocks: scalar_same_channel_blocks,
                 });
             }
             offset += group_order;
         }
     }
     debug_assert_eq!(offset, kernel_entry_count);
+    debug_assert_eq!(scalar_same_channel_low_rank_kernels.len(), kernels.len());
+    let scalar_same_channel_low_rank_kernels: Option<Arc<[RuntimeSymmetricGroupLowRankKernel]>> =
+        has_scalar_same_channel_low_rank.then(|| Arc::from(scalar_same_channel_low_rank_kernels));
     let residual_entries: Vec<RuntimeFactorizedColorContractionEntry> = entries
         [kernel_entry_count..]
         .iter()
@@ -2127,6 +2559,7 @@ fn build_runtime_symmetric_group_convolution(
         local_group_count: local_group_count as usize,
         fft_plan: Arc::new(fft_plan),
         kernels: kernels.into(),
+        scalar_same_channel_low_rank_kernels,
         residual_entries: residual_entries.into(),
     })
 }
@@ -2674,6 +3107,7 @@ mod tests {
         assert_eq!(runtime.kernels()[0].pair_scale(), 1.0);
         assert_eq!(runtime.kernels()[1].pair_scale(), 2.0);
         let fft_plan = SymmetricGroupFftPlan::new(3).unwrap();
+        assert!(runtime.scalar_same_channel_low_rank_kernels.is_none());
         let raw_cross = [1.0, 2.0, 0.0, -1.0, 0.5, 3.0];
         let inverse_cross = (0..fft_plan.order())
             .map(|index| {
@@ -2703,6 +3137,206 @@ mod tests {
         assert_eq!(plan.logical_entry_count(), 31);
         assert!(plan.entries().is_empty());
         assert!(plan.exact_factors().is_empty());
+    }
+
+    fn test_low_rank_effective_kernel() -> (usize, Vec<f64>) {
+        let dimension = 5;
+        let root_two = 2.0_f64.sqrt();
+        let columns = [
+            [root_two, 0.0, 1.0 / root_two, 0.0, 0.0],
+            [0.0, root_two, 0.0, 1.0 / root_two, 0.0],
+        ];
+        let mut kernel = vec![0.0; dimension * dimension];
+        for column in 0..dimension {
+            for row in 0..dimension {
+                kernel[column * dimension + row] = columns
+                    .iter()
+                    .map(|factor| factor[column] * factor[row])
+                    .sum();
+            }
+        }
+        // Only the effective symmetric part is contracted. Opposite skew
+        // perturbations must therefore leave the derived factor unchanged.
+        kernel[2] += 0.125;
+        kernel[2 * dimension] -= 0.125;
+        (dimension, kernel)
+    }
+
+    #[test]
+    fn scalar_low_rank_factorization_is_deterministic_scale_relative_and_certified() {
+        let (dimension, kernel) = test_low_rank_effective_kernel();
+        let factor = compile_scalar_same_channel_low_rank_block(&kernel, dimension).unwrap();
+        assert_eq!(factor.rank, 2);
+        // Equal leading residual diagonals choose original index zero first
+        // and original index one second.
+        assert!((factor.factors[0] - 2.0_f64.sqrt()).abs() <= 8.0 * f64::EPSILON);
+        assert_eq!(factor.factors[1], 0.0);
+        assert_eq!(factor.factors[dimension], 0.0);
+        assert!((factor.factors[dimension + 1] - 2.0_f64.sqrt()).abs() <= 8.0 * f64::EPSILON);
+
+        let tiny_scale = 1.0e-200;
+        let mut tiny = vec![0.0; dimension * dimension];
+        tiny[0] = tiny_scale;
+        let tiny_factor = compile_scalar_same_channel_low_rank_block(&tiny, dimension).unwrap();
+        assert_eq!(tiny_factor.rank, 1);
+        assert!(tiny_factor.factors[0] > 0.0);
+        assert!(tiny_factor.factors[0] < 1.0e-90);
+
+        let mut effective = kernel.clone();
+        let symmetric = 0.5 * kernel[2] + 0.5 * kernel[2 * dimension];
+        effective[2] = symmetric;
+        effective[2 * dimension] = symmetric;
+        let scale = (0..dimension)
+            .map(|index| effective[index * dimension + index])
+            .fold(f64::NEG_INFINITY, f64::max);
+        let tolerance =
+            LOW_RANK_PIVOT_TOLERANCE_MULTIPLIER * f64::EPSILON * dimension as f64 * scale;
+        assert!(low_rank_factor_reconstructs_effective_kernel(
+            &effective,
+            dimension,
+            factor.rank,
+            &factor.factors,
+            tolerance,
+        ));
+        let mut corrupted = factor.factors.to_vec();
+        corrupted[0] += 1.0e-5;
+        assert!(!low_rank_factor_reconstructs_effective_kernel(
+            &effective,
+            dimension,
+            factor.rank,
+            &corrupted,
+            tolerance,
+        ));
+    }
+
+    #[test]
+    fn scalar_low_rank_factorization_falls_back_for_invalid_or_unprofitable_blocks() {
+        let dimension = 5;
+        let zero = vec![0.0; dimension * dimension];
+        let zero_factor = compile_scalar_same_channel_low_rank_block(&zero, dimension).unwrap();
+        assert_eq!(zero_factor.rank, 0);
+        assert!(zero_factor.factors.is_empty());
+
+        let mut negative_diagonal = zero;
+        negative_diagonal[0] = -1.0;
+        assert!(
+            compile_scalar_same_channel_low_rank_block(&negative_diagonal, dimension).is_none()
+        );
+
+        let mut indefinite = vec![0.0; dimension * dimension];
+        for index in 0..dimension {
+            indefinite[index * dimension + index] = 1.0;
+        }
+        indefinite[1] = 2.0;
+        indefinite[dimension] = 2.0;
+        assert!(compile_scalar_same_channel_low_rank_block(&indefinite, dimension).is_none());
+
+        let mut nonfinite = indefinite;
+        nonfinite[0] = f64::NAN;
+        assert!(compile_scalar_same_channel_low_rank_block(&nonfinite, dimension).is_none());
+
+        let mut full_rank = vec![0.0; dimension * dimension];
+        for index in 0..dimension {
+            full_rank[index * dimension + index] = 1.0;
+        }
+        assert!(compile_scalar_same_channel_low_rank_block(&full_rank, dimension).is_none());
+        assert!(!low_rank_scalar_cost_is_profitable(dimension, dimension));
+        assert!(low_rank_scalar_cost_is_profitable(dimension, 2));
+
+        let compacted = compact_scalar_same_channel_blocks(vec![None, None]);
+        assert!(compacted.is_empty());
+        let compacted = compact_scalar_same_channel_blocks(vec![Some(zero_factor), None]);
+        assert_eq!(compacted.len(), 2);
+        assert!(compacted[0].is_some());
+        assert!(compacted[1].is_none());
+    }
+
+    #[test]
+    fn scalar_low_rank_contraction_matches_dense_and_batches_fall_back_exactly() {
+        let (dimension, kernel) = test_low_rank_effective_kernel();
+        let factor = compile_scalar_same_channel_low_rank_block(&kernel, dimension).unwrap();
+        let coefficient_offset = 3;
+        let lane_capacity = 2;
+        let amplitudes = (0..(coefficient_offset + dimension * dimension) * lane_capacity)
+            .map(|index| {
+                (
+                    ((index * 17 + 5) % 31) as f64 / 11.0 - 1.2,
+                    ((index * 13 + 3) % 29) as f64 / 9.0 - 0.8,
+                )
+            })
+            .collect::<Vec<_>>();
+        let weight = 0.375;
+        let mut dense = [0.25, -0.5];
+        let mut low_rank = dense;
+        contract_real_hermitian_same_channel_block(
+            &amplitudes,
+            &kernel,
+            dimension,
+            coefficient_offset,
+            lane_capacity,
+            1,
+            weight,
+            &mut dense,
+        );
+        contract_real_hermitian_same_channel_block_opportunistic(
+            &amplitudes,
+            &kernel,
+            Some(&factor),
+            dimension,
+            coefficient_offset,
+            lane_capacity,
+            1,
+            weight,
+            &mut low_rank,
+        );
+        let scale = dense[0].abs().max(1.0);
+        assert!((low_rank[0] - dense[0]).abs() <= 2.0e-12 * scale);
+        assert_eq!(low_rank[1], dense[1]);
+
+        let mut dense_batch = [0.25, -0.5];
+        let mut fallback_batch = dense_batch;
+        contract_real_hermitian_same_channel_block(
+            &amplitudes,
+            &kernel,
+            dimension,
+            coefficient_offset,
+            lane_capacity,
+            2,
+            weight,
+            &mut dense_batch,
+        );
+        contract_real_hermitian_same_channel_block_opportunistic(
+            &amplitudes,
+            &kernel,
+            Some(&factor),
+            dimension,
+            coefficient_offset,
+            lane_capacity,
+            2,
+            weight,
+            &mut fallback_batch,
+        );
+        assert_eq!(fallback_batch, dense_batch);
+
+        let malformed_factor = RuntimeSymmetricGroupLowRankBlock {
+            rank: factor.rank,
+            factors: factor.factors[..factor.factors.len() - 1]
+                .to_vec()
+                .into_boxed_slice(),
+        };
+        let mut malformed_fallback = [0.25, -0.5];
+        contract_real_hermitian_same_channel_block_opportunistic(
+            &amplitudes,
+            &kernel,
+            Some(&malformed_factor),
+            dimension,
+            coefficient_offset,
+            lane_capacity,
+            1,
+            weight,
+            &mut malformed_fallback,
+        );
+        assert_eq!(malformed_fallback, dense);
     }
 
     #[test]
@@ -2778,113 +3412,6 @@ mod tests {
                 );
             }
             assert_eq!(&actual[lane_count..], &expected[lane_count..]);
-        }
-    }
-
-    #[test]
-    #[ignore = "developer microbenchmark; run explicitly in release mode"]
-    fn real_hermitian_same_channel_microbenchmark_six_and_seven() {
-        use std::hint::black_box;
-        use std::time::Instant;
-
-        for degree in [6, 7] {
-            let plan = SymmetricGroupFftPlan::new(degree).unwrap();
-            let amplitudes = (0..plan.order())
-                .map(|index| {
-                    (
-                        ((index * 17 + 3) % 101) as f64 / 31.0 - 1.1,
-                        ((index * 13 + 7) % 97) as f64 / 29.0 - 0.9,
-                    )
-                })
-                .collect::<Vec<_>>();
-            let mut kernel = vec![0.0; plan.order()];
-            for block in plan.blocks() {
-                let dimension = block.dimension();
-                let offset = block.coefficient_offset();
-                for column in 0..dimension {
-                    for inner in 0..=column {
-                        let value = 1.0 / (1 + column.abs_diff(inner)) as f64;
-                        kernel[offset + column * dimension + inner] = value;
-                        kernel[offset + inner * dimension + column] = value;
-                    }
-                }
-            }
-
-            let optimized_run = |reduced: &mut [f64]| {
-                reduced[0] = 0.0;
-                for block in plan.blocks() {
-                    contract_real_hermitian_same_channel_block(
-                        &amplitudes,
-                        &kernel[block.coefficient_offset()
-                            ..block.coefficient_offset() + block.coefficient_count()],
-                        block.dimension(),
-                        block.coefficient_offset(),
-                        1,
-                        1,
-                        block.dimension() as f64 / plan.order() as f64,
-                        reduced,
-                    );
-                }
-            };
-            let legacy_run = |reduced: &mut [f64]| {
-                reduced[0] = 0.0;
-                for block in plan.blocks() {
-                    contract_legacy_same_channel_block_scalar(
-                        &amplitudes,
-                        &kernel[block.coefficient_offset()
-                            ..block.coefficient_offset() + block.coefficient_count()],
-                        block.dimension(),
-                        block.coefficient_offset(),
-                        block.dimension() as f64 / plan.order() as f64,
-                        reduced,
-                    );
-                }
-            };
-            let mut optimized = [0.0];
-            let mut legacy = [0.0];
-            optimized_run(&mut optimized);
-            legacy_run(&mut legacy);
-            let scale = legacy[0].abs().max(1.0);
-            assert!((optimized[0] - legacy[0]).abs() <= 2.0e-11 * scale);
-
-            let iterations = if degree == 6 { 512 } else { 64 };
-            let legacy_started = Instant::now();
-            for _ in 0..iterations {
-                legacy_run(black_box(&mut legacy));
-            }
-            let legacy_elapsed = legacy_started.elapsed();
-            let optimized_started = Instant::now();
-            for _ in 0..iterations {
-                optimized_run(black_box(&mut optimized));
-            }
-            let optimized_elapsed = optimized_started.elapsed();
-            eprintln!(
-                "S_{degree} Hermitian contraction: legacy={:.3}us optimized={:.3}us speedup={:.3}x",
-                legacy_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
-                optimized_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
-                legacy_elapsed.as_secs_f64() / optimized_elapsed.as_secs_f64(),
-            );
-        }
-    }
-
-    fn contract_legacy_same_channel_block_scalar(
-        amplitudes: &[SymmetricGroupComplex64],
-        kernel: &[f64],
-        dimension: usize,
-        coefficient_offset: usize,
-        weight: f64,
-        reduced: &mut [f64],
-    ) {
-        for column in 0..dimension {
-            for inner in 0..dimension {
-                let kernel_value = kernel[column * dimension + inner] * weight;
-                for row in 0..dimension {
-                    let left = amplitudes[coefficient_offset + column * dimension + row];
-                    let right = amplitudes[coefficient_offset + inner * dimension + row];
-                    let product_re = left.0.mul_add(right.0, left.1 * right.1);
-                    reduced[0] = kernel_value.mul_add(product_re, reduced[0]);
-                }
-            }
         }
     }
 

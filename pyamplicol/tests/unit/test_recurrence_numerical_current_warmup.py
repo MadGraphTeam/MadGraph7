@@ -1217,6 +1217,7 @@ def _fallback_lowering_output(
         inspection_summary=inspection,
         resolved_helicities=(),
         amplitude_destinations=(),
+        structural_zero_physical_sector_certificate=None,
         exact_sections={},
         generation_profile={"pass": name},
         numerical_current_reuse_report=None,
@@ -2328,6 +2329,9 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
     def binding(*args: object, **kwargs: object) -> object:
         calls.append((args, kwargs))
         Path(str(args[5])).write_bytes(b"pacbin")
+        dispatch_destination = kwargs.get("helicity_dispatch_destination")
+        if dispatch_destination is not None:
+            Path(str(dispatch_destination)).write_bytes(b"dispatch")
         return object()
 
     native = SimpleNamespace(_lower_recurrence_direct_v2=binding)
@@ -2343,21 +2347,28 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
     )
     monkeypatch.setattr(
         generation_service,
-        "active_native_source_identity",
-        lambda: ("source-revision", "a" * 64),
-    )
-    monkeypatch.setattr(
-        generation_service,
         "_validate_rust_recurrence_lowering_result",
-        lambda *_args, **_kwargs: {
+        lambda *_args, **kwargs: {
             "inspection_summary": {},
             "resolved_helicities": (),
             "amplitude_destinations": (),
+            "structural_zero_physical_sector_certificate": None,
             "exact_sections": {},
             "generation_profile": {"serialized_bytes": {"container": len(b"pacbin")}},
             "member_count": 1,
             "unpacked_size_bytes": 6,
             "index_sha256": "b" * 64,
+            "helicity_dispatch": (
+                {
+                    "abi": "pyamplicol-recurrence-helicity-dispatch-v1",
+                    "size_bytes": len(b"dispatch"),
+                    "sha256": hashlib.sha256(b"dispatch").hexdigest(),
+                    "base_runtime_layout_digest": "2" * 64,
+                    "resolved_helicity_count": 4,
+                }
+                if kwargs["expect_helicity_dispatch"]
+                else None
+            ),
         },
     )
     builder = SimpleNamespace(digest="c" * 64, layout="topology-replay")
@@ -2419,21 +2430,45 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         progress_callback=progress,
         direct_template_catalog_json=b'{"a":2,"z":1}',
     )
+    dispatch_destination = tmp_path / "recurrence-helicity-dispatch-v1.bin"
+    dispatched_output = generation_service._invoke_rust_recurrence_lowering_v2(
+        builder,
+        template,
+        cached_catalog,
+        "f" * 64,
+        "1" * 64,
+        tmp_path / "recurrence-runtime-dispatched.pacbin",
+        point_tile_size=17,
+        workspace_mib=23,
+        relation_discovery_mode="off",
+        relation_discovery_precision_digits=101,
+        relation_discovery_probe_count=3,
+        relation_discovery_verification_probe_count=5,
+        relation_discovery_relative_tolerance=1.25e-70,
+        relation_discovery_absolute_tolerance=2.5e-80,
+        relation_discovery_seed=123456789,
+        color_accuracy="full",
+        helicity_dispatch_destination=dispatch_destination,
+        direct_template_catalog_json=b'{"a":2,"z":1}',
+    )
 
     assert output.payload_path == destination
     assert output.generation_profile == {
         "serialized_bytes": {"container": len(b"pacbin")}
     }
     assert cached_output.payload_path == cached_destination
-    assert len(calls) == 2
+    assert dispatched_output.helicity_dispatch is not None
+    assert dispatched_output.helicity_dispatch.payload_path == dispatch_destination
+    assert dispatched_output.helicity_dispatch.payload_sha256 == hashlib.sha256(
+        b"dispatch"
+    ).hexdigest()
+    assert len(calls) == 3
     args, kwargs = calls[0]
     assert args[:2] == (builder, template)
     assert args[2] == b'{"a":2,"z":1}'
     assert args[3:5] == ("f" * 64, "1" * 64)
     assert args[5] == str(destination)
     assert kwargs == {
-        "source_revision": "source-revision",
-        "native_build_inputs_sha256": "a" * 64,
         "point_tile_size": 17,
         "workspace_mib": 23,
         "relation_discovery_mode": "certified-reuse",
@@ -2445,11 +2480,13 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         "relation_discovery_seed": 123456789,
         "color_accuracy": "nlc",
         "relation_discovery_evidence_json": evidence,
+        "helicity_dispatch_destination": None,
         "progress_callback": progress,
     }
     cached_args, cached_kwargs = calls[1]
     assert cached_args[2] == args[2]
     assert cached_kwargs == kwargs
+    assert calls[2][1]["helicity_dispatch_destination"] == str(dispatch_destination)
 
 
 def test_recurrence_service_preserves_native_capacity_message_for_fallback(
@@ -2477,11 +2514,6 @@ def test_recurrence_service_preserves_native_capacity_message_for_fallback(
         generation_service,
         "verify_native_module",
         lambda _module: None,
-    )
-    monkeypatch.setattr(
-        generation_service,
-        "active_native_source_identity",
-        lambda: ("source-revision", "a" * 64),
     )
     builder = SimpleNamespace(digest="c" * 64, layout="topology-replay")
     template = SimpleNamespace(digest="d" * 64)

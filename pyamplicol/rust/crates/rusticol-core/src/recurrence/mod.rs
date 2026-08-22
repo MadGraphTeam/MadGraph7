@@ -12,12 +12,14 @@ mod contact_orbit_owner;
 mod diagnostic;
 pub mod direct_backend;
 mod direct_codec;
+mod direct_helicity_dispatch;
 mod direct_lowering;
 mod direct_pacbin;
 mod direct_plan;
 pub mod direct_runtime;
 mod exact;
 mod fermion_ordering;
+mod helicity_support;
 mod input;
 mod layout;
 pub(crate) mod on_the_fly;
@@ -57,21 +59,33 @@ pub use construct::RecurrenceGenerationTelemetry;
 #[doc(hidden)]
 pub use diagnostic::ConstructionTransitionDiagnosticRowV1;
 pub use direct_codec::{decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2};
+pub use direct_helicity_dispatch::{
+    DirectHelicityDispatch, DirectHelicityDispatchDescriptor, DirectHelicityDispatchParts,
+    DirectHelicityRowGroupDescriptor, DirectHelicitySupportDomainDescriptor,
+    RECURRENCE_HELICITY_DISPATCH_ABI, RecurrenceHelicityDispatchMetadata,
+    decode_recurrence_helicity_dispatch_v1, encode_recurrence_helicity_dispatch_v1,
+    write_recurrence_helicity_dispatch_v1_atomic,
+};
 #[cfg(test)]
 pub(crate) use direct_lowering::validated_template_fixture;
 pub use direct_lowering::{
     DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,
     PreparedDirectExecutorKey, lower_recurrence_direct_plan_v2,
+    lower_recurrence_direct_plan_v2_with_helicity_dispatch,
     lower_recurrence_direct_plan_v2_with_relation_discovery, lower_recurrence_direct_v2,
 };
 pub(crate) use direct_pacbin::validate_recurrence_color_projection_certificate;
 pub use direct_pacbin::{
     RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
-    RecurrenceDirectPacbinMetadata, bind_recurrence_color_projection_certificate,
-    load_recurrence_direct_plan_pacbin, write_recurrence_direct_plan_pacbin,
+    RecurrenceDirectPacbinMetadata, load_recurrence_direct_plan_pacbin,
+    write_recurrence_direct_plan_pacbin,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
 pub(crate) use direct_plan::DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
+#[cfg(test)]
+pub(crate) use direct_plan::tests::{
+    valid_parts as valid_direct_plan_parts_fixture, valid_plan as valid_direct_plan_fixture,
+};
 pub use direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_NONE_U32,
     DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
@@ -85,6 +99,9 @@ pub use direct_plan::{
     RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI, RECURRENCE_DIRECT_TEMPLATE_ABI,
 };
 pub use exact::{ExactComplexRational, ExactRational};
+pub use helicity_support::{
+    AllFlowHelicityMask, AllFlowHelicitySupportProjection, project_all_flow_helicity_support,
+};
 pub use input::{
     CanonicalInputSection, CheckedTableRange, MultiwordMaskCatalogView,
     RecurrenceBuilderInputHeader, canonical_input_digest, checked_u32_len, checked_u64_len,
@@ -103,8 +120,9 @@ pub use on_the_fly::{
     on_the_fly_test_support_probe_v1,
 };
 pub use program::{
-    ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
-    ClosureProofMetadataV2, RecurrenceAmplitudeDestination, RecurrenceClosureTerm,
+    CLOSURE_TARGET_DOMAIN_PROOF_KIND, ClosureCandidateDomainCertificateV1,
+    ClosureExecutionProofGroupV2, ClosureProofContributionV2, ClosureProofMetadataV2,
+    ClosureTargetDomainCertificateV1, RecurrenceAmplitudeDestination, RecurrenceClosureTerm,
     RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization, RecurrenceProgram,
     RecurrenceReplayTarget, RecurrenceResolvedHelicity, ReflectionCertificateV1,
     ThreeLineTraversalCertificateV1, ThreeLineTraversalKindV1, closure_component_factor_digest_v2,

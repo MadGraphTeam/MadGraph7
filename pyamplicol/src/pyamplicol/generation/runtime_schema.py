@@ -293,7 +293,11 @@ def _current_slots(
                 "external_mask": index.external_mask,
                 "external_labels": list(index.external_labels),
                 "momentum_mask": index.momentum_mask,
-                "helicity_ancestry": str(index.helicity_ancestry),
+                # Decimal conversion is capped by Python for very wide
+                # full-colour helicity masks.  The runtime contract accepts
+                # canonical hexadecimal integers and does not interpret this
+                # diagnostic-only field on the hot path.
+                "helicity_ancestry": hex(index.helicity_ancestry),
                 "chirality": index.chirality,
                 "spin_state": _spin_state(index.spin_state),
                 "flavour_flow": list(index.flavour_flow),

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
+#![allow(dead_code)] // Poison hooks are exercised only by the opt-in probe harness.
+
 //! Feature-only poison guard for the genuine on-the-fly artifact probe.
 
 use super::*;

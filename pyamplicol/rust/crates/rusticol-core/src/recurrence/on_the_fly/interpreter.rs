@@ -1,6 +1,50 @@
 // SPDX-License-Identifier: 0BSD
 
+#![allow(dead_code)] // Query-local compatibility path; production uses persisted families.
+
 use super::*;
+use crate::recurrence::{
+    DirectResolvedSourceSelection, DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow,
+};
+
+/// Borrowed authenticated tables used to cold-bind one selected-helicity
+/// source program.
+///
+/// The direct plan remains the serialized authority.  A process-owned source
+/// resolver consumes this view once when a persisted helicity family is
+/// prepared and returns compact executable rows; no table from this view is
+/// retained by the warm program.
+#[derive(Clone, Copy)]
+pub(crate) struct OnTheFlyUnionSourceBindingView<'a> {
+    pub(crate) sources: &'a [DirectSourceRow],
+    pub(crate) variants: &'a [DirectSourceDispatchVariantDescriptor],
+    pub(crate) embeddings: &'a [DirectSourceEmbeddingRow],
+    pub(crate) selections: &'a [DirectResolvedSourceSelection],
+    pub(crate) exact_factors: &'a [ExactComplexRational],
+    pub(crate) current_component_count: u32,
+    pub(crate) momentum_form_count: u32,
+    pub(crate) parameter_count: u32,
+}
+
+/// Opaque, family-local source program produced by one cold authenticated
+/// binding.  Implementations own every template and embedding descriptor they
+/// need, so execution neither borrows the direct plan nor searches a source
+/// domain.
+pub(crate) trait OnTheFlyBoundUnionSourceProgram {
+    /// Execute against views already authenticated by `validate_direct_views`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must provide live, nonaliasing Direct-Arena views whose
+    /// declared shapes match the plan used for cold binding.
+    unsafe fn execute(
+        &self,
+        arena: DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        point_count: u32,
+    ) -> RusticolResult<()>;
+}
 
 /// Resolved prepared executor borrowed from a lane-owned pool/binding.
 #[derive(Clone, Copy)]
@@ -8,11 +52,57 @@ pub(crate) struct ResolvedOnTheFlyExecutor {
     pub(crate) direct_executor_id: u32,
     pub(crate) handle: DirectExecutorHandle,
     pub(crate) parent_permutation: [u8; 2],
+    /// Exact process-bound proof that this prepared callback accepts a
+    /// singleton arena whose physical point stride is one. Query families
+    /// use the packed layout only when every resolved row-group member
+    /// carries this capability.
+    pub(crate) packed_singleton_capable: bool,
+    /// Authenticated intrinsic-only native contribution capability used by
+    /// fanout and interaction rewrites. SymJIT, compiled-native, source,
+    /// finalization, and closure bindings keep None.
+    pub(crate) interaction_capability: Option<DirectInteractionExecutorCapability>,
 }
 
 /// Semantic resolver implemented by the lane-owned prepared executor pool.
 pub(crate) trait OnTheFlyPreparedExecutorResolver {
     fn resolve(&self, key: OnTheFlyExecutorKeyV1) -> RusticolResult<ResolvedOnTheFlyExecutor>;
+
+    /// Resolve an executor already authenticated by a persisted direct plan.
+    /// Query-local traces use [`Self::resolve`]; persisted helicity families
+    /// need no second semantic-key catalog because the plan layout owns the
+    /// dense executor IDs and row parent order.
+    fn resolve_direct_executor(
+        &self,
+        _direct_executor_id: u32,
+        _role: DirectExecutorRole,
+    ) -> RusticolResult<ResolvedOnTheFlyExecutor> {
+        Err(integrity(
+            "prepared executor resolver does not support persisted direct-plan IDs",
+        ))
+    }
+
+    /// Runtime-helicity source dispatcher owned beside the prepared pool.
+    fn union_source_dispatch(&self) -> RusticolResult<DirectUnionSourceDispatchHandle> {
+        Err(integrity(
+            "prepared executor resolver has no all-flow-union source dispatcher",
+        ))
+    }
+
+    /// Cold-bind one selected all-flow source schedule.  The default keeps
+    /// query-only resolvers deliberately incapable of executing a persisted
+    /// selector family.
+    fn bind_union_source_program(
+        &self,
+        _view: OnTheFlyUnionSourceBindingView<'_>,
+    ) -> RusticolResult<Box<dyn OnTheFlyBoundUnionSourceProgram>> {
+        Err(integrity(
+            "prepared executor resolver cannot cold-bind all-flow-union sources",
+        ))
+    }
+
+    fn union_source_packed_singleton_capable(&self) -> bool {
+        false
+    }
 
     /// Invalidate any prepared-context caches that borrow row or arena pointers.
     /// Native/Rust callbacks retain no such pointers and need no work here.

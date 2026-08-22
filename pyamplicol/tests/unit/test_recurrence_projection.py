@@ -838,8 +838,7 @@ def test_symmetric_group_anchor_falls_back_without_exact_template_contract() -> 
     assert logical.physical_sectors[0].closure_source_slot == 3
 
 
-def test_symmetric_group_anchor_preserves_n7_n8_factorial_trace_domains_without_replay(
-) -> None:
+def test_symmetric_group_anchor_preserves_high_n_factorial_trace_domains() -> None:
     model = BuiltinSMModel()
     catalog = build_recurrence_template_catalog(
         model,
@@ -882,8 +881,8 @@ def test_contracted_color_owner_map_rejects_an_unproved_missing_sector() -> None
         normalization=_normalization(),
     )
 
-    with pytest.raises(ValueError, match="no independent structural-zero certificate"):
-        recurrence_color_sector_owner_map(logical, {0})
+    with pytest.raises(ValueError, match="no complete structural-zero certificate"):
+        recurrence_color_sector_owner_map(logical, {0}, set())
 
 
 def test_contracted_color_owner_map_preserves_open_string_singlets() -> None:
@@ -909,8 +908,75 @@ def test_contracted_color_owner_map_preserves_open_string_singlets() -> None:
         ),
     )
 
-    with pytest.raises(ValueError, match="no independent structural-zero certificate"):
-        recurrence_color_sector_owner_map(logical, {0})
+    with pytest.raises(ValueError, match="no complete structural-zero certificate"):
+        recurrence_color_sector_owner_map(logical, {0}, set())
+
+
+def test_contracted_color_owner_map_accepts_a_complete_zero_class() -> None:
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+
+    assert recurrence_color_sector_owner_map(logical, {0}, {1}) == (
+        0,
+        0xFFFF_FFFF,
+    )
+
+
+def test_contracted_color_owner_map_rejects_partial_zero_owner_class() -> None:
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+    first, second = logical.physical_sectors
+    logical = replace(
+        logical,
+        physical_sectors=(first, replace(second, open_strings=first.open_strings)),
+    )
+
+    with pytest.raises(ValueError, match="uncertified sectors=\\[1\\]"):
+        recurrence_color_sector_owner_map(logical, set(), {0})
+    assert recurrence_color_sector_owner_map(logical, set(), {0, 1}) == (
+        0xFFFF_FFFF,
+        0xFFFF_FFFF,
+    )
+
+
+def test_contracted_color_owner_map_rejects_active_zero_overlap() -> None:
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+
+    with pytest.raises(ValueError, match="overlaps active sectors"):
+        recurrence_color_sector_owner_map(logical, {0}, {0, 1})
+
+
+def test_contracted_color_owner_map_rejects_out_of_range_certificate() -> None:
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+    )
+
+    with pytest.raises(ValueError, match="references unknown sectors"):
+        recurrence_color_sector_owner_map(logical, {0}, {2})
 
 
 def test_all_singlet_sector_uses_smallest_fermionic_source_as_closure_anchor() -> None:
@@ -1020,7 +1086,7 @@ def test_closure_anchor_fails_closed_for_ambiguous_leg_spin_metadata(
         )
 
 
-def test_projection_rejects_replay_that_moves_all_singlet_closure_anchor() -> None:
+def test_projection_does_not_materialize_source_incompatible_anchor_replay() -> None:
     process = _all_singlet_process()
     labels = tuple(leg.label for leg in process.legs)
     plan = GenericColorPlan(
@@ -1048,7 +1114,7 @@ def test_projection_rejects_replay_that_moves_all_singlet_closure_anchor() -> No
         residual_sector_ids=(),
     )
 
-    with pytest.raises(RecurrenceProjectionError, match="closure anchor"):
+    with pytest.raises(RecurrenceProjectionError, match="crossing contract"):
         project_recurrence_process_v1(
             process,
             plan,
@@ -1074,11 +1140,17 @@ def test_folded_trace_reflection_remains_a_public_runtime_flow() -> None:
         ),
         trace_reflections_folded=True,
     )
+    replay = LCColorTopologyReplayPlan(
+        physical_sector_ids=(0,),
+        partitions=(),
+        residual_sector_ids=(0,),
+    )
     logical = project_recurrence_process_v1(
         process,
         plan,
         _catalog_with_reflection_phases(-1),
-        layout="all-flow-union",
+        layout="topology-replay",
+        topology_replay=replay,
         normalization=_normalization(),
     )
 
@@ -1091,6 +1163,13 @@ def test_folded_trace_reflection_remains_a_public_runtime_flow() -> None:
         0,
     )
     assert logical.public_flows[1].source_slot_permutation == (0, 1, 2, 3)
+    assert len(logical.replay_partitions) == 1
+    residual = logical.replay_partitions[0]
+    assert residual.proof_algorithm == (
+        "canonical-recurrence-identity-materialization-v1"
+    )
+    assert residual.representative_sector_id == residual.materialized_sector_id == 0
+    assert residual.targets[0].source_slot_permutation == (0, 1, 2, 3)
     assert len(build_recurrence_builder_input_v1(logical).canonical_digest) == 64
 
 
@@ -1267,6 +1346,61 @@ def test_non_lc_projection_requires_contracted_color_union(accuracy: str) -> Non
             layout="all-flow-union",
             normalization=_normalization(),
         )
+
+    physical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+        contracted_physical_color_union=True,
+    )
+    assert physical.layout == "all-flow-union"
+    assert physical.replay_partitions == ()
+    assert physical.selected_public_flow_ids is None
+    assert physical.selected_source_coverage is None
+
+
+def test_contracted_physical_union_densely_projects_open_line_owners() -> None:
+    process = build_process_ir("d d~ > d d~", color_accuracy="full")
+    fundamentals = process.fundamental_labels
+    antifundamentals = process.antifundamental_labels
+    assert len(fundamentals) == len(antifundamentals) == 2
+    first = LCOpenColorLine(fundamentals[0], antifundamentals[0], ())
+    second = LCOpenColorLine(fundamentals[1], antifundamentals[1], ())
+    first_word = (*first.coloured_labels, *second.coloured_labels)
+    second_word = (*second.coloured_labels, *first.coloured_labels)
+    plan = GenericColorPlan(
+        process=process,
+        color_accuracy="full",
+        sectors=(
+            LCColorSector(
+                id=0,
+                kind="open-lines",
+                open_color_lines=(first, second),
+                word_labels=first_word,
+            ),
+            LCColorSector(
+                id=1,
+                kind="open-lines",
+                open_color_lines=(second, first),
+                word_labels=second_word,
+            ),
+        ),
+    )
+
+    logical = project_recurrence_process_v1(
+        process,
+        plan,
+        _catalog(),
+        layout="all-flow-union",
+        normalization=_normalization(),
+        contracted_physical_color_union=True,
+    )
+
+    assert tuple(sector.sector_id for sector in logical.physical_sectors) == (0,)
+    assert tuple(flow.construction_sector_id for flow in logical.public_flows) == (0,)
+    assert logical.replay_partitions == ()
 
 
 def test_projection_rejects_truncated_plan_and_allows_residual_only_replay() -> None:

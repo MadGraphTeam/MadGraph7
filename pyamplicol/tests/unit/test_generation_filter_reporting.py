@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 import pyamplicol.generation.service as service_module
@@ -63,8 +65,8 @@ def test_generation_reports_structural_reduction_and_helicity_recurrence() -> No
     assert isinstance(recurrence, dict)
     assert recurrence["contract_version"] == HELICITY_RECURRENCE_CONTRACT_VERSION
     assert recurrence["residual_current_count"] == 0
-    assert len(prepared.validation_points) == 2
-    assert [point.seed for point in prepared.validation_points] == [12345, 12346]
+    assert len(prepared.validation_points) == 1
+    assert [point.seed for point in prepared.validation_points] == [12345]
 
     metadata_only_backend = service_module.GenerationBackend(
         GenerationConfig(
@@ -186,6 +188,59 @@ def test_numerical_current_reuse_opt_out_skips_every_warmup_capture(
         assert report["state"] == "disabled-by-user"
         assert report["candidate_capture"] is None
         assert report["verification_capture"] is None
+
+
+def test_full_color_opt_out_skips_inapplicable_projection_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = BuiltinSMModel()
+    backend = service_module.GenerationBackend(
+        RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy="full"),
+            generation=GenerationConfig(
+                relation_discovery=GenerationRelationDiscoveryConfig(mode="off")
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        ),
+        None,
+    )
+    process_ir = build_process_ir("d d~ > z", color_accuracy="full")
+    dag, coverage = backend._compile_concrete_process(process_ir, model)
+    current = dag.currents[0]
+    dag = replace(
+        dag,
+        currents=(
+            replace(
+                current,
+                index=replace(current.index, helicity_ancestry=10**4300),
+            ),
+            *dag.currents[1:],
+        ),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "build_helicity_recurrence_plan",
+        lambda *_args, **_kwargs: None,
+    )
+    expanded = service_module._ExpandedProcess(
+        request=ProcessRequest.parse("d d~ > z", name="ddbar_z_full"),
+        process_ir=process_ir,
+        aliases=(),
+    )
+
+    prepared = backend._prepare_warmup_process(
+        service_module._DagProcess(expanded, dag, coverage),
+        model,
+        index=0,
+        phase=PhaseHandle("test-full-opt-out", None, 1),
+    )
+
+    projection = prepared.filters["dynamic_color_projection"]
+    assert projection["equality_check_status"] == "not-applicable-color-accuracy"
+    assert projection["color_accuracy"] == "full"
+    assert not any(key.endswith("_sha256") for key in projection)
+    assert "old_to_new_current_ids" not in projection
 
 
 @pytest.mark.parametrize(

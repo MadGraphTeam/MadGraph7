@@ -633,12 +633,12 @@ impl Runtime {
             )));
         }
         let momenta = momenta.as_slice().to_vec();
-        if let Some(callback) = progress_callback.as_ref() {
-            if !callback.bind(py).is_callable() {
-                return Err(PyTypeError::new_err(
-                    "on-the-fly warm_up progress_callback must be callable or None",
-                ));
-            }
+        if let Some(callback) = progress_callback.as_ref()
+            && !callback.bind(py).is_callable()
+        {
+            return Err(PyTypeError::new_err(
+                "on-the-fly warm_up progress_callback must be callable or None",
+            ));
         }
         let callback_error = Arc::new(Mutex::new(None));
         let detached_callback_error = Arc::clone(&callback_error);
@@ -1223,7 +1223,7 @@ fn nested_f64_values(
     let point_width = helicity_count
         .checked_mul(color_count)
         .ok_or_else(|| EvaluationError::new_err("resolved shape overflow"))?;
-    if point_width == 0 || values.len() % point_width != 0 {
+    if point_width == 0 || !values.len().is_multiple_of(point_width) {
         return Err(EvaluationError::new_err(
             "resolved value buffer does not match its shape",
         ));

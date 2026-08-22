@@ -122,6 +122,20 @@ impl PhysicsRuntime {
         Ok(indices)
     }
 
+    pub(super) fn canonical_total_helicity_selector<'a>(
+        &self,
+        ids: Option<&'a BTreeSet<String>>,
+    ) -> Option<&'a BTreeSet<String>> {
+        canonical_total_axis_selector(ids, &self.helicity_index_by_id)
+    }
+
+    pub(super) fn canonical_total_color_selector<'a>(
+        &self,
+        ids: Option<&'a BTreeSet<String>>,
+    ) -> Option<&'a BTreeSet<String>> {
+        canonical_total_axis_selector(ids, &self.color_index_by_id)
+    }
+
     pub(super) fn validate_helicity_id_slice(&self, ids: Option<&[String]>) -> RusticolResult<()> {
         self.validate_id_slice(ids, &self.helicity_index_by_id, "helicity")
     }
@@ -673,6 +687,15 @@ impl PhysicsRuntime {
             color_indices,
         })
     }
+}
+
+fn canonical_total_axis_selector<'a>(
+    ids: Option<&'a BTreeSet<String>>,
+    available: &BTreeMap<String, usize>,
+) -> Option<&'a BTreeSet<String>> {
+    ids.filter(|ids| {
+        ids.len() != available.len() || ids.iter().any(|id| !available.contains_key(id))
+    })
 }
 
 fn numeric_reduction_group(

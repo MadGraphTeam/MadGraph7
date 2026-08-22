@@ -2,13 +2,17 @@
 
 //! Bounded parsing and semantic validation for recurrence execution manifests.
 
-use crate::engine::SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY;
+use crate::engine::{
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+};
 use crate::recurrence::direct_backend::RECURRENCE_DIRECT_BACKEND_ABI;
 use crate::recurrence::template::RECURRENCE_TEMPLATE_INPUT_ABI;
 use crate::recurrence::{
-    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
-    RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
-    RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
+    CLOSURE_TARGET_DOMAIN_PROOF_KIND, RECURRENCE_BUILDER_INPUT_ABI,
+    RECURRENCE_COLOR_CONTRACTION_CODEC_ABI, RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER,
+    RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+    RECURRENCE_DIRECT_TEMPLATE_ABI, RECURRENCE_HELICITY_DISPATCH_ABI,
     RECURRENCE_LC_COLOR_CAPABILITY, RECURRENCE_PLAN_ABI, RECURRENCE_RUNTIME_CAPABILITY,
     RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI, relation_certificate_algorithm,
 };
@@ -22,8 +26,13 @@ pub(super) const RECURRENCE_RUNTIME_STORAGE_ABI: &str = "pacbin-v1";
 pub(super) const RECURRENCE_RUNTIME_CONTAINER_KIND: &str =
     "pyamplicol-recurrence-runtime-container";
 pub(super) const RECURRENCE_RUNTIME_CONTAINER_SCHEMA: u16 = 1;
-pub(super) const RECURRENCE_PROCESS_BINDING_ABI: &str = "pyamplicol-recurrence-process-binding-v2";
+pub(super) const RECURRENCE_PROCESS_BINDING_ABI: &str = "pyamplicol-recurrence-process-binding-v4";
 pub(super) const RECURRENCE_PROCESS_BINDING_PATH: &str = "recurrence-binding.bin";
+pub(super) const RECURRENCE_HELICITY_SELECTOR_BINDING_PATH: &str = "helicity-selector-binding.bin";
+pub(super) const RECURRENCE_HELICITY_DISPATCH_PATH: &str = "recurrence-helicity-dispatch-v1.bin";
+pub(super) const RECURRENCE_HELICITY_SELECTOR_COMPANION_KIND: &str =
+    "pyamplicol-recurrence-helicity-selector-companion-v2";
+pub(super) const RECURRENCE_PRIMARY_LOCAL_COLOR_VIEW: &str = "primary-local-color-view-v1";
 pub(super) const RECURRENCE_COLOR_CONTRACTION_PATH: &str = "recurrence-color.bin";
 pub(super) const RECURRENCE_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
@@ -40,16 +49,20 @@ pub(super) struct RecurrenceExecutionManifest {
     pub(super) key: String,
     pub(super) color_accuracy: String,
     pub(super) external_pdg_order: Vec<i32>,
+    pub(super) process_digest: Option<String>,
     pub(super) builder_input_abi: String,
     pub(super) recurrence_plan_abi: String,
     pub(super) runtime_layout_abi: String,
     pub(super) direct_template_abi: String,
     pub(super) direct_backend_abi: String,
+    pub(super) compiled_model_digest: String,
+    pub(super) recurrence_template_catalog_digest: String,
     pub(super) prepared_kernel_pack_digest: String,
     pub(super) direct_template_catalog_digest: String,
     pub(super) kernel_pack: RecurrenceKernelPackReference,
     pub(super) runtime_options: RecurrenceRuntimeOptions,
     pub(super) runtime_metadata: RecurrenceRuntimeMetadata,
+    pub(super) helicity_selector_companion: Option<RecurrenceHelicitySelectorCompanionManifest>,
     pub(super) plan: RecurrencePlanSummary,
     pub(super) recurrence_summary: RecurrenceSummary,
 }
@@ -82,8 +95,41 @@ pub(super) struct RecurrencePlanSummary {
     pub(super) direct_template_catalog_digest: String,
     pub(super) required_runtime_capabilities: Vec<String>,
     pub(super) runtime_schedule: RecurrenceRuntimeContainer,
+    #[serde(default)]
+    pub(super) helicity_dispatch: Option<RecurrenceHelicityDispatchReference>,
     pub(super) process_binding: RecurrenceProcessBinding,
     pub(super) inspection_summary: RecurrenceInspectionSummary,
+}
+
+/// One pre-lowered physical-colour schedule plus an exact runtime-helicity
+/// dispatch.  Physics and color storage remain owned by the enclosing
+/// recurrence process.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceHelicitySelectorCompanionManifest {
+    pub(super) schema_version: u32,
+    pub(super) kind: String,
+    pub(super) process_digest: String,
+    pub(super) plan: RecurrencePlanSummary,
+    pub(super) color_contraction: RecurrenceHelicitySelectorColorView,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceHelicityDispatchReference {
+    pub(super) abi: String,
+    pub(super) path: String,
+    pub(super) size_bytes: u64,
+    pub(super) sha256: String,
+    pub(super) base_runtime_layout_digest: String,
+    pub(super) resolved_helicity_count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceHelicitySelectorColorView {
+    pub(super) source: String,
+    pub(super) view: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -92,8 +138,8 @@ pub(super) struct RecurrenceProcessBinding {
     pub(super) abi: String,
     pub(super) process_id: String,
     pub(super) schedule_digest: String,
-    #[serde(default)]
-    pub(super) native_schedule_semantic_digest: Option<String>,
+    pub(super) native_schedule_semantic_digest: String,
+    pub(super) process_digest: String,
     pub(super) process_semantic_digest: String,
     pub(super) process_support_words: Vec<u64>,
     pub(super) remap: RecurrenceProcessRemap,
@@ -188,7 +234,20 @@ pub(super) struct RecurrenceInspectionSummary {
     pub(super) color_projection_certificate: Option<RecurrenceColorProjectionCertificate>,
     #[serde(default)]
     pub(super) relation_discovery: Option<RecurrenceRelationDiscoverySummary>,
+    #[serde(default)]
+    pub(super) structural_zero_physical_sector_certificate:
+        Option<RecurrenceStructuralZeroPhysicalSectorCertificate>,
     pub(super) generation_timings_seconds: RecurrenceGenerationTimings,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceStructuralZeroPhysicalSectorCertificate {
+    pub(super) proof_kind: String,
+    pub(super) semantic_digest: String,
+    pub(super) sector_count: u64,
+    pub(super) resolved_helicity_count: u64,
+    pub(super) certified_structural_zero_sector_count: u64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -689,16 +748,19 @@ impl RecurrenceExecutionManifest {
             .as_ref()
             .and_then(|reference| reference.factorization.as_ref())
             .is_some_and(|factorization| factorization.kind == "symmetric-group-fourier");
+        let has_helicity_selector_companion = self.helicity_selector_companion.is_some();
         validate_capabilities(
             &self.required_runtime_capabilities,
             &self.color_accuracy,
             uses_symmetric_group_fft,
+            has_helicity_selector_companion,
             "recurrence execution manifest",
         )?;
         validate_capabilities(
             &outer.required_runtime_capabilities,
             &self.color_accuracy,
             uses_symmetric_group_fft,
+            has_helicity_selector_companion,
             "outer recurrence process",
         )?;
         validate_direct_contract(
@@ -708,6 +770,11 @@ impl RecurrenceExecutionManifest {
             &self.direct_template_abi,
             &self.direct_backend_abi,
             "recurrence execution manifest",
+        )?;
+        parse_sha256(&self.compiled_model_digest, "recurrence compiled model")?;
+        parse_sha256(
+            &self.recurrence_template_catalog_digest,
+            "recurrence template catalog",
         )?;
         parse_sha256(
             &self.prepared_kernel_pack_digest,
@@ -731,19 +798,37 @@ impl RecurrenceExecutionManifest {
             ));
         }
         self.runtime_options.validate()?;
-        self.plan.validate(
-            &self.key,
-            &self.prepared_kernel_pack_digest,
-            &self.direct_template_catalog_digest,
-            &self.color_accuracy,
+        self.plan.validate(RecurrencePlanValidation {
+            process_key: &self.key,
+            prepared_kernel_pack_digest: &self.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &self.direct_template_catalog_digest,
+            color_accuracy: &self.color_accuracy,
             uses_symmetric_group_fft,
-        )?;
+            has_helicity_selector_companion,
+            role: RecurrencePlanRole::Primary,
+        })?;
         self.recurrence_summary.validate()?;
         self.runtime_metadata.validate(
             &self.external_pdg_order,
             &self.color_accuracy,
             &self.plan.inspection_summary,
         )?;
+        if has_helicity_selector_companion != self.process_digest.is_some() {
+            return Err(RusticolError::integrity(
+                "recurrence process digest must appear exactly with its helicity-selector companion",
+            ));
+        }
+        if let Some(process_digest) = &self.process_digest {
+            parse_sha256(process_digest, "recurrence process")?;
+            if process_digest != &self.plan.process_binding.process_digest {
+                return Err(RusticolError::integrity(
+                    "recurrence companion process digest disagrees with the primary process binding",
+                ));
+            }
+        }
+        if let Some(companion) = &self.helicity_selector_companion {
+            companion.validate(self, uses_symmetric_group_fft)?;
+        }
 
         let inspection = &self.plan.inspection_summary;
         let remap = &self.plan.process_binding.remap;
@@ -769,6 +854,22 @@ impl RecurrenceExecutionManifest {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RecurrencePlanRole {
+    Primary,
+    HelicitySelector,
+}
+
+struct RecurrencePlanValidation<'a> {
+    process_key: &'a str,
+    prepared_kernel_pack_digest: &'a str,
+    direct_template_catalog_digest: &'a str,
+    color_accuracy: &'a str,
+    uses_symmetric_group_fft: bool,
+    has_helicity_selector_companion: bool,
+    role: RecurrencePlanRole,
+}
+
 impl RecurrenceRuntimeOptions {
     fn validate(self) -> RusticolResult<()> {
         if self.point_tile_size == 0 {
@@ -786,14 +887,16 @@ impl RecurrenceRuntimeOptions {
 }
 
 impl RecurrencePlanSummary {
-    fn validate(
-        &self,
-        process_key: &str,
-        prepared_kernel_pack_digest: &str,
-        direct_template_catalog_digest: &str,
-        color_accuracy: &str,
-        uses_symmetric_group_fft: bool,
-    ) -> RusticolResult<()> {
+    fn validate(&self, validation: RecurrencePlanValidation<'_>) -> RusticolResult<()> {
+        let RecurrencePlanValidation {
+            process_key,
+            prepared_kernel_pack_digest,
+            direct_template_catalog_digest,
+            color_accuracy,
+            uses_symmetric_group_fft,
+            has_helicity_selector_companion,
+            role,
+        } = validation;
         if self.kind != RECURRENCE_RUNTIME_KIND {
             return Err(RusticolError::compatibility(format!(
                 "unsupported recurrence plan kind {:?}",
@@ -831,13 +934,37 @@ impl RecurrencePlanSummary {
             &self.required_runtime_capabilities,
             color_accuracy,
             uses_symmetric_group_fft,
+            has_helicity_selector_companion,
             "nested recurrence plan",
         )?;
+        if self.helicity_dispatch.is_some() != (role == RecurrencePlanRole::HelicitySelector) {
+            return Err(RusticolError::integrity(match role {
+                RecurrencePlanRole::Primary => {
+                    "primary recurrence plan must not carry a helicity dispatch"
+                }
+                RecurrencePlanRole::HelicitySelector => {
+                    "recurrence helicity-selector plan requires a helicity dispatch"
+                }
+            }));
+        }
         self.runtime_schedule.validate()?;
-        self.process_binding.validate(process_key)?;
+        let binding_path = match role {
+            RecurrencePlanRole::Primary => RECURRENCE_PROCESS_BINDING_PATH,
+            RecurrencePlanRole::HelicitySelector => RECURRENCE_HELICITY_SELECTOR_BINDING_PATH,
+        };
+        self.process_binding.validate(process_key, binding_path)?;
         self.inspection_summary
             .validate(process_key, color_accuracy)?;
-        if self.process_binding.schedule_digest != self.inspection_summary.schedule_digest
+        let schedule_identity_matches = match role {
+            RecurrencePlanRole::Primary => {
+                self.process_binding.schedule_digest == self.inspection_summary.schedule_digest
+            }
+            RecurrencePlanRole::HelicitySelector => {
+                self.process_binding.native_schedule_semantic_digest
+                    == self.inspection_summary.schedule_digest
+            }
+        };
+        if !schedule_identity_matches
             || self.process_binding.process_semantic_digest
                 != self.inspection_summary.semantic_digest
             || self.process_binding.process_semantic_digest != self.builder_input_sha256
@@ -854,6 +981,9 @@ impl RecurrencePlanSummary {
             return Err(RusticolError::integrity(
                 "recurrence root schedule path disagrees with its binding digest",
             ));
+        }
+        if let Some(dispatch) = self.helicity_dispatch.as_ref() {
+            dispatch.validate(&self.process_binding, &self.inspection_summary)?;
         }
         let member = &self.inspection_summary.runtime_container_member;
         let certificate = self
@@ -881,6 +1011,223 @@ impl RecurrencePlanSummary {
         }
         Ok(())
     }
+}
+
+impl RecurrenceHelicitySelectorCompanionManifest {
+    fn validate(
+        &self,
+        primary: &RecurrenceExecutionManifest,
+        uses_symmetric_group_fft: bool,
+    ) -> RusticolResult<()> {
+        if self.schema_version != 2 || self.kind != RECURRENCE_HELICITY_SELECTOR_COMPANION_KIND {
+            return Err(RusticolError::compatibility(
+                "unsupported persisted recurrence helicity-selector companion; regenerate the artifact",
+            ));
+        }
+        if !matches!(primary.color_accuracy.as_str(), "nlc" | "full") {
+            return Err(RusticolError::integrity(
+                "only contracted recurrence may carry a persisted helicity-selector companion",
+            ));
+        }
+        parse_sha256(&self.process_digest, "recurrence helicity-selector process")?;
+        if primary.process_digest.as_deref() != Some(self.process_digest.as_str())
+            || primary.plan.process_binding.process_digest != self.process_digest
+            || self.plan.process_binding.process_digest != self.process_digest
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector companion disagrees with the primary process digest",
+            ));
+        }
+
+        // The v4 binding payload authenticates the compiled-model and
+        // recurrence-template identities.  At the bounded manifest boundary,
+        // the shared process digest plus the two explicitly repeated pack
+        // identities prevent a selector plan from crossing model owners.
+        parse_sha256(
+            &primary.compiled_model_digest,
+            "primary recurrence compiled model",
+        )?;
+        parse_sha256(
+            &primary.recurrence_template_catalog_digest,
+            "primary recurrence template catalog",
+        )?;
+        self.plan.validate(RecurrencePlanValidation {
+            process_key: &primary.key,
+            prepared_kernel_pack_digest: &primary.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &primary.direct_template_catalog_digest,
+            color_accuracy: &primary.color_accuracy,
+            uses_symmetric_group_fft,
+            has_helicity_selector_companion: true,
+            role: RecurrencePlanRole::HelicitySelector,
+        })?;
+
+        let primary_inspection = &primary.plan.inspection_summary;
+        let inspection = &self.plan.inspection_summary;
+        let schedule = inspection.schedule;
+        if inspection.lc_flow_layout != RecurrenceLcFlowLayout::AllFlowUnion
+            || schedule.replay_target_count != 0
+            || schedule.amplitude_destination_count == 0
+            || schedule.amplitude_destination_count != inspection.sector_count
+            || self.plan.process_binding.remap.physical_sector_ids.len() as u64
+                != inspection.sector_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector plan is not a dense physical all-flow union",
+            ));
+        }
+        if schedule.resolved_helicity_count == 0
+            || schedule.resolved_helicity_count != schedule.retained_helicity_count
+            || schedule.resolved_helicity_count
+                != primary_inspection.schedule.retained_helicity_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector plan does not retain its full resolved-helicity domain",
+            ));
+        }
+        if inspection.prepared_kernel_count != primary_inspection.prepared_kernel_count
+            || inspection.direct_executor_count != primary_inspection.direct_executor_count
+            || self.plan.process_binding.process_support_words
+                != primary.plan.process_binding.process_support_words
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector model identities disagree with the primary recurrence plan",
+            ));
+        }
+
+        let primary_color = primary
+            .runtime_metadata
+            .color_contraction
+            .as_ref()
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "persisted recurrence helicity selection requires a primary color reducer",
+                )
+            })?;
+        self.color_contraction
+            .validate(primary_color, &primary.color_accuracy, inspection)?;
+        Ok(())
+    }
+}
+
+impl RecurrenceHelicityDispatchReference {
+    fn validate(
+        &self,
+        binding: &RecurrenceProcessBinding,
+        inspection: &RecurrenceInspectionSummary,
+    ) -> RusticolResult<()> {
+        if self.abi != RECURRENCE_HELICITY_DISPATCH_ABI {
+            return Err(unsupported_abi("recurrence helicity-dispatch", &self.abi));
+        }
+        parse_sha256(&self.sha256, "recurrence helicity-dispatch payload")?;
+        parse_sha256(
+            &self.base_runtime_layout_digest,
+            "recurrence helicity-dispatch base runtime layout",
+        )?;
+        if self.size_bytes == 0 || u32::try_from(self.resolved_helicity_count).is_err() {
+            return Err(RusticolError::artifact(
+                "recurrence helicity-dispatch size or resolved-helicity count is outside its wire domain",
+            ));
+        }
+        if self.base_runtime_layout_digest != inspection.runtime_layout_digest
+            || self.resolved_helicity_count != inspection.schedule.resolved_helicity_count
+            || self.resolved_helicity_count != inspection.schedule.retained_helicity_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity dispatch disagrees with its base runtime layout or helicity domain",
+            ));
+        }
+        let expected_schedule_digest = recurrence_helicity_selector_schedule_digest(
+            &inspection.schedule_digest,
+            &self.sha256,
+        )?;
+        if binding.schedule_digest != expected_schedule_digest {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector root digest does not bind its Direct plan and dispatch",
+            ));
+        }
+        let expected_path = format!(
+            "recurrence/schedules/{}/{}",
+            binding.schedule_digest, RECURRENCE_HELICITY_DISPATCH_PATH
+        );
+        if self.path != expected_path {
+            return Err(RusticolError::security(
+                "recurrence helicity-dispatch path is not canonical",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceHelicitySelectorColorView {
+    fn validate(
+        &self,
+        primary: &RecurrenceColorContractionReference,
+        color_accuracy: &str,
+        selector_inspection: &RecurrenceInspectionSummary,
+    ) -> RusticolResult<()> {
+        if self.source != "primary" || self.view != RECURRENCE_PRIMARY_LOCAL_COLOR_VIEW {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence helicity-selector color view",
+            ));
+        }
+        if primary.color_accuracy != color_accuracy
+            || !matches!(color_accuracy, "nlc" | "full")
+            || primary.abi != RECURRENCE_COLOR_CONTRACTION_CODEC_ABI
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector primary color view has the wrong owner",
+            ));
+        }
+        let factorization_kind = primary
+            .factorization
+            .as_ref()
+            .map(|factorization| factorization.kind.as_str());
+        let supported_reducer = matches!(
+            (primary.storage.as_str(), factorization_kind),
+            ("expanded", None)
+                | (
+                    "repeated",
+                    None | Some("klein-four-walsh") | Some("elementary-abelian-walsh")
+                )
+                | ("convolution-kernels", Some("symmetric-group-fourier"))
+        );
+        if !supported_reducer
+            || (primary.storage == "expanded" && primary.component_count != 1)
+            || primary.component_count == 0
+            || !primary.group_count.is_multiple_of(primary.component_count)
+            || primary.group_count / primary.component_count != selector_inspection.sector_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence helicity-selector primary local-color group shape or reducer mode is incompatible",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn recurrence_helicity_selector_schedule_digest(
+    base_schedule_digest: &str,
+    dispatch_sha256: &str,
+) -> RusticolResult<String> {
+    parse_sha256(
+        base_schedule_digest,
+        "recurrence helicity-selector base schedule",
+    )?;
+    parse_sha256(dispatch_sha256, "recurrence helicity-selector dispatch")?;
+    let payload = json!({
+        "base_schedule_digest": base_schedule_digest,
+        "contract": "pyamplicol-recurrence-helicity-selector-schedule-v1",
+        "helicity_dispatch": {
+            "abi": RECURRENCE_HELICITY_DISPATCH_ABI,
+            "sha256": dispatch_sha256,
+        },
+    });
+    let bytes = serde_json::to_vec(&payload).map_err(|error| {
+        RusticolError::serialization(format!(
+            "could not encode recurrence helicity-selector schedule identity: {error}"
+        ))
+    })?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
 impl RecurrenceRuntimeContainer {
@@ -942,15 +1289,11 @@ impl RecurrenceRuntimeContainer {
 
 impl RecurrenceProcessBinding {
     pub(super) fn native_schedule_semantic_digest(&self) -> &str {
-        self.native_schedule_semantic_digest
-            .as_deref()
-            .unwrap_or(&self.schedule_digest)
+        &self.native_schedule_semantic_digest
     }
 
-    fn validate(&self, process_key: &str) -> RusticolResult<()> {
-        if self.abi != RECURRENCE_PROCESS_BINDING_ABI
-            || self.path != RECURRENCE_PROCESS_BINDING_PATH
-        {
+    fn validate(&self, process_key: &str, expected_path: &str) -> RusticolResult<()> {
+        if self.abi != RECURRENCE_PROCESS_BINDING_ABI || self.path != expected_path {
             return Err(RusticolError::compatibility(
                 "unsupported recurrence process-binding contract",
             ));
@@ -961,9 +1304,11 @@ impl RecurrenceProcessBinding {
             ));
         }
         parse_sha256(&self.schedule_digest, "recurrence root schedule")?;
-        if let Some(digest) = self.native_schedule_semantic_digest.as_deref() {
-            parse_sha256(digest, "recurrence native schedule semantic digest")?;
-        }
+        parse_sha256(
+            &self.native_schedule_semantic_digest,
+            "recurrence native schedule semantic digest",
+        )?;
+        parse_sha256(&self.process_digest, "recurrence process")?;
         parse_sha256(
             &self.process_semantic_digest,
             "recurrence process semantic binding",
@@ -1145,12 +1490,58 @@ impl RecurrenceInspectionSummary {
         if let Some(discovery) = self.relation_discovery.as_ref() {
             discovery.validate(color_accuracy, self.lc_flow_layout, self.schedule)?;
         }
+        match (
+            self.structural_zero_physical_sector_certificate.as_ref(),
+            self.lc_flow_layout,
+        ) {
+            (Some(certificate), RecurrenceLcFlowLayout::ContractedColorUnion) => {
+                certificate.validate(self.sector_count, self.schedule.resolved_helicity_count)?;
+            }
+            (None, RecurrenceLcFlowLayout::ContractedColorUnion) => {
+                return Err(RusticolError::integrity(
+                    "contracted recurrence inspection omitted its structural-zero physical-sector certificate",
+                ));
+            }
+            (Some(_), _) => {
+                return Err(RusticolError::integrity(
+                    "structural-zero physical-sector certificate is restricted to contracted recurrence",
+                ));
+            }
+            (None, _) => {}
+        }
         self.generation_timings_seconds.validate()?;
         if self.schedule.source_row_count > self.schedule.current_count
             || self.schedule.finalization_count > self.schedule.current_count
         {
             return Err(RusticolError::integrity(
                 "recurrence inspection schedule disagrees with its top-level counts",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceStructuralZeroPhysicalSectorCertificate {
+    fn validate(
+        &self,
+        physical_sector_count: u64,
+        resolved_helicity_count: u64,
+    ) -> RusticolResult<()> {
+        if self.proof_kind != CLOSURE_TARGET_DOMAIN_PROOF_KIND {
+            return Err(RusticolError::compatibility(
+                "unsupported recurrence structural-zero physical-sector proof",
+            ));
+        }
+        parse_sha256(
+            &self.semantic_digest,
+            "recurrence structural-zero physical-sector proof",
+        )?;
+        if self.sector_count != physical_sector_count
+            || self.resolved_helicity_count != resolved_helicity_count
+            || self.certified_structural_zero_sector_count > self.sector_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence structural-zero physical-sector proof disagrees with its inspection domain",
             ));
         }
         Ok(())
@@ -2425,7 +2816,7 @@ impl RecurrenceColorContractionReference {
                 "recurrence FFT-covered local group count overflows u64",
             ));
         };
-        if self.component_count == 0 || self.group_count % self.component_count != 0 {
+        if self.component_count == 0 || !self.group_count.is_multiple_of(self.component_count) {
             return Err(RusticolError::integrity(
                 "recurrence symmetric-group component map is not rectangular",
             ));
@@ -2723,6 +3114,7 @@ fn validate_capabilities(
     capabilities: &[String],
     color_accuracy: &str,
     uses_symmetric_group_fft: bool,
+    has_helicity_selector_companion: bool,
     context: &str,
 ) -> RusticolResult<()> {
     let color_capability = match color_accuracy {
@@ -2734,15 +3126,14 @@ fn validate_capabilities(
             )));
         }
     };
-    let expected = if uses_symmetric_group_fft {
-        vec![
-            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
-            color_capability,
-            RECURRENCE_RUNTIME_CAPABILITY,
-        ]
-    } else {
-        vec![color_capability, RECURRENCE_RUNTIME_CAPABILITY]
-    };
+    let mut expected = Vec::from([color_capability, RECURRENCE_RUNTIME_CAPABILITY]);
+    if uses_symmetric_group_fft {
+        expected.push(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY);
+    }
+    if has_helicity_selector_companion {
+        expected.push(RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY);
+    }
+    expected.sort_unstable();
     if capabilities.iter().map(String::as_str).collect::<Vec<_>>() != expected {
         return Err(RusticolError::compatibility(format!(
             "{context} must require exactly {expected:?}"
@@ -3106,6 +3497,7 @@ pub(super) mod tests {
                 "process_id": "x_to_x",
                 "schedule_digest": "aa".repeat(32),
                 "native_schedule_semantic_digest": "ab".repeat(32),
+                "process_digest": "12".repeat(32),
                 "process_semantic_digest": "11".repeat(32),
                 "process_support_words": [1],
                 "remap": {
@@ -3136,11 +3528,14 @@ pub(super) mod tests {
             "key": "x_to_x",
             "color_accuracy": "lc",
             "external_pdg_order": [25],
+            "process_digest": null,
             "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
             "recurrence_plan_abi": RECURRENCE_PLAN_ABI,
             "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_ABI,
             "direct_template_abi": RECURRENCE_DIRECT_TEMPLATE_ABI,
             "direct_backend_abi": RECURRENCE_DIRECT_BACKEND_ABI,
+            "compiled_model_digest": "bb".repeat(32),
+            "recurrence_template_catalog_digest": "cc".repeat(32),
             "prepared_kernel_pack_digest": "44".repeat(32),
             "direct_template_catalog_digest": "55".repeat(32),
             "kernel_pack": {
@@ -3149,6 +3544,7 @@ pub(super) mod tests {
             },
             "runtime_options": {"point_tile_size": 8, "workspace_mib": 64},
             "runtime_metadata": runtime_metadata(),
+            "helicity_selector_companion": null,
             "plan": plan,
             "recurrence_summary": {
                 "lc_flow_layout": "topology-replay",
@@ -3338,6 +3734,15 @@ pub(super) mod tests {
         }
     }
 
+    fn hzz_companion_outer(color_accuracy: &str) -> ArtifactProcess {
+        let mut outer = hzz_outer(color_accuracy);
+        outer
+            .required_runtime_capabilities
+            .push(RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY.to_owned());
+        outer.required_runtime_capabilities.sort_unstable();
+        outer
+    }
+
     fn parse_hzz_fixture(
         bytes: &[u8],
         color_accuracy: &str,
@@ -3349,11 +3754,24 @@ pub(super) mod tests {
         )
     }
 
+    fn parse_hzz_companion_fixture(
+        bytes: &[u8],
+        color_accuracy: &str,
+    ) -> RusticolResult<RecurrenceExecutionManifest> {
+        parse_recurrence_execution_manifest(
+            bytes,
+            "processes/d_dbar_to_z_z_z/execution.json",
+            &hzz_companion_outer(color_accuracy),
+        )
+    }
+
     fn legacy_full_hzz_fixture_value() -> Value {
-        serde_json::from_slice(include_bytes!(
+        let mut value: Value = serde_json::from_slice(include_bytes!(
             "../../tests/fixtures/recurrence_execution_hzz_full_v2.json"
         ))
-        .unwrap()
+        .unwrap();
+        upgrade_hzz_fixture_manifest(&mut value);
+        value
     }
 
     fn full_hzz_fixture_value() -> Value {
@@ -3377,11 +3795,90 @@ pub(super) mod tests {
         }]);
     }
 
+    fn add_hzz_helicity_selector_companion(value: &mut Value) {
+        let process_digest = "10".repeat(32);
+        let builder_input_digest = "20".repeat(32);
+        let base_schedule_digest = "21".repeat(32);
+        let runtime_layout_digest = "22".repeat(32);
+        let dispatch_sha256 = "23".repeat(32);
+        let composite_schedule_digest =
+            recurrence_helicity_selector_schedule_digest(&base_schedule_digest, &dispatch_sha256)
+                .unwrap();
+        let resolved_helicity_count = 108_u64;
+
+        for pointer in [
+            "/required_runtime_capabilities",
+            "/plan/required_runtime_capabilities",
+        ] {
+            let capabilities = value.pointer_mut(pointer).unwrap();
+            capabilities.as_array_mut().unwrap().push(json!(
+                RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+            ));
+            capabilities
+                .as_array_mut()
+                .unwrap()
+                .sort_by(|left, right| left.as_str().unwrap().cmp(right.as_str().unwrap()));
+        }
+
+        value["process_digest"] = json!(process_digest.clone());
+        value["plan"]["process_binding"]["process_digest"] = json!(process_digest.clone());
+        let mut plan = value["plan"].clone();
+        plan["builder_input_sha256"] = json!(builder_input_digest.clone());
+        plan["process_binding"]["schedule_digest"] = json!(composite_schedule_digest.clone());
+        plan["process_binding"]["native_schedule_semantic_digest"] =
+            json!(base_schedule_digest.clone());
+        plan["process_binding"]["process_digest"] = json!(process_digest.clone());
+        plan["process_binding"]["process_semantic_digest"] = json!(builder_input_digest.clone());
+        plan["process_binding"]["path"] = json!(RECURRENCE_HELICITY_SELECTOR_BINDING_PATH);
+        plan["process_binding"]["sha256"] = json!("24".repeat(32));
+        plan["runtime_schedule"]["path"] = json!(format!(
+            "recurrence/schedules/{composite_schedule_digest}/recurrence-runtime.pacbin"
+        ));
+        plan["runtime_schedule"]["sha256"] = json!("25".repeat(32));
+        plan["inspection_summary"]["lc_flow_layout"] = json!("all-flow-union");
+        plan["inspection_summary"]["semantic_digest"] = json!(builder_input_digest);
+        plan["inspection_summary"]["schedule_digest"] = json!(base_schedule_digest);
+        plan["inspection_summary"]["runtime_layout_digest"] = json!(runtime_layout_digest.clone());
+        plan["inspection_summary"]["schedule"]["amplitude_destination_count"] = json!(1);
+        plan["inspection_summary"]["schedule"]["replay_target_count"] = json!(0);
+        plan["inspection_summary"]["schedule"]["retained_helicity_count"] =
+            json!(resolved_helicity_count);
+        plan["inspection_summary"]["schedule"]["resolved_helicity_count"] =
+            json!(resolved_helicity_count);
+        plan["inspection_summary"]
+            .as_object_mut()
+            .unwrap()
+            .remove("structural_zero_physical_sector_certificate");
+        plan["inspection_summary"]["selector_work_certificate"]["representatives"] = json!([]);
+        plan["helicity_dispatch"] = json!({
+            "abi": RECURRENCE_HELICITY_DISPATCH_ABI,
+            "path": format!(
+                "recurrence/schedules/{composite_schedule_digest}/{RECURRENCE_HELICITY_DISPATCH_PATH}"
+            ),
+            "size_bytes": 96,
+            "sha256": dispatch_sha256,
+            "base_runtime_layout_digest": runtime_layout_digest,
+            "resolved_helicity_count": resolved_helicity_count,
+        });
+        value["helicity_selector_companion"] = json!({
+            "schema_version": 2,
+            "kind": RECURRENCE_HELICITY_SELECTOR_COMPANION_KIND,
+            "process_digest": process_digest,
+            "plan": plan,
+            "color_contraction": {
+                "source": "primary",
+                "view": RECURRENCE_PRIMARY_LOCAL_COLOR_VIEW,
+            },
+        });
+    }
+
     fn legacy_nlc_hzz_fixture_value() -> Value {
-        serde_json::from_slice(include_bytes!(
+        let mut value: Value = serde_json::from_slice(include_bytes!(
             "../../tests/fixtures/recurrence_execution_hzz_nlc.json"
         ))
-        .unwrap()
+        .unwrap();
+        upgrade_hzz_fixture_manifest(&mut value);
+        value
     }
 
     fn nlc_hzz_fixture_value() -> Value {
@@ -3391,10 +3888,34 @@ pub(super) mod tests {
     }
 
     fn lc_hzz_fixture_value() -> Value {
-        serde_json::from_slice(include_bytes!(
+        let mut value: Value = serde_json::from_slice(include_bytes!(
             "../../tests/fixtures/recurrence_execution_hzz_lc.json"
         ))
-        .unwrap()
+        .unwrap();
+        upgrade_hzz_fixture_manifest(&mut value);
+        value
+    }
+
+    fn upgrade_hzz_fixture_manifest(value: &mut Value) {
+        value["compiled_model_digest"] = json!("bb".repeat(32));
+        value["recurrence_template_catalog_digest"] = json!("cc".repeat(32));
+        value["plan"]["process_binding"]["abi"] = json!(RECURRENCE_PROCESS_BINDING_ABI);
+        value["plan"]["process_binding"]["native_schedule_semantic_digest"] =
+            value["plan"]["process_binding"]["schedule_digest"].clone();
+        value["plan"]["process_binding"]["process_digest"] = json!("12".repeat(32));
+        if value["plan"]["inspection_summary"]["lc_flow_layout"] == json!("contracted-color-union")
+        {
+            let sector_count = value["plan"]["inspection_summary"]["sector_count"].clone();
+            let resolved_helicity_count =
+                value["plan"]["inspection_summary"]["schedule"]["resolved_helicity_count"].clone();
+            value["plan"]["inspection_summary"]["structural_zero_physical_sector_certificate"] = json!({
+                "proof_kind": CLOSURE_TARGET_DOMAIN_PROOF_KIND,
+                "semantic_digest": "de".repeat(32),
+                "sector_count": sector_count,
+                "resolved_helicity_count": resolved_helicity_count,
+                "certified_structural_zero_sector_count": 0
+            });
+        }
     }
 
     fn manifest_bytes_with_size(size: usize) -> Vec<u8> {
@@ -3413,6 +3934,31 @@ pub(super) mod tests {
         assert_eq!(
             parsed.plan.inspection_summary.direct_arena.row_group_count,
             4
+        );
+    }
+
+    #[test]
+    fn accepts_and_validates_generated_structural_zero_sector_provenance() {
+        let value = full_hzz_fixture_value();
+        let parsed = parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full").unwrap();
+        let certificate = parsed
+            .plan
+            .inspection_summary
+            .structural_zero_physical_sector_certificate
+            .unwrap();
+        assert_eq!(certificate.proof_kind, CLOSURE_TARGET_DOMAIN_PROOF_KIND);
+        assert_eq!(certificate.sector_count, 1);
+        assert_eq!(certificate.resolved_helicity_count, 54);
+
+        let mut mismatched = value;
+        mismatched["plan"]["inspection_summary"]["structural_zero_physical_sector_certificate"]["sector_count"] =
+            json!(2);
+        let error =
+            parse_hzz_fixture(&serde_json::to_vec(&mismatched).unwrap(), "full").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("disagrees with its inspection domain")
         );
     }
 
@@ -3477,6 +4023,182 @@ pub(super) mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn accepts_persisted_helicity_selector_companion_v2() {
+        let mut value = full_hzz_fixture_value();
+        add_hzz_helicity_selector_companion(&mut value);
+
+        let parsed =
+            parse_hzz_companion_fixture(&serde_json::to_vec(&value).unwrap(), "full").unwrap();
+
+        assert_eq!(parsed.process_digest, Some("10".repeat(32)));
+        let companion = parsed.helicity_selector_companion.unwrap();
+        assert_eq!(companion.schema_version, 2);
+        assert_eq!(companion.kind, RECURRENCE_HELICITY_SELECTOR_COMPANION_KIND);
+        assert_eq!(
+            companion.plan.inspection_summary.lc_flow_layout,
+            RecurrenceLcFlowLayout::AllFlowUnion
+        );
+        assert_eq!(
+            companion
+                .plan
+                .helicity_dispatch
+                .as_ref()
+                .unwrap()
+                .resolved_helicity_count,
+            108
+        );
+        assert_eq!(companion.color_contraction.source, "primary");
+        assert_eq!(
+            companion.color_contraction.view,
+            RECURRENCE_PRIMARY_LOCAL_COLOR_VIEW
+        );
+    }
+
+    #[test]
+    fn helicity_selector_composite_digest_matches_the_python_writer() {
+        assert_eq!(
+            recurrence_helicity_selector_schedule_digest(&"21".repeat(32), &"23".repeat(32),)
+                .unwrap(),
+            "5913a2ef2448054b070d57414e621e2a9892676d7ecac59ec161fbf82b3580e7"
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_or_tampered_helicity_selector_companion_contract() {
+        let mut baseline = full_hzz_fixture_value();
+        add_hzz_helicity_selector_companion(&mut baseline);
+
+        let mut missing_process_digest = baseline.clone();
+        missing_process_digest["process_digest"] = Value::Null;
+        assert!(
+            parse_hzz_companion_fixture(
+                &serde_json::to_vec(&missing_process_digest).unwrap(),
+                "full",
+            )
+            .is_err()
+        );
+
+        let mut swapped_primary_process = baseline.clone();
+        swapped_primary_process["plan"]["process_binding"]["process_digest"] =
+            json!("30".repeat(32));
+        assert!(
+            parse_hzz_companion_fixture(
+                &serde_json::to_vec(&swapped_primary_process).unwrap(),
+                "full",
+            )
+            .is_err()
+        );
+
+        let mut missing_capability = baseline.clone();
+        missing_capability["required_runtime_capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|value| {
+                value.as_str() != Some(RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY)
+            });
+        assert!(
+            parse_hzz_companion_fixture(&serde_json::to_vec(&missing_capability).unwrap(), "full",)
+                .is_err()
+        );
+
+        for (pointer, replacement) in [
+            ("/helicity_selector_companion/schema_version", json!(1)),
+            (
+                "/helicity_selector_companion/kind",
+                json!("pyamplicol-recurrence-helicity-selector-companion-v1"),
+            ),
+            (
+                "/helicity_selector_companion/process_digest",
+                json!("40".repeat(32)),
+            ),
+            (
+                "/helicity_selector_companion/plan/prepared_kernel_pack_digest",
+                json!("41".repeat(32)),
+            ),
+            (
+                "/helicity_selector_companion/plan/direct_template_catalog_digest",
+                json!("42".repeat(32)),
+            ),
+            (
+                "/helicity_selector_companion/plan/inspection_summary/lc_flow_layout",
+                json!("contracted-color-union"),
+            ),
+            (
+                "/helicity_selector_companion/plan/inspection_summary/schedule/amplitude_destination_count",
+                json!(2),
+            ),
+            (
+                "/helicity_selector_companion/plan/inspection_summary/schedule/retained_helicity_count",
+                json!(107),
+            ),
+            (
+                "/plan/inspection_summary/schedule/retained_helicity_count",
+                json!(107),
+            ),
+            (
+                "/helicity_selector_companion/plan/process_binding/native_schedule_semantic_digest",
+                json!("43".repeat(32)),
+            ),
+            (
+                "/helicity_selector_companion/plan/process_binding/schedule_digest",
+                json!("44".repeat(32)),
+            ),
+            (
+                "/helicity_selector_companion/plan/process_binding/path",
+                json!(RECURRENCE_PROCESS_BINDING_PATH),
+            ),
+            (
+                "/helicity_selector_companion/plan/runtime_schedule/path",
+                json!("recurrence-runtime.pacbin"),
+            ),
+            (
+                "/helicity_selector_companion/plan/helicity_dispatch/abi",
+                json!("pyamplicol-recurrence-helicity-dispatch-v0"),
+            ),
+            (
+                "/helicity_selector_companion/plan/helicity_dispatch/path",
+                json!(RECURRENCE_HELICITY_DISPATCH_PATH),
+            ),
+            (
+                "/helicity_selector_companion/plan/helicity_dispatch/size_bytes",
+                json!(0),
+            ),
+            (
+                "/helicity_selector_companion/plan/helicity_dispatch/sha256",
+                json!("not-a-sha"),
+            ),
+            (
+                "/helicity_selector_companion/plan/helicity_dispatch/base_runtime_layout_digest",
+                json!("45".repeat(32)),
+            ),
+            (
+                "/helicity_selector_companion/plan/helicity_dispatch/resolved_helicity_count",
+                json!(107),
+            ),
+            (
+                "/helicity_selector_companion/color_contraction/source",
+                json!("companion"),
+            ),
+            (
+                "/helicity_selector_companion/color_contraction/view",
+                json!("primary-local-color-view-v2"),
+            ),
+            (
+                "/runtime_metadata/color_contraction/storage",
+                json!("expanded"),
+            ),
+        ] {
+            let mut invalid = baseline.clone();
+            *invalid.pointer_mut(pointer).unwrap() = replacement;
+            assert!(
+                parse_hzz_companion_fixture(&serde_json::to_vec(&invalid).unwrap(), "full")
+                    .is_err(),
+                "accepted invalid companion field at {pointer}",
+            );
+        }
     }
 
     #[test]
@@ -3761,6 +4483,15 @@ pub(super) mod tests {
             let mut value = inspection_summary();
             value["lc_flow_layout"] = json!(layout);
             value["schedule"]["replay_target_count"] = json!(0);
+            if layout == "contracted-color-union" {
+                value["structural_zero_physical_sector_certificate"] = json!({
+                    "proof_kind": CLOSURE_TARGET_DOMAIN_PROOF_KIND,
+                    "semantic_digest": "de".repeat(32),
+                    "sector_count": 1,
+                    "resolved_helicity_count": 1,
+                    "certified_structural_zero_sector_count": 0
+                });
+            }
             value["selector_work_certificate"] = json!({
                 "schema_version": 1,
                 "binding": "runtime_layout_digest",
@@ -4173,29 +4904,18 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn native_schedule_semantic_digest_has_a_legacy_schedule_fallback() {
-        let value = manifest();
-        let parsed = parse(&value).unwrap();
-        assert_eq!(
-            parsed
-                .plan
-                .process_binding
-                .native_schedule_semantic_digest(),
-            "ab".repeat(32)
-        );
-
-        let mut legacy = value;
-        legacy["plan"]["process_binding"]
+    fn rejects_missing_native_schedule_semantic_digest() {
+        let mut value = manifest();
+        value["plan"]["process_binding"]
             .as_object_mut()
             .unwrap()
             .remove("native_schedule_semantic_digest");
-        let parsed = parse(&legacy).unwrap();
-        assert_eq!(
-            parsed
-                .plan
-                .process_binding
-                .native_schedule_semantic_digest(),
-            "aa".repeat(32)
+        let error = parse(&value).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("native_schedule_semantic_digest"),
+            "{error}"
         );
     }
 

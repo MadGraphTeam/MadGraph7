@@ -808,7 +808,7 @@ fn count_fixture_program(
         propagated_specs.push((vec![2, 3, 4], vec![(external_count + 1) as u32, 4]));
     }
     while propagated_specs.len() < current_count - external_count {
-        let pair = if propagated_specs.len() % 2 == 0 {
+        let pair = if propagated_specs.len().is_multiple_of(2) {
             vec![0, 1]
         } else {
             vec![2, 3]
@@ -977,7 +977,7 @@ fn union_key(key: &CurrentCoreKey, runtime_variant_id: u32) -> CurrentCoreKey {
                     0,
                     0,
                     0,
-                    key.spin_state_class(),
+                    0,
                     ExactComplexRational::ONE,
                 )
                 .unwrap(),
@@ -994,7 +994,11 @@ fn union_key(key: &CurrentCoreKey, runtime_variant_id: u32) -> CurrentCoreKey {
         key.dynamic_lc_color_state_id(),
         key.support_source_slots().to_vec(),
         key.momentum().clone(),
-        CurrentHelicityIdentity::all_flow_union(key.spin_state_class()),
+        CurrentHelicityIdentity::all_flow_union(if key.node_kind() == RecurrenceNodeKind::Source {
+            crate::recurrence::DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS
+        } else {
+            key.spin_state_class()
+        }),
         key.flavour_flow().to_vec(),
         key.quantum_number_flow_id(),
         key.coupling_orders().to_vec(),
@@ -1561,6 +1565,51 @@ fn zgg_all_flow_union_lowers_runtime_sources_without_replay_expansion() {
         assert_eq!(variant.embedding_count, 1);
         assert_eq!(variant.projection_count, 1);
     }
+}
+
+#[test]
+fn all_flow_helicity_dispatch_lowering_preserves_the_base_plan_and_splits_exact_support() {
+    let templates = validated_union_template();
+    let program = zgg_union_program(&templates, 0);
+    let catalog_digest = digest(40);
+    let catalog = direct_catalog(catalog_digest);
+    let ordinary = lower_recurrence_direct_plan_v2(
+        &program,
+        &templates,
+        &catalog,
+        digest(49),
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+    )
+    .unwrap();
+    let (plan, dispatch) = lower_recurrence_direct_plan_v2_with_helicity_dispatch(
+        &program,
+        &templates,
+        &catalog,
+        digest(49),
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+    )
+    .unwrap();
+
+    assert_eq!(plan, ordinary);
+    dispatch.validate_for_plan(&plan).unwrap();
+    assert_eq!(dispatch.resolved_helicity_count(), 1);
+    assert_eq!(dispatch.dispatches().len(), 1);
+    assert!(
+        dispatch.row_groups().len()
+            >= plan
+                .row_groups()
+                .iter()
+                .filter(|group| group.role != DirectExecutorRole::Source)
+                .count()
+    );
+    assert!(
+        dispatch.group_ids_for_helicity(0).unwrap().len() < dispatch.row_groups().len(),
+        "the synthetic union contains dead rows which backward demand must omit"
+    );
 }
 
 #[test]

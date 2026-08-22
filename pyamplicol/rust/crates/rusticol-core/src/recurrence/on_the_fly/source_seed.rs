@@ -445,7 +445,7 @@ impl OnTheFlyProcessSeedV1 {
         }
         if coupling_limits.is_empty()
             || coupling_hierarchies.len() != coupling_limits.len()
-            || coupling_hierarchies.iter().any(|hierarchy| *hierarchy == 0)
+            || coupling_hierarchies.contains(&0)
         {
             return Err(invalid(
                 "on-the-fly coupling policy requires one positive hierarchy and optional hard cap per model order",
@@ -878,8 +878,9 @@ pub(super) fn validate_permutation(
 mod tests {
     use super::*;
 
-    fn rebuild_with_coupling_limits(
+    fn rebuild_with_coupling_policy(
         seed: OnTheFlyProcessSeedV1,
+        coupling_hierarchies: Vec<u32>,
         coupling_limits: Vec<Option<u32>>,
     ) -> RusticolResult<OnTheFlyProcessSeedV1> {
         let OnTheFlyProcessSeedV1 {
@@ -893,7 +894,7 @@ mod tests {
             source_anchors,
             external_permutation,
             coupling_order_policy,
-            coupling_hierarchies,
+            coupling_hierarchies: _,
             coupling_limits: _,
             pairing_classes,
             semantic_digest: _,
@@ -910,7 +911,7 @@ mod tests {
             source_anchors.into_vec(),
             external_permutation.into_vec(),
             coupling_order_policy,
-            coupling_hierarchies.into_vec(),
+            coupling_hierarchies,
             coupling_limits,
             pairing_classes.into_vec(),
         )
@@ -925,14 +926,24 @@ mod tests {
             SemanticDigest::new([4; 32]).unwrap(),
         )
         .unwrap();
-        for limits in [vec![], vec![Some(0), None]] {
+        for (hierarchies, limits) in [
+            (vec![], vec![]),
+            (vec![1], vec![Some(0), None]),
+            (vec![1, 0], vec![Some(0), None]),
+        ] {
             assert!(
-                rebuild_with_coupling_limits(seed.clone(), limits)
+                rebuild_with_coupling_policy(seed.clone(), hierarchies, limits)
                     .unwrap_err()
                     .to_string()
                     .contains("one positive hierarchy and optional hard cap")
             );
         }
-        assert!(rebuild_with_coupling_limits(seed, vec![Some(3)]).is_ok());
+        assert!(
+            rebuild_with_coupling_policy(seed.clone(), vec![1], vec![Some(3)]).is_ok()
+        );
+        assert!(
+            rebuild_with_coupling_policy(seed.clone(), vec![1, 2], vec![Some(0), None]).is_ok()
+        );
+        assert!(rebuild_with_coupling_policy(seed, vec![1, 2], vec![Some(0), Some(3)]).is_ok());
     }
 }

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from tools.performance_report.agreements import DIRECT_AGREEMENT_FIELD
-from tools.performance_report.cache import empty_measurement, reset_entry
+from tools.performance_report.cache import digest_json, empty_measurement, reset_entry
 from tools.performance_report.catalog import (
     MADGRAPH_FULL_COMPARISON_VIEWS,
     REPORT_CATALOG,
@@ -20,6 +20,7 @@ from tools.performance_report.measurement import failure_measurement
 from tools.performance_report.models import ArtifactPolicy, ResultStatus
 from tools.performance_report.publication import publication_absolute_paths
 from tools.performance_report.render import render_all_tables
+from tools.performance_report.runner import pointwise_validation
 from tools.performance_report.service import (
     ReportPaths,
     ReportService,
@@ -365,6 +366,52 @@ def test_audit_rejects_nonpublication_timing_and_source_evidence(
     caches = service.reset_payloads()
     payload = caches["scalar_contact.json"]
     entry = payload["entries"][0]
+    cell = service.catalog.cell(str(entry["cell_id"]))
+    point_digest = "a" * 64
+    ordering = "b" * 64
+
+    def resolved(precision: int, source: str) -> dict[str, object]:
+        point = pointwise_validation(
+            3.0,
+            3.0,
+            candidate_scale=3.0,
+            baseline_scale=3.0,
+            comparison_binding={
+                "abi": "pyamplicol-report-resolved-component-scale-v1",
+                "point_digest": point_digest,
+                "helicity_ids": [],
+                "color_flow_ids": [],
+                "resolved_ordering_sha256": ordering,
+                "resolved_source_sha256": source,
+                "point_index": 0,
+            },
+        )
+        return {
+            "abi": "pyamplicol-report-resolved-sum-validation-v2",
+            "status": "ok",
+            "maximum_absolute_difference": 0.0,
+            "maximum_relative_difference": 0.0,
+            "maximum_conditioned_residual": 0.0,
+            "relative_tolerance": 1.0e-12,
+            "point_digest": point_digest,
+            "helicity_ids": [],
+            "color_flow_ids": [],
+            "resolved_ordering_sha256": ordering,
+            "resolved_source_sha256": source,
+            "scale_source": "resolved-component-l1",
+            "precision_digits": precision,
+            "points": [point],
+        }
+
+    binary64 = resolved(16, "c" * 64)
+    precision32 = resolved(32, "d" * 64)
+    selector_identity = {
+        "cell_id": cell.cell_id,
+        "accuracy": cell.measurement.accuracy.value,
+        "workload": cell.workload.value,
+        "selector_contract": None,
+        "value_kind": "matrix-element-p16-versus-p32",
+    }
     measurement = empty_measurement()
     measurement.update(
         {
@@ -378,7 +425,27 @@ def test_audit_rejects_nonpublication_timing_and_source_evidence(
             "relative_standard_error": 1.0e-3,
             "artifact": {},
             "selector_contract": None,
-            "validation": {"status": "ok", DIRECT_AGREEMENT_FIELD: []},
+            "validation": {
+                "status": "ok",
+                DIRECT_AGREEMENT_FIELD: [],
+                "resolved_sum": binary64,
+                "high_precision_resolved_sum": precision32,
+                "high_precision": pointwise_validation(
+                    3.0,
+                    3.0,
+                    candidate_scale=3.0,
+                    baseline_scale=3.0,
+                    candidate_scale_source="resolved-component-l1-binary64",
+                    baseline_scale_source="resolved-component-l1-p32",
+                    comparison_binding={
+                        "point_digest": point_digest,
+                        "selector_component_identity": selector_identity,
+                        "selector_component_sha256": digest_json(selector_identity),
+                        "candidate_source_sha256": "c" * 64,
+                        "baseline_source_sha256": "d" * 64,
+                    },
+                ),
+            },
             "resources": {},
             "provenance": {},
             "failure": None,

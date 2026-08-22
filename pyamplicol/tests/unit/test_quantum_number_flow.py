@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -243,6 +244,14 @@ def test_current_identity_and_diagnostics_retain_exact_flow() -> None:
     assert full_storage["current_slots"][0]["quantum_number_flow"] == [
         ["electric_charge", "1/5"]
     ]
+    assert full_storage["current_slots"][0]["helicity_ancestry"] == "0x1"
+    wide_ancestry = 10**4300
+    wide_current = replace(
+        current,
+        index=replace(first, helicity_ancestry=wide_ancestry),
+    )
+    wide_slot = _current_slots(SimpleNamespace(currents=(wide_current,)))[0]
+    assert int(wide_slot["helicity_ancestry"], 16) == wide_ancestry
     compact_storage = _current_storage(full_storage)
     assert "quantum_number_flow" not in compact_storage["current_slots"][0]
     assert "charge_flow" not in compact_storage["current_slots"][0]

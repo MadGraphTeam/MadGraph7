@@ -9,6 +9,9 @@ import pytest
 
 from pyamplicol.generation import artifact_writer
 from pyamplicol.generation import service as generation_service
+from pyamplicol.generation.recurrence_schedule_sharing import (
+    RecurrenceProcessExecutorPack,
+)
 
 
 def _native_profile() -> dict[str, object]:
@@ -74,6 +77,21 @@ def _recurrence_artifact(
         generation_filters={},
         generation_profile=profile,
         recurrence_process_remap=None,  # type: ignore[arg-type]
+        recurrence_process_executor_pack=RecurrenceProcessExecutorPack(
+            compiled_model_digest="2" * 64,
+            recurrence_template_catalog_digest="3" * 64,
+            prepared_kernel_pack_digest="f" * 64,
+            direct_template_catalog_digest="1" * 64,
+            runtime_layout_digest="4" * 64,
+            backend="jit",
+            target_triple="symjit-storage-v3-portable",
+            portable=True,
+            cpu_features=(),
+            catalog_executor_count=1,
+            executor_ids=(0,),
+            descriptor_payloads=(bytes.fromhex("10000000000000000000000001000000"),),
+        ),
+        process_digest="5" * 64,
     )
 
 

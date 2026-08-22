@@ -4,6 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::iter::Peekable;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -32,15 +33,16 @@ use super::template::{
 use super::{
     AuthenticatedRecurrenceBuilderInput, CanonicalMomentumLinearForm, CheckedTableRange,
     ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
-    ClosureProofMetadataV2, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
-    CurrentSourceBinding, DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS, DynamicLCColorState,
-    DynamicLCColorStateId, DynamicLCColorStateInterner, ExactComplexRational, ExactRational,
-    LCColorComponent, LCColorComponentKind, LCColorComponentOperation, LCColorComponentRole,
-    LCColorParentPort, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
-    LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm, RecurrenceAmplitudeDestination,
-    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
-    RecurrenceNodeKind, RecurrenceProgram, RecurrenceReplayTarget, RecurrenceResolvedHelicity,
-    RecurrenceStrategy, ReflectionCertificateV1, SemanticDigest, SourceStateAssignment,
+    ClosureProofMetadataV2, ClosureTargetDomainCertificateV1, ContributionKey, CurrentCoreKey,
+    CurrentHelicityIdentity, CurrentSourceBinding, DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS,
+    DynamicLCColorState, DynamicLCColorStateId, DynamicLCColorStateInterner, ExactComplexRational,
+    ExactRational, LCColorComponent, LCColorComponentKind, LCColorComponentOperation,
+    LCColorComponentRole, LCColorParentPort, LCColorPortWiring, LCColorSourceSeed,
+    LCColorSourceSeedOperation, LCColorTransitionWitness, LCColorWitnessTermId, MomentumTerm,
+    RecurrenceAmplitudeDestination, RecurrenceClosureTerm, RecurrenceContribution,
+    RecurrenceCurrent, RecurrenceFinalization, RecurrenceNodeKind, RecurrenceProgram,
+    RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy,
+    ReflectionCertificateV1, SemanticDigest, SourceStateAssignment,
     ThreeLineTraversalCertificateV1, ThreeLineTraversalKindV1, closure_component_factor_digest_v2,
     closure_selector_domain_digest_v2,
 };
@@ -65,6 +67,7 @@ thread_local! {
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[allow(dead_code)]
 pub(crate) fn begin_established_pairing_owner_observation() {
     ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(|active| active.set(true));
     ESTABLISHED_PAIRING_OWNER_OBSERVATION.with(|observation| {
@@ -73,6 +76,7 @@ pub(crate) fn begin_established_pairing_owner_observation() {
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[allow(dead_code)]
 pub(crate) fn take_established_pairing_owner_observation() -> RusticolResult<Vec<Option<u32>>> {
     ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(|active| active.set(false));
     ESTABLISHED_PAIRING_OWNER_OBSERVATION.with(|observation| {
@@ -180,7 +184,9 @@ fn hash_digest_sequence(hash: &mut Sha256, values: &[SemanticDigest]) -> Rustico
     Ok(())
 }
 
-fn dynamic_color_identity_digest(color: &DynamicLCColorState) -> RusticolResult<SemanticDigest> {
+pub(super) fn dynamic_color_identity_digest(
+    color: &DynamicLCColorState,
+) -> RusticolResult<SemanticDigest> {
     let mut hash = Sha256::new();
     hash.update(b"pyamplicol-recurrence-dynamic-lc-color-identity-v1\0");
     hash.update(color.output_color_shape_id().to_le_bytes());
@@ -714,7 +720,7 @@ fn materialize_projected_pending_rows(
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct CurrentReflectionProof {
+pub(super) struct CurrentReflectionProof {
     phase: ExactComplexRational,
     lineage_roots: Box<[SemanticDigest]>,
     result_color_identity: SemanticDigest,
@@ -722,7 +728,7 @@ struct CurrentReflectionProof {
 }
 
 impl CurrentReflectionProof {
-    fn new(
+    pub(super) fn new(
         phase: ExactComplexRational,
         lineage_roots: impl IntoIterator<Item = SemanticDigest>,
         result_color_identity: SemanticDigest,
@@ -746,19 +752,19 @@ impl CurrentReflectionProof {
         })
     }
 
-    const fn phase(&self) -> ExactComplexRational {
+    pub(super) const fn phase(&self) -> ExactComplexRational {
         self.phase
     }
 
-    fn lineage_roots(&self) -> &[SemanticDigest] {
+    pub(super) fn lineage_roots(&self) -> &[SemanticDigest] {
         &self.lineage_roots
     }
 
-    const fn result_color_identity(&self) -> SemanticDigest {
+    pub(super) const fn result_color_identity(&self) -> SemanticDigest {
         self.result_color_identity
     }
 
-    const fn proof_digest(&self) -> SemanticDigest {
+    pub(super) const fn proof_digest(&self) -> SemanticDigest {
         self.proof_digest
     }
 
@@ -779,27 +785,30 @@ impl CurrentReflectionProof {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum CurrentReflection {
+pub(super) enum CurrentReflection {
     Unavailable,
     Proven(CurrentReflectionProof),
 }
 
 impl CurrentReflection {
-    fn phase(&self) -> Option<ExactComplexRational> {
+    pub(super) fn phase(&self) -> Option<ExactComplexRational> {
         match self {
             Self::Unavailable => None,
             Self::Proven(proof) => Some(proof.phase()),
         }
     }
 
-    fn proof(&self) -> Option<&CurrentReflectionProof> {
+    pub(super) fn proof(&self) -> Option<&CurrentReflectionProof> {
         match self {
             Self::Unavailable => None,
             Self::Proven(proof) => Some(proof),
         }
     }
 
-    fn include(&mut self, candidate: Option<CurrentReflectionProof>) -> RusticolResult<()> {
+    pub(super) fn include(
+        &mut self,
+        candidate: Option<CurrentReflectionProof>,
+    ) -> RusticolResult<()> {
         let merged = match (&*self, candidate) {
             (Self::Proven(existing), Some(candidate)) => existing.merged_with(&candidate)?,
             _ => None,
@@ -813,7 +822,7 @@ impl CurrentReflection {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct TransitionReflectionProof {
+pub(super) struct TransitionReflectionProof {
     phase: ExactComplexRational,
     semantic_digests: Box<[SemanticDigest]>,
     witness_digests: Box<[SemanticDigest]>,
@@ -850,8 +859,13 @@ impl TransitionReflectionProof {
         })
     }
 
-    const fn phase(&self) -> ExactComplexRational {
+    pub(super) const fn phase(&self) -> ExactComplexRational {
         self.phase
+    }
+
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(super) const fn proof_digest(&self) -> SemanticDigest {
+        self.proof_digest
     }
 
     fn lineage_roots(&self) -> impl Iterator<Item = SemanticDigest> + '_ {
@@ -886,7 +900,7 @@ impl TransitionReflectionProof {
 /// This deliberately remains local until the orchestrator-owned program proof
 /// API accepts reciprocal reflection orbits.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct PendingReflectionCertificate {
+pub(super) struct PendingReflectionCertificate {
     id: u32,
     canonical_old_current_id: u32,
     reflected_old_current_id: u32,
@@ -906,7 +920,7 @@ impl PendingReflectionCertificate {
     // The pair constructor authenticates both orbit members and both color
     // witnesses explicitly; retaining the parallel arguments makes swaps visible.
     #[allow(clippy::too_many_arguments)]
-    fn reciprocal_pair(
+    pub(super) fn reciprocal_pair(
         id: u32,
         canonical_old_current_id: u32,
         reflected_old_current_id: u32,
@@ -954,6 +968,26 @@ impl PendingReflectionCertificate {
             orbit_size: 2,
             proof_digest,
         })
+    }
+
+    pub(super) const fn canonical_color_identity(&self) -> SemanticDigest {
+        self.canonical_color_identity
+    }
+
+    pub(super) const fn canonical_phase(&self) -> ExactComplexRational {
+        self.canonical_phase
+    }
+
+    pub(super) const fn canonical_lineage_digest(&self) -> SemanticDigest {
+        self.canonical_lineage_digest
+    }
+
+    pub(super) fn source_permutation(&self) -> &[u32] {
+        &self.source_permutation
+    }
+
+    pub(super) const fn is_reciprocal_two_cycle(&self) -> bool {
+        !self.fixed_point && self.orbit_size == 2
     }
 }
 
@@ -1121,6 +1155,64 @@ struct PendingClosureProofContribution {
 struct PendingClosureGroup {
     contributions: Vec<PendingClosureProofContribution>,
     exact_factor: ExactComplexRational,
+}
+
+/// Closure rows together with the physical sectors exhaustively visited by
+/// their native construction pass.  Keeping the domain separate from the row
+/// map prevents a later consumer from treating a missing row as proof that a
+/// sector is zero.
+#[derive(Debug, Eq, PartialEq)]
+struct ExhaustiveClosureDomain {
+    groups: BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    physical_sector_ids: BTreeSet<u32>,
+    physical_sector_owner_ids: BTreeMap<u32, u32>,
+}
+
+impl std::ops::Deref for ExhaustiveClosureDomain {
+    type Target = BTreeMap<PendingClosureKey, PendingClosureGroup>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.groups
+    }
+}
+
+impl ExhaustiveClosureDomain {
+    fn new(
+        groups: BTreeMap<PendingClosureKey, PendingClosureGroup>,
+        physical_sector_ids: &BTreeSet<u32>,
+        physical_sector_owner_ids: BTreeMap<u32, u32>,
+    ) -> RusticolResult<Self> {
+        if groups
+            .keys()
+            .any(|key| !physical_sector_ids.contains(&key.target_sector_id))
+        {
+            return Err(invalid(
+                "closure result lies outside its exhaustive physical-sector domain",
+            ));
+        }
+        if physical_sector_owner_ids
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            != *physical_sector_ids
+            || physical_sector_owner_ids
+                .iter()
+                .any(|(sector_id, owner_id)| {
+                    !physical_sector_ids.contains(owner_id)
+                        || owner_id > sector_id
+                        || physical_sector_owner_ids.get(owner_id) != Some(owner_id)
+                })
+        {
+            return Err(invalid(
+                "closure result has an invalid physical-sector owner domain",
+            ));
+        }
+        Ok(Self {
+            groups,
+            physical_sector_ids: physical_sector_ids.clone(),
+            physical_sector_owner_ids,
+        })
+    }
 }
 
 type ClosureColorAttemptDiagnostic = Vec<(LCColorComponentKind, Vec<u32>)>;
@@ -2032,7 +2124,7 @@ where
             "contact-orbit staged contribution snapshot changed length",
         ));
     }
-    let selected_tokens = selected_contact_orbit_owner_tokens(candidates.into_iter())?;
+    let selected_tokens = selected_contact_orbit_owner_tokens(candidates)?;
     let retained_contribution_count = selected_tokens.len();
     let removed_contribution_count = staged_contribution_count
         .checked_sub(retained_contribution_count)
@@ -2432,13 +2524,44 @@ impl PreparedClosureSectorCatalog {
     }
 }
 
+fn closure_domain_sector_owners(
+    strategy: RecurrenceStrategy,
+    prepared_sectors: &PreparedClosureSectorCatalog,
+    physical_sector_ids: &BTreeSet<u32>,
+) -> RusticolResult<BTreeMap<u32, u32>> {
+    let mut owner_by_open_forest = BTreeMap::<Box<[LCColorComponent]>, u32>::new();
+    let mut result = BTreeMap::new();
+    for sector_id in physical_sector_ids.iter().copied() {
+        let sector = prepared_sectors.get(sector_id)?;
+        let owner_id = if strategy == RecurrenceStrategy::ContractedColorUnion
+            && sector.row.kind()? == ProcessLCSectorKind::OpenLines
+        {
+            let mut canonical = sector.expected_components.to_vec();
+            canonical.sort_unstable();
+            let owner_id = *owner_by_open_forest
+                .entry(canonical.into_boxed_slice())
+                .or_insert(sector_id);
+            if sector.contracted_color_canonical_owner != (owner_id == sector_id) {
+                return Err(invalid(
+                    "contracted closure-sector owner classification is inconsistent",
+                ));
+            }
+            owner_id
+        } else {
+            sector_id
+        };
+        result.insert(sector_id, owner_id);
+    }
+    Ok(result)
+}
+
 #[derive(Debug, Default)]
-struct TransitionReflectionIndex {
+pub(super) struct TransitionReflectionIndex {
     proofs_by_transition: BTreeMap<u32, TransitionReflectionProof>,
 }
 
 impl TransitionReflectionIndex {
-    fn new(
+    pub(super) fn new(
         template: &OwnedRecurrenceTemplateInput,
         catalog: &TemplateCatalog<'_>,
     ) -> RusticolResult<Self> {
@@ -2508,7 +2631,7 @@ impl TransitionReflectionIndex {
         Ok(result)
     }
 
-    fn proof(&self, transition_id: u32) -> Option<&TransitionReflectionProof> {
+    pub(super) fn proof(&self, transition_id: u32) -> Option<&TransitionReflectionProof> {
         self.proofs_by_transition.get(&transition_id)
     }
 }
@@ -3292,6 +3415,7 @@ impl<'a> TemplateCatalog<'a> {
         self.coupling_names.len()
     }
 
+    #[allow(dead_code)]
     pub(super) fn coupling_order_names(&self) -> &[&'a str] {
         &self.coupling_names
     }
@@ -4734,6 +4858,8 @@ fn build_recurrence_program_impl(
     let mut resident_contribution_count = 0usize;
     let mut stage_diagnostics = Vec::new();
     let mut closures = BTreeMap::new();
+    let mut exhaustive_closure_sector_ids = BTreeSet::new();
+    let mut exhaustive_closure_sector_owner_ids = BTreeMap::new();
     for (lane_index, construction_sectors) in construction_sector_groups.into_iter().enumerate() {
         let stage_index_offset = lane_index
             .checked_mul(stage_count_per_lane)
@@ -4882,7 +5008,7 @@ fn build_recurrence_program_impl(
             lane_internal_end,
         });
         let closure_processing_started = telemetry_timer(collect_telemetry);
-        let lane_closures = build_closures(
+        let lane_closure_domain = build_closures(
             strategy,
             process_input,
             &process_catalog,
@@ -4900,6 +5026,24 @@ fn build_recurrence_program_impl(
             &mut telemetry,
             collect_telemetry,
         )?;
+        for sector_id in lane_closure_domain.physical_sector_ids {
+            if !exhaustive_closure_sector_ids.insert(sector_id) {
+                return Err(invalid(
+                    "recurrence closure construction visited one physical sector twice",
+                ));
+            }
+        }
+        for (sector_id, owner_id) in lane_closure_domain.physical_sector_owner_ids {
+            if exhaustive_closure_sector_owner_ids
+                .insert(sector_id, owner_id)
+                .is_some()
+            {
+                return Err(invalid(
+                    "recurrence closure construction assigned one physical-sector owner twice",
+                ));
+            }
+        }
+        let lane_closures = lane_closure_domain.groups;
         let lane_closures = if lane_domain.is_some() {
             retain_supported_pending_closures(
                 strategy,
@@ -4993,6 +5137,8 @@ fn build_recurrence_program_impl(
         color_states.into_states(),
         currents,
         closures,
+        exhaustive_closure_sector_ids,
+        exhaustive_closure_sector_owner_ids,
         replay_targets,
         retained_helicity_count,
         if isolate_replay_lanes {
@@ -5520,7 +5666,7 @@ fn insert_source_current(
     Ok(())
 }
 
-fn source_reflection(
+pub(super) fn source_reflection(
     color_states: &DynamicLCColorStateInterner,
     color_id: super::DynamicLCColorStateId,
     source_slot: u32,
@@ -6743,7 +6889,7 @@ pub(super) fn current_key_with_dynamic_color(
     )
 }
 
-fn reciprocal_reflection_proof(
+pub(super) fn reciprocal_reflection_proof(
     left: &CurrentReflection,
     right: &CurrentReflection,
 ) -> RusticolResult<bool> {
@@ -6919,7 +7065,7 @@ fn reconcile_stage_reflections(
     Ok(())
 }
 
-fn current_reversal_masks(
+pub(super) fn current_reversal_masks(
     colors: &[DynamicLCColorState; 2],
     reflections: &[CurrentReflection; 2],
 ) -> Vec<u8> {
@@ -6938,7 +7084,7 @@ fn current_reversal_masks(
     masks
 }
 
-fn current_reflection_candidate(
+pub(super) fn current_reflection_candidate(
     result_color: &DynamicLCColorState,
     parent_reflections: &[CurrentReflection; 2],
     local_proof: Option<&TransitionReflectionProof>,
@@ -6972,7 +7118,7 @@ fn current_reflection_candidate(
     .map(Some)
 }
 
-fn pure_adjoint_word_is_canonical(word: &[u32]) -> bool {
+pub(super) fn pure_adjoint_word_is_canonical(word: &[u32]) -> bool {
     if word.len() < 2 {
         return true;
     }
@@ -7575,7 +7721,11 @@ struct ContractedClosureSupportBucket {
 }
 
 impl ContractedClosureSupportBucket {
-    fn include(&mut self, sector: &PreparedClosureSector) -> RusticolResult<()> {
+    fn include(
+        &mut self,
+        strategy: RecurrenceStrategy,
+        sector: &PreparedClosureSector,
+    ) -> RusticolResult<()> {
         self.sector_ids.push(sector.row.sector_id);
         match sector.row.kind()? {
             ProcessLCSectorKind::Singlet | ProcessLCSectorKind::SingleTrace => {
@@ -7584,7 +7734,10 @@ impl ContractedClosureSupportBucket {
                     .or_default()
                     .push(sector.row.sector_id);
             }
-            ProcessLCSectorKind::OpenLines if sector.contracted_color_canonical_owner => {
+            ProcessLCSectorKind::OpenLines
+                if strategy == RecurrenceStrategy::AllFlowUnion
+                    || sector.contracted_color_canonical_owner =>
+            {
                 let mut canonical = sector.expected_components.to_vec();
                 canonical.sort_unstable();
                 self.open_line_sector_ids_by_components
@@ -7628,9 +7781,18 @@ struct ContractedClosureAttempt {
 }
 
 fn contracted_closure_support_buckets(
+    strategy: RecurrenceStrategy,
     prepared_sectors: &PreparedClosureSectorCatalog,
     materialized_sectors: &BTreeSet<u32>,
 ) -> RusticolResult<BTreeMap<ClosureSupportBucketKey, ContractedClosureSupportBucket>> {
+    if !matches!(
+        strategy,
+        RecurrenceStrategy::AllFlowUnion | RecurrenceStrategy::ContractedColorUnion
+    ) {
+        return Err(invalid(
+            "bulk closure support buckets require an all-flow or contracted-color union",
+        ));
+    }
     let mut buckets = BTreeMap::<ClosureSupportBucketKey, ContractedClosureSupportBucket>::new();
     for sector_id in materialized_sectors.iter().copied() {
         let sector = prepared_sectors.get(sector_id)?;
@@ -7640,13 +7802,14 @@ fn contracted_closure_support_buckets(
                 sector.complement_support.clone(),
             ))
             .or_default()
-            .include(sector)?;
+            .include(strategy, sector)?;
     }
     Ok(buckets)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn include_contracted_closure_attempt(
+fn include_bulk_color_union_closure_attempt(
+    strategy: RecurrenceStrategy,
     sector: &PreparedClosureSector,
     attempt: &ContractedClosureAttempt,
     process: &OwnedRecurrenceProcessInput,
@@ -7658,13 +7821,9 @@ fn include_contracted_closure_attempt(
     materialized_sectors: &BTreeSet<u32>,
     result: &mut BTreeMap<PendingClosureKey, PendingClosureGroup>,
 ) -> RusticolResult<()> {
-    if !closed_components_match_prepared_sector(
-        RecurrenceStrategy::ContractedColorUnion,
-        &attempt.closed_components,
-        sector,
-    )? {
+    if !closed_components_match_prepared_sector(strategy, &attempt.closed_components, sector)? {
         return Err(invalid(format!(
-            "contracted-color closure routing selected non-matching sector {}",
+            "bulk color-union closure routing selected non-matching sector {}",
             sector.row.sector_id
         )));
     }
@@ -7695,7 +7854,8 @@ fn include_contracted_closure_attempt(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_contracted_color_union_closures(
+fn build_bulk_color_union_closures(
+    strategy: RecurrenceStrategy,
     process: &OwnedRecurrenceProcessInput,
     process_catalog: &ProcessCatalog<'_>,
     template: &OwnedRecurrenceTemplateInput,
@@ -7710,10 +7870,18 @@ fn build_contracted_color_union_closures(
     construction_domain: Option<PendingConstructionDomain>,
     telemetry: &mut RecurrenceGenerationTelemetry,
     collect_telemetry: bool,
-) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
+) -> RusticolResult<ExhaustiveClosureDomain> {
+    if !matches!(
+        strategy,
+        RecurrenceStrategy::AllFlowUnion | RecurrenceStrategy::ContractedColorUnion
+    ) {
+        return Err(invalid(
+            "bulk closure construction requires an all-flow or contracted-color union",
+        ));
+    }
     let support_index = LaneClosureSupportIndex::new(currents, construction_domain)?;
     let support_buckets =
-        contracted_closure_support_buckets(prepared_sectors, materialized_sectors)?;
+        contracted_closure_support_buckets(strategy, prepared_sectors, materialized_sectors)?;
     let mut attempts = Vec::<ContractedClosureAttempt>::new();
     let mut attempt_indices_by_sector = BTreeMap::<u32, Vec<usize>>::new();
 
@@ -7840,7 +8008,7 @@ fn build_contracted_color_union_closures(
                             }
                             if pairing_catalog.is_some() && pairing_certificate_ids.is_empty() {
                                 return Err(invalid(format!(
-                                    "closure witness {} for contracted-color support bucket has no exactly realized fermion pairing",
+                                    "closure witness {} for bulk color-union support bucket has no exactly realized fermion pairing",
                                     witness.row.ordinal
                                 )));
                             }
@@ -7923,7 +8091,8 @@ fn build_contracted_color_union_closures(
             .copied()
         {
             let attempt = &attempts[attempt_index];
-            include_contracted_closure_attempt(
+            include_bulk_color_union_closure_attempt(
+                strategy,
                 sector,
                 attempt,
                 process,
@@ -7935,6 +8104,21 @@ fn build_contracted_color_union_closures(
                 materialized_sectors,
                 &mut result,
             )?;
+        }
+    }
+    if strategy == RecurrenceStrategy::AllFlowUnion {
+        let covered_sector_ids = result
+            .keys()
+            .map(|key| key.target_sector_id)
+            .collect::<BTreeSet<_>>();
+        if let Some(sector_id) = materialized_sectors
+            .iter()
+            .copied()
+            .find(|sector_id| !covered_sector_ids.contains(sector_id))
+        {
+            return Err(invalid(format!(
+                "recurrence builder found no exact closure for physical LC sector {sector_id} after bulk all-flow closure routing"
+            )));
         }
     }
     validate_pending_closure_obligations(&result, pairing_catalog, prepared_sectors)?;
@@ -7954,7 +8138,11 @@ fn build_contracted_color_union_closures(
             "telemetry closure-proof-contribution count",
         )?;
     }
-    Ok(result)
+    ExhaustiveClosureDomain::new(
+        result,
+        materialized_sectors,
+        closure_domain_sector_owners(strategy, prepared_sectors, materialized_sectors)?,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -7975,9 +8163,13 @@ fn build_closures(
     construction_domain: Option<PendingConstructionDomain>,
     telemetry: &mut RecurrenceGenerationTelemetry,
     collect_telemetry: bool,
-) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
-    if strategy == RecurrenceStrategy::ContractedColorUnion {
-        return build_contracted_color_union_closures(
+) -> RusticolResult<ExhaustiveClosureDomain> {
+    if matches!(
+        strategy,
+        RecurrenceStrategy::AllFlowUnion | RecurrenceStrategy::ContractedColorUnion
+    ) {
+        return build_bulk_color_union_closures(
+            strategy,
             process,
             process_catalog,
             template,
@@ -8032,9 +8224,10 @@ fn build_closures_per_sector(
     construction_domain: Option<PendingConstructionDomain>,
     telemetry: &mut RecurrenceGenerationTelemetry,
     collect_telemetry: bool,
-) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
+) -> RusticolResult<ExhaustiveClosureDomain> {
     let support_index = LaneClosureSupportIndex::new(currents, construction_domain)?;
     let mut result = BTreeMap::new();
+    let mut covered_sector_ids = BTreeSet::new();
     for sector_id in materialized_sectors.iter().copied() {
         let sector = prepared_sectors.get(sector_id)?;
         let anchor_ids = support_index
@@ -8111,13 +8304,14 @@ fn build_closures_per_sector(
                         prepared_sectors,
                         materialized_sectors,
                         &mut result,
+                        &mut covered_sector_ids,
                         telemetry,
                         collect_telemetry,
                     )?;
                 }
             }
         }
-        if result.len() == sector_result_start {
+        if result.len() == sector_result_start && strategy != RecurrenceStrategy::AllFlowUnion {
             if strategy == RecurrenceStrategy::ContractedColorUnion {
                 continue;
             }
@@ -8159,6 +8353,78 @@ fn build_closures_per_sector(
             )));
         }
     }
+    // Do not reject an all-flow sector until every possible direct owner has
+    // run.  Physical sector identifiers need not place a reflection owner
+    // before its partner; only the authenticated certificate establishes that
+    // relationship.  Coverage is recorded exclusively after the corresponding
+    // exact row (and optional phase-bearing partner row) was inserted above.
+    if strategy == RecurrenceStrategy::AllFlowUnion
+        && let Some(sector_id) = materialized_sectors
+            .iter()
+            .copied()
+            .find(|sector_id| !covered_sector_ids.contains(sector_id))
+    {
+        let sector = prepared_sectors.get(sector_id)?;
+        let anchor_ids = support_index
+            .current_ids(&sector.anchor_support)
+            .iter()
+            .copied()
+            .filter(|current_id| {
+                currents[*current_id as usize].key.node_kind() == RecurrenceNodeKind::Source
+            })
+            .collect::<Vec<_>>();
+        let complement_ids = support_index.current_ids(&sector.complement_support);
+        let anchor_count = anchor_ids.len();
+        let complement_count = complement_ids.len();
+        let mut state_matched_attempts = 0usize;
+        for anchor_id in anchor_ids.iter().copied() {
+            let anchor_state = currents[anchor_id as usize].key.current_state_template_id();
+            for complement_id in complement_ids.iter().copied() {
+                let complement_state = currents[complement_id as usize]
+                    .key
+                    .current_state_template_id();
+                state_matched_attempts = state_matched_attempts
+                    .checked_add(prepared_closures.rows(anchor_state, complement_state).len())
+                    .ok_or_else(|| invalid("closure-attempt count exceeds usize"))?;
+            }
+        }
+        let closure_color_attempts = collect_closure_color_attempts(
+            prepared_closures,
+            color_states,
+            currents,
+            &anchor_ids,
+            complement_ids,
+        )?;
+        let mut support_histogram = BTreeMap::<usize, usize>::new();
+        let mut support_signatures = BTreeSet::new();
+        for (id, current) in currents.iter().enumerate() {
+            if construction_domain.is_some_and(|domain| !domain.contains(id)) {
+                continue;
+            }
+            *support_histogram
+                .entry(current.key.support_source_slots().len())
+                .or_default() += 1;
+            support_signatures.insert((
+                current.key.support_source_slots().len(),
+                current.key.current_state_template_id(),
+                current.key.spin_state_class(),
+                current.key.flavour_flow().to_vec(),
+                current.key.quantum_number_flow_id(),
+                current.key.coupling_orders().to_vec(),
+            ));
+        }
+        return Err(invalid(format!(
+            "recurrence builder found no exact closure for physical LC sector {sector_id} \
+             (anchors={anchor_count}, complement_currents={complement_count}, \
+             state_matched_attempts={state_matched_attempts}, \
+             currents_by_support_size={support_histogram:?}, \
+             stage_diagnostics={stage_diagnostics:?}, \
+             expected_color_components={:?}, \
+             closure_color_attempts={closure_color_attempts:?}, \
+             support_signatures={support_signatures:?})",
+            sector.expected_components,
+        )));
+    }
     validate_pending_closure_obligations(&result, pairing_catalog, prepared_sectors)?;
     if collect_telemetry {
         checked_diagnostic_add(
@@ -8176,7 +8442,11 @@ fn build_closures_per_sector(
             "telemetry closure-proof-contribution count",
         )?;
     }
-    Ok(result)
+    ExhaustiveClosureDomain::new(
+        result,
+        materialized_sectors,
+        closure_domain_sector_owners(strategy, prepared_sectors, materialized_sectors)?,
+    )
 }
 
 fn collect_closure_color_attempts(
@@ -8349,6 +8619,7 @@ fn add_closure_terms(
     prepared_sectors: &PreparedClosureSectorCatalog,
     materialized_sectors: &BTreeSet<u32>,
     result: &mut BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    covered_sector_ids: &mut BTreeSet<u32>,
     telemetry: &mut RecurrenceGenerationTelemetry,
     collect_telemetry: bool,
 ) -> RusticolResult<()> {
@@ -8476,7 +8747,12 @@ fn add_closure_terms(
                 reflection_certificate_id: reflection.map(|row| row.certificate_id),
                 exact_factor: factor,
             };
+            let partner_sector_id = reflection.and_then(|row| row.partner_sector_id);
             include_closure_with_reflection(result, key, contribution, reflection)?;
+            covered_sector_ids.insert(sector.row.sector_id);
+            if let Some(partner_sector_id) = partner_sector_id {
+                covered_sector_ids.insert(partner_sector_id);
+            }
         }
     }
     Ok(())
@@ -9459,12 +9735,447 @@ fn observe_established_selected_transition_slice(
     Ok(Some((materialized_sector_id, source_states)))
 }
 
+fn consume_ordered_closure_destination<I, Row, Destination, Emit>(
+    rows: &mut Peekable<I>,
+    sector_id: u32,
+    source_states: &[SourceStateAssignment],
+    destination: Destination,
+    mut emit: Emit,
+) -> RusticolResult<()>
+where
+    I: Iterator<Item = Row>,
+    Destination: for<'row> Fn(&'row Row) -> (u32, &'row [SourceStateAssignment]),
+    Emit: FnMut(Row) -> RusticolResult<()>,
+{
+    while let Some(row) = rows.peek() {
+        let (row_sector_id, row_source_states) = destination(row);
+        let ordering = row_sector_id
+            .cmp(&sector_id)
+            .then_with(|| row_source_states.cmp(source_states));
+        match ordering {
+            std::cmp::Ordering::Less => {
+                return Err(invalid(
+                    "ordered closure emission skipped a destination prefix",
+                ));
+            }
+            std::cmp::Ordering::Equal => emit(
+                rows.next()
+                    .expect("peeked closure destination row disappeared"),
+            )?,
+            std::cmp::Ordering::Greater => break,
+        }
+    }
+    Ok(())
+}
+
+fn require_ordered_closure_destinations_exhausted<I>(rows: &mut Peekable<I>) -> RusticolResult<()>
+where
+    I: Iterator,
+{
+    if rows.peek().is_some() {
+        return Err(invalid(
+            "ordered closure emission left a destination prefix unconsumed",
+        ));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn complete_closure_target_domain_certificate(
+    strategy: RecurrenceStrategy,
+    process: &OwnedRecurrenceProcessInput,
+    sector_count: usize,
+    exhaustive_closure_sector_ids: &BTreeSet<u32>,
+    exhaustive_closure_sector_owner_ids: &BTreeMap<u32, u32>,
+    replay_targets: &[RecurrenceReplayTarget],
+    helicity_ids: &BTreeMap<Box<[SourceStateAssignment]>, u32>,
+    pending_closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    candidate_identity_digests_by_group: &[Vec<SemanticDigest>],
+) -> RusticolResult<Option<ClosureTargetDomainCertificateV1>> {
+    if strategy != RecurrenceStrategy::ContractedColorUnion {
+        return Ok(None);
+    }
+    let physical_sector_count = u32::try_from(sector_count)
+        .map_err(|_| invalid("closure target-domain physical-sector count exceeds u32"))?;
+    let expected_sector_ids = (0..physical_sector_count).collect::<BTreeSet<_>>();
+    if exhaustive_closure_sector_owner_ids
+        .keys()
+        .copied()
+        .collect::<BTreeSet<_>>()
+        != *exhaustive_closure_sector_ids
+        || exhaustive_closure_sector_owner_ids
+            .iter()
+            .any(|(sector_id, owner_id)| {
+                !exhaustive_closure_sector_ids.contains(owner_id)
+                    || owner_id > sector_id
+                    || exhaustive_closure_sector_owner_ids.get(owner_id) != Some(owner_id)
+            })
+    {
+        return Err(invalid(
+            "contracted closure target-domain certificate has an invalid owner partition",
+        ));
+    }
+    let resolved_helicity_count = u32::try_from(helicity_ids.len())
+        .map_err(|_| invalid("closure target-domain resolved-helicity count exceeds u32"))?;
+    if resolved_helicity_count == 0 {
+        return Err(invalid(
+            "contracted closure target-domain certificate has no resolved helicities",
+        ));
+    }
+    if candidate_identity_digests_by_group.len() != pending_closures.len() {
+        return Err(invalid(
+            "closure target-domain candidate groups do not match pending closures",
+        ));
+    }
+
+    let mut ordered_helicities = helicity_ids
+        .iter()
+        .map(|(states, helicity_id)| (*helicity_id, states.as_ref()))
+        .collect::<Vec<_>>();
+    ordered_helicities.sort_unstable_by_key(|(helicity_id, _)| *helicity_id);
+    if ordered_helicities
+        .iter()
+        .enumerate()
+        .any(|(index, (helicity_id, _))| *helicity_id != index as u32)
+    {
+        return Err(invalid(
+            "closure target-domain resolved-helicity IDs are not dense",
+        ));
+    }
+
+    let mut closure_source_sector_ids = BTreeMap::<u32, u32>::new();
+    let mut representative_helicity_ids_by_target = BTreeMap::<u32, Vec<u32>>::new();
+    if replay_targets.is_empty() {
+        if exhaustive_closure_sector_ids != &expected_sector_ids {
+            return Err(invalid(
+                "contracted closure target-domain certificate lacks exhaustive physical-sector coverage",
+            ));
+        }
+        let identity_helicity_ids = (0..resolved_helicity_count).collect::<Vec<_>>();
+        for sector_id in expected_sector_ids.iter().copied() {
+            closure_source_sector_ids
+                .insert(sector_id, exhaustive_closure_sector_owner_ids[&sector_id]);
+            representative_helicity_ids_by_target.insert(sector_id, identity_helicity_ids.clone());
+        }
+    } else {
+        if replay_targets.len() != sector_count {
+            return Err(invalid(
+                "contracted closure target-domain replay does not cover every physical sector",
+            ));
+        }
+        let replay_materialized_sector_ids = replay_targets
+            .iter()
+            .map(RecurrenceReplayTarget::materialized_sector_id)
+            .collect::<BTreeSet<_>>();
+        if replay_materialized_sector_ids != *exhaustive_closure_sector_ids {
+            return Err(invalid(
+                "contracted closure target-domain replay representatives disagree with the exhaustive closure domain",
+            ));
+        }
+
+        let mut source_template_by_state = BTreeMap::<(u32, u32), u32>::new();
+        let mut source_state_by_template = BTreeMap::<(u32, u32), u32>::new();
+        for state in &process.source_states {
+            if source_template_by_state
+                .insert(
+                    (state.source_slot, state.state_index),
+                    state.source_template_id,
+                )
+                .is_some()
+                || source_state_by_template
+                    .insert(
+                        (state.source_slot, state.source_template_id),
+                        state.state_index,
+                    )
+                    .is_some()
+            {
+                return Err(invalid(
+                    "contracted closure target-domain replay source states are not bijective",
+                ));
+            }
+        }
+        let source_count = process.external_legs.len();
+        for (target_index, target) in replay_targets.iter().enumerate() {
+            let target_sector_id = u32::try_from(target_index)
+                .map_err(|_| invalid("closure target-domain replay target exceeds u32"))?;
+            if target.id() != target_sector_id
+                || target.target_sector_id() != target_sector_id
+                || !exhaustive_closure_sector_ids.contains(&target.materialized_sector_id())
+            {
+                return Err(invalid(
+                    "contracted closure target-domain replay targets are not canonical",
+                ));
+            }
+            let mut permutation = target.source_slot_permutation().to_vec();
+            permutation.sort_unstable();
+            if permutation.len() != source_count
+                || permutation
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .any(|(slot, value)| value as usize != slot)
+                || target.source_momentum_signs().len() != source_count
+            {
+                return Err(invalid(
+                    "contracted closure target-domain replay source mapping is not bijective",
+                ));
+            }
+
+            let mut inverse_helicity_ids = vec![MISSING_U32; helicity_ids.len()];
+            for (representative_helicity_id, source_states) in &ordered_helicities {
+                let mut mapped = vec![None; source_count];
+                for assignment in *source_states {
+                    let representative_slot = assignment.source_slot();
+                    let source_template_id = source_template_by_state
+                        .get(&(representative_slot, assignment.state_index()))
+                        .copied()
+                        .ok_or_else(|| {
+                            invalid("closure target-domain replay helicity has no source template")
+                        })?;
+                    let target_slot = target
+                        .source_slot_permutation()
+                        .get(representative_slot as usize)
+                        .copied()
+                        .ok_or_else(|| {
+                            invalid(
+                                "closure target-domain replay source permutation is out of bounds",
+                            )
+                        })?;
+                    let target_state_index = source_state_by_template
+                        .get(&(target_slot, source_template_id))
+                        .copied()
+                        .ok_or_else(|| {
+                            invalid(
+                                "closure target-domain replay cannot transport a source template",
+                            )
+                        })?;
+                    let target_index = usize::try_from(target_slot)
+                        .map_err(|_| invalid("closure replay source slot exceeds usize"))?;
+                    let target_state = mapped.get_mut(target_index).ok_or_else(|| {
+                        invalid("closure target-domain replay target slot is out of bounds")
+                    })?;
+                    if target_state
+                        .replace(SourceStateAssignment::new(target_slot, target_state_index))
+                        .is_some()
+                    {
+                        return Err(invalid(
+                            "closure target-domain replay helicity mapping is not bijective",
+                        ));
+                    }
+                }
+                let mapped = mapped
+                    .into_iter()
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or_else(|| {
+                        invalid("closure target-domain replay does not map every source state")
+                    })?;
+                let mapped_helicity_id = helicity_ids.get(mapped.as_slice()).copied().ok_or_else(
+                    || {
+                        invalid(
+                            "closure target-domain replay maps outside retained helicity coverage",
+                        )
+                    },
+                )?;
+                let inverse_slot = inverse_helicity_ids
+                    .get_mut(mapped_helicity_id as usize)
+                    .ok_or_else(|| {
+                        invalid("closure target-domain replay helicity ID is out of bounds")
+                    })?;
+                if *inverse_slot != MISSING_U32 {
+                    return Err(invalid(
+                        "closure target-domain replay helicity mapping is not one-to-one",
+                    ));
+                }
+                *inverse_slot = *representative_helicity_id;
+            }
+            if inverse_helicity_ids.contains(&MISSING_U32) {
+                return Err(invalid(
+                    "closure target-domain replay helicity mapping is incomplete",
+                ));
+            }
+            closure_source_sector_ids.insert(
+                target_sector_id,
+                exhaustive_closure_sector_owner_ids[&target.materialized_sector_id()],
+            );
+            representative_helicity_ids_by_target.insert(target_sector_id, inverse_helicity_ids);
+        }
+        if closure_source_sector_ids
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            != expected_sector_ids
+        {
+            return Err(invalid(
+                "contracted closure target-domain replay target IDs are not dense",
+            ));
+        }
+    }
+
+    let mut groups_by_target = BTreeMap::<(u32, u32), Vec<usize>>::new();
+    let mut hash = Sha256::new();
+    hash.update(b"pyamplicol-complete-recurrence-closure-target-domain-v1\0");
+    hash.update(physical_sector_count.to_le_bytes());
+    hash.update(resolved_helicity_count.to_le_bytes());
+    hash.update(
+        u64::try_from(exhaustive_closure_sector_ids.len())
+            .map_err(|_| invalid("closure target-domain exhaustive sector count exceeds u64"))?
+            .to_le_bytes(),
+    );
+    for sector_id in exhaustive_closure_sector_ids {
+        hash.update(sector_id.to_le_bytes());
+        hash.update(exhaustive_closure_sector_owner_ids[sector_id].to_le_bytes());
+    }
+    hash.update(
+        u64::try_from(replay_targets.len())
+            .map_err(|_| invalid("closure target-domain replay-target count exceeds u64"))?
+            .to_le_bytes(),
+    );
+    for target in replay_targets {
+        hash.update(target.id().to_le_bytes());
+        hash.update(target.materialized_sector_id().to_le_bytes());
+        hash.update(target.target_sector_id().to_le_bytes());
+        hash.update(
+            u64::try_from(target.source_slot_permutation().len())
+                .map_err(|_| invalid("closure replay source count exceeds u64"))?
+                .to_le_bytes(),
+        );
+        for source_slot in target.source_slot_permutation() {
+            hash.update(source_slot.to_le_bytes());
+        }
+        for momentum_sign in target.source_momentum_signs() {
+            hash.update(momentum_sign.to_le_bytes());
+        }
+        hash_exact_factor(&mut hash, target.amplitude_factor());
+    }
+    for (helicity_id, source_states) in &ordered_helicities {
+        hash.update(helicity_id.to_le_bytes());
+        hash.update(
+            u64::try_from(source_states.len())
+                .map_err(|_| invalid("closure target-domain source-state count exceeds u64"))?
+                .to_le_bytes(),
+        );
+        for assignment in *source_states {
+            hash.update(assignment.source_slot().to_le_bytes());
+            hash.update(assignment.state_index().to_le_bytes());
+        }
+    }
+
+    hash.update(
+        u64::try_from(pending_closures.len())
+            .map_err(|_| invalid("closure target-domain group count exceeds u64"))?
+            .to_le_bytes(),
+    );
+    for (group_index, ((key, group), candidate_digests)) in pending_closures
+        .iter()
+        .zip(candidate_identity_digests_by_group)
+        .enumerate()
+    {
+        if candidate_digests.len() != group.contributions.len() || candidate_digests.is_empty() {
+            return Err(invalid(
+                "closure target-domain candidate identities do not match their proof group",
+            ));
+        }
+        hash.update(key.target_sector_id.to_le_bytes());
+        hash.update(
+            u64::try_from(key.complete_source_states.len())
+                .map_err(|_| invalid("closure target-domain source-state count exceeds u64"))?
+                .to_le_bytes(),
+        );
+        for assignment in &key.complete_source_states {
+            hash.update(assignment.source_slot().to_le_bytes());
+            hash.update(assignment.state_index().to_le_bytes());
+        }
+        hash.update(key.closure_template_id.to_le_bytes());
+        hash.update(
+            key.quantum_flow_template_id
+                .unwrap_or(MISSING_U32)
+                .to_le_bytes(),
+        );
+        hash.update(
+            u64::try_from(key.parent_current_ids.len())
+                .map_err(|_| invalid("closure target-domain parent count exceeds u64"))?
+                .to_le_bytes(),
+        );
+        for parent_id in &key.parent_current_ids {
+            hash.update(parent_id.to_le_bytes());
+        }
+        hash_exact_factor(&mut hash, group.exact_factor);
+        let mut candidate_digests = candidate_digests.clone();
+        candidate_digests.sort_unstable();
+        hash.update(
+            u64::try_from(candidate_digests.len())
+                .map_err(|_| invalid("closure target-domain candidate count exceeds u64"))?
+                .to_le_bytes(),
+        );
+        for digest in candidate_digests {
+            hash.update(digest.as_bytes());
+        }
+        if let Some(helicity_id) = helicity_ids.get(&key.complete_source_states).copied() {
+            groups_by_target
+                .entry((key.target_sector_id, helicity_id))
+                .or_default()
+                .push(group_index);
+        } else if !group.exact_factor.is_zero() {
+            return Err(invalid(
+                "nonzero contracted closure group is outside the resolved-helicity domain",
+            ));
+        }
+    }
+
+    let pending_groups = pending_closures.values().collect::<Vec<_>>();
+    let mut structural_zero_sector_ids = Vec::new();
+    for sector_id in 0..physical_sector_count {
+        let closure_source_sector_id = closure_source_sector_ids[&sector_id];
+        let representative_helicity_ids = &representative_helicity_ids_by_target[&sector_id];
+        let mut sector_has_nonzero_group = false;
+        for target_helicity_id in 0..resolved_helicity_count {
+            let representative_helicity_id =
+                representative_helicity_ids[target_helicity_id as usize];
+            let group_indices = groups_by_target
+                .get(&(closure_source_sector_id, representative_helicity_id))
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            hash.update(sector_id.to_le_bytes());
+            hash.update(closure_source_sector_id.to_le_bytes());
+            hash.update(target_helicity_id.to_le_bytes());
+            hash.update(representative_helicity_id.to_le_bytes());
+            hash.update(
+                u64::try_from(group_indices.len())
+                    .map_err(|_| invalid("closure target-domain target group count exceeds u64"))?
+                    .to_le_bytes(),
+            );
+            for group_index in group_indices {
+                hash.update(
+                    u64::try_from(*group_index)
+                        .map_err(|_| invalid("closure target-domain group index exceeds u64"))?
+                        .to_le_bytes(),
+                );
+                sector_has_nonzero_group |= !pending_groups[*group_index].exact_factor.is_zero();
+            }
+        }
+        if !sector_has_nonzero_group {
+            structural_zero_sector_ids.push(sector_id);
+        }
+    }
+    let semantic_digest = SemanticDigest::new(hash.finalize().into())?;
+    ClosureTargetDomainCertificateV1::new(
+        physical_sector_count,
+        resolved_helicity_count,
+        structural_zero_sector_ids,
+        semantic_digest,
+    )
+    .map(Some)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn finish_program(
     strategy: RecurrenceStrategy,
     process_catalog: &ProcessCatalog<'_>,
     dynamic_color_states: Vec<DynamicLCColorState>,
     pending: Vec<PendingCurrent>,
     mut pending_closures: BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    exhaustive_closure_sector_ids: BTreeSet<u32>,
+    exhaustive_closure_sector_owner_ids: BTreeMap<u32, u32>,
     replay_targets: Vec<RecurrenceReplayTarget>,
     retained_helicity_count: u64,
     helicity_support_rule: HelicitySupportRule,
@@ -9591,15 +10302,16 @@ fn finish_program(
                 .map_err(|_| invalid("three-line certificate count exceeds u32"))
         })
         .collect::<RusticolResult<BTreeMap<_, _>>>()?;
-    let mut original_candidate_identity_digests = Vec::new();
+    let mut candidate_identity_digests_by_group = Vec::with_capacity(pending_closures.len());
     for (key, group) in &pending_closures {
         let target_helicity_id = if key.complete_source_states.is_empty() {
             None
         } else {
             helicity_ids.get(&key.complete_source_states).copied()
         };
+        let mut group_candidate_identity_digests = Vec::with_capacity(group.contributions.len());
         for contribution in &group.contributions {
-            original_candidate_identity_digests.push(pending_closure_candidate_identity_digest(
+            group_candidate_identity_digests.push(pending_closure_candidate_identity_digest(
                 key,
                 contribution,
                 target_helicity_id,
@@ -9608,7 +10320,24 @@ fn finish_program(
                 &reflection_certificates,
             )?);
         }
+        candidate_identity_digests_by_group.push(group_candidate_identity_digests);
     }
+    let original_candidate_identity_digests = candidate_identity_digests_by_group
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<Vec<_>>();
+    let closure_target_domain_certificate = complete_closure_target_domain_certificate(
+        strategy,
+        process_catalog.input,
+        sector_count,
+        &exhaustive_closure_sector_ids,
+        &exhaustive_closure_sector_owner_ids,
+        &replay_targets,
+        &helicity_ids,
+        &pending_closures,
+        &candidate_identity_digests_by_group,
+    )?;
     let mut accepted_candidate_identity_digests = Vec::new();
     if let Some(projection) = color_projection.as_ref() {
         for projected in projection.closures.values() {
@@ -9659,6 +10388,13 @@ fn finish_program(
     let candidate_domain_certificate = ClosureCandidateDomainCertificateV1::from_identity_digests(
         accepted_candidate_identity_digests,
     )?;
+    let mut pending_closure_rows = pending_closures
+        .iter()
+        .filter(|(_, group)| !group.exact_factor.is_zero())
+        .peekable();
+    let mut projected_closure_rows = color_projection
+        .as_ref()
+        .map(|projection| projection.closures.values().peekable());
     let mut amplitude_destinations = Vec::with_capacity(destination_keys.len());
     let mut destination_ids = BTreeMap::new();
     for (destination_id, (sector_id, source_states)) in destination_keys.into_iter().enumerate() {
@@ -9675,77 +10411,89 @@ fn finish_program(
                     .ok_or_else(|| invalid("resolved-helicity destination disappeared"))?,
             )
         };
-        if let Some(projection) = color_projection.as_ref() {
-            for projected in projection.closures.values().filter(|projected| {
-                projected.identity.target_sector_id == sector_id
-                    && projected.identity.complete_source_states.as_ref() == source_states.as_ref()
-            }) {
-                let key = &projected.representative_key;
-                let group = &projected.representative_group;
-                let runtime_term_id = u32::try_from(closure_terms.len())
-                    .map_err(|_| invalid("runtime closure-term count exceeds u32"))?;
-                closure_terms.push(RecurrenceClosureTerm::new(
-                    runtime_term_id,
-                    destination_id,
-                    projected.identity.closure_template_id,
-                    projected.identity.quantum_flow_template_id,
-                    projected.identity.parent_projection_ids.to_vec(),
-                    projected.identity.exact_factor,
-                )?);
-                append_closure_proof_group(
-                    key,
-                    group,
-                    &pending,
-                    &dynamic_color_states,
-                    &remap,
-                    Some(destination_id),
-                    target_helicity_id,
-                    Some(runtime_term_id),
-                    &three_line_certificate_ids,
-                    &mut closure_proof_contributions,
-                    &mut closure_proof_groups,
-                )?;
-            }
+        if let Some(rows) = projected_closure_rows.as_mut() {
+            consume_ordered_closure_destination(
+                rows,
+                sector_id,
+                &source_states,
+                |projected| {
+                    (
+                        projected.identity.target_sector_id,
+                        projected.identity.complete_source_states.as_ref(),
+                    )
+                },
+                |projected| {
+                    let key = &projected.representative_key;
+                    let group = &projected.representative_group;
+                    let runtime_term_id = u32::try_from(closure_terms.len())
+                        .map_err(|_| invalid("runtime closure-term count exceeds u32"))?;
+                    closure_terms.push(RecurrenceClosureTerm::new(
+                        runtime_term_id,
+                        destination_id,
+                        projected.identity.closure_template_id,
+                        projected.identity.quantum_flow_template_id,
+                        projected.identity.parent_projection_ids.to_vec(),
+                        projected.identity.exact_factor,
+                    )?);
+                    append_closure_proof_group(
+                        key,
+                        group,
+                        &pending,
+                        &dynamic_color_states,
+                        &remap,
+                        Some(destination_id),
+                        target_helicity_id,
+                        Some(runtime_term_id),
+                        &three_line_certificate_ids,
+                        &mut closure_proof_contributions,
+                        &mut closure_proof_groups,
+                    )?;
+                    Ok(())
+                },
+            )?;
         } else {
-            for (key, group) in pending_closures.iter().filter(|(key, group)| {
-                key.target_sector_id == sector_id
-                    && key.complete_source_states == source_states
-                    && !group.exact_factor.is_zero()
-            }) {
-                let parents = key
-                    .parent_current_ids
-                    .iter()
-                    .map(|id| {
-                        remap
-                            .get(id)
-                            .copied()
-                            .ok_or_else(|| invalid("closure parent is absent"))
-                    })
-                    .collect::<RusticolResult<Vec<_>>>()?;
-                let runtime_term_id = u32::try_from(closure_terms.len())
-                    .map_err(|_| invalid("runtime closure-term count exceeds u32"))?;
-                closure_terms.push(RecurrenceClosureTerm::new(
-                    runtime_term_id,
-                    destination_id,
-                    key.closure_template_id,
-                    key.quantum_flow_template_id,
-                    parents,
-                    group.exact_factor,
-                )?);
-                append_closure_proof_group(
-                    key,
-                    group,
-                    &pending,
-                    &dynamic_color_states,
-                    &remap,
-                    Some(destination_id),
-                    target_helicity_id,
-                    Some(runtime_term_id),
-                    &three_line_certificate_ids,
-                    &mut closure_proof_contributions,
-                    &mut closure_proof_groups,
-                )?;
-            }
+            consume_ordered_closure_destination(
+                &mut pending_closure_rows,
+                sector_id,
+                &source_states,
+                |(key, _)| (key.target_sector_id, key.complete_source_states.as_ref()),
+                |(key, group)| {
+                    let parents = key
+                        .parent_current_ids
+                        .iter()
+                        .map(|id| {
+                            remap
+                                .get(id)
+                                .copied()
+                                .ok_or_else(|| invalid("closure parent is absent"))
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()?;
+                    let runtime_term_id = u32::try_from(closure_terms.len())
+                        .map_err(|_| invalid("runtime closure-term count exceeds u32"))?;
+                    closure_terms.push(RecurrenceClosureTerm::new(
+                        runtime_term_id,
+                        destination_id,
+                        key.closure_template_id,
+                        key.quantum_flow_template_id,
+                        parents,
+                        group.exact_factor,
+                    )?);
+                    append_closure_proof_group(
+                        key,
+                        group,
+                        &pending,
+                        &dynamic_color_states,
+                        &remap,
+                        Some(destination_id),
+                        target_helicity_id,
+                        Some(runtime_term_id),
+                        &three_line_certificate_ids,
+                        &mut closure_proof_contributions,
+                        &mut closure_proof_groups,
+                    )?;
+                    Ok(())
+                },
+            )?;
         }
         amplitude_destinations.push(RecurrenceAmplitudeDestination::new(
             destination_id,
@@ -9753,6 +10501,11 @@ fn finish_program(
             target_helicity_id,
             CheckedTableRange::new(start, closure_terms.len() as u64 - start),
         )?);
+    }
+    if let Some(rows) = projected_closure_rows.as_mut() {
+        require_ordered_closure_destinations_exhausted(rows)?;
+    } else {
+        require_ordered_closure_destinations_exhausted(&mut pending_closure_rows)?;
     }
     for (key, group) in pending_closures
         .iter()
@@ -9788,7 +10541,7 @@ fn finish_program(
             materialize_three_line_certificates(&three_line_certificate_ids)?,
             candidate_domain_certificate,
         )?;
-    let program = RecurrenceProgram::new_with_closure_proofs(
+    let mut program = RecurrenceProgram::new_with_closure_proofs(
         strategy,
         u32::try_from(sector_count).map_err(|_| invalid("physical sector count exceeds u32"))?,
         retained_helicity_count,
@@ -9802,6 +10555,9 @@ fn finish_program(
         closure_terms,
         closure_proofs,
     )?;
+    if let Some(certificate) = closure_target_domain_certificate {
+        program = program.with_closure_target_domain_certificate(certificate)?;
+    }
     if let Some(projection) = color_projection.as_ref() {
         let body = encode_color_projection_certificate_body(
             &pending,
@@ -10938,6 +11694,104 @@ mod tests {
 
     fn digest(byte: u8) -> SemanticDigest {
         SemanticDigest::new([byte; 32]).expect("test digest must be nonzero")
+    }
+
+    #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    struct OrderedClosureTestRow {
+        sector_id: u32,
+        source_states: Box<[SourceStateAssignment]>,
+        ordinal: u32,
+    }
+
+    #[test]
+    fn ordered_closure_destination_cursor_preserves_filter_order_and_fails_closed() {
+        let states =
+            |state_index| vec![SourceStateAssignment::new(0, state_index)].into_boxed_slice();
+        let mut rows = [
+            OrderedClosureTestRow {
+                sector_id: 2,
+                source_states: states(0),
+                ordinal: 4,
+            },
+            OrderedClosureTestRow {
+                sector_id: 0,
+                source_states: states(1),
+                ordinal: 1,
+            },
+            OrderedClosureTestRow {
+                sector_id: 0,
+                source_states: states(1),
+                ordinal: 0,
+            },
+            OrderedClosureTestRow {
+                sector_id: 1,
+                source_states: states(0),
+                ordinal: 3,
+            },
+            OrderedClosureTestRow {
+                sector_id: 0,
+                source_states: states(0),
+                ordinal: 2,
+            },
+        ];
+        rows.sort_unstable();
+        let destinations = rows
+            .iter()
+            .map(|row| (row.sector_id, row.source_states.clone()))
+            .collect::<BTreeSet<_>>();
+        let expected = destinations
+            .iter()
+            .flat_map(|(sector_id, source_states)| {
+                rows.iter()
+                    .filter(move |row| {
+                        row.sector_id == *sector_id
+                            && row.source_states.as_ref() == source_states.as_ref()
+                    })
+                    .map(|row| row.ordinal)
+            })
+            .collect::<Vec<_>>();
+
+        let mut cursor = rows.iter().peekable();
+        let mut observed = Vec::new();
+        for (sector_id, source_states) in &destinations {
+            consume_ordered_closure_destination(
+                &mut cursor,
+                *sector_id,
+                source_states,
+                |row: &&OrderedClosureTestRow| (row.sector_id, row.source_states.as_ref()),
+                |row| {
+                    observed.push(row.ordinal);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        }
+        require_ordered_closure_destinations_exhausted(&mut cursor).unwrap();
+        assert_eq!(observed, expected);
+        assert_eq!(observed, [2, 0, 1, 3, 4]);
+
+        let mut skipped_prefix = rows.iter().peekable();
+        assert!(
+            consume_ordered_closure_destination(
+                &mut skipped_prefix,
+                1,
+                &states(0),
+                |row: &&OrderedClosureTestRow| (row.sector_id, row.source_states.as_ref()),
+                |_| Ok(()),
+            )
+            .is_err()
+        );
+
+        let mut unconsumed_suffix = rows.iter().peekable();
+        consume_ordered_closure_destination(
+            &mut unconsumed_suffix,
+            0,
+            &states(0),
+            |row: &&OrderedClosureTestRow| (row.sector_id, row.source_states.as_ref()),
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert!(require_ordered_closure_destinations_exhausted(&mut unconsumed_suffix).is_err());
     }
 
     fn proven_reflection(
@@ -13361,7 +14215,12 @@ mod tests {
         );
         assert_eq!(first.anchor_support.as_ref(), [1]);
         assert_eq!(first.complement_support.as_ref(), [0, 2, 3]);
-        let buckets = contracted_closure_support_buckets(&contracted, &sector_ids).unwrap();
+        let buckets = contracted_closure_support_buckets(
+            RecurrenceStrategy::ContractedColorUnion,
+            &contracted,
+            &sector_ids,
+        )
+        .unwrap();
         let bucket = buckets.values().next().unwrap();
         assert_eq!(buckets.len(), 1);
         assert_eq!(bucket.sector_ids, [0, 1]);
@@ -13379,11 +14238,15 @@ mod tests {
             &alias_only_ids,
         )
         .unwrap();
-        let alias_bucket = contracted_closure_support_buckets(&alias_only, &alias_only_ids)
-            .unwrap()
-            .into_values()
-            .next()
-            .unwrap();
+        let alias_bucket = contracted_closure_support_buckets(
+            RecurrenceStrategy::ContractedColorUnion,
+            &alias_only,
+            &alias_only_ids,
+        )
+        .unwrap()
+        .into_values()
+        .next()
+        .unwrap();
         assert!(
             alias_bucket
                 .matching_sector_ids(&alias.expected_components)
@@ -13399,6 +14262,27 @@ mod tests {
         .unwrap();
         assert!(topology.get(0).unwrap().contracted_color_canonical_owner);
         assert!(topology.get(1).unwrap().contracted_color_canonical_owner);
+
+        let all_flow = PreparedClosureSectorCatalog::new(
+            RecurrenceStrategy::AllFlowUnion,
+            &process,
+            &catalog,
+            &sector_ids,
+        )
+        .unwrap();
+        let all_flow_bucket = contracted_closure_support_buckets(
+            RecurrenceStrategy::AllFlowUnion,
+            &all_flow,
+            &sector_ids,
+        )
+        .unwrap()
+        .into_values()
+        .next()
+        .unwrap();
+        assert_eq!(
+            all_flow_bucket.matching_sector_ids(&first.expected_components),
+            [0, 1]
+        );
     }
 
     #[test]
@@ -13651,7 +14535,9 @@ mod tests {
             &process_catalog,
             color_states.into_states(),
             currents,
-            closures,
+            closures.groups,
+            closures.physical_sector_ids,
+            closures.physical_sector_owner_ids,
             vec![],
             1,
             HelicitySupportRule::None,
@@ -14361,7 +15247,155 @@ mod tests {
     }
 
     #[test]
-    fn contracted_closure_buckets_preserve_v4_reflection_partner_rows() {
+    fn complete_closure_target_domain_certifies_only_an_exhaustive_empty_owner_class() {
+        let process = scalar_reference_process(2);
+        let sector_ids = BTreeSet::from([0, 1]);
+        let owner_ids = BTreeMap::from([(0, 0), (1, 0)]);
+        let helicity_ids = BTreeMap::from([(
+            vec![
+                SourceStateAssignment::new(0, 0),
+                SourceStateAssignment::new(1, 0),
+            ]
+            .into_boxed_slice(),
+            0,
+        )]);
+        let pending_closures = BTreeMap::new();
+        let certificate = complete_closure_target_domain_certificate(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            2,
+            &sector_ids,
+            &owner_ids,
+            &[],
+            &helicity_ids,
+            &pending_closures,
+            &[],
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(certificate.physical_sector_count(), 2);
+        assert_eq!(certificate.resolved_helicity_count(), 1);
+        assert_eq!(
+            certificate.certified_structural_zero_physical_sector_ids(),
+            [0, 1]
+        );
+        assert_eq!(
+            complete_closure_target_domain_certificate(
+                RecurrenceStrategy::ContractedColorUnion,
+                &process,
+                2,
+                &sector_ids,
+                &owner_ids,
+                &[],
+                &helicity_ids,
+                &pending_closures,
+                &[],
+            )
+            .unwrap()
+            .unwrap()
+            .semantic_digest(),
+            certificate.semantic_digest(),
+        );
+
+        let missing = complete_closure_target_domain_certificate(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            2,
+            &BTreeSet::from([0]),
+            &BTreeMap::from([(0, 0)]),
+            &[],
+            &helicity_ids,
+            &pending_closures,
+            &[],
+        )
+        .unwrap_err();
+        assert!(
+            missing
+                .message()
+                .contains("lacks exhaustive physical-sector coverage")
+        );
+    }
+
+    #[test]
+    fn complete_closure_target_domain_expands_authenticated_replay_representatives() {
+        let mut process = scalar_reference_process(2);
+        process.source_states = vec![
+            ProcessSourceStateRow {
+                source_slot: 0,
+                state_index: 0,
+                public_helicity: 1,
+                chirality: 0,
+                spin_state: 1,
+                current_state_template_id: 0,
+                source_template_id: 0,
+                momentum_sign: 1,
+                crossing_phase_factor_id: 0,
+            },
+            ProcessSourceStateRow {
+                source_slot: 1,
+                state_index: 0,
+                public_helicity: 1,
+                chirality: 0,
+                spin_state: 1,
+                current_state_template_id: 0,
+                source_template_id: 0,
+                momentum_sign: 1,
+                crossing_phase_factor_id: 0,
+            },
+        ];
+        let helicity_ids = BTreeMap::from([(
+            vec![
+                SourceStateAssignment::new(0, 0),
+                SourceStateAssignment::new(1, 0),
+            ]
+            .into_boxed_slice(),
+            0,
+        )]);
+        let replay_targets = vec![
+            RecurrenceReplayTarget::new(0, 0, 0, vec![0, 1], vec![1, 1], ExactComplexRational::ONE)
+                .unwrap(),
+            RecurrenceReplayTarget::new(1, 0, 1, vec![1, 0], vec![1, 1], ExactComplexRational::ONE)
+                .unwrap(),
+        ];
+        let certificate = complete_closure_target_domain_certificate(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            2,
+            &BTreeSet::from([0]),
+            &BTreeMap::from([(0, 0)]),
+            &replay_targets,
+            &helicity_ids,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            certificate.certified_structural_zero_physical_sector_ids(),
+            [0, 1]
+        );
+        assert!(
+            complete_closure_target_domain_certificate(
+                RecurrenceStrategy::ContractedColorUnion,
+                &process,
+                2,
+                &BTreeSet::from([0]),
+                &BTreeMap::from([(0, 0)]),
+                &replay_targets[..1],
+                &helicity_ids,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap_err()
+            .message()
+            .contains("does not cover every physical sector")
+        );
+    }
+
+    #[test]
+    fn contracted_and_all_flow_closures_preserve_v4_reflection_partner_rows() {
         let (mut process, mut template) = cyclic_trace_anchor_contract_fixture();
         let closure_pairings = append_u32_sequence(&mut template, &[0, 0, 1, 1, 0, 1, 1, 0]);
         template.lc_color_transition_witnesses[1].input_port_pairing_sequence_id = closure_pairings;
@@ -14437,25 +15471,15 @@ mod tests {
         let mut color_states = DynamicLCColorStateInterner::default();
         let anchor_color_id = color_states.intern(anchor_color).unwrap();
         let complement_color_id = color_states.intern(complement_color).unwrap();
-        let current =
-            |node_kind, color_id, support: &[u32], reflection, reflection_certificate_id| {
-                let key = CurrentCoreKey::new(
-                    template.catalog_digest,
-                    node_kind,
-                    0,
-                    color_id,
-                    support.to_vec(),
-                    CanonicalMomentumLinearForm::new(
-                        support
-                            .iter()
-                            .copied()
-                            .map(|source_slot| MomentumTerm {
-                                source_slot,
-                                coefficient: 1,
-                            })
-                            .collect(),
-                    )
-                    .unwrap(),
+        let current = |strategy,
+                       node_kind,
+                       color_id,
+                       support: &[u32],
+                       reflection,
+                       reflection_certificate_id| {
+            let helicity_identity = match strategy {
+                RecurrenceStrategy::AllFlowUnion => CurrentHelicityIdentity::all_flow_union(0),
+                RecurrenceStrategy::ContractedColorUnion => {
                     CurrentHelicityIdentity::contracted_color_union(
                         0,
                         support
@@ -14464,30 +15488,56 @@ mod tests {
                             .map(|slot| SourceStateAssignment::new(slot, 0))
                             .collect(),
                     )
-                    .unwrap(),
-                    vec![0],
-                    0,
-                    vec![],
-                    if node_kind == RecurrenceNodeKind::Source {
-                        CurrentSourceBinding::FixedTemplate(support[0])
-                    } else {
-                        CurrentSourceBinding::None
-                    },
-                    None,
-                )
-                .unwrap();
-                PendingCurrent {
-                    key,
-                    source_exact_factor: (node_kind == RecurrenceNodeKind::Source)
-                        .then_some(ExactComplexRational::ONE),
-                    contributions: BTreeMap::new(),
-                    realized_pairing_rule_ids: BTreeSet::new(),
-                    reflection,
-                    reflection_certificate_id,
+                    .unwrap()
                 }
+                RecurrenceStrategy::TopologyReplay => unreachable!("test fixture strategy"),
             };
+            let source_binding = if node_kind != RecurrenceNodeKind::Source {
+                CurrentSourceBinding::None
+            } else if strategy == RecurrenceStrategy::AllFlowUnion {
+                CurrentSourceBinding::runtime_dispatch(support[0], vec![support[0]]).unwrap()
+            } else {
+                CurrentSourceBinding::FixedTemplate(support[0])
+            };
+            let key = CurrentCoreKey::new(
+                template.catalog_digest,
+                node_kind,
+                0,
+                color_id,
+                support.to_vec(),
+                CanonicalMomentumLinearForm::new(
+                    support
+                        .iter()
+                        .copied()
+                        .map(|source_slot| MomentumTerm {
+                            source_slot,
+                            coefficient: 1,
+                        })
+                        .collect(),
+                )
+                .unwrap(),
+                helicity_identity,
+                vec![0],
+                0,
+                vec![],
+                source_binding,
+                None,
+            )
+            .unwrap();
+            PendingCurrent {
+                key,
+                source_exact_factor: (node_kind == RecurrenceNodeKind::Source
+                    && strategy != RecurrenceStrategy::AllFlowUnion)
+                    .then_some(ExactComplexRational::ONE),
+                contributions: BTreeMap::new(),
+                realized_pairing_rule_ids: BTreeSet::new(),
+                reflection,
+                reflection_certificate_id,
+            }
+        };
         let currents = vec![
             current(
+                RecurrenceStrategy::ContractedColorUnion,
                 RecurrenceNodeKind::Source,
                 anchor_color_id,
                 &[0],
@@ -14495,10 +15545,11 @@ mod tests {
                 None,
             ),
             current(
+                RecurrenceStrategy::ContractedColorUnion,
                 RecurrenceNodeKind::Current,
                 complement_color_id,
                 &[1, 2, 3],
-                CurrentReflection::Proven(canonical_proof),
+                CurrentReflection::Proven(canonical_proof.clone()),
                 Some(0),
             ),
         ];
@@ -14563,6 +15614,142 @@ mod tests {
         );
         assert_eq!(bucketed_telemetry.closure_color_attempt_count, 1);
         assert_eq!(legacy_telemetry.closure_color_attempt_count, 2);
+
+        // The all-flow lane retains the same canonical complement and emits
+        // the reverse physical trace through the authenticated reflection
+        // certificate.  Completeness is therefore per physical target, not
+        // per-sector growth of the shared closure map.
+        let all_flow_sectors = PreparedClosureSectorCatalog::new(
+            RecurrenceStrategy::AllFlowUnion,
+            &process,
+            &process_catalog,
+            &materialized_sectors,
+        )
+        .unwrap();
+        let all_flow_currents = vec![
+            current(
+                RecurrenceStrategy::AllFlowUnion,
+                RecurrenceNodeKind::Source,
+                anchor_color_id,
+                &[0],
+                CurrentReflection::Unavailable,
+                None,
+            ),
+            current(
+                RecurrenceStrategy::AllFlowUnion,
+                RecurrenceNodeKind::Current,
+                complement_color_id,
+                &[1, 2, 3],
+                CurrentReflection::Proven(canonical_proof),
+                Some(0),
+            ),
+        ];
+        let mut all_flow_telemetry = RecurrenceGenerationTelemetry::default();
+        let all_flow = build_closures(
+            RecurrenceStrategy::AllFlowUnion,
+            &process,
+            &process_catalog,
+            &template,
+            &fermion_ordering,
+            None,
+            &prepared_closures,
+            &all_flow_sectors,
+            &color_states,
+            &all_flow_currents,
+            &materialized_sectors,
+            &[],
+            &reflection_certificates,
+            None,
+            &mut all_flow_telemetry,
+            true,
+        )
+        .unwrap();
+        let mut all_flow_legacy_telemetry = RecurrenceGenerationTelemetry::default();
+        let all_flow_legacy = build_closures_per_sector(
+            RecurrenceStrategy::AllFlowUnion,
+            &process,
+            &process_catalog,
+            &template,
+            &fermion_ordering,
+            None,
+            &prepared_closures,
+            &all_flow_sectors,
+            &color_states,
+            &all_flow_currents,
+            &materialized_sectors,
+            &[],
+            &reflection_certificates,
+            None,
+            &mut all_flow_legacy_telemetry,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(all_flow, all_flow_legacy);
+        assert_eq!(all_flow.len(), 2);
+        let canonical = all_flow
+            .iter()
+            .find(|(key, _)| key.target_sector_id == 0)
+            .unwrap();
+        let reflected = all_flow
+            .iter()
+            .find(|(key, _)| key.target_sector_id == 1)
+            .unwrap();
+        assert_eq!(canonical.1.exact_factor, ExactComplexRational::ONE);
+        assert_eq!(reflected.1.exact_factor, minus_one);
+        assert_eq!(
+            reflected.1.contributions[0].reflection_certificate_id,
+            Some(0)
+        );
+        assert_eq!(all_flow_telemetry.closure_support_lookup_count, 2);
+        assert_eq!(all_flow_legacy_telemetry.closure_support_lookup_count, 4);
+        assert_eq!(all_flow_telemetry.closure_color_attempt_count, 1);
+        assert_eq!(all_flow_legacy_telemetry.closure_color_attempt_count, 2);
+        assert_eq!(all_flow_telemetry.closure_group_count, 2);
+        assert_eq!(all_flow_telemetry.closure_proof_contribution_count, 2);
+
+        let uncertified_currents = vec![
+            current(
+                RecurrenceStrategy::AllFlowUnion,
+                RecurrenceNodeKind::Source,
+                anchor_color_id,
+                &[0],
+                CurrentReflection::Unavailable,
+                None,
+            ),
+            current(
+                RecurrenceStrategy::AllFlowUnion,
+                RecurrenceNodeKind::Current,
+                complement_color_id,
+                &[1, 2, 3],
+                CurrentReflection::Unavailable,
+                None,
+            ),
+        ];
+        let error = build_closures(
+            RecurrenceStrategy::AllFlowUnion,
+            &process,
+            &process_catalog,
+            &template,
+            &fermion_ordering,
+            None,
+            &prepared_closures,
+            &all_flow_sectors,
+            &color_states,
+            &uncertified_currents,
+            &materialized_sectors,
+            &[],
+            &[],
+            None,
+            &mut RecurrenceGenerationTelemetry::default(),
+            false,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .message()
+                .contains("no exact closure for physical LC sector 1")
+        );
     }
 
     #[test]

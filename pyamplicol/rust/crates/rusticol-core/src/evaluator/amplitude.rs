@@ -251,6 +251,7 @@ impl AmplitudeRuntime {
             materialized_helicity_direct_total_plans: Vec::new(),
             materialized_helicity_direct_total_plan_capacity: 0,
             materialized_helicity_direct_total_next_replacement: 0,
+            materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
             evaluator_output_order: None,
             evaluator: None,
         })
@@ -462,6 +463,7 @@ impl AmplitudeRuntime {
             materialized_helicity_direct_total_plans: Vec::new(),
             materialized_helicity_direct_total_plan_capacity: 0,
             materialized_helicity_direct_total_next_replacement: 0,
+            materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
             evaluator_output_order,
             evaluator: None,
         })
@@ -2781,12 +2783,14 @@ impl AmplitudeRuntime {
             }
             let entries = contraction
                 .logical_entries()
-                .map(|entry| MaterializedHelicityDirectTotalContractionEntry {
-                    left_group_index: bound_group_by_raw_group[entry.left_group_index],
-                    right_group_index: bound_group_by_raw_group[entry.right_group_index],
-                    weight_re: entry.weight_re,
-                    weight_im: entry.weight_im,
-                    symmetry_factor: entry.symmetry_factor,
+                .filter_map(|entry| {
+                    Some(MaterializedHelicityDirectTotalContractionEntry {
+                        left_group_index: bound_group_by_raw_group[entry.left_group_index]?,
+                        right_group_index: bound_group_by_raw_group[entry.right_group_index]?,
+                        weight_re: entry.weight_re,
+                        weight_im: entry.weight_im,
+                        symmetry_factor: entry.symmetry_factor,
+                    })
                 })
                 .collect();
             MaterializedHelicityDirectTotalReduction::Contracted { entries }
@@ -2834,11 +2838,78 @@ impl AmplitudeRuntime {
             let index = self.materialized_helicity_direct_total_next_replacement
                 % self.materialized_helicity_direct_total_plans.len();
             self.materialized_helicity_direct_total_plans[index] = plan;
+            for cached in &mut self.materialized_helicity_direct_default_plan_by_selector_domain {
+                if cached.is_some_and(|cached| cached.plan_index == index) {
+                    *cached = None;
+                }
+            }
             self.materialized_helicity_direct_total_next_replacement =
                 (index + 1) % self.materialized_helicity_direct_total_plans.len();
             index
         };
         Ok(index)
+    }
+
+    /// Bind the immutable default contracted-colour plan for one authenticated
+    /// selector domain, reusing its plan index on subsequent warm calls.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn bind_default_materialized_helicity_direct_total_plan(
+        &mut self,
+        selector_domain_id: usize,
+        physics: &PhysicsRuntime,
+        helicity_index: usize,
+        root_factors: &[Option<Complex<f64>>],
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<usize> {
+        if selected_color_ids.is_some() || !physics.has_contracted_color_axis() {
+            return self.bind_materialized_helicity_direct_total_plan(
+                physics,
+                helicity_index,
+                root_factors,
+                selected_color_ids,
+            );
+        }
+        let cached = self
+            .materialized_helicity_direct_default_plan_by_selector_domain
+            .get(selector_domain_id)
+            .copied()
+            .flatten();
+        if let Some(cached) = cached
+            && cached.physics_binding_id == physics.binding_id
+            && cached.helicity_index == helicity_index
+            && self
+                .materialized_helicity_direct_total_plans
+                .get(cached.plan_index)
+                .is_some_and(|plan| {
+                    plan.key.physics_binding_id == physics.binding_id
+                        && plan.key.helicity_index == helicity_index
+                        && plan.key.color_indices.as_slice() == [0]
+                })
+        {
+            return Ok(cached.plan_index);
+        }
+
+        let plan_index = self.bind_materialized_helicity_direct_total_plan(
+            physics,
+            helicity_index,
+            root_factors,
+            selected_color_ids,
+        )?;
+        if self
+            .materialized_helicity_direct_default_plan_by_selector_domain
+            .len()
+            <= selector_domain_id
+        {
+            self.materialized_helicity_direct_default_plan_by_selector_domain
+                .resize(selector_domain_id + 1, None);
+        }
+        self.materialized_helicity_direct_default_plan_by_selector_domain[selector_domain_id] =
+            Some(MaterializedHelicityDirectDefaultPlanCacheEntry {
+                physics_binding_id: physics.binding_id,
+                helicity_index,
+                plan_index,
+            });
+        Ok(plan_index)
     }
 
     /// Plane-native materialized-helicity totals using a cold-bound numeric
@@ -2970,26 +3041,16 @@ impl AmplitudeRuntime {
                 scratch.direct_totals.fill(0.0);
                 for entry in entries {
                     for point in 0..batch_size {
-                        let left = entry
-                            .left_group_index
-                            .map(|group_index| {
-                                let start = group_index * batch_size;
-                                c64(
-                                    scratch.direct_group_re[start + point],
-                                    scratch.direct_group_im[start + point],
-                                )
-                            })
-                            .unwrap_or_else(|| c64(0.0, 0.0));
-                        let right = entry
-                            .right_group_index
-                            .map(|group_index| {
-                                let start = group_index * batch_size;
-                                c64(
-                                    scratch.direct_group_re[start + point],
-                                    scratch.direct_group_im[start + point],
-                                )
-                            })
-                            .unwrap_or_else(|| c64(0.0, 0.0));
+                        let left_start = entry.left_group_index * batch_size;
+                        let left = c64(
+                            scratch.direct_group_re[left_start + point],
+                            scratch.direct_group_im[left_start + point],
+                        );
+                        let right_start = entry.right_group_index * batch_size;
+                        let right = c64(
+                            scratch.direct_group_re[right_start + point],
+                            scratch.direct_group_im[right_start + point],
+                        );
                         let product = left * right.conj();
                         scratch.direct_totals[point] += normalization_factor
                             * entry.symmetry_factor
@@ -4345,18 +4406,14 @@ pub(crate) fn build_compiled_symmetric_group_color_contraction_runtime(
         || plan.group_count() as usize != groups.len()
         || plan.local_group_count() as usize != groups.len()
         || plan.destination_count() as usize != groups.len()
-        || plan
-            .owner_by_sector()
-            .iter()
-            .enumerate()
-            .any(|(sector, owner)| usize::try_from(*owner).ok() != Some(sector))
+        || plan.active_sector_count() != groups.len()
         || !matches!(
             plan.runtime_reducer(),
             Some(crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(_))
         )
     {
         return Err(RusticolError::compatibility(
-            "compiled symmetric-group FFT diagnostic payload is not a one-component FullColour identity-owner convolution",
+            "compiled symmetric-group FFT diagnostic payload is not a one-component FullColour active-sector convolution",
         ));
     }
     let group_index_by_id = groups

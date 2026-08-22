@@ -45,6 +45,7 @@ def _git(repo: Path, *arguments: str) -> str:
 def _runtime(
     package_tree: str,
     *,
+    source_revision: str,
     native_build_inputs: str = "a" * 64,
     native_extension: str = "b" * 64,
 ) -> dict[str, object]:
@@ -54,7 +55,8 @@ def _runtime(
         "native_extension": {"sha256": native_extension},
         "python_package_tree": {"sha256": package_tree},
         "candidate_build_identity": {
-            "candidate_fingerprint": "candidate-fixture"
+            "candidate_fingerprint": "candidate-fixture",
+            "source_revision": source_revision,
         },
         "native_target": {
             "triple": "aarch64-apple-darwin",
@@ -105,7 +107,7 @@ def _repository(tmp_path: Path) -> tuple[Path, Path, ArtifactStore, str]:
     environment = _authenticated_environment_payload(
         "macbook_M3",
         expected_source_revision=ancestor,
-        active_runtime=_runtime("c" * 64),
+        active_runtime=_runtime("c" * 64, source_revision=ancestor),
     )
     _write(
         repo,
@@ -272,6 +274,7 @@ def test_prepare_finalize_and_audit_class_c_bridge(
 
     relinked_runtime = _runtime(
         "d" * 64,
+        source_revision=descendant,
         native_extension="e" * 64,
     )
     new_environment = _authenticated_environment_payload(
@@ -375,6 +378,7 @@ def test_class_c_bridge_rejects_changed_native_build_inputs(
             expected_active_source_revision=descendant,
             runtime_auditor=lambda _revision, _root: _runtime(
                 "d" * 64,
+                source_revision=_revision,
                 native_build_inputs="f" * 64,
             ),
         )
@@ -419,7 +423,7 @@ def test_lineage_envelope_tampering_fails_closed(
     new_environment = _authenticated_environment_payload(
         "macbook_M3",
         expected_source_revision=descendant,
-        active_runtime=_runtime("d" * 64),
+        active_runtime=_runtime("d" * 64, source_revision=descendant),
     )
 
     def fake_refresh(*_args: object, **_kwargs: object) -> dict[str, str]:
@@ -443,7 +447,10 @@ def test_lineage_envelope_tampering_fails_closed(
         store,
         pending_path=pending,
         expected_active_source_revision=descendant,
-        runtime_auditor=lambda _revision, _root: _runtime("d" * 64),
+        runtime_auditor=lambda _revision, _root: _runtime(
+            "d" * 64,
+            source_revision=_revision,
+        ),
     )
     lineage_path = profile / MEASUREMENT_LINEAGE_FILENAME
     raw = json.loads(lineage_path.read_text(encoding="ascii"))

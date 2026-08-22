@@ -83,6 +83,78 @@ def test_scale_relative_comparison_has_no_absolute_tolerance_escape() -> None:
     assert not gate.strict_relative_compare(1 + 1e-8j, 1).passed
 
 
+def test_on_the_fly_reflection_census_validator_locks_fold_and_fallback() -> None:
+    def census(
+        current_count: int,
+        contribution_count: int,
+        finalization_count: int,
+        query_count: int,
+    ) -> dict[str, object]:
+        return {
+            "basis": "shared-query-family-union-v1",
+            "scope": "active-family-union",
+            "query_count": query_count,
+            "union_unique_current_count": current_count,
+            "union_contribution_rows": contribution_count,
+            "union_finalization_rows": finalization_count,
+            "union_closure_rows": query_count,
+        }
+
+    pure_direct = census(22, 36, 6, 6)
+    pure_fft = census(13, 18, 3, 6)
+    open_line = census(17, 24, 4, 2)
+    evidence = gate.validate_on_the_fly_reflection_census(
+        pure_adjoint_direct=pure_direct,
+        pure_adjoint_fft=pure_fft,
+        open_line_direct=open_line,
+        open_line_fft=dict(open_line),
+    )
+    assert evidence["pure_adjoint"] == {
+        "case_id": "catalog:gg_gluons:n2",
+        "fields": [
+            "union_unique_current_count",
+            "union_contribution_rows",
+            "union_finalization_rows",
+        ],
+        "direct": [22, 36, 6],
+        "symmetric_group_fft": [13, 18, 3],
+    }
+    assert evidence["open_line"] == {
+        "case_id": "catalog:gg_tt_jets:n2",
+        "direct_equals_symmetric_group_fft": True,
+        "fields": [
+            "union_unique_current_count",
+            "union_contribution_rows",
+            "union_finalization_rows",
+        ],
+        "shared": [17, 24, 4],
+    }
+
+    with pytest.raises(
+        gate.FFTAcceptanceError,
+        match=r"gg_gluons:n2 direct.*expected",
+    ):
+        gate.validate_on_the_fly_reflection_census(
+            pure_adjoint_direct=census(23, 36, 6, 6),
+            pure_adjoint_fft=pure_fft,
+            open_line_direct=open_line,
+            open_line_fft=open_line,
+        )
+
+    changed_open_line = dict(open_line)
+    changed_open_line["union_closure_rows"] = 3
+    with pytest.raises(
+        gate.FFTAcceptanceError,
+        match=r"gg_tt_jets:n2.*must be identical.*union_closure_rows",
+    ):
+        gate.validate_on_the_fly_reflection_census(
+            pure_adjoint_direct=pure_direct,
+            pure_adjoint_fft=pure_fft,
+            open_line_direct=open_line,
+            open_line_fft=changed_open_line,
+        )
+
+
 def test_nonzero_discovery_prefers_structural_selector_then_stable_fallback() -> None:
     rows = (
         gate.HelicityObservation("h:-1,-1", (-1, -1), False, 5.0),
@@ -178,22 +250,32 @@ def test_process_set_cache_builds_once_per_exact_boundary() -> None:
 
 
 @pytest.mark.parametrize(
-    ("request_method", "inspection_method"),
+    ("request_method", "n_final", "inspection_method", "accepted"),
     (
-        ("direct", None),
-        ("symmetric-group-fft", None),
-        ("symmetric-group-fft", "symmetric-group-fourier"),
+        ("direct", 3, None, True),
+        ("direct", 3, "symmetric-group-fourier", False),
+        ("symmetric-group-fft", 1, None, True),
+        ("symmetric-group-fft", 2, None, True),
+        ("symmetric-group-fft", 2, "symmetric-group-fourier", False),
+        ("symmetric-group-fft", 3, None, False),
+        ("symmetric-group-fft", 3, "symmetric-group-fourier", True),
     ),
 )
 @pytest.mark.parametrize("mode", gate.MODES)
 def test_artifact_validation_maps_request_to_canonical_inspection_method(
     request_method: gate.MethodName,
+    n_final: int,
     inspection_method: str | None,
+    accepted: bool,
     mode: gate.ModeName,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    case = gate.catalog_cases(1)[0]
+    case = next(
+        case
+        for case in gate.catalog_cases(n_final)
+        if case.family_id == 1 and case.n_final == n_final
+    )
     request = gate.GroupRequest(
         gate.ArtifactKey(
             request_method,
@@ -240,7 +322,11 @@ def test_artifact_validation_maps_request_to_canonical_inspection_method(
     fake_artifacts.inspect_artifact = lambda _path: inspection  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "pyamplicol.artifacts", fake_artifacts)
 
-    gate.NativeArtifactBuilder._validate(tmp_path, request)
+    if accepted:
+        gate.NativeArtifactBuilder._validate(tmp_path, request)
+    else:
+        with pytest.raises(gate.FFTAcceptanceError, match="expected"):
+            gate.NativeArtifactBuilder._validate(tmp_path, request)
 
 
 def test_group_request_rejects_selection_outside_recorded_domain() -> None:

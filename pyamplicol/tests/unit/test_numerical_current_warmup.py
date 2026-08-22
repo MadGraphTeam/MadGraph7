@@ -592,7 +592,8 @@ def test_real_capture_drives_authenticated_discovery_and_application(
         dag,
         execution_mode=execution_mode,  # type: ignore[arg-type]
     )
-    assert set(payload) == set(disabled)
+    assert set(payload) - {"source_semantics"} == set(disabled)
+    assert "source_semantics" in payload
     assert payload["candidate_capture"]["points"]
     assert payload["verification_capture"]["points"]
     assert payload["warning"]["required"] is result.warning_required
@@ -622,6 +623,7 @@ def test_public_opt_out_records_disabled_unoptimized_path_without_capture(
     assert report["certified_relation_count"] == 0
     assert report["applied_relation_count"] == 0
     assert report["effective_mode"] == "off"
+    assert "source_semantics" not in report
     assert report["relation_correctness"] == {
         "abi": "pyamplicol-numerical-current-relation-correctness-v1",
         "state": "no-applied-relations",
@@ -633,6 +635,27 @@ def test_public_opt_out_records_disabled_unoptimized_path_without_capture(
         "code": None,
         "message": None,
     }
+
+
+def test_public_opt_out_does_not_serialize_wide_helicity_ancestry(
+    z_dag_and_model: tuple[GenericDAG, BuiltinSMModel],
+) -> None:
+    dag, _model = z_dag_and_model
+    current = dag.currents[0]
+    wide_ancestry = 10**4300
+    wide_current = replace(
+        current,
+        index=replace(current.index, helicity_ancestry=wide_ancestry),
+    )
+    wide_dag = replace(dag, currents=(wide_current, *dag.currents[1:]))
+
+    report = generic_dag_numerical_current_opt_out_report(
+        wide_dag,
+        execution_mode="compiled",
+    )
+
+    assert report["state"] == "disabled-by-user"
+    assert "source_semantics" not in report
 
 
 def test_generic_application_scope_contains_unsafe_relation_kinds() -> None:

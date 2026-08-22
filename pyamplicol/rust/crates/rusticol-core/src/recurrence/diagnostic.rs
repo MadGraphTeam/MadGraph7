@@ -131,6 +131,7 @@ pub(crate) fn transition_diagnostic_observation_active() -> bool {
     TRANSITION_OBSERVER.with(|slot| slot.borrow().is_some())
 }
 
+#[allow(dead_code)]
 pub(crate) fn observe_transition_diagnostic(mut row: ConstructionTransitionDiagnosticRowV1) {
     TRANSITION_OBSERVER.with(|slot| {
         if let Some(observer) = slot.borrow_mut().as_mut() {

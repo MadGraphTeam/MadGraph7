@@ -24,6 +24,8 @@ pub const MAX_SYMMETRIC_GROUP_FFT_DEGREE: usize = 10;
 /// Backend-independent complex-f64 storage used by the FFT.
 pub type SymmetricGroupComplex64 = (f64, f64);
 
+type YoungTableau = Box<[(u8, u8)]>;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct YoungGeneratorAction {
     partner: u32,
@@ -43,7 +45,7 @@ struct YoungIrrep {
     dimension: usize,
     coefficient_offset: usize,
     branches: Box<[YoungBranch]>,
-    tableaux: Box<[Box<[(u8, u8)]>]>,
+    tableaux: Box<[YoungTableau]>,
     generators: Box<[YoungGeneratorAction]>,
 }
 
@@ -100,6 +102,21 @@ pub struct SymmetricGroupFftPlan {
     factorials: Box<[usize]>,
     levels: Box<[SymmetricGroupLevel]>,
     recursive_to_lexicographic: Box<[u32]>,
+    scalar_degree_three: Option<ScalarDegreeThreeTransform>,
+}
+
+/// Load-time compiled scalar Fourier rows for the smallest non-abelian group.
+///
+/// The generic subgroup-tower implementation remains the source of truth: it
+/// is applied once to each basis vector while constructing an `S_3` plan.
+/// Warm scalar calls can then execute the same real representation transform
+/// without repeatedly walking Young-branch metadata and clearing temporary
+/// blocks.  This is still the complete `S_3` Fourier transform, merely a
+/// compact base case of the general recursion.
+#[derive(Debug)]
+struct ScalarDegreeThreeTransform {
+    row_offsets: Box<[u8]>,
+    terms: Box<[(u8, f64)]>,
 }
 
 impl SymmetricGroupFftPlan {
@@ -119,14 +136,19 @@ impl SymmetricGroupFftPlan {
             .max()
             .unwrap_or(1);
         let recursive_to_lexicographic = build_recursive_to_lexicographic(degree, &factorials)?;
-        Ok(Self {
+        let mut plan = Self {
             degree,
             order,
             maximum_dimension,
             factorials: factorials.into_boxed_slice(),
             levels: levels.into_boxed_slice(),
             recursive_to_lexicographic: recursive_to_lexicographic.into_boxed_slice(),
-        })
+            scalar_degree_three: None,
+        };
+        if degree == 3 {
+            plan.scalar_degree_three = Some(compile_scalar_degree_three_transform(&plan)?);
+        }
+        Ok(plan)
     }
 
     /// Permutation degree `m`.
@@ -233,6 +255,13 @@ impl SymmetricGroupFftPlan {
         }
         workspace.validate(self, active_lanes)?;
 
+        if active_lanes == 1
+            && let Some(transform) = self.scalar_degree_three.as_ref()
+        {
+            transform.forward(values, coefficients);
+            return Ok(());
+        }
+
         for (recursive_index, lexicographic_index) in
             self.recursive_to_lexicographic.iter().copied().enumerate()
         {
@@ -296,6 +325,77 @@ impl SymmetricGroupFftPlan {
         }
         Ok(())
     }
+}
+
+impl ScalarDegreeThreeTransform {
+    #[inline(always)]
+    fn forward(
+        &self,
+        values: &[SymmetricGroupComplex64],
+        coefficients: &mut [SymmetricGroupComplex64],
+    ) {
+        debug_assert_eq!(values.len(), 6);
+        debug_assert_eq!(coefficients.len(), 6);
+        debug_assert_eq!(self.row_offsets.len(), 7);
+        for (output, coefficient) in coefficients.iter_mut().enumerate().take(6) {
+            let start = usize::from(self.row_offsets[output]);
+            let end = usize::from(self.row_offsets[output + 1]);
+            let mut real = 0.0;
+            let mut imaginary = 0.0;
+            for &(source, factor) in &self.terms[start..end] {
+                let value = values[usize::from(source)];
+                real = factor.mul_add(value.0, real);
+                imaginary = factor.mul_add(value.1, imaginary);
+            }
+            *coefficient = (real, imaginary);
+        }
+    }
+}
+
+fn compile_scalar_degree_three_transform(
+    plan: &SymmetricGroupFftPlan,
+) -> RusticolResult<ScalarDegreeThreeTransform> {
+    debug_assert_eq!(plan.degree, 3);
+    debug_assert_eq!(plan.order, 6);
+    debug_assert!(plan.scalar_degree_three.is_none());
+    let mut values = vec![(0.0, 0.0); plan.order];
+    let mut coefficients = vec![(0.0, 0.0); plan.order];
+    let mut workspace = plan.workspace(1)?;
+    let mut columns = vec![vec![0.0; plan.order]; plan.order];
+    for source in 0..plan.order {
+        values[source] = (1.0, 0.0);
+        plan.forward(&values, &mut coefficients, &mut workspace)?;
+        values[source] = (0.0, 0.0);
+        for (output, &(real, imaginary)) in coefficients.iter().enumerate() {
+            if imaginary != 0.0 || !real.is_finite() {
+                return Err(internal(
+                    "compiled scalar S3 Fourier transform is not finite and real",
+                ));
+            }
+            columns[source][output] = real;
+        }
+    }
+
+    let mut row_offsets = Vec::with_capacity(plan.order + 1);
+    let mut terms = Vec::new();
+    row_offsets.push(0_u8);
+    for output in 0..plan.order {
+        for (source, column) in columns.iter().enumerate() {
+            let factor = column[output];
+            if factor != 0.0 {
+                terms.push((source as u8, factor));
+            }
+        }
+        row_offsets.push(
+            u8::try_from(terms.len()).map_err(|_| {
+                internal("compiled scalar S3 Fourier transform term count exceeds u8")
+            })?,
+        );
+    }
+    Ok(ScalarDegreeThreeTransform {
+        row_offsets: row_offsets.into_boxed_slice(),
+        terms: terms.into_boxed_slice(),
+    })
 }
 
 fn block_description(irrep: &YoungIrrep) -> SymmetricGroupFftBlock<'_> {
@@ -1229,54 +1329,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "developer microbenchmark; run explicitly in release mode"]
-    fn scalar_transposed_path_microbenchmark_six_and_seven() {
-        use std::hint::black_box;
-        use std::time::Instant;
-
-        for degree in [6, 7] {
-            let plan = SymmetricGroupFftPlan::new(degree).unwrap();
-            let values = deterministic_values(plan.order(), degree * 23 + 1);
-            let mut optimized = vec![(0.0, 0.0); plan.order()];
-            let mut legacy = vec![(0.0, 0.0); plan.order()];
-            let mut optimized_workspace = plan.workspace(1).unwrap();
-            let mut legacy_workspace = plan.workspace(1).unwrap();
-            plan.forward(&values, &mut optimized, &mut optimized_workspace)
-                .unwrap();
-            forward_with_batched_scalar_kernel(&plan, &values, &mut legacy, &mut legacy_workspace);
-            assert_complex_slices_close(&optimized, &legacy, TOLERANCE);
-
-            let iterations = if degree == 6 { 128 } else { 24 };
-            let legacy_started = Instant::now();
-            for _ in 0..iterations {
-                forward_with_batched_scalar_kernel(
-                    black_box(&plan),
-                    black_box(&values),
-                    black_box(&mut legacy),
-                    black_box(&mut legacy_workspace),
-                );
-            }
-            let legacy_elapsed = legacy_started.elapsed();
-            let optimized_started = Instant::now();
-            for _ in 0..iterations {
-                plan.forward(
-                    black_box(&values),
-                    black_box(&mut optimized),
-                    black_box(&mut optimized_workspace),
-                )
-                .unwrap();
-            }
-            let optimized_elapsed = optimized_started.elapsed();
-            eprintln!(
-                "S_{degree} scalar FFT: legacy={:.3}us optimized={:.3}us speedup={:.3}x",
-                legacy_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
-                optimized_elapsed.as_secs_f64() * 1.0e6 / iterations as f64,
-                legacy_elapsed.as_secs_f64() / optimized_elapsed.as_secs_f64(),
-            );
-        }
-    }
-
-    #[test]
     fn capacity_workspace_reuses_active_prefix_without_state_leakage() {
         let plan = SymmetricGroupFftPlan::new(5).unwrap();
         let lane_capacity = 4;
@@ -1329,58 +1381,11 @@ mod tests {
         );
     }
 
-    fn forward_with_batched_scalar_kernel(
-        plan: &SymmetricGroupFftPlan,
-        values: &[SymmetricGroupComplex64],
-        coefficients: &mut [SymmetricGroupComplex64],
-        workspace: &mut SymmetricGroupFftWorkspace,
-    ) {
-        for (recursive_index, lexicographic_index) in
-            plan.recursive_to_lexicographic.iter().copied().enumerate()
-        {
-            workspace.buffer[recursive_index] = values[lexicographic_index as usize];
-        }
-        let mut current_is_workspace = true;
-        for current_degree in 2..=plan.degree {
-            let level = &plan.levels[current_degree];
-            let child_level = &plan.levels[current_degree - 1];
-            if current_is_workspace {
-                transform_level_batched(
-                    level,
-                    child_level,
-                    &workspace.buffer[..plan.order],
-                    coefficients,
-                    &mut workspace.block,
-                    1,
-                    plan.order,
-                );
-            } else {
-                transform_level_batched(
-                    level,
-                    child_level,
-                    coefficients,
-                    &mut workspace.buffer[..plan.order],
-                    &mut workspace.block,
-                    1,
-                    plan.order,
-                );
-            }
-            current_is_workspace = !current_is_workspace;
-        }
-        if current_is_workspace {
-            coefficients.copy_from_slice(&workspace.buffer[..plan.order]);
-        }
-    }
-
     #[test]
     fn reorder_map_is_a_lexicographic_bijection() {
         for degree in 0..=8 {
             let plan = SymmetricGroupFftPlan::new(degree).unwrap();
-            let mut values = plan
-                .recursive_to_lexicographic()
-                .iter()
-                .copied()
-                .collect::<Vec<_>>();
+            let mut values = plan.recursive_to_lexicographic().to_vec();
             values.sort_unstable();
             assert_eq!(
                 values,

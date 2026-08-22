@@ -284,11 +284,15 @@ class SymmetricGroupColorContractionBlock:
             raise ValueError(
                 "symmetric-group exact residual weights do not match residual entries"
             )
-        expected_residual_pairs = tuple(
-            (left_index, right_index)
-            for left_index in range(local_group_count)
-            for right_index in range(left_index, local_group_count)
-            if right_index >= eligible_group_count
+        expected_residual_pairs = (
+            tuple(
+                (left_index, right_index)
+                for left_index in range(local_group_count)
+                for right_index in range(left_index, local_group_count)
+                if right_index >= eligible_group_count
+            )
+            if self.residual_local_group_indices
+            else ()
         )
         residual_pairs = tuple(
             (entry.left_group_index, entry.right_group_index)

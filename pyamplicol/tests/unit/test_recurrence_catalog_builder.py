@@ -459,6 +459,8 @@ def test_concatenate_keep_alias_retains_canonical_parent_order() -> None:
                 result_state_template_id="result",
                 momentum_convention=momentum,
                 coupling_parameter_ids=(),
+                contact_orbit_step_template_ids=(),
+                contact_orbit_step_semantic_digests=(),
                 coupling_orders=(("QCD", 1),),
                 binding_coupling=one,
                 exact_factor=one,

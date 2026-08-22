@@ -22,6 +22,7 @@ from pyamplicol._internal.versions import (
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
     SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
@@ -1073,9 +1074,27 @@ def _recurrence_execution_inspection(
     _require_contract(
         binding,
         "abi",
-        "pyamplicol-recurrence-process-binding-v2",
+        "pyamplicol-recurrence-process-binding-v4",
         "recurrence execution.plan.process_binding",
     )
+    primary_process_digest = _string(
+        binding.get("process_digest"),
+        "recurrence execution.plan.process_binding.process_digest",
+    )
+    if len(primary_process_digest) != 64 or any(
+        character not in "0123456789abcdef" for character in primary_process_digest
+    ):
+        raise ArtifactError(
+            "recurrence primary process binding has an invalid process digest"
+        )
+    companion_process_digest = execution.get("process_digest")
+    if (
+        companion_process_digest is not None
+        and companion_process_digest != primary_process_digest
+    ):
+        raise ArtifactError(
+            "recurrence companion process digest disagrees with its primary binding"
+        )
     summary = _mapping(
         plan.get("inspection_summary"),
         "recurrence execution.plan.inspection_summary",
@@ -1161,7 +1180,17 @@ def _recurrence_execution_inspection(
                 "recurrence direct template references an absent prepared kernel"
             )
         referenced_kernel_ids.add(parsed_kernel_id)
-    if prepared_kernel_count != len(referenced_kernel_ids):
+    complete_companion_catalog = (
+        RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+        in declared_capabilities
+    )
+    if (
+        not complete_companion_catalog
+        and prepared_kernel_count != len(referenced_kernel_ids)
+    ) or (
+        complete_companion_catalog
+        and not 0 < prepared_kernel_count <= len(referenced_kernel_ids)
+    ):
         raise ArtifactError(
             "recurrence inspection prepared-kernel count does not match its "
             "direct template catalog"
@@ -1346,25 +1375,27 @@ def _recurrence_execution_inspection(
                 minimum=1,
             )
             valid_factorization = (
-                color_storage == "repeated"
-                and color_factorization_kind == "klein-four-walsh"
-                and color_factorization_rank == 2
-            ) or (
-                color_storage == "repeated"
-                and color_factorization_kind == "elementary-abelian-walsh"
-                and 3 <= color_factorization_rank <= 16
-            ) or (
-                color_storage == "convolution-kernels"
-                and color_factorization_kind == "symmetric-group-fourier"
-                and 2 <= color_factorization_rank <= 10
+                (
+                    color_storage == "repeated"
+                    and color_factorization_kind == "klein-four-walsh"
+                    and color_factorization_rank == 2
+                )
+                or (
+                    color_storage == "repeated"
+                    and color_factorization_kind == "elementary-abelian-walsh"
+                    and 3 <= color_factorization_rank <= 16
+                )
+                or (
+                    color_storage == "convolution-kernels"
+                    and color_factorization_kind == "symmetric-group-fourier"
+                    and 2 <= color_factorization_rank <= 10
+                )
             )
             if not valid_factorization:
                 raise ArtifactError(
                     "recurrence color factorization kind, rank, and storage disagree"
                 )
-        symmetric_group_fft = (
-            color_factorization_kind == "symmetric-group-fourier"
-        )
+        symmetric_group_fft = color_factorization_kind == "symmetric-group-fourier"
         if (color_storage == "convolution-kernels") != symmetric_group_fft:
             raise ArtifactError(
                 "recurrence convolution-kernel storage requires symmetric-group "
@@ -1710,8 +1741,7 @@ def _on_the_fly_color_reference(
             minimum=1,
         )
         symmetric_group_fft = (
-            factorization_kind == "symmetric-group-fourier"
-            and factorization_rank <= 10
+            factorization_kind == "symmetric-group-fourier" and factorization_rank <= 10
         )
         if not symmetric_group_fft:
             raise ArtifactError(
@@ -1732,14 +1762,10 @@ def _on_the_fly_color_reference(
         or len(payload_sha256) != 64
         or any(character not in "0123456789abcdef" for character in payload_sha256)
     ):
-        raise ArtifactError(
-            "on-the-fly color-contraction reference is noncanonical"
-        )
+        raise ArtifactError("on-the-fly color-contraction reference is noncanonical")
     fft_provenance = _symmetric_group_fft_provenance(
         reference,
-        factorization_kind=(
-            "symmetric-group-fourier" if symmetric_group_fft else None
-        ),
+        factorization_kind=("symmetric-group-fourier" if symmetric_group_fft else None),
         degree=factorization_rank,
         channel_count=factorization_coset_count,
         group_count=group_count,
@@ -1771,9 +1797,7 @@ def _on_the_fly_color_reference(
         "contraction_method": (
             None if fft_provenance is None else fft_provenance["method"]
         ),
-        "fft_degree": (
-            None if fft_provenance is None else fft_provenance["degree"]
-        ),
+        "fft_degree": (None if fft_provenance is None else fft_provenance["degree"]),
         "fft_channel_count": (
             None if fft_provenance is None else fft_provenance["channel_count"]
         ),
@@ -1783,14 +1807,10 @@ def _on_the_fly_color_reference(
             else fft_provenance["covered_local_group_count"]
         ),
         "direct_residual_group_count": (
-            None
-            if fft_provenance is None
-            else fft_provenance["residual_group_count"]
+            None if fft_provenance is None else fft_provenance["residual_group_count"]
         ),
         "direct_residual_entry_count": (
-            None
-            if fft_provenance is None
-            else fft_provenance["residual_entry_count"]
+            None if fft_provenance is None else fft_provenance["residual_entry_count"]
         ),
         "raw_kernel_bytes": (
             None if fft_provenance is None else fft_provenance["raw_kernel_bytes"]
@@ -1846,9 +1866,7 @@ def _execution_inspection(
             SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY in capability_values
         )
         if symmetric_group_fft_capability:
-            on_the_fly_capabilities.add(
-                SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
-            )
+            on_the_fly_capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
         if capability_values != on_the_fly_capabilities or len(capabilities) != len(
             on_the_fly_capabilities
         ):
@@ -1857,8 +1875,7 @@ def _execution_inspection(
                 "capabilities"
             )
         contracted_color = (
-            selected_color_capability
-            == ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+            selected_color_capability == ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
         )
         expected_color_accuracies = {"nlc", "full"} if contracted_color else {"lc"}
         execution = _json_mapping(execution_path, "process execution manifest")
@@ -1950,8 +1967,7 @@ def _execution_inspection(
         )
         reference_uses_symmetric_group_fft = (
             color_reference is not None
-            and color_reference["factorization_kind"]
-            == "symmetric-group-fourier"
+            and color_reference["factorization_kind"] == "symmetric-group-fourier"
         )
         if reference_uses_symmetric_group_fft != symmetric_group_fft_capability:
             raise ArtifactError(
@@ -2077,9 +2093,7 @@ def _execution_inspection(
                 else color_reference["active_sector_count"]
             ),
             recurrence_color_component_count=(
-                None
-                if color_reference is None
-                else color_reference["component_count"]
+                None if color_reference is None else color_reference["component_count"]
             ),
             recurrence_color_group_count=(
                 None if color_reference is None else color_reference["group_count"]
@@ -2141,9 +2155,7 @@ def _execution_inspection(
                 else color_reference["direct_residual_entry_count"]
             ),
             recurrence_color_raw_kernel_bytes=(
-                None
-                if color_reference is None
-                else color_reference["raw_kernel_bytes"]
+                None if color_reference is None else color_reference["raw_kernel_bytes"]
             ),
             recurrence_color_transformed_kernel_bytes=(
                 None
@@ -2151,9 +2163,7 @@ def _execution_inspection(
                 else color_reference["transformed_kernel_bytes"]
             ),
             recurrence_color_fft_capability=(
-                None
-                if color_reference is None
-                else color_reference["fft_capability"]
+                None if color_reference is None else color_reference["fft_capability"]
             ),
             native_profile_phases=_ON_THE_FLY_PROFILE_PHASES,
         )
@@ -2846,15 +2856,11 @@ def _process_inspection(
         recurrence_color_direct_residual_entry_count=(
             execution.recurrence_color_direct_residual_entry_count
         ),
-        recurrence_color_raw_kernel_bytes=(
-            execution.recurrence_color_raw_kernel_bytes
-        ),
+        recurrence_color_raw_kernel_bytes=(execution.recurrence_color_raw_kernel_bytes),
         recurrence_color_transformed_kernel_bytes=(
             execution.recurrence_color_transformed_kernel_bytes
         ),
-        recurrence_color_fft_capability=(
-            execution.recurrence_color_fft_capability
-        ),
+        recurrence_color_fft_capability=(execution.recurrence_color_fft_capability),
         packed_input_bytes=execution.packed_input_bytes,
         packed_output_bytes=execution.packed_output_bytes,
         scatter_bytes=execution.scatter_bytes,

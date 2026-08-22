@@ -11,6 +11,7 @@ use crate::{
     EagerKernelRole, EagerKernelSpec, EagerPlanDefinition, EagerPlanDimensions,
     EagerReductionEntry, EagerReductionGroup,
 };
+use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
 
@@ -147,9 +148,9 @@ pub(super) struct PreparedKernelPackManifest {
     #[serde(default)]
     pub(super) kernel_variants: Vec<PreparedKernelVariantManifest>,
     #[serde(default)]
-    pub(super) recurrence_template: Option<Value>,
+    pub(super) recurrence_template: Option<Box<RawValue>>,
     #[serde(default)]
-    pub(super) recurrence_direct_template: Option<Value>,
+    pub(super) recurrence_direct_template: Option<Box<RawValue>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -870,7 +871,7 @@ impl PreparedKernelPackManifest {
             )
         })?;
         self.parse_recurrence_direct_template_catalog(
-            raw,
+            raw.get(),
             expected_prepared_pack_digest,
             expected_catalog_digest,
         )
@@ -887,7 +888,7 @@ impl PreparedKernelPackManifest {
             )
         })?;
         self.parse_recurrence_direct_template_catalog(
-            &raw,
+            raw.get(),
             expected_prepared_pack_digest,
             expected_catalog_digest,
         )
@@ -895,18 +896,23 @@ impl PreparedKernelPackManifest {
 
     fn parse_recurrence_direct_template_catalog(
         &self,
-        raw: &Value,
+        raw: &str,
         expected_prepared_pack_digest: &str,
         expected_catalog_digest: &str,
     ) -> RusticolResult<RecurrenceDirectTemplateCatalogManifest> {
+        let raw: Value = serde_json::from_str(raw).map_err(|error| {
+            RusticolError::serialization(format!(
+                "could not parse prepared Direct-Arena recurrence template catalog: {error}"
+            ))
+        })?;
         let catalog =
-            RecurrenceDirectTemplateCatalogManifest::deserialize(raw).map_err(|error| {
+            RecurrenceDirectTemplateCatalogManifest::deserialize(&raw).map_err(|error| {
                 RusticolError::serialization(format!(
                     "could not parse prepared Direct-Arena recurrence template catalog: {error}"
                 ))
             })?;
         catalog.validate(
-            raw,
+            &raw,
             self,
             expected_prepared_pack_digest,
             expected_catalog_digest,

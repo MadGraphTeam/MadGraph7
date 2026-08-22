@@ -777,36 +777,41 @@ impl ValidatedRecurrenceTemplateInput {
             .collect()
     }
 
-    pub(crate) fn closure_component_coefficients(
+    pub(crate) fn closure_component_coefficient_catalog(
         &self,
-        closure_template_id: u32,
-    ) -> RusticolResult<Vec<ExactComplexRational>> {
+    ) -> RusticolResult<Vec<Box<[ExactComplexRational]>>> {
         let input = self.input.as_view();
         let catalogs = input.validate_catalogs()?;
-        let row = input
+        input
             .closures
-            .get(closure_template_id as usize)
-            .ok_or_else(|| invalid(format!("closure template {closure_template_id} is absent")))?;
-        if row.id != closure_template_id {
-            return Err(invalid(format!(
-                "closure template {closure_template_id} has noncanonical ID {}",
-                row.id
-            )));
-        }
-        u32_sequence(
-            input,
-            row.component_coefficient_sequence_id,
-            "closure component coefficients",
-        )?
-        .iter()
-        .map(|factor_id| {
-            catalogs
-                .factors
-                .get(*factor_id as usize)
-                .copied()
-                .ok_or_else(|| invalid("closure component factor ID is out of range"))
-        })
-        .collect()
+            .iter()
+            .enumerate()
+            .map(|(expected_id, row)| {
+                let expected_id = u32::try_from(expected_id)
+                    .map_err(|_| invalid("closure template count exceeds u32"))?;
+                if row.id != expected_id {
+                    return Err(invalid(format!(
+                        "closure template {expected_id} has noncanonical ID {}",
+                        row.id
+                    )));
+                }
+                u32_sequence(
+                    input,
+                    row.component_coefficient_sequence_id,
+                    "closure component coefficients",
+                )?
+                .iter()
+                .map(|factor_id| {
+                    catalogs
+                        .factors
+                        .get(*factor_id as usize)
+                        .copied()
+                        .ok_or_else(|| invalid("closure component factor ID is out of range"))
+                })
+                .collect::<RusticolResult<Vec<_>>>()
+                .map(Vec::into_boxed_slice)
+            })
+            .collect()
     }
 
     pub fn semantic_index(&self) -> RusticolResult<RecurrenceTemplateSemanticIndex> {
@@ -3872,7 +3877,7 @@ fn validate_string_pair_sequence(
     values: &[u32],
     label: &str,
 ) -> RusticolResult<()> {
-    if values.len() % 2 != 0 {
+    if !values.len().is_multiple_of(2) {
         return Err(invalid(format!("{label} must contain key/value pairs")));
     }
     let mut previous_key = None;
@@ -4311,6 +4316,72 @@ mod tests {
         assert_eq!(
             semantic_index.catalog_digest,
             validated.summary().catalog_digest
+        );
+    }
+
+    #[test]
+    fn closure_component_coefficient_catalog_decodes_every_template() {
+        let mut input = crate::recurrence::validated_template_fixture().into_input();
+        let unit = input.exact_factors[0];
+        input.exact_factors.push(ExactFactorRow {
+            id: 1,
+            real_numerator_string_id: unit.real_numerator_string_id,
+            real_denominator_string_id: unit.real_denominator_string_id,
+            imag_numerator_string_id: unit.real_numerator_string_id,
+            imag_denominator_string_id: unit.imag_denominator_string_id,
+        });
+        input.closures[1].component_coefficient_sequence_id =
+            input.closures[1].canonical_input_order_sequence_id;
+
+        let catalog = input
+            .validate()
+            .unwrap()
+            .closure_component_coefficient_catalog()
+            .unwrap();
+        let unit_plus_i = ExactComplexRational::parse_parts("1", "1", "1", "1").unwrap();
+        assert_eq!(catalog.len(), 2);
+        assert_eq!(catalog[0].as_ref(), &[ExactComplexRational::ONE]);
+        assert_eq!(
+            catalog[1].as_ref(),
+            &[ExactComplexRational::ONE, unit_plus_i]
+        );
+    }
+
+    #[test]
+    fn closure_component_coefficient_catalog_rejects_corrupt_validated_state() {
+        let mut templates = crate::recurrence::validated_template_fixture();
+        templates.input.closures[0].component_coefficient_sequence_id =
+            templates.input.closures[0].canonical_input_order_sequence_id;
+        let error = templates
+            .closure_component_coefficient_catalog()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("closure component factor ID is out of range"),
+            "unexpected validation error: {error}"
+        );
+
+        let mut templates = crate::recurrence::validated_template_fixture();
+        templates.input.closures[0].component_coefficient_sequence_id = MISSING_U32;
+        let error = templates
+            .closure_component_coefficient_catalog()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("closure component coefficients id")
+                && error.contains("exceeds target length"),
+            "unexpected validation error: {error}"
+        );
+
+        let mut templates = crate::recurrence::validated_template_fixture();
+        templates.input.closures[1].id = 7;
+        let error = templates
+            .closure_component_coefficient_catalog()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("closure template 1 has noncanonical ID 7"),
+            "unexpected validation error: {error}"
         );
     }
 
