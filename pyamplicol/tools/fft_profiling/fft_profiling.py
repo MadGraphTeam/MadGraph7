@@ -1464,12 +1464,11 @@ def _append_plot_note(report: dict[str, Any], note: str) -> None:
 
 
 def _legacy_madgraph_host_matches_current(value: object) -> bool:
-    if not isinstance(value, Mapping):
+    legacy_keys = {"system", "machine", "python"}
+    if not isinstance(value, Mapping) or set(value) != legacy_keys:
         return False
     current = madgraph.measurement_host_identity()
-    return all(
-        value.get(key) == current[key] for key in ("system", "machine", "python")
-    )
+    return all(value[key] == current[key] for key in legacy_keys)
 
 
 def _attach_partial_overlay(report: dict[str, Any], path: Path) -> None:

@@ -1442,3 +1442,14 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
         )
         is None
     )
+
+    legacy_payload["host"] = {
+        key: current[key] for key in ("system", "machine", "python")
+    } | {"node_sha256": "malformed-modern-fingerprint"}
+    overlay.write_text(json.dumps(legacy_payload), encoding="utf-8")
+    assert (
+        profiling._matching_madgraph_overlay(
+            arguments, output, require_exact=False
+        )
+        is None
+    )
