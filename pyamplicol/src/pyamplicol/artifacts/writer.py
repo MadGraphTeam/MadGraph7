@@ -312,6 +312,19 @@ class ArtifactBuilder:
                     with suppress(OSError):
                         directory.rmdir()
 
+    def payload_records(self) -> tuple[PayloadRecord, ...]:
+        """Return the immutable, path-ordered staged payload inventory.
+
+        Derived runtime caches use this snapshot to bind their compact native
+        representation to the ordinary artifact payload declarations.  The
+        cache is added only after the snapshot is encoded, so it cannot create
+        a self-hash cycle; normal finalization still includes the cache record
+        in the authoritative runtime artifact identity.
+        """
+
+        self._root()
+        return tuple(sorted(self._payloads.values(), key=lambda item: item.path))
+
     def finalize(
         self,
         *,

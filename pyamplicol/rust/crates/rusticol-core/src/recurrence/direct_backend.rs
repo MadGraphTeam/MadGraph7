@@ -2177,6 +2177,8 @@ impl DirectInteractionProgram {
         Self::build(schedule)
     }
 
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(crate) fn build(schedule: DirectInteractionScheduleView<'_>) -> RusticolResult<Self> {
         let mut actions = vec![DirectInteractionGroupAction::Normal; schedule.groups.len()];
         let mut stages = Vec::new();

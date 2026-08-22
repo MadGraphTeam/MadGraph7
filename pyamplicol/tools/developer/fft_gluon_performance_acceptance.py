@@ -16,12 +16,14 @@ to inspect the complete bounded campaign without compiling or writing files.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import math
 import os
 import re
 import shlex
+import stat
 import statistics
 import subprocess
 import sys
@@ -34,21 +36,32 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.performance_report.source_identity import (  # noqa: E402
+    ReportSourceIdentity,
+    ReportSourceIdentityError,
+    require_eligible_report_source,
+)
+
 PERFORMANCE_ROOT = ROOT / ".artifacts" / "fft-performance"
 REFERENCE_ROOT = ROOT / "FFT_FEATURE_RESOURCES" / "MultipletRecursion"
 REFERENCE_DRIVER = REFERENCE_ROOT / "Benchmark" / "run_benchmark.py"
+REFERENCE_REVISION = "a05c9f932e7adb75f01b24e8b1f483ad9ccfde02"
 PROBE_SOURCE = ROOT / "tools" / "developer" / "fft_gluon_candidate_probe.cpp"
 SCALING_STUDY_DRIVER = ROOT / "tools" / "developer" / "fft_scaling_study.py"
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
 
 KIND = "pyamplicol-pure-gluon-fft-performance-acceptance"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 REFERENCE_BACKEND = "AmpliGluonTraceDefaultBG"
 REFERENCE_BUILD_PROGRAM = "benchmark_ampligluon_trace"
 REFERENCE_CLEAN_BUILD_SCOPE = "ampligluon-trace-backend-only"
-# Recurrence is the generation-specialized acceptance candidate.  OTF keeps its
-# complete runtime-selector coverage and is measured as a fixed-helicity
-# diagnostic.  Running recurrence first prevents OTF from warming its cold path.
+# Recurrence is generated for one known-nonzero helicity.  OTF retains complete
+# runtime-selector coverage and is measured through one fixed-helicity query.
+# Both are valid, lane-specific acceptance workloads.  Running recurrence first
+# prevents OTF from warming its cold path.
 LANES = ("recurrence", "on-the-fly")
 MANDATORY_MULTIPLICITIES = tuple(range(4, 10))
 OPTIONAL_MULTIPLICITIES = (10, 11)
@@ -90,6 +103,23 @@ class NumericalParityError(AcceptanceError):
 
 class ReferenceColdLimitError(AcceptanceError):
     """Raised when Reference setup exhausts its aggregate cold-cell budget."""
+
+
+@dataclass(frozen=True)
+class ReferenceSourceIdentity:
+    """Pinned revision and deterministic identity of the reference inputs."""
+
+    revision: str
+    content_sha256: str
+    file_count: int
+
+    def provenance(self) -> dict[str, object]:
+        return {
+            "revision": self.revision,
+            "required_revision": REFERENCE_REVISION,
+            "content_sha256": self.content_sha256,
+            "tracked_and_nonignored_file_count": self.file_count,
+        }
 
 
 @dataclass(frozen=True)
@@ -550,20 +580,27 @@ def parse_candidate_first_ready_output(output: str) -> CandidateFirstReadyMetric
 
 
 def select_global_lane(
+    references: Mapping[int, ReferenceMetrics],
     candidates: Mapping[str, Mapping[int, CandidateMetrics]],
 ) -> str:
-    """Choose one comparable generation-specialized lane globally."""
+    """Choose the fastest globally consistent lane that passes every gate."""
 
     eligibility = lane_eligibility(candidates)
     scores: list[tuple[float, str]] = []
     for lane in LANES:
         lane_policy = eligibility[lane]
-        if lane_policy["eligible"]:
+        if lane_policy["eligible"] and all(
+            gate.passes
+            for gate in _lane_gate_results(
+                lane,
+                references,
+                candidates[lane],
+                MANDATORY_MULTIPLICITIES,
+            )
+        ):
             scores.append((float(lane_policy["warm_geometric_mean_seconds"]), lane))
     if not scores:
-        raise AcceptanceError(
-            "no generation-specialized lane covers every mandatory multiplicity"
-        )
+        raise AcceptanceError("no eligible lane passes every mandatory acceptance gate")
     # The lane name is a stable tie-breaker; selection never changes per N.
     return min(scores)[1]
 
@@ -592,37 +629,54 @@ def lane_eligibility(
         values = tuple(record.probe.warm_median_seconds for record in records)
         if not all(_positive_finite(value) for value in values):
             raise AcceptanceError(f"lane {lane} has an invalid warm measurement")
-        coverage = {
-            str(total): record.probe.helicity_coverage_count
-            for total, record in zip(MANDATORY_MULTIPLICITIES, records, strict=True)
-        }
-        generation_specialized = all(count == 1 for count in coverage.values())
-        complete_helicity_coverage = all(count > 1 for count in coverage.values())
-        eligible = lane == "recurrence" and generation_specialized
-        if lane == "on-the-fly":
-            reason = (
-                "diagnostic-only: complete runtime-selector coverage is not "
-                "comparable to generation-specialized cold construction"
-            )
-            coverage_contract = "complete-runtime-selector-fixed-helicity-query"
-        elif generation_specialized:
-            reason = "eligible: one generation-selected known-nonzero helicity"
-            coverage_contract = "generation-specialized-known-nonzero"
-        else:
-            reason = "ineligible: recurrence artifact is not generation-specialized"
-            coverage_contract = "generation-specialized-known-nonzero"
+        workload = _lane_workload_eligibility(lane, records)
         result[lane] = {
-            "eligible": eligible,
-            "reason": reason,
-            "coverage_contract": coverage_contract,
-            "generation_specialized": generation_specialized,
-            "complete_helicity_coverage": complete_helicity_coverage,
-            "mandatory_helicity_coverage_count": coverage,
+            **workload,
+            "mandatory_helicity_coverage_count": {
+                str(total): record.probe.helicity_coverage_count
+                for total, record in zip(MANDATORY_MULTIPLICITIES, records, strict=True)
+            },
             "warm_geometric_mean_seconds": math.exp(
                 statistics.fmean(math.log(value) for value in values)
             ),
         }
     return result
+
+
+def _lane_workload_eligibility(
+    lane: str,
+    records: Sequence[CandidateMetrics],
+) -> dict[str, object]:
+    """Apply the lane-specific helicity workload contract once."""
+
+    if lane not in LANES or not records:
+        raise AcceptanceError("lane workload evidence is invalid")
+    coverage = tuple(record.probe.helicity_coverage_count for record in records)
+    generation_specialized = all(count == 1 for count in coverage)
+    complete_helicity_coverage = all(count > 1 for count in coverage)
+    if lane == "recurrence":
+        eligible = generation_specialized
+        contract = "generation-specialized-known-nonzero"
+        reason = (
+            "eligible: one generation-selected known-nonzero helicity"
+            if eligible
+            else "ineligible: recurrence artifact is not generation-specialized"
+        )
+    else:
+        eligible = complete_helicity_coverage
+        contract = "complete-runtime-selector-fixed-helicity-query"
+        reason = (
+            "eligible: complete runtime-selector axis with one fixed query"
+            if eligible
+            else "ineligible: OTF artifact does not retain complete selector coverage"
+        )
+    return {
+        "eligible": eligible,
+        "reason": reason,
+        "coverage_contract": contract,
+        "generation_specialized": generation_specialized,
+        "complete_helicity_coverage": complete_helicity_coverage,
+    }
 
 
 def evaluate_gates(
@@ -638,37 +692,103 @@ def evaluate_gates(
         raise AcceptanceError("global winning lane is unavailable")
     if not lane_eligibility(candidates)[winner]["eligible"]:
         raise AcceptanceError(
-            f"lane {winner} is diagnostic-only and cannot satisfy acceptance gates"
+            f"lane {winner} does not satisfy its helicity workload contract"
         )
+    return _lane_gate_results(winner, references, candidates[winner], multiplicities)
+
+
+def _lane_gate_results(
+    lane: str,
+    references: Mapping[int, ReferenceMetrics],
+    records: Mapping[int, CandidateMetrics],
+    multiplicities: Sequence[int],
+) -> tuple[GateResult, ...]:
     results: list[GateResult] = []
     for total_gluons in multiplicities:
-        if total_gluons not in references or total_gluons not in candidates[winner]:
+        if total_gluons not in references or total_gluons not in records:
             raise AcceptanceError(
                 f"paired winner/reference evidence is missing for N={total_gluons}"
             )
-        reference = references[total_gluons]
-        candidate = candidates[winner][total_gluons]
-        warm_ratio = candidate.probe.warm_median_seconds / reference.warm_median_seconds
-        rss_ratio = candidate.max_rss_kib / reference.max_rss_kib
-        cold_ratio = candidate.cold_to_ready_seconds / reference.cold_to_ready_seconds
-        if not all(
-            _positive_finite(value) for value in (warm_ratio, rss_ratio, cold_ratio)
-        ):
-            raise AcceptanceError("paired acceptance ratio is invalid")
         results.append(
-            GateResult(
-                total_gluons=total_gluons,
-                lane=winner,
-                warm_ratio=warm_ratio,
-                rss_ratio=rss_ratio,
-                cold_ratio=cold_ratio,
-                warm_passes=warm_ratio <= WARM_RATIO_LIMIT,
-                rss_passes=rss_ratio <= RSS_RATIO_LIMIT,
-                cold_passes=cold_ratio <= COLD_RATIO_LIMIT,
-                numerical_passes=candidate.numerical_parity.passes,
+            _paired_gate_result(
+                lane,
+                references[total_gluons],
+                records[total_gluons],
             )
         )
     return tuple(results)
+
+
+def _paired_gate_result(
+    lane: str,
+    reference: ReferenceMetrics,
+    candidate: CandidateMetrics,
+) -> GateResult:
+    if candidate.lane != lane or candidate.total_gluons != reference.total_gluons:
+        raise AcceptanceError("paired acceptance evidence is inconsistent")
+    warm_ratio = candidate.probe.warm_median_seconds / reference.warm_median_seconds
+    rss_ratio = candidate.max_rss_kib / reference.max_rss_kib
+    cold_ratio = candidate.cold_to_ready_seconds / reference.cold_to_ready_seconds
+    if not all(
+        _positive_finite(value) for value in (warm_ratio, rss_ratio, cold_ratio)
+    ):
+        raise AcceptanceError("paired acceptance ratio is invalid")
+    return GateResult(
+        total_gluons=reference.total_gluons,
+        lane=lane,
+        warm_ratio=warm_ratio,
+        rss_ratio=rss_ratio,
+        cold_ratio=cold_ratio,
+        warm_passes=warm_ratio <= WARM_RATIO_LIMIT,
+        rss_passes=rss_ratio <= RSS_RATIO_LIMIT,
+        cold_passes=cold_ratio <= COLD_RATIO_LIMIT,
+        numerical_passes=candidate.numerical_parity.passes,
+    )
+
+
+def _observed_mandatory_gate_viability(
+    references: Mapping[int, ReferenceMetrics],
+    candidates: Mapping[str, Mapping[int, CandidateMetrics]],
+    *,
+    multiplicities: Sequence[int],
+) -> dict[str, object]:
+    """Report whether one lane can still pass every completed mandatory row."""
+
+    completed = tuple(multiplicities)
+    if not completed or any(total not in references for total in completed):
+        raise AcceptanceError("observed mandatory reference evidence is incomplete")
+    lanes: dict[str, object] = {}
+    viable_lanes: list[str] = []
+    for lane in LANES:
+        records = candidates.get(lane)
+        if records is None or any(total not in records for total in completed):
+            raise AcceptanceError(
+                f"observed mandatory candidate evidence is incomplete for {lane}"
+            )
+        selected = tuple(records[total] for total in completed)
+        if any(
+            record.lane != lane
+            or record.total_gluons != total
+            or record.probe.execution_mode != lane
+            for total, record in zip(completed, selected, strict=True)
+        ):
+            raise AcceptanceError(f"lane {lane} contains inconsistent evidence")
+        workload = _lane_workload_eligibility(lane, selected)
+        eligible = bool(workload["eligible"])
+        gates = _lane_gate_results(lane, references, records, completed)
+        viable = eligible and all(gate.passes for gate in gates)
+        if viable:
+            viable_lanes.append(lane)
+        lanes[lane] = {
+            **workload,
+            "viable": viable,
+            "gates": [_plain_gate(gate) for gate in gates],
+        }
+    return {
+        "completed_multiplicities": list(completed),
+        "lanes": lanes,
+        "viable_lanes": viable_lanes,
+    }
 
 
 def optional_candidate_is_feasible(candidate: CandidateMetrics) -> bool:
@@ -1905,11 +2025,15 @@ def _plain_reference(reference: ReferenceMetrics) -> dict[str, object]:
     return payload
 
 
+def _plain_gate(gate: GateResult) -> dict[str, object]:
+    return asdict(gate) | {"passes": gate.passes}
+
+
 def _gate_report(gates: Sequence[GateResult]) -> dict[str, object]:
     """Serialize every completed gate and aggregate its acceptance result."""
 
     return {
-        "gates": [asdict(gate) | {"passes": gate.passes} for gate in gates],
+        "gates": [_plain_gate(gate) for gate in gates],
         # Infeasible optional rows are skipped before producing a GateResult.
         # Every row that was measured is therefore acceptance-authoritative.
         "passes": all(gate.passes for gate in gates),
@@ -1924,6 +2048,135 @@ def _write_report(path: Path, payload: Mapping[str, object]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _reference_git_output(*arguments: str) -> bytes:
+    try:
+        completed = subprocess.run(
+            ("git", "-C", str(REFERENCE_ROOT), *arguments),
+            check=False,
+            capture_output=True,
+        )
+    except OSError as error:
+        raise AcceptanceError(
+            f"cannot inspect FFT reference source: {error}"
+        ) from error
+    if completed.returncode != 0:
+        detail = os.fsdecode(completed.stderr).strip()
+        raise AcceptanceError(
+            "cannot inspect FFT reference source" + (f": {detail}" if detail else "")
+        )
+    return completed.stdout
+
+
+def _hash_identity_field(digest: Any, value: bytes) -> None:
+    digest.update(len(value).to_bytes(8, "big"))
+    digest.update(value)
+
+
+def _reference_source_identity() -> ReferenceSourceIdentity:
+    """Hash every tracked or nonignored reference input at the pinned HEAD."""
+
+    repository_root = Path(
+        os.fsdecode(_reference_git_output("rev-parse", "--show-toplevel")).strip()
+    ).resolve()
+    if repository_root != REFERENCE_ROOT.resolve():
+        raise AcceptanceError(
+            f"FFT reference source is not an independent repository: {REFERENCE_ROOT}"
+        )
+    revision = os.fsdecode(
+        _reference_git_output("rev-parse", "--verify", "HEAD")
+    ).strip()
+    if revision != REFERENCE_REVISION:
+        raise AcceptanceError(
+            "FFT reference source is at the wrong revision: "
+            f"expected {REFERENCE_REVISION}, found {revision}"
+        )
+
+    raw_paths = _reference_git_output(
+        "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--"
+    )
+    paths = sorted(path for path in raw_paths.split(b"\0") if path)
+    if not paths:
+        raise AcceptanceError("FFT reference source contains no authenticated inputs")
+
+    digest = hashlib.sha256()
+    _hash_identity_field(digest, b"pyamplicol-fft-reference-content-v1")
+    for raw_path in paths:
+        relative = Path(os.fsdecode(raw_path))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise AcceptanceError("FFT reference source reported an unsafe path")
+        path = REFERENCE_ROOT / relative
+        try:
+            before = path.lstat()
+            if stat.S_ISREG(before.st_mode):
+                kind = b"file+x" if before.st_mode & 0o111 else b"file"
+                content = path.read_bytes()
+            elif stat.S_ISLNK(before.st_mode):
+                kind = b"symlink"
+                content = os.fsencode(os.readlink(path))
+            else:
+                raise AcceptanceError(
+                    f"FFT reference input has unsupported file type: {relative}"
+                )
+            after = path.lstat()
+        except OSError as error:
+            raise AcceptanceError(
+                f"cannot authenticate FFT reference input {relative}: {error}"
+            ) from error
+        before_identity = (
+            before.st_mode,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ino,
+        )
+        after_identity = (
+            after.st_mode,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ino,
+        )
+        if before_identity != after_identity:
+            raise AcceptanceError(
+                f"FFT reference input changed while being authenticated: {relative}"
+            )
+        _hash_identity_field(digest, raw_path)
+        _hash_identity_field(digest, kind)
+        _hash_identity_field(digest, content)
+    return ReferenceSourceIdentity(revision, digest.hexdigest(), len(paths))
+
+
+def _require_reference_source_identity(
+    expected: ReferenceSourceIdentity | None = None,
+) -> ReferenceSourceIdentity:
+    current = _reference_source_identity()
+    if expected is not None and current != expected:
+        raise AcceptanceError(
+            "FFT reference source identity changed during the campaign: "
+            f"started at {expected.revision}/{expected.content_sha256}, now "
+            f"{current.revision}/{current.content_sha256}"
+        )
+    return current
+
+
+def _require_campaign_source_identity(
+    expected: ReportSourceIdentity | None = None,
+) -> ReportSourceIdentity:
+    """Authenticate a clean HEAD before measuring or retaining any result."""
+
+    try:
+        current = require_eligible_report_source(ROOT)
+    except ReportSourceIdentityError as error:
+        raise AcceptanceError(
+            f"FFT performance source is ineligible: {error}"
+        ) from error
+    if expected is not None and current != expected:
+        raise AcceptanceError(
+            "FFT performance source identity changed during the campaign: "
+            f"started at {expected.revision}/{expected.tree}, now "
+            f"{current.revision}/{current.tree}"
+        )
+    return current
 
 
 def dry_run_plan(
@@ -1949,6 +2202,10 @@ def dry_run_plan(
         "reference_driver": str(REFERENCE_DRIVER),
         "reference": {
             "backend": REFERENCE_BACKEND,
+            "source_revision": REFERENCE_REVISION,
+            "source_identity": (
+                "pinned-head-plus-tracked-and-nonignored-content-sha256"
+            ),
             "color_contraction": "fft",
             "kinematics": "default-bg",
             "clean_build_per_multiplicity": True,
@@ -2028,9 +2285,9 @@ def dry_run_plan(
             "extra_evaluations": 0,
         },
         "global_lane_policy": (
-            "recurrence is the generation-specialized acceptance lane; on-the-fly "
-            "retains complete runtime-selector coverage and is diagnostic-only; "
-            "one global eligible lane supplies every metric and gate"
+            "recurrence and on-the-fly are eligible under their respective "
+            "helicity workloads; the fastest lane passing every mandatory gate "
+            "supplies every reported metric and optional continuation"
         ),
         "thresholds": {
             "warm_ratio_maximum": WARM_RATIO_LIMIT,
@@ -2049,7 +2306,7 @@ def dry_run_plan(
                 python=python,
                 lane="recurrence",
                 total_gluons=4,
-                helicities=(-1, -1, 1, 1),
+                helicities=(1, 1, 1, 1),
                 artifact=PERFORMANCE_ROOT
                 / "runs"
                 / run_id
@@ -2090,6 +2347,8 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
 
 
 def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
+    source_identity = _require_campaign_source_identity()
+    reference_source_identity = _require_reference_source_identity()
     run_root = PERFORMANCE_ROOT / "runs" / arguments.run_id
     _create_workspace_directories(run_root)
     environment = _workspace_environment(arguments.python)
@@ -2106,17 +2365,23 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
     candidates: dict[str, dict[int, CandidateMetrics]] = {lane: {} for lane in LANES}
     optional_status: dict[str, object] = {}
     report_path = run_root / "report.json"
+    execution_policy = dry_run_plan(
+        run_id=arguments.run_id,
+        python=arguments.python,
+        include_optional=arguments.include_optional,
+    )
+    execution_policy["dry_run"] = False
 
     def partial(status: str) -> dict[str, object]:
         payload: dict[str, object] = {
             "kind": KIND,
             "schema_version": SCHEMA_VERSION,
+            "dry_run": False,
             "status": status,
-            "policy": dry_run_plan(
-                run_id=arguments.run_id,
-                python=arguments.python,
-                include_optional=arguments.include_optional,
-            ),
+            "terminal": status != "running",
+            "source_identity": source_identity.provenance(),
+            "reference_source_identity": reference_source_identity.provenance(),
+            "policy": execution_policy,
             "environment": {
                 "platform": sys.platform,
                 "threads": 1,
@@ -2143,7 +2408,20 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
         evidence = candidate.numerical_parity
         if evidence.passes:
             return
-        _write_report(report_path, partial("failed-numerical-parity"))
+        failed = partial("failed-numerical-parity")
+        failed.update(
+            {
+                "passes": False,
+                "failure": {
+                    "kind": "numerical-parity",
+                    "lane": candidate.lane,
+                    "total_gluons": candidate.total_gluons,
+                    "maximum_relative_error": evidence.maximum_relative_error,
+                    "relative_tolerance": evidence.relative_tolerance,
+                },
+            }
+        )
+        _write_report(report_path, failed)
         raise NumericalParityError(
             "candidate/reference matrix-element mismatch for "
             f"{candidate.lane} N={candidate.total_gluons} at point "
@@ -2152,6 +2430,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
             f"{evidence.relative_tolerance:.17g}"
         )
 
+    completed_mandatory: list[int] = []
     for total_gluons in MANDATORY_MULTIPLICITIES:
         reference = _run_reference(
             reference=reference_module,
@@ -2178,9 +2457,35 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
             )
             candidates[lane][total_gluons] = candidate
             require_numerical_parity(candidate)
-        _write_report(report_path, partial("running"))
+        completed_mandatory.append(total_gluons)
+        viability = _observed_mandatory_gate_viability(
+            references,
+            candidates,
+            multiplicities=completed_mandatory,
+        )
+        if not viability["viable_lanes"]:
+            failed = partial("failed-performance-gates")
+            failed.update(
+                {
+                    "passes": False,
+                    "failure": {
+                        "kind": "no-global-lane-remains",
+                        "message": (
+                            "no eligible lane can satisfy every completed "
+                            "mandatory warm-runtime, RSS, cold-to-ready, and "
+                            "numerical gate"
+                        ),
+                    },
+                    "observed_gate_viability": viability,
+                }
+            )
+            _write_report(report_path, failed)
+            return failed
+        running = partial("running")
+        running["observed_gate_viability"] = viability
+        _write_report(report_path, running)
 
-    winner = select_global_lane(candidates)
+    winner = select_global_lane(references, candidates)
     mandatory_gates = evaluate_gates(winner, references, candidates)
     optional_gates: tuple[GateResult, ...] = ()
     if arguments.include_optional:

@@ -136,6 +136,7 @@ _EAGER_PACK_IDENTITY_EXTENSION = "eager_prepared_pack"
 _EAGER_PACK_IDENTITY_KIND = "pyamplicol-prepared-kernel-pack-identity"
 _EAGER_PACK_IDENTITY_SCHEMA_VERSION = 1
 _EVALUATOR_PAYLOAD_CONTAINER_EXTENSION = "evaluator_payload_container"
+_RECURRENCE_BOOTSTRAP_FILENAME = "recurrence-bootstrap.bin"
 _EVALUATOR_PAYLOAD_CONTAINER_PATH = "evaluators.pacbin"
 _COMPILED_COLOR_CONTRACTION_MEMBER_PATH = "compiled-color.pacrclr3"
 _EVALUATOR_PAYLOAD_CONTAINER_KIND = "pyamplicol-evaluator-payload-container"
@@ -1062,6 +1063,23 @@ def write_schema_v3_artifact(
                     process_id=process_id,
                     compact=True,
                 )
+        _write_recurrence_bootstraps(
+            builder,
+            processes=recurrence_processes,
+            process_records=process_records,
+            producer=producer,
+            runtime={
+                "engine": "rusticol",
+                "engine_version": str(producer["version"]),
+                "evaluator_manifest_path": _EVALUATOR_SET_PATH,
+                "api_bundle_path": api_bundle_path,
+                "required_runtime_capabilities": list(
+                    canonical_runtime_capabilities
+                ),
+            },
+            evaluator_payload_container=evaluator_payload_container,
+            target=target,
+        )
         extensions = _extensions(
             existing,
             processes=processes,
@@ -1872,6 +1890,99 @@ def _write_process_payloads(
         },
         execution_record.sha256,
     )
+
+
+def _write_recurrence_bootstraps(
+    builder: ArtifactBuilder,
+    *,
+    processes: Sequence[RecurrenceProcessArtifact],
+    process_records: Sequence[Mapping[str, object]],
+    producer: Mapping[str, object],
+    runtime: Mapping[str, object],
+    evaluator_payload_container: Mapping[str, object] | None,
+    target: Mapping[str, object],
+) -> None:
+    """Publish authenticated native recurrence load images.
+
+    This v1 image is deliberately emitted only for a single-process artifact:
+    multiple self-authenticating sidecars would create a cross-hash cycle, and
+    mixed process sets can have artifact-wide capabilities not owned by this
+    recurrence process. Such artifacts retain the generic loader.
+
+    The image contains a process-ready recipe referencing the authoritative
+    schedule/binding payloads, compact physics, and the staged payload
+    inventory *before* the image is added. Finalization then includes the
+    image's own SHA-256 record in the ordinary artifact ID. The private staging
+    root is supplied only while Rust lowers the recipe and is never serialized.
+    """
+
+    if not processes:
+        return
+    if len(processes) != 1 or len(process_records) != 1:
+        return
+    if evaluator_payload_container is None:
+        raise ValueError("recurrence bootstrap requires an evaluator payload container")
+    records_by_id = {str(record["id"]): record for record in process_records}
+    payloads = [record.as_dict() for record in builder.payload_records()]
+    if builder.root is None:
+        raise RuntimeError("recurrence bootstrap requires an active artifact builder")
+    build = _recurrence_bootstrap_operation()
+    for process in processes:
+        process_id = process.process_id
+        prefix = f"processes/{process_id}"
+        execution_path = f"{prefix}/execution.json"
+        physics_path = f"{prefix}/physics.json"
+        context = {
+            "schema_version": 1,
+            "staged_root": str(builder.root),
+            "producer": dict(producer),
+            "runtime": dict(runtime),
+            "process": dict(records_by_id[process_id]),
+            "payloads": payloads,
+            "evaluator_payload_container": dict(evaluator_payload_container),
+        }
+        image = build(
+            json.dumps(
+                context,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8"),
+            builder.staged_path(execution_path).read_bytes(),
+            builder.staged_path(physics_path).read_bytes(),
+        )
+        if not isinstance(image, bytes) or not image:
+            raise RuntimeError(
+                "Rusticol returned an invalid recurrence bootstrap image"
+            )
+        builder.add_bytes(
+            f"{prefix}/{_RECURRENCE_BOOTSTRAP_FILENAME}",
+            image,
+            role="evaluator-state",
+            media_type="application/octet-stream",
+            executable=False,
+            target=target,
+            process_id=process_id,
+        )
+
+
+@cache
+def _recurrence_bootstrap_operation() -> Callable[[bytes, bytes, bytes], bytes]:
+    try:
+        rusticol = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(rusticol)
+    except (ImportError, OSError, RuntimeError) as exc:
+        raise RuntimeError(
+            "recurrence bootstrap generation requires the current pyamplicol "
+            "native extension"
+        ) from exc
+    operation = getattr(rusticol, "_build_recurrence_bootstrap_v1", None)
+    if not callable(operation):
+        raise RuntimeError(
+            "the current pyamplicol native extension does not expose "
+            "_build_recurrence_bootstrap_v1; rebuild it before generating artifacts"
+        )
+    return operation
 
 
 def _runtime_schema_mapping(

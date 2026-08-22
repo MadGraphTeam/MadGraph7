@@ -10,10 +10,19 @@ use super::evaluator::recurrence_source_direct::{
 use super::recurrence_backend::NativeRecurrenceDirectExecutorBackend;
 #[cfg(feature = "on-the-fly-test-support")]
 use super::recurrence_backend::NativeRecurrencePreparedExecutorPool;
+#[cfg(feature = "python-generation-bridge")]
+use super::recurrence_bootstrap::{
+    RecurrenceReadyCompanionV1, RecurrenceReadyRuntimeV1, RecurrenceReadySourceTemplateV1,
+    RecurrenceReadySourceVariantV1,
+};
+use super::recurrence_bootstrap::{
+    RecurrenceReadyExecutionV1, RecurrenceReadyPlanV1, RecurrenceReadySourceDomainV1,
+    RecurrenceReadySourceFamilyV1, RecurrenceReadySourceKeyV1, RecurrenceReadySourceOrientationV1,
+};
 use super::recurrence_manifest::*;
 use super::recurrence_process_pack::{
-    ProcessDirectExecutorPack, ProcessExecutorBackend, ProcessExecutorIdentities,
-    ProcessExecutorTarget, RECURRENCE_PROCESS_BINDING_HEADER_SIZE_V4,
+    ProcessDirectExecutorBinding, ProcessDirectExecutorPack, ProcessExecutorBackend,
+    ProcessExecutorIdentities, ProcessExecutorTarget, RECURRENCE_PROCESS_BINDING_HEADER_SIZE_V4,
     RECURRENCE_PROCESS_BINDING_MAGIC_V4, RECURRENCE_PROCESS_BINDING_VERSION_V4,
     decode_process_executor_descriptors, read_string, semantic_digest_from_bytes,
 };
@@ -86,21 +95,7 @@ pub(super) fn load_recurrence_native_runtime(
     let payload_root = recurrence_payload_root(artifact, manifest)?;
     let kernel_payloads = artifact.evaluator_payload_store(&payload_root)?;
     if manifest.helicity_selector_companion.is_some() {
-        if physics.coverage.helicities != "complete" || physics.coverage.color != "contracted" {
-            return Err(RusticolError::integrity(
-                "recurrence helicity-selector companion requires complete helicity and contracted-color coverage",
-            ));
-        }
-        if physics.helicities.iter().any(|helicity| {
-            !companion_helicity_coefficient_is_canonical(
-                helicity.structural_zero,
-                helicity.coefficient,
-            )
-        }) {
-            return Err(RusticolError::integrity(
-                "recurrence helicity-selector companion requires unit physical-helicity coefficients and zero structural-zero coefficients",
-            ));
-        }
+        validate_recurrence_companion_physics(physics)?;
     }
     common.model_parameter_evaluator = if common
         .model_parameters
@@ -162,6 +157,235 @@ pub(super) fn load_recurrence_native_runtime(
         helicity_selector_companion,
     )?;
     Ok(LoadedRecurrenceRuntime { common, lane })
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+pub(super) fn load_recurrence_ready_runtime(
+    artifact: &mut VerifiedArtifact,
+    evaluator_root: &Path,
+    ready: &RecurrenceReadyExecutionV1,
+    physics: &ProcessPhysicsV1,
+    evaluator_payload_container: &crate::artifact::EvaluatorPayloadContainerExtension,
+) -> RusticolResult<LoadedRecurrenceRuntime> {
+    validate_ready_runtime_capabilities(ready)?;
+    if ready.runtime.external_is_initial.len() != physics.external_particles.len()
+        || ready
+            .runtime
+            .external_is_initial
+            .iter()
+            .zip(&physics.external_particles)
+            .any(|(is_initial, particle)| {
+                *is_initial != (particle.role == crate::ParticleRole::Initial)
+            })
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence external roles disagree with authenticated physics",
+        ));
+    }
+    let loaded_primary = load_ready_plan(
+        artifact,
+        evaluator_root,
+        ready,
+        &ready.primary_plan,
+        RecurrenceReadyPlanRoleV1::Primary,
+    )?;
+    let mut loaded_companion = ready
+        .companion
+        .as_ref()
+        .map(|companion| {
+            validate_recurrence_companion_physics(physics)?;
+            if companion.process_digest != ready.primary_plan.process_binding.process_digest
+                || companion.process_digest != companion.plan.process_binding.process_digest
+            {
+                return Err(RusticolError::integrity(
+                    "process-ready recurrence companion belongs to a different process",
+                ));
+            }
+            load_ready_plan(
+                artifact,
+                evaluator_root,
+                ready,
+                &companion.plan,
+                RecurrenceReadyPlanRoleV1::HelicitySelector,
+            )
+        })
+        .transpose()?;
+    let has_derived_parameters = ready
+        .runtime
+        .runtime_parameters
+        .iter()
+        .any(|parameter| parameter.kind == "derived_parameter_component");
+    let needs_evaluator_payloads = recurrence_ready_needs_evaluator_payloads(
+        process_pack_requires_evaluator_payloads(&loaded_primary.process_executors),
+        has_derived_parameters,
+        ready.companion.is_some(),
+    );
+    if needs_evaluator_payloads {
+        artifact.install_evaluator_payload_container(evaluator_payload_container)?;
+    }
+
+    let plan = loaded_primary.plan;
+    let (mut common, parameter_defaults, parameter_projection, source_domains) =
+        build_ready_common_runtime(&plan, ready)?;
+    let payload_root = ready_recurrence_payload_root(artifact, ready)?;
+    let kernel_payloads = artifact.evaluator_payload_store(&payload_root)?;
+    common.model_parameter_evaluator = if has_derived_parameters {
+        let (pack_bytes, mut pack, fallback_payload_root) =
+            load_ready_prepared_pack(artifact, ready)?;
+        drop(pack_bytes);
+        drop(pack.recurrence_template.take());
+        let direct = pack.recurrence_direct_template_catalog(
+            &ready.prepared_kernel_pack_digest,
+            &ready.direct_template_catalog_digest,
+        )?;
+        if direct.compiled_model_digest != ready.compiled_model_digest
+            || direct.recurrence_template_catalog_digest != ready.recurrence_template_catalog_digest
+        {
+            return Err(RusticolError::integrity(
+                "prepared parameter fallback belongs to a different recurrence model",
+            ));
+        }
+        drop(direct);
+        drop(pack.recurrence_direct_template.take());
+        if fallback_payload_root != payload_root {
+            return Err(RusticolError::integrity(
+                "process-ready recurrence parameter fallback resolved a different payload root",
+            ));
+        }
+        super::eager_load::load_prepared_model_parameter_evaluator_for_runtime(
+            &pack,
+            &common.model_parameters,
+            &kernel_payloads,
+        )?
+    } else {
+        None
+    };
+    common.refresh_derived_model_parameters()?;
+
+    let helicity_selector_companion = match (ready.companion.as_ref(), loaded_companion.take()) {
+        (Some(companion), Some(loaded)) => Some(
+            super::on_the_fly_load::load_recurrence_helicity_selector_companion_from_ready_parts(
+                artifact,
+                loaded,
+                &companion.plan,
+                companion,
+                ready,
+                physics,
+                &kernel_payloads,
+            )?
+            .runtime,
+        ),
+        (None, None) => None,
+        _ => {
+            return Err(RusticolError::internal(
+                "process-ready recurrence companion load state drifted",
+            ));
+        }
+    };
+    let loaded_backend = NativeRecurrenceDirectExecutorBackend::load_from_process_pack(
+        &loaded_primary.process_executors,
+        &kernel_payloads,
+        &plan,
+        source_domains,
+    )?;
+    let (executors, backend_owners) = loaded_backend.into_parts();
+    let public_flow_ids = validate_ready_public_flow_ids(
+        &plan,
+        &ready.runtime.public_flow_ids,
+        &ready.runtime.public_flow_public_ids,
+        physics,
+    )?;
+    let direct_helicity_to_physics = validate_ready_direct_helicity_to_physics(
+        &plan,
+        &ready.runtime.direct_helicity_to_physics,
+        physics,
+    )?;
+    let color_contraction = ready
+        .runtime
+        .color_contraction
+        .as_ref()
+        .map(|reference| {
+            load_color_contraction_reference(artifact, evaluator_root, &ready.key, reference)
+        })
+        .transpose()?;
+    let lane = RecurrenceNativeRuntime::new(
+        plan,
+        executors,
+        backend_owners,
+        parameter_defaults,
+        parameter_projection,
+        public_flow_ids,
+        direct_helicity_to_physics,
+        color_contraction,
+        helicity_selector_companion,
+    )?;
+    Ok(LoadedRecurrenceRuntime { common, lane })
+}
+
+fn process_pack_requires_evaluator_payloads(pack: &ProcessDirectExecutorPack) -> bool {
+    pack.descriptors
+        .iter()
+        .any(|descriptor| process_binding_requires_evaluator_payloads(&descriptor.binding))
+}
+
+fn process_binding_requires_evaluator_payloads(binding: &ProcessDirectExecutorBinding) -> bool {
+    match binding {
+        ProcessDirectExecutorBinding::Source | ProcessDirectExecutorBinding::Intrinsic(_) => false,
+        ProcessDirectExecutorBinding::Jit(_) | ProcessDirectExecutorBinding::Native(_) => true,
+    }
+}
+
+const fn recurrence_ready_needs_evaluator_payloads(
+    process_pack_requires_payloads: bool,
+    has_derived_parameters: bool,
+    has_companion: bool,
+) -> bool {
+    process_pack_requires_payloads
+        || has_derived_parameters
+        // Companion executors are intentionally conservative here. They may
+        // warm a different sparse descriptor family than the primary plan.
+        || has_companion
+}
+
+fn validate_ready_runtime_capabilities(ready: &RecurrenceReadyExecutionV1) -> RusticolResult<()> {
+    let color_capability = match ready.color_accuracy.as_str() {
+        "lc" => crate::recurrence::RECURRENCE_LC_COLOR_CAPABILITY,
+        "nlc" | "full" => crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+        other => {
+            return Err(RusticolError::compatibility(format!(
+                "process-ready recurrence has unsupported color accuracy {other:?}"
+            )));
+        }
+    };
+    let mut expected = vec![
+        color_capability,
+        crate::recurrence::RECURRENCE_RUNTIME_CAPABILITY,
+    ];
+    if ready
+        .runtime
+        .color_contraction
+        .as_ref()
+        .and_then(|reference| reference.factorization.as_ref())
+        .is_some_and(|factorization| factorization.kind == "symmetric-group-fourier")
+    {
+        expected.push(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY);
+    }
+    if ready.companion.is_some() {
+        expected.push(RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY);
+    }
+    expected.sort_unstable();
+    if ready
+        .required_runtime_capabilities
+        .iter()
+        .map(String::as_str)
+        .ne(expected.iter().copied())
+    {
+        return Err(RusticolError::compatibility(format!(
+            "process-ready recurrence must require exactly {expected:?}"
+        )));
+    }
+    Ok(())
 }
 
 fn load_color_contraction(
@@ -444,6 +668,80 @@ fn public_flow_ids(
     Ok(result)
 }
 
+fn validate_ready_public_flow_ids(
+    plan: &DirectRecurrencePlan,
+    stored: &[u32],
+    stored_public_ids: &[String],
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<Vec<u32>> {
+    let available = match plan.strategy() {
+        crate::recurrence::RecurrenceStrategy::TopologyReplay => plan
+            .replay_targets()
+            .iter()
+            .map(|target| target.public_flow_id)
+            .collect::<BTreeSet<_>>(),
+        crate::recurrence::RecurrenceStrategy::AllFlowUnion => plan
+            .amplitude_destinations()
+            .iter()
+            .map(|destination| destination.target_sector_id)
+            .collect::<BTreeSet<_>>(),
+        crate::recurrence::RecurrenceStrategy::ContractedColorUnion => {
+            if !stored.is_empty()
+                || !stored_public_ids.is_empty()
+                || physics.color_components.len() != 1
+                || !matches!(
+                    physics.color_components.first(),
+                    Some(PhysicsColorComponentV1::ContractedColor(_))
+                )
+            {
+                return Err(RusticolError::integrity(
+                    "process-ready contracted recurrence has an invalid public color axis",
+                ));
+            }
+            return Ok(Vec::new());
+        }
+    };
+    if stored.len() != physics.color_components.len()
+        || stored_public_ids.len() != physics.color_components.len()
+        || physics
+            .color_components
+            .iter()
+            .any(|component| !matches!(component, PhysicsColorComponentV1::LcFlow(_)))
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence flow mapping does not cover the LC physics axis",
+        ));
+    }
+    if stored_public_ids
+        .iter()
+        .zip(&physics.color_components)
+        .any(|(stored_id, component)| stored_id != component.id())
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence flow IDs disagree with the physics axis",
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for sector in stored {
+        if *sector >= plan.physical_sector_count()
+            || !available.contains(sector)
+            || (plan.strategy() == crate::recurrence::RecurrenceStrategy::TopologyReplay
+                && !seen.insert(*sector))
+        {
+            return Err(RusticolError::integrity(
+                "process-ready recurrence flow mapping references an absent plan sector",
+            ));
+        }
+        seen.insert(*sector);
+    }
+    if seen != available {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence flow mapping does not cover the plan destinations",
+        ));
+    }
+    Ok(stored.to_vec())
+}
+
 pub(super) fn direct_helicity_to_physics(
     plan: &DirectRecurrencePlan,
     physics: &ProcessPhysicsV1,
@@ -498,12 +796,84 @@ pub(super) fn direct_helicity_to_physics(
     Ok(result)
 }
 
+pub(super) fn validate_ready_direct_helicity_to_physics(
+    plan: &DirectRecurrencePlan,
+    stored: &[u64],
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<Vec<usize>> {
+    if stored.len() != plan.resolved_helicities().len() {
+        return Err(RusticolError::integrity(
+            "process-ready helicity mapping has the wrong size",
+        ));
+    }
+    let mut result = Vec::with_capacity(stored.len());
+    let mut seen = BTreeSet::new();
+    for (expected_id, (descriptor, physics_index)) in
+        plan.resolved_helicities().iter().zip(stored).enumerate()
+    {
+        if descriptor.id as usize != expected_id {
+            return Err(RusticolError::integrity(
+                "recurrence resolved-helicity IDs are not dense and ordered",
+            ));
+        }
+        let physics_index = usize::try_from(*physics_index)
+            .map_err(|_| RusticolError::artifact("physics helicity index exceeds usize"))?;
+        if !seen.insert(physics_index) {
+            return Err(RusticolError::integrity(
+                "process-ready recurrence helicity mapping repeats a physics row",
+            ));
+        }
+        let physics_helicity = physics.helicities.get(physics_index).ok_or_else(|| {
+            RusticolError::integrity(
+                "process-ready recurrence helicity mapping is outside the physics axis",
+            )
+        })?;
+        let start = usize::try_from(descriptor.public_helicity_start)
+            .map_err(|_| RusticolError::artifact("public-helicity offset exceeds usize"))?;
+        let count = usize::try_from(descriptor.public_helicity_count)
+            .map_err(|_| RusticolError::artifact("public-helicity count exceeds usize"))?;
+        let stop = start
+            .checked_add(count)
+            .ok_or_else(|| RusticolError::artifact("public-helicity range overflows"))?;
+        if plan.public_helicities().get(start..stop) != Some(physics_helicity.values.as_slice()) {
+            return Err(RusticolError::integrity(
+                "process-ready recurrence helicity mapping disagrees with the direct plan",
+            ));
+        }
+        result.push(physics_index);
+    }
+    Ok(result)
+}
+
 fn load_prepared_pack(
     artifact: &VerifiedArtifact,
     manifest: &RecurrenceExecutionManifest,
 ) -> RusticolResult<(Vec<u8>, PreparedKernelPackManifest, PathBuf)> {
-    let manifest_path = confined_internal_path(
+    load_prepared_pack_reference(
+        artifact,
         &manifest.kernel_pack.manifest_path,
+        &manifest.kernel_pack.payload_root,
+    )
+}
+
+fn load_ready_prepared_pack(
+    artifact: &VerifiedArtifact,
+    ready: &RecurrenceReadyExecutionV1,
+) -> RusticolResult<(Vec<u8>, PreparedKernelPackManifest, PathBuf)> {
+    load_prepared_pack_reference(
+        artifact,
+        &ready.kernel_pack.manifest_path,
+        &ready.kernel_pack.payload_root,
+    )
+}
+
+fn load_prepared_pack_reference(
+    artifact: &VerifiedArtifact,
+    manifest_path: &str,
+    payload_root: &str,
+) -> RusticolResult<(Vec<u8>, PreparedKernelPackManifest, PathBuf)> {
+    let manifest_path = confined_internal_path(
+        manifest_path,
         "recurrence prepared kernel-pack manifest path",
     )?;
     let manifest_path = manifest_path.to_str().ok_or_else(|| {
@@ -523,7 +893,7 @@ fn load_prepared_pack(
     pack.validate()?;
     validate_recurrence_prepared_pack_outer_target(&artifact.manifest().producer.target, &pack)?;
     let payload_root = artifact.root().join(confined_internal_path(
-        &manifest.kernel_pack.payload_root,
+        payload_root,
         "recurrence prepared kernel payload root",
     )?);
     Ok((bytes, pack, payload_root))
@@ -536,6 +906,16 @@ fn recurrence_payload_root(
     Ok(artifact.root().join(confined_internal_path(
         &manifest.kernel_pack.payload_root,
         "recurrence prepared kernel payload root",
+    )?))
+}
+
+fn ready_recurrence_payload_root(
+    artifact: &VerifiedArtifact,
+    ready: &RecurrenceReadyExecutionV1,
+) -> RusticolResult<PathBuf> {
+    Ok(artifact.root().join(confined_internal_path(
+        &ready.kernel_pack.payload_root,
+        "process-ready recurrence kernel payload root",
     )?))
 }
 
@@ -560,11 +940,314 @@ pub(super) fn load_plan_summary(
     manifest: &RecurrenceExecutionManifest,
     summary: &RecurrencePlanSummary,
 ) -> RusticolResult<LoadedRecurrencePlan> {
+    load_plan_reference(
+        artifact,
+        evaluator_root,
+        RecurrencePlanLoadSpec {
+            process_key: &manifest.key,
+            compiled_model_digest: &manifest.compiled_model_digest,
+            recurrence_template_catalog_digest: &manifest.recurrence_template_catalog_digest,
+            prepared_kernel_pack_digest: &manifest.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &manifest.direct_template_catalog_digest,
+            plan: RecurrenceReadyPlanRef {
+                runtime_schedule: &summary.runtime_schedule,
+                process_binding: &summary.process_binding,
+                runtime_container_member: &summary.inspection_summary.runtime_container_member,
+                color_projection_certificate: summary
+                    .inspection_summary
+                    .color_projection_certificate
+                    .as_ref(),
+                helicity_dispatch: summary.helicity_dispatch.as_ref(),
+            },
+            role: if summary.helicity_dispatch.is_some() {
+                RecurrenceReadyPlanRoleV1::HelicitySelector
+            } else {
+                RecurrenceReadyPlanRoleV1::Primary
+            },
+        },
+    )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum RecurrenceReadyPlanRoleV1 {
+    Primary,
+    HelicitySelector,
+}
+
+struct RecurrenceReadyPlanRef<'a> {
+    runtime_schedule: &'a RecurrenceRuntimeContainer,
+    process_binding: &'a RecurrenceProcessBinding,
+    runtime_container_member: &'a RecurrenceRuntimeContainerMember,
+    color_projection_certificate: Option<&'a RecurrenceColorProjectionCertificate>,
+    helicity_dispatch: Option<&'a RecurrenceHelicityDispatchReference>,
+}
+
+struct RecurrencePlanLoadSpec<'a> {
+    process_key: &'a str,
+    compiled_model_digest: &'a str,
+    recurrence_template_catalog_digest: &'a str,
+    prepared_kernel_pack_digest: &'a str,
+    direct_template_catalog_digest: &'a str,
+    plan: RecurrenceReadyPlanRef<'a>,
+    role: RecurrenceReadyPlanRoleV1,
+}
+
+fn validate_ready_plan_reference(spec: &RecurrencePlanLoadSpec<'_>) -> RusticolResult<()> {
+    let container = spec.plan.runtime_schedule;
+    let binding = spec.plan.process_binding;
+    if container.kind != RECURRENCE_RUNTIME_CONTAINER_KIND
+        || container.schema_version != RECURRENCE_RUNTIME_CONTAINER_SCHEMA
+        || container.storage_abi != RECURRENCE_RUNTIME_STORAGE_ABI
+        || container.plan_member_path != RECURRENCE_DIRECT_SCHEDULE_MEMBER
+    {
+        return Err(RusticolError::compatibility(
+            "unsupported process-ready recurrence schedule contract",
+        ));
+    }
+    let expected_schedule_path = format!(
+        "recurrence/schedules/{}/recurrence-runtime.pacbin",
+        binding.schedule_digest
+    );
+    if container.path != expected_schedule_path
+        || !(1..=2).contains(&container.member_count)
+        || container.size_bytes == 0
+        || container.unpacked_size_bytes == 0
+        || container.unpacked_size_bytes > container.size_bytes
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence schedule metadata is inconsistent",
+        ));
+    }
+    for digest in [
+        &container.sha256,
+        &container.index_sha256,
+        &binding.schedule_digest,
+        &binding.native_schedule_semantic_digest,
+        &binding.process_digest,
+        &binding.process_semantic_digest,
+        &binding.sha256,
+    ] {
+        decode_sha256(digest)?;
+    }
+    let expected_binding_path = match spec.role {
+        RecurrenceReadyPlanRoleV1::Primary => RECURRENCE_PROCESS_BINDING_PATH,
+        RecurrenceReadyPlanRoleV1::HelicitySelector => RECURRENCE_HELICITY_SELECTOR_BINDING_PATH,
+    };
+    if binding.abi != RECURRENCE_PROCESS_BINDING_ABI
+        || binding.path != expected_binding_path
+        || binding.process_id != spec.process_key
+        || binding.size_bytes == 0
+        || binding.process_support_words.is_empty()
+        || binding.process_support_words.last() == Some(&0)
+        || binding
+            .process_support_words
+            .iter()
+            .map(|word| word.count_ones())
+            .sum::<u32>()
+            != 1
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence binding metadata is inconsistent",
+        ));
+    }
+    validate_ready_process_remap(&binding.remap)?;
+
+    let member = spec.plan.runtime_container_member;
+    if member.path != RECURRENCE_DIRECT_SCHEDULE_MEMBER
+        || member.size_bytes == 0
+        || member.container_size_bytes != container.size_bytes
+        || member.size_bytes > member.container_size_bytes
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence plan-member metadata is inconsistent",
+        ));
+    }
+    decode_sha256(&member.sha256)?;
+    let certificate_size = if let Some(certificate) = spec.plan.color_projection_certificate {
+        if certificate.path != RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER
+            || certificate.schema_version != 1
+            || certificate.proof_kind != "exact-rectangular-sum-projection"
+            || !certificate.publishable
+            || certificate.size_bytes == 0
+        {
+            return Err(RusticolError::compatibility(
+                "unsupported process-ready recurrence projection certificate",
+            ));
+        }
+        decode_sha256(&certificate.sha256)?;
+        certificate.size_bytes
+    } else {
+        0
+    };
+    let expected_member_count = 1 + u64::from(certificate_size != 0);
+    let expected_unpacked = member
+        .size_bytes
+        .checked_add(certificate_size)
+        .ok_or_else(|| RusticolError::artifact("recurrence member sizes overflow u64"))?;
+    if container.member_count != expected_member_count
+        || container.unpacked_size_bytes != expected_unpacked
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence PACBIN member inventory is inconsistent",
+        ));
+    }
+    match (spec.role, spec.plan.helicity_dispatch) {
+        (RecurrenceReadyPlanRoleV1::Primary, None) => {}
+        (RecurrenceReadyPlanRoleV1::HelicitySelector, Some(dispatch)) => {
+            let expected_path = format!(
+                "recurrence/schedules/{}/{}",
+                binding.schedule_digest, RECURRENCE_HELICITY_DISPATCH_PATH
+            );
+            if dispatch.abi != crate::recurrence::RECURRENCE_HELICITY_DISPATCH_ABI
+                || dispatch.path != expected_path
+                || dispatch.size_bytes == 0
+                || dispatch.resolved_helicity_count > u64::from(u32::MAX)
+            {
+                return Err(RusticolError::compatibility(
+                    "unsupported process-ready recurrence helicity dispatch",
+                ));
+            }
+            decode_sha256(&dispatch.sha256)?;
+            decode_sha256(&dispatch.base_runtime_layout_digest)?;
+        }
+        _ => {
+            return Err(RusticolError::integrity(
+                "process-ready recurrence plan has the wrong helicity-dispatch role",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_ready_process_remap(remap: &RecurrenceProcessRemap) -> RusticolResult<()> {
+    decode_sha256(&remap.bijection_digest)?;
+    validate_ready_permutation(&remap.source_slots, "source slots")?;
+    validate_ready_permutation(&remap.public_flow_ids, "public flows")?;
+    validate_ready_permutation(&remap.physical_sector_ids, "physical sectors")?;
+    if remap.source_momentum_signs.len() != remap.source_slots.len()
+        || remap.source_helicity_signs.len() != remap.source_slots.len()
+        || remap
+            .source_momentum_signs
+            .iter()
+            .chain(&remap.source_helicity_signs)
+            .any(|sign| !matches!(sign, -1 | 1))
+        || remap.source_state_offsets.len() != remap.source_slots.len() + 1
+        || remap.source_state_offsets.first() != Some(&0)
+        || remap.source_state_offsets.last().copied().map(u64::from)
+            != Some(remap.source_state_indices.len() as u64)
+        || remap
+            .source_state_offsets
+            .windows(2)
+            .any(|window| window[0] > window[1])
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence source-state remap is malformed",
+        ));
+    }
+    for window in remap.source_state_offsets.windows(2) {
+        let start = usize::try_from(window[0])
+            .map_err(|_| RusticolError::artifact("source-state offset exceeds usize"))?;
+        let stop = usize::try_from(window[1])
+            .map_err(|_| RusticolError::artifact("source-state offset exceeds usize"))?;
+        validate_ready_permutation(
+            remap.source_state_indices.get(start..stop).ok_or_else(|| {
+                RusticolError::integrity("source-state remap range is out of bounds")
+            })?,
+            "source states",
+        )?;
+    }
+    for mapping in [
+        &remap.state_templates,
+        &remap.source_templates,
+        &remap.direct_executors,
+        &remap.parameter_slots,
+    ] {
+        let mut previous = None;
+        let mut sources = BTreeSet::new();
+        let mut targets = BTreeSet::new();
+        for [source, target] in &mapping.changes {
+            if *source >= mapping.count
+                || *target >= mapping.count
+                || source == target
+                || previous.is_some_and(|value| value >= *source)
+                || !targets.insert(*target)
+            {
+                return Err(RusticolError::integrity(
+                    "process-ready sparse recurrence bijection is malformed",
+                ));
+            }
+            previous = Some(*source);
+            sources.insert(*source);
+        }
+        if sources != targets {
+            return Err(RusticolError::integrity(
+                "process-ready sparse recurrence changes do not form a bijection",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_ready_permutation(values: &[u32], context: &str) -> RusticolResult<()> {
+    let mut seen = vec![false; values.len()];
+    for value in values {
+        let index = usize::try_from(*value)
+            .map_err(|_| RusticolError::artifact(format!("{context} index exceeds usize")))?;
+        let slot = seen.get_mut(index).ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "process-ready recurrence {context} is not a permutation"
+            ))
+        })?;
+        if std::mem::replace(slot, true) {
+            return Err(RusticolError::integrity(format!(
+                "process-ready recurrence {context} repeats an index"
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn load_ready_plan(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    ready: &RecurrenceReadyExecutionV1,
+    plan: &RecurrenceReadyPlanV1,
+    role: RecurrenceReadyPlanRoleV1,
+) -> RusticolResult<LoadedRecurrencePlan> {
+    load_plan_reference(
+        artifact,
+        evaluator_root,
+        RecurrencePlanLoadSpec {
+            process_key: &ready.key,
+            compiled_model_digest: &ready.compiled_model_digest,
+            recurrence_template_catalog_digest: &ready.recurrence_template_catalog_digest,
+            prepared_kernel_pack_digest: &ready.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &ready.direct_template_catalog_digest,
+            plan: RecurrenceReadyPlanRef {
+                runtime_schedule: &plan.runtime_schedule,
+                process_binding: &plan.process_binding,
+                runtime_container_member: &plan.runtime_container_member,
+                color_projection_certificate: plan.color_projection_certificate.as_ref(),
+                helicity_dispatch: plan.helicity_dispatch.as_ref(),
+            },
+            role,
+        },
+    )
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn load_plan_reference(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    spec: RecurrencePlanLoadSpec<'_>,
+) -> RusticolResult<LoadedRecurrencePlan> {
     #[cfg(feature = "on-the-fly-test-support")]
     crate::recurrence::on_the_fly::reject_forbidden_work_if_probed(
         crate::recurrence::on_the_fly::OnTheFlyForbiddenWorkV1::DirectPlanLoad,
     )?;
-    let container = &summary.runtime_schedule;
+    validate_ready_plan_reference(&spec)?;
+    let container = spec.plan.runtime_schedule;
     let path = artifact.root().join(&container.path);
     let payload = artifact.payload(&container.path)?;
     if payload.role != PayloadRole::EvaluatorState
@@ -579,7 +1262,7 @@ pub(super) fn load_plan_summary(
         ));
     }
 
-    let process_binding = validate_process_binding(artifact, evaluator_root, manifest, summary)?;
+    let process_binding = validate_process_binding(artifact, evaluator_root, &spec)?;
 
     let expected_file_sha = decode_sha256(&container.sha256)?;
     let container_file = artifact.open_payload_file(&container.path)?;
@@ -601,7 +1284,7 @@ pub(super) fn load_plan_summary(
         ));
     }
     let member = reader.member(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
-    let plan_metadata = &summary.inspection_summary.runtime_container_member;
+    let plan_metadata = spec.plan.runtime_container_member;
     if member.kind() != PacbinMemberKind::RecurrenceDirectPlan {
         return Err(RusticolError::compatibility(
             "recurrence runtime PACBIN contains an incompatible plan member",
@@ -615,10 +1298,7 @@ pub(super) fn load_plan_summary(
         ));
     }
     match (
-        summary
-            .inspection_summary
-            .color_projection_certificate
-            .as_ref(),
+        spec.plan.color_projection_certificate,
         index.members().len(),
     ) {
         (None, 1) => {}
@@ -654,15 +1334,14 @@ pub(super) fn load_plan_summary(
     let bytes = reader.member_bytes(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
     let plan = decode_recurrence_direct_plan_v2(bytes)?;
     if plan.semantic_digest().to_string()
-        != summary.process_binding.native_schedule_semantic_digest()
+        != spec.plan.process_binding.native_schedule_semantic_digest()
     {
         return Err(RusticolError::integrity(
             "recurrence native schedule semantic digest disagrees with its process binding",
         ));
     }
-    if plan.prepared_pack_digest().to_string() != manifest.prepared_kernel_pack_digest
-        || plan.direct_template_catalog_digest().to_string()
-            != manifest.direct_template_catalog_digest
+    if plan.prepared_pack_digest().to_string() != spec.prepared_kernel_pack_digest
+        || plan.direct_template_catalog_digest().to_string() != spec.direct_template_catalog_digest
     {
         return Err(RusticolError::integrity(
             "direct recurrence plan authentication digests disagree with execution.json",
@@ -671,11 +1350,11 @@ pub(super) fn load_plan_summary(
     let root_runtime_layout_digest = plan.runtime_layout_digest();
     let plan = apply_process_remap(plan, &process_binding.remap)?.into_runtime_compacted();
     let expected_prepared_pack_digest = semantic_digest_from_bytes(
-        decode_sha256(&manifest.prepared_kernel_pack_digest)?,
+        decode_sha256(spec.prepared_kernel_pack_digest)?,
         "prepared-kernel pack",
     )?;
     let expected_catalog_digest = semantic_digest_from_bytes(
-        decode_sha256(&manifest.direct_template_catalog_digest)?,
+        decode_sha256(spec.direct_template_catalog_digest)?,
         "direct-template catalog",
     )?;
     process_binding.process_executors.validate_for_plan(
@@ -690,13 +1369,15 @@ pub(super) fn load_plan_summary(
     })
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+#[cfg_attr(target_vendor = "apple", cold)]
 fn validate_process_binding(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
-    manifest: &RecurrenceExecutionManifest,
-    summary: &RecurrencePlanSummary,
+    spec: &RecurrencePlanLoadSpec<'_>,
 ) -> RusticolResult<LoadedRecurrenceProcessBinding> {
-    let binding = &summary.process_binding;
+    let binding = spec.plan.process_binding;
     let relative_root = evaluator_root
         .strip_prefix(artifact.root())
         .map_err(|_| RusticolError::security("recurrence process root escapes the artifact"))?;
@@ -706,7 +1387,7 @@ fn validate_process_binding(
         .ok_or_else(|| RusticolError::security("recurrence process-binding path is not UTF-8"))?;
     let record = artifact.payload(logical)?;
     if record.role != PayloadRole::EvaluatorState
-        || record.process_id.as_deref() != Some(manifest.key.as_str())
+        || record.process_id.as_deref() != Some(spec.process_key)
         || record.size_bytes != binding.size_bytes
         || record.sha256 != binding.sha256
     {
@@ -798,11 +1479,10 @@ fn validate_process_binding(
     if schedule_digest != decode_sha256(&binding.schedule_digest)?
         || process_digest != decode_sha256(&binding.process_digest)?
         || process_semantic_digest != decode_sha256(&binding.process_semantic_digest)?
-        || compiled_model_digest.to_string() != manifest.compiled_model_digest
-        || recurrence_template_catalog_digest.to_string()
-            != manifest.recurrence_template_catalog_digest
-        || prepared_kernel_pack_digest.to_string() != manifest.prepared_kernel_pack_digest
-        || direct_template_catalog_digest.to_string() != manifest.direct_template_catalog_digest
+        || compiled_model_digest.to_string() != spec.compiled_model_digest
+        || recurrence_template_catalog_digest.to_string() != spec.recurrence_template_catalog_digest
+        || prepared_kernel_pack_digest.to_string() != spec.prepared_kernel_pack_digest
+        || direct_template_catalog_digest.to_string() != spec.direct_template_catalog_digest
     {
         return Err(RusticolError::integrity(
             "recurrence process-executor identities disagree with execution.json",
@@ -815,7 +1495,8 @@ fn validate_process_binding(
     let target_end = process_end
         .checked_add(target_len)
         .ok_or_else(|| RusticolError::artifact("recurrence executor target range overflows"))?;
-    if bytes.get(process_start..process_end) != Some(manifest.key.as_bytes()) || word_count == 0 {
+    if bytes.get(process_start..process_end) != Some(spec.process_key.as_bytes()) || word_count == 0
+    {
         return Err(RusticolError::integrity(
             "recurrence process-binding payload is inconsistent",
         ));
@@ -1349,8 +2030,13 @@ type RecurrenceCommonRuntimeParts = (
 fn recurrence_runtime_parameters(
     metadata: &RecurrenceRuntimeMetadata,
 ) -> Vec<GenericRuntimeModelParameterManifest> {
-    metadata
-        .runtime_parameters
+    recurrence_runtime_parameters_from(&metadata.runtime_parameters)
+}
+
+fn recurrence_runtime_parameters_from(
+    parameters: &[RecurrenceRuntimeParameter],
+) -> Vec<GenericRuntimeModelParameterManifest> {
+    parameters
         .iter()
         .map(|parameter| GenericRuntimeModelParameterManifest {
             name: parameter.name.clone(),
@@ -1373,21 +2059,27 @@ struct RecurrenceNormalizationValues {
 fn recurrence_normalization_values(
     metadata: &RecurrenceRuntimeMetadata,
 ) -> RusticolResult<RecurrenceNormalizationValues> {
-    let normalization = &metadata.normalization;
+    recurrence_normalization_values_from(
+        &metadata.normalization,
+        metadata.color_contraction.as_ref(),
+    )
+}
+
+fn recurrence_normalization_values_from(
+    normalization: &RecurrenceNormalization,
+    color_contraction: Option<&RecurrenceColorContractionReference>,
+) -> RusticolResult<RecurrenceNormalizationValues> {
     if !normalization.couplings_in_stage_evaluators {
         return Err(RusticolError::compatibility(
             "recurrence execution requires local vertex couplings in prepared kernel calls",
         ));
     }
-    let color_factor = if metadata
-        .color_contraction
-        .as_ref()
-        .is_some_and(|contraction| contraction.includes_color_factor)
-    {
-        1.0
-    } else {
-        normalization.color_factor
-    };
+    let color_factor =
+        if color_contraction.is_some_and(|contraction| contraction.includes_color_factor) {
+            1.0
+        } else {
+            normalization.color_factor
+        };
     let factor = color_factor * normalization.global_coupling_factor
         / (normalization.average_factor * normalization.identical_factor);
     if !factor.is_finite() {
@@ -2894,29 +3586,398 @@ impl NativeRuntime {
     }
 }
 
-fn build_common_runtime(
-    plan: &DirectRecurrencePlan,
+#[cfg(feature = "python-generation-bridge")]
+pub(super) fn build_recurrence_ready_execution_v1(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
     manifest: &RecurrenceExecutionManifest,
     physics: &ProcessPhysicsV1,
-) -> RusticolResult<RecurrenceCommonRuntimeParts> {
-    let metadata = &manifest.runtime_metadata;
-    let runtime_parameters = recurrence_runtime_parameters(metadata);
-    let model_parameter_runtime_slots = runtime_parameter_slots(&runtime_parameters)?;
-    let model_parameter_values_f64 = runtime_parameters
-        .iter()
-        .map(|parameter| parameter.default)
-        .collect::<Vec<_>>();
-    let model_parameter_name_to_index = runtime_parameters
-        .iter()
-        .map(|parameter| (parameter.name.clone(), parameter.parameter_index))
-        .collect::<BTreeMap<_, _>>();
+) -> RusticolResult<RecurrenceReadyExecutionV1> {
+    let loaded_primary = load_plan(artifact, evaluator_root, manifest)?;
+    let primary_plan = &loaded_primary.plan;
+    let (common, _defaults, _projection, source_domains) =
+        build_common_runtime(primary_plan, manifest, physics)?;
+    let public_flow_ids = public_flow_ids(primary_plan, &manifest.runtime_metadata, physics)?;
+    let primary_direct_helicity_to_physics = direct_helicity_to_physics(primary_plan, physics)?
+        .into_iter()
+        .map(|value| {
+            u64::try_from(value)
+                .map_err(|_| RusticolError::artifact("physics helicity index exceeds u64"))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let runtime = RecurrenceReadyRuntimeV1 {
+        runtime_parameters: manifest.runtime_metadata.runtime_parameters.clone(),
+        prepared_parameter_defaults: manifest
+            .runtime_metadata
+            .prepared_parameter_defaults
+            .clone(),
+        parameter_projection: manifest.runtime_metadata.parameter_projection.clone(),
+        source_domains: encode_ready_source_domains(&source_domains),
+        external_is_initial: common.external_is_initial.clone(),
+        particle_masses: common
+            .particle_masses
+            .iter()
+            .map(|(pdg, mass)| (*pdg, *mass))
+            .collect(),
+        particle_mass_parameter_names: common
+            .particle_mass_parameter_names
+            .iter()
+            .map(|(pdg, name)| (*pdg, name.clone()))
+            .collect(),
+        normalization: manifest.runtime_metadata.normalization.clone(),
+        public_flow_ids,
+        public_flow_public_ids: manifest
+            .runtime_metadata
+            .public_color_flows
+            .iter()
+            .map(|binding| binding.public_id.clone())
+            .collect(),
+        direct_helicity_to_physics: primary_direct_helicity_to_physics,
+        color_contraction: manifest.runtime_metadata.color_contraction.clone(),
+    };
+    let companion = manifest
+        .helicity_selector_companion
+        .as_ref()
+        .map(|companion| {
+            validate_recurrence_companion_physics(physics)?;
+            let loaded = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
+            let source_domains = build_direct_source_domains(
+                &loaded.plan,
+                &manifest.runtime_metadata,
+                &common.model_parameter_runtime_slots,
+            )?;
+            let direct_helicity_to_physics = direct_helicity_to_physics(&loaded.plan, physics)?
+                .into_iter()
+                .map(|value| {
+                    u64::try_from(value)
+                        .map_err(|_| RusticolError::artifact("companion physics index exceeds u64"))
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            Ok(RecurrenceReadyCompanionV1 {
+                process_digest: companion.process_digest.clone(),
+                plan: RecurrenceReadyPlanV1::from_summary(&companion.plan),
+                source_domains: encode_ready_source_domains(&source_domains),
+                direct_helicity_to_physics,
+            })
+        })
+        .transpose()?;
+    Ok(RecurrenceReadyExecutionV1 {
+        schema_version: 1,
+        required_runtime_capabilities: manifest.required_runtime_capabilities.clone(),
+        process: manifest.process.clone(),
+        key: manifest.key.clone(),
+        color_accuracy: manifest.color_accuracy.clone(),
+        external_pdg_order: manifest.external_pdg_order.clone(),
+        compiled_model_digest: manifest.compiled_model_digest.clone(),
+        recurrence_template_catalog_digest: manifest.recurrence_template_catalog_digest.clone(),
+        prepared_kernel_pack_digest: manifest.prepared_kernel_pack_digest.clone(),
+        direct_template_catalog_digest: manifest.direct_template_catalog_digest.clone(),
+        kernel_pack: manifest.kernel_pack.clone(),
+        primary_plan: RecurrenceReadyPlanV1::from_summary(&manifest.plan),
+        runtime,
+        companion,
+    })
+}
 
-    let parameter_defaults = metadata
-        .prepared_parameter_defaults
+#[cfg(feature = "python-generation-bridge")]
+fn encode_ready_source_domains(
+    domains: &[DirectSourceDispatchDomainSpec],
+) -> Vec<RecurrenceReadySourceDomainV1> {
+    domains
+        .iter()
+        .map(|domain| RecurrenceReadySourceDomainV1 {
+            variants: domain
+                .variants
+                .iter()
+                .map(|variant| RecurrenceReadySourceVariantV1 {
+                    key: match variant.key {
+                        DirectSourceDispatchKey::SpinStateClass(value) => {
+                            RecurrenceReadySourceKeyV1::SpinStateClass(value)
+                        }
+                        DirectSourceDispatchKey::RuntimeVariant {
+                            source_row_id,
+                            runtime_variant_id,
+                        } => RecurrenceReadySourceKeyV1::RuntimeVariant {
+                            source_row_id,
+                            runtime_variant_id,
+                        },
+                    },
+                    template: RecurrenceReadySourceTemplateV1 {
+                        spin_state_class: variant.template.spin_state_class,
+                        family: match variant.template.family {
+                            DirectSourceWavefunctionFamily::Scalar => {
+                                RecurrenceReadySourceFamilyV1::Scalar
+                            }
+                            DirectSourceWavefunctionFamily::WeylFermion => {
+                                RecurrenceReadySourceFamilyV1::WeylFermion
+                            }
+                            DirectSourceWavefunctionFamily::DiracFermion => {
+                                RecurrenceReadySourceFamilyV1::DiracFermion
+                            }
+                            DirectSourceWavefunctionFamily::Vector => {
+                                RecurrenceReadySourceFamilyV1::Vector
+                            }
+                            DirectSourceWavefunctionFamily::Spin2 => {
+                                RecurrenceReadySourceFamilyV1::Spin2
+                            }
+                        },
+                        orientation: match variant.template.orientation {
+                            DirectSourceOrientation::Particle => {
+                                RecurrenceReadySourceOrientationV1::Particle
+                            }
+                            DirectSourceOrientation::Antiparticle => {
+                                RecurrenceReadySourceOrientationV1::Antiparticle
+                            }
+                            DirectSourceOrientation::SelfConjugate => {
+                                RecurrenceReadySourceOrientationV1::SelfConjugate
+                            }
+                        },
+                        helicity: variant.template.helicity,
+                        chirality: variant.template.chirality,
+                        mass_parameter_index: variant.template.mass_parameter_index,
+                    },
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+pub(super) fn decode_ready_source_domains(
+    domains: &[RecurrenceReadySourceDomainV1],
+    plan: &DirectRecurrencePlan,
+) -> RusticolResult<Vec<DirectSourceDispatchDomainSpec>> {
+    if domains.len()
+        != usize::try_from(plan.source_template_or_dispatch_count())
+            .map_err(|_| RusticolError::artifact("source-domain count exceeds usize"))?
+    {
+        return Err(RusticolError::integrity(
+            "process-ready source-domain count disagrees with the recurrence plan",
+        ));
+    }
+    let domains = domains
+        .iter()
+        .map(|domain| DirectSourceDispatchDomainSpec {
+            variants: domain
+                .variants
+                .iter()
+                .map(|variant| DirectSourceDispatchVariantSpec {
+                    key: match variant.key {
+                        RecurrenceReadySourceKeyV1::SpinStateClass(value) => {
+                            DirectSourceDispatchKey::SpinStateClass(value)
+                        }
+                        RecurrenceReadySourceKeyV1::RuntimeVariant {
+                            source_row_id,
+                            runtime_variant_id,
+                        } => DirectSourceDispatchKey::RuntimeVariant {
+                            source_row_id,
+                            runtime_variant_id,
+                        },
+                    },
+                    template: DirectSourceTemplateSpec {
+                        spin_state_class: variant.template.spin_state_class,
+                        family: match variant.template.family {
+                            RecurrenceReadySourceFamilyV1::Scalar => {
+                                DirectSourceWavefunctionFamily::Scalar
+                            }
+                            RecurrenceReadySourceFamilyV1::WeylFermion => {
+                                DirectSourceWavefunctionFamily::WeylFermion
+                            }
+                            RecurrenceReadySourceFamilyV1::DiracFermion => {
+                                DirectSourceWavefunctionFamily::DiracFermion
+                            }
+                            RecurrenceReadySourceFamilyV1::Vector => {
+                                DirectSourceWavefunctionFamily::Vector
+                            }
+                            RecurrenceReadySourceFamilyV1::Spin2 => {
+                                DirectSourceWavefunctionFamily::Spin2
+                            }
+                        },
+                        orientation: match variant.template.orientation {
+                            RecurrenceReadySourceOrientationV1::Particle => {
+                                DirectSourceOrientation::Particle
+                            }
+                            RecurrenceReadySourceOrientationV1::Antiparticle => {
+                                DirectSourceOrientation::Antiparticle
+                            }
+                            RecurrenceReadySourceOrientationV1::SelfConjugate => {
+                                DirectSourceOrientation::SelfConjugate
+                            }
+                        },
+                        helicity: variant.template.helicity,
+                        chirality: variant.template.chirality,
+                        mass_parameter_index: variant.template.mass_parameter_index,
+                    },
+                })
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    validate_ready_source_domains_against_plan(&domains, plan)?;
+    Ok(domains)
+}
+
+fn validate_ready_source_domains_against_plan(
+    domains: &[DirectSourceDispatchDomainSpec],
+    plan: &DirectRecurrencePlan,
+) -> RusticolResult<()> {
+    let mut expected = vec![BTreeMap::new(); domains.len()];
+    match plan.strategy() {
+        crate::recurrence::RecurrenceStrategy::TopologyReplay
+        | crate::recurrence::RecurrenceStrategy::ContractedColorUnion => {
+            for row in plan.sources() {
+                let domain = expected
+                    .get_mut(row.source_template_or_dispatch_domain as usize)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "process-ready fixed source references an absent domain",
+                        )
+                    })?;
+                let key = DirectSourceDispatchKey::SpinStateClass(row.spin_state_class);
+                if domain
+                    .insert(key, row.spin_state_class)
+                    .is_some_and(|previous| previous != row.spin_state_class)
+                {
+                    return Err(RusticolError::integrity(
+                        "process-ready fixed source key has inconsistent spin semantics",
+                    ));
+                }
+            }
+        }
+        crate::recurrence::RecurrenceStrategy::AllFlowUnion => {
+            for variant in plan.source_dispatch_variants() {
+                let domain = expected
+                    .get_mut(variant.dispatch_domain_id as usize)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "process-ready union source references an absent domain",
+                        )
+                    })?;
+                let key = DirectSourceDispatchKey::RuntimeVariant {
+                    source_row_id: variant.source_row_id,
+                    runtime_variant_id: variant.runtime_variant_id,
+                };
+                if domain
+                    .insert(key, variant.crossed_spin_state_class)
+                    .is_some_and(|previous| previous != variant.crossed_spin_state_class)
+                {
+                    return Err(RusticolError::integrity(
+                        "process-ready union source key has inconsistent spin semantics",
+                    ));
+                }
+            }
+        }
+    }
+    validate_ready_source_domain_shape(domains, &expected, plan.parameter_value_count())
+}
+
+fn validate_ready_source_domain_shape(
+    domains: &[DirectSourceDispatchDomainSpec],
+    expected: &[BTreeMap<DirectSourceDispatchKey, i32>],
+    parameter_count: u32,
+) -> RusticolResult<()> {
+    if domains.len() != expected.len() {
+        return Err(RusticolError::integrity(
+            "process-ready source-domain expectations have the wrong width",
+        ));
+    }
+    let globally_referenced = expected
+        .iter()
+        .flat_map(BTreeMap::iter)
+        .map(|(key, spin)| (*key, *spin))
+        .collect::<BTreeMap<_, _>>();
+    for (domain_id, (domain, expected)) in domains.iter().zip(expected).enumerate() {
+        if domain.variants.is_empty()
+            || domain
+                .variants
+                .windows(2)
+                .any(|pair| pair[0].key >= pair[1].key)
+            || domain.variants.iter().any(|variant| {
+                variant
+                    .template
+                    .mass_parameter_index
+                    .is_some_and(|slot| slot >= parameter_count)
+            })
+        {
+            return Err(RusticolError::integrity(format!(
+                "process-ready source domain {domain_id} is non-canonical or out of bounds"
+            )));
+        }
+
+        if expected.is_empty() {
+            // Model-global source-template IDs can be sparse for one process.
+            // The established builder fills each unused slot with exactly one
+            // inert copy of a referenced source so the row-addressable ABI
+            // remains dense; it can never be selected by this plan.
+            let [inert] = domain.variants.as_slice() else {
+                return Err(RusticolError::integrity(format!(
+                    "process-ready unused source domain {domain_id} is not a singleton"
+                )));
+            };
+            if globally_referenced.get(&inert.key) != Some(&inert.template.spin_state_class) {
+                return Err(RusticolError::integrity(format!(
+                    "process-ready unused source domain {domain_id} is not an inert referenced source"
+                )));
+            }
+            continue;
+        }
+
+        if domain.variants.len() != expected.len()
+            || domain.variants.iter().any(|variant| {
+                expected.get(&variant.key) != Some(&variant.template.spin_state_class)
+                    || matches!(
+                        variant.key,
+                        DirectSourceDispatchKey::SpinStateClass(spin)
+                            if spin != variant.template.spin_state_class
+                    )
+            })
+        {
+            return Err(RusticolError::integrity(format!(
+                "process-ready source domain {domain_id} does not exactly cover its plan keys"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_recurrence_companion_physics(physics: &ProcessPhysicsV1) -> RusticolResult<()> {
+    if physics.coverage.helicities != "complete" || physics.coverage.color != "contracted" {
+        return Err(RusticolError::integrity(
+            "recurrence helicity-selector companion requires complete helicity and contracted-color coverage",
+        ));
+    }
+    if physics.helicities.iter().any(|helicity| {
+        !companion_helicity_coefficient_is_canonical(helicity.structural_zero, helicity.coefficient)
+    }) {
+        return Err(RusticolError::integrity(
+            "recurrence helicity-selector companion requires unit physical-helicity coefficients and zero structural-zero coefficients",
+        ));
+    }
+    Ok(())
+}
+
+fn recurrence_parameter_parts(
+    plan: &DirectRecurrencePlan,
+    defaults: &[[f64; 2]],
+    projection: &[RecurrenceParameterProjection],
+) -> RusticolResult<(
+    Vec<crate::EagerComplex64>,
+    Vec<PreparedParameterProjectionEntry>,
+)> {
+    if defaults
+        .iter()
+        .flatten()
+        .any(|component| !component.is_finite())
+    {
+        return Err(RusticolError::integrity(
+            "recurrence prepared parameter defaults are not finite",
+        ));
+    }
+    let defaults = defaults
         .iter()
         .map(|[real, imaginary]| crate::EagerComplex64::new(*real, *imaginary))
         .collect::<Vec<_>>();
-    if parameter_defaults.len()
+    if defaults.len()
         != usize::try_from(plan.parameter_value_count())
             .map_err(|_| RusticolError::artifact("recurrence parameter count exceeds usize"))?
     {
@@ -2924,8 +3985,7 @@ fn build_common_runtime(
             "recurrence prepared defaults do not match the direct plan",
         ));
     }
-    let parameter_projection = metadata
-        .parameter_projection
+    let projection = projection
         .iter()
         .filter_map(|row| {
             row.prepared_parameter_id
@@ -2945,6 +4005,26 @@ fn build_common_runtime(
             })
         })
         .collect::<RusticolResult<Vec<_>>>()?;
+    Ok((defaults, projection))
+}
+
+fn build_common_runtime(
+    plan: &DirectRecurrencePlan,
+    manifest: &RecurrenceExecutionManifest,
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<RecurrenceCommonRuntimeParts> {
+    let metadata = &manifest.runtime_metadata;
+    let runtime_parameters = recurrence_runtime_parameters(metadata);
+    let model_parameter_runtime_slots = runtime_parameter_slots(&runtime_parameters)?;
+    let model_parameter_values_f64 = runtime_parameters
+        .iter()
+        .map(|parameter| parameter.default)
+        .collect::<Vec<_>>();
+    let (parameter_defaults, parameter_projection) = recurrence_parameter_parts(
+        plan,
+        &metadata.prepared_parameter_defaults,
+        &metadata.parameter_projection,
+    )?;
 
     let mut particle_masses = metadata
         .particle_masses
@@ -2988,6 +4068,215 @@ fn build_common_runtime(
         .iter()
         .map(|particle| particle.role == crate::ParticleRole::Initial)
         .collect();
+    let common = assemble_common_runtime(
+        plan,
+        RecurrenceCommonRuntimeDefinition {
+            process: manifest.process.clone(),
+            key: manifest.key.clone(),
+            color_accuracy: manifest.color_accuracy.clone(),
+            external_pdg_order: manifest.external_pdg_order.clone(),
+            runtime_parameters,
+            model_parameter_runtime_slots,
+            model_parameter_values_f64,
+            external_is_initial,
+            particle_masses,
+            particle_mass_parameter_names,
+            normalization_factor,
+            normalization_color_factor: color_factor,
+            normalization_average_factor: normalization.average_factor,
+            normalization_identical_factor: normalization.identical_factor,
+            normalization_qcd_coupling_power: normalization.qcd_coupling_power.unwrap_or(0),
+            normalization_electroweak_coupling_power: normalization
+                .electroweak_coupling_power
+                .unwrap_or(0),
+        },
+    )?;
+    Ok((
+        common,
+        parameter_defaults,
+        parameter_projection,
+        source_domains,
+    ))
+}
+
+fn build_ready_common_runtime(
+    plan: &DirectRecurrencePlan,
+    ready: &RecurrenceReadyExecutionV1,
+) -> RusticolResult<RecurrenceCommonRuntimeParts> {
+    let runtime = &ready.runtime;
+    validate_recurrence_parameter_runtime_parts(
+        &runtime.runtime_parameters,
+        &runtime.prepared_parameter_defaults,
+        &runtime.parameter_projection,
+        u64::from(plan.parameter_value_count()),
+    )?;
+    let runtime_parameters = recurrence_runtime_parameters_from(&runtime.runtime_parameters);
+    let model_parameter_runtime_slots = runtime_parameter_slots(&runtime_parameters)?;
+    let model_parameter_values_f64 = runtime_parameters
+        .iter()
+        .map(|parameter| parameter.default)
+        .collect::<Vec<_>>();
+    let (parameter_defaults, parameter_projection) = recurrence_parameter_parts(
+        plan,
+        &runtime.prepared_parameter_defaults,
+        &runtime.parameter_projection,
+    )?;
+    let particle_masses = ready_pairs_to_map(&runtime.particle_masses, "particle mass", |mass| {
+        mass.is_finite() && mass >= 0.0
+    })?;
+    let particle_mass_parameter_names =
+        ready_string_pairs_to_map(&runtime.particle_mass_parameter_names, "particle mass name")?;
+    if particle_mass_parameter_names
+        .values()
+        .any(|name| !model_parameter_runtime_slots.contains_key(name))
+    {
+        return Err(RusticolError::integrity(
+            "process-ready particle mass references an absent runtime parameter",
+        ));
+    }
+    if runtime.normalization.color_accuracy != ready.color_accuracy
+        || !runtime.normalization.average_factor.is_finite()
+        || runtime.normalization.average_factor <= 0.0
+        || !runtime.normalization.identical_factor.is_finite()
+        || runtime.normalization.identical_factor <= 0.0
+    {
+        return Err(RusticolError::integrity(
+            "process-ready recurrence normalization is inconsistent",
+        ));
+    }
+    let normalization = recurrence_normalization_values_from(
+        &runtime.normalization,
+        runtime.color_contraction.as_ref(),
+    )?;
+    let source_domains = decode_ready_source_domains(&runtime.source_domains, plan)?;
+    let common = assemble_common_runtime(
+        plan,
+        RecurrenceCommonRuntimeDefinition {
+            process: ready.process.clone(),
+            key: ready.key.clone(),
+            color_accuracy: ready.color_accuracy.clone(),
+            external_pdg_order: ready.external_pdg_order.clone(),
+            runtime_parameters,
+            model_parameter_runtime_slots,
+            model_parameter_values_f64,
+            external_is_initial: runtime.external_is_initial.clone(),
+            particle_masses,
+            particle_mass_parameter_names,
+            normalization_factor: normalization.factor,
+            normalization_color_factor: normalization.color_factor,
+            normalization_average_factor: runtime.normalization.average_factor,
+            normalization_identical_factor: runtime.normalization.identical_factor,
+            normalization_qcd_coupling_power: runtime.normalization.qcd_coupling_power.unwrap_or(0),
+            normalization_electroweak_coupling_power: runtime
+                .normalization
+                .electroweak_coupling_power
+                .unwrap_or(0),
+        },
+    )?;
+    Ok((
+        common,
+        parameter_defaults,
+        parameter_projection,
+        source_domains,
+    ))
+}
+
+fn ready_pairs_to_map(
+    values: &[(i32, f64)],
+    context: &str,
+    valid: impl Fn(f64) -> bool,
+) -> RusticolResult<BTreeMap<i32, f64>> {
+    let mut result = BTreeMap::new();
+    let mut previous = None;
+    for (key, value) in values {
+        if previous.is_some_and(|previous| previous >= *key)
+            || result.insert(*key, *value).is_some()
+            || !valid(*value)
+        {
+            return Err(RusticolError::integrity(format!(
+                "process-ready recurrence {context} entries are not canonical"
+            )));
+        }
+        previous = Some(*key);
+    }
+    Ok(result)
+}
+
+fn ready_string_pairs_to_map(
+    values: &[(i32, String)],
+    context: &str,
+) -> RusticolResult<BTreeMap<i32, String>> {
+    let mut result = BTreeMap::new();
+    let mut previous = None;
+    for (key, value) in values {
+        if previous.is_some_and(|previous| previous >= *key)
+            || value.is_empty()
+            || result.insert(*key, value.clone()).is_some()
+        {
+            return Err(RusticolError::integrity(format!(
+                "process-ready recurrence {context} entries are not canonical"
+            )));
+        }
+        previous = Some(*key);
+    }
+    Ok(result)
+}
+
+struct RecurrenceCommonRuntimeDefinition {
+    process: String,
+    key: String,
+    color_accuracy: String,
+    external_pdg_order: Vec<i32>,
+    runtime_parameters: Vec<GenericRuntimeModelParameterManifest>,
+    model_parameter_runtime_slots: BTreeMap<String, RuntimeParameterSlots>,
+    model_parameter_values_f64: Vec<f64>,
+    external_is_initial: Vec<bool>,
+    particle_masses: BTreeMap<i32, f64>,
+    particle_mass_parameter_names: BTreeMap<i32, String>,
+    normalization_factor: f64,
+    normalization_color_factor: f64,
+    normalization_average_factor: f64,
+    normalization_identical_factor: f64,
+    normalization_qcd_coupling_power: u64,
+    normalization_electroweak_coupling_power: u64,
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn assemble_common_runtime(
+    plan: &DirectRecurrencePlan,
+    definition: RecurrenceCommonRuntimeDefinition,
+) -> RusticolResult<ExecutionRuntime> {
+    let RecurrenceCommonRuntimeDefinition {
+        process,
+        key,
+        color_accuracy,
+        external_pdg_order,
+        runtime_parameters,
+        model_parameter_runtime_slots,
+        model_parameter_values_f64,
+        external_is_initial,
+        particle_masses,
+        particle_mass_parameter_names,
+        normalization_factor,
+        normalization_color_factor,
+        normalization_average_factor,
+        normalization_identical_factor,
+        normalization_qcd_coupling_power,
+        normalization_electroweak_coupling_power,
+    } = definition;
+    let external_count = external_pdg_order.len();
+    if plan.external_source_count() as usize != external_count
+        || external_is_initial.len() != external_count
+    {
+        return Err(RusticolError::integrity(
+            "recurrence common runtime external domain disagrees with its plan",
+        ));
+    }
+    let model_parameter_name_to_index = runtime_parameters
+        .iter()
+        .map(|parameter| (parameter.name.clone(), parameter.parameter_index))
+        .collect::<BTreeMap<_, _>>();
     let source_count = plan.sources().len();
     let current_count = plan.currents().len();
     let interaction_count = plan.contributions().len();
@@ -2999,11 +4288,11 @@ fn build_common_runtime(
         .and_then(|stage| stage.checked_add(1))
         .ok_or_else(|| RusticolError::integrity("recurrence direct plan has no row groups"))?;
     let amplitude_output_count = plan.amplitude_destinations().len();
-    let common = ExecutionRuntime {
-        process: manifest.process.clone(),
-        key: manifest.key.clone(),
-        color_accuracy: manifest.color_accuracy.clone(),
-        external_pdg_order: manifest.external_pdg_order.clone(),
+    Ok(ExecutionRuntime {
+        process,
+        key,
+        color_accuracy,
+        external_pdg_order,
         external_count,
         parameter_count: runtime_parameters.len(),
         value_parameter_count: 0,
@@ -3048,13 +4337,15 @@ fn build_common_runtime(
         particle_masses,
         particle_mass_parameter_names,
         normalization_factor,
-        normalization_color_factor: color_factor,
-        normalization_average_factor: normalization.average_factor,
-        normalization_identical_factor: normalization.identical_factor,
-        normalization_qcd_coupling_power: normalization.qcd_coupling_power.unwrap_or(0) as usize,
-        normalization_electroweak_coupling_power: normalization
-            .electroweak_coupling_power
-            .unwrap_or(0) as usize,
+        normalization_color_factor,
+        normalization_average_factor,
+        normalization_identical_factor,
+        normalization_qcd_coupling_power: usize::try_from(normalization_qcd_coupling_power)
+            .map_err(|_| RusticolError::artifact("QCD coupling power exceeds usize"))?,
+        normalization_electroweak_coupling_power: usize::try_from(
+            normalization_electroweak_coupling_power,
+        )
+        .map_err(|_| RusticolError::artifact("electroweak coupling power exceeds usize"))?,
         model_parameters: runtime_parameters,
         model_parameter_name_to_index,
         model_parameter_runtime_slots,
@@ -3067,13 +4358,7 @@ fn build_common_runtime(
         state_scratch_f64: Vec::new(),
         state_scratch_f64_requires_clear: false,
         values_scratch_f64: Vec::new(),
-    };
-    Ok((
-        common,
-        parameter_defaults,
-        parameter_projection,
-        source_domains,
-    ))
+    })
 }
 
 pub(super) fn build_direct_source_domains(
@@ -3620,16 +4905,24 @@ pub(super) fn decode_sha256(value: &str) -> RusticolResult<[u8; 32]> {
 
 #[cfg(test)]
 mod binding_decode_tests {
+    use super::super::recurrence_process_pack::{
+        ProcessDirectExecutorBinding, ProcessIntrinsicExecutor, ProcessJitExecutor,
+        ProcessNativeExecutor,
+    };
     use super::{
-        DirectSourceDispatchKey, DirectSourceOrientation, DirectSourceWavefunctionFamily,
+        DirectSourceDispatchDomainSpec, DirectSourceDispatchKey, DirectSourceDispatchVariantSpec,
+        DirectSourceOrientation, DirectSourceTemplateSpec, DirectSourceWavefunctionFamily,
         OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
         OnTheFlySourceWavefunctionFamilyV1, RecurrenceExternalLeg, RecurrenceGenericCrossingIr,
         RecurrenceGenericParticleIdentityIr, RecurrenceGenericSourceIr,
         RecurrenceMomentumTransform, RecurrenceNormalization, RecurrenceParameterProjection,
         RecurrenceParticleMass, RecurrenceParticleStatistics, RecurrenceRuntimeMetadata,
-        RecurrenceSourceOrientation, RecurrenceSourceTemplate, RecurrenceWavefunctionFamily,
-        RuntimeParameterSlots, build_on_the_fly_source_domains_from_specs,
-        companion_helicity_coefficient_is_canonical, invert_replay_helicity_map, read_u64_values,
+        RecurrenceRuntimeParameter, RecurrenceSourceOrientation, RecurrenceSourceTemplate,
+        RecurrenceWavefunctionFamily, RuntimeParameterSlots,
+        build_on_the_fly_source_domains_from_specs, companion_helicity_coefficient_is_canonical,
+        invert_replay_helicity_map, process_binding_requires_evaluator_payloads, read_u64_values,
+        recurrence_ready_needs_evaluator_payloads, validate_ready_source_domain_shape,
+        validate_recurrence_parameter_runtime_parts,
     };
     #[cfg(feature = "on-the-fly-test-support")]
     use super::{OnTheFlyQueryTraceCacheV1, validate_on_the_fly_probe_outputs};
@@ -3640,6 +4933,146 @@ mod binding_decode_tests {
         // The replay map is representative ID -> public ID. Public helicity
         // zero is therefore represented by ID one, not by the same index.
         assert_eq!(invert_replay_helicity_map(17, &[2, 0, 1], 0).unwrap(), 1);
+    }
+
+    #[test]
+    fn process_ready_evaluator_payload_predicate_is_exhaustive() {
+        assert!(!process_binding_requires_evaluator_payloads(
+            &ProcessDirectExecutorBinding::Source
+        ));
+        assert!(!process_binding_requires_evaluator_payloads(
+            &ProcessDirectExecutorBinding::Intrinsic(ProcessIntrinsicExecutor {
+                runtime_template: "identity-finalizer-v1".into(),
+                scale: None,
+            })
+        ));
+        assert!(process_binding_requires_evaluator_payloads(
+            &ProcessDirectExecutorBinding::Jit(ProcessJitExecutor {
+                optimization_level: 2,
+                plane_compression: true,
+                source_application_sha256: [0; 32],
+                source_application_path: "application.bin".into(),
+                source_application_abi: "test".into(),
+                parameter_bindings: Vec::new(),
+                input_plane_projections: Vec::new(),
+                scalar_projections: Vec::new(),
+                output_alias_inputs: Vec::new(),
+            })
+        ));
+        assert!(process_binding_requires_evaluator_payloads(
+            &ProcessDirectExecutorBinding::Native(ProcessNativeExecutor {
+                prepared_kernel_id: 0,
+                library_path: "kernel.so".into(),
+                native_entry_point: "kernel".into(),
+                coupling: None,
+            })
+        ));
+    }
+
+    #[test]
+    fn process_ready_container_need_skips_plain_intrinsic_runtime() {
+        assert!(!recurrence_ready_needs_evaluator_payloads(
+            false, false, false
+        ));
+        for flags in [
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+        ] {
+            assert!(recurrence_ready_needs_evaluator_payloads(
+                flags.0, flags.1, flags.2
+            ));
+        }
+    }
+
+    #[test]
+    fn process_ready_parameter_schema_rejects_manifest_parity_drift() {
+        let defaults = vec![[1.0, 2.0]];
+        let projection = vec![
+            RecurrenceParameterProjection {
+                runtime_slot: 0,
+                runtime_name: "Z".into(),
+                parameter_template_id: 0,
+                prepared_parameter_id: Some(0),
+                component: 0,
+            },
+            RecurrenceParameterProjection {
+                runtime_slot: 1,
+                runtime_name: "Z".into(),
+                parameter_template_id: 0,
+                prepared_parameter_id: Some(0),
+                component: 1,
+            },
+        ];
+        let parameters = vec![
+            RecurrenceRuntimeParameter {
+                name: "Z.real".into(),
+                kind: "external_parameter_component".into(),
+                parameter_index: 0,
+                default: 1.0,
+                runtime_name: Some("Z".into()),
+                complex_component: Some("real".into()),
+            },
+            RecurrenceRuntimeParameter {
+                name: "Z.imag".into(),
+                kind: "external_parameter_component".into(),
+                parameter_index: 1,
+                default: 2.0,
+                runtime_name: Some("Z".into()),
+                complex_component: Some("imag".into()),
+            },
+        ];
+        validate_recurrence_parameter_runtime_parts(&parameters, &defaults, &projection, 1)
+            .unwrap();
+
+        let mut malformed = parameters.clone();
+        malformed[1].default = 3.0;
+        let error =
+            validate_recurrence_parameter_runtime_parts(&malformed, &defaults, &projection, 1)
+                .expect_err("process-ready defaults must remain bound to prepared defaults");
+        assert!(error.to_string().contains("prepared default"));
+
+        let mut malformed = projection.clone();
+        malformed[1].runtime_slot = 7;
+        let error =
+            validate_recurrence_parameter_runtime_parts(&parameters, &defaults, &malformed, 1)
+                .expect_err("process-ready projection slots must remain dense");
+        assert!(error.to_string().contains("dense"));
+    }
+
+    #[test]
+    fn process_ready_sources_reject_key_or_mass_drift_from_plan() {
+        let template = DirectSourceTemplateSpec {
+            spin_state_class: 7,
+            family: DirectSourceWavefunctionFamily::WeylFermion,
+            orientation: DirectSourceOrientation::Particle,
+            helicity: 1,
+            chirality: -1,
+            mass_parameter_index: Some(0),
+        };
+        let expected = vec![BTreeMap::from([(
+            DirectSourceDispatchKey::SpinStateClass(7),
+            7,
+        )])];
+        let valid = vec![DirectSourceDispatchDomainSpec {
+            variants: vec![DirectSourceDispatchVariantSpec {
+                key: DirectSourceDispatchKey::SpinStateClass(7),
+                template,
+            }],
+        }];
+        validate_ready_source_domain_shape(&valid, &expected, 1).unwrap();
+
+        let mut malformed_key = valid.clone();
+        malformed_key[0].variants[0].key = DirectSourceDispatchKey::SpinStateClass(8);
+        let error = validate_ready_source_domain_shape(&malformed_key, &expected, 1)
+            .expect_err("a process-ready source key must be plan-referenced");
+        assert!(error.to_string().contains("plan keys"));
+
+        let mut malformed_mass = valid;
+        malformed_mass[0].variants[0].template.mass_parameter_index = Some(1);
+        let error = validate_ready_source_domain_shape(&malformed_mass, &expected, 1)
+            .expect_err("a process-ready source mass slot must be plan-bounded");
+        assert!(error.to_string().contains("out of bounds"));
     }
 
     #[test]

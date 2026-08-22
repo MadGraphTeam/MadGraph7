@@ -1600,8 +1600,218 @@ impl NativeRuntime {
         }
     }
 
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
+    #[allow(clippy::too_many_arguments)]
+    fn finish_dense_load(
+        root: PathBuf,
+        artifact_id: String,
+        selection: crate::ArtifactSelection,
+        mut physics_v1: ProcessPhysicsV1,
+        representative_key: String,
+        mut runtime: ExecutionRuntime,
+        execution_lane: NativeExecutionLane,
+        model_parameters_path: Option<&Path>,
+    ) -> Result<Self, RusticolError> {
+        let process = selection.public_expression.clone();
+        let process_key = selection.requested_id.clone();
+        let representative_process_id = selection.process.id.clone();
+        let public_remap = selection.alias.is_some() || selection.inferred_permutation;
+        let nonidentity_permutation = selection
+            .external_permutation
+            .iter()
+            .copied()
+            .enumerate()
+            .any(|(representative_index, public_index)| representative_index != public_index);
+        let initial_count = physics_v1
+            .external_particles
+            .iter()
+            .take_while(|particle| particle.role == crate::ParticleRole::Initial)
+            .count();
+        let final_state_only = public_remap
+            && selection
+                .external_permutation
+                .iter()
+                .take(initial_count)
+                .copied()
+                .enumerate()
+                .all(|(index, public_index)| index == public_index);
+        let input_crossing_map = if public_remap {
+            let representative_physics = physics_v1.clone();
+            let public_physics = apply_process_permutation_metadata(physics_v1, &selection)
+                .map_err(|error| {
+                    RusticolError::with_kind(
+                        error.kind(),
+                        format!("could not remap process physics metadata: {error}"),
+                    )
+                })?;
+            let helicity_id_map = representative_physics
+                .helicities
+                .iter()
+                .zip(&public_physics.helicities)
+                .map(|(representative, public)| (representative.id.clone(), public.id.clone()))
+                .collect::<BTreeMap<_, _>>();
+            let color_id_map = representative_physics
+                .color_components
+                .iter()
+                .zip(&public_physics.color_components)
+                .map(|(representative, public)| {
+                    (representative.id().to_string(), public.id().to_string())
+                })
+                .collect::<BTreeMap<_, _>>();
+            runtime
+                .remap_lc_topology_replay_public_labels(&selection.external_permutation)
+                .map_err(|error| {
+                    RusticolError::with_kind(
+                        error.kind(),
+                        format!("could not remap process execution metadata: {error}"),
+                    )
+                })?;
+            runtime.remap_physics_reduction_overrides(&helicity_id_map, &color_id_map)?;
+            physics_v1 = public_physics;
+            runtime.set_external_pdg_order_recursive(&selection.external_pdgs);
+            nonidentity_permutation.then(|| {
+                selection
+                    .external_permutation
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(|(target_index, source_index)| InputCrossingMapEntry {
+                        target_index,
+                        source_index,
+                        sign: 1.0,
+                    })
+                    .collect()
+            })
+        } else {
+            None
+        };
+        let input_crossing_map =
+            prevalidate_input_crossing_lookup(runtime.external_count, input_crossing_map)?;
+        runtime.attach_physics(Arc::new(PhysicsRuntime::new(physics_v1.clone())?))?;
+        if matches!(&execution_lane, NativeExecutionLane::Compiled) {
+            runtime.initialize_compiled_helicity_execution_plan(
+                public_remap.then_some(selection.external_permutation.as_slice()),
+            )?;
+        }
+        let selector_simd_lane_width = {
+            let uses_simd_jit = match &execution_lane {
+                NativeExecutionLane::Compiled => execution_uses_simd_jit(&runtime),
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Eager(runtime) => runtime.backend_name() == "jit",
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Recurrence(runtime) => runtime.backend_name() == "jit",
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::OnTheFly(_) => false,
+            };
+            if uses_simd_jit {
+                super::evaluator::native_f64_simd_lane_width()
+            } else {
+                1
+            }
+        };
+        let mut loaded = Self {
+            root,
+            artifact_id,
+            runtime,
+            execution_lane,
+            process,
+            process_key,
+            representative_process_id,
+            external_permutation: selection.external_permutation.clone(),
+            input_crossing_map,
+            permutation_alias_of: public_remap.then(|| representative_key.clone()),
+            final_state_permutation_alias_of: final_state_only.then_some(representative_key),
+            physics_v1: LazyProcessPhysicsV1::loaded(physics_v1),
+            warnings_muted: false,
+            warned_kinds: BTreeSet::new(),
+            pending_warnings: Vec::new(),
+            point_selector_scratch: PointSelectorExecutionScratch::default(),
+            selector_simd_lane_width,
+        };
+        if let Some(path) = model_parameters_path {
+            loaded.set_model_parameters_json(path)?;
+        }
+        Ok(loaded)
+    }
+
+    // Darwin reports each referenced clean executable page in process RSS.
+    // Keep the authenticated process-ready load path and its load-only callees
+    // in one Apple section; evaluation code remains in the ordinary text
+    // section and non-Apple builds retain their normal placement.
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
+    fn load_recurrence_bootstrap(
+        bootstrap: crate::artifact::RecurrenceBootstrapArtifact,
+        model_parameters_path: Option<&Path>,
+    ) -> Result<Self, RusticolError> {
+        let crate::artifact::RecurrenceBootstrapArtifact {
+            mut artifact,
+            selection,
+            ready_execution,
+            physics: physics_v1,
+            evaluator_payload_container,
+        } = bootstrap;
+        ensure_selected_runtime_capabilities_supported(
+            &selection.process.required_runtime_capabilities,
+        )?;
+        validate_capability_list_match(
+            &artifact.manifest().runtime.required_runtime_capabilities,
+            &ready_execution.required_runtime_capabilities,
+            "outer runtime and recurrence process-ready recipe",
+        )?;
+        validate_representative_physics(&physics_v1, &selection)?;
+
+        // The authenticated member uses the exact conventional execution path
+        // above, and public process IDs are already confined by the outer
+        // manifest validator. Avoid reopening the duplicate loose JSON merely
+        // to recover its parent directory.
+        let evaluator_root = artifact
+            .root()
+            .join("processes")
+            .join(&selection.process.id);
+        let representative_key = ready_execution.key.clone();
+        let loaded = load_recurrence_ready_runtime(
+            &mut artifact,
+            &evaluator_root,
+            &ready_execution,
+            &physics_v1,
+            &evaluator_payload_container,
+        )?;
+        Self::finish_dense_load(
+            artifact.root().to_path_buf(),
+            artifact.manifest().artifact_id.clone(),
+            selection,
+            physics_v1,
+            representative_key,
+            loaded.common,
+            NativeExecutionLane::Recurrence(Box::new(loaded.lane)),
+            model_parameters_path,
+        )
+    }
+
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn load(
         artifact_path: impl AsRef<Path>,
+        process_id: Option<&str>,
+        model_parameters_path: Option<&Path>,
+    ) -> Result<Self, RusticolError> {
+        let artifact_path = artifact_path.as_ref();
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if let Some(bootstrap) =
+            VerifiedArtifact::try_open_recurrence_bootstrap(artifact_path, process_id)?
+        {
+            return Self::load_recurrence_bootstrap(bootstrap, model_parameters_path);
+        }
+        Self::load_generic(artifact_path, process_id, model_parameters_path)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn load_generic(
+        artifact_path: &Path,
         process_id: Option<&str>,
         model_parameters_path: Option<&Path>,
     ) -> Result<Self, RusticolError> {
@@ -1717,190 +1927,80 @@ impl NativeRuntime {
                 selection.process.physics_path, selection.process.id
             )));
         }
-        let (_representative_process, representative_key, mut runtime, execution_lane) =
-            match manifest {
-                LoadedExecutionManifest::Compiled(manifest) => {
-                    super::eager_v3_load::reject_native_reduction_groups_for_compiled(&physics_v1)?;
-                    let representative_process = manifest.process.clone();
-                    let representative_key = manifest.key.clone();
-                    let evaluator_payloads = artifact.evaluator_payload_store(&evaluator_root)?;
-                    // Tile sizing is bound to the representative physics
-                    // before public alias remapping. Aliases preserve these
-                    // component counts and the execution payload itself is
-                    // authenticated against the representative identifiers.
-                    let sizing_physics = PhysicsRuntime::new(physics_v1.clone())?;
-                    let runtime = load_execution_manifest_with_store(
-                        *manifest,
-                        &evaluator_payloads,
-                        &sizing_physics,
-                    )?;
-                    (
-                        representative_process,
-                        representative_key,
-                        runtime,
-                        NativeExecutionLane::Compiled,
-                    )
-                }
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                LoadedExecutionManifest::EagerV3(manifest) => {
-                    let representative_process = manifest.process.clone();
-                    let representative_key = manifest.key.clone();
-                    let loaded = super::eager_v3_load::load_eager_v3_native_runtime(
-                        &artifact,
-                        &evaluator_root,
-                        &manifest,
-                        &mut physics_v1,
-                    )?;
-                    (
-                        representative_process,
-                        representative_key,
-                        loaded.common,
-                        NativeExecutionLane::Eager(Box::new(loaded.lane)),
-                    )
-                }
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                LoadedExecutionManifest::Recurrence(manifest) => {
-                    let representative_process = manifest.process.clone();
-                    let representative_key = manifest.key.clone();
-                    let loaded = load_recurrence_native_runtime(
-                        &artifact,
-                        &evaluator_root,
-                        &manifest,
-                        &physics_v1,
-                        &selection,
-                    )?;
-                    (
-                        representative_process,
-                        representative_key,
-                        loaded.common,
-                        NativeExecutionLane::Recurrence(Box::new(loaded.lane)),
-                    )
-                }
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                LoadedExecutionManifest::OnTheFly(_) => {
-                    unreachable!("on-the-fly manifests are dispatched before dense physics loading")
-                }
-            };
-        let process = selection.public_expression.clone();
-        let process_key = selection.requested_id.clone();
-        let representative_process_id = selection.process.id.clone();
-        let public_remap = selection.alias.is_some() || selection.inferred_permutation;
-        let nonidentity_permutation = selection
-            .external_permutation
-            .iter()
-            .copied()
-            .enumerate()
-            .any(|(representative_index, public_index)| representative_index != public_index);
-        let initial_count = physics_v1
-            .external_particles
-            .iter()
-            .take_while(|particle| particle.role == crate::ParticleRole::Initial)
-            .count();
-        let final_state_only = public_remap
-            && selection
-                .external_permutation
-                .iter()
-                .take(initial_count)
-                .copied()
-                .enumerate()
-                .all(|(index, public_index)| index == public_index);
-        let input_crossing_map = if public_remap {
-            let representative_physics = physics_v1.clone();
-            let public_physics = apply_process_permutation_metadata(physics_v1, &selection)
-                .map_err(|error| {
-                    RusticolError::with_kind(
-                        error.kind(),
-                        format!("could not remap process physics metadata: {error}"),
-                    )
-                })?;
-            let helicity_id_map = representative_physics
-                .helicities
-                .iter()
-                .zip(&public_physics.helicities)
-                .map(|(representative, public)| (representative.id.clone(), public.id.clone()))
-                .collect::<BTreeMap<_, _>>();
-            let color_id_map = representative_physics
-                .color_components
-                .iter()
-                .zip(&public_physics.color_components)
-                .map(|(representative, public)| {
-                    (representative.id().to_string(), public.id().to_string())
-                })
-                .collect::<BTreeMap<_, _>>();
-            runtime
-                .remap_lc_topology_replay_public_labels(&selection.external_permutation)
-                .map_err(|error| {
-                    RusticolError::with_kind(
-                        error.kind(),
-                        format!("could not remap process execution metadata: {error}"),
-                    )
-                })?;
-            runtime.remap_physics_reduction_overrides(&helicity_id_map, &color_id_map)?;
-            physics_v1 = public_physics;
-            runtime.set_external_pdg_order_recursive(&selection.external_pdgs);
-            nonidentity_permutation.then(|| {
-                selection
-                    .external_permutation
-                    .iter()
-                    .copied()
-                    .enumerate()
-                    .map(|(target_index, source_index)| InputCrossingMapEntry {
-                        target_index,
-                        source_index,
-                        sign: 1.0,
-                    })
-                    .collect()
-            })
-        } else {
-            None
-        };
-        let input_crossing_map =
-            prevalidate_input_crossing_lookup(runtime.external_count, input_crossing_map)?;
-        runtime.attach_physics(Arc::new(PhysicsRuntime::new(physics_v1.clone())?))?;
-        if matches!(&execution_lane, NativeExecutionLane::Compiled) {
-            runtime.initialize_compiled_helicity_execution_plan(
-                public_remap.then_some(selection.external_permutation.as_slice()),
-            )?;
-        }
-        let selector_simd_lane_width = {
-            let uses_simd_jit = match &execution_lane {
-                NativeExecutionLane::Compiled => execution_uses_simd_jit(&runtime),
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                NativeExecutionLane::Eager(runtime) => runtime.backend_name() == "jit",
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                NativeExecutionLane::Recurrence(runtime) => runtime.backend_name() == "jit",
-                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                NativeExecutionLane::OnTheFly(_) => false,
-            };
-            if uses_simd_jit {
-                super::evaluator::native_f64_simd_lane_width()
-            } else {
-                1
+        let (_representative_process, representative_key, runtime, execution_lane) = match manifest
+        {
+            LoadedExecutionManifest::Compiled(manifest) => {
+                super::eager_v3_load::reject_native_reduction_groups_for_compiled(&physics_v1)?;
+                let representative_process = manifest.process.clone();
+                let representative_key = manifest.key.clone();
+                let evaluator_payloads = artifact.evaluator_payload_store(&evaluator_root)?;
+                // Tile sizing is bound to the representative physics
+                // before public alias remapping. Aliases preserve these
+                // component counts and the execution payload itself is
+                // authenticated against the representative identifiers.
+                let sizing_physics = PhysicsRuntime::new(physics_v1.clone())?;
+                let runtime = load_execution_manifest_with_store(
+                    *manifest,
+                    &evaluator_payloads,
+                    &sizing_physics,
+                )?;
+                (
+                    representative_process,
+                    representative_key,
+                    runtime,
+                    NativeExecutionLane::Compiled,
+                )
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::EagerV3(manifest) => {
+                let representative_process = manifest.process.clone();
+                let representative_key = manifest.key.clone();
+                let loaded = super::eager_v3_load::load_eager_v3_native_runtime(
+                    &artifact,
+                    &evaluator_root,
+                    &manifest,
+                    &mut physics_v1,
+                )?;
+                (
+                    representative_process,
+                    representative_key,
+                    loaded.common,
+                    NativeExecutionLane::Eager(Box::new(loaded.lane)),
+                )
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::Recurrence(manifest) => {
+                let representative_process = manifest.process.clone();
+                let representative_key = manifest.key.clone();
+                let loaded = load_recurrence_native_runtime(
+                    &artifact,
+                    &evaluator_root,
+                    &manifest,
+                    &physics_v1,
+                    &selection,
+                )?;
+                (
+                    representative_process,
+                    representative_key,
+                    loaded.common,
+                    NativeExecutionLane::Recurrence(Box::new(loaded.lane)),
+                )
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::OnTheFly(_) => {
+                unreachable!("on-the-fly manifests are dispatched before dense physics loading")
             }
         };
-        let mut loaded = Self {
-            root: artifact.root().to_path_buf(),
+        Self::finish_dense_load(
+            artifact.root().to_path_buf(),
             artifact_id,
+            selection,
+            physics_v1,
+            representative_key,
             runtime,
             execution_lane,
-            process,
-            process_key,
-            representative_process_id,
-            external_permutation: selection.external_permutation.clone(),
-            input_crossing_map,
-            permutation_alias_of: public_remap.then(|| representative_key.clone()),
-            final_state_permutation_alias_of: final_state_only.then_some(representative_key),
-            physics_v1: LazyProcessPhysicsV1::loaded(physics_v1),
-            warnings_muted: false,
-            warned_kinds: BTreeSet::new(),
-            pending_warnings: Vec::new(),
-            point_selector_scratch: PointSelectorExecutionScratch::default(),
-            selector_simd_lane_width,
-        };
-        if let Some(path) = model_parameters_path {
-            loaded.set_model_parameters_json(path)?;
-        }
-        Ok(loaded)
+            model_parameters_path,
+        )
     }
 
     pub fn metadata(&self) -> NativeRuntimeMetadata {
@@ -2499,7 +2599,21 @@ impl NativeRuntime {
         momenta: &[f64],
         point_count: usize,
     ) -> Result<Vec<f64>, RusticolError> {
-        self.evaluate_f64_with_selectors(momenta, point_count, None, None, None, None)
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        let mut output = vec![0.0; point_count];
+        let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+        let result = (|| {
+            let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                momenta,
+                point_count,
+                self.runtime.external_count,
+                crossing_lookup.as_deref(),
+            )?;
+            self.run_f64_batch_into(batch, &mut output)
+        })();
+        self.input_crossing_map = crossing_lookup;
+        result?;
+        Ok(output)
     }
 
     pub fn evaluate_f64_into(
@@ -2508,7 +2622,25 @@ impl NativeRuntime {
         point_count: usize,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        self.evaluate_f64_into_with_selectors(momenta, point_count, None, None, None, None, output)
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        if output.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {point_count}",
+                output.len()
+            )));
+        }
+        let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+        let result = (|| {
+            let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                momenta,
+                point_count,
+                self.runtime.external_count,
+                crossing_lookup.as_deref(),
+            )?;
+            self.run_f64_batch_into(batch, output)
+        })();
+        self.input_crossing_map = crossing_lookup;
+        result
     }
 
     /// Evaluate recurrence totals with a previously resolved selector plan.

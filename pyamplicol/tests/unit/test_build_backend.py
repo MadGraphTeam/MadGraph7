@@ -1681,6 +1681,8 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
             contract["package"],
             "--target",
             link["target"],
+            "--crate-type",
+            "staticlib",
             "--message-format=json-render-diagnostics",
             "--",
             "--print",

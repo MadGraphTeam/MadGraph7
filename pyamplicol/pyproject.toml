@@ -163,7 +163,7 @@ deployment-target = "11.0"
 [tool.pyamplicol.native-build.sdk]
 package = "rusticol-capi"
 profile = "release"
-rustc-codegen-arguments = ["-C", "lto=off", "-C", "embed-bitcode=no"]
+rustc-codegen-arguments = ["-C", "lto=fat", "-C", "embed-bitcode=yes"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --import-mode=importlib"

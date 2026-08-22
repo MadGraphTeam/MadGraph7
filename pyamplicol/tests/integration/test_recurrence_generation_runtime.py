@@ -17,7 +17,7 @@ import pytest
 
 import pyamplicol.generation.service as generation_service
 from pyamplicol import CompiledModel, Generator, ModelSource, Runtime
-from pyamplicol.api.errors import EvaluationError
+from pyamplicol.api.errors import ArtifactError, EvaluationError
 from pyamplicol.artifacts import inspect_artifact, load_manifest
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
@@ -1548,6 +1548,14 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
     )
 
     process_root = recurrence_artifact / "processes" / process_id
+    bootstrap_path = process_root / "recurrence-bootstrap.bin"
+    assert bootstrap_path.is_file()
+    bootstrap_relative_path = bootstrap_path.relative_to(recurrence_artifact).as_posix()
+    bootstrap_payload = next(
+        record for record in manifest.payloads if record.path == bootstrap_relative_path
+    )
+    assert bootstrap_payload.role == "evaluator-state"
+    assert bootstrap_payload.process_id == process_id
     execution_path = process_root / "execution.json"
     execution = json.loads(execution_path.read_text(encoding="utf-8"))
     assert execution["kind"] == _RECURRENCE_KIND
@@ -1594,6 +1602,15 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         compiled,
         points,
     )
+
+    # The process-ready image is authenticated before decoding and must never
+    # fall back to the looser JSON path after corruption.
+    if process_expression == _PROCESS:
+        image = bytearray(bootstrap_path.read_bytes())
+        image[len(image) // 2] ^= 1
+        bootstrap_path.write_bytes(image)
+        with pytest.raises(ArtifactError):
+            Runtime.load(recurrence_artifact)
     if process_expression == _PROCESS:
         _assert_recurrence_per_point_selector_patterns(
             recurrence_artifact,

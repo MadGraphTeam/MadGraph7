@@ -363,6 +363,8 @@ impl DirectRecurrenceExecutionRuntime {
         )
     }
 
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     fn new_inner(
         plan: DirectRecurrencePlan,
         executors: DirectExecutorCatalog,

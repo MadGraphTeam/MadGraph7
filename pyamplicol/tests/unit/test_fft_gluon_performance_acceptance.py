@@ -510,7 +510,10 @@ def test_darwin_getrusage_rss_is_adapted_to_the_reference_protocol() -> None:
     assert formal_evaluator_rss_kib != wrapper_watchdog_rss_kib
 
 
-def test_global_lane_is_selected_once_from_all_mandatory_warm_times() -> None:
+def test_global_lane_is_selected_once_from_both_valid_lane_workloads() -> None:
+    references = {
+        total: _reference(total) for total in acceptance.MANDATORY_MULTIPLICITIES
+    }
     candidates = {
         "on-the-fly": {
             total: _candidate("on-the-fly", total, 0.1)
@@ -522,11 +525,11 @@ def test_global_lane_is_selected_once_from_all_mandatory_warm_times() -> None:
         },
     }
 
-    winner = acceptance.select_global_lane(candidates)
+    winner = acceptance.select_global_lane(references, candidates)
     eligibility = acceptance.lane_eligibility(candidates)
 
-    assert winner == "recurrence"
-    assert eligibility["on-the-fly"]["eligible"] is False
+    assert winner == "on-the-fly"
+    assert eligibility["on-the-fly"]["eligible"] is True
     assert eligibility["on-the-fly"]["generation_specialized"] is False
     assert eligibility["on-the-fly"]["complete_helicity_coverage"] is True
     assert eligibility["recurrence"]["eligible"] is True
@@ -539,7 +542,7 @@ def test_global_lane_is_selected_once_from_all_mandatory_warm_times() -> None:
     )
 
 
-def test_complete_coverage_otf_cannot_win_the_generation_specialized_gate() -> None:
+def test_otf_without_complete_selector_coverage_is_ineligible() -> None:
     candidates = {
         "on-the-fly": {
             total: _candidate("on-the-fly", total, 0.1)
@@ -551,11 +554,51 @@ def test_complete_coverage_otf_cannot_win_the_generation_specialized_gate() -> N
         },
     }
 
-    winner = acceptance.select_global_lane(candidates)
+    for total, candidate in tuple(candidates["on-the-fly"].items()):
+        candidates["on-the-fly"][total] = replace(
+            candidate,
+            probe=replace(candidate.probe, helicity_coverage_count=1),
+        )
 
-    assert winner == "recurrence"
-    with pytest.raises(acceptance.AcceptanceError, match="diagnostic-only"):
+    assert acceptance.lane_eligibility(candidates)["on-the-fly"]["eligible"] is False
+    with pytest.raises(acceptance.AcceptanceError, match="workload contract"):
         acceptance.evaluate_gates("on-the-fly", {}, candidates)
+
+
+def test_slower_passing_lane_wins_when_faster_lane_fails_rss() -> None:
+    references = {
+        total: _reference(total, rss_kib=1000)
+        for total in acceptance.MANDATORY_MULTIPLICITIES
+    }
+    candidates = {
+        "recurrence": {
+            total: _candidate("recurrence", total, 0.1, rss_kib=2001)
+            for total in acceptance.MANDATORY_MULTIPLICITIES
+        },
+        "on-the-fly": {
+            total: _candidate("on-the-fly", total, 1.0, rss_kib=1000)
+            for total in acceptance.MANDATORY_MULTIPLICITIES
+        },
+    }
+
+    assert acceptance.select_global_lane(references, candidates) == "on-the-fly"
+
+
+def test_incremental_viability_keeps_otf_when_recurrence_fails() -> None:
+    references = {4: _reference(4)}
+    candidates = {
+        "recurrence": {4: _candidate("recurrence", 4, 2.0)},
+        "on-the-fly": {4: _candidate("on-the-fly", 4, 0.1)},
+    }
+
+    viability = acceptance._observed_mandatory_gate_viability(
+        references, candidates, multiplicities=(4,)
+    )
+
+    assert viability["viable_lanes"] == ["on-the-fly"]
+    assert viability["lanes"]["recurrence"]["viable"] is False
+    assert viability["lanes"]["on-the-fly"]["eligible"] is True
+    assert viability["lanes"]["on-the-fly"]["viable"] is True
 
 
 def test_gate_ratios_use_only_the_global_winner_and_include_thresholds() -> None:
@@ -682,6 +725,20 @@ def test_optional_numerical_mismatch_is_fatal_and_persisted_not_skipped(
 ) -> None:
     performance_root = tmp_path / "performance"
     monkeypatch.setattr(acceptance, "PERFORMANCE_ROOT", performance_root)
+    source_identity = acceptance.ReportSourceIdentity("a" * 40, "b" * 40, ())
+    monkeypatch.setattr(
+        acceptance,
+        "_require_campaign_source_identity",
+        lambda _expected=None: source_identity,
+    )
+    reference_source_identity = acceptance.ReferenceSourceIdentity(
+        acceptance.REFERENCE_REVISION, "c" * 64, 4
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_require_reference_source_identity",
+        lambda _expected=None: reference_source_identity,
+    )
     monkeypatch.setattr(acceptance, "_workspace_environment", lambda _python: {})
     monkeypatch.setattr(
         acceptance,
@@ -712,7 +769,7 @@ def test_optional_numerical_mismatch_is_fatal_and_persisted_not_skipped(
         return _candidate(
             str(kwargs["lane"]),
             total_gluons,
-            1.0,
+            0.5 if kwargs["lane"] == "recurrence" else 1.0,
             numerical_passes=total_gluons != 10,
         )
 
@@ -774,14 +831,14 @@ def test_candidate_generation_commands_lock_paired_helicity_semantics(
         python="python-test",
         lane="on-the-fly",
         total_gluons=4,
-        helicities=(-1, -1, 1, 1),
+        helicities=(1, 1, 1, 1),
         artifact=tmp_path / "artifact",
     )
     recurrence = acceptance.candidate_generation_command(
         python="python-test",
         lane="recurrence",
         total_gluons=4,
-        helicities=(-1, -1, 1, 1),
+        helicities=(1, 1, 1, 1),
         artifact=tmp_path / "recurrence-artifact",
     )
 
@@ -795,7 +852,7 @@ def test_candidate_generation_commands_lock_paired_helicity_semantics(
         assert "evaluator.batch_size=1" in command
         assert "evaluator.optimization.cores=1" in command
         assert "model.cache=false" in command
-    selection = "process.selected_source_helicities={1=-1,2=-1,3=1,4=1}"
+    selection = "process.selected_source_helicities={1=1,2=1,3=1,4=1}"
     assert selection not in on_the_fly
     assert selection in recurrence
 
@@ -862,8 +919,11 @@ def test_dry_run_is_nonwriting_and_covers_locked_seeds(
     )
     assert set(cpu_policy["thread_environment"].values()) == {"1"}
     assert "on-the-fly" in payload["global_lane_policy"]
-    assert "diagnostic-only" in payload["global_lane_policy"]
-    assert "one global eligible lane" in payload["global_lane_policy"]
+    assert (
+        "eligible under their respective helicity workloads"
+        in payload["global_lane_policy"]
+    )
+    assert "passing every mandatory gate" in payload["global_lane_policy"]
     assert payload["helicity_policy"] == {
         "on-the-fly": "complete-runtime-selector-fixed-helicity-query",
         "recurrence": "generation-specialized-known-nonzero",
@@ -895,7 +955,7 @@ def test_dry_run_is_nonwriting_and_covers_locked_seeds(
     assert payload["reference"]["scaling_setup_to_ready_metric"] == (
         "all setup through driver plus initialization plus first complete pass"
     )
-    assert payload["schema_version"] == 7
+    assert payload["schema_version"] == 8
     assert payload["numerical_parity"] == {
         "reference_values": "ordered-10-AmpliGluonTrace-matrix-elements",
         "candidate_values": (
@@ -995,7 +1055,11 @@ def test_native_probe_uses_public_allocation_free_call_and_lane_guard() -> None:
 
     assert "#include <rusticol.h>" in source
     assert "#include <rusticol.hpp>" not in source
+    assert "rusticol_runtime_evaluate_f64" in source
     assert "rusticol_runtime_evaluate_selected_f64" in source
+    assert 'execution_mode == "recurrence" && runtime_helicity_count == 1' in source
+    assert "arguments.color_id.empty()" in source
+    assert "if (generation_specialized_total)" in source
     assert "&selected_helicity_index" in source
     assert 'execution_mode == "compiled" ? nullptr' not in source
     assert 'if (execution_mode == "on-the-fly")' in source
@@ -1198,3 +1262,296 @@ def test_candidate_probe_executable_link_flags_are_darwin_scoped(
     expected: tuple[str, ...],
 ) -> None:
     assert acceptance._candidate_probe_executable_link_flags(platform_name) == expected
+
+
+def _mock_performance_campaign_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    recurrence_warm: float,
+    otf_warm: float = 0.1,
+) -> tuple[Path, list[tuple[str, int]]]:
+    performance_root = tmp_path / "performance"
+    source_identity = acceptance.ReportSourceIdentity("a" * 40, "b" * 40, ())
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(acceptance, "PERFORMANCE_ROOT", performance_root)
+    monkeypatch.setattr(
+        acceptance,
+        "_require_campaign_source_identity",
+        lambda _expected=None: source_identity,
+    )
+    reference_source_identity = acceptance.ReferenceSourceIdentity(
+        acceptance.REFERENCE_REVISION, "c" * 64, 4
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_require_reference_source_identity",
+        lambda _expected=None: reference_source_identity,
+    )
+    monkeypatch.setattr(acceptance, "_workspace_environment", lambda _python: {})
+    monkeypatch.setattr(
+        acceptance,
+        "_enforce_one_core",
+        lambda _platform: {"requested_cpu_cores": 1},
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_build_probe",
+        lambda **_kwargs: (
+            tmp_path / "probe",
+            {"target": "test-target", "package_version": "test-version"},
+        ),
+    )
+    monkeypatch.setattr(acceptance, "_load_reference_module", object)
+
+    def fake_reference(**kwargs: object) -> acceptance._ReferenceRun:
+        total_gluons = int(kwargs["total_gluons"])
+        calls.append(("reference", total_gluons))
+        return acceptance._ReferenceRun(
+            metrics=_reference(total_gluons),
+            event_paths=tuple(
+                tmp_path / f"N{total_gluons}-point-{point}.event" for point in range(10)
+            ),
+        )
+
+    def fake_candidate(**kwargs: object) -> acceptance.CandidateMetrics:
+        lane = str(kwargs["lane"])
+        total_gluons = int(kwargs["total_gluons"])
+        calls.append((lane, total_gluons))
+        return _candidate(
+            lane,
+            total_gluons,
+            recurrence_warm if lane == "recurrence" else otf_warm,
+        )
+
+    monkeypatch.setattr(acceptance, "_run_reference", fake_reference)
+    monkeypatch.setattr(acceptance, "_run_candidate", fake_candidate)
+    return performance_root, calls
+
+
+def test_campaign_stops_after_first_dispositive_mandatory_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    performance_root, calls = _mock_performance_campaign_dependencies(
+        tmp_path,
+        monkeypatch,
+        recurrence_warm=2.0,
+        otf_warm=2.0,
+    )
+    arguments = acceptance._parser().parse_args(("--run-id", "early-mandatory-failure"))
+
+    result = acceptance._campaign(arguments)
+
+    assert calls == [("reference", 4), ("recurrence", 4), ("on-the-fly", 4)]
+    assert result["status"] == "failed-performance-gates"
+    assert result["terminal"] is True
+    assert result["passes"] is False
+    assert result["dry_run"] is False
+    assert result["policy"]["dry_run"] is False
+    assert (
+        result["source_identity"]
+        == acceptance.ReportSourceIdentity("a" * 40, "b" * 40, ()).provenance()
+    )
+    assert (
+        result["reference_source_identity"]
+        == acceptance.ReferenceSourceIdentity(
+            acceptance.REFERENCE_REVISION, "c" * 64, 4
+        ).provenance()
+    )
+    assert result["failure"]["kind"] == "no-global-lane-remains"
+    viability = result["observed_gate_viability"]
+    assert viability["completed_multiplicities"] == [4]
+    assert viability["viable_lanes"] == []
+    assert viability["lanes"]["recurrence"]["eligible"] is True
+    assert viability["lanes"]["recurrence"]["viable"] is False
+    recurrence_gate = viability["lanes"]["recurrence"]["gates"][0]
+    assert recurrence_gate["warm_passes"] is False
+    assert recurrence_gate["rss_passes"] is True
+    assert recurrence_gate["cold_passes"] is True
+    report = json.loads(
+        (
+            performance_root / "runs" / "early-mandatory-failure" / "report.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert report == json.loads(json.dumps(result))
+
+
+def test_campaign_keeps_running_when_only_otf_remains_viable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _performance_root, calls = _mock_performance_campaign_dependencies(
+        tmp_path,
+        monkeypatch,
+        recurrence_warm=2.0,
+        otf_warm=0.1,
+    )
+    arguments = acceptance._parser().parse_args(("--run-id", "otf-survives"))
+
+    result = acceptance._campaign(arguments)
+
+    expected_calls = [
+        call
+        for total in acceptance.MANDATORY_MULTIPLICITIES
+        for call in (
+            ("reference", total),
+            ("recurrence", total),
+            ("on-the-fly", total),
+        )
+    ]
+    assert calls == expected_calls
+    assert result["status"] == "complete"
+    assert result["passes"] is True
+    assert result["global_winning_lane"] == "on-the-fly"
+    assert {gate["lane"] for gate in result["gates"]} == {"on-the-fly"}
+
+
+def test_campaign_uses_one_stable_winner_for_every_mandatory_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _performance_root, calls = _mock_performance_campaign_dependencies(
+        tmp_path,
+        monkeypatch,
+        recurrence_warm=0.5,
+        otf_warm=1.0,
+    )
+    arguments = acceptance._parser().parse_args(("--run-id", "stable-winner"))
+
+    result = acceptance._campaign(arguments)
+
+    assert len(calls) == 3 * len(acceptance.MANDATORY_MULTIPLICITIES)
+    assert result["status"] == "complete"
+    assert result["passes"] is True
+    assert result["global_winning_lane"] == "recurrence"
+    assert [gate["total_gluons"] for gate in result["gates"]] == list(
+        acceptance.MANDATORY_MULTIPLICITIES
+    )
+    assert {gate["lane"] for gate in result["gates"]} == {"recurrence"}
+
+
+def test_campaign_source_preflight_rejects_dirty_tracked_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_source(_root: Path) -> acceptance.ReportSourceIdentity:
+        raise acceptance.ReportSourceIdentityError(
+            "dirty source paths: tools/developer/fft_gluon_performance_acceptance.py"
+        )
+
+    monkeypatch.setattr(acceptance, "require_eligible_report_source", reject_source)
+    monkeypatch.setattr(acceptance, "PERFORMANCE_ROOT", tmp_path / "performance")
+    monkeypatch.setattr(
+        acceptance,
+        "_create_workspace_directories",
+        lambda _root: pytest.fail("dirty source must fail before workspace creation"),
+    )
+    arguments = acceptance._parser().parse_args(("--run-id", "dirty-source"))
+
+    with pytest.raises(acceptance.AcceptanceError, match="dirty source paths"):
+        acceptance._campaign(arguments)
+
+
+def test_campaign_source_postflight_rejects_head_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = acceptance.ReportSourceIdentity("a" * 40, "b" * 40, ())
+    changed = acceptance.ReportSourceIdentity("c" * 40, "d" * 40, ())
+    monkeypatch.setattr(
+        acceptance,
+        "require_eligible_report_source",
+        lambda _root: changed,
+    )
+
+    with pytest.raises(acceptance.AcceptanceError, match="identity changed"):
+        acceptance._require_campaign_source_identity(started)
+
+
+def _git(repository: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ("git", "-C", str(repository), *arguments),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_reference_source_identity_allows_dirty_inputs_and_detects_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "reference"
+    repository.mkdir()
+    subprocess.run(
+        ("git", "init", "--quiet", str(repository)),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (repository / ".gitignore").write_text("ignored.tmp\n", encoding="utf-8")
+    (repository / "tracked.txt").write_text("committed\n", encoding="utf-8")
+    _git(repository, "add", ".gitignore", "tracked.txt")
+    _git(
+        repository,
+        "-c",
+        "user.name=FFT acceptance",
+        "-c",
+        "user.email=fft-acceptance@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "fixture",
+    )
+    revision = _git(repository, "rev-parse", "HEAD")
+    monkeypatch.setattr(acceptance, "REFERENCE_ROOT", repository)
+    monkeypatch.setattr(acceptance, "REFERENCE_REVISION", revision)
+
+    # Intentional tracked and nonignored-untracked patches are authenticated,
+    # not rejected for making the reference checkout dirty.
+    (repository / "tracked.txt").write_text("intentional patch\n", encoding="utf-8")
+    (repository / "extra.txt").write_text("campaign input\n", encoding="utf-8")
+    started = acceptance._require_reference_source_identity()
+    assert started.revision == revision
+    assert started.file_count == 3
+    assert acceptance._require_reference_source_identity(started) == started
+
+    # Ignored build products are deliberately outside the source identity.
+    (repository / "ignored.tmp").write_text("build output\n", encoding="utf-8")
+    assert acceptance._require_reference_source_identity(started) == started
+
+    (repository / "extra.txt").write_text("changed campaign input\n", encoding="utf-8")
+    with pytest.raises(acceptance.AcceptanceError, match="identity changed"):
+        acceptance._require_reference_source_identity(started)
+
+
+def test_reference_source_identity_requires_the_locked_revision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert acceptance.REFERENCE_REVISION == "a05c9f932e7adb75f01b24e8b1f483ad9ccfde02"
+    repository = tmp_path / "reference"
+    repository.mkdir()
+    subprocess.run(
+        ("git", "init", "--quiet", str(repository)),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (repository / "input.txt").write_text("input\n", encoding="utf-8")
+    _git(repository, "add", "input.txt")
+    _git(
+        repository,
+        "-c",
+        "user.name=FFT acceptance",
+        "-c",
+        "user.email=fft-acceptance@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "fixture",
+    )
+    monkeypatch.setattr(acceptance, "REFERENCE_ROOT", repository)
+
+    with pytest.raises(acceptance.AcceptanceError, match="wrong revision"):
+        acceptance._require_reference_source_identity()

@@ -5443,6 +5443,37 @@ fn native_f64_into_matches_allocating_wrapper_and_validates_output() {
 }
 
 #[test]
+fn native_f64_totals_bypass_point_selector_scratch() {
+    let point = [
+        10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, -10.0, 20.0, 0.0, 0.0, 0.0,
+    ];
+    let momenta = point.repeat(4);
+    let mut runtime = zero_native_runtime();
+    runtime
+        .point_selector_scratch
+        .planner
+        .build(4, Some(&[0, 1, 0, 1]), None, 3, 1)
+        .expect("seed point-selector planner");
+    let retained_partitions = runtime.point_selector_scratch.planner.partitions().to_vec();
+    assert!(!retained_partitions.is_empty());
+
+    let allocated = runtime
+        .evaluate_f64(&momenta, 4)
+        .expect("evaluate owned totals without selectors");
+    let mut output = [f64::NAN; 4];
+    runtime
+        .evaluate_f64_into(&momenta, 4, &mut output)
+        .expect("evaluate borrowed totals without selectors");
+
+    assert_eq!(output.as_slice(), allocated);
+    assert_eq!(
+        runtime.point_selector_scratch.planner.partitions(),
+        retained_partitions,
+        "no-selector totals must not clear or rebuild selector planner state"
+    );
+}
+
+#[test]
 fn model_parameter_override_batch_is_atomic() {
     let mut runtime = empty_generic_runtime();
     runtime.model_parameter_runtime_slots.insert(

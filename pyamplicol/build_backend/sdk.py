@@ -491,6 +491,8 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
             str(sdk_contract["package"]),
             "--target",
             target,
+            "--crate-type",
+            "staticlib",
             "--message-format=json-render-diagnostics",
             "--",
             "--print",

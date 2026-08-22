@@ -112,6 +112,21 @@ pub mod __private {
         )
     }
 
+    /// Build one authenticated compact recurrence cold-load image from the
+    /// already staged, ordinary JSON payloads and typed payload inventory.
+    #[doc(hidden)]
+    pub fn build_recurrence_bootstrap_image_v1(
+        context_json: &[u8],
+        execution_json: &[u8],
+        physics_json: &[u8],
+    ) -> RusticolResult<Vec<u8>> {
+        crate::engine::build_recurrence_bootstrap_image_v1(
+            context_json,
+            execution_json,
+            physics_json,
+        )
+    }
+
     /// Unstable cold-path bridge for constructing the compact private
     /// on-the-fly process seed from source-only projection JSON.
     #[doc(hidden)]

@@ -16,7 +16,9 @@ use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyTuple};
-use rusticol_core::__private::compile_symbolica_program_to_plane_application_bytes;
+use rusticol_core::__private::{
+    build_recurrence_bootstrap_image_v1, compile_symbolica_program_to_plane_application_bytes,
+};
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
     NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpObserver,
@@ -1651,6 +1653,18 @@ fn _compile_symjit_plane_application_v2(
 }
 
 #[pyfunction]
+fn _build_recurrence_bootstrap_v1(
+    py: Python<'_>,
+    context_json: &[u8],
+    execution_json: &[u8],
+    physics_json: &[u8],
+) -> PyResult<Py<PyBytes>> {
+    let image = build_recurrence_bootstrap_image_v1(context_json, execution_json, physics_json)
+        .map_err(python_error)?;
+    Ok(PyBytes::new(py, &image).unbind())
+}
+
+#[pyfunction]
 fn _load_eager_reduction_groups_v1(
     py: Python<'_>,
     artifact_root: PathBuf,
@@ -2224,6 +2238,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
         _compile_symjit_plane_application_v2,
         module
     )?)?;
+    module.add_function(wrap_pyfunction!(_build_recurrence_bootstrap_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_eager_direct_descriptor_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_reduction_groups_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_exact_sections_v1, module)?)?;

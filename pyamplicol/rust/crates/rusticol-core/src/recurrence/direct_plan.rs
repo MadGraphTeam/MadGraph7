@@ -409,6 +409,8 @@ fn selector_domain_contains_parts(
 }
 
 impl DirectRecurrencePlan {
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn new(mut parts: DirectRecurrencePlanParts) -> RusticolResult<Self> {
         #[cfg(feature = "on-the-fly-test-support")]
         super::on_the_fly::reject_forbidden_work_if_probed(
@@ -751,6 +753,9 @@ fn canonicalize_contribution_initialization(
     Ok(())
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+#[cfg_attr(target_vendor = "apple", cold)]
 fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     if parts.point_tile_size == 0 {
         return Err(invalid("point tile size must be positive"));
@@ -1710,6 +1715,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     Ok(())
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
 fn validate_closure_proofs(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     parts
         .closure_proofs

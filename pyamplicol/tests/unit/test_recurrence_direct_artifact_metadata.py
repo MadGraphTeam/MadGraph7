@@ -13,7 +13,8 @@ import pytest
 
 from pyamplicol._internal import versions
 from pyamplicol.api.errors import ArtifactError
-from pyamplicol.artifacts import inspection
+from pyamplicol.artifacts import inspection, load_manifest
+from pyamplicol.artifacts.writer import ArtifactBuilder
 from pyamplicol.generation import artifact_writer, recurrence_physics, service
 from pyamplicol.generation.recurrence_columnar import RecurrenceSemanticDigestV1
 from pyamplicol.generation.recurrence_schedule_sharing import (
@@ -26,6 +27,186 @@ from pyamplicol.generation.validation import ValidationPointRecord
 
 def _digest(character: str) -> str:
     return character * 64
+
+
+def test_recurrence_bootstrap_publishes_exact_authenticated_runtime_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process_id = "g_g_to_g_g"
+    prefix = f"processes/{process_id}"
+    execution_path = f"{prefix}/execution.json"
+    physics_path = f"{prefix}/physics.json"
+    bootstrap_path = f"{prefix}/recurrence-bootstrap.bin"
+    execution = b'{"kind":"pyamplicol-recurrence-runtime","schema_version":1}\n'
+    physics = b'{"kind":"pyamplicol-resolved-physics","schema_version":1}\n'
+    target = {"triple": "portable-64le", "cpu_features": []}
+    capability = artifact_writer.RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY
+    output = tmp_path / "artifact"
+    image = b"native-recurrence-bootstrap-image-v1"
+    captured: dict[str, object] = {}
+
+    def build(
+        context_json: bytes,
+        execution_json: bytes,
+        physics_json: bytes,
+    ) -> bytes:
+        captured.update(
+            context=json.loads(context_json),
+            execution=execution_json,
+            physics=physics_json,
+        )
+        return image
+
+    monkeypatch.setattr(
+        artifact_writer,
+        "_recurrence_bootstrap_operation",
+        lambda: build,
+    )
+    producer = {
+        "distribution": "pyamplicol",
+        "version": "0.1.0",
+        "versions": {
+            "python_api": 1,
+            "toml": 1,
+            "compiled_model": 1,
+            "process_artifact": 3,
+            "runtime_physics": 1,
+            "symbolica_serialization": "1",
+            "c_abi": 1,
+        },
+        "target": target,
+    }
+    process_record = {
+        "id": process_id,
+        "expression": "g g > g g",
+        "color_accuracy": "full",
+        "external_pdgs": [21, 21, 21, 21],
+        "physics_path": physics_path,
+        "required_runtime_capabilities": [capability],
+        "aliases": [],
+    }
+    runtime = {
+        "engine": "rusticol",
+        "engine_version": "0.1.0",
+        "evaluator_manifest_path": execution_path,
+        "api_bundle_path": None,
+        "required_runtime_capabilities": [capability],
+    }
+    container = {
+        "kind": "pyamplicol-evaluator-payload-container",
+        "schema_version": 1,
+        "storage_abi": "pacbin-v1",
+        "path": "evaluators.pacbin",
+        "member_count": 0,
+        "unpacked_size_bytes": 0,
+        "index_sha256": _digest("b"),
+    }
+
+    with ArtifactBuilder(output) as builder:
+        builder.add_bytes(
+            execution_path,
+            execution,
+            role="evaluator-manifest",
+            media_type="application/json",
+            process_id=process_id,
+        )
+        builder.add_bytes(
+            physics_path,
+            physics,
+            role="runtime-physics",
+            media_type="application/json",
+            process_id=process_id,
+        )
+        builder.add_bytes(
+            "evaluators.pacbin",
+            b"container",
+            role="evaluator-state",
+            media_type="application/octet-stream",
+            target=target,
+        )
+        artifact_writer._write_recurrence_bootstraps(
+            builder,
+            processes=(SimpleNamespace(process_id=process_id),),  # type: ignore[arg-type]
+            process_records=(process_record,),
+            producer=producer,
+            runtime=runtime,
+            evaluator_payload_container=container,
+            target=target,
+        )
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=producer,
+            model={
+                "name": "sm",
+                "source_kind": "built-in-sm",
+                "content_sha256": _digest("a"),
+                "compiled_schema_version": 1,
+            },
+            configuration={
+                "toml_schema_version": 1,
+                "requested_path": "configuration/requested.toml",
+                "effective_path": "configuration/effective.toml",
+                "adjustments": [],
+            },
+            processes=(process_record,),
+            runtime=runtime,
+            default_process_id=process_id,
+        )
+
+    manifest = load_manifest(output, verify_payloads=True)
+    bootstrap_record = next(
+        record for record in manifest.payloads if record.path == bootstrap_path
+    )
+    assert bootstrap_record.role == "evaluator-state"
+    assert bootstrap_record.process_id == process_id
+    assert bootstrap_record.target == {
+        "triple": "portable-64le",
+        "cpu_features": (),
+    }
+    bootstrap_bytes = (output / bootstrap_path).read_bytes()
+    assert bootstrap_bytes == image
+    assert hashlib.sha256(bootstrap_bytes).hexdigest() == bootstrap_record.sha256
+    assert captured["execution"] == execution
+    assert captured["physics"] == physics
+    context = captured["context"]
+    assert isinstance(context, dict)
+    assert context["process"] == process_record
+    assert context["producer"] == producer
+    assert context["runtime"] == runtime
+    assert context["evaluator_payload_container"] == container
+    assert Path(context["staged_root"]).is_absolute()
+    inventory = context["payloads"]
+    assert isinstance(inventory, list)
+    assert bootstrap_path not in {record["path"] for record in inventory}
+    assert {record["path"] for record in inventory} == {
+        execution_path,
+        physics_path,
+        "evaluators.pacbin",
+    }
+
+
+def test_recurrence_bootstrap_v1_skips_multi_process_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        artifact_writer,
+        "_recurrence_bootstrap_operation",
+        lambda: pytest.fail("multi-process artifacts must not build a v1 bootstrap"),
+    )
+    # The multi-process guard returns before consulting the builder at all.
+    artifact_writer._write_recurrence_bootstraps(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        processes=(SimpleNamespace(process_id="recurrence"),),  # type: ignore[arg-type]
+        process_records=(
+            {"id": "recurrence"},
+            {"id": "compiled"},
+        ),
+        producer={},
+        runtime={},
+        evaluator_payload_container=None,
+        target={},
+    )
 
 
 def test_recurrence_inspection_summary_binds_public_process_alias() -> None:

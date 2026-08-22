@@ -148,6 +148,48 @@ fn distribution_version_normalization_is_narrow() {
     );
 }
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn compact_payload_identity_matches_the_python_canonical_contract() {
+    let artifact = TestArtifact::new();
+    let typed: ArtifactManifest =
+        serde_json::from_value(artifact.manifest.clone()).expect("typed artifact manifest");
+    assert_eq!(
+        compute_payload_artifact_id(&typed.payloads).expect("typed payload identity"),
+        artifact.manifest["artifact_id"]
+            .as_str()
+            .expect("manifest artifact ID")
+    );
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn default_recurrence_bootstrap_discovery_requires_exactly_one_stable_process() {
+    let artifact = TestArtifact::new();
+    let processes = artifact.root.join("processes");
+    fs::create_dir(&processes).expect("create process root");
+    assert_eq!(
+        discover_single_recurrence_bootstrap_process(&artifact.root).unwrap(),
+        None
+    );
+
+    let first = processes.join("p0");
+    fs::create_dir(&first).expect("create first process");
+    fs::write(first.join(RECURRENCE_BOOTSTRAP_FILENAME), b"image").expect("write first bootstrap");
+    assert_eq!(
+        discover_single_recurrence_bootstrap_process(&artifact.root).unwrap(),
+        Some("p0".to_string())
+    );
+
+    let second = processes.join("p1");
+    fs::create_dir(&second).expect("create second process");
+    fs::write(second.join(RECURRENCE_BOOTSTRAP_FILENAME), b"image")
+        .expect("write second bootstrap");
+    let error = discover_single_recurrence_bootstrap_process(&artifact.root).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("ambiguous"));
+}
+
 struct TestArtifact {
     root: PathBuf,
     manifest: Value,

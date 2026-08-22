@@ -362,11 +362,9 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
 pub(crate) fn ensure_runtime_capabilities_supported<'a>(
     capabilities: impl IntoIterator<Item = &'a str>,
 ) -> RusticolResult<()> {
-    let supported = supported_runtime_capabilities()
-        .into_iter()
-        .collect::<BTreeSet<_>>();
     for capability in capabilities {
-        if !supported.contains(capability) {
+        if !runtime_capability_is_supported(capability) {
+            let supported = supported_runtime_capabilities();
             return Err(RusticolError::unsupported_runtime_capability(
                 capability,
                 format!("this Rusticol build supports {supported:?}"),
@@ -374,6 +372,42 @@ pub(crate) fn ensure_runtime_capabilities_supported<'a>(
         }
     }
     Ok(())
+}
+
+/// Test one capability on the successful runtime-load path without allocating
+/// and sorting a complete capability set.  The public reporting helper above
+/// still returns the complete sorted list when diagnostics need it.
+fn runtime_capability_is_supported(capability: &str) -> bool {
+    match capability {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY
+        | COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY
+        | COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY
+        | COMPILED_HELICITY_DUAL_LANE_CAPABILITY
+        | COMPILED_HELICITY_PRIMARY_RECURRENCE_CAPABILITY
+        | COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY
+        | COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY
+        | COMPILED_RUNTIME_SELECTORS_CAPABILITY
+        | EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
+        | EAGER_RUNTIME_LAYOUT_CAPABILITY
+        | RECURRENCE_RUNTIME_CAPABILITY
+        | RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY
+        | RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+        | RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+        | SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
+        | ON_THE_FLY_RUNTIME_CAPABILITY
+        | ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+        | ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY => true,
+        #[cfg(feature = "f64-symjit")]
+        SYMJIT_APPLICATION_RUNTIME_CAPABILITY => true,
+        #[cfg(feature = "symbolica-runtime")]
+        SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY => true,
+        #[cfg(feature = "f64-compiled")]
+        SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY | SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY => {
+            true
+        }
+        _ => false,
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -4685,9 +4719,24 @@ mod recurrence_load;
 use recurrence_load::*;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-mod recurrence_manifest;
+pub(crate) mod recurrence_manifest;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use recurrence_manifest::*;
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_bootstrap;
+#[cfg(feature = "python-generation-bridge")]
+pub(crate) use recurrence_bootstrap::build_recurrence_bootstrap_image_v1;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(crate) use recurrence_bootstrap::{
+    RECURRENCE_BOOTSTRAP_IMAGE_MAX_FILE_BYTES, RecurrenceReadyExecutionV1,
+    decode_recurrence_bootstrap_image_v1,
+};
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod recurrence_bootstrap_physics;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+use recurrence_bootstrap_physics::*;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod recurrence_process_pack;

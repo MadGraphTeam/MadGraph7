@@ -23,13 +23,17 @@ use super::on_the_fly_selectors::{
 use super::recurrence_backend::{
     NativeRecurrencePreparedExecutorPool, OnTheFlySourceDomainBinding,
 };
+use super::recurrence_bootstrap::{
+    RecurrenceReadyCompanionV1, RecurrenceReadyExecutionV1, RecurrenceReadyPlanV1,
+};
 use super::recurrence_lane::{
     PreparedParameterProjectionEntry, RecurrencePersistedHelicitySelectorRuntime,
 };
 use super::recurrence_load::{
-    build_direct_source_domains, build_on_the_fly_source_domains, decode_sha256,
-    direct_helicity_to_physics, load_color_contraction_reference, load_plan_summary,
-    runtime_parameter_slots, validate_recurrence_prepared_pack_outer_target,
+    LoadedRecurrencePlan, build_direct_source_domains, build_on_the_fly_source_domains,
+    decode_ready_source_domains, decode_sha256, direct_helicity_to_physics,
+    load_color_contraction_reference, load_plan_summary, runtime_parameter_slots,
+    validate_ready_direct_helicity_to_physics, validate_recurrence_prepared_pack_outer_target,
 };
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
@@ -239,66 +243,162 @@ pub(super) fn load_recurrence_helicity_selector_companion(
                 "recurrence companion loader was called without a companion descriptor",
             )
         })?;
-    let loaded_plan = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
-    let plan = loaded_plan.plan;
+    let LoadedRecurrencePlan {
+        plan,
+        process_executors,
+    } = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
     validate_recurrence_companion_process_digest(
         &manifest.plan.process_binding.process_digest,
         &companion.process_digest,
         &companion.plan.process_binding.process_digest,
     )?;
-    let dispatch_reference = companion.plan.helicity_dispatch.as_ref().ok_or_else(|| {
-        RusticolError::integrity("recurrence helicity-selector plan has no exact helicity dispatch")
-    })?;
-    let dispatch_record = artifact.payload(&dispatch_reference.path)?;
-    if dispatch_record.role != PayloadRole::EvaluatorState
-        || dispatch_record.media_type != "application/octet-stream"
-        || dispatch_record.process_id.is_some()
-        || dispatch_record.executable
-        || dispatch_record.size_bytes != dispatch_reference.size_bytes
-        || dispatch_record.sha256 != dispatch_reference.sha256
-    {
-        return Err(RusticolError::integrity(
-            "recurrence helicity dispatch disagrees with its authenticated payload",
-        ));
-    }
-    let dispatch_bytes = artifact.read_payload(&dispatch_reference.path)?;
-    let dispatch = decode_recurrence_helicity_dispatch_v1(&dispatch_bytes)?;
-    dispatch.validate_for_plan(&plan)?;
-    if dispatch.runtime_layout_digest().to_string() != dispatch_reference.base_runtime_layout_digest
-        || dispatch.resolved_helicity_count() as u64 != dispatch_reference.resolved_helicity_count
-    {
-        return Err(RusticolError::integrity(
-            "decoded recurrence helicity dispatch disagrees with its bounded summary",
-        ));
-    }
-
-    let pool = Rc::new(
-        NativeRecurrencePreparedExecutorPool::load_for_direct_plan_from_process_pack(
-            &loaded_plan.process_executors,
-            payloads,
-            &plan,
-        )?,
-    );
-    pool.validate_model_identities(
-        &manifest.compiled_model_digest,
-        &manifest.recurrence_template_catalog_digest,
-        &manifest.prepared_kernel_pack_digest,
-        &manifest.direct_template_catalog_digest,
+    let dispatch = load_recurrence_companion_dispatch(
+        artifact,
+        &plan,
+        companion.plan.helicity_dispatch.as_ref(),
     )?;
     let source_domains = build_direct_source_domains(
         &plan,
         &manifest.runtime_metadata,
         &common.model_parameter_runtime_slots,
     )?;
+    let direct_helicity_to_physics = direct_helicity_to_physics(&plan, physics)?;
+    finish_recurrence_helicity_selector_companion(
+        process_executors,
+        plan,
+        dispatch,
+        payloads,
+        RecurrenceCompanionModelIdentities {
+            compiled_model_digest: &manifest.compiled_model_digest,
+            recurrence_template_catalog_digest: &manifest.recurrence_template_catalog_digest,
+            prepared_kernel_pack_digest: &manifest.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &manifest.direct_template_catalog_digest,
+        },
+        source_domains,
+        direct_helicity_to_physics,
+        physics.helicities.len(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn load_recurrence_helicity_selector_companion_from_ready_parts(
+    artifact: &VerifiedArtifact,
+    loaded_plan: LoadedRecurrencePlan,
+    plan_reference: &RecurrenceReadyPlanV1,
+    companion: &RecurrenceReadyCompanionV1,
+    ready: &RecurrenceReadyExecutionV1,
+    physics: &ProcessPhysicsV1,
+    payloads: &EvaluatorPayloadStore,
+) -> RusticolResult<LoadedRecurrenceHelicitySelectorCompanion> {
+    validate_recurrence_companion_process_digest(
+        &ready.primary_plan.process_binding.process_digest,
+        &companion.process_digest,
+        &plan_reference.process_binding.process_digest,
+    )?;
+    let LoadedRecurrencePlan {
+        plan,
+        process_executors,
+    } = loaded_plan;
+    let dispatch = load_recurrence_companion_dispatch(
+        artifact,
+        &plan,
+        plan_reference.helicity_dispatch.as_ref(),
+    )?;
+    let source_domains = decode_ready_source_domains(&companion.source_domains, &plan)?;
+    let direct_helicity_to_physics = validate_ready_direct_helicity_to_physics(
+        &plan,
+        &companion.direct_helicity_to_physics,
+        physics,
+    )?;
+    finish_recurrence_helicity_selector_companion(
+        process_executors,
+        plan,
+        dispatch,
+        payloads,
+        RecurrenceCompanionModelIdentities {
+            compiled_model_digest: &ready.compiled_model_digest,
+            recurrence_template_catalog_digest: &ready.recurrence_template_catalog_digest,
+            prepared_kernel_pack_digest: &ready.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &ready.direct_template_catalog_digest,
+        },
+        source_domains,
+        direct_helicity_to_physics,
+        physics.helicities.len(),
+    )
+}
+
+fn load_recurrence_companion_dispatch(
+    artifact: &VerifiedArtifact,
+    plan: &crate::recurrence::DirectRecurrencePlan,
+    reference: Option<&super::recurrence_manifest::RecurrenceHelicityDispatchReference>,
+) -> RusticolResult<crate::recurrence::DirectHelicityDispatch> {
+    let reference = reference.ok_or_else(|| {
+        RusticolError::integrity("recurrence helicity-selector plan has no exact helicity dispatch")
+    })?;
+    let record = artifact.payload(&reference.path)?;
+    if record.role != PayloadRole::EvaluatorState
+        || record.media_type != "application/octet-stream"
+        || record.process_id.is_some()
+        || record.executable
+        || record.size_bytes != reference.size_bytes
+        || record.sha256 != reference.sha256
+    {
+        return Err(RusticolError::integrity(
+            "recurrence helicity dispatch disagrees with its authenticated payload",
+        ));
+    }
+    let bytes = artifact.read_payload(&reference.path)?;
+    let dispatch = decode_recurrence_helicity_dispatch_v1(&bytes)?;
+    dispatch.validate_for_plan(plan)?;
+    if dispatch.runtime_layout_digest().to_string() != reference.base_runtime_layout_digest
+        || dispatch.resolved_helicity_count() as u64 != reference.resolved_helicity_count
+    {
+        return Err(RusticolError::integrity(
+            "decoded recurrence helicity dispatch disagrees with its bounded summary",
+        ));
+    }
+    Ok(dispatch)
+}
+
+struct RecurrenceCompanionModelIdentities<'a> {
+    compiled_model_digest: &'a str,
+    recurrence_template_catalog_digest: &'a str,
+    prepared_kernel_pack_digest: &'a str,
+    direct_template_catalog_digest: &'a str,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_recurrence_helicity_selector_companion(
+    process_executors: super::recurrence_process_pack::ProcessDirectExecutorPack,
+    plan: crate::recurrence::DirectRecurrencePlan,
+    dispatch: crate::recurrence::DirectHelicityDispatch,
+    payloads: &EvaluatorPayloadStore,
+    identities: RecurrenceCompanionModelIdentities<'_>,
+    source_domains: Vec<super::evaluator::recurrence_source_direct::DirectSourceDispatchDomainSpec>,
+    direct_helicity_to_physics: Vec<usize>,
+    physics_helicity_count: usize,
+) -> RusticolResult<LoadedRecurrenceHelicitySelectorCompanion> {
+    let pool = Rc::new(
+        NativeRecurrencePreparedExecutorPool::load_for_direct_plan_from_process_pack(
+            &process_executors,
+            payloads,
+            &plan,
+        )?,
+    );
+    pool.validate_model_identities(
+        identities.compiled_model_digest,
+        identities.recurrence_template_catalog_digest,
+        identities.prepared_kernel_pack_digest,
+        identities.direct_template_catalog_digest,
+    )?;
     let sources = OnTheFlySourceDomainBinding::load_for_process_plan(&plan, source_domains)?;
     let resolver = Rc::clone(&pool).into_shared_on_the_fly_resolver(sources);
-    let direct_helicity_to_physics = direct_helicity_to_physics(&plan, physics)?;
     let runtime = RecurrencePersistedHelicitySelectorRuntime::new(
         plan,
         dispatch,
         resolver,
         direct_helicity_to_physics,
-        physics.helicities.len(),
+        physics_helicity_count,
     )?;
     Ok(LoadedRecurrenceHelicitySelectorCompanion { runtime })
 }
@@ -843,9 +943,15 @@ mod tests {
         let swapped = "20".repeat(32);
         validate_recurrence_companion_process_digest(&primary, &primary, &primary).unwrap();
 
-        let error =
-            validate_recurrence_companion_process_digest(&primary, &swapped, &swapped).unwrap_err();
-        assert!(error.to_string().contains("different primary process"));
+        for (companion, decoded) in [
+            (&swapped, &swapped),
+            (&primary, &swapped),
+            (&swapped, &primary),
+        ] {
+            let error = validate_recurrence_companion_process_digest(&primary, companion, decoded)
+                .unwrap_err();
+            assert!(error.to_string().contains("different primary process"));
+        }
     }
 
     #[test]

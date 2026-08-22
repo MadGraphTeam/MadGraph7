@@ -207,27 +207,33 @@ std::uint64_t process_peak_rss_kib() {
 double evaluate_one(
     RusticolRuntimeHandle *runtime,
     const std::vector<double> &point,
+    const bool generation_specialized_total,
     const std::uint32_t *selected_helicity_index,
     const char *const *selected_color_ids,
     const std::size_t selected_color_count,
     double &minimum_absolute_value,
     double &sink) {
     double value = 0.0;
-    check_rusticol(rusticol_runtime_evaluate_selected_f64(
-        runtime,
-        point.data(),
-        point.size(),
-        1,
-        nullptr,
-        0,
-        selected_color_ids,
-        selected_color_count,
-        selected_helicity_index,
-        selected_helicity_index == nullptr ? 0 : 1,
-        nullptr,
-        0,
-        &value,
-        1));
+    if (generation_specialized_total) {
+        check_rusticol(rusticol_runtime_evaluate_f64(
+            runtime, point.data(), point.size(), 1, &value, 1));
+    } else {
+        check_rusticol(rusticol_runtime_evaluate_selected_f64(
+            runtime,
+            point.data(),
+            point.size(),
+            1,
+            nullptr,
+            0,
+            selected_color_ids,
+            selected_color_count,
+            selected_helicity_index,
+            selected_helicity_index == nullptr ? 0 : 1,
+            nullptr,
+            0,
+            &value,
+            1));
+    }
     if (!std::isfinite(value)) {
         throw std::runtime_error("Rusticol returned an invalid scalar result");
     }
@@ -240,28 +246,39 @@ double evaluate_one(
 void evaluate_repeated_batch(
     RusticolRuntimeHandle *runtime,
     const std::vector<double> &momenta,
+    const bool generation_specialized_total,
     const std::vector<std::uint32_t> &selected_helicity_indices,
     const char *const *selected_color_ids,
     const std::size_t selected_color_count,
     std::vector<double> &values) {
     const std::size_t point_count = values.size();
-    check_rusticol(rusticol_runtime_evaluate_selected_f64(
-        runtime,
-        momenta.data(),
-        momenta.size(),
-        point_count,
-        nullptr,
-        0,
-        selected_color_ids,
-        selected_color_count,
-        selected_helicity_indices.empty()
-            ? nullptr
-            : selected_helicity_indices.data(),
-        selected_helicity_indices.size(),
-        nullptr,
-        0,
-        values.data(),
-        values.size()));
+    if (generation_specialized_total) {
+        check_rusticol(rusticol_runtime_evaluate_f64(
+            runtime,
+            momenta.data(),
+            momenta.size(),
+            point_count,
+            values.data(),
+            values.size()));
+    } else {
+        check_rusticol(rusticol_runtime_evaluate_selected_f64(
+            runtime,
+            momenta.data(),
+            momenta.size(),
+            point_count,
+            nullptr,
+            0,
+            selected_color_ids,
+            selected_color_count,
+            selected_helicity_indices.empty()
+                ? nullptr
+                : selected_helicity_indices.data(),
+            selected_helicity_indices.size(),
+            nullptr,
+            0,
+            values.data(),
+            values.size()));
+    }
 }
 
 void consume_batch_results(
@@ -531,6 +548,15 @@ int main(int argc, char **argv) {
             arguments.color_id.empty() ? nullptr : selected_color_ids;
         const std::size_t evaluation_color_count =
             arguments.color_id.empty() ? 0 : 1;
+        // Full/NLC recurrence artifacts expose contracted colour, and the
+        // acceptance recurrence lane is generated with exactly one retained
+        // helicity.  Its unselected total is therefore exactly the same
+        // one-helicity matrix element as the selected query, without paying
+        // the selector C ABI and planner overhead.  OTF intentionally keeps
+        // complete helicity coverage and must continue through selection.
+        const bool generation_specialized_total =
+            execution_mode == "recurrence" && runtime_helicity_count == 1 &&
+            arguments.color_id.empty();
         const double load_seconds = process_cpu_seconds() - load_start;
 
         double minimum_absolute_value = std::numeric_limits<double>::infinity();
@@ -558,6 +584,7 @@ int main(int argc, char **argv) {
                 return evaluate_one(
                     handle,
                     events[kRepresentativePoint].momenta,
+                    generation_specialized_total,
                     evaluation_helicity_index,
                     evaluation_color_ids,
                     evaluation_color_count,
@@ -567,6 +594,7 @@ int main(int argc, char **argv) {
             evaluate_repeated_batch(
                 handle,
                 batch_momenta,
+                generation_specialized_total,
                 batch_helicity_indices,
                 evaluation_color_ids,
                 evaluation_color_count,
@@ -602,6 +630,7 @@ int main(int argc, char **argv) {
             point_values[point] = evaluate_one(
                 handle,
                 events[point].momenta,
+                generation_specialized_total,
                 evaluation_helicity_index,
                 evaluation_color_ids,
                 evaluation_color_count,
@@ -614,6 +643,7 @@ int main(int argc, char **argv) {
                 point_values[kRepresentativePoint] = evaluate_one(
                     handle,
                     events[kRepresentativePoint].momenta,
+                    generation_specialized_total,
                     evaluation_helicity_index,
                     evaluation_color_ids,
                     evaluation_color_count,

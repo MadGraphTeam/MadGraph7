@@ -664,6 +664,8 @@ impl LcResolvedOutputLayout {
 
 impl RecurrenceNativeRuntime {
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(super) fn new(
         plan: DirectRecurrencePlan,
         executors: DirectExecutorCatalog,
@@ -850,7 +852,7 @@ impl RecurrenceNativeRuntime {
         }
         let external_source_count = usize::try_from(scheduler.plan().external_source_count())
             .map_err(|_| RusticolError::artifact("recurrence source count exceeds usize"))?;
-        let scratch_len = scheduler
+        scheduler
             .point_tile_size()
             .try_into()
             .ok()
@@ -859,7 +861,13 @@ impl RecurrenceNativeRuntime {
             .ok_or_else(|| {
                 RusticolError::artifact("recurrence external-momentum workspace overflows usize")
             })?;
-        let external_momenta = vec![0.0; scratch_len];
+        let mut external_momenta = Vec::new();
+        ensure_external_momentum_workspace_capacity(
+            &mut external_momenta,
+            1,
+            external_source_count,
+            effective_point_tile_size,
+        )?;
         let contracted_replay_len = match &selectors {
             RecurrenceNativeSelectors::ContractedColorUnion {
                 contraction,
@@ -2390,12 +2398,7 @@ impl RecurrenceNativeRuntime {
 
     fn flatten_external_tile(&mut self, batch: &[Vec<[f64; 4]>]) -> RusticolResult<usize> {
         let point_count = batch.len();
-        if point_count > self.effective_point_tile_size() {
-            return Err(RusticolError::invalid_argument(
-                "recurrence point tile exceeds its persistent workspace",
-            ));
-        }
-        for (point_index, point) in batch.iter().enumerate() {
+        for point in batch {
             if point.len() != self.external_source_count {
                 return Err(RusticolError::invalid_argument(format!(
                     "recurrence point has {} external momenta, expected {}",
@@ -2403,6 +2406,14 @@ impl RecurrenceNativeRuntime {
                     self.external_source_count
                 )));
             }
+        }
+        ensure_external_momentum_workspace_capacity(
+            &mut self.external_momenta,
+            point_count,
+            self.external_source_count,
+            self.effective_point_tile_size,
+        )?;
+        for (point_index, point) in batch.iter().enumerate() {
             for (source_slot, momentum) in point.iter().enumerate() {
                 let start =
                     (point_index * self.external_source_count + source_slot) * momentum.len();
@@ -2417,11 +2428,6 @@ impl RecurrenceNativeRuntime {
         batch: F64MomentumBatchView<'_>,
     ) -> RusticolResult<usize> {
         let point_count = batch.point_count();
-        if point_count > self.effective_point_tile_size() {
-            return Err(RusticolError::invalid_argument(
-                "recurrence point tile exceeds its persistent workspace",
-            ));
-        }
         if batch.external_count() != self.external_source_count {
             return Err(RusticolError::invalid_argument(format!(
                 "recurrence input has {} external momenta, expected {}",
@@ -2429,6 +2435,12 @@ impl RecurrenceNativeRuntime {
                 self.external_source_count
             )));
         }
+        ensure_external_momentum_workspace_capacity(
+            &mut self.external_momenta,
+            point_count,
+            self.external_source_count,
+            self.effective_point_tile_size,
+        )?;
         for point_index in 0..point_count {
             let point = batch.point(point_index);
             for source_slot in 0..self.external_source_count {
@@ -2445,14 +2457,7 @@ impl RecurrenceNativeRuntime {
     }
 
     fn external_tile_input_len(&self, point_count: usize) -> RusticolResult<usize> {
-        point_count
-            .checked_mul(self.external_source_count)
-            .and_then(|count| count.checked_mul(4))
-            .ok_or_else(|| {
-                RusticolError::invalid_argument(
-                    "recurrence external-momentum tile length overflows",
-                )
-            })
+        external_momentum_scalar_len(point_count, self.external_source_count)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2491,7 +2496,7 @@ impl RecurrenceNativeRuntime {
                 return Ok(Duration::ZERO);
             }
         }
-        self.ensure_primary_symmetric_group_color_workspace()?;
+        self.ensure_primary_symmetric_group_color_workspace_for_capacity(point_count)?;
         let Self {
             scheduler,
             selectors:
@@ -2616,21 +2621,16 @@ impl RecurrenceNativeRuntime {
             + reduction_started.map_or(Duration::ZERO, |started| started.elapsed()))
     }
 
-    fn ensure_primary_symmetric_group_color_workspace(&mut self) -> RusticolResult<()> {
-        self.ensure_primary_symmetric_group_color_workspace_for_capacity(
-            self.effective_point_tile_size,
-        )
-    }
-
     fn ensure_primary_symmetric_group_color_workspace_for_capacity(
         &mut self,
         point_capacity: usize,
     ) -> RusticolResult<()> {
-        if self.symmetric_group_color_workspace.is_some() {
-            return Ok(());
-        }
-        let RecurrenceNativeSelectors::ContractedColorUnion { contraction, .. } = &self.selectors
-        else {
+        let Self {
+            selectors,
+            symmetric_group_color_workspace,
+            ..
+        } = self;
+        let RecurrenceNativeSelectors::ContractedColorUnion { contraction, .. } = selectors else {
             return Ok(());
         };
         let Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) =
@@ -2638,8 +2638,11 @@ impl RecurrenceNativeRuntime {
         else {
             return Ok(());
         };
-        self.symmetric_group_color_workspace = Some(reducer.workspace(point_capacity)?);
-        Ok(())
+        ensure_symmetric_group_color_workspace_capacity(
+            symmetric_group_color_workspace,
+            reducer,
+            point_capacity,
+        )
     }
 
     fn validate_public_axis_lengths(&self, physics: &PhysicsRuntime) -> RusticolResult<()> {
@@ -2709,6 +2712,55 @@ fn lazy_symmetric_group_workspace_for_point_tile(
         reducer.bounded_lane_capacity(requested_point_tile_size)?,
         None,
     ))
+}
+
+fn ensure_symmetric_group_color_workspace_capacity(
+    workspace: &mut Option<RuntimeSymmetricGroupColorWorkspace>,
+    reducer: &crate::recurrence::RuntimeSymmetricGroupColorContraction,
+    point_capacity: usize,
+) -> RusticolResult<()> {
+    if let Some(workspace) = workspace.as_mut() {
+        return workspace.ensure_lane_capacity(reducer, point_capacity);
+    }
+    *workspace = Some(reducer.workspace(point_capacity)?);
+    Ok(())
+}
+
+fn external_momentum_scalar_len(
+    point_count: usize,
+    external_source_count: usize,
+) -> RusticolResult<usize> {
+    point_count
+        .checked_mul(external_source_count)
+        .and_then(|count| count.checked_mul(4))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("recurrence external-momentum tile length overflows")
+        })
+}
+
+fn ensure_external_momentum_workspace_capacity(
+    workspace: &mut Vec<f64>,
+    point_count: usize,
+    external_source_count: usize,
+    maximum_point_count: usize,
+) -> RusticolResult<usize> {
+    if point_count > maximum_point_count {
+        return Err(RusticolError::invalid_argument(
+            "recurrence point tile exceeds its persistent workspace",
+        ));
+    }
+    let required = external_momentum_scalar_len(point_count, external_source_count)?;
+    if workspace.len() < required {
+        workspace
+            .try_reserve_exact(required - workspace.len())
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "recurrence external-momentum workspace allocation failed: {error}"
+                ))
+            })?;
+        workspace.resize(required, 0.0);
+    }
+    Ok(required)
 }
 
 fn validate_recurrence_selector_ids(
@@ -4321,8 +4373,86 @@ mod replay_destination_helicity_tests {
         assert_eq!(effective_point_tile_size, 5);
         assert!(workspace.is_none());
 
-        let workspace = reducer.workspace(effective_point_tile_size).unwrap();
-        assert_eq!(workspace.lane_capacity(), effective_point_tile_size);
+        let mut workspace = None;
+        ensure_symmetric_group_color_workspace_capacity(&mut workspace, reducer, 1).unwrap();
+        assert_eq!(workspace.as_ref().unwrap().lane_capacity(), 1);
+
+        ensure_symmetric_group_color_workspace_capacity(&mut workspace, reducer, 1).unwrap();
+        assert_eq!(workspace.as_ref().unwrap().lane_capacity(), 1);
+
+        ensure_symmetric_group_color_workspace_capacity(&mut workspace, reducer, 3).unwrap();
+        assert_eq!(workspace.as_ref().unwrap().lane_capacity(), 3);
+
+        ensure_symmetric_group_color_workspace_capacity(&mut workspace, reducer, 2).unwrap();
+        assert_eq!(workspace.as_ref().unwrap().lane_capacity(), 3);
+    }
+
+    #[test]
+    fn recurrence_external_momentum_workspace_starts_singleton_and_grows_without_shrinking() {
+        let external_source_count = 4;
+        let maximum_point_count = 5;
+        let mut workspace = Vec::new();
+
+        let singleton_len = ensure_external_momentum_workspace_capacity(
+            &mut workspace,
+            1,
+            external_source_count,
+            maximum_point_count,
+        )
+        .unwrap();
+        assert_eq!(singleton_len, external_source_count * 4);
+        assert_eq!(workspace.len(), singleton_len);
+        workspace[0] = 17.0;
+
+        let singleton_ptr = workspace.as_ptr();
+        let singleton_capacity = workspace.capacity();
+        ensure_external_momentum_workspace_capacity(
+            &mut workspace,
+            1,
+            external_source_count,
+            maximum_point_count,
+        )
+        .unwrap();
+        assert_eq!(workspace.as_ptr(), singleton_ptr);
+        assert_eq!(workspace.capacity(), singleton_capacity);
+
+        let grown_len = ensure_external_momentum_workspace_capacity(
+            &mut workspace,
+            3,
+            external_source_count,
+            maximum_point_count,
+        )
+        .unwrap();
+        assert_eq!(grown_len, 3 * external_source_count * 4);
+        assert_eq!(workspace.len(), grown_len);
+        assert_eq!(workspace[0], 17.0);
+        assert!(workspace[singleton_len..].iter().all(|value| *value == 0.0));
+
+        let grown_ptr = workspace.as_ptr();
+        let grown_capacity = workspace.capacity();
+        ensure_external_momentum_workspace_capacity(
+            &mut workspace,
+            2,
+            external_source_count,
+            maximum_point_count,
+        )
+        .unwrap();
+        assert_eq!(workspace.len(), grown_len);
+        assert_eq!(workspace.as_ptr(), grown_ptr);
+        assert_eq!(workspace.capacity(), grown_capacity);
+
+        let error = ensure_external_momentum_workspace_capacity(
+            &mut workspace,
+            maximum_point_count + 1,
+            external_source_count,
+            maximum_point_count,
+        )
+        .expect_err("workspace growth past the persistent tile limit must fail");
+        assert_eq!(
+            error.message(),
+            "recurrence point tile exceeds its persistent workspace"
+        );
+        assert_eq!(workspace.len(), grown_len);
     }
 
     #[test]
@@ -4453,6 +4583,7 @@ mod replay_destination_helicity_tests {
             },
         )
         .unwrap();
+        assert_eq!(workspace.lane_capacity(), point_count);
         for (actual, expected) in actual.into_iter().zip(expected) {
             let scale = expected.abs().max(1.0);
             assert!((actual - expected).abs() <= 2.0e-11 * scale);

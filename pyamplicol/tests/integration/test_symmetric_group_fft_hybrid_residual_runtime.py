@@ -4,7 +4,7 @@
 Run this deliberately bounded acceptance under the repository memory watchdog::
 
     PYAMPLICOL_RUN_FFT_HYBRID_RESIDUAL_RUNTIME_ACCEPTANCE=1 \
-      .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 20 -- \
+      .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
       .venv/bin/python -m pytest -q \
       tests/integration/test_symmetric_group_fft_hybrid_residual_runtime.py
 
@@ -61,7 +61,7 @@ _SM_ROOT = (
 
 pytestmark = pytest.mark.skipif(
     os.environ.get(_ACCEPTANCE_ENV) != "1",
-    reason=f"set {_ACCEPTANCE_ENV}=1 and run under the 20 GiB watchdog",
+    reason=f"set {_ACCEPTANCE_ENV}=1 and run under the 30 GiB watchdog",
 )
 
 

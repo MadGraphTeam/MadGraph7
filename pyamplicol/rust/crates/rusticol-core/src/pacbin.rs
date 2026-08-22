@@ -434,6 +434,8 @@ impl PacbinReader {
     }
 
     /// Authenticate and snapshot an already-open, metadata-checked container.
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(crate) fn open_file_with_sha256(
         file: File,
         display_path: &Path,
@@ -464,6 +466,8 @@ impl PacbinReader {
         Self::from_storage(storage, verify_payloads)
     }
 
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     fn open_file_storage(mut file: File, path: &Path) -> RusticolResult<(PacbinStorage, [u8; 32])> {
         let expected_length = file
             .metadata()
@@ -525,6 +529,8 @@ impl PacbinReader {
         Self::from_storage(PacbinStorage::Owned(bytes.into_boxed_slice()), true)
     }
 
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     fn from_storage(bytes: PacbinStorage, verify_payloads: bool) -> RusticolResult<Self> {
         let index = parse_and_validate(bytes.as_ref(), verify_payloads)?;
         Ok(Self { bytes, index })
@@ -1035,6 +1041,8 @@ fn normalize_logical_path_impl(value: &str) -> Result<String, String> {
     Ok(parts.join("/"))
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
 fn parse_and_validate(bytes: &[u8], verify_payloads: bool) -> RusticolResult<PacbinIndex> {
     let minimum_size = HEADER_SIZE
         .checked_add(INDEX_HEADER_SIZE)

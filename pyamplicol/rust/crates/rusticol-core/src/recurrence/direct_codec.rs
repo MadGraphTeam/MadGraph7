@@ -635,6 +635,9 @@ pub(crate) fn encode_recurrence_direct_plan_v2_to_writer<W: Write>(
     Ok(writer.bytes_written)
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+#[cfg_attr(target_vendor = "apple", cold)]
 pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRecurrencePlan> {
     #[cfg(feature = "on-the-fly-test-support")]
     super::on_the_fly::reject_forbidden_work_if_probed(

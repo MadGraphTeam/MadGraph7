@@ -328,8 +328,10 @@ impl RuntimeSymmetricGroupColorContraction {
         Ok(requested.min(budget_lanes))
     }
 
-    /// Reduce one component/helicity tile with no allocation.  The amplitude
-    /// accessor receives a normalized local-group index and active lane.
+    /// Reduce one component/helicity tile.  A call that exceeds the retained
+    /// workspace high-water mark may grow it fallibly; repeated calls within
+    /// the retained capacity allocate nothing.  The amplitude accessor
+    /// receives a normalized local-group index and active lane.
     pub(crate) fn reduce_lanes(
         &self,
         workspace: &mut RuntimeSymmetricGroupColorWorkspace,
@@ -525,9 +527,9 @@ impl RuntimeSymmetricGroupColorContraction {
 }
 
 /// Process-local mutable storage shared by the recurrence and on-the-fly
-/// contraction seams. Capacity is chosen from the bounded point-tile size no
-/// later than the lane's first reduction and retained thereafter; every
-/// transform keeps the point lane as its innermost coordinate.
+/// contraction seams. Capacity starts at the first positive reduction size,
+/// grows fallibly up to the bounded point-tile high-water mark, and never
+/// shrinks; every transform keeps the point lane as its innermost coordinate.
 #[derive(Debug)]
 pub(crate) struct RuntimeSymmetricGroupColorWorkspace {
     degree: u32,
@@ -562,16 +564,42 @@ impl RuntimeSymmetricGroupColorWorkspace {
             .ok_or_else(|| {
                 malformed("symmetric-group transformed workspace size overflows usize")
             })?;
+        let mut gathered = Vec::new();
+        gathered
+            .try_reserve_exact(gathered_count)
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "symmetric-group gathered workspace allocation failed: {error}"
+                ))
+            })?;
+        gathered.resize(gathered_count, (0.0, 0.0));
+        let mut transformed = Vec::new();
+        transformed
+            .try_reserve_exact(transformed_count)
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "symmetric-group transformed workspace allocation failed: {error}"
+                ))
+            })?;
+        transformed.resize(transformed_count, (0.0, 0.0));
+        let mut reduced = Vec::new();
+        reduced.try_reserve_exact(lane_capacity).map_err(|error| {
+            RusticolError::internal(format!(
+                "symmetric-group reduced workspace allocation failed: {error}"
+            ))
+        })?;
+        reduced.resize(lane_capacity, 0.0);
+        let fft = contraction.fft_plan.workspace(lane_capacity)?;
         Ok(Self {
             degree: contraction.degree,
             group_order: contraction.group_order,
             channel_count: contraction.channel_count,
             local_group_count: contraction.local_group_count,
             lane_capacity,
-            gathered: vec![(0.0, 0.0); gathered_count],
-            transformed: vec![(0.0, 0.0); transformed_count],
-            reduced: vec![0.0; lane_capacity],
-            fft: contraction.fft_plan.workspace(lane_capacity)?,
+            gathered,
+            transformed,
+            reduced,
+            fft,
         })
     }
 
@@ -597,7 +625,7 @@ impl RuntimeSymmetricGroupColorWorkspace {
         Ok(())
     }
 
-    fn ensure_lane_capacity(
+    pub(crate) fn ensure_lane_capacity(
         &mut self,
         contraction: &RuntimeSymmetricGroupColorContraction,
         lane_count: usize,

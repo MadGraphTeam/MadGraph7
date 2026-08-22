@@ -392,6 +392,15 @@ pub(super) fn validate_capability_list_match(
     right: &[String],
     context: &str,
 ) -> RusticolResult<()> {
+    // Artifact and execution validators require canonical sorted capability
+    // lists.  Preserve the order-insensitive fallback for other callers while
+    // keeping the ordinary authenticated load path allocation-free.
+    if left == right
+        && left.windows(2).all(|pair| pair[0] < pair[1])
+        && right.windows(2).all(|pair| pair[0] < pair[1])
+    {
+        return Ok(());
+    }
     let right_set = right.iter().cloned().collect::<BTreeSet<_>>();
     if right_set.len() != right.len() {
         return Err(RusticolError::integrity(format!(

@@ -17,6 +17,9 @@ use crate::recurrence::{
     RECURRENCE_RUNTIME_KIND, RECURRENCE_RUNTIME_LAYOUT_ABI, relation_certificate_algorithm,
 };
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
+use bincode::Decode;
+#[cfg(any(feature = "python-generation-bridge", test))]
+use bincode::Encode;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -39,9 +42,10 @@ pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 
 const MAX_RELATION_DISCOVERY_SAMPLES: usize = 16;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
-pub(super) struct RecurrenceExecutionManifest {
+pub(crate) struct RecurrenceExecutionManifest {
     pub(super) schema_version: u32,
     pub(super) kind: String,
     pub(super) required_runtime_capabilities: Vec<String>,
@@ -67,21 +71,24 @@ pub(super) struct RecurrenceExecutionManifest {
     pub(super) recurrence_summary: RecurrenceSummary,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceKernelPackReference {
     pub(super) manifest_path: String,
     pub(super) payload_root: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRuntimeOptions {
     pub(super) point_tile_size: u32,
     pub(super) workspace_mib: u32,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrencePlanSummary {
     pub(super) kind: String,
@@ -104,7 +111,8 @@ pub(super) struct RecurrencePlanSummary {
 /// One pre-lowered physical-colour schedule plus an exact runtime-helicity
 /// dispatch.  Physics and color storage remain owned by the enclosing
 /// recurrence process.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceHelicitySelectorCompanionManifest {
     pub(super) schema_version: u32,
@@ -114,7 +122,8 @@ pub(super) struct RecurrenceHelicitySelectorCompanionManifest {
     pub(super) color_contraction: RecurrenceHelicitySelectorColorView,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceHelicityDispatchReference {
     pub(super) abi: String,
@@ -125,14 +134,16 @@ pub(super) struct RecurrenceHelicityDispatchReference {
     pub(super) resolved_helicity_count: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceHelicitySelectorColorView {
     pub(super) source: String,
     pub(super) view: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceProcessBinding {
     pub(super) abi: String,
@@ -148,7 +159,8 @@ pub(super) struct RecurrenceProcessBinding {
     pub(super) sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceProcessRemap {
     pub(super) bijection_digest: String,
@@ -165,14 +177,16 @@ pub(super) struct RecurrenceProcessRemap {
     pub(super) parameter_slots: RecurrenceSparseBijection,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceSparseBijection {
     pub(super) count: u32,
     pub(super) changes: Vec<[u32; 2]>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRuntimeContainer {
     pub(super) kind: String,
@@ -187,7 +201,8 @@ pub(super) struct RecurrenceRuntimeContainer {
     pub(super) index_sha256: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RecurrenceLcFlowLayout {
     TopologyReplay,
@@ -195,20 +210,23 @@ pub(super) enum RecurrenceLcFlowLayout {
     ContractedColorUnion,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RecurrenceCacheFootprintPolicy {
     SelectorActiveMaxV1,
     PersistedArenaV1,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RecurrencePeakContributionCountSemantics {
     ResidentPendingContributionsV1,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceInspectionSummary {
     pub(super) execution_mode: String,
@@ -240,7 +258,8 @@ pub(super) struct RecurrenceInspectionSummary {
     pub(super) generation_timings_seconds: RecurrenceGenerationTimings,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceStructuralZeroPhysicalSectorCertificate {
     pub(super) proof_kind: String,
@@ -250,7 +269,8 @@ pub(super) struct RecurrenceStructuralZeroPhysicalSectorCertificate {
     pub(super) certified_structural_zero_sector_count: u64,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceScheduleSummary {
     pub(super) current_count: u64,
@@ -265,7 +285,8 @@ pub(super) struct RecurrenceScheduleSummary {
     pub(super) exact_factor_count: u64,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceSelectorPersistedUnion {
     pub(super) current_count: u64,
@@ -277,7 +298,8 @@ pub(super) struct RecurrenceSelectorPersistedUnion {
     pub(super) row_count: u64,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceSelectorRepresentative {
     pub(super) representative_sector_id: u64,
@@ -292,7 +314,8 @@ pub(super) struct RecurrenceSelectorRepresentative {
     pub(super) row_count: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceSelectorWorkCertificate {
     pub(super) schema_version: u16,
@@ -301,7 +324,8 @@ pub(super) struct RecurrenceSelectorWorkCertificate {
     pub(super) representatives: Vec<RecurrenceSelectorRepresentative>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceConstructionSummary {
     pub(super) peak_current_count: u64,
@@ -318,7 +342,8 @@ pub(super) struct RecurrenceConstructionSummary {
     pub(super) peak_to_final_contribution_ratio: f64,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceDirectArenaSummary {
     pub(super) semantic_component_count: u64,
@@ -334,7 +359,8 @@ pub(super) struct RecurrenceDirectArenaSummary {
     pub(super) scatter_bytes: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRuntimeContainerMember {
     pub(super) path: String,
@@ -343,7 +369,8 @@ pub(super) struct RecurrenceRuntimeContainerMember {
     pub(super) container_size_bytes: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceColorProjectionCertificate {
     pub(super) path: String,
@@ -354,14 +381,16 @@ pub(super) struct RecurrenceColorProjectionCertificate {
     pub(super) sha256: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RecurrenceRelationDiscoveryMode {
     Diagnostic,
     CertifiedReuse,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationDiscoverySummary {
     pub(super) schema_version: u16,
@@ -392,7 +421,8 @@ pub(super) struct RecurrenceRelationDiscoverySummary {
     pub(super) follow_up_boundary: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationRejectedDiagnostics {
     pub(super) total_rejected_hypothesis_count: u64,
@@ -404,7 +434,8 @@ pub(super) struct RecurrenceRelationRejectedDiagnostics {
     pub(super) full_rejection_sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationDiscoveryScope {
     pub(super) execution_mode: String,
@@ -413,7 +444,8 @@ pub(super) struct RecurrenceRelationDiscoveryScope {
     pub(super) lc_flow_layout: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationDiscoveryProbe {
     pub(super) status: String,
@@ -433,7 +465,8 @@ pub(super) struct RecurrenceRelationDiscoveryProbe {
     pub(super) rejection_decision_sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationCertificateReplay {
     pub(super) algorithm: String,
@@ -441,7 +474,8 @@ pub(super) struct RecurrenceRelationCertificateReplay {
     pub(super) certificate_set_sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationCertificateSample {
     pub(super) algorithm: String,
@@ -453,7 +487,8 @@ pub(super) struct RecurrenceRelationCertificateSample {
     pub(super) proof_sha256: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationExactFactor {
     pub(super) real_numerator: String,
@@ -462,13 +497,15 @@ pub(super) struct RecurrenceRelationExactFactor {
     pub(super) imag_denominator: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRelationRejectedCandidate {
     pub(super) reason: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceGenerationTimings {
     pub(super) python_extraction: f64,
@@ -479,7 +516,8 @@ pub(super) struct RecurrenceGenerationTimings {
     pub(super) native_total: f64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceSummary {
     pub(super) lc_flow_layout: RecurrenceLcFlowLayout,
@@ -490,7 +528,8 @@ pub(super) struct RecurrenceSummary {
     pub(super) closure_term_count: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRuntimeMetadata {
     pub(super) public_color_flows: Vec<RecurrencePublicColorFlow>,
@@ -504,7 +543,8 @@ pub(super) struct RecurrenceRuntimeMetadata {
     pub(super) color_contraction: Option<RecurrenceColorContractionReference>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceColorContractionReference {
     pub(super) abi: String,
@@ -530,7 +570,8 @@ pub(super) struct RecurrenceColorContractionReference {
     pub(super) fft_provenance: Option<RecurrenceColorFftProvenance>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceColorFactorizationReference {
     pub(super) kind: String,
@@ -538,7 +579,8 @@ pub(super) struct RecurrenceColorFactorizationReference {
     pub(super) coset_count: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceColorFftProvenance {
     pub(super) method: String,
@@ -552,7 +594,8 @@ pub(super) struct RecurrenceColorFftProvenance {
     pub(super) capability: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrencePublicColorFlow {
     pub(super) public_id: String,
@@ -560,7 +603,8 @@ pub(super) struct RecurrencePublicColorFlow {
     pub(super) target_sector_id: u32,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRuntimeParameter {
     pub(super) name: String,
@@ -573,7 +617,8 @@ pub(super) struct RecurrenceRuntimeParameter {
     pub(super) complex_component: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceParameterProjection {
     pub(super) runtime_slot: u32,
@@ -584,7 +629,8 @@ pub(super) struct RecurrenceParameterProjection {
     pub(super) component: u32,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceSourceTemplate {
     pub(super) source_template_id: u32,
@@ -598,7 +644,8 @@ pub(super) struct RecurrenceSourceTemplate {
     pub(super) crossing: RecurrenceGenericCrossingIr,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceExternalLeg {
     pub(super) source_slot: u32,
@@ -608,14 +655,16 @@ pub(super) struct RecurrenceExternalLeg {
     pub(super) is_initial: bool,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceParticleMass {
     pub(super) outgoing_pdg: i32,
     pub(super) mass: f64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceNormalization {
     pub(super) color_accuracy: String,
@@ -631,7 +680,8 @@ pub(super) struct RecurrenceNormalization {
     pub(super) coupling_policy: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RecurrenceSourceOrientation {
     Particle,
@@ -639,7 +689,8 @@ pub(super) enum RecurrenceSourceOrientation {
     SelfConjugate,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "lowercase")]
 pub(super) enum RecurrenceParticleStatistics {
     Boson,
@@ -648,7 +699,8 @@ pub(super) enum RecurrenceParticleStatistics {
     Auxiliary,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "lowercase")]
 pub(super) enum RecurrenceWavefunctionFamily {
     Scalar,
@@ -659,21 +711,24 @@ pub(super) enum RecurrenceWavefunctionFamily {
     Auxiliary,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RecurrenceMomentumTransform {
     Identity,
     NegateFourMomentum,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Decode, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(untagged)]
 pub(super) enum RecurrenceSourceSpinState {
     Scalar(i32),
     Components(Vec<i32>),
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Decode, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceGenericSourceStateIr {
     pub(super) helicity: i32,
@@ -681,7 +736,8 @@ pub(super) struct RecurrenceGenericSourceStateIr {
     pub(super) spin_state: RecurrenceSourceSpinState,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Decode, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceGenericCrossingIr {
     pub(super) momentum_transform: RecurrenceMomentumTransform,
@@ -692,7 +748,8 @@ pub(super) struct RecurrenceGenericCrossingIr {
     pub(super) phase: [f64; 2],
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Decode, Eq, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceGenericParticleIdentityIr {
     pub(super) canonical_id: String,
@@ -706,7 +763,8 @@ pub(super) struct RecurrenceGenericParticleIdentityIr {
     pub(super) self_conjugate: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Decode, PartialEq)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceGenericSourceIr {
     pub(super) identity: RecurrenceGenericParticleIdentityIr,
@@ -2430,23 +2488,12 @@ impl RecurrenceRuntimeMetadata {
                 color_contraction.validate(color_accuracy, inspection)?;
             }
         }
-        if self.prepared_parameter_defaults.len() as u64 != inspection.parameter_count {
-            return Err(RusticolError::integrity(
-                "recurrence prepared-parameter defaults do not match the plan parameter count",
-            ));
-        }
-        if self
-            .prepared_parameter_defaults
-            .iter()
-            .flatten()
-            .any(|component| !component.is_finite())
-        {
-            return Err(RusticolError::artifact(
-                "recurrence prepared-parameter defaults must be finite complex-f64 values",
-            ));
-        }
-        self.validate_parameter_projection()?;
-        self.validate_runtime_parameters(&self.runtime_parameters)?;
+        validate_recurrence_parameter_runtime_parts(
+            &self.runtime_parameters,
+            &self.prepared_parameter_defaults,
+            &self.parameter_projection,
+            inspection.parameter_count,
+        )?;
 
         if self.source_templates.is_empty() {
             return Err(RusticolError::artifact(
@@ -2527,153 +2574,186 @@ impl RecurrenceRuntimeMetadata {
         }
         self.normalization.validate(color_accuracy)
     }
+}
 
-    fn validate_runtime_parameters(
-        &self,
-        parameters: &[RecurrenceRuntimeParameter],
-    ) -> RusticolResult<()> {
-        if parameters.len() != self.parameter_projection.len() {
-            return Err(RusticolError::integrity(
-                "recurrence runtime parameters do not cover the parameter projection",
+/// Validate the operational parameter schema shared by the broad manifest
+/// and the compact process-ready recipe.  Keeping this boundary shared avoids
+/// accepting a recipe that would bind runtime slots differently from the
+/// generation manifest it was derived from.
+pub(super) fn validate_recurrence_parameter_runtime_parts(
+    parameters: &[RecurrenceRuntimeParameter],
+    prepared_parameter_defaults: &[[f64; 2]],
+    parameter_projection: &[RecurrenceParameterProjection],
+    expected_parameter_count: u64,
+) -> RusticolResult<()> {
+    if prepared_parameter_defaults.len() as u64 != expected_parameter_count {
+        return Err(RusticolError::integrity(
+            "recurrence prepared-parameter defaults do not match the plan parameter count",
+        ));
+    }
+    if prepared_parameter_defaults
+        .iter()
+        .flatten()
+        .any(|component| !component.is_finite())
+    {
+        return Err(RusticolError::artifact(
+            "recurrence prepared-parameter defaults must be finite complex-f64 values",
+        ));
+    }
+    validate_parameter_projection(prepared_parameter_defaults.len(), parameter_projection)?;
+    validate_runtime_parameters(
+        parameters,
+        prepared_parameter_defaults,
+        parameter_projection,
+    )
+}
+
+fn validate_runtime_parameters(
+    parameters: &[RecurrenceRuntimeParameter],
+    prepared_parameter_defaults: &[[f64; 2]],
+    parameter_projection: &[RecurrenceParameterProjection],
+) -> RusticolResult<()> {
+    if parameters.len() != parameter_projection.len() {
+        return Err(RusticolError::integrity(
+            "recurrence runtime parameters do not cover the parameter projection",
+        ));
+    }
+    let mut previous_runtime_name: Option<&str> = None;
+    let mut previous_kind: Option<&str> = None;
+    for (parameter_index, (parameter, projection)) in
+        parameters.iter().zip(parameter_projection).enumerate()
+    {
+        if parameter.parameter_index as usize != parameter_index
+            || parameter.parameter_index != projection.runtime_slot
+        {
+            return Err(RusticolError::artifact(
+                "recurrence runtime parameter indices must be dense and match projection slots",
             ));
         }
-        let mut previous_runtime_name: Option<&str> = None;
-        let mut previous_kind: Option<&str> = None;
-        for (parameter_index, (parameter, projection)) in parameters
-            .iter()
-            .zip(&self.parameter_projection)
-            .enumerate()
-        {
-            if parameter.parameter_index as usize != parameter_index
-                || parameter.parameter_index != projection.runtime_slot
-            {
-                return Err(RusticolError::artifact(
-                    "recurrence runtime parameter indices must be dense and match projection slots",
-                ));
-            }
-            validate_text(&parameter.name, "recurrence runtime parameter name")?;
-            validate_text(&parameter.kind, "recurrence runtime parameter kind")?;
-            if !parameter.default.is_finite() {
-                return Err(RusticolError::artifact(
-                    "recurrence runtime parameter defaults must be finite",
-                ));
-            }
-
-            match (&parameter.runtime_name, &parameter.complex_component) {
-                (Some(runtime_name), Some(component)) => {
-                    validate_text(runtime_name, "recurrence runtime parameter public name")?;
-                    let expected_component = match projection.component {
-                        0 => "real",
-                        1 => "imag",
-                        _ => {
-                            return Err(RusticolError::integrity(
-                                "recurrence runtime parameter has an invalid projected component",
-                            ));
-                        }
-                    };
-                    if component != expected_component
-                        || projection.runtime_name != *runtime_name
-                        || parameter.name != format!("{runtime_name}.{component}")
-                    {
-                        return Err(RusticolError::integrity(
-                            "recurrence complex runtime parameter disagrees with its projection",
-                        ));
-                    }
-                    if previous_runtime_name == Some(runtime_name.as_str())
-                        && previous_kind != Some(parameter.kind.as_str())
-                    {
-                        return Err(RusticolError::integrity(
-                            "recurrence complex runtime parameter components have different kinds",
-                        ));
-                    }
-                    previous_runtime_name = Some(runtime_name);
-                    previous_kind = Some(&parameter.kind);
-                }
-                (None, None) => {
-                    if projection.component != 0 || parameter.name != projection.runtime_name {
-                        return Err(RusticolError::integrity(
-                            "recurrence real runtime parameter disagrees with its projection",
-                        ));
-                    }
-                    previous_runtime_name = None;
-                    previous_kind = None;
-                }
-                _ => {
-                    return Err(RusticolError::artifact(
-                        "recurrence runtime_name and complex_component must be both present or both absent",
-                    ));
-                }
-            }
-
-            if let Some(prepared_id) = projection.prepared_parameter_id {
-                let expected_default = self.prepared_parameter_defaults[prepared_id as usize]
-                    [projection.component as usize];
-                if parameter.default != expected_default {
-                    return Err(RusticolError::integrity(
-                        "recurrence runtime parameter default disagrees with its prepared default",
-                    ));
-                }
-            }
+        validate_text(&parameter.name, "recurrence runtime parameter name")?;
+        validate_text(&parameter.kind, "recurrence runtime parameter kind")?;
+        if !parameter.default.is_finite() {
+            return Err(RusticolError::artifact(
+                "recurrence runtime parameter defaults must be finite",
+            ));
         }
-        Ok(())
-    }
 
-    fn validate_parameter_projection(&self) -> RusticolResult<()> {
-        let parameter_count = self.prepared_parameter_defaults.len();
-        let mut previous_key: Option<(&str, u32)> = None;
-        let mut current_name: Option<&str> = None;
-        let mut current_template = None;
-        let mut current_prepared = None;
-        for (runtime_slot, row) in self.parameter_projection.iter().enumerate() {
-            if row.runtime_slot as usize != runtime_slot {
-                return Err(RusticolError::artifact(
-                    "recurrence runtime parameter slots must be dense and ordered from zero",
-                ));
-            }
-            validate_text(&row.runtime_name, "recurrence runtime parameter name")?;
-            if row.component > 1 {
-                return Err(RusticolError::artifact(
-                    "recurrence runtime parameter component must be zero or one",
-                ));
-            }
-            if row.parameter_template_id as usize >= parameter_count
-                || row
-                    .prepared_parameter_id
-                    .is_some_and(|id| id as usize >= parameter_count)
-            {
-                return Err(RusticolError::integrity(
-                    "recurrence parameter projection references an absent parameter",
-                ));
-            }
-            let key = (row.runtime_name.as_str(), row.component);
-            if previous_key.is_some_and(|previous| previous >= key) {
-                return Err(RusticolError::artifact(
-                    "recurrence parameter projection is not in strict name/component order",
-                ));
-            }
-            previous_key = Some(key);
-            if current_name == Some(row.runtime_name.as_str()) {
-                if row.component != 1
-                    || current_template != Some(row.parameter_template_id)
-                    || current_prepared != Some(row.prepared_parameter_id)
+        match (&parameter.runtime_name, &parameter.complex_component) {
+            (Some(runtime_name), Some(component)) => {
+                validate_text(runtime_name, "recurrence runtime parameter public name")?;
+                let expected_component = match projection.component {
+                    0 => "real",
+                    1 => "imag",
+                    _ => {
+                        return Err(RusticolError::integrity(
+                            "recurrence runtime parameter has an invalid projected component",
+                        ));
+                    }
+                };
+                if component != expected_component
+                    || projection.runtime_name != *runtime_name
+                    || parameter.name != format!("{runtime_name}.{component}")
                 {
                     return Err(RusticolError::integrity(
-                        "recurrence complex parameter projection rows are inconsistent",
+                        "recurrence complex runtime parameter disagrees with its projection",
                     ));
                 }
-            } else {
-                if row.component != 0 {
-                    return Err(RusticolError::artifact(
-                        "recurrence parameter projection must begin each parameter at component zero",
+                if previous_runtime_name == Some(runtime_name.as_str())
+                    && previous_kind != Some(parameter.kind.as_str())
+                {
+                    return Err(RusticolError::integrity(
+                        "recurrence complex runtime parameter components have different kinds",
                     ));
                 }
-                current_name = Some(row.runtime_name.as_str());
-                current_template = Some(row.parameter_template_id);
-                current_prepared = Some(row.prepared_parameter_id);
+                previous_runtime_name = Some(runtime_name);
+                previous_kind = Some(&parameter.kind);
+            }
+            (None, None) => {
+                if projection.component != 0 || parameter.name != projection.runtime_name {
+                    return Err(RusticolError::integrity(
+                        "recurrence real runtime parameter disagrees with its projection",
+                    ));
+                }
+                previous_runtime_name = None;
+                previous_kind = None;
+            }
+            _ => {
+                return Err(RusticolError::artifact(
+                    "recurrence runtime_name and complex_component must be both present or both absent",
+                ));
             }
         }
-        Ok(())
+
+        if let Some(prepared_id) = projection.prepared_parameter_id {
+            let expected_default =
+                prepared_parameter_defaults[prepared_id as usize][projection.component as usize];
+            if parameter.default != expected_default {
+                return Err(RusticolError::integrity(
+                    "recurrence runtime parameter default disagrees with its prepared default",
+                ));
+            }
+        }
     }
+    Ok(())
+}
+
+fn validate_parameter_projection(
+    parameter_count: usize,
+    parameter_projection: &[RecurrenceParameterProjection],
+) -> RusticolResult<()> {
+    let mut previous_key: Option<(&str, u32)> = None;
+    let mut current_name: Option<&str> = None;
+    let mut current_template = None;
+    let mut current_prepared = None;
+    for (runtime_slot, row) in parameter_projection.iter().enumerate() {
+        if row.runtime_slot as usize != runtime_slot {
+            return Err(RusticolError::artifact(
+                "recurrence runtime parameter slots must be dense and ordered from zero",
+            ));
+        }
+        validate_text(&row.runtime_name, "recurrence runtime parameter name")?;
+        if row.component > 1 {
+            return Err(RusticolError::artifact(
+                "recurrence runtime parameter component must be zero or one",
+            ));
+        }
+        if row.parameter_template_id as usize >= parameter_count
+            || row
+                .prepared_parameter_id
+                .is_some_and(|id| id as usize >= parameter_count)
+        {
+            return Err(RusticolError::integrity(
+                "recurrence parameter projection references an absent parameter",
+            ));
+        }
+        let key = (row.runtime_name.as_str(), row.component);
+        if previous_key.is_some_and(|previous| previous >= key) {
+            return Err(RusticolError::artifact(
+                "recurrence parameter projection is not in strict name/component order",
+            ));
+        }
+        previous_key = Some(key);
+        if current_name == Some(row.runtime_name.as_str()) {
+            if row.component != 1
+                || current_template != Some(row.parameter_template_id)
+                || current_prepared != Some(row.prepared_parameter_id)
+            {
+                return Err(RusticolError::integrity(
+                    "recurrence complex parameter projection rows are inconsistent",
+                ));
+            }
+        } else {
+            if row.component != 0 {
+                return Err(RusticolError::artifact(
+                    "recurrence parameter projection must begin each parameter at component zero",
+                ));
+            }
+            current_name = Some(row.runtime_name.as_str());
+            current_template = Some(row.parameter_template_id);
+            current_prepared = Some(row.prepared_parameter_id);
+        }
+    }
+    Ok(())
 }
 
 impl RecurrenceColorContractionReference {
