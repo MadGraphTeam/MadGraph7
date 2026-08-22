@@ -76,6 +76,11 @@ PLOT_TOOL = ROOT / "tools" / "developer" / "fft_scaling_study_plots.py"
 PDF_TOOL = ROOT / "tools" / "developer" / "fft_results_summary_pdf.py"
 MADGRAPH_TOOL = ROOT / "tools" / "developer" / "fft_madgraph_selected_runtime.py"
 TERMINAL_STATUSES = frozenset({"complete", "complete-with-failures"})
+LEGACY_MADGRAPH_NOTE = (
+    "MadGraph points are retained from a same-workstation snapshot that "
+    "predates the node-fingerprint field; strict terminal host authentication "
+    "is therefore unavailable for this anytime render."
+)
 
 
 class ProfilingError(RuntimeError):
@@ -1348,6 +1353,8 @@ def _compatible_render_report(
         ):
             return None
         _validate_render_workload(arguments, report)
+        if report.get("measurement_host") is None and _has_madgraph_series(report):
+            _append_plot_note(report, LEGACY_MADGRAPH_NOTE)
     except (OSError, ProfilingError, TypeError, ValueError):
         return None
     return report
@@ -1429,6 +1436,42 @@ def _validate_render_workload(
         )
 
 
+def _has_madgraph_series(report: Mapping[str, Any]) -> bool:
+    for section in ("cells", "runtime_series"):
+        families = report.get(section)
+        if not isinstance(families, Mapping):
+            continue
+        if any(
+            isinstance(family, Mapping) and "madgraph-standalone" in family
+            for family in families.values()
+        ):
+            return True
+    return False
+
+
+def _append_plot_note(report: dict[str, Any], note: str) -> None:
+    policy = report.get("policy")
+    if not isinstance(policy, dict):
+        return
+    plot = policy.setdefault("plot", {})
+    if not isinstance(plot, dict):
+        return
+    raw_notes = plot.get("notes")
+    notes = [str(item) for item in raw_notes] if isinstance(raw_notes, list) else []
+    if note not in notes:
+        notes.append(note)
+    plot["notes"] = notes
+
+
+def _legacy_madgraph_host_matches_current(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    current = madgraph.measurement_host_identity()
+    return all(
+        value.get(key) == current[key] for key in ("system", "machine", "python")
+    )
+
+
 def _attach_partial_overlay(report: dict[str, Any], path: Path) -> None:
     raw, payload, digest = _source_snapshot(path)
     report.setdefault("summary", {})
@@ -1450,6 +1493,10 @@ def _attach_partial_overlay(report: dict[str, Any], path: Path) -> None:
                 raise madgraph.SelectedMadGraphError(
                     "campaign and MadGraph overlay use different measurement hosts"
                 )
+        elif not _legacy_madgraph_host_matches_current(payload.get("host")):
+            raise madgraph.SelectedMadGraphError(
+                "legacy MadGraph overlay does not match this workstation"
+            )
         selected.apply_runtime_series_source(
             report,
             selected.SourceReport(
@@ -1463,6 +1510,8 @@ def _attach_partial_overlay(report: dict[str, Any], path: Path) -> None:
                 payload=payload,
             ),
         )
+        if raw_campaign_host is None:
+            _append_plot_note(report, LEGACY_MADGRAPH_NOTE)
         overlay_policy = payload.get("policy")
         if (
             isinstance(overlay_policy, Mapping)
@@ -1540,6 +1589,8 @@ def _matching_madgraph_overlay(
             return None
         # Historical overlays remain usable for explicitly nonterminal
         # anytime rendering, but can never enter the strict final merger.
+        if not _legacy_madgraph_host_matches_current(payload.get("host")):
+            return None
         overlay_host = None
     if (
         not isinstance(policy, Mapping)
@@ -1921,7 +1972,11 @@ def _preflight_renderer(arguments: argparse.Namespace) -> None:
             f"renderer --python executable is unavailable: {arguments.python}"
         )
     renderer = subprocess.run(
-        (str(arguments.python), "-c", "import matplotlib, reportlab"),
+        (
+            str(arguments.python),
+            "-c",
+            "import matplotlib, platform, reportlab; print(platform.python_version())",
+        ),
         check=False,
         capture_output=True,
         text=True,
@@ -1931,6 +1986,14 @@ def _preflight_renderer(arguments: argparse.Namespace) -> None:
         raise ProfilingError(
             "plot/PDF dependencies are missing from --python; install them with "
             f"{arguments.python} -m pip install -e '.[fft-profiling]'"
+        )
+    selected_version = renderer.stdout.strip()
+    driver_version = str(madgraph.measurement_host_identity()["python"])
+    if selected_version != driver_version:
+        raise ProfilingError(
+            "--python uses Python "
+            f"{selected_version!r}, but the profiling driver uses {driver_version!r}; "
+            "run fft_profiling.py with the selected interpreter"
         )
 
 

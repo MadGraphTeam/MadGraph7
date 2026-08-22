@@ -289,6 +289,12 @@ custom outputs keep their PDF inside the selected run directory. During a
 scan, the progress display reports the active cell, total live RSS, and
 occupied core slots.
 
+An older local MadGraph overlay that predates the node-fingerprint field may
+appear only in a nonterminal anytime render, only when its system, machine, and
+Python version match the current workstation. Such plots carry an explicit
+provenance note; the strict terminal publication merger still requires the
+complete host identity produced by a fresh profiler run.
+
 The public performance index retains four selected rendered snapshots. Raw
 JSON, generated tables, attempts, and campaign workspaces stay untracked:
 

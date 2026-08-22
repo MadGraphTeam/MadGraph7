@@ -1200,6 +1200,22 @@ def test_renderer_preflight_has_actionable_optional_extra(
         profiling._preflight_renderer(_arguments())
 
 
+def test_renderer_preflight_rejects_selected_python_version_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(profiling, "_command_available", lambda _command: True)
+    monkeypatch.setattr(
+        profiling.subprocess,
+        "run",
+        lambda *_args, **_kwargs: type(
+            "Result", (), {"returncode": 0, "stdout": "0.0-incompatible\n"}
+        )(),
+    )
+
+    with pytest.raises(profiling.ProfilingError, match="profiling driver uses"):
+        profiling._preflight_renderer(_arguments())
+
+
 def test_executable_normalization_preserves_virtualenv_symlink(
     tmp_path: Path,
 ) -> None:
@@ -1217,7 +1233,11 @@ def test_progress_attachment_validates_one_immutable_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     live = tmp_path / "progress.json"
-    payload = {"kind": profiling.madgraph.PROGRESS_KIND}
+    current = profiling.madgraph.measurement_host_identity()
+    payload = {
+        "kind": profiling.madgraph.PROGRESS_KIND,
+        "host": {key: current[key] for key in ("system", "machine", "python")},
+    }
     raw = json.dumps(payload).encode("utf-8")
     live.write_bytes(raw)
     validated_paths: list[Path] = []
@@ -1247,10 +1267,14 @@ def test_summed_overlay_replaces_stale_madgraph_omission_note(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     overlay = tmp_path / "summed-overlay.json"
+    current = profiling.madgraph.measurement_host_identity()
     overlay.write_text(
         json.dumps(
             {
                 "kind": profiling.madgraph.KIND,
+                "host": {
+                    key: current[key] for key in ("system", "machine", "python")
+                },
                 "policy": {
                     "helicity_workload": "sum",
                     "warm_fixed_helicity": False,
@@ -1279,6 +1303,7 @@ def test_summed_overlay_replaces_stale_madgraph_omission_note(
     notes = report["policy"]["plot"]["notes"]
     assert all("omitted" not in note.lower() for note in notes)
     assert notes == [
+        profiling.LEGACY_MADGRAPH_NOTE,
         "MadGraph standalone uses generated SMATRIX with USERHEL=-1; warmed "
         "GOODHEL pruning remains enabled."
     ]
@@ -1395,7 +1420,10 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
     assert profiling._madgraph_render_source(arguments, output) == overlay
 
     legacy_payload = json.loads(overlay.read_text(encoding="utf-8"))
-    legacy_payload.pop("host")
+    current = profiling.madgraph.measurement_host_identity()
+    legacy_payload["host"] = {
+        key: current[key] for key in ("system", "machine", "python")
+    }
     overlay.write_text(json.dumps(legacy_payload), encoding="utf-8")
     assert profiling._matching_madgraph_overlay(arguments, output) is None
     assert (
@@ -1405,3 +1433,12 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
         == overlay
     )
     assert profiling._madgraph_render_source(arguments, output) == overlay
+
+    legacy_payload["host"]["machine"] = "foreign-machine"
+    overlay.write_text(json.dumps(legacy_payload), encoding="utf-8")
+    assert (
+        profiling._matching_madgraph_overlay(
+            arguments, output, require_exact=False
+        )
+        is None
+    )
