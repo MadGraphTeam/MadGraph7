@@ -238,6 +238,14 @@ class _NativeProfileCounterSample:
     native_output_allocations_per_call: float | None
 
 
+def _benchmark_target_path(
+    target: RuntimeBackend | os.PathLike[str] | str,
+) -> Path | None:
+    if not isinstance(target, (str, os.PathLike)):
+        return None
+    return Path(os.fspath(target)).expanduser().resolve(strict=False)
+
+
 class BenchmarkBackend:
     """Measure the optimized summed runtime path without changing its semantics."""
 
@@ -271,11 +279,7 @@ class BenchmarkBackend:
         *,
         points: Momenta | None = None,
     ) -> BenchmarkResult:
-        target_path = (
-            None
-            if isinstance(target, RuntimeBackend)
-            else Path(os.fspath(target)).expanduser().resolve(strict=False)
-        )
+        target_path = _benchmark_target_path(target)
         runtime = self._runtime(target)
         if (
             str(getattr(runtime, "execution_mode", "compiled")) == "on-the-fly"
@@ -1038,15 +1042,17 @@ class BenchmarkBackend:
         )
 
     def _runtime(
-        self, target: RuntimeBackend | os.PathLike[str] | str
+        self,
+        target: RuntimeBackend | os.PathLike[str] | str,
     ) -> RuntimeBackend:
-        if isinstance(target, RuntimeBackend):
-            return target
+        target_path = _benchmark_target_path(target)
+        if target_path is None:
+            return cast(RuntimeBackend, target)
         from pyamplicol.runtime import load_runtime_backend
 
         run = self._run_config
         process = None if run is None else run.evaluation.process
-        path = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        path = target_path
         task_id = "process-output-load"
         started = time.perf_counter()
         if self._progress is not None:

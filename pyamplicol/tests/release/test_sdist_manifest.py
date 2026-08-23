@@ -98,10 +98,14 @@ def test_maturin_generated_sboms_are_disabled() -> None:
     }
 
 
-def test_sdist_inventory_requires_both_architecture_prepared_packs() -> None:
+def test_sdist_inventory_requires_all_prepared_packs() -> None:
     root = "src/pyamplicol/assets/prepared_models"
     expected = {
         f"{root}/__init__.py",
+        f"{root}/built-in-sm-heft-jit-o2-aarch64.metadata.json",
+        f"{root}/built-in-sm-heft-jit-o2-aarch64.pyamplicol-model",
+        f"{root}/built-in-sm-heft-jit-o2-x86_64.metadata.json",
+        f"{root}/built-in-sm-heft-jit-o2-x86_64.pyamplicol-model",
         f"{root}/built-in-sm-jit-o2-aarch64.metadata.json",
         f"{root}/built-in-sm-jit-o2-aarch64.pyamplicol-model",
         f"{root}/built-in-sm-jit-o2-x86_64.metadata.json",

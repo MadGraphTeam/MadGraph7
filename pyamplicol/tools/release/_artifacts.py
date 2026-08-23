@@ -53,7 +53,7 @@ from _common import (
 )
 from audit_sdist import (
     PREPARED_MODEL_ARCHITECTURES,
-    PREPARED_MODEL_ASSET_BASENAME,
+    PREPARED_MODEL_ASSETS,
     REQUIRED_SDIST_MEMBERS,
     prepared_model_asset_members,
 )
@@ -67,9 +67,7 @@ from prepare_selftest_fixture import (
 MAX_WHEEL_BYTES = 95_000_000
 EXPECTED_DISTRIBUTION = "pyamplicol"
 with (ROOT / "dependencies" / "release-lock.toml").open("rb") as _release_stream:
-    EXPECTED_RELEASE_VERSION = str(
-        tomllib.load(_release_stream)["project"]["version"]
-    )
+    EXPECTED_RELEASE_VERSION = str(tomllib.load(_release_stream)["project"]["version"])
 EXPECTED_PYTHON_TAG = "cp311"
 EXPECTED_ABI_TAG = "abi3"
 RELEASE_TARGETS = {
@@ -761,77 +759,81 @@ def _validate_prepared_model_assets(
             f"prepared-model asset inventory mismatch; missing={missing}, extra={extra}"
         )
 
-    for architecture in PREPARED_MODEL_ARCHITECTURES:
-        stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
-        metadata_name = f"{prepared_prefix}{stem}.metadata.json"
-        bundle_name = f"{prepared_prefix}{stem}.pyamplicol-model"
-        metadata = _json_object(entries, metadata_name)
-        if (
-            metadata.get("schema_version") != 1
-            or metadata.get("prepared_model_bundle_schema")
-            != abis.get("prepared_model_bundle")
-            or metadata.get("eager_kernel_abi") != abis.get("eager_kernel")
-            or metadata.get("id") != PREPARED_MODEL_ASSET_BASENAME
-            or metadata.get("model") != "built-in-sm"
-            or metadata.get("backend") != "jit"
-            or metadata.get("jit_optimization_level") != 2
-            or metadata.get("bundle") != PurePosixPath(bundle_name).name
-        ):
-            raise ArtifactError(
-                f"prepared-model metadata identity is invalid: {metadata_name}"
-            )
+    for identifier, model_source in PREPARED_MODEL_ASSETS.items():
+        for architecture in PREPARED_MODEL_ARCHITECTURES:
+            stem = f"{identifier}-{architecture}"
+            metadata_name = f"{prepared_prefix}{stem}.metadata.json"
+            bundle_name = f"{prepared_prefix}{stem}.pyamplicol-model"
+            metadata = _json_object(entries, metadata_name)
+            if (
+                metadata.get("schema_version") != 1
+                or metadata.get("prepared_model_bundle_schema")
+                != abis.get("prepared_model_bundle")
+                or metadata.get("eager_kernel_abi") != abis.get("eager_kernel")
+                or metadata.get("id") != identifier
+                or metadata.get("model") != model_source
+                or metadata.get("backend") != "jit"
+                or metadata.get("jit_optimization_level") != 2
+                or metadata.get("bundle") != PurePosixPath(bundle_name).name
+            ):
+                raise ArtifactError(
+                    f"prepared-model metadata identity is invalid: {metadata_name}"
+                )
 
-        dependencies = metadata.get("dependencies")
-        if (
-            not isinstance(dependencies, dict)
-            or dependencies.get("symjit_application_abi")
-            != abis.get("symjit_application")
-            or dependencies.get("symjit_plane_application_abi")
-            != abis.get("symjit_plane_application")
-            or dependencies.get("symbolica_serialization_abi")
-            != abis.get("symbolica_serialization")
-        ):
-            raise ArtifactError(
-                f"prepared-model SymJIT storage ABI is invalid: {metadata_name}"
-            )
+            dependencies = metadata.get("dependencies")
+            if (
+                not isinstance(dependencies, dict)
+                or dependencies.get("symjit_application_abi")
+                != abis.get("symjit_application")
+                or dependencies.get("symjit_plane_application_abi")
+                != abis.get("symjit_plane_application")
+                or dependencies.get("symbolica_serialization_abi")
+                != abis.get("symbolica_serialization")
+            ):
+                raise ArtifactError(
+                    f"prepared-model SymJIT storage ABI is invalid: {metadata_name}"
+                )
 
-        build_contract = metadata.get("build_contract")
-        if not isinstance(build_contract, dict) or build_contract.get("mode") != mode:
-            raise ArtifactError(
-                f"prepared-model build mode is invalid: {metadata_name}"
-            )
-        producer = metadata.get("producer")
-        if not isinstance(producer, dict):
-            raise ArtifactError(
-                f"prepared-model producer metadata is invalid: {metadata_name}"
-            )
+            build_contract = metadata.get("build_contract")
+            if (
+                not isinstance(build_contract, dict)
+                or build_contract.get("mode") != mode
+            ):
+                raise ArtifactError(
+                    f"prepared-model build mode is invalid: {metadata_name}"
+                )
+            producer = metadata.get("producer")
+            if not isinstance(producer, dict):
+                raise ArtifactError(
+                    f"prepared-model producer metadata is invalid: {metadata_name}"
+                )
 
-        expected_target = {
-            "portable": True,
-            "word_bits": 64,
-            "endianness": "little",
-            "target_triple": "symjit-storage-v3-portable",
-            "cpu_features": [],
-        }
-        if metadata.get("target") != expected_target:
-            raise ArtifactError(
-                f"prepared-model target class is invalid: {metadata_name}"
-            )
+            expected_target = {
+                "portable": True,
+                "word_bits": 64,
+                "endianness": "little",
+                "target_triple": "symjit-storage-v3-portable",
+                "cpu_features": [],
+            }
+            if metadata.get("target") != expected_target:
+                raise ArtifactError(
+                    f"prepared-model target class is invalid: {metadata_name}"
+                )
 
-        bundle = entries[bundle_name]
-        claimed_size = metadata.get("bundle_size")
-        claimed_digest = metadata.get("bundle_sha256")
-        if (
-            not bundle
-            or type(claimed_size) is not int
-            or claimed_size != len(bundle)
-            or not isinstance(claimed_digest, str)
-            or not re.fullmatch(r"[0-9a-f]{64}", claimed_digest)
-            or claimed_digest != hashlib.sha256(bundle).hexdigest()
-        ):
-            raise ArtifactError(
-                f"prepared-model bundle hash/size is invalid: {bundle_name}"
-            )
+            bundle = entries[bundle_name]
+            claimed_size = metadata.get("bundle_size")
+            claimed_digest = metadata.get("bundle_sha256")
+            if (
+                not bundle
+                or type(claimed_size) is not int
+                or claimed_size != len(bundle)
+                or not isinstance(claimed_digest, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", claimed_digest)
+                or claimed_digest != hashlib.sha256(bundle).hexdigest()
+            ):
+                raise ArtifactError(
+                    f"prepared-model bundle hash/size is invalid: {bundle_name}"
+                )
 
 
 def _sanitized_native_bytes(data: bytes, *, allow_local_rustup: bool) -> bytes:
@@ -1669,8 +1671,7 @@ def audit_wheel(
     build_info_names = [name for name in entries if name.endswith("/_build_info.json")]
     if mode == "candidate":
         candidate_pattern = (
-            re.escape(EXPECTED_RELEASE_VERSION)
-            + r"\.dev0\+candidate\.[0-9a-f]{12}"
+            re.escape(EXPECTED_RELEASE_VERSION) + r"\.dev0\+candidate\.[0-9a-f]{12}"
         )
         if re.fullmatch(candidate_pattern, version) is None:
             raise ArtifactError(f"candidate wheel has invalid version: {version}")

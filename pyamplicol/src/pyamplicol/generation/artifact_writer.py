@@ -3829,6 +3829,7 @@ def _model_metadata(
 ) -> dict[str, object]:
     source_kind = {
         "built-in-sm": "built-in-sm",
+        "built-in-sm-heft": "built-in-sm-heft",
         "ufo": "ufo",
         "json": "ufo-json",
         "compiled": "compiled-model",

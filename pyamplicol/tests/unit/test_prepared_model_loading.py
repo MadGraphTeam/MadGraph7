@@ -9,7 +9,7 @@ import pyamplicol.licensing as licensing
 from pyamplicol import Generator, ModelSource
 from pyamplicol.api.errors import GenerationError, ModelError
 from pyamplicol.api.models import _compiled_model_payload
-from pyamplicol.config import Action, EvaluatorConfig, JITConfig, RunConfig
+from pyamplicol.config import Action, EvaluatorConfig, JITConfig, ModelConfig, RunConfig
 from pyamplicol.licensing import SymbolicaLicenseState
 from pyamplicol.models.loading import compile_model_source, load_compiled_model
 from pyamplicol.models.prepared import (
@@ -160,7 +160,7 @@ def test_eager_plan_uses_packaged_builtin_model(
     bundle_path = _prepared_builtin_sm(tmp_path)
     monkeypatch.setattr(
         "pyamplicol.assets.prepared_models.materialize_packaged_prepared_model",
-        lambda: bundle_path,
+        lambda _identifier: bundle_path,
     )
     plan = Generator(_eager_config()).plan("d d~ > z")
 
@@ -176,7 +176,7 @@ def test_default_recurrence_plan_uses_packaged_builtin_model(
     bundle_path = _prepared_builtin_sm(tmp_path)
     monkeypatch.setattr(
         "pyamplicol.assets.prepared_models.materialize_packaged_prepared_model",
-        lambda: bundle_path,
+        lambda _identifier: bundle_path,
     )
     # The small loading fixture predates the recurrence catalog; this test
     # isolates default source selection, while recurrence-pack validation has
@@ -189,6 +189,39 @@ def test_default_recurrence_plan_uses_packaged_builtin_model(
     plan = Generator(RunConfig(action=Action.GENERATE)).plan("d d~ > z")
 
     assert plan.effective_settings.evaluator.execution_mode == "recurrence"
+    assert plan.estimated_coverage["model_kind"] == "prepared"
+
+
+def test_default_heft_recurrence_selects_its_own_packaged_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyamplicol.assets.prepared_models import BUILTIN_SM_HEFT_JIT_O2
+
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    bundle_path = _prepared_builtin_sm(tmp_path)
+    selected: list[str] = []
+
+    def materialize(identifier: str) -> Path:
+        selected.append(identifier)
+        return bundle_path
+
+    monkeypatch.setattr(
+        "pyamplicol.assets.prepared_models.materialize_packaged_prepared_model",
+        materialize,
+    )
+    monkeypatch.setattr(
+        "pyamplicol.generation.service.GenerationBackend._require_eager_kernel_pack",
+        lambda _self, _resolved: None,
+    )
+    config = RunConfig(
+        action=Action.GENERATE,
+        model=ModelConfig(source="built-in-sm-heft"),
+    )
+
+    plan = Generator(config).plan("d d~ > z")
+
+    assert selected == [BUILTIN_SM_HEFT_JIT_O2]
     assert plan.estimated_coverage["model_kind"] == "prepared"
 
 
@@ -224,7 +257,7 @@ def test_compiled_plan_does_not_materialize_packaged_model(
 ) -> None:
     monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
 
-    def fail() -> Path:
+    def fail(_identifier: str) -> Path:
         raise AssertionError("compiled mode touched eager packaged resources")
 
     monkeypatch.setattr(

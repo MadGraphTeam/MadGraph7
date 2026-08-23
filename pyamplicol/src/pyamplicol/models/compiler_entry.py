@@ -16,7 +16,9 @@ from .compiler_color_flow import (
 )
 from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
+    _compile_heft_colored_contact_trees,
     _deduplicate_contact_partials,
+    _record_heft_contact_orbit_certificates,
 )
 from .compiler_contacts import (
     _build_contact_decomposition_proof,
@@ -198,6 +200,13 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
             model_symbols=model_symbols,
         )
     )
+    terms = list(
+        _record_heft_contact_orbit_certificates(
+            terms,
+            particles,
+            model_symbols=model_symbols,
+        )
+    )
     oriented_kernels = _compile_oriented_kernels(
         terms,
         particles,
@@ -233,6 +242,15 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
     )
     particles = (*particles, *tree_particles)
     oriented_kernels = (*oriented_kernels, *tree_kernels)
+    heft_start_kind = max((kernel.kind for kernel in oriented_kernels), default=-1) + 1
+    heft_particles, heft_kernels = _compile_heft_colored_contact_trees(
+        terms,
+        particles,
+        start_kind=heft_start_kind,
+        model_symbols=model_symbols,
+    )
+    particles = (*particles, *heft_particles)
+    oriented_kernels = (*oriented_kernels, *heft_kernels)
     (
         annotated_terms,
         oriented_kernels,

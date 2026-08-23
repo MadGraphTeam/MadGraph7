@@ -63,6 +63,22 @@ workers = 6
     assert resolution.clamps[0].effective == 1
 
 
+@pytest.mark.parametrize(
+    "selector",
+    ("built-in-sm-heft", "builtin_sm_heft", "sm-heft", "sm_heft"),
+)
+def test_sm_heft_model_selectors_are_not_resolved_as_paths(
+    selector: str,
+    tmp_path: Path,
+) -> None:
+    resolution = resolve_config(
+        {"action": "generate", "model": {"source": selector}},
+        base_dir=tmp_path,
+    )
+
+    assert resolution.effective.model.source == selector
+
+
 def test_dynamic_map_override_is_schema_aware(tmp_path: Path) -> None:
     resolution = resolve_config(
         {

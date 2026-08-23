@@ -7,15 +7,19 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 import pyamplicol as _pyamplicol
 from pyamplicol.config import EvaluatorConfig
 
 from .errors import ModelError
 
+if TYPE_CHECKING:
+    from pyamplicol.models.loading import CompiledModel
+
 ModelSourceKind: TypeAlias = Literal[
     "built-in-sm",
+    "built-in-sm-heft",
     "ufo",
     "json",
     "compiled",
@@ -26,7 +30,7 @@ _PROCESS_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 
 @dataclass(frozen=True, slots=True)
 class ModelSource:
-    """A built-in, UFO, JSON, or precompiled model input.
+    """A built-in, packaged HEFT, UFO, JSON, or precompiled model input.
 
     Use :meth:`from_config` for a resolved run card or :meth:`from_path` for an
     external model. Calling :meth:`compile` produces the canonical serialized
@@ -39,7 +43,14 @@ class ModelSource:
     simplify: bool = True
 
     def __post_init__(self) -> None:
-        if self.kind not in ("built-in-sm", "ufo", "json", "compiled", "prepared"):
+        if self.kind not in (
+            "built-in-sm",
+            "built-in-sm-heft",
+            "ufo",
+            "json",
+            "compiled",
+            "prepared",
+        ):
             raise ModelError(f"unsupported model source kind {self.kind!r}")
         if not isinstance(self.simplify, bool):
             raise ModelError("model simplify must be a boolean")
@@ -72,9 +83,9 @@ class ModelSource:
                         "model restriction must be a name, path-like, or null"
                     ) from exc
                 object.__setattr__(self, "restriction", resolved_restriction)
-        if self.kind == "built-in-sm":
+        if self.kind in {"built-in-sm", "built-in-sm-heft"}:
             if self.path is not None:
-                raise ModelError("the built-in Standard Model has no source path")
+                raise ModelError("built-in models have no public source path")
         elif self.kind in ("ufo", "json") and (
             self.path is None or not self.path.is_absolute()
         ):
@@ -87,6 +98,12 @@ class ModelSource:
     @classmethod
     def built_in_sm(cls) -> ModelSource:
         return cls(kind="built-in-sm")
+
+    @classmethod
+    def built_in_sm_heft(cls) -> ModelSource:
+        """Select the packaged Standard Model with scalar HEFT interactions."""
+
+        return cls(kind="built-in-sm-heft")
 
     @classmethod
     def from_config(cls, config: object) -> ModelSource:
@@ -111,6 +128,18 @@ class ModelSource:
                     "simplification cannot be disabled for the built-in Standard Model"
                 )
             return cls.built_in_sm()
+        from pyamplicol._internal.sm_heft import is_sm_heft_alias
+
+        if is_sm_heft_alias(config.source):
+            if config.restriction not in (None, "default"):
+                raise ModelError(
+                    "model restrictions cannot be applied to built-in-sm-heft"
+                )
+            if not config.simplify:
+                raise ModelError(
+                    "simplification cannot be disabled for built-in-sm-heft"
+                )
+            return cls.built_in_sm_heft()
         return cls.from_path(
             config.source,
             restriction=config.restriction,
@@ -203,12 +232,6 @@ class ModelSource:
         if evaluator is not None and not isinstance(evaluator, EvaluatorConfig):
             raise ModelError("evaluator must be an EvaluatorConfig or null")
 
-        if self.kind == "built-in-sm":
-            source: str | Path = "built-in-sm"
-        elif self.path is not None:
-            source = self.path
-        else:
-            raise ModelError("an in-memory compiled model source cannot be reloaded")
         resolved_cache: Path | None = None
         if cache_dir is not None:
             try:
@@ -233,17 +256,9 @@ class ModelSource:
                 raise ModelError(
                     "prepared model output must end with '.pyamplicol-model'"
                 )
-        from pyamplicol.models.loading import compile_model_source
-
         try:
-            payload = compile_model_source(
-                source,
-                restriction=(
-                    "default"
-                    if self.restriction is None
-                    else os.fspath(self.restriction)
-                ),
-                simplify=self.simplify,
+            payload = _compile_model_source_payload(
+                self,
                 cache_dir=resolved_cache,
                 use_cache=use_cache,
                 require_supported=require_supported,
@@ -265,6 +280,43 @@ class ModelSource:
             return _compiled_model_from_payload(payload)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
+
+
+def _compile_model_source_payload(
+    source: ModelSource,
+    *,
+    cache_dir: Path | None,
+    use_cache: bool,
+    require_supported: bool,
+) -> CompiledModel:
+    """Compile one normalized source through the shared private boundary."""
+
+    if source.kind == "built-in-sm-heft":
+        from pyamplicol._internal.sm_heft import compile_sm_heft_source
+
+        return compile_sm_heft_source(
+            cache_dir=cache_dir,
+            use_cache=use_cache,
+            require_supported=require_supported,
+        )
+    if source.kind == "built-in-sm":
+        source_input: str | Path = source.kind
+    elif source.path is not None:
+        source_input = source.path
+    else:
+        raise ModelError("an in-memory compiled model source cannot be reloaded")
+    from pyamplicol.models.loading import compile_model_source
+
+    return compile_model_source(
+        source_input,
+        restriction=(
+            "default" if source.restriction is None else os.fspath(source.restriction)
+        ),
+        simplify=source.simplify,
+        cache_dir=cache_dir,
+        use_cache=use_cache,
+        require_supported=require_supported,
+    )
 
 
 def _restriction_looks_like_path(value: str) -> bool:

@@ -17,8 +17,13 @@ if TYPE_CHECKING:
     from pyamplicol.models.prepared import PreparedModelBundle
 
 BUILTIN_SM_JIT_O2 = "built-in-sm-jit-o2"
+BUILTIN_SM_HEFT_JIT_O2 = "built-in-sm-heft-jit-o2"
 _PACKAGED_ARCHITECTURES = ("aarch64", "x86_64")
-_KNOWN_MODELS = (BUILTIN_SM_JIT_O2,)
+_MODEL_SOURCE_BY_ID = {
+    BUILTIN_SM_JIT_O2: "built-in-sm",
+    BUILTIN_SM_HEFT_JIT_O2: "built-in-sm-heft",
+}
+_KNOWN_MODELS = tuple(_MODEL_SOURCE_BY_ID)
 _METADATA_KEYS = frozenset(
     {
         "backend",
@@ -79,6 +84,7 @@ def packaged_prepared_model_path(identifier: str) -> Iterator[Path]:
     try:
         metadata = _metadata(
             json.loads(metadata_resource.read_text(encoding="utf-8")),
+            identifier=identifier,
             bundle_name=bundle_name,
         )
     except (
@@ -108,6 +114,7 @@ def packaged_prepared_model_path(identifier: str) -> Iterator[Path]:
         _validate_bundle(
             bundle_path,
             metadata,
+            identifier=identifier,
             architecture=architecture,
         )
         yield bundle_path
@@ -188,6 +195,7 @@ def _validate_bundle(
     path: Path,
     metadata: Mapping[str, object],
     *,
+    identifier: str,
     architecture: str,
 ) -> None:
     from pyamplicol._internal.versions import (
@@ -245,8 +253,9 @@ def _validate_bundle(
         != expected["model_compiler_version"]
     ):
         raise PackagedPreparedModelError("prepared model compiler version is stale")
-    if compiled_source.get("kind") != "built-in-sm":
-        raise PackagedPreparedModelError("prepared model source is not built-in-sm")
+    model_source = _MODEL_SOURCE_BY_ID[identifier]
+    if compiled_source.get("kind") != model_source:
+        raise PackagedPreparedModelError(f"prepared model source is not {model_source}")
     if pack.producer.get("version") != packaged_package_version:
         raise PackagedPreparedModelError(
             "prepared kernel-pack package version disagrees with metadata"
@@ -301,7 +310,12 @@ def _validate_bundle(
         )
 
 
-def _metadata(value: object, *, bundle_name: str) -> Mapping[str, object]:
+def _metadata(
+    value: object,
+    *,
+    identifier: str,
+    bundle_name: str,
+) -> Mapping[str, object]:
     metadata = _mapping(value, "prepared-model metadata")
     missing = _METADATA_KEYS - metadata.keys()
     unknown = metadata.keys() - _METADATA_KEYS
@@ -313,9 +327,12 @@ def _metadata(value: object, *, bundle_name: str) -> Mapping[str, object]:
         raise PackagedPreparedModelError(
             "unsupported packaged prepared-model metadata schema"
         )
-    if metadata.get("id") != BUILTIN_SM_JIT_O2:
+    if metadata.get("id") != identifier:
         raise PackagedPreparedModelError("packaged prepared-model identity is invalid")
-    if metadata.get("model") != "built-in-sm" or metadata.get("bundle") != bundle_name:
+    if (
+        metadata.get("model") != _MODEL_SOURCE_BY_ID[identifier]
+        or metadata.get("bundle") != bundle_name
+    ):
         raise PackagedPreparedModelError("packaged prepared-model resource is invalid")
     return metadata
 
@@ -323,8 +340,6 @@ def _metadata(value: object, *, bundle_name: str) -> Mapping[str, object]:
 def _asset_names(identifier: str, architecture: str) -> tuple[str, str]:
     stem = f"{identifier}-{architecture}"
     return f"{stem}.metadata.json", f"{stem}.pyamplicol-model"
-
-
 
 
 def _mapping(value: object, context: str) -> Mapping[str, object]:
@@ -342,6 +357,7 @@ def _plain_json(value: object) -> object:
 
 
 __all__ = [
+    "BUILTIN_SM_HEFT_JIT_O2",
     "BUILTIN_SM_JIT_O2",
     "PackagedPreparedModelError",
     "available_prepared_models",

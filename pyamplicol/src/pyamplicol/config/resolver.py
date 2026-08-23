@@ -235,8 +235,13 @@ def _coerce(
     if kind == "str":
         if not isinstance(value, str):
             raise ConfigurationError(f"{item.path} must be a string")
-        if item.path == "model.source" and value != "built-in-sm":
-            result = str(_resolve_path(value, base_dir, item.path))
+        if item.path == "model.source":
+            from .._internal.sm_heft import is_sm_heft_alias
+
+            if value in {"built-in-sm", "builtin_sm"} or is_sm_heft_alias(value):
+                result = value
+            else:
+                result = str(_resolve_path(value, base_dir, item.path))
         else:
             result = value
     elif kind == "path":

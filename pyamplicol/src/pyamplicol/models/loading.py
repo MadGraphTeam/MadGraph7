@@ -38,7 +38,7 @@ from .contracts import (
 )
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
-MODEL_COMPILER_VERSION = 13
+MODEL_COMPILER_VERSION = 15
 BUILTIN_SM_ALIASES = frozenset(("builtin_sm", "built-in-sm"))
 DEFAULT_MODEL_RESTRICTION = "default"
 NO_MODEL_RESTRICTION = "none"
@@ -143,16 +143,37 @@ def _replace_ufo_sqrt_once(expression: Any) -> Any:
 
 @contextmanager
 def _bounded_ufo_sqrt_normalization() -> Iterator[None]:
-    """Work around ufo-model-loader's non-converging repeated sqrt rewrite."""
+    """Apply scoped ufo-model-loader expression compatibility fixes."""
 
-    from ufo_model_loader import symbolica_processing
+    from symbolica import Expression
+    from ufo_model_loader import model, symbolica_processing
 
-    original = symbolica_processing.replace_from_sqrt
+    original_sqrt = symbolica_processing.replace_from_sqrt
+    original_processing_parse = symbolica_processing.parse_python_expression_safe
+    original_model_parse = model.parse_python_expression_safe
+
+    def parse_standard_cmath(expression: str) -> Any:
+        normalized = expression
+        for name in ("sin", "cos", "asin", "acos"):
+            normalized = normalized.replace(f"cmath.{name}", name)
+        parsed = original_processing_parse(normalized)
+        for name in ("sin", "cos", "asin", "acos"):
+            parsed = parsed.replace(
+                Expression.parse(f"UFO::{name}(x_)"),
+                Expression.parse(f"{name}(x_)"),
+                repeat=True,
+            )
+        return parsed
+
     symbolica_processing.replace_from_sqrt = _replace_ufo_sqrt_once
+    symbolica_processing.parse_python_expression_safe = parse_standard_cmath
+    model.parse_python_expression_safe = parse_standard_cmath
     try:
         yield
     finally:
-        symbolica_processing.replace_from_sqrt = original
+        model.parse_python_expression_safe = original_model_parse
+        symbolica_processing.parse_python_expression_safe = original_processing_parse
+        symbolica_processing.replace_from_sqrt = original_sqrt
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,8 +380,7 @@ def compiler_fingerprint() -> dict[str, object]:
             f"{CONTACT_DECOMPOSITION_ALGORITHM_VERSION}"
         ),
         "tensor_ordering_contract": (
-            f"explicit-canonical-component-order-v"
-            f"{TENSOR_ORDERING_CONTRACT_VERSION}"
+            f"explicit-canonical-component-order-v{TENSOR_ORDERING_CONTRACT_VERSION}"
         ),
         "model_environment_policy": "sanitize-historical-scalar-options-v1",
         "symbol_namespace_policy": "model-name-and-pyamplicol-registry-v1",

@@ -340,6 +340,32 @@ def test_watchdog_peak_parser_uses_last_guarded_command() -> None:
     assert matrix._watchdog_peak_gib("no watchdog result") is None
 
 
+def test_eager_topology_accepts_unreported_plan_v3_maximum_fanout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = SimpleNamespace(
+        execution_mode="eager",
+        maximum_fanout=None,
+        **{
+            field: index
+            for index, field in enumerate(matrix._TOPOLOGY_FIELDS, start=1)
+            if field != "maximum_fanout"
+        },
+    )
+    monkeypatch.setattr(
+        "pyamplicol.artifacts.inspect_artifact",
+        lambda _artifact: SimpleNamespace(processes=(process,)),
+    )
+
+    topology = matrix._eager_topology(matrix.Path("artifact"))
+
+    assert topology == {
+        field: index
+        for index, field in enumerate(matrix._TOPOLOGY_FIELDS, start=1)
+        if field != "maximum_fanout"
+    }
+
+
 def test_topology_gate_compares_equivalent_models_per_process_and_color() -> None:
     topology = {field: index for index, field in enumerate(matrix._TOPOLOGY_FIELDS)}
     records = [

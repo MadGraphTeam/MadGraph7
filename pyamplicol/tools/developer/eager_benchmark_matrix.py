@@ -55,6 +55,7 @@ _TOPOLOGY_FIELDS = (
     "finalization_count",
     "closure_count",
 )
+_OPTIONAL_TOPOLOGY_FIELDS = frozenset(("maximum_fanout",))
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,6 +578,8 @@ def _eager_topology(artifact: Path) -> dict[str, int]:
     result: dict[str, int] = {}
     for field in _TOPOLOGY_FIELDS:
         value = getattr(process, field, None)
+        if value is None and field in _OPTIONAL_TOPOLOGY_FIELDS:
+            continue
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise MatrixError(f"eager inspection has invalid {field}: {artifact}")
         result[field] = value

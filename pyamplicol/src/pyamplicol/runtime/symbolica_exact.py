@@ -2677,8 +2677,8 @@ def _diagnostic_project_onshell_points(
                 mass_squared = binding.mass * binding.mass
                 magnitude = (spatial_squared + mass_squared).sqrt()
                 projected_energy = -magnitude if energy.is_signed() else magnitude
-                projected = (projected_energy, px, py, pz)
-                projected_legs.append(projected)
+                projected_leg = (projected_energy, px, py, pz)
+                projected_legs.append(projected_leg)
                 unchanged = unchanged and projected_energy == energy
                 leg_metadata.append(
                     {

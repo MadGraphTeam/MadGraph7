@@ -12,6 +12,7 @@ from .results import ModelParameter
 
 CompiledModelSourceKind: TypeAlias = Literal[
     "built-in-sm",
+    "built-in-sm-heft",
     "ufo",
     "json",
     "compiled",
@@ -45,7 +46,13 @@ class CompiledModelSource:
     simplify: bool = True
 
     def __post_init__(self) -> None:
-        if self.kind not in ("built-in-sm", "ufo", "json", "compiled"):
+        if self.kind not in (
+            "built-in-sm",
+            "built-in-sm-heft",
+            "ufo",
+            "json",
+            "compiled",
+        ):
             raise ValueError(f"unsupported compiled model source kind {self.kind!r}")
         for field_name in ("name", "digest", "restriction", "restriction_digest"):
             value = getattr(self, field_name)
@@ -397,6 +404,7 @@ def _compiled_model_source(source: Mapping[str, object]) -> CompiledModelSource:
     raw_kind = source.get("kind")
     if not isinstance(raw_kind, str) or raw_kind not in (
         "built-in-sm",
+        "built-in-sm-heft",
         "ufo",
         "json",
         "compiled",

@@ -10,7 +10,8 @@ action = "generate"
 schema_version = 1
 
 [model]
-# model.source: "built-in-sm" or a UFO directory/JSON/compiled-model path.
+# model.source: "built-in-sm", "built-in-sm-heft", or a UFO
+# directory/JSON/compiled-model path.
 source = "models/json/sm/sm.json"
 # model.restriction: Optional restriction name. Default is null, which applies
 # a model-provided default restriction when one exists.

@@ -16,6 +16,7 @@ construct the supported tree amplitudes and executable runtime artifact.
 | Source | Typical use | Executes Python while loading? |
 | --- | --- | --- |
 | `built-in-sm` | Fast Standard Model compatibility workflows and prepared recurrence/eager/OTF kernels | No |
+| `built-in-sm-heft` | Standard Model plus scalar Higgs-effective gluon interactions | No |
 | Serialized JSON | Recommended portable external-model input | No |
 | UFO directory | Trusted development input | **Yes** |
 | Compiled model JSON | Reuse normalized model IR | No |
@@ -41,6 +42,31 @@ pyamplicol generate 'u u~ > g g' artifacts/uubar_gg \
 The built-in model selects the wheel-owned prepared JIT O2 bundle for default
 recurrence or eager execution. It also retains compatibility aliases that an
 arbitrary external model does not automatically inherit.
+
+## Built-in scalar HEFT model
+
+Select `built-in-sm-heft` for an independent model containing the packaged
+Standard Model plus the scalar Hgg, Hggg, and Hgggg effective interactions:
+
+```toml
+[model]
+source = "built-in-sm-heft"
+
+[process]
+entries = [{ expression = "g g > H g g", name = "gg_hgg" }]
+coupling_order_policy = "explicit"
+max_coupling_orders = { HIG = 1 }
+```
+
+The model inherits the packaged SM parameter defaults, including `MH = 125`
+GeV, and has no runtime dependency on a UFO checkout. The effective coupling
+`GH` depends on model parameters (`G`, `vev`, `MH`, and `MT`), not event
+momenta; the momentum factors in the Hgg and Hggg Lorentz tensors are retained.
+The wheel-owned portable JIT O2 pack makes `eager`, `recurrence`, and
+`on-the-fly` execution available directly from this selector. Compiled mode
+supports the `jit`, `asm`, and `cpp` evaluator backends. Explicitly prepared
+HEFT bundles can likewise use any of those backends. `builtin_sm_heft`,
+`sm-heft`, and `sm_heft` are accepted as configuration aliases.
 
 ## Serialized JSON model
 

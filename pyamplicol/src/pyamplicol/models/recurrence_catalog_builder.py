@@ -27,6 +27,7 @@ from .base import (
     Vertex,
     _runtime_particle_parameter_name,
 )
+from .contact_decomposition import HEFT_CONTACT_ORBIT_EVALUATOR_CLASS
 from .lc_color_port_wiring import compile_lc_color_port_wirings
 from .prepared_catalog import (
     PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF,
@@ -113,8 +114,11 @@ def build_recurrence_template_catalog(
         state_ids,
         parameter_ids,
     )
+    recurrence_vertex_bindings = _canonical_recurrence_vertex_bindings(
+        recurrence_catalog.vertex_bindings
+    )
     contact_orbit_certificates, contact_orbit_steps, contact_orbit_steps_by_binding = (
-        _build_contact_orbit_records(recurrence_catalog.vertex_bindings)
+        _build_contact_orbit_records(recurrence_vertex_bindings)
     )
     (
         transition_quantum_flows,
@@ -123,7 +127,7 @@ def build_recurrence_template_catalog(
         transition_proofs,
     ) = _build_transitions(
         model,
-        recurrence_catalog.vertex_bindings,
+        recurrence_vertex_bindings,
         state_ids,
         parameter_ids,
         kernels,
@@ -1363,9 +1367,7 @@ def _build_contact_orbit_records(
                     "recurrence v1 supports only exact unit contact-orbit "
                     "reconstruction"
                 )
-            certificate_id = _token(
-                "contact-orbit-certificate", certificate.to_dict()
-            )
+            certificate_id = _token("contact-orbit-certificate", certificate.to_dict())
             previous_id = certificate_id_by_term.setdefault(
                 certificate.term_id, certificate_id
             )
@@ -1425,9 +1427,7 @@ def _build_contact_orbit_records(
             )
             previous_step = steps.setdefault(step_id, step_record)
             if previous_step != step_record:
-                raise RecurrenceTemplateError(
-                    "contact-orbit step identity collision"
-                )
+                raise RecurrenceTemplateError("contact-orbit step identity collision")
             binding_steps.append(step_record)
         if binding_steps:
             steps_by_binding[binding.key] = tuple(
@@ -1438,6 +1438,109 @@ def _build_contact_orbit_records(
         tuple(sorted(steps.values(), key=lambda item: item.template_id)),
         steps_by_binding,
     )
+
+
+def _canonical_recurrence_vertex_bindings(
+    bindings: Sequence[PreparedVertexBinding],
+) -> tuple[PreparedVertexBinding, ...]:
+    """Drop only compiler-certified mirrored scalar-HEFT tree orientations.
+
+    Recurrence construction indexes an unordered pair of current states and
+    reorders the concrete parents into a transition's evaluator convention.
+    Consequently the two compiler-emitted input orientations of one HEFT tree
+    node are the same recurrence transition.  Keeping both is harmless for the
+    generic DAG backends, which consume the complete oriented kernel catalog,
+    but doubles the contact contribution in recurrence modes because colored
+    mirror currents do not share a dynamic-color identity.
+
+    The filtering is deliberately limited to the exact HEFT evaluator class
+    authenticated by the compiled-model contract.  Every discarded binding
+    must have a retained, state-exact mirror with the source-leg lineage
+    reversed; an unfamiliar or incomplete family fails closed.
+    """
+
+    heft_bindings: list[
+        tuple[
+            PreparedVertexBinding,
+            object,
+            object,
+        ]
+    ] = []
+    retained: list[PreparedVertexBinding] = []
+    for binding in bindings:
+        heft_certificates = tuple(
+            certificate
+            for certificate in binding.contact_orbit_certificates
+            if certificate.evaluator_class == HEFT_CONTACT_ORBIT_EVALUATOR_CLASS
+        )
+        if not heft_certificates:
+            retained.append(binding)
+            continue
+        if (
+            len(heft_certificates) != 1
+            or len(binding.contact_orbit_certificates) != 1
+            or len(binding.contact_orbit_steps) != 1
+        ):
+            raise PreparedKernelCatalogError(
+                "a scalar-HEFT recurrence binding must carry exactly one "
+                "certificate and one tree step"
+            )
+        certificate = heft_certificates[0]
+        step = binding.contact_orbit_steps[0]
+        if step.term_id != certificate.term_id:
+            raise PreparedKernelCatalogError(
+                "a scalar-HEFT recurrence step belongs to another certificate"
+            )
+        heft_bindings.append((binding, certificate, step))
+
+    for binding, certificate, step in heft_bindings:
+        left_key = (step.left_covered_legs, step.source_particle_legs[0])
+        right_key = (step.right_covered_legs, step.source_particle_legs[1])
+        if left_key <= right_key:
+            retained.append(binding)
+            continue
+
+        mirrors = tuple(
+            candidate
+            for candidate, candidate_certificate, candidate_step in heft_bindings
+            if candidate_certificate == certificate
+            and candidate_step.stage == step.stage
+            and candidate_step.result_leg == step.result_leg
+            and candidate_step.left_covered_legs == step.right_covered_legs
+            and candidate_step.right_covered_legs == step.left_covered_legs
+            and candidate_step.source_particle_legs
+            == (
+                step.source_particle_legs[1],
+                step.source_particle_legs[0],
+                step.source_particle_legs[2],
+            )
+            and candidate.left_state == binding.right_state
+            and candidate.right_state == binding.left_state
+            and candidate.result_state == binding.result_state
+            and candidate.key.coupling == binding.key.coupling
+            and candidate.output_factor_source == binding.output_factor_source
+        )
+        if len(mirrors) != 1:
+            raise PreparedKernelCatalogError(
+                "a mirrored scalar-HEFT recurrence binding has no unique "
+                "compiler-certified canonical orientation"
+            )
+        mirror_step = mirrors[0].contact_orbit_steps[0]
+        mirror_left_key = (
+            mirror_step.left_covered_legs,
+            mirror_step.source_particle_legs[0],
+        )
+        mirror_right_key = (
+            mirror_step.right_covered_legs,
+            mirror_step.source_particle_legs[1],
+        )
+        if mirror_left_key > mirror_right_key:
+            raise PreparedKernelCatalogError(
+                "a mirrored scalar-HEFT recurrence binding did not resolve to "
+                "the canonical orientation"
+            )
+
+    return tuple(sorted(retained, key=lambda item: item.key))
 
 
 def _singleton_contact_orbit_step_groups(
@@ -1464,9 +1567,7 @@ def _build_transitions(
     parameter_ids: Mapping[str, str],
     kernels: Mapping[int, Any],
     evaluator_requests: list[_EvaluatorRequest],
-    contact_orbit_steps_by_binding: Mapping[
-        object, tuple[ContactOrbitStepV1, ...]
-    ],
+    contact_orbit_steps_by_binding: Mapping[object, tuple[ContactOrbitStepV1, ...]],
 ) -> tuple[
     tuple[QuantumFlowTemplateV1, ...],
     tuple[TransitionTemplateV1, ...],
@@ -2030,10 +2131,10 @@ def _canonical_transition_alias_key(
         ),
         "coupling_parameter_ids": list(transition.coupling_parameter_ids),
         "contact_orbit_step_template_ids": list(
-            transition.contact_orbit_step_template_ids
+            getattr(transition, "contact_orbit_step_template_ids", ())
         ),
         "contact_orbit_step_semantic_digests": list(
-            transition.contact_orbit_step_semantic_digests
+            getattr(transition, "contact_orbit_step_semantic_digests", ())
         ),
         "coupling_orders": [list(item) for item in transition.coupling_orders],
         "binding_coupling": transition.binding_coupling.to_dict(),

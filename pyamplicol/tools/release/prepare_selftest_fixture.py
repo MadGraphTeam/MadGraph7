@@ -337,9 +337,7 @@ def _validate_portable_symjit_source(
         or len(source_digest) != 64
         or any(character not in "0123456789abcdef" for character in source_digest)
     ):
-        raise RuntimeError(
-            "portable self-test SymJIT plane source digest is invalid"
-        )
+        raise RuntimeError("portable self-test SymJIT plane source digest is invalid")
     if not isinstance(plane.get("compression"), bool):
         raise RuntimeError(
             "portable self-test SymJIT plane compression flag is invalid"
@@ -434,9 +432,7 @@ def _portable_arena_source_leaves(
                 "application_path": application_path,
                 "source_application_abi": SYMJIT_PLANE_APPLICATION_ABI,
                 "optimization_level": plane["optimization_level"],
-                "direct_codegen_optimization_level": plane[
-                    "optimization_level"
-                ],
+                "direct_codegen_optimization_level": plane["optimization_level"],
                 "input_len": input_len,
                 "output_len": output_len,
                 "input_indices": list(parent_inputs),
@@ -1018,9 +1014,22 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
     from pyamplicol import Runtime
 
     native = importlib.import_module("pyamplicol._rusticol")
-    target = str(native.target_info().triple)
-    if target not in COMPATIBLE_TARGETS:
-        raise RuntimeError(f"unsupported portable self-test target: {target}")
+    active_target = str(native.target_info().triple)
+    if active_target not in COMPATIBLE_TARGETS:
+        raise RuntimeError(f"unsupported portable self-test target: {active_target}")
+    producer = source_manifest.get("producer")
+    producer_target = producer.get("target") if isinstance(producer, dict) else None
+    raw_source_target = (
+        producer_target.get("triple") if isinstance(producer_target, dict) else None
+    )
+    if not isinstance(raw_source_target, str) or raw_source_target not in {
+        active_target,
+        PORTABLE_TEMPLATE,
+    }:
+        raise RuntimeError(
+            "self-test artifact target differs from the active or portable runtime"
+        )
+    source_target = raw_source_target
     runtime = Runtime.load(source, mute_warnings=True)
     momentum_loader = getattr(runtime._backend, "validation_momenta", None)
     if not callable(momentum_loader):
@@ -1057,9 +1066,9 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
             raise RuntimeError(
                 "self-test artifact producer/runtime metadata is invalid"
             )
-        if producer.get("target", {}).get("triple") != target:
+        if producer.get("target", {}).get("triple") != source_target:
             raise RuntimeError(
-                "self-test artifact target differs from the active runtime"
+                "self-test artifact target changed while preparing the fixture"
             )
         validate_portable_artifact_capabilities(
             manifest,
@@ -1071,7 +1080,7 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
         )
         _strip_symbolica_fallbacks(artifact, manifest)
         _sanitize_configuration_paths(artifact, manifest)
-        _retarget_portable_manifest(manifest, source_target=target)
+        _retarget_portable_manifest(manifest, source_target=source_target)
         version = _workspace_version()
         _normalize_compiled_model_version(
             artifact,
@@ -1087,7 +1096,7 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
             "artifact_path": "artifact",
             "target": PORTABLE_TEMPLATE,
             "compatible_targets": list(COMPATIBLE_TARGETS),
-            "source_generation_target": target,
+            "source_generation_target": source_target,
             "serialization": {
                 "kind": "symjit-application-mir-v3",
                 "endianness": "little",

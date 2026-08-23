@@ -62,9 +62,10 @@ pyamplicol generate "u u~ > Z g g g" artifacts/uubar_z3g_recurrence \
   --model built-in-sm
 ```
 
-The installed wheel supplies a portable built-in-SM JIT-O2 prepared bundle, so
-no explicit pack path is needed in this case. A raw external JSON or UFO model
-does not have prepared kernels; compile a `.pyamplicol-model` bundle first.
+The installed wheel supplies portable JIT-O2 prepared bundles for both
+`built-in-sm` and `built-in-sm-heft`, so no explicit pack path is needed for
+either model. A raw external JSON or UFO model does not have prepared kernels;
+compile a `.pyamplicol-model` bundle first.
 
 Recurrence has two runtime tiling controls:
 

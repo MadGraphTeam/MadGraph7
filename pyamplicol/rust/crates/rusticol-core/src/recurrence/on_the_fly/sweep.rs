@@ -2420,10 +2420,20 @@ mod tests {
         );
 
         assert!(
-            currents[4..].iter().all(
-                |current| current.contributions.len() == if current.stage == 1 { 1 } else { 3 }
-            ),
-            "certified pair destinations retain one owner while final triples retain one owner per source assignment",
+            currents[4..].iter().all(|current| {
+                let expected = if include_ordinary_scalar_transition
+                    && current.stage == 2
+                    && current.key.current_state_template_id() == 1
+                {
+                    6
+                } else if current.stage == 1 {
+                    1
+                } else {
+                    3
+                };
+                current.contributions.len() == expected
+            }),
+            "certified pair/final destinations retain one owner per physical assignment",
         );
         assert!(
             currents[4..].iter().all(|current| {
@@ -2834,7 +2844,7 @@ mod tests {
     }
 
     #[test]
-    fn forward_sweep_skips_contact_partial_outside_its_certified_parent_domain() {
+    fn forward_sweep_accepts_contact_partial_in_its_certified_internal_parent_domain() {
         let forward = production_contact_barrier_case(false, true);
         let reverse = production_contact_barrier_case(true, true);
         assert_eq!(reverse, forward);
@@ -2863,8 +2873,8 @@ mod tests {
                 .iter()
                 .filter(|(_, stage, _)| *stage == 2)
                 .flat_map(|(_, _, transition_ids)| transition_ids)
-                .all(|transition_id| *transition_id >= 6),
-            "a certified one-plus-one contact partial must not be reapplied to a composite scalar parent",
+                .any(|transition_id| *transition_id < 6),
+            "a certified contact partial must accept a matching internal scalar parent",
         );
         assert!(
             staged

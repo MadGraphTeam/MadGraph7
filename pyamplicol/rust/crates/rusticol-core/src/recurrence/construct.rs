@@ -6196,6 +6196,11 @@ fn add_transition_contributions(
             &currents[parent_ids[0] as usize].key,
             &currents[parent_ids[1] as usize].key,
         ];
+        if let Some(contact_orbit) = prepared.contact_orbit.as_ref()
+            && !contact_orbit.accepts_parent_domain(parents)?
+        {
+            return Ok(());
+        }
         if !prepared.quantum_flow_matches(&parents) {
             return Ok(());
         }

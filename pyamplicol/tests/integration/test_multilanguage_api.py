@@ -3,16 +3,20 @@ from __future__ import annotations
 
 import importlib.resources
 import importlib.util
+import io
 import json
 import os
+import runpy
 import shlex
 import shutil
 import subprocess
 import sys
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
+from unittest.mock import patch
 
 import pytest
 
@@ -527,6 +531,23 @@ def _driver_command(bundle: _BuiltBundle, language: str) -> list[str]:
     raise AssertionError(language)
 
 
+def _run_python_driver_in_process(
+    command: list[str],
+) -> subprocess.CompletedProcess[str]:
+    driver = Path(command[1])
+    namespace = runpy.run_path(str(driver), run_name="_pyamplicol_api_driver")
+    main = namespace.get("main")
+    assert callable(main)
+    output = io.StringIO()
+    with (
+        patch.object(sys, "argv", [str(driver), *command[2:]]),
+        redirect_stdout(output),
+    ):
+        returncode = main()
+    assert isinstance(returncode, int)
+    return subprocess.CompletedProcess(command, returncode, output.getvalue(), "")
+
+
 def _run_driver(
     bundle: _BuiltBundle,
     language: str,
@@ -549,15 +570,21 @@ def _run_driver(
         command.extend(("--set-parameter", parameter_id, f"{override:.17g}", "0"))
     if precision != 16:
         command.extend(("--precision", str(precision)))
-    completed = subprocess.run(
-        command,
-        cwd=bundle.artifact,
-        env=_source_environment(),
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    if language == "python" and precision != 16:
+        # Artifact generation already owns the one unlicensed Symbolica instance
+        # allowed on a machine. Exercise the same generated entry point without
+        # asking a child process to acquire a second instance.
+        completed = _run_python_driver_in_process(command)
+    else:
+        completed = subprocess.run(
+            command,
+            cwd=bundle.artifact,
+            env=_source_environment(),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
     assert completed.returncode == 0, (
         f"{language} API driver failed\n"
         f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"

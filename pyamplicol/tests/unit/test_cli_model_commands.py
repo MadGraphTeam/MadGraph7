@@ -136,6 +136,38 @@ def test_default_model_compile_calls_existing_compiler_service(
     }
 
 
+def test_model_inspect_routes_builtin_sm_heft_through_packaged_compiler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyamplicol._internal import sm_heft
+
+    calls: list[dict[str, object]] = []
+
+    def compile_sm_heft_source(**options: object) -> _CompiledModel:
+        calls.append(options)
+        compiled = _CompiledModel()
+        compiled.name = "built-in-sm-heft"
+        compiled.source = {"kind": "built-in-sm-heft"}
+        return compiled
+
+    monkeypatch.setattr(sm_heft, "compile_sm_heft_source", compile_sm_heft_source)
+    invocation = parse_cli(("model", "inspect", "built-in-sm-heft"))
+    result = DefaultCliServices().model_inspect(
+        invocation.resolve().effective,
+        NullProgressSink(),
+    )
+
+    assert calls == [
+        {
+            "cache_dir": None,
+            "use_cache": True,
+            "require_supported": False,
+        }
+    ]
+    assert result["name"] == "built-in-sm-heft"
+    assert result["source"] == {"kind": "built-in-sm-heft"}
+
+
 def test_default_model_compile_prepares_one_requested_backend_pack(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

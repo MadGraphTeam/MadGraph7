@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.developer import madgraph_correctness
 from tools.performance_report import madgraph
 from tools.performance_report.models import (
     Accuracy,
@@ -182,11 +183,12 @@ def test_command_card_uses_exact_standalone_launch_sequence_and_installed_sm() -
     )
     with pytest.raises(ValueError, match="one non-empty line"):
         madgraph.madgraph_command_card("g g > g g\nimport model sm")
-    assert "iso_fortran_env, only: int64" in madgraph._DRIVER_SOURCE
-    assert "integer(kind=int64) :: clock_start" in madgraph._DRIVER_SOURCE
-    assert "if (answer /= reference) error stop 16" in madgraph._DRIVER_SOURCE
+    driver_source = madgraph_correctness._DRIVER_SOURCE
+    assert "iso_fortran_env, only: int64" in driver_source
+    assert "integer(kind=int64) :: clock_start" in driver_source
+    assert "if (answer /= reference) error stop 16" in driver_source
     assert (
-        hashlib.sha256(madgraph._DRIVER_SOURCE.encode("utf-8")).hexdigest()
+        hashlib.sha256(driver_source.encode("utf-8")).hexdigest()
         == madgraph.MADGRAPH_DRIVER_SOURCE_SHA256
     )
 
@@ -257,14 +259,14 @@ def test_driver_output_parser_accepts_fortran_numbers_and_checks_checksum(
         stderr="PYAMPLICOL_MG_CHECKSUM 5.0D+01\n",
     )
 
-    parsed = madgraph._parse_driver_output(result, 4)
+    parsed = madgraph_correctness.parse_driver_output(result, 4)
 
     assert parsed.value == 12.5
     assert parsed.points == 4
     assert parsed.seconds == 0.002
     assert parsed.checksum == 50.0
     with pytest.raises(madgraph.MadGraphAdapterError, match="changed their value"):
-        madgraph._parse_driver_output(
+        madgraph_correctness.parse_driver_output(
             _command_result(
                 cwd=tmp_path,
                 stdout=result.stdout + "PYAMPLICOL_MG_CHECKSUM 4.9D+01\n",
@@ -285,7 +287,9 @@ def test_driver_output_parser_accepts_fortran_numbers_and_checks_checksum(
             "PYAMPLICOL_MG_CHECKSUM 1.51297636432885565E+007\n"
         ),
     )
-    parsed_repeated = madgraph._parse_driver_output(repeated, repeated_points)
+    parsed_repeated = madgraph_correctness.parse_driver_output(
+        repeated, repeated_points
+    )
     assert parsed_repeated.value == 229.97056761327616
     assert parsed_repeated.points == repeated_points
 

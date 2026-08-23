@@ -201,16 +201,15 @@ def _compile_configured_model(
     *,
     require_supported: bool,
 ) -> _CompiledModelPayload:
-    from pyamplicol.models.loading import compile_model_source
+    from pyamplicol.api.requests import ModelSource, _compile_model_source_payload
 
-    return compile_model_source(
-        config.model.source,
-        restriction=config.model.restriction or "default",
-        simplify=config.model.simplify,
+    payload = _compile_model_source_payload(
+        ModelSource.from_config(config.model),
         cache_dir=config.model.cache_dir,
         use_cache=config.model.cache,
         require_supported=require_supported,
     )
+    return cast("_CompiledModelPayload", payload)
 
 
 def _model_inspection_payload(compiled: _CompiledModelPayload) -> dict[str, object]:

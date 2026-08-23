@@ -271,6 +271,7 @@ def audit_architecture_jit_bundle(
     contracts: RuntimeContracts,
     expected_sha256: str | None = None,
     expected_architecture_class: str | None = None,
+    expected_model_source: str = "built-in-sm",
 ) -> dict[str, object]:
     """Validate archive integrity and the portable storage-v3 contract."""
 
@@ -385,11 +386,14 @@ def audit_architecture_jit_bundle(
 
     provenance = object_value(kernel_pack.get("provenance"), "kernel_pack.provenance")
     model_source = object_value(provenance.get("model_source"), "pack model source")
+    expected_model = string_value(expected_model_source, "expected model source")
     if (
-        provenance.get("model_name") != "built-in-sm"
-        or model_source.get("kind") != "built-in-sm"
+        provenance.get("model_name") != expected_model
+        or model_source.get("kind") != expected_model
     ):
-        raise PortabilityError("portability transfer must contain the built-in SM")
+        raise PortabilityError(
+            f"portability transfer must contain model {expected_model!r}"
+        )
     producer = object_value(kernel_pack.get("producer"), "kernel_pack.producer")
     if producer.get("distribution") != "pyamplicol":
         raise PortabilityError("prepared JIT producer distribution is not pyamplicol")
@@ -600,8 +604,10 @@ def audit_architecture_jit_bundle(
     compiled_source = object_value(
         compiled_model.get("source"), "compiled model source"
     )
-    if compiled_source.get("kind") != "built-in-sm":
-        raise PortabilityError("prepared bundle compiled model is not built-in SM")
+    if compiled_source.get("kind") != expected_model:
+        raise PortabilityError(
+            f"prepared bundle compiled model is not {expected_model!r}"
+        )
 
     return {
         "backend": "jit",

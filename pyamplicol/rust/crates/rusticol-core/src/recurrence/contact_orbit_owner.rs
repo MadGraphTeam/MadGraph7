@@ -72,7 +72,7 @@ pub(super) struct ContactOrbitStepProof {
     pub(super) step_semantic_digest: SemanticDigest,
     pub(super) stage: ContactOrbitStage,
     pub(super) result_leg: u32,
-    pub(super) physical_leg_equivalence_classes: [u32; 4],
+    pub(super) physical_leg_equivalence_classes: Vec<u32>,
     pub(super) left_covered_legs: ContactOrbitCoveredLegs,
     pub(super) right_covered_legs: ContactOrbitCoveredLegs,
     pub(super) source_particle_legs: [i32; 3],
@@ -254,13 +254,18 @@ fn strict_contact_orbit_step(
         .copied()
         .filter(|certificate| certificate.id == step.certificate_id)
         .ok_or_else(|| integrity("contact-orbit certificate is absent"))?;
-    let physical_leg_equivalence_classes: [u32; 4] = catalog
-        .u32_sequence(
+    let physical_leg_equivalence_classes = try_copy_u32(
+        catalog.u32_sequence(
             certificate.physical_leg_equivalence_sequence_id,
             "contact-orbit physical-leg equivalence classes",
-        )?
-        .try_into()
-        .map_err(|_| integrity("contact-orbit certificate does not describe four legs"))?;
+        )?,
+        "contact-orbit physical-leg equivalence classes",
+    )?;
+    if !matches!(physical_leg_equivalence_classes.len(), 4 | 5) {
+        return Err(integrity(
+            "contact-orbit certificate does not describe four or five legs",
+        ));
+    }
     let source_particle_legs: [i32; 3] = catalog
         .i32_sequence(
             step.source_particle_leg_sequence_id,
@@ -609,7 +614,7 @@ pub(super) fn partial_contact_orbit_step_for_test(
         step_semantic_digest: contact_orbit_test_digest(digest_byte),
         stage: ContactOrbitStage::Partial,
         result_leg: result,
-        physical_leg_equivalence_classes: equivalence_classes,
+        physical_leg_equivalence_classes: equivalence_classes.to_vec(),
         left_covered_legs: ContactOrbitCoveredLegs::new(&[left]).unwrap(),
         right_covered_legs: ContactOrbitCoveredLegs::new(&[right]).unwrap(),
         source_particle_legs: [left as i32, right as i32, -1],
@@ -633,7 +638,7 @@ pub(super) fn final_contact_orbit_step_for_test(
         step_semantic_digest: contact_orbit_test_digest(digest_byte),
         stage: ContactOrbitStage::Final,
         result_leg: result,
-        physical_leg_equivalence_classes: equivalence_classes,
+        physical_leg_equivalence_classes: equivalence_classes.to_vec(),
         left_covered_legs: ContactOrbitCoveredLegs::new(left).unwrap(),
         right_covered_legs: ContactOrbitCoveredLegs::new(right).unwrap(),
         source_particle_legs: [
@@ -665,12 +670,12 @@ struct ContactOrbitPhysicalAssignment {
 
 /// Physics identity retained while quotienting a certified contact traversal orbit.
 ///
-/// The compiler certificate is deliberately limited to a momentum-independent,
-/// literal-singlet scalar contact.  Within one concrete destination, source
-/// momentum sums and topology-replay ancestry on its auxiliary parents select
-/// a traversal of the same vertex rather than different physics.  A certified
-/// physical source leg remains bound to its concrete external source slot.
-/// Every other current distinction stays in the owner key.
+/// A certified physical source leg remains bound to its concrete external
+/// source slot.  Auxiliary support must also remain in the key: at five points
+/// the final HEFT node can join two auxiliaries, and their support partition is
+/// the physical identical-particle assignment whose multiplicity is carried by
+/// the compiler-generated kernel.  Forgetting it collapses distinct Hgggg
+/// assignments.  Every other current distinction stays in the owner key too.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct ContactOrbitCurrentPhysics<'a> {
     catalog_digest: SemanticDigest,
@@ -684,6 +689,7 @@ struct ContactOrbitCurrentPhysics<'a> {
     coupling_orders: &'a [u32],
     source_binding: &'a CurrentSourceBinding,
     propagator_template_id: Option<u32>,
+    support_source_slots: &'a [u32],
 }
 
 impl<'a> ContactOrbitCurrentPhysics<'a> {
@@ -700,6 +706,7 @@ impl<'a> ContactOrbitCurrentPhysics<'a> {
             coupling_orders: current.coupling_orders(),
             source_binding: current.source_binding(),
             propagator_template_id: current.propagator_template_id(),
+            support_source_slots: current.support_source_slots(),
         }
     }
 }
@@ -708,7 +715,6 @@ impl<'a> ContactOrbitCurrentPhysics<'a> {
 struct ContactOrbitParentGroup<'a> {
     current: ContactOrbitCurrentPhysics<'a>,
     assignment: ContactOrbitPhysicalAssignment,
-    source_particle_actual_source_slot: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -756,7 +762,7 @@ pub(super) struct ContactOrbitOwnerCandidate<'a> {
 
 fn canonical_physical_assignment(
     covered_legs: ContactOrbitCoveredLegs,
-    equivalence_classes: &[u32; 4],
+    equivalence_classes: &[u32],
     source_particle_leg: i32,
 ) -> RusticolResult<ContactOrbitPhysicalAssignment> {
     let mut assignments = [0_u32; 2];
@@ -790,7 +796,7 @@ fn canonical_physical_assignment(
 
 fn physical_leg_equivalence_class(
     leg: i32,
-    equivalence_classes: &[u32; 4],
+    equivalence_classes: &[u32],
     label: &str,
 ) -> RusticolResult<Option<u32>> {
     match leg {
@@ -814,11 +820,17 @@ fn validate_step(step: &ContactOrbitStepProof) -> RusticolResult<()> {
             "contact-orbit owner requires exact unit reconstruction",
         ));
     }
+    let arity = step.physical_leg_equivalence_classes.len();
+    if !matches!(arity, 4 | 5) {
+        return Err(integrity(
+            "contact-orbit certificate does not describe four or five legs",
+        ));
+    }
     let result_index = usize::try_from(step.result_leg)
         .ok()
-        .filter(|index| *index < 4)
+        .filter(|index| *index < arity)
         .ok_or_else(|| integrity("contact-orbit result leg is outside arity"))?;
-    let mut covered = [false; 4];
+    let mut covered = vec![false; arity];
     for leg in step
         .left_covered_legs
         .values()
@@ -828,7 +840,7 @@ fn validate_step(step: &ContactOrbitStepProof) -> RusticolResult<()> {
     {
         let index = usize::try_from(leg)
             .ok()
-            .filter(|index| *index < 4)
+            .filter(|index| *index < arity)
             .ok_or_else(|| integrity("contact-orbit covered leg is outside arity"))?;
         if index == result_index || covered[index] {
             return Err(integrity("contact-orbit covered-leg partition is invalid"));
@@ -853,22 +865,21 @@ fn validate_step(step: &ContactOrbitStepProof) -> RusticolResult<()> {
         }
         ContactOrbitStage::Final => {
             let expected_sources = [
-                if step.left_covered_legs.len() == 2 {
+                if step.left_covered_legs.len() > 1 {
                     -1
                 } else {
                     step.left_covered_legs.values()[0] as i32
                 },
-                if step.right_covered_legs.len() == 2 {
+                if step.right_covered_legs.len() > 1 {
                     -1
                 } else {
                     step.right_covered_legs.values()[0] as i32
                 },
                 step.result_leg as i32,
             ];
-            if !matches!(
-                (step.left_covered_legs.len(), step.right_covered_legs.len()),
-                (1, 2) | (2, 1)
-            ) || step.source_particle_legs != expected_sources
+            if step.left_covered_legs.len() > 2
+                || step.right_covered_legs.len() > 2
+                || step.source_particle_legs != expected_sources
                 || covered
                     .iter()
                     .enumerate()
@@ -944,34 +955,17 @@ fn topology_domain_matches_contact_orbit_side(
     side: ContactOrbitParentSide,
 ) -> bool {
     if parent.current_state_template_id != side.expected_state_template_id
-        || parent.support_source_slots.len() != side.covered_legs.len()
+        || parent.support_source_slots.is_empty()
     {
         return false;
     }
     match side.source_particle_leg {
         -1 => parent.is_current,
-        leg if leg >= 0 => parent.is_source && parent.support_source_slots.len() == 1,
+        // A physical contact leg may be fed either by an external source or by
+        // an ordinary off-shell current.  Its certified leg number identifies
+        // a vertex slot, not an external-process source slot.
+        leg if leg >= 0 => parent.is_source || parent.is_current,
         _ => false,
-    }
-}
-
-fn source_particle_actual_source_slot(
-    parent: &CurrentCoreKey,
-    source_particle_leg: i32,
-) -> RusticolResult<Option<u32>> {
-    match source_particle_leg {
-        -1 => Ok(None),
-        leg if leg >= 0 => {
-            let [source_slot] = parent.support_source_slots() else {
-                return Err(integrity(
-                    "contact-orbit physical source parent does not bind exactly one source slot",
-                ));
-            };
-            Ok(Some(*source_slot))
-        }
-        _ => Err(integrity(
-            "contact-orbit source particle leg uses an unknown sentinel",
-        )),
     }
 }
 
@@ -1057,18 +1051,10 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
         ContactOrbitParentGroup {
             current: ContactOrbitCurrentPhysics::from_current(parents[parent_by_side[0]]),
             assignment: sides[0].assignment,
-            source_particle_actual_source_slot: source_particle_actual_source_slot(
-                parents[parent_by_side[0]],
-                sides[0].source_particle_leg,
-            )?,
         },
         ContactOrbitParentGroup {
             current: ContactOrbitCurrentPhysics::from_current(parents[parent_by_side[1]]),
             assignment: sides[1].assignment,
-            source_particle_actual_source_slot: source_particle_actual_source_slot(
-                parents[parent_by_side[1]],
-                sides[1].source_particle_leg,
-            )?,
         },
     ];
     canonical_parents.sort_unstable();
@@ -1298,7 +1284,7 @@ pub(super) fn contact_orbit_test_template(
         id: 0,
         template_string_id: certificate_template,
         algorithm_string_id: algorithm,
-        algorithm_version: 1,
+        algorithm_version: 2,
         term_id: 0,
         vertex_string_id: vertex,
         particle_string_sequence_id: particles,
@@ -1607,7 +1593,7 @@ mod tests {
             step_semantic_digest: digest(digest_byte),
             stage: ContactOrbitStage::Partial,
             result_leg: result,
-            physical_leg_equivalence_classes: [0, 0, 0, 0],
+            physical_leg_equivalence_classes: vec![0, 0, 0, 0],
             left_covered_legs: ContactOrbitCoveredLegs::new(&[left]).unwrap(),
             right_covered_legs: ContactOrbitCoveredLegs::new(&[right]).unwrap(),
             source_particle_legs: [left as i32, right as i32, -1],
@@ -1630,7 +1616,7 @@ mod tests {
             step_semantic_digest: digest(digest_byte),
             stage: ContactOrbitStage::Final,
             result_leg: result,
-            physical_leg_equivalence_classes: equivalence_classes,
+            physical_leg_equivalence_classes: equivalence_classes.to_vec(),
             left_covered_legs: ContactOrbitCoveredLegs::new(left).unwrap(),
             right_covered_legs: ContactOrbitCoveredLegs::new(right).unwrap(),
             source_particle_legs: [
@@ -1645,6 +1631,28 @@ mod tests {
             certificate_reconstruction_factor: ExactComplexRational::ONE,
             step_reconstruction_factor: ExactComplexRational::ONE,
             evaluator_class: "constant-scalar-contact-v1".into(),
+        }
+    }
+
+    fn five_leg_final_step(
+        left: &[u32],
+        right: &[u32],
+        result: u32,
+        digest_byte: u8,
+    ) -> ContactOrbitStepProof {
+        ContactOrbitStepProof {
+            certificate_id: 0,
+            certificate_semantic_digest: digest(9),
+            step_semantic_digest: digest(digest_byte),
+            stage: ContactOrbitStage::Final,
+            result_leg: result,
+            physical_leg_equivalence_classes: vec![0, 0, 0, 0, 1],
+            left_covered_legs: ContactOrbitCoveredLegs::new(left).unwrap(),
+            right_covered_legs: ContactOrbitCoveredLegs::new(right).unwrap(),
+            source_particle_legs: [-1, -1, result as i32],
+            certificate_reconstruction_factor: ExactComplexRational::ONE,
+            step_reconstruction_factor: ExactComplexRational::ONE,
+            evaluator_class: "scalar-heft-colored-contact-tree".into(),
         }
     }
 
@@ -1808,7 +1816,7 @@ mod tests {
         let destination = current(30, 2, &[10, 11]);
         let application = application();
         let mut non_equivalent = partial_step(0, 1, 2, 29);
-        non_equivalent.physical_leg_equivalence_classes = [0, 1, 2, 3];
+        non_equivalent.physical_leg_equivalence_classes = vec![0, 1, 2, 3];
         assert!(
             candidate_with_input_states(
                 &non_equivalent,
@@ -1837,7 +1845,7 @@ mod tests {
             .to_string()
             .contains("mapping is absent")
         );
-        let invalid_source = current_with_physics(
+        let internal_leg = current_with_physics(
             RecurrenceNodeKind::Current,
             10,
             1,
@@ -1854,14 +1862,13 @@ mod tests {
             candidate_with_input_states(
                 &step,
                 &destination,
-                [&invalid_source, &right],
+                [&internal_leg, &right],
                 [10, 10],
                 &application,
                 33,
             )
-            .unwrap_err()
-            .to_string()
-            .contains("mapping is absent")
+            .unwrap()
+            .is_some()
         );
         let pair = current(10, 1, &[11, 12]);
         let wide_destination = current(30, 2, &[10, 11, 12]);
@@ -1874,14 +1881,13 @@ mod tests {
                 &application,
                 34,
             )
-            .unwrap_err()
-            .to_string()
-            .contains("mapping is absent")
+            .unwrap()
+            .is_some()
         );
     }
 
     #[test]
-    fn prepared_parent_domain_accepts_only_the_certified_contact_shape() {
+    fn prepared_parent_domain_accepts_sources_and_internal_physical_legs() {
         let source_a = current(10, 1, &[10]);
         let source_b = current(10, 1, &[11]);
         let source_c = current(10, 1, &[12]);
@@ -1900,7 +1906,7 @@ mod tests {
                 .unwrap()
         );
         assert!(
-            !partial
+            partial
                 .accepts_parent_domain([&composite_scalar, &source_c])
                 .unwrap()
         );
@@ -1929,7 +1935,7 @@ mod tests {
         );
 
         let mut ambiguous_step = partial_step(0, 1, 2, 39);
-        ambiguous_step.physical_leg_equivalence_classes = [0, 1, 2, 3];
+        ambiguous_step.physical_leg_equivalence_classes = vec![0, 1, 2, 3];
         let ambiguous = prepared_contact_orbit_transition_for_test(
             ambiguous_step,
             [10, 10],
@@ -2112,6 +2118,61 @@ mod tests {
     }
 
     #[test]
+    fn five_leg_auxiliary_partitions_keep_physical_assignment_multiplicity() {
+        let application = application();
+        let destination = current(40, 4, &[10, 11, 12, 13]);
+        let first_left = current(20, 2, &[10, 11]);
+        let first_right = current(30, 2, &[12, 13]);
+        let second_left = current(20, 2, &[10, 12]);
+        let second_right = current(30, 2, &[11, 13]);
+        let forward_step = five_leg_final_step(&[0, 1], &[2, 3], 4, 100);
+        let mirror_step = five_leg_final_step(&[2, 3], &[0, 1], 4, 101);
+
+        let first = candidate_with_input_states(
+            &forward_step,
+            &destination,
+            [&first_left, &first_right],
+            [20, 30],
+            &application,
+            102,
+        )
+        .unwrap()
+        .unwrap();
+        let first_mirror = candidate_with_input_states(
+            &mirror_step,
+            &destination,
+            [&first_right, &first_left],
+            [30, 20],
+            &application,
+            103,
+        )
+        .unwrap()
+        .unwrap();
+        let second = candidate_with_input_states(
+            &forward_step,
+            &destination,
+            [&second_left, &second_right],
+            [20, 30],
+            &application,
+            104,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(first.group, first_mirror.group);
+        assert_ne!(first.group, second.group);
+        assert_eq!(
+            selected_contact_orbit_owner_tokens([
+                (0_u32, Some(first)),
+                (1_u32, Some(first_mirror)),
+                (2_u32, Some(second)),
+            ])
+            .unwrap(),
+            vec![0, 2],
+        );
+    }
+
+    #[test]
     fn certified_owner_preserves_concrete_destination_across_contact_stages() {
         let application = application();
         let partial = partial_step(0, 1, 2, 10);
@@ -2183,9 +2244,9 @@ mod tests {
         let partial_destination = current(20, 2, &[10, 11]);
         let application = application();
         let mut partial_forward = partial_step(0, 1, 2, 50);
-        partial_forward.physical_leg_equivalence_classes = [0, 0, 1, 2];
+        partial_forward.physical_leg_equivalence_classes = vec![0, 0, 1, 2];
         let mut partial_reverse = partial_step(1, 0, 2, 51);
-        partial_reverse.physical_leg_equivalence_classes = [0, 0, 1, 2];
+        partial_reverse.physical_leg_equivalence_classes = vec![0, 0, 1, 2];
         let partial_forward = candidate(
             &partial_forward,
             &partial_destination,

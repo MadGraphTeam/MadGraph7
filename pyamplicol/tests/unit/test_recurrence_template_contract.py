@@ -18,6 +18,9 @@ from pyamplicol.generation.recurrence_template_columnar import (
     RecurrenceTemplateInputV1,
     build_recurrence_template_input_v1,
 )
+from pyamplicol.models.contact_decomposition import (
+    CONTACT_ORBIT_ALGORITHM_VERSION,
+)
 from pyamplicol.models.recurrence_template import (
     ClosureTemplateV1,
     ColorContractionTemplateV1,
@@ -259,26 +262,22 @@ def _contact_orbit_records() -> tuple[
         ContactOrbitCertificateV1(
             template_id="contact-orbit-certificate:scalar:0",
             algorithm="compiler-certified-contact-orbit",
-            algorithm_version=1,
+            algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
             term_id=0,
             vertex="V_scalar_0",
             particles=("s", "s", "s", "s"),
-            evaluator_class=(
-                "constant-scalar-literal-singlet-self-conjugate-boson"
-            ),
+            evaluator_class=("constant-scalar-literal-singlet-self-conjugate-boson"),
             physical_leg_equivalence_classes=(0, 0, 0, 0),
             reconstruction_factor=ExactComplexRationalV1.one(),
         ),
         ContactOrbitCertificateV1(
             template_id="contact-orbit-certificate:scalar:1",
             algorithm="compiler-certified-contact-orbit",
-            algorithm_version=1,
+            algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
             term_id=1,
             vertex="V_scalar_1",
             particles=("s", "s", "t", "u"),
-            evaluator_class=(
-                "constant-scalar-literal-singlet-self-conjugate-boson"
-            ),
+            evaluator_class=("constant-scalar-literal-singlet-self-conjugate-boson"),
             physical_leg_equivalence_classes=(0, 0, 1, 2),
             reconstruction_factor=ExactComplexRationalV1.one(),
         ),
@@ -315,9 +314,7 @@ def _contact_orbit_catalog(
     bound_steps = tuple(sorted(steps, key=lambda item: item.template_id))
     transition = replace(
         _transition(),
-        contact_orbit_step_template_ids=tuple(
-            step.template_id for step in bound_steps
-        ),
+        contact_orbit_step_template_ids=tuple(step.template_id for step in bound_steps),
         contact_orbit_step_semantic_digests=tuple(
             step.semantic_digest for step in bound_steps
         ),
@@ -646,9 +643,7 @@ def test_contact_orbit_columnar_contract_rejects_transition_digest_tampering() -
 
     transition_table = tables["transitions"]
     sequence_id = int(
-        transition_table.column(
-            "contact_orbit_step_semantic_digest_sequence_id"
-        )[0]
+        transition_table.column("contact_orbit_step_semantic_digest_sequence_id")[0]
     )
     sequence_ranges = tables["u32_sequence_ranges"]
     start = int(sequence_ranges.column("start")[sequence_id])

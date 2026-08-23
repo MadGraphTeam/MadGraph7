@@ -169,10 +169,13 @@ def _valid_manifest() -> dict[str, object]:
     }
 
 
-def test_artifact_schema_accepts_a_positive_v3_manifest() -> None:
+@pytest.mark.parametrize("source_kind", ("built-in-sm", "built-in-sm-heft"))
+def test_artifact_schema_accepts_a_positive_v3_manifest(source_kind: str) -> None:
+    manifest = _valid_manifest()
+    manifest["model"]["source_kind"] = source_kind
     jsonschema.Draft202012Validator(
         _schema("artifact-manifest-v3.schema.json")
-    ).validate(_valid_manifest())
+    ).validate(manifest)
 
 
 def test_artifact_schema_accepts_native_identity_without_git_revision() -> None:

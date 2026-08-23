@@ -10,9 +10,11 @@ from typing import Protocol
 CONTACT_DECOMPOSITION_ALGORITHM = "ufo-four-point-contact-decomposition"
 CONTACT_DECOMPOSITION_ALGORITHM_VERSION = 2
 CONTACT_ORBIT_ALGORITHM = "compiler-certified-contact-orbit"
-CONTACT_ORBIT_ALGORITHM_VERSION = 1
-CONTACT_ORBIT_EVALUATOR_CLASS = (
-    "constant-scalar-literal-singlet-self-conjugate-boson"
+CONTACT_ORBIT_ALGORITHM_VERSION = 2
+CONTACT_ORBIT_EVALUATOR_CLASS = "constant-scalar-literal-singlet-self-conjugate-boson"
+HEFT_CONTACT_ORBIT_EVALUATOR_CLASS = "scalar-heft-colored-contact-tree"
+CONTACT_ORBIT_EVALUATOR_CLASSES = frozenset(
+    {CONTACT_ORBIT_EVALUATOR_CLASS, HEFT_CONTACT_ORBIT_EVALUATOR_CLASS}
 )
 
 
@@ -327,8 +329,7 @@ class CompiledContactDecompositionSplit:
                 "contact partial orientations disagree with the chosen pair"
             )
         if any(
-            tuple(leg for leg in item.input_legs if leg >= 0)
-            != (self.remaining_leg,)
+            tuple(leg for leg in item.input_legs if leg >= 0) != (self.remaining_leg,)
             for item in finals
         ):
             raise ValueError(
@@ -664,12 +665,12 @@ class CompiledContactOrbitCertificate:
     algorithm_version: int
     term_id: int
     vertex: str
-    particles: tuple[str, str, str, str]
+    particles: tuple[str, ...]
     color_expression: str
     lorentz_expression: str
     coupling_expression: str
     evaluator_class: str
-    physical_leg_equivalence_classes: tuple[int, int, int, int]
+    physical_leg_equivalence_classes: tuple[int, ...]
     reconstruction_factor: str
 
     def __post_init__(self) -> None:
@@ -683,22 +684,32 @@ class CompiledContactOrbitCertificate:
             )
         if self.term_id < 0 or not self.vertex:
             raise ValueError("contact-orbit certificate requires a term identity")
-        if any(not particle for particle in self.particles):
+        if len(self.particles) not in {4, 5} or any(
+            not particle for particle in self.particles
+        ):
             raise ValueError("contact-orbit certificate particles must be non-empty")
-        if self.color_expression != "1" or self.lorentz_expression != "1":
+        if self.evaluator_class not in CONTACT_ORBIT_EVALUATOR_CLASSES:
+            raise ValueError(
+                f"unsupported contact-orbit evaluator class {self.evaluator_class!r}"
+            )
+        if self.evaluator_class == CONTACT_ORBIT_EVALUATOR_CLASS and (
+            len(self.particles) != 4
+            or self.color_expression != "1"
+            or self.lorentz_expression != "1"
+        ):
             raise ValueError(
                 "contact-orbit certificate requires literal scalar-singlet tensors"
             )
+        if self.evaluator_class == HEFT_CONTACT_ORBIT_EVALUATOR_CLASS and (
+            not self.color_expression or not self.lorentz_expression
+        ):
+            raise ValueError("HEFT contact-orbit tensors must be non-empty")
         if not self.coupling_expression:
             raise ValueError(
                 "contact-orbit certificate coupling expression must not be empty"
             )
-        if self.evaluator_class != CONTACT_ORBIT_EVALUATOR_CLASS:
-            raise ValueError(
-                f"unsupported contact-orbit evaluator class {self.evaluator_class!r}"
-            )
         classes = self.physical_leg_equivalence_classes
-        if any(value < 0 for value in classes):
+        if len(classes) != len(self.particles) or any(value < 0 for value in classes):
             raise ValueError("contact-orbit equivalence classes must be non-negative")
         canonical: dict[str, int] = {}
         expected = tuple(
@@ -710,9 +721,7 @@ class CompiledContactOrbitCertificate:
                 "contact-orbit physical-leg equivalence classes are not canonical"
             )
         if self.reconstruction_factor != "1":
-            raise ValueError(
-                "constant scalar contact-orbit reconstruction factor must be one"
-            )
+            raise ValueError("contact-orbit reconstruction factor must be one")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -753,15 +762,15 @@ class CompiledContactOrbitCertificate:
             },
             context="compiled contact-orbit certificate",
         )
-        particles = _strict_string_tuple(
-            fields["particles"], "contact-orbit particles"
-        )
+        particles = _strict_string_tuple(fields["particles"], "contact-orbit particles")
         classes = _strict_int_tuple(
             fields["physical_leg_equivalence_classes"],
             "contact-orbit physical-leg equivalence classes",
         )
-        if len(particles) != 4 or len(classes) != 4:
-            raise ValueError("contact-orbit certificate must describe four legs")
+        if len(particles) not in {4, 5} or len(classes) != len(particles):
+            raise ValueError(
+                "contact-orbit certificate must describe four or five legs"
+            )
         return cls(
             algorithm=_strict_string(fields["algorithm"], "contact-orbit algorithm"),
             algorithm_version=_strict_integer(
@@ -769,7 +778,7 @@ class CompiledContactOrbitCertificate:
             ),
             term_id=_strict_integer(fields["term_id"], "contact-orbit term ID"),
             vertex=_strict_string(fields["vertex"], "contact-orbit vertex"),
-            particles=(particles[0], particles[1], particles[2], particles[3]),
+            particles=particles,
             color_expression=_strict_string(
                 fields["color_expression"], "contact-orbit color expression"
             ),
@@ -782,12 +791,7 @@ class CompiledContactOrbitCertificate:
             evaluator_class=_strict_string(
                 fields["evaluator_class"], "contact-orbit evaluator class"
             ),
-            physical_leg_equivalence_classes=(
-                classes[0],
-                classes[1],
-                classes[2],
-                classes[3],
-            ),
+            physical_leg_equivalence_classes=classes,
             reconstruction_factor=_strict_string(
                 fields["reconstruction_factor"],
                 "contact-orbit reconstruction factor",
@@ -820,15 +824,15 @@ class CompiledContactOrbitStep:
             )
         if self.term_id < 0 or self.stage not in {"partial", "final"}:
             raise ValueError("contact-orbit step has an invalid term or stage")
-        if self.result_leg not in range(4):
-            raise ValueError("contact-orbit result leg must address four-point input")
+        if self.result_leg not in range(5):
+            raise ValueError("contact-orbit result leg must address supported input")
         if self.reconstruction_factor != "1":
             raise ValueError("contact-orbit step reconstruction factor must be one")
         covered = (*self.left_covered_legs, *self.right_covered_legs)
         if (
             not self.left_covered_legs
             or not self.right_covered_legs
-            or any(leg not in range(4) for leg in covered)
+            or any(leg not in range(5) for leg in covered)
             or len(covered) != len(set(covered))
         ):
             raise ValueError("contact-orbit step has invalid covered physical legs")
@@ -844,15 +848,19 @@ class CompiledContactOrbitStep:
             ):
                 raise ValueError("contact-orbit partial step lineage is inconsistent")
         else:
+            arity = len(covered) + 1
             if (
-                set(covered) != (set(range(4)) - {self.result_leg})
+                arity not in {4, 5}
+                or set(covered) != (set(range(arity)) - {self.result_leg})
                 or output_source != self.result_leg
-                or {len(self.left_covered_legs), len(self.right_covered_legs)}
-                != {1, 2}
+                or any(
+                    len(side) not in {1, 2}
+                    for side in (self.left_covered_legs, self.right_covered_legs)
+                )
             ):
                 raise ValueError("contact-orbit final step lineage is inconsistent")
             expected_sources = tuple(
-                -1 if len(side) == 2 else side[0]
+                -1 if len(side) > 1 else side[0]
                 for side in (self.left_covered_legs, self.right_covered_legs)
             )
             if (left_source, right_source) != expected_sources:
@@ -945,9 +953,7 @@ def compiled_contact_orbit_step(
         pair_legs = tuple(sorted(split.pair_legs))
         remaining = (split.remaining_leg,)
         left_covered, right_covered = (
-            (pair_legs, remaining)
-            if auxiliary_on_left
-            else (remaining, pair_legs)
+            (pair_legs, remaining) if auxiliary_on_left else (remaining, pair_legs)
         )
         source_particle_legs = (
             -1 if auxiliary_on_left else split.remaining_leg,
@@ -965,8 +971,6 @@ def compiled_contact_orbit_step(
         source_particle_legs=source_particle_legs,
         reconstruction_factor=certificate.reconstruction_factor,
     )
-
-
 
 
 def _validate_auxiliary_color(value: int) -> None:

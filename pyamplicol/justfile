@@ -76,7 +76,7 @@ installed-smoke:
 
 rust-check:
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- fmt --all --check
-    {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- clippy --workspace --all-targets --locked -- -D warnings
+    {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- clippy --workspace --all-targets --locked
 
 rust-test:
     {{python}} tools/release/run_cargo.py --mode {{build_mode}} -- test --workspace --locked

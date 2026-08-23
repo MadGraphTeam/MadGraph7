@@ -286,9 +286,9 @@ struct ContactOrbitCertificateJson {
     algorithm_version: u32,
     term_id: u32,
     vertex: String,
-    particles: [String; 4],
+    particles: Vec<String>,
     evaluator_class: String,
-    physical_leg_equivalence_classes: [u32; 4],
+    physical_leg_equivalence_classes: Vec<u32>,
     reconstruction_factor: ExactFactorJson,
 }
 

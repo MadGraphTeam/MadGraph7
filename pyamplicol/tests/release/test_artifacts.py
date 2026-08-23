@@ -148,6 +148,7 @@ from _artifacts import (  # noqa: E402
 from audit_sdist import (  # noqa: E402
     PREPARED_MODEL_ARCHITECTURES,
     PREPARED_MODEL_ASSET_BASENAME,
+    PREPARED_MODEL_ASSETS,
     REQUIRED_SDIST_MEMBERS,
     prepared_model_asset_members,
 )
@@ -202,42 +203,43 @@ def _prepared_model_files(
 ) -> dict[str, bytes]:
     root = prefix.rstrip("/")
     files = {f"{root}/__init__.py": b'"""Synthetic prepared models."""\n'}
-    for architecture in PREPARED_MODEL_ARCHITECTURES:
-        stem = f"{PREPARED_MODEL_ASSET_BASENAME}-{architecture}"
-        bundle_name = f"{stem}.pyamplicol-model"
-        bundle = f"synthetic portable {architecture} prepared model\n".encode()
-        metadata = {
-            "schema_version": 1,
-            "prepared_model_bundle_schema": 1,
-            "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
-            "id": PREPARED_MODEL_ASSET_BASENAME,
-            "model": "built-in-sm",
-            "backend": "jit",
-            "jit_optimization_level": 2,
-            "bundle": bundle_name,
-            "bundle_size": len(bundle),
-            "bundle_sha256": hashlib.sha256(bundle).hexdigest(),
-            "dependencies": {
-                "symbolica_serialization_abi": "symbolica-bincode2-v1",
-                "symjit_application_abi": "symjit-application-storage-v3",
-                "symjit_plane_application_abi": (
-                    "pyamplicol-symjit-plane-application-v2"
-                ),
-            },
-            "build_contract": {"candidate_fingerprint": None, "mode": mode},
-            "producer": {},
-            "target": {
-                "portable": True,
-                "word_bits": 64,
-                "endianness": "little",
-                "target_triple": "symjit-storage-v3-portable",
-                "cpu_features": [],
-            },
-        }
-        files[f"{root}/{bundle_name}"] = bundle
-        files[f"{root}/{stem}.metadata.json"] = (
-            json.dumps(metadata, sort_keys=True) + "\n"
-        ).encode()
+    for identifier, model_source in PREPARED_MODEL_ASSETS.items():
+        for architecture in PREPARED_MODEL_ARCHITECTURES:
+            stem = f"{identifier}-{architecture}"
+            bundle_name = f"{stem}.pyamplicol-model"
+            bundle = f"synthetic portable {stem} prepared model\n".encode()
+            metadata = {
+                "schema_version": 1,
+                "prepared_model_bundle_schema": 1,
+                "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
+                "id": identifier,
+                "model": model_source,
+                "backend": "jit",
+                "jit_optimization_level": 2,
+                "bundle": bundle_name,
+                "bundle_size": len(bundle),
+                "bundle_sha256": hashlib.sha256(bundle).hexdigest(),
+                "dependencies": {
+                    "symbolica_serialization_abi": "symbolica-bincode2-v1",
+                    "symjit_application_abi": "symjit-application-storage-v3",
+                    "symjit_plane_application_abi": (
+                        "pyamplicol-symjit-plane-application-v2"
+                    ),
+                },
+                "build_contract": {"candidate_fingerprint": None, "mode": mode},
+                "producer": {},
+                "target": {
+                    "portable": True,
+                    "word_bits": 64,
+                    "endianness": "little",
+                    "target_triple": "symjit-storage-v3-portable",
+                    "cpu_features": [],
+                },
+            }
+            files[f"{root}/{bundle_name}"] = bundle
+            files[f"{root}/{stem}.metadata.json"] = (
+                json.dumps(metadata, sort_keys=True) + "\n"
+            ).encode()
     return files
 
 

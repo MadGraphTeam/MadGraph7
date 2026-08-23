@@ -594,8 +594,7 @@ def _contact_decomposition_split_proof(
     )
     pair_orders = (
         (pair_legs,)
-        if source_particles[pair_legs[0]].name
-        == source_particles[pair_legs[1]].name
+        if source_particles[pair_legs[0]].name == source_particles[pair_legs[1]].name
         else (pair_legs, tuple(reversed(pair_legs)))
     )
     canonical_outer_parity = (
@@ -645,9 +644,7 @@ def _contact_decomposition_split_proof(
             CompiledContactOrientationProof(
                 stage="final",
                 input_legs=(
-                    (-1, remaining_leg)
-                    if auxiliary_on_left
-                    else (remaining_leg, -1)
+                    (-1, remaining_leg) if auxiliary_on_left else (remaining_leg, -1)
                 ),
                 permutation_parity=final_parity,
                 scalar_prefactor=_canonical_scalar_prefactor(
@@ -671,9 +668,7 @@ def _contact_decomposition_split_proof(
     )
     return CompiledContactDecompositionSplit(
         decomposition_kind=(
-            "two-structure-constants"
-            if outer_color_factor
-            else "literal-color-singlet"
+            "two-structure-constants" if outer_color_factor else "literal-color-singlet"
         ),
         result_leg=result_leg,
         pair_legs=pair_legs,
@@ -839,18 +834,21 @@ def _four_point_contact_color_split(
     result_leg: int,
     *,
     model_symbols: ModelSymbolRegistry | None = None,
-) -> tuple[
-    tuple[int, int],
-    int,
-    str,
-    str,
-    int,
-    int,
-    tuple[int, ...],
-    tuple[int, ...],
-    int,
-    str,
-] | None:
+) -> (
+    tuple[
+        tuple[int, int],
+        int,
+        str,
+        str,
+        int,
+        int,
+        tuple[int, ...],
+        tuple[int, ...],
+        int,
+        str,
+    ]
+    | None
+):
     active_symbols = model_symbols or symbols.model("contact_color_parser")
     factors = _normalized_structure_constant_factors(term.color_expression)
     color_coefficient = _source_structure_constant_product_coefficient(
@@ -939,10 +937,12 @@ def _source_structure_constant_product_coefficient(
 
 def _normalized_structure_constant_factors(
     expression: str,
+    *,
+    expected_count: int = 2,
 ) -> tuple[tuple[int, ...], ...]:
     """Return typed f-tensor index words from a normalized color monomial."""
 
-    if expression.count("::f(") != 2:
+    if expression.count("::f(") != expected_count:
         return ()
     result: list[tuple[int, ...]] = []
     for arguments in _function_arguments(expression, "::f"):

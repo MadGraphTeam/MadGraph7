@@ -38,6 +38,7 @@ def test_model_source_kind_resolution_does_not_import_symbolica(tmp_path: Path) 
     compiled.write_text("{}", encoding="utf-8")
 
     assert ModelSource.built_in_sm().kind == "built-in-sm"
+    assert ModelSource.built_in_sm_heft().kind == "built-in-sm-heft"
     assert ModelSource.from_path(ufo).kind == "ufo"
     assert ModelSource.from_path(serialized).kind == "json"
     assert ModelSource.from_path(compiled).kind == "compiled"
@@ -117,6 +118,20 @@ def test_model_source_rejects_external_options_for_builtin_model() -> None:
         )
     with pytest.raises(ModelError, match="cannot be disabled"):
         ModelSource.from_config(ModelConfig(source="built-in-sm", simplify=False))
+
+
+@pytest.mark.parametrize(
+    "selector",
+    ("built-in-sm-heft", "builtin_sm_heft", "sm-heft", "sm_heft"),
+)
+def test_model_source_selects_packaged_sm_heft(selector: str) -> None:
+    source = ModelSource.from_config(ModelConfig(source=selector))
+
+    assert source == ModelSource.built_in_sm_heft()
+    with pytest.raises(ModelError, match="restrictions cannot be applied"):
+        ModelSource.from_config(ModelConfig(source=selector, restriction="none"))
+    with pytest.raises(ModelError, match="cannot be disabled"):
+        ModelSource.from_config(ModelConfig(source=selector, simplify=False))
 
 
 def test_public_compiled_model_uses_the_canonical_schema() -> None:
