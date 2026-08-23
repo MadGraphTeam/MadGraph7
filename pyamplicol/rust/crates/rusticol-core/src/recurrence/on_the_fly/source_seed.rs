@@ -938,9 +938,7 @@ mod tests {
                     .contains("one positive hierarchy and optional hard cap")
             );
         }
-        assert!(
-            rebuild_with_coupling_policy(seed.clone(), vec![1], vec![Some(3)]).is_ok()
-        );
+        assert!(rebuild_with_coupling_policy(seed.clone(), vec![1], vec![Some(3)]).is_ok());
         assert!(
             rebuild_with_coupling_policy(seed.clone(), vec![1, 2], vec![Some(0), None]).is_ok()
         );

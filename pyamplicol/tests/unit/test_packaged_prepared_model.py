@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+
 from pyamplicol.assets import prepared_models
 from pyamplicol.models.prepared_catalog import PREPARED_INDEPENDENT_BLOCK_PROOF
 from pyamplicol.models.prepared_target import canonical_architecture
