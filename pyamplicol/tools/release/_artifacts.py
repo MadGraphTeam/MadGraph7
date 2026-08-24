@@ -1380,14 +1380,14 @@ def _reject_native_path_bytes(data: bytes, description: str) -> None:
 
 
 def _scan_capi_archive(path: Path, *, allow_local_rustup: bool) -> bool:
+    """Validate relocation paths and authoritative undefined-symbol linkage.
+
+    The archive link probe and ``nm -u`` inspection own the Python-linkage
+    invariant. Searching arbitrary compressed archive bytes for short strings
+    such as ``pyo3`` can match unrelated binary data and reject a valid wheel.
+    """
+
     archive = path.read_bytes()
-    lowered = archive.lower()
-    found = [marker for marker in _FORBIDDEN_CAPI_SYMBOLS if marker.encode() in lowered]
-    if found:
-        raise ArtifactError(
-            "Rusticol C API archive references Python/PyO3/NumPy symbols: "
-            + ", ".join(found)
-        )
     scanned = _sanitized_native_bytes(archive, allow_local_rustup=allow_local_rustup)
     _reject_native_path_bytes(scanned, "Rusticol C API archive")
 

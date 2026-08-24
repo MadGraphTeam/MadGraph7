@@ -1415,6 +1415,25 @@ def test_capi_archive_scan_rejects_undefined_python_symbols(
         _scan_capi_archive(archive, allow_local_rustup=False)
 
 
+def test_capi_archive_scan_ignores_raw_pyo3_marker_with_clean_symbols(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"synthetic compressed archive bytes containing pyo3")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["nm"], 0, stdout="", stderr=""
+        ),
+    )
+
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+
+
 def test_capi_archive_scan_defers_incompatible_llvm_reader(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
