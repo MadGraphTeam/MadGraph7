@@ -92,7 +92,8 @@ def validate_checkout(
     repository = repository.resolve()
     if not (repository / ".git").exists():
         raise LegacyOracleError(
-            f"legacy AmpliCol checkout is absent: {repository}; run `just dev-install`"
+            f"legacy AmpliCol checkout is absent: {repository}; run "
+            "`just dev-install --with-legacy-amplicol`"
         )
     actual_revision = run(["git", "rev-parse", "HEAD"], cwd=repository).stdout.strip()
     if actual_revision != revision():

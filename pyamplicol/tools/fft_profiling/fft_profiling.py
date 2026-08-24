@@ -346,6 +346,10 @@ def _parser() -> argparse.ArgumentParser:
         dest="amplicol_root",
         type=Path,
         default=study.legacy_amplicol.DEFAULT_REPOSITORY,
+        help=(
+            "original-AmpliCol checkout (default path is populated by "
+            "dev-install --with-legacy-amplicol)"
+        ),
     )
     parser.add_argument(
         "--reference-fft-root",
@@ -353,7 +357,7 @@ def _parser() -> argparse.ArgumentParser:
         default=study.performance.DEFAULT_REFERENCE_ROOT,
         help=(
             "pinned MultipletRecursion checkout for Reference FFT "
-            "(default: dependencies/checkouts/reference-fft from dev-install)"
+            "(default path is populated by dev-install --with-reference-fft)"
         ),
     )
     parser.add_argument(
@@ -2096,7 +2100,10 @@ def _preflight(arguments: argparse.Namespace) -> None:
     if needs_amplicol:
         amplicol = status["amplicol_root"]
         if amplicol["compatible"] is not True:
-            raise ProfilingError(f"invalid --amplicol-root: {amplicol['path']}")
+            raise ProfilingError(
+                f"invalid --amplicol-root: {amplicol['path']}; pass a compatible "
+                "checkout or run `just dev-install --with-legacy-amplicol`"
+            )
         if (
             not arguments.compare_helicity_sums
             and amplicol["probe_available"] is not True
@@ -2114,7 +2121,9 @@ def _preflight(arguments: argparse.Namespace) -> None:
         if reference_fft["compatible"] is not True:
             raise ProfilingError(
                 "invalid --reference-fft-root: expected "
-                f"Benchmark/run_benchmark.py below {reference_fft['path']}"
+                f"Benchmark/run_benchmark.py below {reference_fft['path']}; pass a "
+                "compatible checkout or run "
+                "`just dev-install --with-reference-fft`"
             )
     if _madgraph_requested(arguments, run_directory):
         madgraph = status["madgraph_root"]

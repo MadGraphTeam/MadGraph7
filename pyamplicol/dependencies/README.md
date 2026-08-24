@@ -80,7 +80,8 @@ pyAmpliCol's precompiled Python-wheel publication workflow because no Rust
 crate is published to crates.io.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
-only as an independent validation and benchmarking reference. The pinned
+only as an independent validation and benchmarking reference. Enable it with
+`just dev-install --with-legacy-amplicol`. The pinned
 `amplicol_with_patches` branch removes the unnecessary LHAPDF
 link from its direct color probe, exposes complete recursion-kind diagnostics,
 and reports each LC contraction-row partition. This
@@ -98,12 +99,13 @@ The checkout and its developer-only branch are never redistributed in a wheel
 or sdist.
 
 The Reference FFT checkout is likewise developer-only and is used only by the
-FFT profiling and hardware-sensitive acceptance tools. `just dev-install`
-clones the exact `fft_reference_for_pyamplicol` revision recorded in
-`contributor-lock.toml` into `dependencies/checkouts/reference-fft`. That
+FFT profiling and hardware-sensitive acceptance tools. Enable it with
+`just dev-install --with-reference-fft`, which clones the exact
+`fft_reference_for_pyamplicol` revision recorded in `contributor-lock.toml`
+into `dependencies/checkouts/reference-fft`. That
 branch keeps the upstream contraction implementation and adds the calibrated
 batch/helicity-sum benchmark interface plus a high-multiplicity roundoff guard.
-It is never redistributed in a wheel or sdist. Direct contributor-installer
-runs may omit either external reference with `--without-reference-fft` or
-`--without-legacy-amplicol`; the same flags can be passed as recipe arguments,
-for example `just dev-install --without-reference-fft`.
+It is never redistributed in a wheel or sdist. Ordinary `just dev-install`
+runs omit both external references. Enable both for the complete FFT profiling
+toolchain with
+`just dev-install --with-legacy-amplicol --with-reference-fft`.

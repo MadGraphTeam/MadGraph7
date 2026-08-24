@@ -70,9 +70,11 @@ selection that directly or automatically includes `amplicol` requires a clean,
 complete checkout exposing the color-probe sources and Make targets from PR
 #12. Supply it with `run --original-amplicol PATH`, or add
 `--local-amplicol PATH` to the copy command to record that checkout as this
-campaign's default; the run option overrides the saved default. The
-`amplicol_with_patches` branch works now; a compatible upstream revision will
-work unchanged after the PR is merged.
+campaign's default; the run option overrides the saved default. A source
+checkout can prepare the default path with
+`just dev-install --with-legacy-amplicol`. The `amplicol_with_patches` branch
+works now; a compatible upstream revision will work unchanged after the PR is
+merged.
 
 The full-colour MadGraph views require an installation with executable
 `bin/mg5_aMC` and its standard `models/sm` UFO model. Supply it once with

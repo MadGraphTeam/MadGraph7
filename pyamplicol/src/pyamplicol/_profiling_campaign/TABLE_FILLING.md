@@ -46,9 +46,10 @@ includes `amplicol` requires a clean, complete checkout exposing the PR #12
 probe sources and Make targets. Supply it with
 `run --original-amplicol PATH`, or pass `--local-amplicol PATH` to the initial
 `profiling-campaign copy` command to save it as the campaign default; the run
-option overrides the saved default. The `amplicol_with_patches` branch works
-now, and a compatible upstream revision will work unchanged after the PR is
-merged.
+option overrides the saved default. A source checkout can prepare the default
+path with `just dev-install --with-legacy-amplicol`. The
+`amplicol_with_patches` branch works now, and a compatible upstream revision
+will work unchanged after the PR is merged.
 
 The MadGraph full-colour cells require an installation containing executable
 `bin/mg5_aMC` and the standard `models/sm` UFO model. Record it with the copy

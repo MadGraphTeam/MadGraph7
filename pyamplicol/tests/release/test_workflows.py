@@ -132,8 +132,10 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "id-token: write" not in workflow
     assert "contents: read" in workflow
     assert workflow.count("dependencies/install_dependencies.py") == 2
-    assert workflow.count("--without-legacy-amplicol") == 2
-    assert workflow.count("--without-reference-fft") == 2
+    assert "--with-legacy-amplicol" not in workflow
+    assert "--with-reference-fft" not in workflow
+    assert "--without-legacy-amplicol" not in workflow
+    assert "--without-reference-fft" not in workflow
     assert workflow.count("--dependencies-only") == 2
     assert workflow.count("--no-build") == 2
     assert "Focused clean-checkout release tests" in workflow

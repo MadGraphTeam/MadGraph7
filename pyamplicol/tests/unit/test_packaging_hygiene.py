@@ -137,7 +137,8 @@ def test_nix_shell_provides_python_build_frontend() -> None:
 def test_dev_install_keeps_all_build_caches_inside_the_workspace() -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     match = re.search(
-        r"(?ms)^dev-install:.*?(?=^[A-Za-z0-9_-]+(?: [^:\n]+)?:|\Z)",
+        r"(?ms)^dev-install(?: [^:\n]+)?:.*?"
+        r"(?=^[A-Za-z0-9_-]+(?: [^:\n]+)?:|\Z)",
         justfile,
     )
     assert match is not None
@@ -153,6 +154,8 @@ def test_dev_install_keeps_all_build_caches_inside_the_workspace() -> None:
     ):
         assert recipe.count(f'{variable}="$PWD/{{{{dev_cache}}}}/') == 2
     assert recipe.count('PYAMPLICOL_CANDIDATE_CACHE_ROOT="$PWD/{{dev_cache}}"') == 1
+    assert "*INSTALLER_ARGS" in recipe
+    assert "dependencies/install_dependencies.py {{INSTALLER_ARGS}}" in recipe
 
 
 @pytest.mark.parametrize(

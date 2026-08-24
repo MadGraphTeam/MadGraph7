@@ -1217,8 +1217,16 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--update", action="store_true")
-    parser.add_argument("--without-legacy-amplicol", action="store_true")
-    parser.add_argument("--without-reference-fft", action="store_true")
+    parser.add_argument(
+        "--with-legacy-amplicol",
+        action="store_true",
+        help="clone the optional pinned original-AmpliCol profiling reference",
+    )
+    parser.add_argument(
+        "--with-reference-fft",
+        action="store_true",
+        help="clone the optional pinned MultipletRecursion FFT reference",
+    )
     build_mode = parser.add_mutually_exclusive_group()
     build_mode.add_argument("--no-build", action="store_true")
     build_mode.add_argument(
@@ -1240,8 +1248,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         _require_tools()
     sources = _sources(
         payload,
-        with_legacy=not args.without_legacy_amplicol,
-        with_reference_fft=not args.without_reference_fft,
+        with_legacy=args.with_legacy_amplicol,
+        with_reference_fft=args.with_reference_fft,
     )
     _ensure_just(runner)
     _ensure_venv(runner)

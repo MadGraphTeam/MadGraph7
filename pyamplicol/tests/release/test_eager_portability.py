@@ -997,8 +997,10 @@ def test_portability_workflow_transfers_portable_packs() -> None:
     assert "--expected-machine ${{ matrix.machine }}" in workflow
     assert workflow.count("tools/ci/memory_watchdog.py --limit-gib 30 --") == 4
     assert workflow.count("dependencies/install_dependencies.py") == 2
-    assert workflow.count("--without-legacy-amplicol") == 2
-    assert workflow.count("--without-reference-fft") == 2
+    assert "--with-legacy-amplicol" not in workflow
+    assert "--with-reference-fft" not in workflow
+    assert "--without-legacy-amplicol" not in workflow
+    assert "--without-reference-fft" not in workflow
     assert "contents: read" in workflow
     assert "continue-on-error" not in workflow
     assert "publish-pypi" not in workflow

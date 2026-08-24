@@ -57,8 +57,9 @@ fft-numerical-acceptance: _source-checkout
     mkdir -p .artifacts/fft-acceptance-env/tmp .artifacts/fft-acceptance-env/cargo-home .artifacts/fft-acceptance-env/cargo-target .artifacts/fft-acceptance-env/pip-cache .artifacts/fft-acceptance-env/xdg-cache .artifacts/fft-acceptance-env/python-cache .artifacts/fft-numerical-acceptance
     TMPDIR="$PWD/.artifacts/fft-acceptance-env/tmp" CARGO_HOME="$PWD/.artifacts/fft-acceptance-env/cargo-home" CARGO_TARGET_DIR="$PWD/.artifacts/fft-acceptance-env/cargo-target" CARGO_NET_OFFLINE=true PIP_CACHE_DIR="$PWD/.artifacts/fft-acceptance-env/pip-cache" PIP_NO_INDEX=1 XDG_CACHE_HOME="$PWD/.artifacts/fft-acceptance-env/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/.artifacts/fft-acceptance-env/python-cache" PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/fft_numerical_acceptance.py --output-root "$PWD/.artifacts/fft-numerical-acceptance"
 
-# Native same-host pure-gluon timing, RSS, and cold-to-ready comparison. This
-# hardware-sensitive gate is deliberately excluded from default CI/release runs.
+# Native same-host pure-gluon timing, RSS, and cold-to-ready comparison. Prepare
+# its reference with `just dev-install --with-reference-fft`; this gate is
+# deliberately excluded from default CI/release runs.
 fft-performance-acceptance: _source-checkout
     mkdir -p .artifacts/fft-performance/env/tmp .artifacts/fft-performance/env/cargo-home .artifacts/fft-performance/env/cargo-target .artifacts/fft-performance/env/pip-cache .artifacts/fft-performance/env/xdg-cache .artifacts/fft-performance/env/python-cache
     TMPDIR="$PWD/.artifacts/fft-performance/env/tmp" CARGO_HOME="$PWD/.artifacts/fft-performance/env/cargo-home" CARGO_TARGET_DIR="$PWD/.artifacts/fft-performance/env/cargo-target" CARGO_NET_OFFLINE=true PIP_CACHE_DIR="$PWD/.artifacts/fft-performance/env/pip-cache" PIP_NO_INDEX=1 XDG_CACHE_HOME="$PWD/.artifacts/fft-performance/env/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/.artifacts/fft-performance/env/python-cache" PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{dev_python}} tools/ci/memory_watchdog.py --limit-gib 30 -- {{dev_python}} tools/developer/fft_gluon_performance_acceptance.py --include-optional --run-id "{{fft_performance_run_id}}"
@@ -68,8 +69,8 @@ fft-performance-acceptance: _source-checkout
 source-runtime:
     PYAMPLICOL_BUILD_MODE={{build_mode}} {{python}} tools/developer/prepare_source_runtime.py
 
-# Developer-only independent Fortran oracle. `just dev-install` includes this
-# checkout and the pinned Reference FFT checkout by default.
+# Developer-only independent Fortran oracle. Prepare its checkout with
+# `just dev-install --with-legacy-amplicol` first.
 legacy-physics: _source-checkout
     {{python}} tools/developer/legacy_amplicol.py --jobs 5
 
@@ -135,6 +136,8 @@ install-wheel PYTHON_ARG="":
     if [[ -z "$selected" ]]; then selected="{{python}}"; fi; \
     {{python}} tools/release/install_wheel.py --python "$selected"
 
+# Install the core candidate environment. External profiling references require
+# `--with-legacy-amplicol` and/or `--with-reference-fft`.
 dev-install *INSTALLER_ARGS: _source-checkout
     mkdir -p {{dev_cache}}/tmp {{dev_cache}}/cargo-home {{dev_cache}}/cargo-target {{dev_cache}}/pip-cache {{dev_cache}}/xdg-cache {{dev_cache}}/python-cache
     TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" PYAMPLICOL_CANDIDATE_CACHE_ROOT="$PWD/{{dev_cache}}" {{python}} dependencies/install_dependencies.py {{INSTALLER_ARGS}}

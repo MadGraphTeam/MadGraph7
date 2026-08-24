@@ -2341,7 +2341,8 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_REFERENCE_ROOT,
         help=(
             "pinned MultipletRecursion checkout used by Reference FFT "
-            "(default: dependencies/checkouts/reference-fft)"
+            "(default path is populated by "
+            "dev-install --with-reference-fft)"
         ),
     )
     parser.add_argument(

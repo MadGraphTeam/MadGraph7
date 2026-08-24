@@ -64,6 +64,63 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
     assert reference.revision == payload["reference_fft"]["revision"]
 
 
+def test_profiling_references_require_explicit_cli_opt_in() -> None:
+    module = _module()
+    parser = module._parser()
+
+    defaults = parser.parse_args([])
+    assert defaults.with_legacy_amplicol is False
+    assert defaults.with_reference_fft is False
+
+    selected = parser.parse_args(
+        ["--with-legacy-amplicol", "--with-reference-fft"]
+    )
+    assert selected.with_legacy_amplicol is True
+    assert selected.with_reference_fft is True
+    help_text = parser.format_help()
+    assert "--with-legacy-amplicol" in help_text
+    assert "--with-reference-fft" in help_text
+    assert "--without-legacy-amplicol" not in help_text
+    assert "--without-reference-fft" not in help_text
+
+
+def test_installer_wires_only_explicit_reference_opt_ins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    selections: list[dict[str, bool]] = []
+    monkeypatch.setattr(module, "_lock", lambda: {})
+
+    def sources(_payload, **selection):
+        selections.append(selection)
+        return ()
+
+    monkeypatch.setattr(module, "_sources", sources)
+    for name in (
+        "_ensure_just",
+        "_ensure_venv",
+        "_configure_sources",
+        "_write_cargo_config",
+        "_write_candidate_lock",
+        "_write_state",
+    ):
+        monkeypatch.setattr(module, name, lambda *_args, **_kwargs: None)
+
+    assert module.main(["--dry-run", "--no-build"]) == 0
+    assert module.main(
+        [
+            "--dry-run",
+            "--no-build",
+            "--with-legacy-amplicol",
+            "--with-reference-fft",
+        ]
+    ) == 0
+    assert selections == [
+        {"with_legacy": False, "with_reference_fft": False},
+        {"with_legacy": True, "with_reference_fft": True},
+    ]
+
+
 def test_ratatui_distribution_and_ffi_source_are_exactly_pinned() -> None:
     module = _module()
     ratatui = module._lock()["ratatui"]

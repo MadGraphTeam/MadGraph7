@@ -206,6 +206,7 @@ FullColor FFT comparison. It delegates generation and timing to the existing
 pyAmpliCol profiling commands and schedules independent measurement children:
 
 ```console
+just dev-install --with-legacy-amplicol --with-reference-fft
 python -m pip install -e '.[fft-profiling]'
 python tools/fft_profiling/fft_profiling.py \
   --multiplicities 2 3 4 5 \
@@ -244,8 +245,9 @@ through the generated `MATRIX(P,NHEL,IC)` entry point. The summed lane instead
 calls the generated `SMATRIX(P,ANS)` with `USERHEL=-1`; MadGraph applies its
 native IDEN normalization and may reuse its warmed `GOODHEL` pruning. Fixed-
 helicity and summed overlays carry distinct workload identities and cannot be
-mixed. `just dev-install` clones the pinned developer-only AmpliCol and
-Reference FFT repositories. Their profiler roots default to
+mixed. `just dev-install` omits the developer-only AmpliCol and Reference FFT
+repositories unless they are requested with `--with-legacy-amplicol` and
+`--with-reference-fft`. Their profiler roots default to
 `dependencies/checkouts/legacy-amplicol` and
 `dependencies/checkouts/reference-fft`; `--build-amplicol` may build the
 AmpliCol probe once. Both paths can be overridden explicitly with

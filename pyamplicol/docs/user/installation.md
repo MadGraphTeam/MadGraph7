@@ -134,6 +134,13 @@ The Nix shell supplies Python, Rust, C/C++, Fortran, build libraries, and the
 documentation/PDF tools. `just dev-install` installs the pinned Python and
 native inputs into `.venv`.
 
+The original AmpliCol and Reference FFT repositories are optional profiling
+inputs and are omitted by default. Request either or both explicitly:
+
+```console
+just dev-install --with-legacy-amplicol --with-reference-fft
+```
+
 > Candidate wheels are deliberately marked non-publishable. Published builds
 > use the release dependency lock and CI workflow instead.
 
