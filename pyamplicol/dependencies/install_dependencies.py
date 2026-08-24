@@ -144,7 +144,12 @@ def _lock() -> dict[str, Any]:
     return payload
 
 
-def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...]:
+def _sources(
+    payload: dict[str, Any],
+    *,
+    with_legacy: bool,
+    with_reference_fft: bool,
+) -> tuple[Source, ...]:
     symbolica = payload["symbolica"]
     symjit = payload["symjit"]
     gammaloop = payload["gammaloop_candidate"]
@@ -183,6 +188,16 @@ def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...
                 str(legacy["source_url"]),
                 str(legacy["revision"]),
                 str(legacy["branch"]),
+            )
+        )
+    if with_reference_fft:
+        reference = payload["reference_fft"]
+        sources.append(
+            Source(
+                "reference-fft",
+                str(reference["source_url"]),
+                str(reference["revision"]),
+                str(reference["branch"]),
             )
         )
     return tuple(sources)
@@ -1203,6 +1218,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--update", action="store_true")
     parser.add_argument("--without-legacy-amplicol", action="store_true")
+    parser.add_argument("--without-reference-fft", action="store_true")
     build_mode = parser.add_mutually_exclusive_group()
     build_mode.add_argument("--no-build", action="store_true")
     build_mode.add_argument(
@@ -1225,6 +1241,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sources = _sources(
         payload,
         with_legacy=not args.without_legacy_amplicol,
+        with_reference_fft=not args.without_reference_fft,
     )
     _ensure_just(runner)
     _ensure_venv(runner)

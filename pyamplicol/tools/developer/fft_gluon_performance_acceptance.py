@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: 0BSD
 """Paired pure-gluon FFT performance, RSS, and cold-start acceptance.
 
-The authoritative reference implementation is loaded from the bundled
-``MultipletRecursion/Benchmark/run_benchmark.py`` and called directly; none of
-its implementation is copied here.  Candidate timing uses the public Rusticol
-C ABI probe in this directory.  Linux uses the reference driver's GNU process
-wrappers.  Darwin translates those wrappers to the study's getrusage worker;
-the common watchdog and subprocess timeout retain the same hard bounds.
+The authoritative reference implementation is loaded from the pinned
+developer checkout's ``Benchmark/run_benchmark.py`` and called directly; none
+of its implementation is copied here.  Candidate timing uses the public
+Rusticol C ABI probe in this directory.  Linux uses the reference driver's GNU
+process wrappers.  Darwin translates those wrappers to the study's getrusage
+worker; the common watchdog and subprocess timeout retain the same hard bounds.
 
 This file intentionally is not wired into a default target.  Use ``--dry-run``
 to inspect the complete bounded campaign without compiling or writing files.
@@ -46,9 +46,10 @@ from tools.performance_report.source_identity import (  # noqa: E402
 )
 
 PERFORMANCE_ROOT = ROOT / ".artifacts" / "fft-performance"
-REFERENCE_ROOT = ROOT / "FFT_FEATURE_RESOURCES" / "MultipletRecursion"
+DEFAULT_REFERENCE_ROOT = ROOT / "dependencies" / "checkouts" / "reference-fft"
+REFERENCE_ROOT = DEFAULT_REFERENCE_ROOT
 REFERENCE_DRIVER = REFERENCE_ROOT / "Benchmark" / "run_benchmark.py"
-REFERENCE_REVISION = "a05c9f932e7adb75f01b24e8b1f483ad9ccfde02"
+REFERENCE_REVISION = "dcaa6d057e7efd86fda86f74eb409e2f9ef7663f"
 PROBE_SOURCE = ROOT / "tools" / "developer" / "fft_gluon_candidate_probe.cpp"
 SCALING_STUDY_DRIVER = ROOT / "tools" / "developer" / "fft_scaling_study.py"
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
@@ -95,6 +96,14 @@ _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 class AcceptanceError(RuntimeError):
     """Raised when the paired campaign or its evidence is invalid."""
+
+
+def configure_reference_root(path: Path) -> None:
+    """Select the independent pinned Reference FFT checkout for this process."""
+
+    global REFERENCE_ROOT, REFERENCE_DRIVER
+    REFERENCE_ROOT = path.expanduser().resolve()
+    REFERENCE_DRIVER = REFERENCE_ROOT / "Benchmark" / "run_benchmark.py"
 
 
 class NumericalParityError(AcceptanceError):
@@ -2327,6 +2336,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     parser.add_argument("--fc", default=os.environ.get("FC", "gfortran"))
     parser.add_argument(
+        "--reference-fft-root",
+        type=Path,
+        default=DEFAULT_REFERENCE_ROOT,
+        help=(
+            "pinned MultipletRecursion checkout used by Reference FFT "
+            "(default: dependencies/checkouts/reference-fft)"
+        ),
+    )
+    parser.add_argument(
         "--target-seconds",
         type=float,
         default=MINIMUM_CALIBRATION_SECONDS,
@@ -2564,6 +2582,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
 def main(argv: Sequence[str] | None = None) -> int:
     try:
         arguments = _parser().parse_args(argv)
+        configure_reference_root(arguments.reference_fft_root)
         _validate_arguments(arguments)
         if arguments.dry_run:
             print(

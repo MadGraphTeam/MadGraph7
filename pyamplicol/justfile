@@ -68,8 +68,8 @@ fft-performance-acceptance: _source-checkout
 source-runtime:
     PYAMPLICOL_BUILD_MODE={{build_mode}} {{python}} tools/developer/prepare_source_runtime.py
 
-# Developer-only independent Fortran oracle. `just dev-install` includes the
-# pinned checkout unless it was called with --without-legacy-amplicol.
+# Developer-only independent Fortran oracle. `just dev-install` includes this
+# checkout and the pinned Reference FFT checkout by default.
 legacy-physics: _source-checkout
     {{python}} tools/developer/legacy_amplicol.py --jobs 5
 
@@ -135,9 +135,9 @@ install-wheel PYTHON_ARG="":
     if [[ -z "$selected" ]]; then selected="{{python}}"; fi; \
     {{python}} tools/release/install_wheel.py --python "$selected"
 
-dev-install: _source-checkout
+dev-install *INSTALLER_ARGS: _source-checkout
     mkdir -p {{dev_cache}}/tmp {{dev_cache}}/cargo-home {{dev_cache}}/cargo-target {{dev_cache}}/pip-cache {{dev_cache}}/xdg-cache {{dev_cache}}/python-cache
-    TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" PYAMPLICOL_CANDIDATE_CACHE_ROOT="$PWD/{{dev_cache}}" {{python}} dependencies/install_dependencies.py
+    TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" PYAMPLICOL_CANDIDATE_CACHE_ROOT="$PWD/{{dev_cache}}" {{python}} dependencies/install_dependencies.py {{INSTALLER_ARGS}}
     TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/developer/prepare_source_runtime.py --candidate --wheel-directory .artifacts/candidate
 
 # Report/campaign prerequisite. pyAmpliCol is not released yet, so this keeps

@@ -96,3 +96,14 @@ The pinned upstream revision contains no `LICENSE` or `COPYING` file. That fact
 is recorded in contributor-only provenance, not the release dependency lock.
 The checkout and its developer-only branch are never redistributed in a wheel
 or sdist.
+
+The Reference FFT checkout is likewise developer-only and is used only by the
+FFT profiling and hardware-sensitive acceptance tools. `just dev-install`
+clones the exact `fft_reference_for_pyamplicol` revision recorded in
+`contributor-lock.toml` into `dependencies/checkouts/reference-fft`. That
+branch keeps the upstream contraction implementation and adds the calibrated
+batch/helicity-sum benchmark interface plus a high-multiplicity roundoff guard.
+It is never redistributed in a wheel or sdist. Direct contributor-installer
+runs may omit either external reference with `--without-reference-fft` or
+`--without-legacy-amplicol`; the same flags can be passed as recipe arguments,
+for example `just dev-install --without-reference-fft`.

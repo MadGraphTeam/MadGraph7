@@ -469,11 +469,14 @@ def test_line_groups_accumulate_and_schedule_only_requested_work(
         "--multiplicities",
         "3",
         "--lines",
-        "otf",
+        "pyamplicol-otf",
     )
     expanded = profiling._create_or_resume_manifest(otf, output)
     assert expanded["requested_multiplicities"] == [2, 3]
-    assert expanded["requested_line_groups"] == ["reference-fft", "otf"]
+    assert expanded["requested_line_groups"] == [
+        "reference-fft",
+        "pyamplicol-otf",
+    ]
     otf_plan = profiling.dry_run_plan(otf)
     assert {
         name for name, shard in otf_plan["shards"].items() if shard["scheduled"]
@@ -492,7 +495,7 @@ def test_line_groups_accumulate_and_schedule_only_requested_work(
     assert final["requested_multiplicities"] == [2, 3, 4]
     assert final["requested_line_groups"] == [
         "reference-fft",
-        "otf",
+        "pyamplicol-otf",
         "madgraph",
     ]
     madgraph_plan = profiling.dry_run_plan(with_madgraph)
@@ -502,9 +505,36 @@ def test_line_groups_accumulate_and_schedule_only_requested_work(
 
 
 def test_line_groups_reject_duplicates() -> None:
-    arguments = _arguments("--lines", "otf", "otf")
+    arguments = _arguments(
+        "--lines",
+        "pyamplicol-otf",
+        "pyamplicol-otf",
+    )
     with pytest.raises(profiling.ProfilingError, match="--lines"):
         profiling._validate_arguments(arguments)
+
+
+def test_reference_fft_root_is_explicit_in_identity_and_child_commands(
+    tmp_path: Path,
+) -> None:
+    reference_root = tmp_path / "reference-fft"
+    arguments = _arguments(
+        "--output",
+        str(tmp_path / "run"),
+        "--multiplicities",
+        "2",
+        "--lines",
+        "reference-fft",
+        "--reference-fft-root",
+        str(reference_root),
+    )
+
+    plan = profiling.dry_run_plan(arguments)
+    assert plan["identity"]["tools"]["reference_fft_root"] == str(reference_root)
+    command = plan["shards"]["gg-reference"]["argv"]
+    assert command is not None
+    option = command.index("--reference-fft-root")
+    assert command[option + 1] == str(reference_root)
 
 
 def test_status_rejects_workload_mismatch_with_existing_output(tmp_path: Path) -> None:

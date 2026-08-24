@@ -3199,6 +3199,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, object]:
             "cxx": arguments.cxx,
             "fc": arguments.fc,
             "amplicol_repository": str(arguments.amplicol_repository.resolve()),
+            "reference_fft_root": str(arguments.reference_fft_root.resolve()),
         },
         "process_families": {
             family: {
@@ -3474,6 +3475,11 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=legacy_amplicol.DEFAULT_REPOSITORY,
     )
+    parser.add_argument(
+        "--reference-fft-root",
+        type=Path,
+        default=performance.DEFAULT_REFERENCE_ROOT,
+    )
     parser.add_argument("--build-amplicol", action="store_true")
     return parser
 
@@ -3583,6 +3589,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if raw and raw[0] == "_time-rss":
             return _time_rss(raw[1:])
         arguments = _parser().parse_args(raw)
+        performance.configure_reference_root(arguments.reference_fft_root)
         _validate_arguments(arguments)
         if arguments.dry_run:
             print(json.dumps(dry_run_plan(arguments), indent=2, sort_keys=True))

@@ -209,18 +209,20 @@ pyAmpliCol profiling commands and schedules independent measurement children:
 python -m pip install -e '.[fft-profiling]'
 python tools/fft_profiling/fft_profiling.py \
   --multiplicities 2 3 4 5 \
-  --lines reference-fft amplicol recurrence otf madgraph \
+  --lines reference-fft amplicol pyamplicol-recurrence pyamplicol-otf madgraph \
   --cores 8 --candidate-cores 1 \
   --memory-limit-gib 30 --time-limit-seconds 3600 \
   --amplicol-root /path/to/AmpliCol \
+  --reference-fft-root /path/to/MultipletRecursion \
   --madgraph-root /path/to/MG5_aMC
 ```
 
 `--multiplicities` adds the selected values to the persistent fill history and
 defaults to `2 ... 9`. `--lines` similarly adds any combination of
-`reference-fft`, `amplicol`, `recurrence`, `otf`, and `madgraph`; recurrence
-and OTF each schedule their direct and FFT companion curves together so they
-reuse the same generation lane. Dependencies are selected automatically.
+`reference-fft`, `amplicol`, `pyamplicol-recurrence`, `pyamplicol-otf`, and
+`madgraph`; the two pyAmpliCol groups each schedule their direct and FFT
+companion curves together so they reuse the same generation lane. Dependencies
+are selected automatically.
 Repeating a command against the same output unions both selections, resumes
 unfinished cells, and skips completed cells;
 `--resume` is an explicit alias for that default. `--cores` is the total
@@ -242,11 +244,14 @@ through the generated `MATRIX(P,NHEL,IC)` entry point. The summed lane instead
 calls the generated `SMATRIX(P,ANS)` with `USERHEL=-1`; MadGraph applies its
 native IDEN normalization and may reuse its warmed `GOODHEL` pruning. Fixed-
 helicity and summed overlays carry distinct workload identities and cannot be
-mixed. The AmpliCol root defaults to
-`dependencies/checkouts/legacy-amplicol`; `--build-amplicol` may build its
-probe once. The MadGraph root defaults to `PYAMPLICOL_MADGRAPH_ROOT` or a
-recognized developer checkout and may be set explicitly with
-`--madgraph-root`.
+mixed. `just dev-install` clones the pinned developer-only AmpliCol and
+Reference FFT repositories. Their profiler roots default to
+`dependencies/checkouts/legacy-amplicol` and
+`dependencies/checkouts/reference-fft`; `--build-amplicol` may build the
+AmpliCol probe once. Both paths can be overridden explicitly with
+`--amplicol-root` and `--reference-fft-root`. The MadGraph root defaults to
+`PYAMPLICOL_MADGRAPH_ROOT` or a recognized developer checkout and may be set
+explicitly with `--madgraph-root`.
 
 The published fixed-helicity MadGraph series currently has measured points
 through `n=5` for pure gluons and `n=6` for

@@ -66,6 +66,7 @@ jobs:
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python dependencies/install_dependencies.py
           --without-legacy-amplicol
+          --without-reference-fft
           --dependencies-only
       - name: Install build tools
         run: python -m pip install "build>=1.2,<2" "maturin==1.14.1"
@@ -147,6 +148,7 @@ jobs:
               "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \
                 "$PYTHON" dependencies/install_dependencies.py \
                 --without-legacy-amplicol \
+                --without-reference-fft \
                 --dependencies-only
               "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \
                 "$PYTHON" tools/release/build_release_artifacts.py \

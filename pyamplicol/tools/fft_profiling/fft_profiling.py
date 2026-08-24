@@ -9,7 +9,7 @@ plotting, and PDF assembly remain owned by the existing developer tools.
 Typical use::
 
     python tools/fft_profiling/fft_profiling.py --dry-run --cores 8
-    python tools/fft_profiling/fft_profiling.py --lines reference-fft recurrence
+    python tools/fft_profiling/fft_profiling.py --lines pyamplicol-recurrence
     python tools/fft_profiling/fft_profiling.py --cores 8 --candidate-cores 2
     python tools/fft_profiling/fft_profiling.py --compare-helicity-sums --cores 8
     python tools/fft_profiling/fft_profiling.py --resume --cores 16
@@ -181,15 +181,15 @@ MODE_OWNER = {
 LINE_GROUPS = (
     "reference-fft",
     "amplicol",
-    "recurrence",
-    "otf",
+    "pyamplicol-recurrence",
+    "pyamplicol-otf",
     "madgraph",
 )
 LINE_GROUP_SHARDS = {
     "reference-fft": ("gg-reference",),
     "amplicol": ("ddbar-amplicol", "gg-amplicol"),
-    "recurrence": ("gg-recurrence", "ddbar-recurrence"),
-    "otf": ("gg-otf", "ddbar-otf"),
+    "pyamplicol-recurrence": ("gg-recurrence", "ddbar-recurrence"),
+    "pyamplicol-otf": ("gg-otf", "ddbar-otf"),
     "madgraph": (),
 }
 
@@ -293,9 +293,10 @@ def _parser() -> argparse.ArgumentParser:
         metavar="LINE",
         help=(
             "plot line groups to add to the resumable scan: reference-fft, "
-            "amplicol, recurrence (direct and FFT), otf (direct and FFT), "
-            "and/or madgraph; repeated runs union line groups and "
-            "multiplicities in the same --output (default: all)"
+            "amplicol, pyamplicol-recurrence (direct and FFT), "
+            "pyamplicol-otf (direct and FFT), and/or madgraph; repeated runs "
+            "union line groups and multiplicities in the same --output "
+            "(default: all)"
         ),
     )
     parser.add_argument(
@@ -345,6 +346,15 @@ def _parser() -> argparse.ArgumentParser:
         dest="amplicol_root",
         type=Path,
         default=study.legacy_amplicol.DEFAULT_REPOSITORY,
+    )
+    parser.add_argument(
+        "--reference-fft-root",
+        type=Path,
+        default=study.performance.DEFAULT_REFERENCE_ROOT,
+        help=(
+            "pinned MultipletRecursion checkout for Reference FFT "
+            "(default: dependencies/checkouts/reference-fft from dev-install)"
+        ),
     )
     parser.add_argument(
         "--build-amplicol",
@@ -573,6 +583,8 @@ def _study_cli_arguments(
         format(arguments.memory_limit_gib, ".17g"),
         "--amplicol-repository",
         str(_absolute(arguments.amplicol_root)),
+        "--reference-fft-root",
+        str(_absolute(arguments.reference_fft_root)),
     ]
     for multiplicity in _universe(arguments):
         result.extend(("--multiplicity", str(multiplicity)))
@@ -717,6 +729,7 @@ def _identity(arguments: argparse.Namespace, run_directory: Path) -> dict[str, A
             "cxx": str(arguments.cxx),
             "fc": str(arguments.fc),
             "amplicol_root": str(_absolute(arguments.amplicol_root)),
+            "reference_fft_root": str(_absolute(arguments.reference_fft_root)),
             "madgraph_root": (
                 str(_absolute(arguments.madgraph_root))
                 if arguments.madgraph_root is not None
@@ -937,6 +950,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
             f"C++ compiler: {arguments.cxx}",
             f"Fortran compiler: {arguments.fc}",
             f"legacy AmpliCol checkout: {_absolute(arguments.amplicol_root)}",
+            f"Reference FFT checkout: {_absolute(arguments.reference_fft_root)}",
             (
                 f"MadGraph installation: {_absolute(arguments.madgraph_root)}"
                 if madgraph_requested and arguments.madgraph_root is not None
@@ -2026,6 +2040,7 @@ def _command_available(command: str) -> bool:
 
 def _dependency_status(arguments: argparse.Namespace) -> dict[str, Any]:
     amplicol = _absolute(arguments.amplicol_root)
+    reference_fft = _absolute(arguments.reference_fft_root)
     madgraph = (
         _absolute(arguments.madgraph_root)
         if arguments.madgraph_root is not None
@@ -2049,6 +2064,12 @@ def _dependency_status(arguments: argparse.Namespace) -> dict[str, Any]:
             "compatible": (amplicol / "process_list.py").is_file(),
             "probe": str(amplicol / "amplicol_color_probe"),
             "probe_available": (amplicol / "amplicol_color_probe").is_file(),
+        },
+        "reference_fft_root": {
+            "path": str(reference_fft),
+            "compatible": (
+                reference_fft / "Benchmark" / "run_benchmark.py"
+            ).is_file(),
         },
         "madgraph_root": {
             "path": str(madgraph) if madgraph is not None else None,
@@ -2084,6 +2105,16 @@ def _preflight(arguments: argparse.Namespace) -> None:
             raise ProfilingError(
                 "AmpliCol probe is missing; pass --build-amplicol to build it once: "
                 f"{amplicol['probe']}"
+            )
+    needs_reference_fft = any(
+        "reference-fft" in shard.modes for shard in requested_shards
+    )
+    if needs_reference_fft:
+        reference_fft = status["reference_fft_root"]
+        if reference_fft["compatible"] is not True:
+            raise ProfilingError(
+                "invalid --reference-fft-root: expected "
+                f"Benchmark/run_benchmark.py below {reference_fft['path']}"
             )
     if _madgraph_requested(arguments, run_directory):
         madgraph = status["madgraph_root"]

@@ -24,27 +24,44 @@ def _module():
     return module
 
 
-def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
+def test_source_inventory_is_exact_and_profiling_references_are_optional() -> None:
     module = _module()
     payload = module._lock()
-    with_legacy = module._sources(payload, with_legacy=True)
-    without_legacy = module._sources(payload, with_legacy=False)
+    without_references = module._sources(
+        payload,
+        with_legacy=False,
+        with_reference_fft=False,
+    )
+    with_references = module._sources(
+        payload,
+        with_legacy=True,
+        with_reference_fft=True,
+    )
 
-    assert {item.key for item in without_legacy} == {
+    assert {item.key for item in without_references} == {
         "symjit",
         "symbolica",
         "symbolica-community",
         "gammaloop",
         "ratatui-ffi",
     }
-    assert {item.key for item in with_legacy} == {
-        *(item.key for item in without_legacy),
+    assert {item.key for item in with_references} == {
+        *(item.key for item in without_references),
         "legacy-amplicol",
+        "reference-fft",
     }
-    assert all(len(item.revision) == 40 for item in with_legacy)
-    legacy = next(item for item in with_legacy if item.key == "legacy-amplicol")
+    assert all(len(item.revision) == 40 for item in with_references)
+    legacy = next(
+        item for item in with_references if item.key == "legacy-amplicol"
+    )
     assert legacy.branch == payload["legacy_amplicol"]["branch"]
     assert legacy.revision == payload["legacy_amplicol"]["revision"]
+    reference = next(
+        item for item in with_references if item.key == "reference-fft"
+    )
+    assert reference.url == payload["reference_fft"]["source_url"]
+    assert reference.branch == payload["reference_fft"]["branch"]
+    assert reference.revision == payload["reference_fft"]["revision"]
 
 
 def test_ratatui_distribution_and_ffi_source_are_exactly_pinned() -> None:
@@ -59,7 +76,11 @@ def test_ratatui_distribution_and_ffi_source_are_exactly_pinned() -> None:
     assert ratatui["ffi_revision"] == ("7249c0bd1445c0c6ee76f3f24923eb35a1d931e0")
     ffi_source = next(
         source
-        for source in module._sources(module._lock(), with_legacy=False)
+        for source in module._sources(
+            module._lock(),
+            with_legacy=False,
+            with_reference_fft=False,
+        )
         if source.key == "ratatui-ffi"
     )
     assert ffi_source.url == ratatui["ffi_repository"]
@@ -114,7 +135,11 @@ def test_official_symjit_git_revision_is_pinned_without_local_patches() -> None:
     }
     source = next(
         item
-        for item in module._sources(payload, with_legacy=False)
+        for item in module._sources(
+            payload,
+            with_legacy=False,
+            with_reference_fft=False,
+        )
         if item.key == "symjit"
     )
     assert (source.url, source.revision, source.branch) == (
