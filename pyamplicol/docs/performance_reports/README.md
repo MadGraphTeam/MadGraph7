@@ -6,11 +6,45 @@ parent: "Profiling and Benchmarking"
 <!-- SPDX-License-Identifier: 0BSD -->
 # Performance Reports
 
-The repository publishes only two rendered snapshots from separate manual
+The repository publishes four selected rendered snapshots from manual
 measurement campaigns:
 
 - [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
 - [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [FullColor FFT selected-helicity snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
+- [FullColor FFT helicity-sum snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
+
+The first two PDFs are general host reports. The FullColor FFT selected-
+helicity snapshot times one shared known-nonzero helicity from helicity-general
+artifacts; the helicity-sum snapshot times the complete physical helicity sum.
+Both snapshots include genuine same-workload MadGraph standalone series. The
+fixed series uses the generated helicity-general standalone and selects the
+shared helicity through `MATRIX(P,NHEL,IC)`; it currently measures pure gluons
+through `n=5` and `d d~ > d d~ + gluons` through `n=6`. The independent summed
+series measures both families at `n=2..5` through MadGraph's generated
+`SMATRIX(P,ANS)` entry point with `USERHEL=-1`, native IDEN normalization, and
+warmed `GOODHEL` pruning. It does not reuse the fixed-helicity timings.
+The FFT PDFs are rolling development snapshots, not claims that every
+final-state multiplicity through `n=9` has completed.
+
+Their frontiers are curve-specific. Both fixed-helicity and helicity-sum OTF
+curves are requested only through final-state `n=6`; beyond that the publication
+protocol retains recurrence, AmpliCol, and Reference FFT where applicable.
+Pure-gluon OTF FFT reached the 3,600 s first-use runtime cap at `n=6` and retains
+its measured `n=5` point. The helicity-sum snapshot extends
+`d d~ > d d~ + gluons` through `n=6`, where every requested curve measured.
+OTF direct and FFT setup took 1,725.8 s and 1,607.9 s; their warmed runtimes were
+5.321 and 3.759 ms/point (1.416x faster with FFT), at 1.17 and 1.22 GiB peak
+RSS. These isolated measurements used a 10-hour time limit and 30 GiB
+process-tree guard and retain their own per-cell provenance.
+
+The FFT plots use a deliberately method-specific *setup time*. pyAmpliCol
+includes artifact generation, a fresh load, the first requested evaluation,
+and OTF family warm-up where applicable. Reference FFT includes its build,
+initialization, and first pass. AmpliCol includes process/color-object
+generation for the fixed workload, or process/raw-library generation and build
+plus the immutable snapshot for the summed workload. Warmed runtime remains a
+separate measurement after those boundaries.
 
 These PDFs are measurement-host results, not release-CI results. Raw JSON,
 generated TeX, build workspaces, attempts, logs, locks, and coordination state
@@ -31,7 +65,7 @@ pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 
 The run above is the supported quick installation check: it measures only the
 final-state-multiplicity-one `d d~ > Z` recurrence cell. Broader selections
-produce the same report format as the two retained PDFs. Re-running
+produce the same report format as the two general host PDFs. Re-running
 `refresh-pdf` directly reproduces the PDF from the campaign's current results;
 no repository report data is required.
 

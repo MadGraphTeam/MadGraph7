@@ -725,15 +725,15 @@ mod tests {
         OnTheFlySourceStateV1::new(
             state_index,
             if state_index == 0 { -1 } else { 1 },
-            if source_slot % 2 == 0 { -1 } else { 1 },
+            if source_slot.is_multiple_of(2) { -1 } else { 1 },
             100 + source_slot * 2 + state_index,
             200 + source_slot * 2 + state_index,
             digest(20 + (source_slot * 2 + state_index) as u8),
             digest(30 + (source_slot * 2 + state_index) as u8),
-            if source_slot % 2 == 0 { -1 } else { 1 },
+            if source_slot.is_multiple_of(2) { -1 } else { 1 },
             crossing_phase,
             50_000 + source_slot as i32,
-            if source_slot % 2 == 0 { -1 } else { 1 },
+            if source_slot.is_multiple_of(2) { -1 } else { 1 },
             if state_index == 0 {
                 vec![11 + source_slot as i32, 21 + source_slot as i32]
             } else {
@@ -742,7 +742,7 @@ mod tests {
             300 + source_slot,
             digest(40 + source_slot as u8),
             OnTheFlySourceWavefunctionFamilyV1::DiracFermion,
-            if source_slot % 2 == 0 {
+            if source_slot.is_multiple_of(2) {
                 OnTheFlySourceOrientationV1::Particle
             } else {
                 OnTheFlySourceOrientationV1::Antiparticle

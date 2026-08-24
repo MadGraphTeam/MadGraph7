@@ -821,7 +821,7 @@ impl EvaluatorGroup {
         active_chunk_indices: &[usize],
     ) -> RusticolResult<()> {
         validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
-        if batch_size == 0 || params.len() % batch_size != 0 {
+        if batch_size == 0 || !params.len().is_multiple_of(batch_size) {
             return Err(RusticolError::invalid_argument(
                 "amplitude evaluator parameter buffer has an inconsistent batch size",
             ));
@@ -968,7 +968,7 @@ impl EvaluatorGroup {
         active_chunk_indices: &[usize],
     ) -> RusticolResult<EvaluatorBatchProfile> {
         validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
-        if batch_size == 0 || params.len() % batch_size != 0 {
+        if batch_size == 0 || !params.len().is_multiple_of(batch_size) {
             return Err(RusticolError::invalid_argument(
                 "amplitude evaluator parameter buffer has an inconsistent batch size",
             ));

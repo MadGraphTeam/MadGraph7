@@ -26,6 +26,7 @@ from .contraction_types import (
     ColorGroupDescriptor,
     FactorizedColorContractionBlock,
     RepeatedColorContractionBlock,
+    SymmetricGroupColorContractionBlock,
 )
 from .plan import GenericColorPlan, LCColorSector
 
@@ -504,6 +505,7 @@ __all__ = [
     "ColorGroupDescriptor",
     "FactorizedColorContractionBlock",
     "RepeatedColorContractionBlock",
+    "SymmetricGroupColorContractionBlock",
     "build_color_contraction_plan",
     "color_contraction_factor",
     "color_contraction_factors",

@@ -1030,7 +1030,7 @@ impl<'a> PlanBuilder<'a> {
                     })?;
                 proof.validate_union(
                     attachment.selector_domain_id,
-                    sources.into_iter(),
+                    sources,
                     ProofContext::stage(stage.stage_index, "attachment", index),
                 )?;
             }

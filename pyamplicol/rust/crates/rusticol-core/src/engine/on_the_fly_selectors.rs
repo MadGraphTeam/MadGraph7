@@ -82,6 +82,10 @@ enum CompactColorDomainV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum OnTheFlyLcColorCoverageV1 {
     Complete,
+    #[expect(
+        dead_code,
+        reason = "retained as the explicit rejected compatibility sentinel"
+    )]
     Incomplete,
 }
 
@@ -97,6 +101,7 @@ pub(super) struct OnTheFlyLcSelectorPolicyV1 {
 }
 
 impl OnTheFlyLcSelectorPolicyV1 {
+    #[cfg(test)]
     pub(super) fn complete(
         reference_color_word: Option<Vec<u32>>,
         trace_reflections_folded: bool,
@@ -108,6 +113,8 @@ impl OnTheFlyLcSelectorPolicyV1 {
         }
     }
 }
+
+type OnTheFlySelectedOrdinalsV1 = (Option<Box<[usize]>>, Option<Box<[usize]>>);
 
 /// O(external-state) selector owner retained beside the private native lane.
 #[derive(Clone, Debug)]
@@ -949,7 +956,7 @@ impl OnTheFlyCompactSelectorAdapterV1 {
         &self,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
-    ) -> RusticolResult<(Option<Box<[usize]>>, Option<Box<[usize]>>)> {
+    ) -> RusticolResult<OnTheFlySelectedOrdinalsV1> {
         let helicity_ordinals = match selected_helicity_ids {
             None => None,
             Some(ids) => {
@@ -1178,12 +1185,20 @@ impl Iterator for OnTheFlyLazyRequestIterV1<'_, '_> {
 /// profiling consume [`OnTheFlyLazySelectionV1`] directly and never fill it.
 #[derive(Default)]
 pub(super) struct OnTheFlySelectorIntrospectionCacheV1 {
+    #[expect(
+        dead_code,
+        reason = "retained for the private external-selector metadata compatibility API"
+    )]
     externals: Option<Box<[OnTheFlyExternalSelectorRecordV1]>>,
     helicities: Option<Box<[OnTheFlyHelicitySelectorRecordV1]>>,
     colors: Option<Box<[OnTheFlyColorSelectorRecordV1]>>,
 }
 
 impl OnTheFlySelectorIntrospectionCacheV1 {
+    #[expect(
+        dead_code,
+        reason = "retained for the private external-selector metadata compatibility API"
+    )]
     pub(super) fn externals<'a>(
         &'a mut self,
         adapter: &OnTheFlyCompactSelectorAdapterV1,

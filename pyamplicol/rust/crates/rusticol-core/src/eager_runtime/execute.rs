@@ -552,7 +552,7 @@ pub(super) fn invocation_packet_shape(
     tile_points: usize,
 ) -> RusticolResult<(usize, usize, usize)> {
     let block_size = packet.independent_block_size;
-    if block_size == 0 || item_count % block_size != 0 {
+    if block_size == 0 || !item_count.is_multiple_of(block_size) {
         return Err(RusticolError::internal(
             "eager invocation packet has an invalid independent block shape",
         ));
@@ -1163,24 +1163,24 @@ fn scatter_signed_fanout<const COMPONENTS: usize, const FANOUT: usize>(
     debug_assert!(source_start + tile_points * COMPONENTS <= outputs.len());
     unsafe {
         let target_base = currents.as_mut_ptr();
-        let mut target_ptrs = [[target_base; COMPONENTS]; FANOUT];
+        let mut target_ptrs = [[target_base; FANOUT]; COMPONENTS];
         for (attachment_index, attachment) in attachments.iter().enumerate() {
-            for component in 0..COMPONENTS {
-                target_ptrs[attachment_index][component] =
+            for (component, component_targets) in target_ptrs.iter_mut().enumerate() {
+                component_targets[attachment_index] =
                     target_base.add((attachment.current.start + component) * tile_capacity);
             }
         }
         let mut source_ptr = outputs.as_ptr().add(source_start);
         for _ in 0..tile_points {
-            for component in 0..COMPONENTS {
+            for (component, component_targets) in target_ptrs.iter_mut().enumerate() {
                 let value = *source_ptr.add(component);
                 let scaled = match output_scale {
                     1.0 => value,
                     -1.0 => -value,
                     scale => EagerComplex64::new(scale * value.re, scale * value.im),
                 };
-                for attachment_index in 0..FANOUT {
-                    let target = &mut *target_ptrs[attachment_index][component];
+                for (attachment_index, target_ptr) in component_targets.iter_mut().enumerate() {
+                    let target = &mut **target_ptr;
                     let contribution = if negative[attachment_index] {
                         -scaled
                     } else {
@@ -1191,8 +1191,7 @@ fn scatter_signed_fanout<const COMPONENTS: usize, const FANOUT: usize>(
                     } else {
                         *target += contribution;
                     }
-                    target_ptrs[attachment_index][component] =
-                        target_ptrs[attachment_index][component].add(1);
+                    *target_ptr = target_ptr.add(1);
                 }
             }
             source_ptr = source_ptr.add(COMPONENTS);

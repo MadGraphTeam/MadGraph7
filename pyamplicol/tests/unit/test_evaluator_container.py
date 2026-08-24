@@ -194,6 +194,10 @@ def test_runtime_plan_member_kinds_round_trip() -> None:
                 "recurrence/projection.bin",
                 PacbinMemberKind.RECURRENCE_COLOR_PROJECTION_CERTIFICATE,
             ),
+            (
+                "compiled/color.pacrclr3",
+                PacbinMemberKind.COLOR_CONTRACTION,
+            ),
         )
     )
     write_pacbin(destination, sources)
@@ -204,6 +208,7 @@ def test_runtime_plan_member_kinds_round_trip() -> None:
             PacbinMemberKind.EAGER_RUNTIME_TABLE,
             PacbinMemberKind.RECURRENCE_DIRECT_PLAN,
             PacbinMemberKind.RECURRENCE_COLOR_PROJECTION_CERTIFICATE,
+            PacbinMemberKind.COLOR_CONTRACTION,
         }
 
 
@@ -258,10 +263,13 @@ def test_member_stream_repackages_with_bounded_reads() -> None:
 
     destination.seek(0)
     with PacbinReader.open(destination) as repacked:
-        assert repacked.read_member(
-            "repacked/application.symjit",
-            length=len(payload),
-        ) == payload
+        assert (
+            repacked.read_member(
+                "repacked/application.symjit",
+                length=len(payload),
+            )
+            == payload
+        )
 
 
 @pytest.mark.parametrize(
@@ -388,9 +396,10 @@ def test_atomic_publication_replaces_only_complete_container(tmp_path: Path) -> 
     assert stat.S_IMODE(destination.stat().st_mode) == 0o640
     with PacbinReader.open(destination) as reader:
         assert reader.index == index
-        assert reader.read_member(
-            "a/jit/application.symjit", offset=0, length=9
-        ) == b"published"
+        assert (
+            reader.read_member("a/jit/application.symjit", offset=0, length=9)
+            == b"published"
+        )
     assert list(tmp_path.glob(f".{destination.name}.*.tmp")) == []
 
 

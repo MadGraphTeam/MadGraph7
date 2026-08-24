@@ -808,7 +808,7 @@ fn count_fixture_program(
         propagated_specs.push((vec![2, 3, 4], vec![(external_count + 1) as u32, 4]));
     }
     while propagated_specs.len() < current_count - external_count {
-        let pair = if propagated_specs.len() % 2 == 0 {
+        let pair = if propagated_specs.len().is_multiple_of(2) {
             vec![0, 1]
         } else {
             vec![2, 3]
@@ -977,7 +977,7 @@ fn union_key(key: &CurrentCoreKey, runtime_variant_id: u32) -> CurrentCoreKey {
                     0,
                     0,
                     0,
-                    key.spin_state_class(),
+                    0,
                     ExactComplexRational::ONE,
                 )
                 .unwrap(),
@@ -994,7 +994,11 @@ fn union_key(key: &CurrentCoreKey, runtime_variant_id: u32) -> CurrentCoreKey {
         key.dynamic_lc_color_state_id(),
         key.support_source_slots().to_vec(),
         key.momentum().clone(),
-        CurrentHelicityIdentity::all_flow_union(key.spin_state_class()),
+        CurrentHelicityIdentity::all_flow_union(if key.node_kind() == RecurrenceNodeKind::Source {
+            crate::recurrence::DYNAMIC_UNION_SOURCE_SPIN_STATE_CLASS
+        } else {
+            key.spin_state_class()
+        }),
         key.flavour_flow().to_vec(),
         key.quantum_number_flow_id(),
         key.coupling_orders().to_vec(),
@@ -1120,6 +1124,135 @@ fn deterministic_lowering_uses_stable_prepared_executor_ids_and_i32_spin() {
     assert!(first.row_groups.iter().any(|row_group| {
         row_group.role == DirectExecutorRole::Finalization && row_group.direct_executor_id == 2
     }));
+}
+
+#[test]
+fn contribution_fanout_order_uses_only_authenticated_kinematic_inputs() {
+    fn draft(
+        semantic_id: u32,
+        parent_base: u32,
+        destination_base: u32,
+        exact_factor_id: u32,
+        flags: u32,
+    ) -> ContributionDraft {
+        ContributionDraft {
+            stage: 3,
+            executor_id: 7,
+            semantic_contribution_id: semantic_id,
+            semantic_result_current_id: destination_base,
+            semantic_parent_current_ids: [parent_base, DIRECT_NONE_U32],
+            semantic_parent_count: 1,
+            row: DirectContributionRow {
+                parent0_component_base: parent_base,
+                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                parent0_momentum_form_id: 9,
+                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                destination_component_base: destination_base,
+                exact_factor_id,
+                selector_domain_id: 5,
+                flags,
+            },
+        }
+    }
+
+    let mut drafts = vec![
+        draft(10, 2, 100, 2, 0),
+        draft(20, 4, 200, 1, 0),
+        draft(8, 2, 300, 0, DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE),
+        draft(
+            11,
+            2,
+            101,
+            1,
+            DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+        ),
+        draft(21, 4, 201, 1, 0),
+        draft(9, 2, 102, 1, 0),
+        draft(30, 6, 400, 1, 0),
+    ];
+    order_contributions_for_runtime_fanout(&mut drafts);
+
+    let semantic_ids = drafts
+        .iter()
+        .map(|draft| draft.semantic_contribution_id)
+        .collect::<Vec<_>>();
+    assert_eq!(&semantic_ids[..5], &[9, 11, 10, 20, 21]);
+    assert_eq!(
+        semantic_ids[5..].iter().copied().collect::<BTreeSet<_>>(),
+        BTreeSet::from([8, 30])
+    );
+    assert!(
+        drafts[..3]
+            .windows(2)
+            .all(|pair| contribution_fanout_order_key(&pair[0])
+                == contribution_fanout_order_key(&pair[1]))
+    );
+    assert_ne!(
+        contribution_fanout_order_key(&drafts[2]),
+        contribution_fanout_order_key(&drafts[3])
+    );
+    assert!(
+        drafts
+            .iter()
+            .find(|draft| draft.semantic_contribution_id == 8)
+            .unwrap()
+            .row
+            .flags
+            & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE
+            != 0
+    );
+
+    let base = draft(40, 12, 500, 1, 0);
+    let mut output_local = base;
+    output_local.row.destination_component_base = 999;
+    output_local.row.exact_factor_id = 17;
+    output_local.row.flags = DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
+    assert_eq!(
+        contribution_fanout_order_key(&base),
+        contribution_fanout_order_key(&output_local)
+    );
+    for changed in [
+        {
+            let mut changed = base;
+            changed.stage += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.executor_id += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.selector_domain_id += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent0_component_base += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent1_component_base_or_sentinel = 7;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent0_momentum_form_id += 1;
+            changed
+        },
+        {
+            let mut changed = base;
+            changed.row.parent1_momentum_form_id_or_sentinel = 8;
+            changed
+        },
+    ] {
+        assert_ne!(
+            contribution_fanout_order_key(&base),
+            contribution_fanout_order_key(&changed)
+        );
+    }
 }
 
 #[test]
@@ -1432,6 +1565,51 @@ fn zgg_all_flow_union_lowers_runtime_sources_without_replay_expansion() {
         assert_eq!(variant.embedding_count, 1);
         assert_eq!(variant.projection_count, 1);
     }
+}
+
+#[test]
+fn all_flow_helicity_dispatch_lowering_preserves_the_base_plan_and_splits_exact_support() {
+    let templates = validated_union_template();
+    let program = zgg_union_program(&templates, 0);
+    let catalog_digest = digest(40);
+    let catalog = direct_catalog(catalog_digest);
+    let ordinary = lower_recurrence_direct_plan_v2(
+        &program,
+        &templates,
+        &catalog,
+        digest(49),
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+    )
+    .unwrap();
+    let (plan, dispatch) = lower_recurrence_direct_plan_v2_with_helicity_dispatch(
+        &program,
+        &templates,
+        &catalog,
+        digest(49),
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+    )
+    .unwrap();
+
+    assert_eq!(plan, ordinary);
+    dispatch.validate_for_plan(&plan).unwrap();
+    assert_eq!(dispatch.resolved_helicity_count(), 1);
+    assert_eq!(dispatch.dispatches().len(), 1);
+    assert!(
+        dispatch.row_groups().len()
+            >= plan
+                .row_groups()
+                .iter()
+                .filter(|group| group.role != DirectExecutorRole::Source)
+                .count()
+    );
+    assert!(
+        dispatch.group_ids_for_helicity(0).unwrap().len() < dispatch.row_groups().len(),
+        "the synthetic union contains dead rows which backward demand must omit"
+    );
 }
 
 #[test]

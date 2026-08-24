@@ -109,8 +109,9 @@ Useful generation options include:
 - `--multiparticle 'p=d,d~,g'` to define a multiparticle label;
 - `--flavor-scheme N` and `--max-quark-lines N` to constrain expansion;
 - `--color-accuracy {lc,nlc,full}`;
+- `--color-contraction {direct,symmetric-group-fft}`;
 - `--lc-flow-layout {topology-replay,all-flow-union}`;
-- `--execution-mode {recurrence,compiled,eager}`;
+- `--execution-mode {recurrence,compiled,eager,on-the-fly}`;
 - `--backend {jit,asm,cpp}`;
 - `--workers auto|N`;
 - `--mode {error,append,replace}` or the `--force` shortcut for replacement;
@@ -127,6 +128,15 @@ pyamplicol generate "p p > Z j j" artifacts/unused \
   --multiparticle 'p=d,d~,g' --multiparticle 'j=d,d~,g' \
   --flavor-scheme 2 --max-quark-lines 2 \
   --execution-mode compiled --dry-run
+```
+
+For exact symmetric-group FFT colour contraction, select contracted colour and
+a supported execution lane:
+
+```console
+pyamplicol generate "g g > g g g" artifacts/ggg_fft \
+  --model built-in-sm --color-accuracy full \
+  --color-contraction symmetric-group-fft --execution-mode recurrence
 ```
 
 `--dry-run` performs the operation exposed as `Generator.plan()`. It creates no

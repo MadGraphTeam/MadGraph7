@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: 0BSD
 """Reviewed, fail-closed scope for matrix structural-parity coverage gaps.
 
-The 1,256-row restart gate covers every candidate cell that the canonical
+The 1,356-row restart gate covers every candidate cell that the canonical
 matrix catalog defines.  This registry makes the two intentionally absent
 classes explicit so that they cannot be mistaken for silently unproved rows.
 Any catalog change in these classes requires a review and registry update.
@@ -20,8 +20,8 @@ from tools.performance_report.models import (
     Workload,
 )
 
-SCHEMA = "pyamplicol-reviewed-matrix-structural-scope-v1"
-REVIEW_ID = "matrix-structural-scope-2026-07-29"
+SCHEMA = "pyamplicol-reviewed-matrix-structural-scope-v2"
+REVIEW_ID = "matrix-structural-scope-2026-08-21"
 
 _PROCESS_KEYS = (
     "dd_z_jets",
@@ -61,6 +61,10 @@ _FOUR_QUARK_CONTRACTED_PLANES = {
     (ExecutionMode.COMPILED, ModelKey.BUILTIN_SM, Workload.CONTRACTED),
     (ExecutionMode.EAGER, ModelKey.BUILTIN_SM, Workload.CONTRACTED),
 }
+_FOUR_QUARK_UFO_FULL_PLANES = {
+    (ExecutionMode.COMPILED, ModelKey.UFO_SM, Workload.CONTRACTED),
+    (ExecutionMode.EAGER, ModelKey.UFO_SM, Workload.CONTRACTED),
+}
 
 REVIEWED_MATRIX_SCOPE: dict[str, Any] = {
     "schema": SCHEMA,
@@ -70,21 +74,20 @@ REVIEWED_MATRIX_SCOPE: dict[str, Any] = {
     },
     "intentionally_out_of_catalog": [
         {
-            "scope_id": "ufo-compiled-and-eager",
+            "scope_id": "ufo-compiled-and-eager-lc-nlc",
             "status": "reviewed-unavailable",
             "process_keys": list(_PROCESS_KEYS),
             "mode_model_pairs": [
                 {"mode": "compiled", "model": "ufo_sm"},
                 {"mode": "eager", "model": "ufo_sm"},
             ],
-            "accuracies": ["lc", "nlc", "full"],
+            "accuracies": ["lc", "nlc"],
             "workload_by_accuracy": {
                 "lc": ["selected-flow", "all-flow"],
                 "nlc": ["contracted"],
-                "full": ["contracted"],
             },
             "reason": (
-                "canonical-matrix-defines-compiled-and-eager-for-built-in-sm-only"
+                "canonical-matrix-defines-ufo-compiled-and-eager-for-full-colour-only"
             ),
             "catalog_cell_count": 0,
         },
@@ -111,8 +114,8 @@ REVIEWED_MATRIX_SCOPE: dict[str, Any] = {
             "process_key": "dd_4q_lines",
             "accuracies": ["nlc", "full"],
             "n_final": [6],
-            "mode_model_workload_plane_count": 4,
-            "catalog_cell_count": 8,
+            "mode_model_workload_plane_count_by_accuracy": {"nlc": 4, "full": 6},
+            "catalog_cell_count": 10,
             "legacy_comparison": {
                 "status": "unavailable",
                 "reason": "original-amplicol-open-quark-line-limit",
@@ -151,10 +154,13 @@ def validate_reviewed_matrix_scope() -> dict[str, Any]:
         and cell.measurement.execution_mode
         in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
     ]
-    if ufo_compiled_or_eager:
+    if len(ufo_compiled_or_eager) != 100 or any(
+        cell.measurement.accuracy is not Accuracy.FULL
+        or cell.workload is not Workload.CONTRACTED
+        for cell in ufo_compiled_or_eager
+    ):
         raise CatalogStructuralScopeError(
-            "UFO compiled/eager cells entered the matrix; "
-            "reviewed scope must be updated"
+            "UFO compiled/eager full-colour scope differs from the reviewed matrix"
         )
 
     four_quark = [
@@ -179,8 +185,11 @@ def validate_reviewed_matrix_scope() -> dict[str, Any]:
         (accuracy, 6, mode, model, workload)
         for accuracy in {Accuracy.NLC, Accuracy.FULL}
         for mode, model, workload in _FOUR_QUARK_CONTRACTED_PLANES
+    } | {
+        (Accuracy.FULL, 6, mode, model, workload)
+        for mode, model, workload in _FOUR_QUARK_UFO_FULL_PLANES
     }
-    if actual_non_lc != expected_non_lc or len(non_lc) != 8:
+    if actual_non_lc != expected_non_lc or len(non_lc) != 10:
         raise CatalogStructuralScopeError(
             "four-quark contracted candidate-only structural proof coverage "
             "is incomplete"

@@ -129,6 +129,122 @@ impl DecodedLcQueryV1 {
     pub(crate) const fn process_seed_digest(&self) -> SemanticDigest {
         self.seed_digest
     }
+
+    fn with_closure_anchor_slot(mut self, closure_anchor_slot: u32) -> RusticolResult<Self> {
+        if !self
+            .selected_sources
+            .iter()
+            .any(|source| source.source_slot == closure_anchor_slot)
+        {
+            return Err(integrity(
+                "certified query closure anchor is outside its selected source domain",
+            ));
+        }
+        if self.closure_anchor_slot != closure_anchor_slot {
+            self.closure_anchor_slot = closure_anchor_slot;
+            self.semantic_digest = self.compute_digest()?;
+        }
+        Ok(self)
+    }
+}
+
+/// Authenticated private choice of closure ancestry for one prepared process.
+///
+/// The ordinary selector endpoint remains authoritative for every ineligible
+/// generic, open-line, singlet, or heterogeneous shape.  Residual/cross is a
+/// downstream color-metric classification, so eligible pure-adjoint trace
+/// groups use the cyclic minimum regardless of that grouping.  A prepared
+/// grammar enables it only after proving the same homogeneous adjoint state
+/// and direct binary closure contract used by recurrence v4 sectors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct OnTheFlyClosureAnchorPolicyV1 {
+    cyclic_trace_minimum_source_slot: Option<u32>,
+}
+
+impl OnTheFlyClosureAnchorPolicyV1 {
+    pub(super) const fn selector_endpoint() -> Self {
+        Self {
+            cyclic_trace_minimum_source_slot: None,
+        }
+    }
+
+    pub(super) const fn certified_cyclic_minimum(source_slot: u32) -> Self {
+        Self {
+            cyclic_trace_minimum_source_slot: Some(source_slot),
+        }
+    }
+
+    pub(super) fn closure_anchor_for_components(
+        self,
+        seed: &OnTheFlyProcessSeedV1,
+        components: &[LCColorComponent],
+    ) -> Option<u32> {
+        let selector_endpoint = physical_lc_selector_closure_anchor(seed, components)?;
+        let Some(minimum) = self.cyclic_trace_minimum_source_slot else {
+            return Some(selector_endpoint);
+        };
+        let [component] = components else {
+            return Some(selector_endpoint);
+        };
+        if component.kind() != LCColorComponentKind::Trace
+            || component.source_slots().len() != seed.source_anchors.len()
+            || seed
+                .source_anchors
+                .iter()
+                .any(|anchor| anchor.color_role != OnTheFlyExternalColorRoleV1::Adjoint)
+            || component.source_slots().iter().copied().min() != Some(minimum)
+        {
+            return Some(selector_endpoint);
+        }
+        Some(minimum)
+    }
+
+    pub(super) fn canonicalize_query(
+        self,
+        seed: &OnTheFlyProcessSeedV1,
+        query: DecodedLcQueryV1,
+    ) -> RusticolResult<DecodedLcQueryV1> {
+        let closure_anchor_slot = self
+            .closure_anchor_for_components(seed, &query.target_components)
+            .ok_or_else(|| integrity("decoded query lost its physical selector shape"))?;
+        query.with_closure_anchor_slot(closure_anchor_slot)
+    }
+
+    pub(super) fn authenticate_canonical_query(
+        self,
+        seed: &OnTheFlyProcessSeedV1,
+        query: &DecodedLcQueryV1,
+    ) -> RusticolResult<()> {
+        if &self.canonicalize_query(seed, query.clone())? != query {
+            return Err(integrity(
+                "decoded query was not canonicalized at its prepared-grammar boundary",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn certifies_cyclic_trace_reflection(
+        self,
+        seed: &OnTheFlyProcessSeedV1,
+        query: &DecodedLcQueryV1,
+    ) -> bool {
+        let Some(minimum) = self.cyclic_trace_minimum_source_slot else {
+            return false;
+        };
+        let [component] = query.target_components.as_ref() else {
+            return false;
+        };
+        query.seed_digest == seed.semantic_digest()
+            && query.closure_anchor_slot == minimum
+            && component.kind() == LCColorComponentKind::Trace
+            && component.source_slots().len() == seed.source_anchors.len()
+            && component.source_slots().iter().copied().min() == Some(minimum)
+            && seed
+                .source_anchors
+                .iter()
+                .all(|anchor| anchor.color_role == OnTheFlyExternalColorRoleV1::Adjoint)
+            && self.closure_anchor_for_components(seed, &query.target_components) == Some(minimum)
+    }
 }
 
 struct DecodedSelector {
@@ -677,6 +793,103 @@ mod tests {
         assert_ne!(canonical.target_components, reversed.target_components);
         assert_ne!(canonical.selector_digest, reversed.selector_digest);
         assert_ne!(canonical.closure_anchor_slot, reversed.closure_anchor_slot);
+    }
+
+    #[test]
+    fn certified_cyclic_policy_shares_one_anchor_without_touching_generic_shapes() {
+        let trace_seed = seed(
+            &[
+                OnTheFlyExternalColorRoleV1::Adjoint,
+                OnTheFlyExternalColorRoleV1::Adjoint,
+                OnTheFlyExternalColorRoleV1::Adjoint,
+                OnTheFlyExternalColorRoleV1::Adjoint,
+            ],
+            vec![0, 1, 2, 3],
+        );
+        let decode_trace = |word| {
+            DecodedLcQueryV1::new(
+                &trace_seed,
+                vec![0, 1, 2, 3],
+                &[1, 1, 1, 1],
+                OnTheFlyLcSelectorV1::single_trace(word),
+            )
+            .unwrap()
+        };
+        let queries = [
+            vec![0, 1, 2, 3],
+            vec![0, 1, 3, 2],
+            vec![0, 2, 1, 3],
+            vec![0, 2, 3, 1],
+            vec![0, 3, 1, 2],
+            vec![0, 3, 2, 1],
+        ]
+        .map(decode_trace);
+        assert_eq!(
+            queries
+                .iter()
+                .map(|query| query.closure_anchor_slot)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([1, 2, 3]),
+        );
+
+        let fallback = OnTheFlyClosureAnchorPolicyV1::selector_endpoint();
+        for query in &queries {
+            assert_eq!(
+                fallback
+                    .canonicalize_query(&trace_seed, query.clone())
+                    .unwrap(),
+                query.clone(),
+            );
+        }
+        let fixed = OnTheFlyClosureAnchorPolicyV1::certified_cyclic_minimum(0);
+        let error = fixed
+            .authenticate_canonical_query(&trace_seed, &queries[0])
+            .unwrap_err();
+        assert!(error.to_string().contains("prepared-grammar boundary"));
+        let fixed_queries =
+            queries.map(|query| fixed.canonicalize_query(&trace_seed, query).unwrap());
+        assert!(
+            fixed_queries
+                .iter()
+                .all(|query| query.closure_anchor_slot == 0)
+        );
+        for query in &fixed_queries {
+            fixed
+                .authenticate_canonical_query(&trace_seed, query)
+                .unwrap();
+            assert!(fixed.certifies_cyclic_trace_reflection(&trace_seed, query));
+            assert!(!fallback.certifies_cyclic_trace_reflection(&trace_seed, query));
+        }
+        assert_eq!(
+            fixed_queries
+                .iter()
+                .map(DecodedLcQueryV1::semantic_digest)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            6,
+        );
+
+        let open_seed = seed(
+            &[
+                OnTheFlyExternalColorRoleV1::Fundamental,
+                OnTheFlyExternalColorRoleV1::Adjoint,
+                OnTheFlyExternalColorRoleV1::Antifundamental,
+            ],
+            vec![0, 1, 2],
+        );
+        let open = DecodedLcQueryV1::new(
+            &open_seed,
+            vec![0, 1, 2],
+            &[1, 1, 1],
+            OnTheFlyLcSelectorV1::open_lines(vec![vec![0, 1, 2]]),
+        )
+        .unwrap();
+        assert_eq!(open.closure_anchor_slot, 2);
+        assert_eq!(
+            fixed.canonicalize_query(&open_seed, open.clone()).unwrap(),
+            open,
+        );
+        assert!(!fixed.certifies_cyclic_trace_reflection(&open_seed, &open));
     }
 
     #[test]

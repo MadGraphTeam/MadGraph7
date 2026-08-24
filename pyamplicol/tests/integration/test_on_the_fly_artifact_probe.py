@@ -64,6 +64,23 @@ _POINT_0000 = (
 )
 
 
+def _hidden_artifact_probe() -> Any:
+    """Return the optional development probe or skip its private canaries.
+
+    ``PYAMPLICOL_REQUIRE_NATIVE_TESTS`` requires the production native runtime;
+    it does not make test-only Cargo features part of candidate or release
+    wheels.  Keep every canary in this file behind the same feature check.
+    """
+
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+    rusticol = importlib.import_module("pyamplicol._rusticol")
+    probe = getattr(rusticol, "_on_the_fly_artifact_probe_v1", None)
+    if not callable(probe):
+        pytest.skip("the native extension lacks on-the-fly test support")
+    return probe
+
+
 @dataclass(frozen=True)
 class _ScalarContactCase:
     process: str
@@ -265,6 +282,7 @@ def _assert_hidden_probe_matches_sm_process(
     expected_flow_count: int | None = None,
     expected_query_count: int | None = None,
 ) -> None:
+    probe = _hidden_artifact_probe()
     monkeypatch.setattr(lc_gate, "PROCESS", process)
     monkeypatch.setattr(lc_gate, "PROCESS_ID", process_id)
     monkeypatch.setattr(lc_gate, "SEEDS", _SM_SEEDS)
@@ -310,7 +328,6 @@ def _assert_hidden_probe_matches_sm_process(
         )
         assert len(helicities) == len(selected_helicity_ids)
         assert {helicity.id for helicity in helicities} == selected
-    probe = lc_gate._probe()
     census: list[tuple[str, dict[str, object], bool]] = []
     for flow in flows:
         for helicity in helicities:
@@ -473,12 +490,8 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    if importlib.util.find_spec("pyamplicol._rusticol") is None:
-        pytest.skip("the Rusticol extension has not been built")
+    probe = _hidden_artifact_probe()
     rusticol = importlib.import_module("pyamplicol._rusticol")
-    probe = getattr(rusticol, "_on_the_fly_artifact_probe_v1", None)
-    if not callable(probe):
-        pytest.skip("the native extension lacks on-the-fly test support")
     if importlib.util.find_spec("symbolica") is None:
         pytest.skip("Symbolica is unavailable")
 

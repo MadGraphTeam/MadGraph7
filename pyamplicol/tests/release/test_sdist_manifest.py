@@ -27,6 +27,7 @@ def test_maturin_includes_required_sdist_source_trees() -> None:
         "schemas/**/*",
         "tests/**/*",
         "tools/developer/**/*",
+        "tools/fft_profiling/**/*",
         "tools/performance_report/**/*",
         "tools/release/**/*",
         "tools/typing/**/*",

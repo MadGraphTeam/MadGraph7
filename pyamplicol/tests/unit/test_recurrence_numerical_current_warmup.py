@@ -15,6 +15,7 @@ from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -599,7 +600,15 @@ def test_warmup_phase_timings_are_diagnostic_only() -> None:
         repeated.close()
 
 
-def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
+def test_recurrence_certified_reuse_uses_two_independent_probe_sets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture = Mock(wraps=recurrence_warmup._capture_recurrence_current_observations)
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_capture_recurrence_current_observations",
+        capture,
+    )
     result = run_recurrence_numerical_current_warmup(
         _topology_replay_plan(),
         candidate_points=_points(1),
@@ -671,6 +680,10 @@ def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
     assert len(json.dumps(persisted, separators=(",", ":"), sort_keys=True)) < len(
         result.evidence_json
     )
+    assert [call.kwargs["domain"] for call in capture.call_args_list] == [
+        "candidate-current-probes-v1",
+        "independent-verification-current-probes-v1",
+    ]
 
     validated = validate_recurrence_numerical_current_application(
         result,
@@ -712,7 +725,15 @@ def test_recurrence_diagnostic_certifies_without_applying_or_warning() -> None:
     assert json.loads(result.evidence_json)["requested_mode"] == "diagnostic"
 
 
-def test_recurrence_no_relation_detaches_all_observations_with_full_census() -> None:
+def test_recurrence_no_relation_skips_independent_verification_with_full_census(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture = Mock(wraps=recurrence_warmup._capture_recurrence_current_observations)
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_capture_recurrence_current_observations",
+        capture,
+    )
     result = run_recurrence_numerical_current_warmup(
         _no_relation_plan(),
         candidate_points=_points(1),
@@ -727,14 +748,68 @@ def test_recurrence_no_relation_detaches_all_observations_with_full_census() -> 
 
     assert result.certificates == ()
     assert result.candidate_capture.current_count == 4
-    assert result.verification_capture.current_count == 4
     assert result.candidate_capture.observations == {}
-    assert result.verification_capture.observations == {}
+    assert result.verification_capture is None
+    assert result.evidence_json == b""
+    assert result.evidence_transport_bytes == 0
+    assert result.evidence_canonical_bytes == 0
+    assert result.evidence_encoding is None
     assert result.discovery_report["inspected_current_count"] == 4
     assert result.discovery_report["tested_hypothesis_count"] > 0
-    evidence = json.loads(result.evidence_json)
-    assert len(evidence["candidate_capture"]["observations"]) == 4
-    assert len(evidence["verification_capture"]["observations"]) == 4
+    assert result.discovery_report["numerical_candidate_count"] == 0
+    probe_contract = result.discovery_report["probe_contract"]
+    assert probe_contract["independent_verification"] is False
+    assert probe_contract["verification_status"] == (
+        "not-required-no-candidate-hypothesis"
+    )
+    assert probe_contract["verification_point_sha256s"] == []
+    assert probe_contract["verification_capture_sha256"] is None
+    report = result.to_json_dict()
+    assert report["verification_capture"] is None
+    persisted = report["persisted_numerical_evidence"]
+    assert persisted["verification_capture"] is None
+    assert persisted["generation_raw_evidence_bytes"] == 0
+    assert persisted["generation_evidence_transport_bytes"] == 0
+    assert persisted["generation_evidence_encoding"] is None
+    assert [call.kwargs["domain"] for call in capture.call_args_list] == [
+        "candidate-current-probes-v1"
+    ]
+    result.close()
+    result.close()
+
+
+def test_recurrence_no_relation_returns_before_compressed_candidate_spooling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_select_raw_evidence_storage_geometry",
+        lambda *_args, **_kwargs: recurrence_warmup._RawEvidenceStorageGeometry(
+            scalar_count=128,
+            row_count=16,
+            canonical_byte_limit=1 << 20,
+            encoding="zlib-canonical-json-v1",
+            producer_resident_upper_bound=1 << 20,
+        ),
+    )
+    result = run_recurrence_numerical_current_warmup(
+        _no_relation_plan(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=71,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+
+    assert result.candidate_capture.observations == {}
+    assert result.verification_capture is None
+    assert "warmup_candidate_spool" not in result.generation_profile_timings
+    assert "warmup_verification_spool" not in result.generation_profile_timings
+    result.close()
+    result.close()
 
 
 def test_application_recapture_rejects_stale_plan_and_capture_commitment() -> None:
@@ -1142,6 +1217,7 @@ def _fallback_lowering_output(
         inspection_summary=inspection,
         resolved_helicities=(),
         amplitude_destinations=(),
+        structural_zero_physical_sector_certificate=None,
         exact_sections={},
         generation_profile={"pass": name},
         numerical_current_reuse_report=None,
@@ -1154,7 +1230,109 @@ def _fallback_lowering_output(
     )
 
 
-def test_service_fallback_finishes_with_reuse_off_lowering(
+@pytest.mark.parametrize(
+    ("plan_factory", "mode", "expected_lowering_calls"),
+    (
+        (_no_relation_plan, "certified-reuse", 1),
+        (_topology_replay_plan, "diagnostic", 2),
+    ),
+)
+def test_service_only_skips_second_lowering_for_zero_certificates(
+    tmp_path: Path,
+    plan_factory: object,
+    mode: str,
+    expected_lowering_calls: int,
+) -> None:
+    assert callable(plan_factory)
+    warmup = run_recurrence_numerical_current_warmup(
+        plan_factory(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode=mode,  # type: ignore[arg-type]
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=71,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+    calls: list[tuple[Path, dict[str, object]]] = []
+
+    def lower_once(
+        destination: Path,
+        **kwargs: object,
+    ) -> generation_service._RustRecurrenceLoweringOutput:
+        calls.append((destination, dict(kwargs)))
+        pass_name = "baseline" if len(calls) == 1 else "final"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(f"{pass_name}-payload".encode("ascii"))
+        return replace(
+            _fallback_lowering_output(
+                tmp_path,
+                pass_name,
+                inspection={"runtime": pass_name},
+            ),
+            resolved_helicities=((len(calls),),),
+            exact_sections={"pass": pass_name},
+            payload_path=destination,
+            payload_size_bytes=destination.stat().st_size,
+            payload_sha256=str(len(calls)) * 64,
+        )
+
+    baseline = lower_once(
+        tmp_path / ".baseline" / "recurrence-runtime.pacbin",
+        mode="off",
+        evidence=None,
+        report_progress=True,
+        timing_name="native-baseline-generation",
+    )
+    final_path = tmp_path / "final" / "recurrence-runtime.pacbin"
+    if not warmup.certificates:
+        warmup = warmup.without_evidence_transport()
+    try:
+        output, application_validation_required = (
+            generation_service._lower_recurrence_after_numerical_warmup(
+                lower_once=lower_once,
+                final_schedule_path=final_path,
+                baseline=baseline,
+                warmup=warmup,
+                requested_mode=mode,
+            )
+        )
+        assert len(calls) == expected_lowering_calls
+        assert application_validation_required is bool(warmup.certificates)
+        assert output.payload_path == final_path
+        if not warmup.certificates:
+            assert final_path.read_bytes() == b"baseline-payload"
+            assert not baseline.payload_path.exists()
+            assert output.resolved_helicities == baseline.resolved_helicities
+            assert output.exact_sections == baseline.exact_sections
+            assert output.inspection_summary == {"runtime": "baseline"}
+            assert output.generation_profile == {
+                "schema_version": 1,
+                "native_passes": {"final": {"pass": "baseline"}},
+            }
+            report = output.numerical_current_reuse_report
+            assert isinstance(report, Mapping)
+            assert report["requested_mode"] == mode
+            assert report["effective_mode"] == warmup.effective_mode
+            assert report["certified_relation_count"] == 0
+            assert report["applied_relation_count"] == 0
+            assert report["native_relation_application"] is None
+        else:
+            assert mode == "diagnostic"
+            assert final_path.read_bytes() == b"final-payload"
+            assert output.numerical_current_reuse_report is None
+            assert calls[1][1] == {
+                "mode": warmup.effective_mode,
+                "evidence": warmup.evidence_json,
+                "report_progress": False,
+                "timing_name": "native-final-generation",
+            }
+    finally:
+        warmup.close()
+
+
+def test_service_fallback_publishes_the_existing_reuse_off_lowering(
     tmp_path: Path,
 ) -> None:
     geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
@@ -1173,12 +1351,6 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
         raw_reason="injected test envelope",
     )
 
-    baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
-    final = _fallback_lowering_output(
-        tmp_path,
-        "final",
-        inspection={"runtime": "original-plan"},
-    )
     calls: list[tuple[Path, dict[str, object]]] = []
 
     def lower_once(
@@ -1186,11 +1358,28 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
         **kwargs: object,
     ) -> generation_service._RustRecurrenceLoweringOutput:
         calls.append((destination, dict(kwargs)))
-        return final
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"validated-mode-off-payload")
+        return replace(
+            _fallback_lowering_output(
+                tmp_path,
+                "baseline",
+                inspection={"runtime": "original-plan"},
+            ),
+            payload_path=destination,
+            payload_size_bytes=destination.stat().st_size,
+        )
 
+    baseline_path = tmp_path / ".baseline" / "recurrence-runtime.pacbin"
+    baseline = lower_once(
+        baseline_path,
+        mode="off",
+        evidence=None,
+        report_progress=True,
+        timing_name="native-baseline-generation",
+    )
     final_schedule_path = tmp_path / "recurrence-runtime.pacbin"
     completed = generation_service._complete_recurrence_evidence_envelope_fallback(
-        lower_once=lower_once,
         final_schedule_path=final_schedule_path,
         baseline=baseline,
         baseline_plan=_topology_replay_plan(),
@@ -1200,22 +1389,22 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
 
     assert calls == [
         (
-            final_schedule_path,
+            baseline_path,
             {
                 "mode": "off",
                 "evidence": None,
-                "report_progress": False,
-                "timing_name": "native-final-generation",
+                "report_progress": True,
+                "timing_name": "native-baseline-generation",
             },
         )
     ]
+    assert completed.payload_path == final_schedule_path
+    assert final_schedule_path.read_bytes() == b"validated-mode-off-payload"
+    assert not baseline_path.exists()
     assert completed.inspection_summary == {"runtime": "original-plan"}
     assert completed.generation_profile == {
         "schema_version": 1,
-        "native_passes": {
-            "baseline": {"pass": "baseline"},
-            "final": {"pass": "final"},
-        },
+        "native_passes": {"final": {"pass": "baseline"}},
     }
     report = completed.numerical_current_reuse_report
     assert isinstance(report, Mapping)
@@ -1228,8 +1417,9 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
     assert report_fallback["geometry"] == geometry.to_json_dict()
 
 
-def test_python_envelope_fallback_detaches_exception_before_retry(
+def test_python_envelope_fallback_detaches_exception_before_publish(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class RetainedFrameResource:
         pass
@@ -1274,18 +1464,28 @@ def test_python_envelope_fallback_detaches_exception_before_retry(
     assert detached.to_json_dict()["geometry"] == geometry.to_json_dict()
 
     baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
-    final = _fallback_lowering_output(tmp_path, "final", inspection={})
+    baseline.payload_path.write_bytes(b"baseline")
+    publish = generation_service._publish_validated_recurrence_baseline
 
-    def retry_without_evidence(
-        _destination: Path,
-        **_kwargs: object,
+    def publish_without_retained_exception(
+        *,
+        baseline: generation_service._RustRecurrenceLoweringOutput,
+        final_schedule_path: Path,
     ) -> generation_service._RustRecurrenceLoweringOutput:
         gc.collect()
         assert retained[0]() is None
-        return final
+        return publish(
+            baseline=baseline,
+            final_schedule_path=final_schedule_path,
+        )
+
+    monkeypatch.setattr(
+        generation_service,
+        "_publish_validated_recurrence_baseline",
+        publish_without_retained_exception,
+    )
 
     generation_service._complete_recurrence_evidence_envelope_fallback(
-        lower_once=retry_without_evidence,
         final_schedule_path=tmp_path / "python-fallback.pacbin",
         baseline=baseline,
         baseline_plan=_topology_replay_plan(),
@@ -1294,8 +1494,9 @@ def test_python_envelope_fallback_detaches_exception_before_retry(
     )
 
 
-def test_native_capacity_fallback_releases_warmup_before_retry(
+def test_native_capacity_fallback_releases_warmup_before_publish(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class RetainedResource:
         pass
@@ -1361,24 +1562,34 @@ def test_native_capacity_fallback_releases_warmup_before_retry(
     warmup_owner = [warmup]
     del warmup
     baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
-    final = _fallback_lowering_output(tmp_path, "final", inspection={})
+    baseline.payload_path.write_bytes(b"baseline")
+    publish = generation_service._publish_validated_recurrence_baseline
 
-    def retry_without_evidence(
-        _destination: Path,
-        **_kwargs: object,
+    def publish_without_evidence(
+        *,
+        baseline: generation_service._RustRecurrenceLoweringOutput,
+        final_schedule_path: Path,
     ) -> generation_service._RustRecurrenceLoweringOutput:
         gc.collect()
-        events.append("retry")
+        events.append("publish")
         assert warmup_owner == []
         assert retained_frames[0]() is None
         assert all(reference() is None for reference in retained_warmup)
         assert detached.__traceback__ is None
         assert detached.__cause__ is None
         assert detached.__context__ is None
-        return final
+        return publish(
+            baseline=baseline,
+            final_schedule_path=final_schedule_path,
+        )
+
+    monkeypatch.setattr(
+        generation_service,
+        "_publish_validated_recurrence_baseline",
+        publish_without_evidence,
+    )
 
     generation_service._complete_recurrence_evidence_envelope_fallback(
-        lower_once=retry_without_evidence,
         final_schedule_path=tmp_path / "native-fallback.pacbin",
         baseline=baseline,
         baseline_plan=plan,
@@ -1386,7 +1597,7 @@ def test_native_capacity_fallback_releases_warmup_before_retry(
         outcome=detached,
         warmup_owner=warmup_owner,  # type: ignore[arg-type]
     )
-    assert events == ["warmup-closed", "retry"]
+    assert events == ["warmup-closed", "publish"]
 
 
 def test_compressed_canonical_transport_round_trips_with_length_and_digest() -> None:
@@ -1441,6 +1652,7 @@ def test_compressed_warmup_keeps_relation_rows_spooled_through_validation(
         absolute_tolerance=1.0e-70,
     )
     candidate_spool = result.candidate_capture.observations
+    assert result.verification_capture is not None
     verification_spool = result.verification_capture.observations
     assert isinstance(candidate_spool, _SpooledObservationMapping)
     assert isinstance(verification_spool, _SpooledObservationMapping)
@@ -2117,6 +2329,9 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
     def binding(*args: object, **kwargs: object) -> object:
         calls.append((args, kwargs))
         Path(str(args[5])).write_bytes(b"pacbin")
+        dispatch_destination = kwargs.get("helicity_dispatch_destination")
+        if dispatch_destination is not None:
+            Path(str(dispatch_destination)).write_bytes(b"dispatch")
         return object()
 
     native = SimpleNamespace(_lower_recurrence_direct_v2=binding)
@@ -2132,21 +2347,28 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
     )
     monkeypatch.setattr(
         generation_service,
-        "active_native_source_identity",
-        lambda: ("source-revision", "a" * 64),
-    )
-    monkeypatch.setattr(
-        generation_service,
         "_validate_rust_recurrence_lowering_result",
-        lambda *_args, **_kwargs: {
+        lambda *_args, **kwargs: {
             "inspection_summary": {},
             "resolved_helicities": (),
             "amplitude_destinations": (),
+            "structural_zero_physical_sector_certificate": None,
             "exact_sections": {},
             "generation_profile": {"serialized_bytes": {"container": len(b"pacbin")}},
             "member_count": 1,
             "unpacked_size_bytes": 6,
             "index_sha256": "b" * 64,
+            "helicity_dispatch": (
+                {
+                    "abi": "pyamplicol-recurrence-helicity-dispatch-v1",
+                    "size_bytes": len(b"dispatch"),
+                    "sha256": hashlib.sha256(b"dispatch").hexdigest(),
+                    "base_runtime_layout_digest": "2" * 64,
+                    "resolved_helicity_count": 4,
+                }
+                if kwargs["expect_helicity_dispatch"]
+                else None
+            ),
         },
     )
     builder = SimpleNamespace(digest="c" * 64, layout="topology-replay")
@@ -2208,21 +2430,45 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         progress_callback=progress,
         direct_template_catalog_json=b'{"a":2,"z":1}',
     )
+    dispatch_destination = tmp_path / "recurrence-helicity-dispatch-v1.bin"
+    dispatched_output = generation_service._invoke_rust_recurrence_lowering_v2(
+        builder,
+        template,
+        cached_catalog,
+        "f" * 64,
+        "1" * 64,
+        tmp_path / "recurrence-runtime-dispatched.pacbin",
+        point_tile_size=17,
+        workspace_mib=23,
+        relation_discovery_mode="off",
+        relation_discovery_precision_digits=101,
+        relation_discovery_probe_count=3,
+        relation_discovery_verification_probe_count=5,
+        relation_discovery_relative_tolerance=1.25e-70,
+        relation_discovery_absolute_tolerance=2.5e-80,
+        relation_discovery_seed=123456789,
+        color_accuracy="full",
+        helicity_dispatch_destination=dispatch_destination,
+        direct_template_catalog_json=b'{"a":2,"z":1}',
+    )
 
     assert output.payload_path == destination
     assert output.generation_profile == {
         "serialized_bytes": {"container": len(b"pacbin")}
     }
     assert cached_output.payload_path == cached_destination
-    assert len(calls) == 2
+    assert dispatched_output.helicity_dispatch is not None
+    assert dispatched_output.helicity_dispatch.payload_path == dispatch_destination
+    assert dispatched_output.helicity_dispatch.payload_sha256 == hashlib.sha256(
+        b"dispatch"
+    ).hexdigest()
+    assert len(calls) == 3
     args, kwargs = calls[0]
     assert args[:2] == (builder, template)
     assert args[2] == b'{"a":2,"z":1}'
     assert args[3:5] == ("f" * 64, "1" * 64)
     assert args[5] == str(destination)
     assert kwargs == {
-        "source_revision": "source-revision",
-        "native_build_inputs_sha256": "a" * 64,
         "point_tile_size": 17,
         "workspace_mib": 23,
         "relation_discovery_mode": "certified-reuse",
@@ -2234,11 +2480,13 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         "relation_discovery_seed": 123456789,
         "color_accuracy": "nlc",
         "relation_discovery_evidence_json": evidence,
+        "helicity_dispatch_destination": None,
         "progress_callback": progress,
     }
     cached_args, cached_kwargs = calls[1]
     assert cached_args[2] == args[2]
     assert cached_kwargs == kwargs
+    assert calls[2][1]["helicity_dispatch_destination"] == str(dispatch_destination)
 
 
 def test_recurrence_service_preserves_native_capacity_message_for_fallback(
@@ -2266,11 +2514,6 @@ def test_recurrence_service_preserves_native_capacity_message_for_fallback(
         generation_service,
         "verify_native_module",
         lambda _module: None,
-    )
-    monkeypatch.setattr(
-        generation_service,
-        "active_native_source_identity",
-        lambda: ("source-revision", "a" * 64),
     )
     builder = SimpleNamespace(digest="c" * 64, layout="topology-replay")
     template = SimpleNamespace(digest="d" * 64)

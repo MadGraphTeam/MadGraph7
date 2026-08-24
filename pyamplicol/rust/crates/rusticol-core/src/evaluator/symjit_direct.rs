@@ -95,7 +95,8 @@ struct SymjitDirectExecutorContext {
     broadcast_slot_by_binding: Box<[Option<u32>]>,
     broadcast_scalar_by_slot: Box<[u32]>,
     exact_factor_broadcast_slots: Box<[usize]>,
-    workspace: RefCell<PlaneWorkspace>,
+    scalar_workspace: RefCell<PlaneWorkspace>,
+    tiled_workspace: RefCell<PlaneWorkspace>,
     internal_scratch_bytes: Cell<u64>,
     internal_broadcast_bytes: Cell<u64>,
     #[cfg(test)]
@@ -429,7 +430,8 @@ impl LoadedSymjitDirectExecutor {
                 broadcast_slot_by_binding: broadcast_slot_by_binding.into_boxed_slice(),
                 broadcast_scalar_by_slot: broadcast_scalar_by_slot.into_boxed_slice(),
                 exact_factor_broadcast_slots: exact_factor_broadcast_slots.into_boxed_slice(),
-                workspace: RefCell::new(PlaneWorkspace::default()),
+                scalar_workspace: RefCell::new(PlaneWorkspace::default()),
+                tiled_workspace: RefCell::new(PlaneWorkspace::default()),
                 internal_scratch_bytes: Cell::new(0),
                 internal_broadcast_bytes: Cell::new(0),
                 #[cfg(test)]
@@ -463,15 +465,22 @@ impl LoadedSymjitDirectExecutor {
 
     /// Drop every cached table that borrows Direct-Arena row/storage pointers.
     pub(crate) fn invalidate_row_tables(&self) -> RusticolResult<()> {
-        self.context
-            .workspace
+        let mut scalar = self
+            .context
+            .scalar_workspace
             .try_borrow_mut()
             .map_err(|_| {
                 RusticolError::internal(
                     "cannot invalidate recurrence SymJIT row tables during an active call",
                 )
-            })?
-            .invalidate_row_tables();
+            })?;
+        let mut tiled = self.context.tiled_workspace.try_borrow_mut().map_err(|_| {
+            RusticolError::internal(
+                "cannot invalidate recurrence SymJIT row tables during an active call",
+            )
+        })?;
+        scalar.invalidate_row_tables();
+        tiled.invalidate_row_tables();
         Ok(())
     }
 
@@ -489,14 +498,21 @@ impl LoadedSymjitDirectExecutor {
 
     #[cfg(test)]
     fn cached_direct_table_count(&self) -> usize {
-        self.context
-            .workspace
-            .borrow()
-            .row_groups
-            .iter()
-            .flat_map(|group| &group.rows)
-            .filter(|row| row.direct.is_some())
-            .count()
+        [
+            &self.context.scalar_workspace,
+            &self.context.tiled_workspace,
+        ]
+        .into_iter()
+        .map(|workspace| {
+            workspace
+                .borrow()
+                .row_groups
+                .iter()
+                .flat_map(|group| &group.rows)
+                .filter(|row| row.direct.is_some())
+                .count()
+        })
+        .sum()
     }
 
     #[cfg(test)]
@@ -863,7 +879,12 @@ impl SymjitDirectExecutorContext {
         }
         let point_stride = arena.point_stride as usize;
         let broadcast_count = self.broadcast_scalar_by_slot.len();
-        let mut workspace = self.workspace.borrow_mut();
+        let workspace = if point_stride == 1 {
+            &self.scalar_workspace
+        } else {
+            &self.tiled_workspace
+        };
+        let mut workspace = workspace.borrow_mut();
         workspace.prepare(
             point_stride,
             self.parameter_bindings.len(),
@@ -2369,6 +2390,69 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn scalar_and_tiled_row_workspaces_remain_warm_independently() {
+        let loaded = parameter_broadcast_executor(DirectExecutorRole::Finalization);
+        let DirectExecutorHandle::Finalization { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        let row = DirectFinalizationRow {
+            component_base: 0,
+            component_count: 1,
+            momentum_form_id: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let parameters_re = [2.5];
+        let parameters_im = [-0.75];
+        let factors_re = [1.0];
+        let factors_im = [0.0];
+        let mut scalar_re = [f64::NAN; 1];
+        let mut scalar_im = [f64::NAN; 1];
+        let mut scalar_amplitude_re = [0.0; 1];
+        let mut scalar_amplitude_im = [0.0; 1];
+        let scalar = views(
+            &mut scalar_re,
+            &mut scalar_im,
+            &mut scalar_amplitude_re,
+            &mut scalar_amplitude_im,
+            &parameters_re,
+            &parameters_im,
+            &factors_re,
+            &factors_im,
+            1,
+        );
+        let mut tiled_re = [f64::NAN; 8];
+        let mut tiled_im = [f64::NAN; 8];
+        let mut tiled_amplitude_re = [0.0; 8];
+        let mut tiled_amplitude_im = [0.0; 8];
+        let tiled = views(
+            &mut tiled_re,
+            &mut tiled_im,
+            &mut tiled_amplitude_re,
+            &mut tiled_amplitude_im,
+            &parameters_re,
+            &parameters_im,
+            &factors_re,
+            &factors_im,
+            8,
+        );
+        for (views, points) in [(scalar, 1), (tiled, 8)] {
+            assert_eq!(
+                unsafe { call(context, views.0, views.1, views.2, views.3, &row, 1, points,) },
+                DIRECT_STATUS_OK
+            );
+        }
+        let (status, allocations, bytes) = count_allocations(|| unsafe {
+            call(context, scalar.0, scalar.1, scalar.2, scalar.3, &row, 1, 1)
+        });
+        assert_eq!(status, DIRECT_STATUS_OK);
+        assert_eq!((allocations, bytes), (0, 0));
+        assert_eq!(loaded.context.scalar_workspace.borrow().row_groups.len(), 1);
+        assert_eq!(loaded.context.tiled_workspace.borrow().row_groups.len(), 1);
+    }
+
+    #[test]
     fn disjoint_nonidentity_finalization_uses_scratch_and_tracks_traffic() {
         let loaded = parameter_broadcast_executor(DirectExecutorRole::Finalization);
         let DirectExecutorHandle::Finalization { call, context } = loaded.handle() else {
@@ -2648,6 +2732,8 @@ pub(crate) mod tests {
                         context: ptr::null(),
                     },
                     parent_permutation: [0, 1],
+                    packed_singleton_capable: false,
+                    interaction_capability: None,
                 });
             }
             if key == self.contribution_key {
@@ -2655,6 +2741,8 @@ pub(crate) mod tests {
                     direct_executor_id: 1,
                     handle: self.contribution_handle,
                     parent_permutation: [1, 0],
+                    packed_singleton_capable: false,
+                    interaction_capability: None,
                 });
             }
             Err(RusticolError::integrity(
@@ -2717,12 +2805,20 @@ pub(crate) mod tests {
                 vec![(4.0, 0.0)]
             );
         }
-        assert_eq!(loaded.context.workspace.borrow().row_groups.len(), 2);
+        // The legacy OTF interpreter keeps an aligned arena stride even for a
+        // one-point call, so its tables belong to the tiled cache. The newer
+        // packed-singleton path uses the independent scalar cache.
+        assert_eq!(loaded.context.tiled_workspace.borrow().row_groups.len(), 2);
         loaded.invalidate_row_tables().unwrap();
-        let workspace = loaded.context.workspace.borrow();
-        assert!(workspace.row_groups.is_empty());
-        assert!(workspace.storage.is_none());
-        assert_eq!(workspace.descriptor_bytes, 0);
+        for workspace in [
+            &loaded.context.scalar_workspace,
+            &loaded.context.tiled_workspace,
+        ] {
+            let workspace = workspace.borrow();
+            assert!(workspace.row_groups.is_empty());
+            assert!(workspace.storage.is_none());
+            assert_eq!(workspace.descriptor_bytes, 0);
+        }
     }
 
     #[test]
@@ -2857,7 +2953,10 @@ pub(crate) mod tests {
             assert!(current_re.iter().all(|&value| value == expected_re));
             assert!(current_im.iter().all(|&value| value == -2.0));
         }
-        assert_eq!(loaded.context.workspace.borrow().broadcasts.len(), 2 * len);
+        assert_eq!(
+            loaded.context.tiled_workspace.borrow().broadcasts.len(),
+            2 * len
+        );
         let plane_bytes = len as u64 * size_of::<f64>() as u64;
         assert_eq!(
             loaded.internal_traffic_bytes(),

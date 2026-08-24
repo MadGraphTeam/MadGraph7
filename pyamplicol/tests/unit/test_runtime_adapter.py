@@ -18,7 +18,10 @@ from pyamplicol._internal.versions import (
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     SYMJIT_F64_RUNTIME_CAPABILITY,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api import (
     ArtifactError,
@@ -226,29 +229,28 @@ class _NativeRuntime:
 
     def _on_the_fly_runtime_state_census_json(self) -> str | None:
         self.runtime_state_census_access_count += 1
-        if self.execution_mode != "on-the-fly":
+        if self.execution_mode not in {"on-the-fly", "recurrence"}:
             return None
-        return json.dumps(
-            {
-                "kind": "rusticol-on-the-fly-runtime-state-census-v1",
-                "process_id": "uux_g",
-                "family_cache_policy": "last-family-only",
-                "family_cache_limit": 1,
-                "process_preparation_count": self.otf_process_preparation_count,
-                "retained_family_count": self.otf_retained_family_count,
-                "pending_family_count": 0,
-                "retained_selection_count": self.otf_retained_selection_count,
-                "retained_request_count": self.otf_retained_family_count,
-                "retained_amplitude_destination_count": (
-                    self.otf_retained_family_count
-                ),
-                "retained_executor_handle_count": self.otf_retained_family_count,
-                "retained_query_local_trace_count": 0,
-                "retained_embedded_lookup_key_count": 0,
-                "semantic_executor_binding_count": self.otf_retained_family_count,
-                "active_family_union_census": None,
-            }
-        )
+        payload = {
+            "kind": "rusticol-on-the-fly-runtime-state-census-v1",
+            "process_id": "uux_g",
+            "family_cache_policy": "last-family-only",
+            "family_cache_limit": 1,
+            "process_preparation_count": self.otf_process_preparation_count,
+            "retained_family_count": self.otf_retained_family_count,
+            "pending_family_count": 0,
+            "retained_selection_count": self.otf_retained_selection_count,
+            "retained_request_count": self.otf_retained_family_count,
+            "retained_amplitude_destination_count": (self.otf_retained_family_count),
+            "retained_executor_handle_count": self.otf_retained_family_count,
+            "retained_query_local_trace_count": 0,
+            "retained_embedded_lookup_key_count": 0,
+            "semantic_executor_binding_count": self.otf_retained_family_count,
+            "active_family_union_census": None,
+        }
+        if self.execution_mode == "recurrence":
+            payload["owner"] = "recurrence-helicity-selector-companion"
+        return json.dumps(payload)
 
     def _warm_on_the_fly(self) -> None:
         if self.execution_mode == "on-the-fly":
@@ -491,6 +493,30 @@ def _load_on_the_fly_backend(
     _NativeRuntime.last_profile_options = None
     _NativeRuntime.last_arena_profile_options = None
     _NativeRuntime.last_warm_up_options = None
+    return backend_module.load_runtime_backend(tmp_path, process="uux_g")
+
+
+def _load_recurrence_companion_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Any:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(
+        tmp_path,
+        capabilities=(
+            RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
+            RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+        ),
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "recurrence"
+    _NativeRuntime.physics_value = _native_physics("full")
     return backend_module.load_runtime_backend(tmp_path, process="uux_g")
 
 
@@ -776,6 +802,54 @@ def test_runtime_inspect_observes_otf_state_without_opening_physics(
         assert backend._runtime.selector_context_access_count == 0
         assert backend._runtime.selector_ordinal_access_count == 0
         assert backend._runtime.runtime_state_census_access_count == 4
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+def test_runtime_inspect_observes_recurrence_companion_without_relabeling_lane(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    backend = _load_recurrence_companion_backend(monkeypatch, tmp_path)
+    runtime = Runtime(backend)
+    try:
+        inspected = runtime.inspect()
+
+        assert runtime.execution_mode == "recurrence"
+        assert inspected["runtime_metadata"]["execution_mode"] == "recurrence"
+        assert "supported_precisions" not in inspected
+        companion = inspected["on_the_fly_state"]
+        assert isinstance(companion, dict)
+        assert companion["owner"] == "recurrence-helicity-selector-companion"
+        assert companion["retained_family_count"] == 0
+        assert backend._runtime.physics_access_count == 0
+        assert backend._runtime.runtime_state_census_access_count == 1
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+
+
+def test_runtime_inspect_does_not_probe_ordinary_recurrence_as_otf(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(
+        tmp_path,
+        capabilities=(RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,),
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "recurrence"
+    try:
+        backend = backend_module.load_runtime_backend(tmp_path, process="uux_g")
+
+        assert backend.inspect()["on_the_fly_state"] is None
+        assert backend._runtime.runtime_state_census_access_count == 0
     finally:
         _NativeRuntime.execution_mode = "compiled"
 
@@ -1119,9 +1193,135 @@ def test_adapter_accepts_on_the_fly_contracted_color_capability(
         backend = backend_module.load_runtime_backend(tmp_path, process="uux_g")
         assert backend.execution_mode == "on-the-fly"
         assert backend.physics.color_accuracy == "full"
+        assert backend.required_runtime_capabilities == (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        )
         with pytest.raises(EvaluationError, match="does not expose color-flow"):
             Runtime(backend).warm_up(((),), color_flows=("c0",))
         assert _NativeRuntime.last_warm_up_options is None
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+        _NativeRuntime.physics_value = _native_physics("lc")
+
+
+def test_adapter_accepts_on_the_fly_symmetric_group_fft_capability(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    capabilities = (
+        ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+        ON_THE_FLY_RUNTIME_CAPABILITY,
+        SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+    )
+    manifest = _selector_manifest(tmp_path, capabilities=capabilities)
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "on-the-fly"
+    _NativeRuntime.physics_value = _native_physics("full")
+    try:
+        runtime = Runtime.load(tmp_path, process="uux_g")
+        assert runtime.execution_mode == "on-the-fly"
+        assert runtime.physics.color_accuracy == "full"
+        assert runtime._backend.required_runtime_capabilities == capabilities
+        assert runtime._backend.supports_per_point_selectors
+    finally:
+        _NativeRuntime.execution_mode = "compiled"
+        _NativeRuntime.physics_value = _native_physics("lc")
+
+
+def test_compiled_symmetric_group_fft_rejects_exact_precision_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    capabilities = (
+        COMPILED_RUNTIME_SELECTORS_CAPABILITY,
+        SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+    )
+    manifest = _selector_manifest(tmp_path, capabilities=capabilities)
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "compiled"
+    _NativeRuntime.physics_value = _native_physics("full")
+    runtime = Runtime.load(tmp_path, process="uux_g")
+
+    assert runtime.evaluate([], precision=16) == (2.0 + 0.0j,)
+    with pytest.raises(CompatibilityError, match="only precision=16 native f64"):
+        runtime.evaluate([], precision=32)
+
+
+@pytest.mark.parametrize(
+    "capabilities",
+    (
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            "unknown.runtime-capability.v1",
+        ),
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+            "unknown.runtime-capability.v1",
+        ),
+        (
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        ),
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        ),
+        (
+            ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        ),
+    ),
+    ids=(
+        "direct-extra",
+        "fft-extra",
+        "fft-with-lc",
+        "duplicate-fft",
+        "fft-without-otf",
+    ),
+)
+def test_adapter_rejects_invalid_on_the_fly_capability_sets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capabilities: tuple[str, ...],
+) -> None:
+    _install_native(monkeypatch)
+    import pyamplicol.runtime.backend as backend_module
+
+    manifest = _selector_manifest(tmp_path, capabilities=capabilities)
+    monkeypatch.setattr(
+        backend_module,
+        "load_manifest",
+        lambda _path, **_kwargs: manifest,
+    )
+    _NativeRuntime.execution_mode = "on-the-fly"
+    _NativeRuntime.physics_value = _native_physics("full")
+    try:
+        with pytest.raises(
+            CompatibilityError,
+            match="invalid runtime capability contract",
+        ):
+            Runtime.load(tmp_path, process="uux_g")
     finally:
         _NativeRuntime.execution_mode = "compiled"
         _NativeRuntime.physics_value = _native_physics("lc")

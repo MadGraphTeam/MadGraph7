@@ -154,6 +154,30 @@ impl DirectArenaWorkspace {
             ));
         }
         let point_stride = checked_aligned_point_stride(tile_capacity)?;
+        Self::new_with_layout(
+            current_plane_count,
+            amplitude_plane_count,
+            tile_capacity,
+            point_stride,
+        )
+    }
+
+    /// Allocate the explicit packed layout used only for a proven-generic
+    /// singleton direct execution. Ordinary capacity-one workspaces remain
+    /// aligned through [`Self::new`].
+    pub(crate) fn new_packed_singleton(
+        current_plane_count: u32,
+        amplitude_plane_count: u32,
+    ) -> RusticolResult<Self> {
+        Self::new_with_layout(current_plane_count, amplitude_plane_count, 1, 1)
+    }
+
+    fn new_with_layout(
+        current_plane_count: u32,
+        amplitude_plane_count: u32,
+        tile_capacity: u32,
+        point_stride: u32,
+    ) -> RusticolResult<Self> {
         let current_len =
             checked_plane_scalar_len(current_plane_count, point_stride, "current arena")?;
         let amplitude_len =
@@ -622,6 +646,19 @@ mod tests {
             workspace.allocation_counters().requested_bytes > 128,
             "allocator-owned base-alignment reserve must not reduce logical capacity"
         );
+    }
+
+    #[test]
+    fn packed_singleton_is_explicit_and_does_not_change_aligned_capacity_one() {
+        assert_eq!(
+            DirectArenaWorkspace::new(2, 1, 1).unwrap().point_stride(),
+            8
+        );
+        let packed = DirectArenaWorkspace::new_packed_singleton(2, 1).unwrap();
+        assert_eq!(packed.tile_capacity(), 1);
+        assert_eq!(packed.point_stride(), 1);
+        assert_eq!(packed.current_slices().0.len(), 2);
+        assert_eq!(packed.amplitude_slices().0.len(), 1);
     }
 
     #[test]

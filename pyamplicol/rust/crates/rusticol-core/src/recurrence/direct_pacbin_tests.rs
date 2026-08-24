@@ -29,7 +29,7 @@ fn projection_certificate() -> Vec<u8> {
     body.extend_from_slice(b"deterministic-structural-proof");
     let digest: [u8; 32] = Sha256::digest(&body).into();
     body.extend_from_slice(&digest);
-    bind_recurrence_color_projection_certificate(&body, &"a".repeat(40), &"b".repeat(64)).unwrap()
+    body
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn direct_pacbin_removes_the_streaming_temporary_payload_on_error() {
 }
 
 #[test]
-fn direct_pacbin_round_trips_with_a_bound_projection_certificate() {
+fn direct_pacbin_round_trips_with_a_structural_projection_certificate() {
     let directory = temporary_directory("projection-certificate");
     let path = directory.join("recurrence-runtime.pacbin");
     let plan = valid_plan();
@@ -130,7 +130,7 @@ fn direct_pacbin_rejects_a_corrupt_projection_certificate() {
     let path = directory.join("recurrence-runtime.pacbin");
     let payload = encode_recurrence_direct_plan_v2(&valid_plan()).unwrap();
     let mut certificate = projection_certificate();
-    certificate[COLOR_PROJECTION_CERTIFICATE_MAGIC.len() + 12] ^= 1;
+    certificate[COLOR_PROJECTION_CERTIFICATE_BODY_MAGIC.len() + 12] ^= 1;
     write_pacbin_atomic(
         &path,
         [

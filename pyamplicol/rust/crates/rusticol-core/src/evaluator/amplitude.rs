@@ -184,6 +184,12 @@ impl AmplitudeRuntime {
             CompiledDirectReducerKind::ColorTopologyReplay {
                 physical_group_count: replay.physical_groups.len(),
             }
+        } else if let Some(workspace_scalars_per_lane) =
+            self.compiled_symmetric_group_workspace_scalars_per_lane()?
+        {
+            CompiledDirectReducerKind::SymmetricGroup {
+                workspace_scalars_per_lane,
+            }
         } else if let Some(contraction) = self.color_contraction.as_ref() {
             CompiledDirectReducerKind::Contracted {
                 group_count: contraction.group_count,
@@ -245,6 +251,7 @@ impl AmplitudeRuntime {
             materialized_helicity_direct_total_plans: Vec::new(),
             materialized_helicity_direct_total_plan_capacity: 0,
             materialized_helicity_direct_total_next_replacement: 0,
+            materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
             evaluator_output_order: None,
             evaluator: None,
         })
@@ -274,6 +281,14 @@ impl AmplitudeRuntime {
     pub(crate) fn load_reducer_only(
         amplitude_stage: &GenericAmplitudeStageManifest,
         stage: &GenericSerializedStageEvaluatorManifest,
+    ) -> RusticolResult<Self> {
+        Self::load_reducer_only_with_compiled_color(amplitude_stage, stage, None)
+    }
+
+    pub(crate) fn load_reducer_only_with_compiled_color(
+        amplitude_stage: &GenericAmplitudeStageManifest,
+        stage: &GenericSerializedStageEvaluatorManifest,
+        compiled_color: Option<crate::recurrence::RecurrenceColorContraction>,
     ) -> RusticolResult<Self> {
         if stage.stage_kind != "amplitude-roots" {
             return Err(RusticolError::invalid_argument(
@@ -318,7 +333,18 @@ impl AmplitudeRuntime {
             &raw_sum_groups,
         )?;
         let color_contraction = if color_topology_replay.is_some() {
+            if compiled_color.is_some() {
+                return Err(RusticolError::compatibility(
+                    "compiled symmetric-group FFT diagnostic does not support colour-topology replay",
+                ));
+            }
             None
+        } else if let Some(compiled_color) = compiled_color {
+            Some(build_compiled_symmetric_group_color_contraction_runtime(
+                amplitude_stage.color_contraction.as_ref(),
+                &raw_sum_groups,
+                compiled_color,
+            )?)
         } else {
             build_color_contraction_runtime(
                 amplitude_stage.color_contraction.as_ref(),
@@ -437,9 +463,90 @@ impl AmplitudeRuntime {
             materialized_helicity_direct_total_plans: Vec::new(),
             materialized_helicity_direct_total_plan_capacity: 0,
             materialized_helicity_direct_total_next_replacement: 0,
+            materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
             evaluator_output_order,
             evaluator: None,
         })
+    }
+
+    pub(crate) fn prepare_compiled_symmetric_group_workspace(
+        &mut self,
+        lane_capacity: usize,
+    ) -> RusticolResult<()> {
+        let Some(contraction) = self.color_contraction.as_mut() else {
+            return Ok(());
+        };
+        let Some(symmetric_group) = contraction.symmetric_group.as_mut() else {
+            return Ok(());
+        };
+        let reducer = match symmetric_group.plan.runtime_reducer() {
+            Some(crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(
+                reducer,
+            )) => reducer,
+            _ => {
+                return Err(RusticolError::integrity(
+                    "compiled symmetric-group FFT payload lost its runtime reducer",
+                ));
+            }
+        };
+        if reducer.bounded_lane_capacity(lane_capacity)? != lane_capacity {
+            return Err(RusticolError::compatibility(
+                "compiled symmetric-group FFT reduction tile exceeds its workspace budget",
+            ));
+        }
+        symmetric_group.workspace = Some(reducer.workspace(lane_capacity)?);
+        Ok(())
+    }
+
+    fn compiled_symmetric_group_workspace_scalars_per_lane(&self) -> RusticolResult<Option<usize>> {
+        let Some(symmetric_group) = self
+            .color_contraction
+            .as_ref()
+            .and_then(|contraction| contraction.symmetric_group.as_ref())
+        else {
+            return Ok(None);
+        };
+        let reducer = match symmetric_group.plan.runtime_reducer() {
+            Some(crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(
+                reducer,
+            )) => reducer,
+            _ => {
+                return Err(RusticolError::integrity(
+                    "compiled symmetric-group FFT payload lost its runtime reducer",
+                ));
+            }
+        };
+        // The largest irrep block has d^2 <= |S_m|. Count split-complex
+        // gathered, transformed, permutation, and block workspaces plus the
+        // real reduced lane. This conservative authenticated bound controls
+        // the reduction tile; the workspace itself is allocated exactly once.
+        let complex_values = reducer
+            .local_group_count()
+            .checked_add(
+                reducer
+                    .channel_count()
+                    .checked_mul(reducer.group_order())
+                    .ok_or_else(|| {
+                        RusticolError::integrity("compiled symmetric-group workspace overflows")
+                    })?,
+            )
+            .and_then(|value| {
+                reducer
+                    .group_order()
+                    .checked_mul(2)
+                    .and_then(|scratch| value.checked_add(scratch))
+            })
+            .ok_or_else(|| {
+                RusticolError::integrity("compiled symmetric-group workspace overflows")
+            })?;
+        Ok(Some(
+            complex_values
+                .checked_mul(2)
+                .and_then(|value| value.checked_add(1))
+                .ok_or_else(|| {
+                    RusticolError::integrity("compiled symmetric-group scalar footprint overflows")
+                })?,
+        ))
     }
 
     pub(crate) fn color_topology_replay_mappings(&self) -> Option<Vec<Vec<(usize, usize)>>> {
@@ -1063,6 +1170,14 @@ impl AmplitudeRuntime {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
                 ));
+            }
+            if let Some(symmetric_group) = contraction.symmetric_group.as_mut() {
+                return reduce_compiled_symmetric_group_planes(
+                    amplitudes,
+                    raw_sums,
+                    &self.raw_sum_groups,
+                    symmetric_group,
+                );
             }
             let group_scalar_count =
                 contraction
@@ -2668,12 +2783,14 @@ impl AmplitudeRuntime {
             }
             let entries = contraction
                 .logical_entries()
-                .map(|entry| MaterializedHelicityDirectTotalContractionEntry {
-                    left_group_index: bound_group_by_raw_group[entry.left_group_index],
-                    right_group_index: bound_group_by_raw_group[entry.right_group_index],
-                    weight_re: entry.weight_re,
-                    weight_im: entry.weight_im,
-                    symmetry_factor: entry.symmetry_factor,
+                .filter_map(|entry| {
+                    Some(MaterializedHelicityDirectTotalContractionEntry {
+                        left_group_index: bound_group_by_raw_group[entry.left_group_index]?,
+                        right_group_index: bound_group_by_raw_group[entry.right_group_index]?,
+                        weight_re: entry.weight_re,
+                        weight_im: entry.weight_im,
+                        symmetry_factor: entry.symmetry_factor,
+                    })
                 })
                 .collect();
             MaterializedHelicityDirectTotalReduction::Contracted { entries }
@@ -2721,11 +2838,78 @@ impl AmplitudeRuntime {
             let index = self.materialized_helicity_direct_total_next_replacement
                 % self.materialized_helicity_direct_total_plans.len();
             self.materialized_helicity_direct_total_plans[index] = plan;
+            for cached in &mut self.materialized_helicity_direct_default_plan_by_selector_domain {
+                if cached.is_some_and(|cached| cached.plan_index == index) {
+                    *cached = None;
+                }
+            }
             self.materialized_helicity_direct_total_next_replacement =
                 (index + 1) % self.materialized_helicity_direct_total_plans.len();
             index
         };
         Ok(index)
+    }
+
+    /// Bind the immutable default contracted-colour plan for one authenticated
+    /// selector domain, reusing its plan index on subsequent warm calls.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn bind_default_materialized_helicity_direct_total_plan(
+        &mut self,
+        selector_domain_id: usize,
+        physics: &PhysicsRuntime,
+        helicity_index: usize,
+        root_factors: &[Option<Complex<f64>>],
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<usize> {
+        if selected_color_ids.is_some() || !physics.has_contracted_color_axis() {
+            return self.bind_materialized_helicity_direct_total_plan(
+                physics,
+                helicity_index,
+                root_factors,
+                selected_color_ids,
+            );
+        }
+        let cached = self
+            .materialized_helicity_direct_default_plan_by_selector_domain
+            .get(selector_domain_id)
+            .copied()
+            .flatten();
+        if let Some(cached) = cached
+            && cached.physics_binding_id == physics.binding_id
+            && cached.helicity_index == helicity_index
+            && self
+                .materialized_helicity_direct_total_plans
+                .get(cached.plan_index)
+                .is_some_and(|plan| {
+                    plan.key.physics_binding_id == physics.binding_id
+                        && plan.key.helicity_index == helicity_index
+                        && plan.key.color_indices.as_slice() == [0]
+                })
+        {
+            return Ok(cached.plan_index);
+        }
+
+        let plan_index = self.bind_materialized_helicity_direct_total_plan(
+            physics,
+            helicity_index,
+            root_factors,
+            selected_color_ids,
+        )?;
+        if self
+            .materialized_helicity_direct_default_plan_by_selector_domain
+            .len()
+            <= selector_domain_id
+        {
+            self.materialized_helicity_direct_default_plan_by_selector_domain
+                .resize(selector_domain_id + 1, None);
+        }
+        self.materialized_helicity_direct_default_plan_by_selector_domain[selector_domain_id] =
+            Some(MaterializedHelicityDirectDefaultPlanCacheEntry {
+                physics_binding_id: physics.binding_id,
+                helicity_index,
+                plan_index,
+            });
+        Ok(plan_index)
     }
 
     /// Plane-native materialized-helicity totals using a cold-bound numeric
@@ -2857,26 +3041,16 @@ impl AmplitudeRuntime {
                 scratch.direct_totals.fill(0.0);
                 for entry in entries {
                     for point in 0..batch_size {
-                        let left = entry
-                            .left_group_index
-                            .map(|group_index| {
-                                let start = group_index * batch_size;
-                                c64(
-                                    scratch.direct_group_re[start + point],
-                                    scratch.direct_group_im[start + point],
-                                )
-                            })
-                            .unwrap_or_else(|| c64(0.0, 0.0));
-                        let right = entry
-                            .right_group_index
-                            .map(|group_index| {
-                                let start = group_index * batch_size;
-                                c64(
-                                    scratch.direct_group_re[start + point],
-                                    scratch.direct_group_im[start + point],
-                                )
-                            })
-                            .unwrap_or_else(|| c64(0.0, 0.0));
+                        let left_start = entry.left_group_index * batch_size;
+                        let left = c64(
+                            scratch.direct_group_re[left_start + point],
+                            scratch.direct_group_im[left_start + point],
+                        );
+                        let right_start = entry.right_group_index * batch_size;
+                        let right = c64(
+                            scratch.direct_group_re[right_start + point],
+                            scratch.direct_group_im[right_start + point],
+                        );
                         let product = left * right.conj();
                         scratch.direct_totals[point] += normalization_factor
                             * entry.symmetry_factor
@@ -3764,6 +3938,56 @@ impl AmplitudeRuntime {
     }
 }
 
+fn reduce_compiled_symmetric_group_planes(
+    amplitudes: crate::direct_arena::DirectAmplitudePlanes<'_>,
+    output: &mut [f64],
+    groups: &[RawSumGroup],
+    symmetric_group: &mut CompiledSymmetricGroupColorContraction,
+) -> RusticolResult<()> {
+    let point_count = amplitudes.point_count() as usize;
+    if output.len() != point_count {
+        return Err(RusticolError::invalid_argument(
+            "compiled symmetric-group FFT output has the wrong point count",
+        ));
+    }
+    let reducer = match symmetric_group.plan.runtime_reducer() {
+        Some(crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+            reducer
+        }
+        _ => {
+            return Err(RusticolError::integrity(
+                "compiled symmetric-group FFT payload lost its runtime reducer",
+            ));
+        }
+    };
+    let ordered_group_indices = &symmetric_group.ordered_group_indices;
+    let workspace = symmetric_group.workspace.as_mut().ok_or_else(|| {
+        RusticolError::integrity("compiled symmetric-group FFT workspace was not cold-prepared")
+    })?;
+    reducer.reduce_lanes(workspace, point_count, |local_group, point| {
+        let group_index = *ordered_group_indices.get(local_group).ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled symmetric-group FFT local group binding is incomplete",
+            )
+        })?;
+        let group = groups.get(group_index).ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled symmetric-group FFT coherent group binding is out of bounds",
+            )
+        })?;
+        let mut real = 0.0;
+        let mut imaginary = 0.0;
+        for output_index in &group.indices {
+            let (plane_re, plane_im) = amplitudes.plane_unchecked(*output_index);
+            real += plane_re[point];
+            imaginary += plane_im[point];
+        }
+        Ok((real, imaginary))
+    })?;
+    output.copy_from_slice(workspace.reduced(point_count)?);
+    Ok(())
+}
+
 pub(crate) fn build_raw_sum_groups(
     output_length: usize,
     weights: &[f64],
@@ -4157,6 +4381,99 @@ pub(crate) fn build_color_contraction_runtime(
         });
     }
     Ok(Some(ColorContractionRuntime::new(groups, entries)))
+}
+
+pub(crate) fn build_compiled_symmetric_group_color_contraction_runtime(
+    manifest: Option<&GenericColorContractionManifest>,
+    groups: &[RawSumGroup],
+    plan: crate::recurrence::RecurrenceColorContraction,
+) -> RusticolResult<ColorContractionRuntime> {
+    let manifest = manifest.ok_or_else(|| {
+        RusticolError::integrity("compiled symmetric-group FFT payload has no contraction metadata")
+    })?;
+    if !manifest.supported
+        || manifest.group_count != groups.len()
+        || !manifest.entries.is_empty()
+        || manifest.repeated_block.is_some()
+    {
+        return Err(RusticolError::integrity(
+            "compiled symmetric-group FFT metadata disagrees with coherent groups",
+        ));
+    }
+    if plan.accuracy() != crate::recurrence::RecurrenceColorAccuracy::Full
+        || plan.storage() != crate::recurrence::RecurrenceColorStorage::ConvolutionKernels
+        || plan.component_count() != 1
+        || plan.group_count() as usize != groups.len()
+        || plan.local_group_count() as usize != groups.len()
+        || plan.destination_count() as usize != groups.len()
+        || plan.active_sector_count() != groups.len()
+        || !matches!(
+            plan.runtime_reducer(),
+            Some(crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(_))
+        )
+    {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic payload is not a one-component FullColour active-sector convolution",
+        ));
+    }
+    let group_index_by_id = groups
+        .iter()
+        .enumerate()
+        .map(|(index, group)| (group.id, index))
+        .collect::<BTreeMap<_, _>>();
+    if group_index_by_id.len() != groups.len() {
+        return Err(RusticolError::integrity(
+            "compiled symmetric-group FFT coherent group IDs are not unique",
+        ));
+    }
+    let mut ordered_group_indices = Vec::with_capacity(groups.len());
+    let mut covered = BTreeSet::new();
+    for local_group in 0..groups.len() {
+        let destination_id = plan.ordered_destination_id(local_group, 0).ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled symmetric-group FFT local group has no coherent destination",
+            )
+        })?;
+        let group_index = *group_index_by_id
+            .get(&i64::from(destination_id))
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "compiled symmetric-group FFT references unknown coherent group {destination_id}"
+                ))
+            })?;
+        if !covered.insert(group_index) {
+            return Err(RusticolError::integrity(
+                "compiled symmetric-group FFT maps a coherent group more than once",
+            ));
+        }
+        let ordered_group_id = *plan.ordered_group_ids().get(local_group).ok_or_else(|| {
+            RusticolError::integrity("compiled symmetric-group FFT ordered group map is incomplete")
+        })? as usize;
+        let sector_id = *plan
+            .sector_by_group()
+            .get(ordered_group_id)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled symmetric-group FFT ordered sector map is incomplete",
+                )
+            })?;
+        if groups[group_index].sector_ids.as_slice() != [i64::from(sector_id)] {
+            return Err(RusticolError::integrity(
+                "compiled symmetric-group FFT coherent group sector identity disagrees with its payload",
+            ));
+        }
+        ordered_group_indices.push(group_index);
+    }
+    if covered.len() != groups.len() {
+        return Err(RusticolError::integrity(
+            "compiled symmetric-group FFT does not exhaust coherent groups",
+        ));
+    }
+    Ok(ColorContractionRuntime::from_symmetric_group(
+        groups,
+        plan,
+        ordered_group_indices,
+    ))
 }
 
 fn build_walsh_color_contraction_blocks(

@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import math
 import re
 import struct
 from collections.abc import Callable, Mapping, Sequence
@@ -26,11 +27,36 @@ from .recurrence_columnar import (
 RECURRENCE_SCHEDULE_SHARING_KIND = "pyamplicol-recurrence-schedule-sharing"
 RECURRENCE_SCHEDULE_SHARING_SCHEMA_VERSION = 3
 RECURRENCE_SCHEDULE_INDEX_PATH = "recurrence/schedule-index.json"
-RECURRENCE_PROCESS_BINDING_ABI = "pyamplicol-recurrence-process-binding-v2"
-RECURRENCE_PROCESS_BINDING_MAGIC = b"PACRDBN2"
-_PROCESS_BINDING_VERSION = 2
-_PROCESS_BINDING_FIXED_SIZE = 160
+RECURRENCE_PROCESS_BINDING_ABI = "pyamplicol-recurrence-process-binding-v4"
+RECURRENCE_PROCESS_BINDING_MAGIC = b"PACRDBN4"
+_PROCESS_BINDING_VERSION = 4
+_PROCESS_BINDING_FIXED_SIZE = 344
 _MAX_SOURCE_BIJECTIONS = 4096
+
+_DIRECT_ROLE = {
+    "source": 0,
+    "contribution": 1,
+    "finalization": 2,
+    "closure": 3,
+}
+_DIRECT_BACKEND = {"jit": 0, "cpp": 1, "asm": 2}
+_DIRECT_BINDING_SOURCE = 0
+_DIRECT_BINDING_INTRINSIC = 1
+_DIRECT_BINDING_JIT = 2
+_DIRECT_BINDING_NATIVE = 3
+_DIRECT_FLAG_USES_EXACT_FACTOR = 1 << 0
+_MISSING_U32 = (1 << 32) - 1
+_PROCESS_VARIABLE_SEMANTIC_ROLES = frozenset(
+    {
+        "process",
+        "color-plan",
+        "fermion-pairing-semantic",
+        "fermion-pairing-topology",
+        "closure-reconstruction",
+        "helicity-support:pure-massless-adjoint-tree-v1",
+        "helicity-equivalence:global-flip-v1",
+    }
+)
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _T = TypeVar("_T")
@@ -38,6 +64,88 @@ _T = TypeVar("_T")
 
 class RecurrenceScheduleSharingError(ValueError):
     """Raised when recurrence schedules cannot be shared exactly."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecurrenceProcessExecutorPack:
+    """Process-owned sparse Direct executor records for one fixed schedule."""
+
+    compiled_model_digest: str
+    recurrence_template_catalog_digest: str
+    prepared_kernel_pack_digest: str
+    direct_template_catalog_digest: str
+    runtime_layout_digest: str
+    backend: str
+    target_triple: str
+    portable: bool
+    cpu_features: tuple[str, ...]
+    catalog_executor_count: int
+    executor_ids: tuple[int, ...]
+    descriptor_payloads: tuple[bytes, ...]
+
+    def __post_init__(self) -> None:
+        for value, label in (
+            (self.compiled_model_digest, "compiled-model digest"),
+            (
+                self.recurrence_template_catalog_digest,
+                "recurrence-template catalog digest",
+            ),
+            (self.prepared_kernel_pack_digest, "prepared-kernel pack digest"),
+            (self.direct_template_catalog_digest, "direct-template catalog digest"),
+            (self.runtime_layout_digest, "runtime-layout digest"),
+        ):
+            _require_sha256(value, label)
+        if self.backend not in _DIRECT_BACKEND:
+            raise RecurrenceScheduleSharingError(
+                f"unsupported process executor backend {self.backend!r}"
+            )
+        _nonempty_text(self.target_triple, "process executor target triple")
+        if type(self.portable) is not bool:
+            raise RecurrenceScheduleSharingError(
+                "process executor portability must be boolean"
+            )
+        if self.cpu_features != tuple(sorted(set(self.cpu_features))) or any(
+            not isinstance(feature, str) or not feature for feature in self.cpu_features
+        ):
+            raise RecurrenceScheduleSharingError(
+                "process executor CPU features must be sorted and unique"
+            )
+        count = _nonnegative_integer(
+            self.catalog_executor_count, "direct-executor catalog count"
+        )
+        if count > _MISSING_U32:
+            raise RecurrenceScheduleSharingError(
+                "direct-executor catalog count exceeds the u32 wire domain"
+            )
+        if self.executor_ids != tuple(sorted(set(self.executor_ids))):
+            raise RecurrenceScheduleSharingError(
+                "process executor IDs must be sorted and unique"
+            )
+        if len(self.executor_ids) > _MISSING_U32 or any(
+            isinstance(executor_id, bool)
+            or not isinstance(executor_id, int)
+            or executor_id < 0
+            or executor_id >= count
+            for executor_id in self.executor_ids
+        ):
+            raise RecurrenceScheduleSharingError(
+                "process executor ID is outside the complete catalog domain"
+            )
+        if len(self.executor_ids) != len(self.descriptor_payloads) or any(
+            not isinstance(payload, bytes) or len(payload) < 16
+            for payload in self.descriptor_payloads
+        ):
+            raise RecurrenceScheduleSharingError(
+                "process executor descriptors do not match their selected IDs"
+            )
+        for expected_id, payload in zip(
+            self.executor_ids, self.descriptor_payloads, strict=True
+        ):
+            record_size, executor_id = struct.unpack_from("<II", payload)
+            if record_size != len(payload) or executor_id != expected_id:
+                raise RecurrenceScheduleSharingError(
+                    "process executor descriptor header disagrees with its selected ID"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +338,7 @@ class RecurrenceProcessRemap:
 class RecurrenceSharedLoweringResult(Generic[_T]):
     output: _T
     schedule_digest: str
+    native_schedule_semantic_digest: str
     remap: RecurrenceProcessRemap
 
 
@@ -239,6 +348,8 @@ class _PendingLowering(Generic[_T]):
     direct_executor_count: int
     parameter_slot_count: int
     schedule_digest: str
+    sharing_domain_digest: str
+    native_schedule_semantic_digest: str
     future: Future[_T]
 
 
@@ -278,6 +389,8 @@ class RecurrenceScheduleLoweringCache(Generic[_T]):
         logical: RecurrenceBuilderLogicalInputV1,
         *,
         schedule_digest: str,
+        sharing_domain_digest: str,
+        native_schedule_semantic_digest: str,
         direct_executor_count: int,
         parameter_slot_count: int,
         lower: Callable[[], _T],
@@ -285,6 +398,14 @@ class RecurrenceScheduleLoweringCache(Generic[_T]):
         """Lower once across exact process-isomorphic recurrence schedules."""
 
         digest = _require_sha256(schedule_digest, "pre-lowering schedule digest")
+        sharing_domain = _require_sha256(
+            sharing_domain_digest,
+            "pre-lowering schedule-sharing domain digest",
+        )
+        native_semantics = _require_sha256(
+            native_schedule_semantic_digest,
+            "native schedule semantic digest",
+        )
         executor_count = _nonnegative_integer(
             direct_executor_count, "direct-executor count"
         )
@@ -296,7 +417,7 @@ class RecurrenceScheduleLoweringCache(Generic[_T]):
             remap: RecurrenceProcessRemap | None = None
             for candidate in self._processes:
                 if (
-                    candidate.schedule_digest != digest
+                    candidate.sharing_domain_digest != sharing_domain
                     or candidate.direct_executor_count != executor_count
                     or candidate.parameter_slot_count != parameter_count
                 ):
@@ -317,6 +438,8 @@ class RecurrenceScheduleLoweringCache(Generic[_T]):
                     direct_executor_count=executor_count,
                     parameter_slot_count=parameter_count,
                     schedule_digest=digest,
+                    sharing_domain_digest=sharing_domain,
+                    native_schedule_semantic_digest=native_semantics,
                     future=future,
                 )
                 self._processes.append(owner)
@@ -344,6 +467,7 @@ class RecurrenceScheduleLoweringCache(Generic[_T]):
         return RecurrenceSharedLoweringResult(
             output=output,
             schedule_digest=owner.schedule_digest,
+            native_schedule_semantic_digest=(owner.native_schedule_semantic_digest),
             remap=remap,
         )
 
@@ -359,8 +483,10 @@ class RecurrenceScheduleProcess(Protocol):
     recurrence_schedule_unpacked_size_bytes: int
     recurrence_schedule_index_sha256: str
     builder_input_sha256: str
+    process_digest: str
     process_support_mask: int
     recurrence_process_remap: RecurrenceProcessRemap
+    recurrence_process_executor_pack: RecurrenceProcessExecutorPack
 
 
 def _recurrence_schedule_identity_payload(
@@ -371,9 +497,27 @@ def _recurrence_schedule_identity_payload(
     point_tile_size: int,
     workspace_mib: int,
 ) -> dict[str, object]:
+    domain = _recurrence_schedule_domain_payload(
+        prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+        direct_template_catalog_digest=direct_template_catalog_digest,
+        point_tile_size=point_tile_size,
+        workspace_mib=workspace_mib,
+    )
     return {
         "contract": "pyamplicol-recurrence-prelower-schedule-identity-v1",
         "logical": _schedule_plain(logical),
+        **domain,
+    }
+
+
+def _recurrence_schedule_domain_payload(
+    *,
+    prepared_kernel_pack_digest: str,
+    direct_template_catalog_digest: str,
+    point_tile_size: int,
+    workspace_mib: int,
+) -> dict[str, object]:
+    return {
         "prepared_kernel_pack_digest": _require_sha256(
             prepared_kernel_pack_digest, "prepared-kernel pack digest"
         ),
@@ -393,22 +537,59 @@ def _recurrence_schedule_semantic_digests(
     point_tile_size: int,
     workspace_mib: int,
     relation_discovery: Mapping[str, object] | None = None,
-) -> tuple[str, str]:
-    """Return native and request identities after one logical-input traversal."""
+) -> tuple[str, str, str]:
+    """Return native, request, and sharing-domain schedule identities."""
 
-    payload = _recurrence_schedule_identity_payload(
-        logical,
+    domain = _recurrence_schedule_domain_payload(
         prepared_kernel_pack_digest=prepared_kernel_pack_digest,
         direct_template_catalog_digest=direct_template_catalog_digest,
         point_tile_size=point_tile_size,
         workspace_mib=workspace_mib,
     )
+    payload = {
+        "contract": "pyamplicol-recurrence-prelower-schedule-identity-v1",
+        "logical": _schedule_plain(logical),
+        **domain,
+    }
     native_digest = _canonical_digest(payload)
-    if relation_discovery is None:
-        return native_digest, native_digest
     request_payload = dict(payload)
-    request_payload["relation_discovery"] = _schedule_plain(relation_discovery)
-    return native_digest, _canonical_digest(request_payload)
+    sharing_domain_payload = {
+        "contract": "pyamplicol-recurrence-schedule-sharing-domain-v1",
+        **domain,
+    }
+    if relation_discovery is not None:
+        plain_relation = _schedule_plain(relation_discovery)
+        request_payload["relation_discovery"] = plain_relation
+        sharing_domain_payload["relation_discovery"] = plain_relation
+    return (
+        native_digest,
+        _canonical_digest(request_payload),
+        _canonical_digest(sharing_domain_payload),
+    )
+
+
+def recurrence_helicity_selector_schedule_digest(
+    base_schedule_digest: str,
+    helicity_dispatch_sha256: str,
+) -> str:
+    """Bind one Direct plan and its exact-helicity dispatch into one root ID."""
+
+    return _canonical_digest(
+        {
+            "contract": "pyamplicol-recurrence-helicity-selector-schedule-v1",
+            "base_schedule_digest": _require_sha256(
+                base_schedule_digest,
+                "helicity-selector base schedule digest",
+            ),
+            "helicity_dispatch": {
+                "abi": "pyamplicol-recurrence-helicity-dispatch-v1",
+                "sha256": _require_sha256(
+                    helicity_dispatch_sha256,
+                    "helicity-selector dispatch SHA-256",
+                ),
+            },
+        }
+    )
 
 
 def recurrence_native_schedule_semantic_digest(
@@ -467,6 +648,599 @@ def recurrence_schedule_semantic_digest(
     if relation_discovery is not None:
         payload["relation_discovery"] = _schedule_plain(relation_discovery)
     return _canonical_digest(payload)
+
+
+def build_recurrence_process_executor_pack(
+    *,
+    direct_catalog: object,
+    kernel_pack: object,
+    required_executor_ids: Sequence[int],
+    runtime_layout_digest: str,
+) -> RecurrenceProcessExecutorPack:
+    """Project one validated model catalog to its exact fixed-plan executor set."""
+
+    direct_mapping = _object_mapping(direct_catalog, "direct-template catalog")
+    pack_mapping = _object_mapping(kernel_pack, "prepared-kernel pack")
+    raw_templates = _object_sequence(
+        direct_mapping.get("templates"), "direct-template catalog templates"
+    )
+    catalog_count = len(raw_templates)
+    templates: dict[int, Mapping[str, object]] = {}
+    for expected_id, raw_template in enumerate(raw_templates):
+        template = _require_mapping(raw_template, "direct-template descriptor")
+        executor_id = _wire_u32(
+            template.get("direct_executor_id"), "direct-template executor ID"
+        )
+        if executor_id != expected_id or executor_id in templates:
+            raise RecurrenceScheduleSharingError(
+                "direct-template executor IDs must be dense, ordered, and unique"
+            )
+        templates[executor_id] = template
+
+    selected_ids = tuple(
+        _wire_u32(value, "required direct-executor ID")
+        for value in required_executor_ids
+    )
+    if selected_ids != tuple(sorted(set(selected_ids))):
+        raise RecurrenceScheduleSharingError(
+            "required direct-executor IDs must be sorted and unique"
+        )
+    if any(executor_id not in templates for executor_id in selected_ids):
+        raise RecurrenceScheduleSharingError(
+            "required direct-executor ID is absent from its complete catalog"
+        )
+
+    raw_kernels = _object_sequence(
+        pack_mapping.get("kernels"), "prepared-kernel pack kernels"
+    )
+    kernels: dict[int, Mapping[str, object]] = {}
+    for raw_kernel in raw_kernels:
+        kernel = _require_mapping(raw_kernel, "prepared-kernel descriptor")
+        kernel_id = _wire_u32(kernel.get("kernel_id"), "prepared-kernel ID")
+        if kernel_id in kernels:
+            raise RecurrenceScheduleSharingError(
+                f"prepared-kernel pack repeats kernel {kernel_id}"
+            )
+        kernels[kernel_id] = kernel
+
+    backend = _wire_text(direct_mapping.get("backend"), "direct backend")
+    if backend != pack_mapping.get("backend") or backend not in _DIRECT_BACKEND:
+        raise RecurrenceScheduleSharingError(
+            "direct-template and prepared-kernel backends disagree"
+        )
+    target = _require_mapping(pack_mapping.get("target"), "prepared-kernel target")
+    target_triple = _wire_text(target.get("target_triple"), "target triple")
+    if target_triple != direct_mapping.get("target_triple"):
+        raise RecurrenceScheduleSharingError(
+            "direct-template and prepared-kernel targets disagree"
+        )
+    portable = target.get("portable")
+    if type(portable) is not bool or portable != direct_mapping.get("portable"):
+        raise RecurrenceScheduleSharingError(
+            "direct-template and prepared-kernel portability disagree"
+        )
+    if target.get("word_bits") != 64 or target.get("endianness") != "little":
+        raise RecurrenceScheduleSharingError(
+            "process executor packs require a 64-bit little-endian target"
+        )
+    cpu_features = tuple(
+        _wire_text(value, "target CPU feature")
+        for value in _object_sequence(target.get("cpu_features"), "target CPU features")
+    )
+    if cpu_features != tuple(sorted(set(cpu_features))):
+        raise RecurrenceScheduleSharingError(
+            "target CPU features must be sorted and unique"
+        )
+
+    descriptors = tuple(
+        _encode_process_executor_descriptor(
+            templates[executor_id],
+            backend=backend,
+            kernels=kernels,
+        )
+        for executor_id in selected_ids
+    )
+    return RecurrenceProcessExecutorPack(
+        compiled_model_digest=_wire_sha256(
+            direct_mapping.get("compiled_model_digest"), "compiled-model digest"
+        ),
+        recurrence_template_catalog_digest=_wire_sha256(
+            direct_mapping.get("recurrence_template_catalog_digest"),
+            "recurrence-template catalog digest",
+        ),
+        prepared_kernel_pack_digest=_wire_sha256(
+            direct_mapping.get("prepared_kernel_pack_digest"),
+            "prepared-kernel pack digest",
+        ),
+        direct_template_catalog_digest=_wire_sha256(
+            direct_mapping.get("catalog_digest"), "direct-template catalog digest"
+        ),
+        runtime_layout_digest=_wire_sha256(
+            runtime_layout_digest, "runtime-layout digest"
+        ),
+        backend=backend,
+        target_triple=target_triple,
+        portable=portable,
+        cpu_features=cpu_features,
+        catalog_executor_count=catalog_count,
+        executor_ids=selected_ids,
+        descriptor_payloads=descriptors,
+    )
+
+
+def _encode_process_executor_descriptor(
+    template: Mapping[str, object],
+    *,
+    backend: str,
+    kernels: Mapping[int, Mapping[str, object]],
+) -> bytes:
+    executor_id = _wire_u32(template.get("direct_executor_id"), "direct executor ID")
+    role = _wire_text(template.get("role"), "direct executor role")
+    role_tag = _DIRECT_ROLE.get(role)
+    if role_tag is None:
+        raise RecurrenceScheduleSharingError(
+            f"unsupported direct executor role {role!r}"
+        )
+    destination_count = _wire_u32(
+        template.get("destination_component_count"),
+        "direct destination component count",
+        positive=True,
+    )
+    binding = _require_mapping(
+        template.get("payload_binding"), "direct executor payload binding"
+    )
+    binding_kind = _wire_text(binding.get("kind"), "direct binding kind")
+    exact_factor_slots = _object_sequence(
+        binding.get("exact_factor_scalar_slots"), "exact-factor scalar slots"
+    )
+    flags = _DIRECT_FLAG_USES_EXACT_FACTOR if len(exact_factor_slots) != 0 else 0
+    if role == "source":
+        record_kind = _DIRECT_BINDING_SOURCE
+        body = b""
+    elif binding_kind == "rusticol-intrinsic":
+        record_kind = _DIRECT_BINDING_INTRINSIC
+        body = _encode_intrinsic_binding(binding, role=role)
+    elif binding_kind == "prepared-direct-call" and backend == "jit":
+        record_kind = _DIRECT_BINDING_JIT
+        body = _encode_jit_binding(binding, template=template, kernels=kernels)
+    elif binding_kind == "prepared-direct-call" and backend in {"cpp", "asm"}:
+        record_kind = _DIRECT_BINDING_NATIVE
+        body = _encode_native_binding(binding, template=template, kernels=kernels)
+    else:
+        raise RecurrenceScheduleSharingError(
+            f"unsupported executable direct binding {binding_kind!r} for {backend!r}"
+        )
+    size = 16 + len(body)
+    if size > _MISSING_U32:
+        raise RecurrenceScheduleSharingError(
+            "process direct-executor descriptor exceeds the u32 wire domain"
+        )
+    return (
+        struct.pack(
+            "<IIBBHI",
+            size,
+            executor_id,
+            role_tag,
+            record_kind,
+            flags,
+            destination_count,
+        )
+        + body
+    )
+
+
+def _encode_intrinsic_binding(binding: Mapping[str, object], *, role: str) -> bytes:
+    runtime_template = _wire_text(
+        binding.get("runtime_template"), "intrinsic runtime template"
+    )
+    raw_projections = _object_sequence(
+        binding.get("scalar_projections"), "intrinsic scalar projections"
+    )
+    if role == "contribution":
+        if len(raw_projections) != 1:
+            raise RecurrenceScheduleSharingError(
+                "contribution intrinsic requires exactly one scale projection"
+            )
+        projection = _require_mapping(
+            raw_projections[0], "contribution intrinsic scale"
+        )
+        if projection.get("kind") != "intrinsic-scale-v1":
+            raise RecurrenceScheduleSharingError(
+                "contribution intrinsic has an unsupported scale projection"
+            )
+        real_bits = _wire_u64(
+            projection.get("constant_real_bits"), "intrinsic real bits"
+        )
+        imag_bits = _wire_u64(
+            projection.get("constant_imag_bits"), "intrinsic imaginary bits"
+        )
+        raw_parameter = projection.get("parameter_index")
+        parameter = (
+            _MISSING_U32
+            if raw_parameter is None
+            else _wire_u32(raw_parameter, "intrinsic parameter index")
+        )
+        has_scale = 1
+    else:
+        if raw_projections:
+            raise RecurrenceScheduleSharingError(
+                "non-contribution intrinsic cannot carry scalar projections"
+            )
+        real_bits = 0
+        imag_bits = 0
+        parameter = _MISSING_U32
+        has_scale = 0
+    return struct.pack(
+        "<B3xQQI", has_scale, real_bits, imag_bits, parameter
+    ) + _encode_wire_text(runtime_template, "intrinsic runtime template")
+
+
+def _encode_jit_binding(
+    binding: Mapping[str, object],
+    *,
+    template: Mapping[str, object],
+    kernels: Mapping[int, Mapping[str, object]],
+) -> bytes:
+    kernel_id = _wire_u32(binding.get("prepared_kernel_id"), "prepared JIT kernel ID")
+    kernel = kernels.get(kernel_id)
+    if kernel is None:
+        raise RecurrenceScheduleSharingError(
+            f"prepared JIT kernel {kernel_id} is absent"
+        )
+    evaluator = _require_mapping(
+        kernel.get("f64_evaluator_manifest"), "prepared JIT evaluator"
+    )
+    plane = _require_mapping(
+        evaluator.get("plane_application"), "prepared JIT plane application"
+    )
+    compression = plane.get("compression")
+    if type(compression) is not bool:
+        raise RecurrenceScheduleSharingError(
+            "prepared JIT plane compression must be boolean"
+        )
+    optimization_level = _wire_u32(
+        template.get("optimization_level"), "prepared JIT optimization level"
+    )
+    source_path = _wire_text(
+        binding.get("source_application_path"), "prepared JIT source path"
+    )
+    source_sha256 = _wire_sha256(
+        binding.get("source_application_sha256"), "prepared JIT source digest"
+    )
+    source_abi = _wire_text(
+        binding.get("source_application_abi"), "prepared JIT source ABI"
+    )
+    parameter_bindings = _object_sequence(
+        binding.get("parameter_bindings"), "prepared JIT parameter bindings"
+    )
+    plane_projections = _object_sequence(
+        binding.get("input_plane_projections"), "prepared JIT plane projections"
+    )
+    scalar_projections = _object_sequence(
+        binding.get("scalar_projections"), "prepared JIT scalar projections"
+    )
+    output_aliases = tuple(
+        _wire_u32(value, "prepared JIT output alias")
+        for value in _object_sequence(
+            binding.get("output_alias_inputs"), "prepared JIT output aliases"
+        )
+    )
+    counts = tuple(
+        _wire_u32(len(values), f"prepared JIT {label} count")
+        for values, label in (
+            (parameter_bindings, "parameter-binding"),
+            (plane_projections, "plane-projection"),
+            (scalar_projections, "scalar-projection"),
+            (output_aliases, "output-alias"),
+        )
+    )
+    return b"".join(
+        (
+            struct.pack(
+                "<IIB3x",
+                kernel_id,
+                optimization_level,
+                int(compression),
+            ),
+            bytes.fromhex(source_sha256),
+            _encode_wire_text(source_path, "prepared JIT source path"),
+            _encode_wire_text(source_abi, "prepared JIT source ABI"),
+            struct.pack("<4I", *counts),
+            *(_encode_parameter_binding(value) for value in parameter_bindings),
+            *(_encode_plane_projection(value) for value in plane_projections),
+            *(_encode_scalar_projection(value) for value in scalar_projections),
+            struct.pack(f"<{len(output_aliases)}I", *output_aliases),
+        )
+    )
+
+
+def _encode_native_binding(
+    binding: Mapping[str, object],
+    *,
+    template: Mapping[str, object],
+    kernels: Mapping[int, Mapping[str, object]],
+) -> bytes:
+    kernel_id = _wire_u32(
+        binding.get("prepared_kernel_id"), "prepared native kernel ID"
+    )
+    kernel = kernels.get(kernel_id)
+    if kernel is None:
+        raise RecurrenceScheduleSharingError(
+            f"prepared native kernel {kernel_id} is absent"
+        )
+    source_path = _wire_text(
+        binding.get("source_application_path"), "prepared native library path"
+    )
+    entry_point = _wire_text(
+        binding.get("native_entry_point"), "prepared native entry point"
+    )
+    coupling = _prepared_native_coupling(binding, kernel)
+    if coupling is None:
+        has_coupling = 0
+        coupling_real_bits = 0
+        coupling_imag_bits = 0
+    else:
+        has_coupling = 1
+        coupling_real_bits = _f64_bits(coupling[0])
+        coupling_imag_bits = _f64_bits(coupling[1])
+    return b"".join(
+        (
+            struct.pack(
+                "<IB3xQQ",
+                kernel_id,
+                has_coupling,
+                coupling_real_bits,
+                coupling_imag_bits,
+            ),
+            _encode_wire_text(source_path, "prepared native library path"),
+            _encode_wire_text(entry_point, "prepared native entry point"),
+        )
+    )
+
+
+def _prepared_native_coupling(
+    binding: Mapping[str, object],
+    kernel: Mapping[str, object],
+) -> tuple[float, float] | None:
+    parameter_bindings = _object_sequence(
+        binding.get("parameter_bindings"), "native parameter bindings"
+    )
+    input_contracts = _object_sequence(
+        kernel.get("input_contracts"), "native kernel input contracts"
+    )
+    if len(parameter_bindings) != 2 * len(input_contracts):
+        raise RecurrenceScheduleSharingError(
+            "native direct parameter bindings do not match the kernel inputs"
+        )
+    scalars = _object_sequence(
+        binding.get("scalar_projections"), "native scalar projections"
+    )
+    coupling_real: float | None = None
+    coupling_imag: float | None = None
+    for input_index, raw_contract in enumerate(input_contracts):
+        contract = _require_mapping(raw_contract, "native kernel input contract")
+        role = contract.get("role")
+        if role not in {"coupling-real", "coupling-imag"}:
+            continue
+        value = _native_literal_binding(
+            parameter_bindings,
+            scalars,
+            2 * input_index,
+        )
+        imaginary = _native_literal_binding(
+            parameter_bindings,
+            scalars,
+            2 * input_index + 1,
+        )
+        if imaginary != 0.0:
+            raise RecurrenceScheduleSharingError(
+                "native direct coupling scalar lane has a nonzero imaginary part"
+            )
+        if role == "coupling-real":
+            if coupling_real is not None:
+                raise RecurrenceScheduleSharingError(
+                    "native direct kernel repeats its real coupling input"
+                )
+            coupling_real = value
+        else:
+            if coupling_imag is not None:
+                raise RecurrenceScheduleSharingError(
+                    "native direct kernel repeats its imaginary coupling input"
+                )
+            coupling_imag = value
+    if coupling_real is None and coupling_imag is None:
+        return None
+    return (
+        0.0 if coupling_real is None else coupling_real,
+        0.0 if coupling_imag is None else coupling_imag,
+    )
+
+
+def _native_literal_binding(
+    parameter_bindings: Sequence[object],
+    scalars: Sequence[object],
+    parameter_index: int,
+) -> float:
+    binding = _require_mapping(
+        parameter_bindings[parameter_index], "native scalar parameter binding"
+    )
+    if binding.get("kind") != "scalar":
+        raise RecurrenceScheduleSharingError(
+            "native direct coupling is not bound to a scalar"
+        )
+    scalar_index = _wire_u32(binding.get("index"), "native scalar index")
+    if scalar_index >= len(scalars):
+        raise RecurrenceScheduleSharingError(
+            "native direct coupling scalar index is out of bounds"
+        )
+    scalar = _require_mapping(scalars[scalar_index], "native literal scalar")
+    raw_value = scalar.get("value")
+    if (
+        scalar.get("kind") != "literal"
+        or isinstance(raw_value, bool)
+        or not isinstance(raw_value, int | float)
+    ):
+        raise RecurrenceScheduleSharingError(
+            "native direct coupling is not an immutable literal"
+        )
+    value = float(raw_value)
+    if not math.isfinite(value):
+        raise RecurrenceScheduleSharingError(
+            "native direct coupling literal is not finite"
+        )
+    return value
+
+
+def _encode_parameter_binding(value: object) -> bytes:
+    binding = _require_mapping(value, "JIT parameter binding")
+    kind = binding.get("kind")
+    tag = 0 if kind == "plane" else 1 if kind == "scalar" else None
+    if tag is None:
+        raise RecurrenceScheduleSharingError(
+            f"unsupported JIT parameter binding {kind!r}"
+        )
+    index = _wire_u32(binding.get("index"), "JIT parameter-binding index")
+    return struct.pack("<B3xI", tag, index)
+
+
+def _encode_plane_projection(value: object) -> bytes:
+    projection = _require_mapping(value, "JIT plane projection")
+    kind = projection.get("kind")
+    if kind == "parent-current":
+        tag = 0
+        operand = _wire_u8(projection.get("parent"), "JIT parent index")
+        component = _wire_u16(projection.get("component"), "JIT parent component")
+        imaginary = _wire_bool(projection.get("imaginary"), "JIT imaginary flag")
+    elif kind == "momentum":
+        tag = 1
+        operand = _wire_u8(projection.get("operand"), "JIT momentum operand")
+        component = _wire_u16(
+            projection.get("lorentz_component"), "JIT Lorentz component"
+        )
+        imaginary = False
+    elif kind in {"destination-current", "destination-amplitude"}:
+        tag = 2 if kind == "destination-current" else 3
+        operand = 0
+        component = _wire_u16(projection.get("component"), "JIT destination component")
+        imaginary = _wire_bool(projection.get("imaginary"), "JIT imaginary flag")
+    else:
+        raise RecurrenceScheduleSharingError(
+            f"unsupported JIT plane projection {kind!r}"
+        )
+    return struct.pack("<BBHB3x", tag, operand, component, int(imaginary))
+
+
+def _encode_scalar_projection(value: object) -> bytes:
+    projection = _require_mapping(value, "JIT scalar projection")
+    kind = projection.get("kind")
+    if kind == "exact-factor":
+        tag = 0
+        imaginary = _wire_bool(projection.get("imaginary"), "JIT imaginary flag")
+        index = 0
+        bits = 0
+    elif kind == "parameter":
+        tag = 1
+        imaginary = _wire_bool(projection.get("imaginary"), "JIT imaginary flag")
+        index = _wire_u32(projection.get("index"), "JIT parameter index")
+        bits = 0
+    elif kind == "literal":
+        tag = 2
+        imaginary = False
+        index = 0
+        raw_value = projection.get("value")
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int | float):
+            raise RecurrenceScheduleSharingError("JIT literal must be numeric")
+        value = float(raw_value)
+        if not math.isfinite(value):
+            raise RecurrenceScheduleSharingError("JIT literal must be finite")
+        bits = _f64_bits(value)
+    else:
+        raise RecurrenceScheduleSharingError(
+            f"unsupported JIT scalar projection {kind!r}"
+        )
+    return struct.pack("<BBHIQ", tag, int(imaginary), 0, index, bits)
+
+
+def _object_mapping(value: object, context: str) -> Mapping[str, object]:
+    operation = getattr(value, "to_dict", None)
+    if not callable(operation):
+        raise RecurrenceScheduleSharingError(f"{context} is not a typed model object")
+    return _require_mapping(operation(), context)
+
+
+def _require_mapping(value: object, context: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise RecurrenceScheduleSharingError(f"{context} must be a mapping")
+    return value
+
+
+def _object_sequence(value: object, context: str) -> tuple[object, ...]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise RecurrenceScheduleSharingError(f"{context} must be a sequence")
+    return tuple(value)
+
+
+def _wire_text(value: object, context: str) -> str:
+    return _nonempty_text(value, context)
+
+
+def _wire_sha256(value: object, context: str) -> str:
+    return _require_sha256(value, context)
+
+
+def _wire_bool(value: object, context: str) -> bool:
+    if type(value) is not bool:
+        raise RecurrenceScheduleSharingError(f"{context} must be boolean")
+    return value
+
+
+def _wire_integer(
+    value: object,
+    context: str,
+    maximum: int,
+    *,
+    positive: bool = False,
+) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < int(positive)
+        or value > maximum
+    ):
+        qualifier = "positive " if positive else ""
+        raise RecurrenceScheduleSharingError(
+            f"{context} must be a {qualifier}integer no larger than {maximum}"
+        )
+    return value
+
+
+def _wire_u8(value: object, context: str) -> int:
+    return _wire_integer(value, context, (1 << 8) - 1)
+
+
+def _wire_u16(value: object, context: str) -> int:
+    return _wire_integer(value, context, (1 << 16) - 1)
+
+
+def _wire_u32(value: object, context: str, *, positive: bool = False) -> int:
+    return _wire_integer(value, context, _MISSING_U32, positive=positive)
+
+
+def _wire_u64(value: object, context: str) -> int:
+    return _wire_integer(value, context, (1 << 64) - 1)
+
+
+def _f64_bits(value: float) -> int:
+    return struct.unpack("<Q", struct.pack("<d", value))[0]
+
+
+def _encode_wire_text(value: str, context: str) -> bytes:
+    encoded = value.encode("utf-8")
+    if not encoded or len(encoded) > _MISSING_U32:
+        raise RecurrenceScheduleSharingError(
+            f"{context} has an invalid UTF-8 wire length"
+        )
+    return struct.pack("<I", len(encoded)) + encoded
 
 
 def exact_recurrence_process_bijection(
@@ -588,6 +1362,14 @@ def exact_recurrence_process_bijection(
                     [sector.closure_proof_algorithm, sector.closure_proof_digest]
                     for sector in target.physical_sectors
                 ],
+                "root_replay_proofs": [
+                    [partition.proof_algorithm, partition.proof_digest]
+                    for partition in root.replay_partitions
+                ],
+                "target_replay_proofs": [
+                    [partition.proof_algorithm, partition.proof_digest]
+                    for partition in target.replay_partitions
+                ],
                 "remap": result._digest_payload(),
             }
         )
@@ -599,28 +1381,26 @@ def _fixed_semantic_digests_match(
     root: RecurrenceBuilderLogicalInputV1,
     target: RecurrenceBuilderLogicalInputV1,
 ) -> bool:
-    variable = {
-        "process",
-        "color-plan",
-        "fermion-pairing-semantic",
-        "fermion-pairing-topology",
-        "closure-reconstruction",
-    }
     root_rows = {row.role: row.digest for row in root.semantic_digests}
     target_rows = {row.role: row.digest for row in target.semantic_digests}
     return set(root_rows) == set(target_rows) and {
-        role: digest for role, digest in root_rows.items() if role not in variable
-    } == {role: digest for role, digest in target_rows.items() if role not in variable}
+        role: digest
+        for role, digest in root_rows.items()
+        if role not in _PROCESS_VARIABLE_SEMANTIC_ROLES
+    } == {
+        role: digest
+        for role, digest in target_rows.items()
+        if role not in _PROCESS_VARIABLE_SEMANTIC_ROLES
+    }
 
 
 def _variable_semantic_digests(
     logical: RecurrenceBuilderLogicalInputV1,
 ) -> dict[str, str]:
-    fixed = {"model-catalog", "prepared-catalog"}
     return {
         row.role: row.digest
         for row in logical.semantic_digests
-        if row.role not in fixed
+        if row.role in _PROCESS_VARIABLE_SEMANTIC_ROLES
     }
 
 
@@ -1096,8 +1876,10 @@ class RecurrenceProcessBinding:
     """One independent concrete-process binding to a root schedule."""
 
     __slots__ = (
+        "executor_pack",
         "native_schedule_semantic_digest",
         "payload",
+        "process_digest",
         "process_id",
         "process_semantic_digest",
         "process_support_mask",
@@ -1113,9 +1895,11 @@ class RecurrenceProcessBinding:
         process_id: str,
         schedule_digest: str,
         native_schedule_semantic_digest: str,
+        process_digest: str,
         process_semantic_digest: str,
         process_support_mask: int,
         remap: RecurrenceProcessRemap,
+        executor_pack: RecurrenceProcessExecutorPack,
     ) -> None:
         self.process_id = _nonempty_text(process_id, "process ID")
         self.schedule_digest = _require_sha256(schedule_digest, "schedule digest")
@@ -1123,6 +1907,7 @@ class RecurrenceProcessBinding:
             native_schedule_semantic_digest,
             "native schedule semantic digest",
         )
+        self.process_digest = _require_sha256(process_digest, "process digest")
         self.process_semantic_digest = _require_sha256(
             process_semantic_digest, "process semantic digest"
         )
@@ -1142,12 +1927,23 @@ class RecurrenceProcessBinding:
                 "recurrence process remap has no authenticated bijection digest"
             )
         self.remap = remap
+        if not isinstance(executor_pack, RecurrenceProcessExecutorPack):
+            raise RecurrenceScheduleSharingError(
+                "recurrence process binding requires a typed executor pack"
+            )
+        if executor_pack.catalog_executor_count != remap.direct_executor_count:
+            raise RecurrenceScheduleSharingError(
+                "recurrence process executor domain disagrees with its remap"
+            )
+        self.executor_pack = executor_pack
         self.payload = encode_recurrence_process_binding(
             process_id=self.process_id,
             schedule_digest=self.schedule_digest,
+            process_digest=self.process_digest,
             process_semantic_digest=self.process_semantic_digest,
             process_support_mask=self.process_support_mask,
             remap=self.remap,
+            executor_pack=self.executor_pack,
         )
         self.sha256 = hashlib.sha256(self.payload).hexdigest()
 
@@ -1160,9 +1956,8 @@ class RecurrenceProcessBinding:
             "abi": RECURRENCE_PROCESS_BINDING_ABI,
             "process_id": self.process_id,
             "schedule_digest": self.schedule_digest,
-            "native_schedule_semantic_digest": (
-                self.native_schedule_semantic_digest
-            ),
+            "native_schedule_semantic_digest": (self.native_schedule_semantic_digest),
+            "process_digest": self.process_digest,
             "process_semantic_digest": self.process_semantic_digest,
             "process_support_words": list(self.process_support_words),
             "remap": self.remap.to_mapping(),
@@ -1298,9 +2093,11 @@ def intern_recurrence_schedules(
                 process_id=process_id,
                 schedule_digest=digest,
                 native_schedule_semantic_digest=native_semantic_digest,
+                process_digest=process.process_digest,
                 process_semantic_digest=process.builder_input_sha256,
                 process_support_mask=support_mask,
                 remap=process.recurrence_process_remap,
+                executor_pack=process.recurrence_process_executor_pack,
             )
         )
 
@@ -1327,9 +2124,11 @@ def encode_recurrence_process_binding(
     *,
     process_id: str,
     schedule_digest: str,
+    process_digest: str,
     process_semantic_digest: str,
     process_support_mask: int,
     remap: RecurrenceProcessRemap,
+    executor_pack: RecurrenceProcessExecutorPack,
 ) -> bytes:
     process = _nonempty_text(process_id, "process ID").encode("utf-8")
     if len(process) > 4096:
@@ -1342,6 +2141,19 @@ def encode_recurrence_process_binding(
     if not isinstance(remap, RecurrenceProcessRemap) or not remap.bijection_digest:
         raise RecurrenceScheduleSharingError(
             "recurrence process binding requires an authenticated process remap"
+        )
+    if not isinstance(executor_pack, RecurrenceProcessExecutorPack):
+        raise RecurrenceScheduleSharingError(
+            "recurrence process binding requires a typed executor pack"
+        )
+    if executor_pack.catalog_executor_count != remap.direct_executor_count:
+        raise RecurrenceScheduleSharingError(
+            "recurrence process executor domain disagrees with its remap"
+        )
+    target = executor_pack.target_triple.encode("utf-8")
+    if len(target) > _MISSING_U32:
+        raise RecurrenceScheduleSharingError(
+            "process executor target triple exceeds the u32 wire domain"
         )
     counts = (
         len(remap.source_slots),
@@ -1361,26 +2173,52 @@ def encode_recurrence_process_binding(
             raise RecurrenceScheduleSharingError(
                 "recurrence process remap exceeds the u32 binding ABI"
             )
+    for value, context in (
+        (len(words), "support-word count"),
+        (len(executor_pack.cpu_features), "CPU-feature count"),
+        (len(executor_pack.executor_ids), "executor-descriptor count"),
+    ):
+        if value > _MISSING_U32:
+            raise RecurrenceScheduleSharingError(
+                f"recurrence process {context} exceeds the u32 binding ABI"
+            )
     header = b"".join(
         (
             RECURRENCE_PROCESS_BINDING_MAGIC,
             struct.pack(
-                "<III",
+                "<8I",
                 _PROCESS_BINDING_VERSION,
+                _PROCESS_BINDING_FIXED_SIZE,
                 len(process),
                 len(words),
+                len(target),
+                len(executor_pack.cpu_features),
+                len(executor_pack.executor_ids),
+                executor_pack.catalog_executor_count,
             ),
+            struct.pack(
+                "<4B",
+                _DIRECT_BACKEND[executor_pack.backend],
+                int(executor_pack.portable),
+                64,
+                0,
+            ),
+            struct.pack("<11I", *counts),
             bytes.fromhex(_require_sha256(schedule_digest, "schedule digest")),
             bytes.fromhex(
                 _require_sha256(process_semantic_digest, "process semantic digest")
             ),
             bytes.fromhex(
                 _require_sha256(
-                    remap.bijection_digest,
-                    "process-bijection digest",
+                    executor_pack.compiled_model_digest,
+                    "compiled-model digest",
                 )
             ),
-            struct.pack("<11I", *counts),
+            bytes.fromhex(executor_pack.recurrence_template_catalog_digest),
+            bytes.fromhex(executor_pack.prepared_kernel_pack_digest),
+            bytes.fromhex(executor_pack.direct_template_catalog_digest),
+            bytes.fromhex(executor_pack.runtime_layout_digest),
+            bytes.fromhex(_require_sha256(process_digest, "process digest")),
         )
     )
     if len(header) != _PROCESS_BINDING_FIXED_SIZE:
@@ -1395,6 +2233,11 @@ def encode_recurrence_process_binding(
         (
             header,
             process,
+            target,
+            *(
+                _encode_wire_text(feature, "target CPU feature")
+                for feature in executor_pack.cpu_features
+            ),
             struct.pack(f"<{len(words)}Q", *words),
             struct.pack(f"<{len(remap.source_slots)}I", *remap.source_slots),
             struct.pack(
@@ -1428,6 +2271,7 @@ def encode_recurrence_process_binding(
                 )
                 for changes in sparse_changes
             ),
+            *executor_pack.descriptor_payloads,
         )
     )
 
@@ -1643,15 +2487,18 @@ __all__ = [
     "RECURRENCE_SCHEDULE_SHARING_KIND",
     "RECURRENCE_SCHEDULE_SHARING_SCHEMA_VERSION",
     "RecurrenceProcessBinding",
+    "RecurrenceProcessExecutorPack",
     "RecurrenceProcessRemap",
     "RecurrenceScheduleLoweringCache",
     "RecurrenceScheduleSharingError",
     "RecurrenceScheduleSharingPlan",
     "RecurrenceSharedLoweringResult",
     "RecurrenceSharedSchedule",
+    "build_recurrence_process_executor_pack",
     "encode_recurrence_process_binding",
     "exact_recurrence_process_bijection",
     "intern_recurrence_schedules",
+    "recurrence_helicity_selector_schedule_digest",
     "recurrence_native_schedule_semantic_digest",
     "recurrence_schedule_semantic_digest",
 ]

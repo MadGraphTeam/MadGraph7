@@ -10,6 +10,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::arena::{DirectArenaLayout, recurrence_direct_arena_layout};
+use super::direct_helicity_dispatch::{
+    DirectHelicityDispatch, DirectHelicityDispatchDescriptor, DirectHelicityDispatchParts,
+    DirectHelicityRowGroupDescriptor, DirectHelicitySupportDomainDescriptor,
+};
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
     DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
@@ -19,6 +23,9 @@ use super::direct_plan::{
     DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
     DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
     DirectSourceRow, DirectSourceStateAssignment,
+};
+use super::helicity_support::{
+    AllFlowHelicityMask, AllFlowHelicitySupportProjection, project_all_flow_helicity_support,
 };
 use super::layout::RuntimeSourceVariantBinding;
 use super::relation::{
@@ -306,6 +313,102 @@ struct ContributionDraft {
     row: DirectContributionRow,
 }
 
+/// Authenticated runtime inputs which determine one contribution callable's
+/// kinematic result before its row-local destination/factor application.
+///
+/// The prepared executor ID fixes the callable, component layouts, coupling,
+/// and model-parameter projections. Physical current/momentum coordinates fix
+/// every remaining kinematic operand. Exact factors are ordered inside this
+/// key rather than being part of it: intrinsic output-only executors may fan
+/// out across factors, while prepared callables conservatively split the
+/// adjacent run by factor at load time when the factor is a kernel input.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ContributionFanoutOrderKey {
+    stage: u32,
+    executor_id: u32,
+    selector_domain_id: u32,
+    parent0_component_base: u32,
+    parent1_component_base_or_sentinel: u32,
+    parent0_momentum_form_id: u32,
+    parent1_momentum_form_id_or_sentinel: u32,
+}
+
+fn contribution_fanout_order_key_parts(
+    stage: u32,
+    executor_id: u32,
+    row: DirectContributionRow,
+) -> ContributionFanoutOrderKey {
+    ContributionFanoutOrderKey {
+        stage,
+        executor_id,
+        selector_domain_id: row.selector_domain_id,
+        parent0_component_base: row.parent0_component_base,
+        parent1_component_base_or_sentinel: row.parent1_component_base_or_sentinel,
+        parent0_momentum_form_id: row.parent0_momentum_form_id,
+        parent1_momentum_form_id_or_sentinel: row.parent1_momentum_form_id_or_sentinel,
+    }
+}
+
+#[cfg(test)]
+fn contribution_fanout_order_key(draft: &ContributionDraft) -> ContributionFanoutOrderKey {
+    contribution_fanout_order_key_parts(u32::from(draft.stage), draft.executor_id, draft.row)
+}
+
+/// Place repeated kinematic inputs before singleton inputs and make every
+/// reusable class contiguous. This is a deliberate deterministic change to
+/// floating-point accumulation order, not a physics approximation: each
+/// destination still receives every exact-factor-scaled contribution once,
+/// with its first row initialized and all later rows added. Exact/high-
+/// precision execution remains driven by the semantic schedule.
+pub(crate) fn order_contributions_for_runtime_fanout_by<T, Tie>(
+    drafts: &mut [T],
+    parts: impl Fn(&T) -> (u32, u32, DirectContributionRow, Tie),
+) where
+    Tie: Ord,
+{
+    let mut multiplicity = BTreeMap::<ContributionFanoutOrderKey, usize>::new();
+    for draft in drafts.iter() {
+        let (stage, executor_id, row, _) = parts(draft);
+        if executor_id != DIRECT_NONE_U32
+            && row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0
+        {
+            *multiplicity
+                .entry(contribution_fanout_order_key_parts(stage, executor_id, row))
+                .or_default() += 1;
+        }
+    }
+    drafts.sort_by_key(|draft| {
+        let (stage, executor_id, row, tie) = parts(draft);
+        let key = contribution_fanout_order_key_parts(stage, executor_id, row);
+        let reusable = executor_id != DIRECT_NONE_U32
+            && row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0
+            && multiplicity.get(&key).copied().unwrap_or(0) > 1;
+        (
+            stage,
+            executor_id,
+            row.selector_domain_id,
+            !reusable,
+            key.parent0_component_base,
+            key.parent1_component_base_or_sentinel,
+            key.parent0_momentum_form_id,
+            key.parent1_momentum_form_id_or_sentinel,
+            row.exact_factor_id,
+            tie,
+        )
+    });
+}
+
+fn order_contributions_for_runtime_fanout(drafts: &mut [ContributionDraft]) {
+    order_contributions_for_runtime_fanout_by(drafts, |draft| {
+        (
+            u32::from(draft.stage),
+            draft.executor_id,
+            draft.row,
+            draft.semantic_contribution_id,
+        )
+    });
+}
+
 #[derive(Clone, Copy, Debug)]
 struct FinalizationDraft {
     stage: u16,
@@ -321,6 +424,14 @@ struct ClosureDraft {
     semantic_closure_id: u32,
     amplitude_destination_id: u32,
     row: DirectClosureRow,
+}
+
+#[derive(Debug)]
+struct LoweredHelicityRowSupport {
+    resolved_helicity_count: u32,
+    contributions: Vec<Vec<u64>>,
+    finalizations: Vec<Vec<u64>>,
+    closures: Vec<Vec<u64>>,
 }
 
 struct LoweredSelectorDomains {
@@ -564,7 +675,7 @@ pub fn lower_recurrence_direct_v2(
     direct_template_catalog_digest: SemanticDigest,
     runtime_options: DirectRecurrenceRuntimeOptions,
 ) -> RusticolResult<DirectRecurrencePlanParts> {
-    let (parts, _) = build_direct_parts(
+    let (parts, _, _) = build_direct_parts(
         program,
         templates,
         direct_executors,
@@ -573,6 +684,7 @@ pub fn lower_recurrence_direct_v2(
         direct_template_catalog_digest,
         runtime_options,
         &RecurrenceRelationDiscoveryOptions::off(),
+        None,
     )?;
     DirectRecurrencePlan::new(parts).map(DirectRecurrencePlan::into_parts)
 }
@@ -587,7 +699,7 @@ pub fn lower_recurrence_direct_plan_v2(
     direct_template_catalog_digest: SemanticDigest,
     runtime_options: DirectRecurrenceRuntimeOptions,
 ) -> RusticolResult<DirectRecurrencePlan> {
-    let (parts, _) = build_direct_parts(
+    let (parts, _, _) = build_direct_parts(
         program,
         templates,
         direct_executors,
@@ -596,8 +708,45 @@ pub fn lower_recurrence_direct_plan_v2(
         direct_template_catalog_digest,
         runtime_options,
         &RecurrenceRelationDiscoveryOptions::off(),
+        None,
     )?;
     DirectRecurrencePlan::new(parts)
+}
+
+/// Lower one physical all-flow program together with its exact persisted
+/// helicity-dispatch sidecar.
+///
+/// The ordinary DirectPlan remains unchanged and executable on its own.  The
+/// companion sidecar selects dependency-closed non-source row runs for one
+/// resolved helicity during cold schedule binding; warm execution uses only
+/// that already-specialized schedule.
+pub fn lower_recurrence_direct_plan_v2_with_helicity_dispatch(
+    program: &RecurrenceProgram,
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct_executors: &PreparedDirectExecutorCatalog,
+    semantic_digest: SemanticDigest,
+    prepared_pack_digest: SemanticDigest,
+    direct_template_catalog_digest: SemanticDigest,
+    runtime_options: DirectRecurrenceRuntimeOptions,
+) -> RusticolResult<(DirectRecurrencePlan, DirectHelicityDispatch)> {
+    let projection = project_all_flow_helicity_support(program, templates)?;
+    let (parts, _, lowered_support) = build_direct_parts(
+        program,
+        templates,
+        direct_executors,
+        semantic_digest,
+        prepared_pack_digest,
+        direct_template_catalog_digest,
+        runtime_options,
+        &RecurrenceRelationDiscoveryOptions::off(),
+        Some(&projection),
+    )?;
+    let lowered_support = lowered_support
+        .ok_or_else(|| invalid("all-flow helicity support disappeared during direct lowering"))?;
+    let plan = DirectRecurrencePlan::new(parts)?;
+    let dispatch = lower_direct_helicity_dispatch(&plan, lowered_support)?;
+    dispatch.validate_for_plan(&plan)?;
+    Ok((plan, dispatch))
 }
 
 /// Lower recurrence with opt-in relation diagnostics or certified scale-copy
@@ -616,7 +765,7 @@ pub fn lower_recurrence_direct_plan_v2_with_relation_discovery(
     DirectRecurrencePlan,
     Option<RecurrenceRelationDiscoveryReport>,
 )> {
-    let (parts, report) = build_direct_parts(
+    let (parts, report, _) = build_direct_parts(
         program,
         templates,
         direct_executors,
@@ -625,6 +774,7 @@ pub fn lower_recurrence_direct_plan_v2_with_relation_discovery(
         direct_template_catalog_digest,
         runtime_options,
         relation_options,
+        None,
     )?;
     Ok((DirectRecurrencePlan::new(parts)?, report))
 }
@@ -639,11 +789,12 @@ fn build_direct_parts(
     direct_template_catalog_digest: SemanticDigest,
     runtime_options: DirectRecurrenceRuntimeOptions,
     relation_options: &RecurrenceRelationDiscoveryOptions,
+    helicity_support: Option<&AllFlowHelicitySupportProjection>,
 ) -> RusticolResult<(
     DirectRecurrencePlanParts,
     Option<RecurrenceRelationDiscoveryReport>,
+    Option<LoweredHelicityRowSupport>,
 )> {
-    program.validate()?;
     validate_lowering_boundary(
         program,
         templates,
@@ -657,7 +808,6 @@ fn build_direct_parts(
     let external_source_count = external_source_count(program)?;
     let component_counts = component_counts(program, templates)?;
     let arena = recurrence_direct_arena_layout(program, &component_counts)?;
-    arena.validate()?;
     let selector_domains = lower_selector_domains(program)?;
 
     let (momentum_ids, momentum_forms, momentum_terms) =
@@ -968,6 +1118,7 @@ fn build_direct_parts(
         });
     }
 
+    let closure_component_coefficients = templates.closure_component_coefficient_catalog()?;
     let closure_stage = program
         .currents()
         .iter()
@@ -1044,8 +1195,14 @@ fn build_direct_parts(
         let executor_id = direct_executors
             .resolve_evaluator(DirectExecutorRole::Closure, evaluator_binding_id)?;
         let parents = direct_parents(program, closure.parent_current_ids(), &arena, &momentum_ids)?;
-        let component_coefficients =
-            templates.closure_component_coefficients(closure_template_id)?;
+        let component_coefficients = closure_component_coefficients
+            .get(closure_template_id as usize)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "closure {} references absent component coefficients for template {closure_template_id}",
+                    closure.id()
+                ))
+            })?;
         let parent0_id = closure.parent_current_ids()[0] as usize;
         let component_count = *component_counts
             .get(parent0_id)
@@ -1069,7 +1226,7 @@ fn build_direct_parts(
             )));
         }
         let (component_factor_start, component_count) = intern_closure_factor_block(
-            &component_coefficients,
+            component_coefficients,
             &mut exact_factors,
             &mut closure_factor_blocks,
         )?;
@@ -1114,14 +1271,7 @@ fn build_direct_parts(
             draft.semantic_current_id,
         )
     });
-    contribution_drafts.sort_by_key(|draft| {
-        (
-            draft.stage,
-            draft.executor_id,
-            draft.row.selector_domain_id,
-            draft.semantic_contribution_id,
-        )
-    });
+    order_contributions_for_runtime_fanout(&mut contribution_drafts);
     let mut initialized_currents = BTreeSet::new();
     for draft in &mut contribution_drafts {
         if initialized_currents.insert(draft.semantic_result_current_id) {
@@ -1146,7 +1296,27 @@ fn build_direct_parts(
             draft.semantic_closure_id,
         )
     });
+    let lowered_helicity_support = helicity_support
+        .map(|projection| {
+            lower_semantic_helicity_support(
+                program,
+                projection,
+                &contribution_drafts,
+                &finalization_drafts,
+                &closure_drafts,
+            )
+        })
+        .transpose()?;
     let mut closure_row_by_term = vec![DIRECT_NONE_U32; program.closure_terms().len()];
+    let mut proof_group_by_term = vec![None; program.closure_terms().len()];
+    for group in program.closure_proofs().groups() {
+        if let Some(term_id) = group.emitted_runtime_closure_term_id() {
+            let slot = proof_group_by_term
+                .get_mut(term_id as usize)
+                .ok_or_else(|| invalid("closure proof group references an absent runtime term"))?;
+            *slot = Some(group.id());
+        }
+    }
     let mut lowered_proof_groups = program.closure_proofs().groups().to_vec();
     for (row_index, draft) in closure_drafts.iter_mut().enumerate() {
         let row_id = u32_len("closure row", row_index)?;
@@ -1160,15 +1330,22 @@ fn build_direct_parts(
             )));
         }
         *term_slot = row_id;
-        let group = program
-            .closure_proofs()
-            .group_for_runtime_term(draft.semantic_closure_id)
+        let group_id = proof_group_by_term
+            .get(draft.semantic_closure_id as usize)
+            .copied()
+            .flatten()
             .ok_or_else(|| {
                 invalid(format!(
                     "semantic closure term {} has no proof group",
                     draft.semantic_closure_id
                 ))
             })?;
+        let group = program
+            .closure_proofs()
+            .groups()
+            .get(group_id as usize)
+            .filter(|group| group.id() == group_id)
+            .ok_or_else(|| invalid("closure proof group ID is not dense"))?;
         draft.row.flags = group.id();
         let component_start = draft.row.component_factor_start as usize;
         let component_end = component_start
@@ -1392,7 +1569,277 @@ fn build_direct_parts(
         exact_factors,
         closure_proofs,
     };
-    Ok((parts, relation_report))
+    Ok((parts, relation_report, lowered_helicity_support))
+}
+
+fn checked_projection_mask(
+    mask: &AllFlowHelicityMask,
+    expected_word_count: usize,
+    label: &str,
+) -> RusticolResult<Vec<u64>> {
+    if mask.words().len() != expected_word_count {
+        return Err(invalid(format!(
+            "{label} support mask has {} words, expected {expected_word_count}",
+            mask.words().len()
+        )));
+    }
+    Ok(mask.words().to_vec())
+}
+
+fn lower_semantic_helicity_support(
+    program: &RecurrenceProgram,
+    projection: &AllFlowHelicitySupportProjection,
+    contribution_drafts: &[ContributionDraft],
+    finalization_drafts: &[FinalizationDraft],
+    closure_drafts: &[ClosureDraft],
+) -> RusticolResult<LoweredHelicityRowSupport> {
+    if program.strategy() != RecurrenceStrategy::AllFlowUnion
+        || u64::from(projection.resolved_helicity_count()) != program.retained_helicity_count()
+    {
+        return Err(invalid(
+            "semantic helicity support does not match the all-flow program axis",
+        ));
+    }
+    let word_count = projection.resolved_helicity_count().div_ceil(64) as usize;
+    let mut contributions = Vec::with_capacity(contribution_drafts.len());
+    for draft in contribution_drafts {
+        let mask = if draft.row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0 {
+            let result = projection
+                .current_demand()
+                .get(draft.semantic_result_current_id as usize)
+                .ok_or_else(|| invalid("certified-reuse result current support is absent"))?;
+            let representative_id = draft.semantic_parent_current_ids[0];
+            if representative_id == DIRECT_NONE_U32 {
+                return Err(invalid(
+                    "certified-reuse contribution has no representative current",
+                ));
+            }
+            let representative = projection
+                .current_availability()
+                .get(representative_id as usize)
+                .ok_or_else(|| {
+                    invalid("certified-reuse representative current support is absent")
+                })?;
+            if result.words().len() != word_count || representative.words().len() != word_count {
+                return Err(invalid(
+                    "certified-reuse current support mask has the wrong width",
+                ));
+            }
+            result
+                .words()
+                .iter()
+                .zip(representative.words())
+                .map(|(result, representative)| result & representative)
+                .collect()
+        } else {
+            let mask = projection
+                .contribution_support()
+                .get(draft.semantic_contribution_id as usize)
+                .ok_or_else(|| invalid("semantic contribution support is absent"))?;
+            checked_projection_mask(mask, word_count, "contribution")?
+        };
+        contributions.push(mask);
+    }
+
+    let finalizations = finalization_drafts
+        .iter()
+        .map(|draft| {
+            let finalization_id = program
+                .currents()
+                .get(draft.semantic_current_id as usize)
+                .ok_or_else(|| invalid("finalization current is absent"))?
+                .finalization_id()
+                .ok_or_else(|| invalid("finalization current has no semantic finalization"))?;
+            let mask = projection
+                .finalization_support()
+                .get(finalization_id as usize)
+                .ok_or_else(|| invalid("semantic finalization support is absent"))?;
+            checked_projection_mask(mask, word_count, "finalization")
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let closures = closure_drafts
+        .iter()
+        .map(|draft| {
+            let mask = projection
+                .closure_support()
+                .get(draft.semantic_closure_id as usize)
+                .ok_or_else(|| invalid("semantic closure support is absent"))?;
+            checked_projection_mask(mask, word_count, "closure")
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+
+    Ok(LoweredHelicityRowSupport {
+        resolved_helicity_count: projection.resolved_helicity_count(),
+        contributions,
+        finalizations,
+        closures,
+    })
+}
+
+#[derive(Default)]
+struct HelicitySupportDomainInterner {
+    ids: BTreeMap<Vec<u64>, u32>,
+    descriptors: Vec<DirectHelicitySupportDomainDescriptor>,
+    words: Vec<u64>,
+}
+
+impl HelicitySupportDomainInterner {
+    fn intern(&mut self, words: &[u64]) -> RusticolResult<u32> {
+        let retained = words
+            .iter()
+            .rposition(|word| *word != 0)
+            .map_or(0, |index| index + 1);
+        let canonical = &words[..retained];
+        if let Some(domain_id) = self.ids.get(canonical) {
+            return Ok(*domain_id);
+        }
+        let domain_id = u32_len("helicity support domain", self.descriptors.len())?;
+        let word_start = u64::try_from(self.words.len())
+            .map_err(|_| invalid("helicity support-word table exceeds u64"))?;
+        let word_count = u32_len("helicity support word", canonical.len())?;
+        self.words.extend_from_slice(canonical);
+        self.descriptors
+            .push(DirectHelicitySupportDomainDescriptor {
+                word_start,
+                word_count,
+            });
+        self.ids.insert(canonical.to_vec(), domain_id);
+        Ok(domain_id)
+    }
+}
+
+fn role_helicity_support(
+    support: &LoweredHelicityRowSupport,
+    role: DirectExecutorRole,
+) -> RusticolResult<&[Vec<u64>]> {
+    match role {
+        DirectExecutorRole::Contribution => Ok(&support.contributions),
+        DirectExecutorRole::Finalization => Ok(&support.finalizations),
+        DirectExecutorRole::Closure => Ok(&support.closures),
+        DirectExecutorRole::Source => Err(invalid(
+            "source rows must not be lowered into helicity-dispatch groups",
+        )),
+    }
+}
+
+fn lower_direct_helicity_dispatch(
+    plan: &DirectRecurrencePlan,
+    support: LoweredHelicityRowSupport,
+) -> RusticolResult<DirectHelicityDispatch> {
+    if plan.strategy() != RecurrenceStrategy::AllFlowUnion
+        || support.resolved_helicity_count as usize != plan.resolved_helicities().len()
+    {
+        return Err(invalid(
+            "helicity dispatch lowering requires one matching all-flow resolved axis",
+        ));
+    }
+    for (label, actual, expected) in [
+        (
+            "contribution",
+            support.contributions.len(),
+            plan.contributions().len(),
+        ),
+        (
+            "finalization",
+            support.finalizations.len(),
+            plan.finalizations().len(),
+        ),
+        ("closure", support.closures.len(), plan.closures().len()),
+    ] {
+        if actual != expected {
+            return Err(invalid(format!(
+                "helicity {label} support has {actual} rows, expected {expected}"
+            )));
+        }
+    }
+
+    let mut interner = HelicitySupportDomainInterner::default();
+    let mut row_groups = Vec::new();
+    let mut group_masks = Vec::<Vec<u64>>::new();
+    for base in plan
+        .row_groups()
+        .iter()
+        .filter(|group| group.role != DirectExecutorRole::Source)
+    {
+        let role_support = role_helicity_support(&support, base.role)?;
+        let start = usize::try_from(base.row_start)
+            .map_err(|_| invalid("base helicity row-group start exceeds usize"))?;
+        let end = start
+            .checked_add(base.row_count as usize)
+            .ok_or_else(|| invalid("base helicity row-group range overflows usize"))?;
+        let rows = role_support
+            .get(start..end)
+            .ok_or_else(|| invalid("base helicity row-group range is out of bounds"))?;
+        let mut run_start = 0usize;
+        while run_start < rows.len() {
+            let mut run_end = run_start + 1;
+            while run_end < rows.len() && rows[run_end] == rows[run_start] {
+                run_end += 1;
+            }
+            let support_domain_id = interner.intern(&rows[run_start])?;
+            row_groups.push(DirectHelicityRowGroupDescriptor {
+                stage: base.stage,
+                role: base.role,
+                direct_executor_id: base.direct_executor_id,
+                row_start: base
+                    .row_start
+                    .checked_add(run_start as u64)
+                    .ok_or_else(|| invalid("split helicity row-group start overflows u64"))?,
+                row_count: u32_len("split helicity row-group row", run_end - run_start)?,
+                support_domain_id,
+            });
+            group_masks.push(rows[run_start].clone());
+            run_start = run_end;
+        }
+    }
+
+    let resolved_count = support.resolved_helicity_count as usize;
+    let mut groups_by_helicity = vec![Vec::<u32>::new(); resolved_count];
+    for (group_id, words) in group_masks.iter().enumerate() {
+        for (word_index, mut word) in words.iter().copied().enumerate() {
+            while word != 0 {
+                let bit = word.trailing_zeros() as usize;
+                let helicity_id = word_index
+                    .checked_mul(u64::BITS as usize)
+                    .and_then(|base| base.checked_add(bit))
+                    .ok_or_else(|| invalid("helicity support bit index overflows usize"))?;
+                let groups = groups_by_helicity
+                    .get_mut(helicity_id)
+                    .ok_or_else(|| invalid("helicity support mask exceeds the resolved axis"))?;
+                groups.push(u32_len("split helicity row-group", group_id)?);
+                word &= word - 1;
+            }
+        }
+    }
+    let mut dispatches = Vec::with_capacity(resolved_count);
+    let mut dispatch_group_ids = Vec::new();
+    for (helicity_id, group_ids) in groups_by_helicity.into_iter().enumerate() {
+        let group_id_start = u64::try_from(dispatch_group_ids.len())
+            .map_err(|_| invalid("helicity dispatch CSR exceeds u64"))?;
+        let group_id_count = u32_len("helicity dispatch group ID", group_ids.len())?;
+        dispatch_group_ids.extend(group_ids);
+        dispatches.push(DirectHelicityDispatchDescriptor {
+            resolved_helicity_id: u32_len("resolved helicity", helicity_id)?,
+            group_id_start,
+            group_id_count,
+        });
+    }
+
+    DirectHelicityDispatch::new(DirectHelicityDispatchParts {
+        runtime_layout_digest: plan.runtime_layout_digest(),
+        source_row_count: plan.sources().len() as u64,
+        contribution_row_count: plan.contributions().len() as u64,
+        finalization_row_count: plan.finalizations().len() as u64,
+        closure_row_count: plan.closures().len() as u64,
+        amplitude_destination_count: plan.amplitude_destination_count(),
+        direct_executor_count: plan.direct_executor_count(),
+        resolved_helicity_count: support.resolved_helicity_count,
+        support_domains: interner.descriptors,
+        support_words: interner.words,
+        row_groups,
+        dispatches,
+        dispatch_group_ids,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

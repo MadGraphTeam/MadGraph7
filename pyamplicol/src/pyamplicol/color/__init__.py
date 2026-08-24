@@ -6,6 +6,7 @@ from .contraction import (
     ColorGroupDescriptor,
     FactorizedColorContractionBlock,
     RepeatedColorContractionBlock,
+    SymmetricGroupColorContractionBlock,
     build_color_contraction_plan,
     color_contraction_factor,
     color_contraction_factors,
@@ -25,8 +26,16 @@ from .plan import (
     build_lc_topology_replay_plan,
     color_topology_replay_partitions,
 )
+from .symmetric_group import (
+    CertifiedSymmetricGroupOrbit,
+    SymmetricGroupOrbitPartition,
+    build_symmetric_group_color_contraction_plan,
+    certify_symmetric_group_orbits,
+    reconstruct_symmetric_group_dense_exact,
+)
 
 __all__ = [
+    "CertifiedSymmetricGroupOrbit",
     "ColorContractionEntry",
     "ColorContractionPlan",
     "ColorContractionTemplateEntry",
@@ -40,13 +49,18 @@ __all__ = [
     "LCColorTopologyReplayPlan",
     "LCOpenColorLine",
     "RepeatedColorContractionBlock",
+    "SymmetricGroupColorContractionBlock",
+    "SymmetricGroupOrbitPartition",
     "build_color_contraction_plan",
     "build_color_plan",
     "build_color_topology_replay_certificate",
     "build_lc_topology_replay_plan",
+    "build_symmetric_group_color_contraction_plan",
+    "certify_symmetric_group_orbits",
     "color_contraction_factor",
     "color_contraction_factors",
     "color_topology_replay_partitions",
     "exact_color_contraction_factor",
     "exact_color_contraction_factors",
+    "reconstruct_symmetric_group_dense_exact",
 ]

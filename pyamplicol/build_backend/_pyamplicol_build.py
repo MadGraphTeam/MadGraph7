@@ -22,9 +22,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
 import maturin  # type: ignore[import-untyped]
-from native_build_identity import (
-    canonical_candidate_cargo_config_bytes as _canonical_candidate_cargo_config_bytes,
-)
+from native_build_identity import load_native_build_contract
 from native_build_identity import (
     native_build_inputs_digest as _native_build_inputs_digest,
 )
@@ -118,6 +116,7 @@ ALLOWLIST = (
     "tools/ci/__init__.py",
     "tools/ci/memory_watchdog.py",
     "tools/developer",
+    "tools/fft_profiling",
     "tools/performance_report",
     "tools/release",
     "tools/typing",
@@ -232,12 +231,6 @@ _PORTABLE_SELFTEST_TARGETS = frozenset(
 )
 _SELFTEST_FIXTURE_BOOTSTRAP_CONTEXT = "build-current-candidate-site-v1"
 _RELEASE_PREPARED_MODEL_BOOTSTRAP_CONTEXT = "release-prepared-model-producer-v1"
-_CANDIDATE_SOURCES = {
-    "gammaloop",
-    "symbolica",
-    "symbolica-community",
-    "symjit",
-}
 _INJECTION_ENVIRONMENT_NAMES = {
     "AR",
     "CARGO",
@@ -462,14 +455,16 @@ def _release_wheel_config_settings(
 ) -> Mapping[str, Any] | None:
     """Ask Maturin to repair Linux release wheels for the declared platform."""
 
+    if config_settings is not None and (
+        "maturin.build-args" in config_settings or "build-args" in config_settings
+    ):
+        raise RuntimeError(
+            "authenticated wheel builds do not accept caller-supplied Maturin "
+            "build arguments"
+        )
     if _build_mode() != "release" or sys.platform != "linux":
         return config_settings
     settings = dict(config_settings or {})
-    if "maturin.build-args" in settings or "build-args" in settings:
-        raise RuntimeError(
-            "Linux release wheel builds do not accept caller-supplied Maturin "
-            "build arguments"
-        )
     settings["maturin.build-args"] = ["--compatibility", "manylinux_2_28"]
     return settings
 
@@ -986,103 +981,6 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     )
 
 
-def _digest_item(digest: Any, name: str, data: bytes) -> None:
-    encoded_name = name.encode("utf-8")
-    digest.update(len(encoded_name).to_bytes(8, "big"))
-    digest.update(encoded_name)
-    digest.update(len(data).to_bytes(8, "big"))
-    digest.update(data)
-
-
-def _candidate_state(
-    candidate_lock: Path,
-    candidate_config: Path,
-    installer_state: Path,
-) -> dict[str, Any]:
-    try:
-        payload = json.loads(installer_state.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise RuntimeError(f"invalid candidate installer state: {error}") from error
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        raise RuntimeError("candidate installer state must be a schema-v1 object")
-    if payload.get("publishable") is not False:
-        raise RuntimeError("candidate installer state must be non-publishable")
-    if not candidate_lock.is_file() or not candidate_config.is_file():
-        raise RuntimeError("candidate Cargo inputs are incomplete")
-    with (ROOT / _CONTRIBUTOR_LOCK).open("rb") as stream:
-        contributor = tomllib.load(stream)
-    with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
-        release = tomllib.load(stream)
-    expected_revisions = {
-        "gammaloop": str(contributor["gammaloop_candidate"]["revision"]),
-        "symbolica": str(contributor["symbolica"]["candidate_revision"]),
-        "symbolica-community": str(contributor["symbolica"]["community_revision"]),
-        "symjit": str(release["symjit"]["revision"]),
-    }
-    sources = payload.get("sources")
-    if not isinstance(sources, dict) or not set(sources) >= _CANDIDATE_SOURCES:
-        raise RuntimeError("candidate installer state has an incomplete source map")
-    for name, expected_revision in expected_revisions.items():
-        entry = sources.get(name)
-        if not isinstance(entry, dict):
-            raise RuntimeError("candidate installer source entries must be objects")
-        revision = entry.get("revision")
-        if revision != expected_revision:
-            raise RuntimeError(
-                f"candidate source {name} is not at its contributor-lock revision"
-            )
-    return payload
-
-
-def _candidate_digest(
-    candidate_lock: Path,
-    candidate_config: Path,
-    installer_state: Path,
-) -> str:
-    state = _candidate_state(
-        candidate_lock,
-        candidate_config,
-        installer_state,
-    )
-    digest = hashlib.sha256()
-    _digest_item(
-        digest,
-        "contributor-lock.toml",
-        (ROOT / _CONTRIBUTOR_LOCK).read_bytes(),
-    )
-    _digest_item(digest, "candidate-Cargo.lock", candidate_lock.read_bytes())
-    _digest_item(
-        digest,
-        "candidate-cargo-config.toml",
-        _canonical_candidate_config(candidate_config),
-    )
-    sources = state["sources"]
-    for name in sorted(_CANDIDATE_SOURCES):
-        entry = sources[name]
-        _digest_item(
-            digest,
-            f"source/{name}",
-            json.dumps(
-                entry,
-                ensure_ascii=True,
-                separators=(",", ":"),
-                sort_keys=True,
-                allow_nan=False,
-            ).encode("utf-8"),
-        )
-    return digest.hexdigest()[:12]
-
-
-def _canonical_candidate_config(candidate_config: Path) -> bytes:
-    """Return a semantic Cargo patch identity independent of checkout paths."""
-
-    try:
-        data = candidate_config.read_bytes()
-    except OSError as error:
-        raise RuntimeError(f"invalid candidate Cargo config: {error}") from error
-    return _canonical_candidate_cargo_config_bytes(data)
-
-
 def _mark_candidate(
     overlay: Path,
     base_version: str,
@@ -1092,13 +990,11 @@ def _mark_candidate(
     if not (ROOT / _CONTRIBUTOR_LOCK).is_file():
         raise RuntimeError("candidate build has no contributor dependency contract")
     check_contributor_lock_consistency(ROOT)
-    candidate_lock, candidate_config, installer_state = _candidate_inputs()
-    digest = _candidate_digest(
-        candidate_lock,
-        candidate_config,
-        installer_state,
-    )
-    cargo_version = f"{base_version}-dev.0+candidate.{digest}"
+    candidate_lock, candidate_config, _installer_state = _candidate_inputs()
+    if re.fullmatch(r"[0-9a-f]{64}", native_build_inputs_sha256) is None:
+        raise RuntimeError("candidate build has an invalid native source identity")
+    candidate_fingerprint = native_build_inputs_sha256[:12]
+    cargo_version = f"{base_version}-dev.0+candidate.{candidate_fingerprint}"
     python_version = cargo_version.replace("-dev.", ".dev")
     shutil.copy2(candidate_lock, overlay / "Cargo.lock")
     overlay_config = overlay / ".cargo" / "config.toml"
@@ -1148,7 +1044,7 @@ def _mark_candidate(
             {
                 "schema_version": 1,
                 "publishable": False,
-                "candidate_fingerprint": digest,
+                "candidate_fingerprint": candidate_fingerprint,
                 "native_build_inputs_sha256": native_build_inputs_sha256,
                 "selftest_fixture_bootstrap": False,
                 "source_checkout": str(ROOT.resolve()),
@@ -1386,35 +1282,57 @@ def _clean_source_revision(
     return revision if re.fullmatch(r"[a-f0-9]{40}", revision) else None
 
 
+def _locked_package_version(lock_path: Path, package_name: str) -> str:
+    try:
+        with lock_path.open("rb") as stream:
+            payload = tomllib.load(stream)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError(f"invalid candidate Cargo lock: {error}") from error
+    packages = payload.get("package") if isinstance(payload, dict) else None
+    matches = (
+        [package for package in packages if package.get("name") == package_name]
+        if isinstance(packages, list)
+        and all(isinstance(package, dict) for package in packages)
+        else []
+    )
+    if (
+        len(matches) != 1
+        or not isinstance(matches[0].get("version"), str)
+        or not matches[0]["version"]
+    ):
+        raise RuntimeError(
+            f"candidate Cargo lock must contain exactly one {package_name} package"
+        )
+    return str(matches[0]["version"])
+
+
 def _rewrite_candidate_dependency_requirements(overlay: Path) -> None:
     """Use managed candidate native dependencies only in the build overlay."""
+
+    candidate_symbolica = _locked_package_version(
+        overlay / "Cargo.lock",
+        "symbolica",
+    )
+    manifest = overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
+    text = manifest.read_text(encoding="utf-8")
+    pattern = r'(?m)^(symbolica\s*=\s*\{\s*version\s*=\s*)"=[^"]+"'
+    text, count = re.subn(
+        pattern,
+        rf'\g<1>"={candidate_symbolica}"',
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise RuntimeError(
+            "could not project rusticol-core Symbolica requirement from the "
+            "candidate Cargo lock"
+        )
+    manifest.write_text(text, encoding="utf-8")
 
     with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
         release = tomllib.load(stream)
     with (ROOT / _CONTRIBUTOR_LOCK).open("rb") as stream:
         contributor = tomllib.load(stream)
-    manifest = overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
-    text = manifest.read_text(encoding="utf-8")
-    projections = (
-        (
-            "symbolica",
-            str(release["symbolica"]["rust_version"]),
-            str(contributor["symbolica"]["candidate_version"]),
-        ),
-    )
-    for dependency, published, candidate in projections:
-        pattern = (
-            rf"(?m)^({dependency}\s*=\s*\{{\s*version\s*=\s*)"
-            rf'"={re.escape(published)}"'
-        )
-        text, count = re.subn(pattern, rf'\g<1>"={candidate}"', text, count=1)
-        if count != 1:
-            raise RuntimeError(
-                f"could not project rusticol-core {dependency} requirement "
-                f"from {published} to candidate {candidate}"
-            )
-    manifest.write_text(text, encoding="utf-8")
-
     python_manifest = overlay / "pyproject.toml"
     python_text = python_manifest.read_text(encoding="utf-8")
     published_python = str(release["symbolica"]["python_version"])
@@ -1660,10 +1578,11 @@ def _macos_native_build_updates() -> dict[str, str]:
 
     if sys.platform != "darwin":
         return {}
+    macos = load_native_build_contract(ROOT)["macos"]
     return {
-        "CC": "/usr/bin/clang",
-        "CXX": "/usr/bin/clang++",
-        "MACOSX_DEPLOYMENT_TARGET": "11.0",
+        "CC": str(macos["cc"]),
+        "CXX": str(macos["cxx"]),
+        "MACOSX_DEPLOYMENT_TARGET": str(macos["deployment-target"]),
     }
 
 
@@ -1758,14 +1677,15 @@ def _rust_remap_flags(overlay: Path, target_dir: Path) -> str:
         env=_clean_environment({"RUSTUP_TOOLCHAIN": _pinned_rustup_toolchain()}),
     )
     sysroot = Path(completed.stdout.strip()).resolve()
+    remapping = load_native_build_contract(ROOT)["rust-path-remapping"]
     mappings = {
         (ROOT / "dependencies" / "checkouts").resolve(): (
-            "/pyamplicol/dependencies"
+            str(remapping["candidate-checkouts"])
         ),
-        ROOT.resolve(): "/pyamplicol/checkout",
-        overlay.resolve(): "/pyamplicol/source",
-        target_dir.parent.resolve(): "/pyamplicol/build",
-        sysroot: "/rust/sysroot",
+        ROOT.resolve(): str(remapping["checkout"]),
+        overlay.resolve(): str(remapping["source"]),
+        target_dir.parent.resolve(): str(remapping["build"]),
+        sysroot: str(remapping["sysroot"]),
     }
     flags = [
         f"--remap-path-prefix={source}={destination}"
@@ -1940,6 +1860,7 @@ def build_release_prepared_model_bootstrap_wheel(
 ) -> str:
     """Build a release-version wheel usable only to regenerate prepared packs."""
 
+    config_settings = _release_wheel_config_settings(config_settings)
     return _from_overlay(
         maturin.build_wheel,
         wheel_directory,

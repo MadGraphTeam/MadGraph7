@@ -2,6 +2,12 @@
 
 use super::source_seed::validate_permutation;
 use super::*;
+use crate::recurrence::construct::{
+    CurrentReflection, PendingReflectionCertificate, TransitionReflectionIndex,
+    current_key_with_dynamic_color, current_reflection_candidate, current_reversal_masks,
+    dynamic_color_identity_digest, pure_adjoint_word_is_canonical, reciprocal_reflection_proof,
+    source_reflection,
+};
 use crate::recurrence::fermion_ordering::{FermionOrderingContext, fermion_ordering_factor};
 
 fn on_the_fly_source_requires_exterior_sign(
@@ -62,6 +68,13 @@ pub(super) struct PendingCurrent {
     /// by `contributions`; lineage does not multiply or normalize amplitudes.
     pub(super) pairing_lineages: Vec<PendingPairingLineage>,
     pub(super) stage: u32,
+    /// Exact reflection lineage is populated only for the certified cyclic
+    /// pure-adjoint companion lane. Generic/direct construction leaves it
+    /// unavailable and therefore cannot enter the fold.
+    pub(super) reflection: CurrentReflection,
+    /// Cold reciprocal-orbit proof retained only on the canonical member
+    /// until reflected public closures have been resolved.
+    pub(super) reflection_certificate: Option<PendingReflectionCertificate>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -292,7 +305,7 @@ where
             "contact-orbit staged contribution snapshot changed length",
         ));
     }
-    let selected_tokens = selected_contact_orbit_owner_tokens(candidates.into_iter())?;
+    let selected_tokens = selected_contact_orbit_owner_tokens(candidates)?;
     let retained_contribution_count = selected_tokens.len();
     if retained_contribution_count > staged_contribution_count {
         return Err(integrity(
@@ -814,10 +827,10 @@ pub(super) fn merge_disjoint_support(left: &[u32], right: &[u32]) -> RusticolRes
     Ok(result)
 }
 
-fn selected_source_state<'a>(
-    seed: &'a OnTheFlyProcessSeedV1,
+fn selected_source_state(
+    seed: &OnTheFlyProcessSeedV1,
     selected: OnTheFlySelectedSourceV1,
-) -> RusticolResult<(&'a OnTheFlySourceAnchorV1, &'a OnTheFlySourceStateV1)> {
+) -> RusticolResult<(&OnTheFlySourceAnchorV1, &OnTheFlySourceStateV1)> {
     let anchor = seed
         .source_anchors
         .get(selected.source_slot as usize)
@@ -913,16 +926,116 @@ pub(super) fn validate_source_contract(
     Ok((source, current_state))
 }
 
-fn query_target_matches(mut closed: Vec<LCColorComponent>, query: &DecodedLcQueryV1) -> bool {
+fn query_target_matches(closed: &[LCColorComponent], query: &DecodedLcQueryV1) -> bool {
+    let mut closed = closed.to_vec();
     closed.sort_unstable();
     closed.as_slice() == query.target_components.as_ref()
 }
 
+fn reflected_query_closure_factor(
+    query: &DecodedLcQueryV1,
+    closed: &[LCColorComponent],
+    colors: &DynamicLCColorStateInterner,
+    currents: &[PendingCurrent],
+    parent_ids: [u32; 2],
+) -> RusticolResult<Option<ExactComplexRational>> {
+    let mut certified_parent = None;
+    for parent_id in parent_ids {
+        let current = currents
+            .get(parent_id as usize)
+            .ok_or_else(|| integrity("query-local closure reflection parent is absent"))?;
+        let Some(certificate) = current.reflection_certificate.as_ref() else {
+            continue;
+        };
+        if certified_parent.replace((current, certificate)).is_some() {
+            return Err(integrity(
+                "one query-local closure references multiple folded reflection orbits",
+            ));
+        }
+    }
+    let Some((current, certificate)) = certified_parent else {
+        return Ok(None);
+    };
+    let proof = current.reflection.proof().ok_or_else(|| {
+        integrity("certified query-local closure parent has no reflection lineage")
+    })?;
+    if proof.proof_digest() != certificate.canonical_lineage_digest() {
+        return Err(integrity(
+            "query-local closure reflection lineage differs from its certificate",
+        ));
+    }
+    let color = colors
+        .get(current.key.dynamic_lc_color_state_id())
+        .ok_or_else(|| integrity("query-local closure reflection color is absent"))?;
+    if dynamic_color_identity_digest(color)? != certificate.canonical_color_identity() {
+        return Err(integrity(
+            "query-local closure reflection color differs from its certificate",
+        ));
+    }
+    if !certificate.is_reciprocal_two_cycle() {
+        return Err(integrity(
+            "query-local closure reflection certificate is not a reciprocal two-cycle",
+        ));
+    }
+    let [closed_trace] = closed else {
+        return Ok(None);
+    };
+    let [target_trace] = query.target_components.as_ref() else {
+        return Ok(None);
+    };
+    let source_count = query.selected_sources.len();
+    if source_count <= 2
+        || closed_trace.kind() != LCColorComponentKind::Trace
+        || target_trace.kind() != LCColorComponentKind::Trace
+        || closed_trace.source_slots().len() != source_count
+        || target_trace.source_slots().len() != source_count
+    {
+        return Ok(None);
+    }
+    validate_permutation(
+        closed_trace.source_slots(),
+        source_count,
+        "query-local reflected closure word",
+    )?;
+    let permutation = certificate.source_permutation();
+    validate_permutation(
+        permutation,
+        source_count,
+        "query-local closure reflection permutation",
+    )?;
+    if permutation.get(query.closure_anchor_slot as usize).copied()
+        != Some(query.closure_anchor_slot)
+    {
+        return Err(integrity(
+            "query-local closure reflection does not fix its certified anchor",
+        ));
+    }
+    let mapped_word = closed_trace
+        .source_slots()
+        .iter()
+        .map(|source_slot| {
+            permutation
+                .get(*source_slot as usize)
+                .copied()
+                .ok_or_else(|| integrity("closure reflection omits a source slot"))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let mapped_trace = LCColorComponent::new(LCColorComponentKind::Trace, mapped_word)?;
+    if &mapped_trace == closed_trace {
+        return Err(integrity(
+            "query-local closure reflection maps a trace to a cyclic fixed point",
+        ));
+    }
+    Ok((&mapped_trace == target_trace).then_some(certificate.canonical_phase()))
+}
+
+#[allow(clippy::too_many_arguments)] // Explicitly mirrors the query-local sweep state.
 pub(super) fn insert_selected_sources(
     grammar: &PreparedOnTheFlyGrammarV1,
     seed: &OnTheFlyProcessSeedV1,
     coupling_limits: &[Option<u32>],
     query: &DecodedLcQueryV1,
+    enable_cyclic_trace_reflection: bool,
     colors: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
@@ -944,6 +1057,16 @@ pub(super) fn insert_selected_sources(
             contract.current_state.color_representation,
         )?;
         let color_id = colors.intern(color)?;
+        let reflection = if enable_cyclic_trace_reflection {
+            source_reflection(
+                colors,
+                color_id,
+                selected.source_slot,
+                state.color_seed_proof_digest,
+            )?
+        } else {
+            CurrentReflection::Unavailable
+        };
         let key = CurrentCoreKey::new(
             seed.template_catalog_digest,
             RecurrenceNodeKind::Source,
@@ -979,6 +1102,8 @@ pub(super) fn insert_selected_sources(
             contributions: BTreeMap::new(),
             pairing_lineages: vec![PendingPairingLineage::source(seed, selected.source_slot)],
             stage: 0,
+            reflection,
+            reflection_certificate: None,
         });
     }
     Ok(())
@@ -988,6 +1113,8 @@ pub(super) fn insert_selected_sources(
 fn include_transition(
     templates: &ValidatedRecurrenceTemplateInput,
     prepared: &PreparedTransition,
+    transition_reflections: &TransitionReflectionIndex,
+    enable_cyclic_trace_reflection: bool,
     concrete_parent_ids: [u32; 2],
     source_count: usize,
     seed: &OnTheFlyProcessSeedV1,
@@ -1075,6 +1202,26 @@ fn include_transition(
     if pairing_lineages.is_empty() {
         return Ok(());
     }
+    let parent_reflections = if enable_cyclic_trace_reflection {
+        [
+            currents[concrete_parent_ids[0] as usize].reflection.clone(),
+            currents[concrete_parent_ids[1] as usize].reflection.clone(),
+        ]
+    } else {
+        [
+            CurrentReflection::Unavailable,
+            CurrentReflection::Unavailable,
+        ]
+    };
+    let reversal_masks = if enable_cyclic_trace_reflection {
+        current_reversal_masks(&parent_colors, &parent_reflections)
+    } else {
+        vec![0]
+    };
+    let local_reflection_proof = enable_cyclic_trace_reflection
+        .then(|| transition_reflections.proof(prepared.row.id))
+        .flatten();
+    let output_factor = prepared.output_factor()?;
     for prepared_witness in &prepared.witnesses {
         if prepared_witness.row.left_shape_string_id != parent_colors[0].output_color_shape_id()
             || prepared_witness.row.right_shape_string_id
@@ -1082,151 +1229,193 @@ fn include_transition(
         {
             continue;
         }
-        let Some(result_color) = prepared_witness
-            .witness
-            .apply(&parent_colors[0], &parent_colors[1])?
-        else {
-            continue;
-        };
-        let color_id = colors.intern(result_color)?;
-        let propagator_template_id = if support.len() + 1 < source_count {
-            propagators
-                .get(&prepared.row.result_state_template_id)
-                .copied()
-                .flatten()
-        } else {
-            None
-        };
-        let key = CurrentCoreKey::new(
-            seed.template_catalog_digest,
-            RecurrenceNodeKind::Current,
-            prepared.row.result_state_template_id,
-            color_id,
-            support.clone(),
-            momentum.clone(),
-            helicity.clone(),
-            flavour.clone(),
-            prepared.quantum.result_quantum_number_flow_id,
-            coupling_orders.clone(),
-            CurrentSourceBinding::None,
-            propagator_template_id,
-        )?;
-        let result_id = if let Some(id) = current_ids.get(&key).copied() {
-            id
-        } else {
-            let id = checked_u32(currents.len(), "query-local current count")?;
-            let map_key = key.clone();
-            let pending = PendingCurrent {
-                key,
-                source_factor: None,
-                contributions: BTreeMap::new(),
-                pairing_lineages: try_clone_pairing_lineages(&pairing_lineages)?,
-                stage: checked_u32(support.len() - 1, "query-local current stage")?,
+        for reversal_mask in reversal_masks.iter().copied() {
+            let mut variant_colors = parent_colors.clone();
+            let mut reversal_factor = ExactComplexRational::ONE;
+            for index in 0..2 {
+                if reversal_mask & (1 << index) == 0 {
+                    continue;
+                }
+                variant_colors[index] = variant_colors[index].reversed()?;
+                reversal_factor = reversal_factor.checked_mul(
+                    parent_reflections[index]
+                        .phase()
+                        .expect("reversal mask requires a proven parent phase"),
+                )?;
+            }
+            let Some(result_color) = prepared_witness
+                .witness
+                .apply(&variant_colors[0], &variant_colors[1])?
+            else {
+                continue;
             };
-            current_ids.insert(map_key, id);
-            currents.push(pending);
-            id
-        };
-        extend_pairing_lineages(
-            &mut currents[result_id as usize].pairing_lineages,
-            &pairing_lineages,
-        )?;
-        let contribution_key = ContributionKey::new(
-            prepared.row.id,
-            evaluator_parent_ids.to_vec(),
-            evaluator_parent_ids
-                .iter()
-                .map(|id| currents[*id as usize].key.current_state_template_id())
-                .collect(),
-            evaluator_parent_ids
-                .iter()
-                .map(|id| currents[*id as usize].key.momentum().clone())
-                .collect(),
-            prepared.row.result_state_template_id,
-            prepared.quantum.id,
-            LCColorWitnessTermId::new(
-                prepared.row.color_contraction_template_id,
-                prepared_witness.row.ordinal,
-            ),
-            prepared.quantum_semantic_digest,
-            prepared.row.output_projection_string_id,
-        )?;
-        let pending_key = PendingContributionKey {
-            parent_current_ids: evaluator_parent_ids,
-            key: contribution_key,
-        };
-        let output_factor = prepared.output_factor()?;
-        let witness_factor = prepared_witness.witness.exact_factor();
-        let factor = multiply_factors(&[
-            prepared.base_factor,
-            output_factor,
-            exchange_factor,
-            witness_factor,
-            fermion_factor,
-        ])?;
-        let aggregate_factor_after = {
+            let result_reflection = current_reflection_candidate(
+                &result_color,
+                &parent_reflections,
+                local_reflection_proof,
+            )?;
+            #[cfg(feature = "on-the-fly-test-support")]
+            let diagnostic_result_reflection = result_reflection.clone();
+            let color_id = colors.intern(result_color)?;
+            let propagator_template_id = if support.len() + 1 < source_count {
+                propagators
+                    .get(&prepared.row.result_state_template_id)
+                    .copied()
+                    .flatten()
+            } else {
+                None
+            };
+            let key = CurrentCoreKey::new(
+                seed.template_catalog_digest,
+                RecurrenceNodeKind::Current,
+                prepared.row.result_state_template_id,
+                color_id,
+                support.clone(),
+                momentum.clone(),
+                helicity.clone(),
+                flavour.clone(),
+                prepared.quantum.result_quantum_number_flow_id,
+                coupling_orders.clone(),
+                CurrentSourceBinding::None,
+                propagator_template_id,
+            )?;
+            let result_id = if let Some(id) = current_ids.get(&key).copied() {
+                currents[id as usize]
+                    .reflection
+                    .include(result_reflection)?;
+                id
+            } else {
+                let id = checked_u32(currents.len(), "query-local current count")?;
+                let map_key = key.clone();
+                let pending = PendingCurrent {
+                    key,
+                    source_factor: None,
+                    contributions: BTreeMap::new(),
+                    pairing_lineages: try_clone_pairing_lineages(&pairing_lineages)?,
+                    stage: checked_u32(support.len() - 1, "query-local current stage")?,
+                    reflection: result_reflection
+                        .map_or(CurrentReflection::Unavailable, CurrentReflection::Proven),
+                    reflection_certificate: None,
+                };
+                current_ids.insert(map_key, id);
+                currents.push(pending);
+                id
+            };
+            extend_pairing_lineages(
+                &mut currents[result_id as usize].pairing_lineages,
+                &pairing_lineages,
+            )?;
+            let contribution_key = ContributionKey::new(
+                prepared.row.id,
+                evaluator_parent_ids.to_vec(),
+                evaluator_parent_ids
+                    .iter()
+                    .map(|id| currents[*id as usize].key.current_state_template_id())
+                    .collect(),
+                evaluator_parent_ids
+                    .iter()
+                    .map(|id| currents[*id as usize].key.momentum().clone())
+                    .collect(),
+                prepared.row.result_state_template_id,
+                prepared.quantum.id,
+                LCColorWitnessTermId::new(
+                    prepared.row.color_contraction_template_id,
+                    prepared_witness.row.ordinal,
+                ),
+                prepared.quantum_semantic_digest,
+                prepared.row.output_projection_string_id,
+            )?;
+            let pending_key = PendingContributionKey {
+                parent_current_ids: evaluator_parent_ids,
+                key: contribution_key,
+            };
+            let witness_factor = prepared_witness.witness.exact_factor();
+            let factor = multiply_factors(&[
+                prepared.base_factor,
+                output_factor,
+                exchange_factor,
+                witness_factor,
+                fermion_factor,
+                reversal_factor,
+            ])?;
             let aggregate = currents[result_id as usize]
                 .contributions
                 .entry(pending_key)
                 .or_insert(ExactComplexRational::ZERO);
             aggregate_factor(aggregate, factor)?;
-            *aggregate
-        };
-        #[cfg(feature = "on-the-fly-test-support")]
-        'transition_diagnostic: {
-            if !crate::recurrence::diagnostic::transition_diagnostic_observation_active() {
-                break 'transition_diagnostic;
-            }
-            use crate::recurrence::diagnostic::{
-                ConstructionTransitionDiagnosticRowV1, observe_transition_diagnostic,
-            };
+            #[cfg(feature = "on-the-fly-test-support")]
+            let aggregate_factor_after = *aggregate;
+            #[cfg(feature = "on-the-fly-test-support")]
+            'transition_diagnostic: {
+                if !crate::recurrence::diagnostic::transition_diagnostic_observation_active() {
+                    break 'transition_diagnostic;
+                }
+                use crate::recurrence::diagnostic::{
+                    ConstructionTransitionDiagnosticRowV1, observe_transition_diagnostic,
+                };
 
-            let digest = |current_id: u32| -> RusticolResult<SemanticDigest> {
-                let current = currents
-                    .get(current_id as usize)
-                    .ok_or_else(|| integrity("diagnostic current is absent"))?;
-                let color = colors
-                    .get(current.key.dynamic_lc_color_state_id())
-                    .ok_or_else(|| integrity("diagnostic current color is absent"))?;
-                super::trace::hash_current_key(&current.key, color)
-            };
-            let result_color = colors
-                .get(currents[result_id as usize].key.dynamic_lc_color_state_id())
-                .ok_or_else(|| integrity("diagnostic result color is absent"))?;
-            observe_transition_diagnostic(ConstructionTransitionDiagnosticRowV1 {
-                materialized_sector_id: None,
-                output_current_digest: digest(result_id)?,
-                ordered_parent_digests: [
-                    digest(evaluator_parent_ids[0])?,
-                    digest(evaluator_parent_ids[1])?,
-                ],
-                transition_template_id: prepared.row.id,
-                transition_semantic_digest: prepared.transition_semantic_digest,
-                evaluator_binding_semantic_digest: prepared.evaluator_binding_digest,
-                result_state_template_id: prepared.row.result_state_template_id,
-                quantum_flow_witness_id: prepared.quantum.id,
-                quantum_semantic_digest: prepared.quantum_semantic_digest,
-                color_contraction_template_id: prepared.row.color_contraction_template_id,
-                color_witness_ordinal: prepared_witness.row.ordinal,
-                color_witness_proof_digest: prepared_witness.witness.proof_digest(),
-                output_projection_id: prepared.row.output_projection_string_id,
-                transition_factor: prepared.transition_factor,
-                contraction_factor: prepared.contraction_factor,
-                output_factor,
-                exchange_factor,
-                witness_factor,
-                reversal_mask: 0,
-                reversal_factor: ExactComplexRational::ONE,
-                candidate_factor: factor,
-                aggregate_factor_after,
-                parent_reflection_proof_digests: [None, None],
-                parent_reflection_phases: [None, None],
-                local_reflection_proof_digest: None,
-                local_reflection_phase: None,
-                result_reflection_proof_digest: None,
-                result_reflection_phase: None,
-                output_color_orientation: format!("{result_color:?}"),
-            });
+                let digest = |current_id: u32| -> RusticolResult<SemanticDigest> {
+                    let current = currents
+                        .get(current_id as usize)
+                        .ok_or_else(|| integrity("diagnostic current is absent"))?;
+                    let color = colors
+                        .get(current.key.dynamic_lc_color_state_id())
+                        .ok_or_else(|| integrity("diagnostic current color is absent"))?;
+                    super::trace::hash_current_key(&current.key, color)
+                };
+                let result_color = colors
+                    .get(currents[result_id as usize].key.dynamic_lc_color_state_id())
+                    .ok_or_else(|| integrity("diagnostic result color is absent"))?;
+                observe_transition_diagnostic(ConstructionTransitionDiagnosticRowV1 {
+                    materialized_sector_id: None,
+                    output_current_digest: digest(result_id)?,
+                    ordered_parent_digests: [
+                        digest(evaluator_parent_ids[0])?,
+                        digest(evaluator_parent_ids[1])?,
+                    ],
+                    transition_template_id: prepared.row.id,
+                    transition_semantic_digest: prepared.transition_semantic_digest,
+                    evaluator_binding_semantic_digest: prepared.evaluator_binding_digest,
+                    result_state_template_id: prepared.row.result_state_template_id,
+                    quantum_flow_witness_id: prepared.quantum.id,
+                    quantum_semantic_digest: prepared.quantum_semantic_digest,
+                    color_contraction_template_id: prepared.row.color_contraction_template_id,
+                    color_witness_ordinal: prepared_witness.row.ordinal,
+                    color_witness_proof_digest: prepared_witness.witness.proof_digest(),
+                    output_projection_id: prepared.row.output_projection_string_id,
+                    transition_factor: prepared.transition_factor,
+                    contraction_factor: prepared.contraction_factor,
+                    output_factor,
+                    exchange_factor,
+                    witness_factor,
+                    reversal_mask,
+                    reversal_factor,
+                    candidate_factor: factor,
+                    aggregate_factor_after,
+                    parent_reflection_proof_digests: [
+                        parent_reflections[0]
+                            .proof()
+                            .map(|proof| proof.proof_digest()),
+                        parent_reflections[1]
+                            .proof()
+                            .map(|proof| proof.proof_digest()),
+                    ],
+                    parent_reflection_phases: [
+                        parent_reflections[0].phase(),
+                        parent_reflections[1].phase(),
+                    ],
+                    local_reflection_proof_digest: local_reflection_proof
+                        .map(|proof| proof.proof_digest()),
+                    local_reflection_phase: local_reflection_proof.map(|proof| proof.phase()),
+                    result_reflection_proof_digest: diagnostic_result_reflection
+                        .as_ref()
+                        .map(|proof| proof.proof_digest()),
+                    result_reflection_phase: diagnostic_result_reflection
+                        .as_ref()
+                        .map(|proof| proof.phase()),
+                    output_color_orientation: format!("{result_color:?}"),
+                });
+            }
         }
     }
     Ok(())
@@ -1374,10 +1563,171 @@ impl QuerySupportSizeIndex {
     }
 }
 
+/// Fold only a completely certified reciprocal pure-adjoint orbit after the
+/// stage fan-in and contact-owner selection are final.  Any missing, stale, or
+/// contradictory proof retains both orientations.
+fn reconcile_on_the_fly_stage_reflections(
+    stage_start: usize,
+    colors: &mut DynamicLCColorStateInterner,
+    currents: &mut Vec<PendingCurrent>,
+    current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
+    source_count: usize,
+) -> RusticolResult<()> {
+    if stage_start > currents.len() {
+        return Err(invalid(
+            "query-local reflection stage starts beyond current storage",
+        ));
+    }
+    let stage_end = currents.len();
+    let mut visited = vec![false; stage_end - stage_start];
+    let mut prune = vec![false; stage_end - stage_start];
+
+    for current_index in stage_start..stage_end {
+        let local_index = current_index - stage_start;
+        if visited[local_index] {
+            continue;
+        }
+        let key = currents[current_index].key.clone();
+        let color = colors
+            .get(key.dynamic_lc_color_state_id())
+            .ok_or_else(|| integrity("query-local reflection color disappeared"))?
+            .clone();
+        let Some(word) = color.pure_adjoint_word() else {
+            continue;
+        };
+        if word.len() < 2 {
+            continue;
+        }
+        let canonical = pure_adjoint_word_is_canonical(word);
+        let reversed_color_id = colors.intern(color.reversed()?)?;
+        if reversed_color_id == key.dynamic_lc_color_state_id() {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        }
+        let reversed_key = current_key_with_dynamic_color(&key, reversed_color_id)?;
+        let Some(reversed_id) = current_ids.get(&reversed_key).copied() else {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        };
+        let reversed_index = reversed_id as usize;
+        if !(stage_start..stage_end).contains(&reversed_index) {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        }
+        let reversed_local_index = reversed_index - stage_start;
+        visited[local_index] = true;
+        visited[reversed_local_index] = true;
+
+        let reversed_color = colors
+            .get(reversed_color_id)
+            .ok_or_else(|| integrity("query-local reversed reflection color disappeared"))?;
+        let Some(reversed_word) = reversed_color.pure_adjoint_word() else {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            currents[reversed_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        };
+        let reciprocal = reciprocal_reflection_proof(
+            &currents[current_index].reflection,
+            &currents[reversed_index].reflection,
+        )?;
+        if !reciprocal || canonical == pure_adjoint_word_is_canonical(reversed_word) {
+            currents[current_index].reflection = CurrentReflection::Unavailable;
+            currents[reversed_index].reflection = CurrentReflection::Unavailable;
+            continue;
+        }
+        let (canonical_index, reflected_index, pruned_local_index) = if canonical {
+            (current_index, reversed_index, reversed_local_index)
+        } else {
+            (reversed_index, current_index, local_index)
+        };
+        let canonical_proof = currents[canonical_index]
+            .reflection
+            .proof()
+            .cloned()
+            .ok_or_else(|| integrity("canonical query-local reflection proof disappeared"))?;
+        let reflected_proof = currents[reflected_index]
+            .reflection
+            .proof()
+            .cloned()
+            .ok_or_else(|| integrity("reflected query-local reflection proof disappeared"))?;
+        for (label, index, proof) in [
+            ("canonical", canonical_index, &canonical_proof),
+            ("reflected", reflected_index, &reflected_proof),
+        ] {
+            let current_color = colors
+                .get(currents[index].key.dynamic_lc_color_state_id())
+                .ok_or_else(|| integrity(format!("{label} query-local color disappeared")))?;
+            if dynamic_color_identity_digest(current_color)? != proof.result_color_identity() {
+                return Err(integrity(format!(
+                    "{label} query-local reflection proof has a stale color identity"
+                )));
+            }
+        }
+        let canonical_color = colors
+            .get(currents[canonical_index].key.dynamic_lc_color_state_id())
+            .ok_or_else(|| integrity("canonical query-local reflection color disappeared"))?;
+        let reflected_color = colors
+            .get(currents[reflected_index].key.dynamic_lc_color_state_id())
+            .ok_or_else(|| integrity("reflected query-local reflection color disappeared"))?;
+        currents[canonical_index].reflection_certificate =
+            Some(PendingReflectionCertificate::reciprocal_pair(
+                checked_u32(canonical_index, "query-local reflection certificate ID")?,
+                checked_u32(
+                    canonical_index,
+                    "canonical query-local reflection current ID",
+                )?,
+                checked_u32(
+                    reflected_index,
+                    "reflected query-local reflection current ID",
+                )?,
+                &canonical_proof,
+                &reflected_proof,
+                canonical_color,
+                reflected_color,
+                source_count,
+            )?);
+        prune[pruned_local_index] = true;
+    }
+
+    for current in &currents[stage_start..] {
+        current_ids.remove(&current.key);
+    }
+    let stage_currents = currents.split_off(stage_start);
+    for (local_index, current) in stage_currents.into_iter().enumerate() {
+        if prune[local_index] {
+            continue;
+        }
+        if current
+            .contributions
+            .keys()
+            .flat_map(|contribution| contribution.parent_current_ids)
+            .any(|parent_id| parent_id as usize >= stage_start)
+        {
+            return Err(integrity(
+                "query-local reflection stage depends on another current in the same stage",
+            ));
+        }
+        let current_id = checked_u32(currents.len(), "query-local reflected current ID")?;
+        if current_ids
+            .insert(current.key.clone(), current_id)
+            .is_some()
+        {
+            return Err(integrity(
+                "query-local reflection reconciliation produced a duplicate current",
+            ));
+        }
+        currents.push(current);
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)] // Explicitly mirrors the query-local sweep state.
 pub(super) fn build_forward_currents(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    transition_reflections: &TransitionReflectionIndex,
     contact_orbits: &PreparedContactOrbitIndex,
+    enable_cyclic_trace_reflection: bool,
     seed: &OnTheFlyProcessSeedV1,
     fermion_ordering: &FermionOrderingContext,
     closure_anchor_slot: u32,
@@ -1390,7 +1740,9 @@ pub(super) fn build_forward_currents(
     build_forward_currents_with_anchor_exclusion(
         templates,
         transitions,
+        transition_reflections,
         contact_orbits,
+        enable_cyclic_trace_reflection,
         seed,
         fermion_ordering,
         Some(closure_anchor_slot),
@@ -1406,7 +1758,9 @@ pub(super) fn build_forward_currents(
 fn build_forward_currents_with_anchor_exclusion(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    transition_reflections: &TransitionReflectionIndex,
     contact_orbits: &PreparedContactOrbitIndex,
+    enable_cyclic_trace_reflection: bool,
     seed: &OnTheFlyProcessSeedV1,
     fermion_ordering: &FermionOrderingContext,
     closure_anchor_slot: Option<u32>,
@@ -1457,6 +1811,8 @@ fn build_forward_currents_with_anchor_exclusion(
                     include_transition(
                         templates,
                         prepared,
+                        transition_reflections,
+                        enable_cyclic_trace_reflection,
                         parent_ids,
                         source_count,
                         seed,
@@ -1480,6 +1836,15 @@ fn build_forward_currents_with_anchor_exclusion(
             )?
         {
             plan.commit(currents);
+        }
+        if enable_cyclic_trace_reflection {
+            reconcile_on_the_fly_stage_reflections(
+                stage_current_start,
+                colors,
+                currents,
+                current_ids,
+                source_count,
+            )?;
         }
         support_size_index.append_stage(
             currents,
@@ -1505,12 +1870,14 @@ fn closure_quantum_matches(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Explicitly mirrors the query-local sweep state.
 pub(super) fn build_selected_closures(
     templates: &ValidatedRecurrenceTemplateInput,
     closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     seed: &OnTheFlyProcessSeedV1,
     fermion_ordering: &FermionOrderingContext,
     query: &DecodedLcQueryV1,
+    enable_cyclic_trace_reflection: bool,
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
 ) -> RusticolResult<Option<Vec<PendingClosure>>> {
@@ -1622,9 +1989,23 @@ pub(super) fn build_selected_closures(
                     let closed = witness
                         .witness
                         .closed_components(parent_colors[0], parent_colors[1])?;
-                    if !query_target_matches(closed, query) {
+                    let reflection_factor = if query_target_matches(&closed, query) {
+                        ExactComplexRational::ONE
+                    } else if enable_cyclic_trace_reflection {
+                        let Some(factor) = reflected_query_closure_factor(
+                            query,
+                            &closed,
+                            colors,
+                            currents,
+                            concrete_parent_ids,
+                        )?
+                        else {
+                            continue;
+                        };
+                        factor
+                    } else {
                         continue;
-                    }
+                    };
                     let key = PendingClosureKey {
                         closure_template_id: closure.row.id,
                         quantum_flow_template_id: quantum.row.map(|row| row.id),
@@ -1640,6 +2021,7 @@ pub(super) fn build_selected_closures(
                         exchange_factor,
                         witness.witness.exact_factor(),
                         fermion_factor,
+                        reflection_factor,
                     ])?;
                     let coefficients = closure.component_coefficients.clone();
                     match retained.entry(key.clone()) {
@@ -1773,11 +2155,13 @@ pub(super) fn live_current_ids(
 #[cfg(test)]
 mod tests {
     use crate::recurrence::DynamicLCColorStateId;
+    use crate::recurrence::construct::CurrentReflectionProof;
     use crate::recurrence::contact_orbit_owner::{
         ContactOrbitStepProof, ContactOrbitTestBinding, contact_orbit_application_for_test,
         contact_orbit_test_template, final_contact_orbit_step_for_test,
         partial_contact_orbit_step_for_test, prepared_contact_orbit_transition_for_test,
     };
+    use crate::recurrence::{ExactRational, LCColorEndpoint, LCColorPortBinding};
 
     use super::*;
 
@@ -1823,6 +2207,238 @@ mod tests {
 
     fn contact_digest(byte: u8) -> SemanticDigest {
         SemanticDigest::new([byte; 32]).expect("test digest must be nonzero")
+    }
+
+    fn reflection_test_states() -> (
+        DynamicLCColorStateInterner,
+        DynamicLCColorStateId,
+        DynamicLCColorStateId,
+    ) {
+        let canonical = DynamicLCColorState::new_port_wired(
+            1,
+            vec![
+                LCColorPortBinding::new(0, LCColorEndpoint::Back),
+                LCColorPortBinding::new(0, LCColorEndpoint::Front),
+            ],
+            vec![
+                LCColorComponent::new(LCColorComponentKind::AdjointSegment, vec![1, 3, 2]).unwrap(),
+            ],
+        )
+        .unwrap();
+        let reversed = canonical.reversed().unwrap();
+        let mut colors = DynamicLCColorStateInterner::default();
+        let canonical_id = colors.intern(canonical).unwrap();
+        let reversed_id = colors.intern(reversed).unwrap();
+        (colors, canonical_id, reversed_id)
+    }
+
+    fn proven_reflection(
+        colors: &DynamicLCColorStateInterner,
+        color_id: DynamicLCColorStateId,
+        phase: ExactComplexRational,
+        lineage: u8,
+    ) -> CurrentReflection {
+        let color = colors.get(color_id).unwrap();
+        CurrentReflection::Proven(
+            CurrentReflectionProof::new(
+                phase,
+                [contact_digest(lineage)],
+                dynamic_color_identity_digest(color).unwrap(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn reflection_current(
+        node_kind: RecurrenceNodeKind,
+        color_id: DynamicLCColorStateId,
+        support: &[u32],
+        reflection: CurrentReflection,
+    ) -> PendingCurrent {
+        PendingCurrent {
+            key: CurrentCoreKey::new(
+                contact_digest(230),
+                node_kind,
+                0,
+                color_id,
+                support.to_vec(),
+                CanonicalMomentumLinearForm::new(
+                    support
+                        .iter()
+                        .copied()
+                        .map(|source_slot| MomentumTerm {
+                            source_slot,
+                            coefficient: 1,
+                        })
+                        .collect(),
+                )
+                .unwrap(),
+                CurrentHelicityIdentity::topology_replay(
+                    0,
+                    support
+                        .iter()
+                        .copied()
+                        .map(|source_slot| SourceStateAssignment::new(source_slot, 0))
+                        .collect(),
+                )
+                .unwrap(),
+                vec![1],
+                0,
+                vec![0],
+                if node_kind == RecurrenceNodeKind::Source {
+                    CurrentSourceBinding::FixedTemplate(0)
+                } else {
+                    CurrentSourceBinding::None
+                },
+                None,
+            )
+            .unwrap(),
+            source_factor: (node_kind == RecurrenceNodeKind::Source)
+                .then_some(ExactComplexRational::ONE),
+            contributions: BTreeMap::new(),
+            pairing_lineages: vec![PendingPairingLineage {
+                completed_pairs: Vec::new(),
+                unmatched_endpoint: None,
+            }],
+            stage: u32::try_from(support.len().saturating_sub(1)).unwrap(),
+            reflection,
+            reflection_certificate: None,
+        }
+    }
+
+    #[test]
+    fn query_local_reflection_fold_is_insertion_invariant_and_fail_closed() {
+        let minus_one = ExactComplexRational::ONE.checked_neg().unwrap();
+        let run = |reverse_insertion: bool, prove_both: bool| {
+            let (mut colors, canonical_id, reversed_id) = reflection_test_states();
+            let mut currents = vec![
+                reflection_current(
+                    RecurrenceNodeKind::Current,
+                    canonical_id,
+                    &[1, 2, 3],
+                    proven_reflection(&colors, canonical_id, minus_one, 201),
+                ),
+                reflection_current(
+                    RecurrenceNodeKind::Current,
+                    reversed_id,
+                    &[1, 2, 3],
+                    if prove_both {
+                        proven_reflection(&colors, reversed_id, minus_one, 202)
+                    } else {
+                        let mut late_unproved =
+                            proven_reflection(&colors, reversed_id, minus_one, 202);
+                        late_unproved.include(None).unwrap();
+                        late_unproved
+                    },
+                ),
+            ];
+            if reverse_insertion {
+                currents.reverse();
+            }
+            let mut current_ids = currents
+                .iter()
+                .enumerate()
+                .map(|(id, current)| (current.key.clone(), id as u32))
+                .collect::<BTreeMap<_, _>>();
+            reconcile_on_the_fly_stage_reflections(
+                0,
+                &mut colors,
+                &mut currents,
+                &mut current_ids,
+                4,
+            )
+            .unwrap();
+            (colors, currents, current_ids)
+        };
+
+        let (_, folded, folded_ids) = run(false, true);
+        let (_, folded_reordered, folded_reordered_ids) = run(true, true);
+        assert_eq!(folded.len(), 1);
+        assert_eq!(folded_ids.len(), 1);
+        assert_eq!(folded[0].key, folded_reordered[0].key);
+        assert_eq!(folded_ids, folded_reordered_ids);
+        for current in [&folded[0], &folded_reordered[0]] {
+            let certificate = current.reflection_certificate.as_ref().unwrap();
+            assert!(certificate.is_reciprocal_two_cycle());
+            assert_eq!(certificate.source_permutation(), [0, 2, 1, 3]);
+            assert_eq!(certificate.canonical_phase(), minus_one);
+        }
+
+        let (_, residual, residual_ids) = run(false, false);
+        assert_eq!(residual.len(), 2);
+        assert_eq!(residual_ids.len(), 2);
+        assert!(
+            residual
+                .iter()
+                .all(|current| current.reflection_certificate.is_none())
+        );
+    }
+
+    #[test]
+    fn reflected_query_closure_uses_only_the_certified_exact_phase() {
+        let canonical_phase =
+            ExactComplexRational::new(ExactRational::new(2, 1).unwrap(), ExactRational::ZERO);
+        let reflected_phase =
+            ExactComplexRational::new(ExactRational::new(1, 2).unwrap(), ExactRational::ZERO);
+        let (mut colors, canonical_id, reversed_id) = reflection_test_states();
+        let mut currents = vec![
+            reflection_current(
+                RecurrenceNodeKind::Source,
+                canonical_id,
+                &[0],
+                CurrentReflection::Unavailable,
+            ),
+            reflection_current(
+                RecurrenceNodeKind::Current,
+                canonical_id,
+                &[1, 2, 3],
+                proven_reflection(&colors, canonical_id, canonical_phase, 203),
+            ),
+            reflection_current(
+                RecurrenceNodeKind::Current,
+                reversed_id,
+                &[1, 2, 3],
+                proven_reflection(&colors, reversed_id, reflected_phase, 204),
+            ),
+        ];
+        let mut current_ids = currents
+            .iter()
+            .enumerate()
+            .map(|(id, current)| (current.key.clone(), id as u32))
+            .collect::<BTreeMap<_, _>>();
+        reconcile_on_the_fly_stage_reflections(1, &mut colors, &mut currents, &mut current_ids, 4)
+            .unwrap();
+        assert_eq!(currents.len(), 2);
+
+        let seed = adjoint_reflection_seed();
+        let query = DecodedLcQueryV1::new(
+            &seed,
+            vec![0, 1, 2, 3],
+            &[0, 0, 0, 0],
+            OnTheFlyLcSelectorV1::single_trace(vec![0, 2, 3, 1]),
+        )
+        .unwrap();
+        let query = OnTheFlyClosureAnchorPolicyV1::certified_cyclic_minimum(0)
+            .canonicalize_query(&seed, query)
+            .unwrap();
+        let closed =
+            vec![LCColorComponent::new(LCColorComponentKind::Trace, vec![0, 1, 3, 2]).unwrap()];
+        assert!(!query_target_matches(&closed, &query));
+        assert_eq!(
+            reflected_query_closure_factor(&query, &closed, &colors, &currents, [0, 1]).unwrap(),
+            Some(canonical_phase),
+        );
+
+        let certificate = currents[1].reflection_certificate.take();
+        assert_eq!(
+            reflected_query_closure_factor(&query, &closed, &colors, &currents, [0, 1]).unwrap(),
+            None,
+        );
+        currents[1].reflection_certificate = certificate;
+        currents[1].reflection = proven_reflection(&colors, canonical_id, canonical_phase, 205);
+        assert!(
+            reflected_query_closure_factor(&query, &closed, &colors, &currents, [0, 1]).is_err()
+        );
     }
 
     fn contact_current(
@@ -1894,6 +2510,8 @@ mod tests {
                 unmatched_endpoint: None,
             }],
             stage: u32::try_from(support.len().saturating_sub(1)).unwrap(),
+            reflection: CurrentReflection::Unavailable,
+            reflection_certificate: None,
         }
     }
 
@@ -2223,6 +2841,60 @@ mod tests {
         .unwrap()
     }
 
+    fn adjoint_reflection_seed() -> OnTheFlyProcessSeedV1 {
+        let state = OnTheFlySourceStateV1::new(
+            0,
+            0,
+            0,
+            0,
+            0,
+            contact_digest(241),
+            contact_digest(242),
+            1,
+            ExactComplexRational::ONE,
+            0,
+            0,
+            vec![1],
+            0,
+            contact_digest(243),
+            OnTheFlySourceWavefunctionFamilyV1::Vector,
+            OnTheFlySourceOrientationV1::SelfConjugate,
+            None,
+        )
+        .unwrap();
+        let anchors = (0_u32..4)
+            .map(|source_slot| {
+                OnTheFlySourceAnchorV1::new(
+                    source_slot,
+                    source_slot,
+                    source_slot < 2,
+                    OnTheFlyExternalColorRoleV1::Adjoint,
+                    false,
+                    None,
+                    vec![state.clone()],
+                )
+                .unwrap()
+            })
+            .collect();
+        OnTheFlyProcessSeedV1::new(
+            contact_digest(244),
+            contact_digest(245),
+            contact_digest(230),
+            contact_digest(246),
+            contact_digest(247),
+            contact_digest(248),
+            "raw-amplitude-reflection-test",
+            ExactComplexRational::ONE,
+            anchors,
+            vec![0, 1, 2, 3],
+            OnTheFlyCouplingOrderPolicyV1::Explicit,
+            vec![1],
+            vec![Some(0)],
+            Vec::new(),
+        )
+        .unwrap()
+    }
+
     fn production_contact_barrier_currents(
         reverse_transition_order: bool,
         include_ordinary_scalar_transition: bool,
@@ -2394,7 +3066,9 @@ mod tests {
         build_forward_currents_with_anchor_exclusion(
             &templates,
             &transitions,
+            &TransitionReflectionIndex::default(),
             &contact_orbits,
+            false,
             &seed,
             &fermion_ordering,
             closure_anchor_slot,
@@ -2409,6 +3083,7 @@ mod tests {
         currents
     }
 
+    #[allow(clippy::type_complexity)] // Compact assertion fixture returned only inside tests.
     fn production_contact_barrier_case(
         reverse_transition_order: bool,
         include_ordinary_scalar_transition: bool,
@@ -2809,7 +3484,9 @@ mod tests {
             build_forward_currents_with_anchor_exclusion(
                 &templates,
                 &transitions,
+                &TransitionReflectionIndex::default(),
                 &contact_orbits,
+                false,
                 &seed,
                 &fermion_ordering,
                 closure_anchor_slot,
@@ -2827,6 +3504,7 @@ mod tests {
                     &seed,
                     &fermion_ordering,
                     &query,
+                    false,
                     &colors,
                     &currents,
                 )

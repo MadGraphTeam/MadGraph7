@@ -21,14 +21,20 @@ src/pyamplicol/_rusticol*.so
 src/pyamplicol/_rusticol*.dylib
 src/pyamplicol/_rusticol*.pyd
 .artifacts/
+/IMPLEMENTATION_DOCS/RESULTS/fft-scaling-study/raw/
+/IMPLEMENTATION_DOCS/RESULTS/fft-profiling/runs/
+/IMPLEMENTATION_DOCS/RESULTS/summary_plots_final.pdf
+/IMPLEMENTATION_DOCS/RESULTS/summary_plots_final_helicity_sum.pdf
 .cargo/config.toml
 
 # Retain local performance campaigns and generated reports outside Git. The
-# repository publishes only the report index and two selected PDF snapshots.
+# repository publishes only the report index and four selected PDF snapshots.
 /docs/performance_reports/*
 !/docs/performance_reports/README.md
 !/docs/performance_reports/macbook_M3_pyAmpliCol.pdf
 !/docs/performance_reports/EPYC_pyAmpliCol.pdf
+!/docs/performance_reports/summary_plots_final.pdf
+!/docs/performance_reports/summary_plots_final_helicity_sum.pdf
 /docs/arxiv/
 
 # Managed environments and deployment sandboxes
@@ -88,6 +94,7 @@ docs/**/*.synctex.gz
 docs/**/*.toc
 
 # Local tooling state
+/tmp/
 .trash/
 .agent-work/
 .DS_Store

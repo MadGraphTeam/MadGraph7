@@ -6,13 +6,12 @@ use crate::{
     PROCESS_ARTIFACT_SCHEMA_VERSION, PYTHON_API_VERSION, RUNTIME_PHYSICS_SCHEMA_VERSION,
     RuntimeCapability, RusticolError, RusticolResult, TOML_SCHEMA_VERSION,
 };
+use bincode::Decode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-#[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-#[cfg(test)]
 use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -39,11 +38,14 @@ const RUNTIME_IDENTITY_PAYLOAD_ROLES: [&str; 5] = [
 const EVALUATOR_PAYLOAD_CONTAINER_EXTENSION: &str = "evaluator_payload_container";
 const EVALUATOR_PAYLOAD_CONTAINER_KIND: &str = "pyamplicol-evaluator-payload-container";
 const EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI: &str = "pacbin-v1";
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+const RECURRENCE_BOOTSTRAP_FILENAME: &str = "recurrence-bootstrap.bin";
 const SUPPORTED_ARTIFACT_TARGETS: [&str; 3] = [
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
     "x86_64-unknown-linux-gnu",
 ];
+
 pub(crate) const PORTABLE_64LE_ARTIFACT_TARGET: &str = "portable-64le";
 #[cfg(feature = "f64-compiled")]
 const NATIVE_LIBRARY_SNAPSHOT_ATTEMPTS: u64 = 128;
@@ -61,7 +63,11 @@ pub enum ArtifactKind {
     PyamplicolProcessSet,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
 pub struct VersionSet {
     pub python_api: u32,
@@ -74,14 +80,22 @@ pub struct VersionSet {
     pub c_abi: u32,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
     pub triple: String,
     pub cpu_features: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
 pub struct Producer {
     pub distribution: String,
@@ -131,7 +145,11 @@ pub struct ArtifactConfiguration {
     pub adjustments: Vec<ConfigurationAdjustment>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessAlias {
     pub id: String,
@@ -140,7 +158,11 @@ pub struct ProcessAlias {
     pub external_permutation: Vec<usize>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactProcess {
     pub id: String,
@@ -152,7 +174,11 @@ pub struct ArtifactProcess {
     pub aliases: Vec<ProcessAlias>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactRuntime {
     pub engine: String,
@@ -163,7 +189,11 @@ pub struct ArtifactRuntime {
     pub api_bundle_path: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Decode, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum PayloadRole {
     ConfigurationRequested,
@@ -180,7 +210,11 @@ pub enum PayloadRole {
     SdkMetadata,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
 pub struct Payload {
     pub path: String,
@@ -256,16 +290,34 @@ pub struct VerifiedArtifact {
     native_library_cache: Arc<Mutex<BTreeMap<String, Arc<PinnedNativeLibrary>>>>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+/// Authenticated inputs for the narrow recurrence-only loading path.
+///
+/// The returned `VerifiedArtifact` owns the same checked payload inventory and
+/// evaluator container used by the generic loader.  Only the broad evaluator
+/// set and generation-oriented extension trees are skipped.
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub(crate) struct RecurrenceBootstrapArtifact {
+    pub(crate) artifact: VerifiedArtifact,
+    pub(crate) selection: ArtifactSelection,
+    pub(crate) ready_execution: crate::engine::RecurrenceReadyExecutionV1,
+    pub(crate) physics: crate::ProcessPhysics,
+    pub(crate) evaluator_payload_container: EvaluatorPayloadContainerExtension,
+}
+
+#[derive(Clone, Debug, Decode, Deserialize)]
+#[cfg_attr(
+    any(feature = "python-generation-bridge", test),
+    derive(bincode::Encode)
+)]
 #[serde(deny_unknown_fields)]
-struct EvaluatorPayloadContainerExtension {
-    kind: String,
-    schema_version: u32,
-    storage_abi: String,
-    path: String,
-    member_count: u64,
-    unpacked_size_bytes: u64,
-    index_sha256: String,
+pub(crate) struct EvaluatorPayloadContainerExtension {
+    pub(crate) kind: String,
+    pub(crate) schema_version: u32,
+    pub(crate) storage_abi: String,
+    pub(crate) path: String,
+    pub(crate) member_count: u64,
+    pub(crate) unpacked_size_bytes: u64,
+    pub(crate) index_sha256: String,
 }
 
 /// One evaluator payload resolved from a legacy loose file or a packed member.
@@ -623,6 +675,28 @@ impl EvaluatorPayloadStore {
         Ok(EvaluatorPayloadSource::File(path))
     }
 
+    pub(crate) fn packed_member_bytes(
+        &self,
+        value: &str,
+        expected_kind: PacbinMemberKind,
+    ) -> RusticolResult<&[u8]> {
+        let logical_path = self.logical_path(value)?;
+        let container = self.container.as_ref().ok_or_else(|| {
+            RusticolError::compatibility(format!(
+                "typed evaluator payload {logical_path:?} requires evaluators.pacbin storage"
+            ))
+        })?;
+        let member = container.member(&logical_path)?;
+        if member.kind() != expected_kind {
+            return Err(RusticolError::integrity(format!(
+                "evaluator payload {logical_path:?} has pacbin member kind {:?}, expected {:?}",
+                member.kind(),
+                expected_kind,
+            )));
+        }
+        container.member_bytes(&logical_path)
+    }
+
     pub(crate) fn load_native_library(
         &self,
         value: &str,
@@ -671,6 +745,165 @@ impl EvaluatorPayloadStore {
 }
 
 impl VerifiedArtifact {
+    /// Try the authenticated recurrence-only bootstrap without materializing
+    /// broad generation/reporting extension trees.
+    ///
+    /// An absent conventional sidecar is not an error: callers may fall back
+    /// to the generic loader for artifacts produced before this optimization.
+    /// File presence opts a stable representative process into this compact
+    /// path; every subsequent failure is reported rather than falling back to
+    /// less constrained inputs.
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
+    pub(crate) fn try_open_recurrence_bootstrap(
+        path: impl AsRef<Path>,
+        requested_process: Option<&str>,
+    ) -> RusticolResult<Option<RecurrenceBootstrapArtifact>> {
+        // Explicit aliases and expressions retain the generic selector path.
+        // An omitted selector can use the image only when the conventional
+        // single-process tree contains exactly one stable-ID sidecar.
+        if requested_process.is_some_and(|process_id| {
+            validate_public_id(process_id, "requested process id").is_err()
+        }) {
+            return Ok(None);
+        }
+        let requested = path.as_ref();
+        reject_symlink_chain(requested)?;
+        let (root, manifest_path) = locate_manifest(requested)?;
+        reject_symlink_chain(&manifest_path)?;
+        let discovered_process_id = if requested_process.is_none() {
+            discover_single_recurrence_bootstrap_process(&root)?
+        } else {
+            None
+        };
+        let discovered_default = discovered_process_id.is_some();
+        let Some(process_id) = requested_process.or(discovered_process_id.as_deref()) else {
+            return Ok(None);
+        };
+        let bootstrap_path = format!("processes/{}/{}", process_id, RECURRENCE_BOOTSTRAP_FILENAME);
+        let bootstrap_file = root.join(&bootstrap_path);
+        let bootstrap_bytes = match read_bounded_recurrence_bootstrap(&root, &bootstrap_file)? {
+            None if discovered_default => {
+                return Err(RusticolError::integrity(format!(
+                    "discovered default recurrence bootstrap {bootstrap_path:?} disappeared before opening"
+                )));
+            }
+            None => return Ok(None),
+            Some(bytes) => bytes,
+        };
+        let decoded = crate::engine::decode_recurrence_bootstrap_image_v1(&bootstrap_bytes)?;
+        if decoded.process.id != process_id {
+            return Err(RusticolError::integrity(format!(
+                "recurrence bootstrap at {bootstrap_path:?} belongs to process {:?}",
+                decoded.process.id
+            )));
+        }
+        validate_recurrence_bootstrap_metadata(&decoded.producer, &decoded.runtime)?;
+
+        let bootstrap_size = u64::try_from(bootstrap_bytes.len()).map_err(|_| {
+            RusticolError::artifact("recurrence bootstrap size exceeds the u64 domain")
+        })?;
+        let bootstrap_payload = Payload {
+            path: bootstrap_path.clone(),
+            role: PayloadRole::EvaluatorState,
+            media_type: "application/octet-stream".to_string(),
+            size_bytes: bootstrap_size,
+            sha256: format!("{:x}", Sha256::digest(&bootstrap_bytes)),
+            executable: false,
+            target: Some(decoded.producer.target.clone()),
+            process_id: Some(process_id.to_string()),
+        };
+        let mut declared = decoded.payloads;
+        let mut insertion_index = declared.len();
+        let mut previous_path: Option<&str> = None;
+        for (index, payload) in declared.iter().enumerate() {
+            if previous_path.is_some_and(|previous| previous >= payload.path.as_str()) {
+                return Err(RusticolError::integrity(
+                    "recurrence bootstrap payload inventory must be strictly path-sorted",
+                ));
+            }
+            if payload.path == bootstrap_path {
+                return Err(RusticolError::integrity(format!(
+                    "recurrence bootstrap inventory illegally contains its own record {bootstrap_path:?}"
+                )));
+            }
+            if insertion_index == declared.len() && payload.path.as_str() > bootstrap_path.as_str()
+            {
+                insertion_index = index;
+            }
+            previous_path = Some(&payload.path);
+        }
+        declared.insert(insertion_index, bootstrap_payload);
+        let manifest_artifact_id = read_canonical_manifest_artifact_id(&manifest_path)?;
+        let computed_artifact_id = compute_payload_artifact_id(&declared)?;
+        if computed_artifact_id != manifest_artifact_id {
+            return Err(RusticolError::integrity(format!(
+                "recurrence bootstrap payload identity {computed_artifact_id} disagrees with artifact manifest identity {manifest_artifact_id}"
+            )));
+        }
+
+        let process = decoded.process;
+        validate_recurrence_bootstrap_process(&process)?;
+        let selection = representative_selection(&process);
+        let manifest = recurrence_bootstrap_manifest(
+            manifest_artifact_id,
+            decoded.producer,
+            decoded.runtime,
+            process,
+            declared,
+        );
+        let payloads = validated_payload_declarations(&manifest)?;
+        for payload in payloads.values() {
+            if let Some(target) = &payload.target {
+                validate_payload_target(&manifest.producer.target, target, &payload.path)?;
+                validate_target(target, &format!("payload {}", payload.path))?;
+            }
+        }
+        validate_recurrence_bootstrap_source_payload(
+            &payloads,
+            &decoded.execution_path,
+            &decoded.execution_sha256,
+            PayloadRole::EvaluatorManifest,
+            process_id,
+        )?;
+        validate_recurrence_bootstrap_source_payload(
+            &payloads,
+            &decoded.physics_path,
+            &decoded.physics_sha256,
+            PayloadRole::RuntimePhysics,
+            process_id,
+        )?;
+        if decoded.physics_path != selection.process.physics_path {
+            return Err(RusticolError::integrity(
+                "recurrence bootstrap physics path disagrees with the selected process",
+            ));
+        }
+        validate_evaluator_payload_container_declaration(
+            &decoded.evaluator_payload_container,
+            &payloads,
+        )?;
+        let artifact = Self {
+            root,
+            manifest_path,
+            manifest,
+            payloads: Arc::new(payloads),
+            // The process binding says whether this process has any JIT/native
+            // leaves.  Avoid opening and retaining the model-wide evaluator
+            // PACBIN for source/intrinsic-only recurrence processes.
+            evaluator_payload_container: None,
+            #[cfg(feature = "f64-compiled")]
+            native_library_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        };
+        Ok(Some(RecurrenceBootstrapArtifact {
+            artifact,
+            selection,
+            ready_execution: decoded.ready_execution,
+            physics: decoded.physics,
+            evaluator_payload_container: decoded.evaluator_payload_container,
+        }))
+    }
+
     /// Open a trusted artifact directory or a direct v3 manifest path.
     ///
     /// Schema, references, and confined paths are checked. Payload digests are
@@ -736,33 +969,7 @@ impl VerifiedArtifact {
         validate_manifest(&manifest)?;
         preflight(&manifest)?;
 
-        let mut payloads = BTreeMap::new();
-        let mut portable_paths = BTreeSet::new();
-        for payload in &manifest.payloads {
-            validate_payload_declaration(payload)?;
-            validate_relative_path(&payload.path, "payload path")?;
-            if payload.path == ARTIFACT_MANIFEST_FILE {
-                return Err(RusticolError::security(format!(
-                    "{ARTIFACT_MANIFEST_FILE} is reserved for the artifact manifest"
-                )));
-            }
-            let portable = payload.path.to_ascii_lowercase();
-            if !portable_paths.insert(portable) {
-                return Err(RusticolError::security(format!(
-                    "duplicate or case-colliding payload path {:?}",
-                    payload.path
-                )));
-            }
-            if payloads
-                .insert(payload.path.clone(), payload.clone())
-                .is_some()
-            {
-                return Err(RusticolError::security(format!(
-                    "duplicate payload path {:?}",
-                    payload.path
-                )));
-            }
-        }
+        let payloads = validated_payload_declarations(&manifest)?;
         validate_references(&manifest, &payloads)?;
         let evaluator_payload_container =
             load_evaluator_payload_container(&root, &manifest, &payloads)?;
@@ -840,6 +1047,23 @@ impl VerifiedArtifact {
         })
     }
 
+    pub(crate) fn install_evaluator_payload_container(
+        &mut self,
+        extension: &EvaluatorPayloadContainerExtension,
+    ) -> RusticolResult<()> {
+        if self.evaluator_payload_container.is_none() {
+            self.evaluator_payload_container = Some(
+                load_evaluator_payload_container_extension(&self.root, extension, &self.payloads)?
+                    .ok_or_else(|| {
+                        RusticolError::internal(
+                            "declared evaluator payload container resolved to no reader",
+                        )
+                    })?,
+            );
+        }
+        Ok(())
+    }
+
     pub(crate) fn has_evaluator_payload(&self, path: &str) -> RusticolResult<bool> {
         if let Some(payload) = self.payloads.get(path) {
             return Ok(payload.role == PayloadRole::EvaluatorState);
@@ -849,6 +1073,648 @@ impl VerifiedArtifact {
             .as_ref()
             .is_some_and(|container| container.member(path).is_ok()))
     }
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn validated_payload_declarations(
+    manifest: &ArtifactManifest,
+) -> RusticolResult<BTreeMap<String, Payload>> {
+    let mut payloads = BTreeMap::new();
+    let mut portable_paths = BTreeSet::new();
+    for payload in &manifest.payloads {
+        validate_payload_declaration(payload)?;
+        validate_relative_path(&payload.path, "payload path")?;
+        if payload.path == ARTIFACT_MANIFEST_FILE {
+            return Err(RusticolError::security(format!(
+                "{ARTIFACT_MANIFEST_FILE} is reserved for the artifact manifest"
+            )));
+        }
+        let portable = payload.path.to_ascii_lowercase();
+        if !portable_paths.insert(portable) {
+            return Err(RusticolError::security(format!(
+                "duplicate or case-colliding payload path {:?}",
+                payload.path
+            )));
+        }
+        if payloads
+            .insert(payload.path.clone(), payload.clone())
+            .is_some()
+        {
+            return Err(RusticolError::security(format!(
+                "duplicate payload path {:?}",
+                payload.path
+            )));
+        }
+    }
+    Ok(payloads)
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn read_bounded_recurrence_bootstrap(root: &Path, path: &Path) -> RusticolResult<Option<Vec<u8>>> {
+    reject_symlink_chain(path)?;
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(RusticolError::artifact(format!(
+                "could not inspect recurrence bootstrap {}: {error}",
+                path.display()
+            )));
+        }
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(RusticolError::security(format!(
+            "recurrence bootstrap {} must be a regular non-symlink file",
+            path.display()
+        )));
+    }
+    let size = usize::try_from(metadata.len()).map_err(|_| {
+        RusticolError::artifact("recurrence bootstrap size exceeds this platform's usize domain")
+    })?;
+    if size == 0 || size > crate::engine::RECURRENCE_BOOTSTRAP_IMAGE_MAX_FILE_BYTES {
+        return Err(RusticolError::artifact(format!(
+            "recurrence bootstrap {} has {size} bytes; expected 1..={}",
+            path.display(),
+            crate::engine::RECURRENCE_BOOTSTRAP_IMAGE_MAX_FILE_BYTES
+        )));
+    }
+    #[cfg(unix)]
+    if metadata_is_executable(&metadata) {
+        return Err(RusticolError::security(format!(
+            "recurrence bootstrap {} must not be executable",
+            path.display()
+        )));
+    }
+    let canonical = path.canonicalize().map_err(|error| {
+        RusticolError::security(format!(
+            "could not resolve recurrence bootstrap {}: {error}",
+            path.display()
+        ))
+    })?;
+    if !canonical.starts_with(root) {
+        return Err(RusticolError::security(format!(
+            "recurrence bootstrap {} escapes the artifact root",
+            path.display()
+        )));
+    }
+    #[cfg(unix)]
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            .open(path)
+    };
+    #[cfg(not(unix))]
+    let file = OpenOptions::new().read(true).open(path);
+    let file = file.map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not open recurrence bootstrap {}: {error}",
+            path.display()
+        ))
+    })?;
+    let pinned = file.metadata().map_err(|error| {
+        RusticolError::security(format!(
+            "could not inspect opened recurrence bootstrap {}: {error}",
+            path.display()
+        ))
+    })?;
+    if !pinned.is_file() || pinned.len() != metadata.len() {
+        return Err(RusticolError::integrity(format!(
+            "recurrence bootstrap {} changed while being opened",
+            path.display()
+        )));
+    }
+    reject_symlink_chain(path)?;
+    let path_metadata = fs::symlink_metadata(path).map_err(|error| {
+        RusticolError::security(format!(
+            "could not re-inspect recurrence bootstrap {}: {error}",
+            path.display()
+        ))
+    })?;
+    if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
+        return Err(RusticolError::security(format!(
+            "recurrence bootstrap {} is not a regular non-symlink file",
+            path.display()
+        )));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if pinned.dev() != path_metadata.dev() || pinned.ino() != path_metadata.ino() {
+            return Err(RusticolError::security(format!(
+                "recurrence bootstrap {} was replaced while being opened",
+                path.display()
+            )));
+        }
+    }
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(size).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not allocate {size} recurrence bootstrap bytes: {error}"
+        ))
+    })?;
+    // Read at most one byte beyond the pinned size. This detects a concurrent
+    // append without allowing a growing file to bypass the allocation bound.
+    let mut bounded = file.take(metadata.len().saturating_add(1));
+    bounded.read_to_end(&mut bytes).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not read recurrence bootstrap {}: {error}",
+            path.display()
+        ))
+    })?;
+    if bytes.len() != size {
+        return Err(RusticolError::integrity(format!(
+            "recurrence bootstrap {} changed while being read",
+            path.display()
+        )));
+    }
+    Ok(Some(bytes))
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn discover_single_recurrence_bootstrap_process(root: &Path) -> RusticolResult<Option<String>> {
+    let processes = root.join("processes");
+    let metadata = match fs::symlink_metadata(&processes) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(RusticolError::artifact(format!(
+                "could not inspect recurrence process root {}: {error}",
+                processes.display()
+            )));
+        }
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(RusticolError::security(format!(
+            "recurrence process root {} must be a regular non-symlink directory",
+            processes.display()
+        )));
+    }
+
+    let entries = fs::read_dir(&processes).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not enumerate recurrence process root {}: {error}",
+            processes.display()
+        ))
+    })?;
+    let mut selected: Option<String> = None;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not enumerate recurrence process root {}: {error}",
+                processes.display()
+            ))
+        })?;
+        let Ok(process_id) = entry.file_name().into_string() else {
+            continue;
+        };
+        if validate_public_id(&process_id, "recurrence process directory").is_err() {
+            continue;
+        }
+        let file_type = entry.file_type().map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not inspect recurrence process directory {}: {error}",
+                entry.path().display()
+            ))
+        })?;
+        if file_type.is_symlink() {
+            return Err(RusticolError::security(format!(
+                "recurrence process directory {} must not be a symlink",
+                entry.path().display()
+            )));
+        }
+        if !file_type.is_dir() {
+            continue;
+        }
+        let sidecar = entry.path().join(RECURRENCE_BOOTSTRAP_FILENAME);
+        let sidecar_metadata = match fs::symlink_metadata(&sidecar) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(RusticolError::artifact(format!(
+                    "could not inspect recurrence bootstrap {}: {error}",
+                    sidecar.display()
+                )));
+            }
+        };
+        if sidecar_metadata.file_type().is_symlink() || !sidecar_metadata.is_file() {
+            return Err(RusticolError::security(format!(
+                "recurrence bootstrap {} must be a regular non-symlink file",
+                sidecar.display()
+            )));
+        }
+        if selected.replace(process_id).is_some() {
+            return Err(RusticolError::integrity(
+                "default recurrence bootstrap selection is ambiguous",
+            ));
+        }
+    }
+    Ok(selected)
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn read_canonical_manifest_artifact_id(path: &Path) -> RusticolResult<String> {
+    const PREFIX: &[u8] = b"{\"artifact_id\":\"";
+    const SUFFIX: &[u8] = b"\",";
+    let read_len = PREFIX.len() + 64 + SUFFIX.len();
+    #[cfg(unix)]
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            .open(path)
+    };
+    #[cfg(not(unix))]
+    let mut file = OpenOptions::new().read(true).open(path);
+    let mut file = file.map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not open artifact manifest {}: {error}",
+            path.display()
+        ))
+    })?;
+    if !file
+        .metadata()
+        .map_err(|error| {
+            RusticolError::security(format!(
+                "could not inspect artifact manifest {}: {error}",
+                path.display()
+            ))
+        })?
+        .is_file()
+    {
+        return Err(RusticolError::security(format!(
+            "artifact manifest {} is not a regular file",
+            path.display()
+        )));
+    }
+    let mut prefix = vec![0_u8; read_len];
+    file.read_exact(&mut prefix).map_err(|error| {
+        RusticolError::serialization(format!(
+            "artifact manifest {} has no canonical artifact-ID prefix: {error}",
+            path.display()
+        ))
+    })?;
+    let digest = &prefix[PREFIX.len()..PREFIX.len() + 64];
+    if !prefix.starts_with(PREFIX)
+        || &prefix[PREFIX.len() + 64..] != SUFFIX
+        || !digest
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    {
+        return Err(RusticolError::integrity(format!(
+            "artifact manifest {} is not canonical at its artifact-ID prefix",
+            path.display()
+        )));
+    }
+    String::from_utf8(digest.to_vec()).map_err(|error| {
+        RusticolError::internal(format!(
+            "validated ASCII artifact ID was not UTF-8: {error}"
+        ))
+    })
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn compute_payload_artifact_id(payloads: &[Payload]) -> RusticolResult<String> {
+    let mut canonical = String::new();
+    canonical
+        .try_reserve(payloads.len().checked_mul(256).unwrap_or_default())
+        .map_err(|error| {
+            RusticolError::artifact(format!(
+                "could not allocate recurrence artifact identity buffer: {error}"
+            ))
+        })?;
+    canonical.push_str("{\"kind\":\"pyamplicol-runtime-payload-identity\",\"payloads\":[");
+    let mut previous_path: Option<&str> = None;
+    let mut first = true;
+    for payload in payloads.iter().filter(|payload| {
+        matches!(
+            payload.role,
+            PayloadRole::CompiledModel
+                | PayloadRole::EvaluatorManifest
+                | PayloadRole::EvaluatorState
+                | PayloadRole::ModelParameters
+                | PayloadRole::RuntimePhysics
+        )
+    }) {
+        if previous_path.is_some_and(|previous| previous >= payload.path.as_str()) {
+            return Err(RusticolError::integrity(
+                "recurrence bootstrap payload inventory must be strictly path-sorted",
+            ));
+        }
+        previous_path = Some(&payload.path);
+        if !first {
+            canonical.push(',');
+        }
+        first = false;
+        canonical.push_str("{\"executable\":");
+        canonical.push_str(if payload.executable { "true" } else { "false" });
+        canonical.push_str(",\"media_type\":");
+        write_python_json_string(&payload.media_type, &mut canonical);
+        canonical.push_str(",\"path\":");
+        write_python_json_string(&payload.path, &mut canonical);
+        if let Some(process_id) = &payload.process_id {
+            canonical.push_str(",\"process_id\":");
+            write_python_json_string(process_id, &mut canonical);
+        }
+        canonical.push_str(",\"role\":");
+        write_python_json_string(payload_role_name(payload.role), &mut canonical);
+        canonical.push_str(",\"sha256\":");
+        write_python_json_string(&payload.sha256, &mut canonical);
+        canonical.push_str(",\"size_bytes\":");
+        let _ = write!(canonical, "{}", payload.size_bytes);
+        if let Some(target) = &payload.target {
+            canonical.push_str(",\"target\":{\"cpu_features\":[");
+            for (feature_index, feature) in target.cpu_features.iter().enumerate() {
+                if feature_index != 0 {
+                    canonical.push(',');
+                }
+                write_python_json_string(feature, &mut canonical);
+            }
+            canonical.push_str("],\"triple\":");
+            write_python_json_string(&target.triple, &mut canonical);
+            canonical.push('}');
+        }
+        canonical.push('}');
+    }
+    canonical.push_str("],\"schema_version\":1}\n");
+    Ok(format!("{:x}", Sha256::digest(canonical.as_bytes())))
+}
+
+fn payload_role_name(role: PayloadRole) -> &'static str {
+    match role {
+        PayloadRole::ConfigurationRequested => "configuration-requested",
+        PayloadRole::ConfigurationEffective => "configuration-effective",
+        PayloadRole::CompiledModel => "compiled-model",
+        PayloadRole::RuntimePhysics => "runtime-physics",
+        PayloadRole::EvaluatorManifest => "evaluator-manifest",
+        PayloadRole::EvaluatorState => "evaluator-state",
+        PayloadRole::ModelParameters => "model-parameters",
+        PayloadRole::ValidationMomenta => "validation-momenta",
+        PayloadRole::StructuralSourceProof => "structural-source-proof",
+        PayloadRole::ApiSource => "api-source",
+        PayloadRole::ApiBuildFile => "api-build-file",
+        PayloadRole::SdkMetadata => "sdk-metadata",
+    }
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn validate_recurrence_bootstrap_metadata(
+    producer: &Producer,
+    runtime: &ArtifactRuntime,
+) -> RusticolResult<()> {
+    if producer.distribution != "pyamplicol"
+        || runtime.engine != "rusticol"
+        || runtime.engine_version != producer.version
+        || !compatible_distribution_version(&producer.version)
+    {
+        return Err(RusticolError::compatibility(format!(
+            "recurrence bootstrap producer/runtime {}/{}/{} is incompatible with Rusticol {}",
+            producer.distribution,
+            producer.version,
+            runtime.engine_version,
+            rusticol_package_version()
+        )));
+    }
+    let versions = &producer.versions;
+    for (name, found, expected) in [
+        ("python API", versions.python_api, PYTHON_API_VERSION),
+        ("TOML", versions.toml, TOML_SCHEMA_VERSION),
+        (
+            "compiled model",
+            versions.compiled_model,
+            COMPILED_MODEL_SCHEMA_VERSION,
+        ),
+        (
+            "process artifact",
+            versions.process_artifact,
+            PROCESS_ARTIFACT_SCHEMA_VERSION,
+        ),
+        (
+            "runtime physics",
+            versions.runtime_physics,
+            RUNTIME_PHYSICS_SCHEMA_VERSION,
+        ),
+        ("C ABI", versions.c_abi, C_ABI_VERSION),
+    ] {
+        if found != expected {
+            return Err(RusticolError::compatibility(format!(
+                "recurrence bootstrap {name} version {found} is incompatible with {expected}"
+            )));
+        }
+    }
+    if let Some(revision) = &producer.git_revision
+        && (revision.len() != 40
+            || !revision
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()))
+    {
+        return Err(RusticolError::artifact(
+            "recurrence bootstrap producer git revision is not canonical",
+        ));
+    }
+    if let Some(identity) = &producer.native_build_inputs_sha256 {
+        validate_sha256(identity, "recurrence bootstrap native build identity")?;
+    }
+    validate_relative_path(
+        &runtime.evaluator_manifest_path,
+        "recurrence bootstrap evaluator manifest path",
+    )?;
+    if let Some(path) = &runtime.api_bundle_path {
+        validate_relative_path(path, "recurrence bootstrap API bundle path")?;
+    }
+    let capabilities = validate_runtime_capabilities(
+        &runtime.required_runtime_capabilities,
+        "recurrence bootstrap runtime capabilities",
+    )?;
+    validate_target(&producer.target, "recurrence bootstrap producer")?;
+    validate_portable_runtime_capabilities(&producer.target, &capabilities)
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn validate_recurrence_bootstrap_process(process: &ArtifactProcess) -> RusticolResult<()> {
+    validate_public_id(&process.id, "recurrence bootstrap process id")?;
+    if process.expression.is_empty()
+        || process.external_pdgs.len() < 3
+        || !matches!(process.color_accuracy.as_str(), "lc" | "nlc" | "full")
+    {
+        return Err(RusticolError::artifact(format!(
+            "recurrence bootstrap process {:?} has invalid public metadata",
+            process.id
+        )));
+    }
+    let expected_physics = format!("processes/{}/physics.json", process.id);
+    if process.physics_path != expected_physics {
+        return Err(RusticolError::security(format!(
+            "recurrence bootstrap process {:?} physics path must be {expected_physics:?}",
+            process.id
+        )));
+    }
+    validate_runtime_capabilities(
+        &process.required_runtime_capabilities,
+        "recurrence bootstrap process capabilities",
+    )?;
+    if process.aliases.is_empty() {
+        return Ok(());
+    }
+    let initial_count = parse_process_expression(&process.expression)
+        .map(|tokens| tokens.initial.len())
+        .ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "recurrence bootstrap process expression {:?} is invalid",
+                process.expression
+            ))
+        })?;
+    let mut aliases = BTreeSet::new();
+    for alias in &process.aliases {
+        validate_public_id(&alias.id, "recurrence bootstrap alias id")?;
+        if !aliases.insert(alias.id.as_str())
+            || alias.expression.is_empty()
+            || alias.external_pdgs.len() != process.external_pdgs.len()
+        {
+            return Err(RusticolError::artifact(format!(
+                "recurrence bootstrap alias {:?} is invalid",
+                alias.id
+            )));
+        }
+        validate_permutation(
+            &alias.external_permutation,
+            process.external_pdgs.len(),
+            &alias.id,
+        )?;
+        if !permutation_preserves_process_sides(&alias.external_permutation, initial_count) {
+            return Err(RusticolError::artifact(format!(
+                "recurrence bootstrap alias {:?} crosses process sides",
+                alias.id
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn validate_recurrence_bootstrap_source_payload(
+    payloads: &BTreeMap<String, Payload>,
+    path: &str,
+    sha256: &str,
+    role: PayloadRole,
+    process_id: &str,
+) -> RusticolResult<()> {
+    let payload = payloads.get(path).ok_or_else(|| {
+        RusticolError::security(format!(
+            "recurrence bootstrap source {path:?} is not a declared payload"
+        ))
+    })?;
+    if payload.role != role
+        || payload.media_type != "application/json"
+        || payload.process_id.as_deref() != Some(process_id)
+        || payload.executable
+        || payload.sha256 != sha256
+    {
+        return Err(RusticolError::integrity(format!(
+            "recurrence bootstrap source {path:?} disagrees with its payload declaration"
+        )));
+    }
+    Ok(())
+}
+
+fn recurrence_bootstrap_manifest(
+    artifact_id: String,
+    producer: Producer,
+    runtime: ArtifactRuntime,
+    process: ArtifactProcess,
+    payloads: Vec<Payload>,
+) -> ArtifactManifest {
+    let process_id = process.id.clone();
+    ArtifactManifest {
+        schema_version: PROCESS_ARTIFACT_SCHEMA_VERSION,
+        kind: ArtifactKind::PyamplicolProcess,
+        artifact_id,
+        created_utc: "1970-01-01T00:00:00Z".to_string(),
+        producer,
+        model: ArtifactModel {
+            name: "recurrence-bootstrap".to_string(),
+            source_kind: ModelSourceKind::CompiledModel,
+            content_sha256: "0".repeat(64),
+            compiled_schema_version: COMPILED_MODEL_SCHEMA_VERSION,
+            restriction: None,
+        },
+        configuration: ArtifactConfiguration {
+            toml_schema_version: TOML_SCHEMA_VERSION,
+            requested_path: "config/requested.toml".to_string(),
+            effective_path: "config/effective.toml".to_string(),
+            adjustments: Vec::new(),
+        },
+        processes: vec![process],
+        default_process_id: Some(process_id),
+        runtime,
+        payloads,
+        dependencies: Vec::new(),
+        extensions: BTreeMap::new(),
+    }
+}
+
+/// Construct the same narrowly-scoped artifact view while generation still
+/// owns the private staging directory.  This is used only to lower the ready
+/// recipe through the authoritative PACBIN/binding loaders; the staging path
+/// itself is never serialized.
+#[cfg(feature = "python-generation-bridge")]
+pub(crate) fn open_staged_recurrence_bootstrap_artifact(
+    root: PathBuf,
+    producer: Producer,
+    runtime: ArtifactRuntime,
+    process: ArtifactProcess,
+    payloads: Vec<Payload>,
+    evaluator_payload_container: EvaluatorPayloadContainerExtension,
+) -> RusticolResult<VerifiedArtifact> {
+    let root = fs::canonicalize(&root).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not resolve recurrence bootstrap staging root {}: {error}",
+            root.display()
+        ))
+    })?;
+    if !root.is_dir() {
+        return Err(RusticolError::artifact(format!(
+            "recurrence bootstrap staging root {} is not a directory",
+            root.display()
+        )));
+    }
+    validate_recurrence_bootstrap_metadata(&producer, &runtime)?;
+    validate_recurrence_bootstrap_process(&process)?;
+    let manifest =
+        recurrence_bootstrap_manifest("0".repeat(64), producer, runtime, process, payloads);
+    let payloads = validated_payload_declarations(&manifest)?;
+    for payload in payloads.values() {
+        if let Some(target) = &payload.target {
+            validate_payload_target(&manifest.producer.target, target, &payload.path)?;
+            validate_target(target, &format!("payload {}", payload.path))?;
+        }
+    }
+    validate_evaluator_payload_container_declaration(&evaluator_payload_container, &payloads)?;
+    Ok(VerifiedArtifact {
+        manifest_path: root.join(ARTIFACT_MANIFEST_FILE),
+        root,
+        manifest,
+        payloads: Arc::new(payloads),
+        // Process-ready lowering reads only loose plan/binding/color payloads.
+        evaluator_payload_container: None,
+        #[cfg(feature = "f64-compiled")]
+        native_library_cache: Arc::new(Mutex::new(BTreeMap::new())),
+    })
 }
 
 fn load_evaluator_payload_container(
@@ -868,34 +1734,15 @@ fn load_evaluator_payload_container(
                 "artifact extension {EVALUATOR_PAYLOAD_CONTAINER_EXTENSION:?} is invalid: {error}"
             ))
         })?;
-    if extension.kind != EVALUATOR_PAYLOAD_CONTAINER_KIND
-        || extension.schema_version != 1
-        || extension.storage_abi != EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI
-    {
-        return Err(RusticolError::compatibility(format!(
-            "unsupported evaluator payload container kind/version/ABI: {:?}/{}/{}",
-            extension.kind, extension.schema_version, extension.storage_abi
-        )));
-    }
-    validate_relative_path(&extension.path, "evaluator payload container path")?;
-    validate_sha256(
-        &extension.index_sha256,
-        "evaluator payload container index_sha256",
-    )?;
-    let payload = payloads.get(&extension.path).ok_or_else(|| {
-        RusticolError::security(format!(
-            "evaluator payload container {:?} is not a declared payload",
-            extension.path
-        ))
-    })?;
-    if payload.role != PayloadRole::EvaluatorState
-        || payload.media_type != "application/octet-stream"
-        || payload.process_id.is_some()
-    {
-        return Err(RusticolError::artifact(
-            "evaluator payload container must be a root evaluator-state octet-stream payload",
-        ));
-    }
+    load_evaluator_payload_container_extension(root, &extension, payloads)
+}
+
+fn load_evaluator_payload_container_extension(
+    root: &Path,
+    extension: &EvaluatorPayloadContainerExtension,
+    payloads: &BTreeMap<String, Payload>,
+) -> RusticolResult<Option<Arc<PacbinReader>>> {
+    let payload = validate_evaluator_payload_container_declaration(extension, payloads)?;
     let expected_payload_sha = parse_sha256(
         &payload.sha256,
         "evaluator payload container payload SHA-256",
@@ -932,7 +1779,9 @@ fn load_evaluator_payload_container(
             || member.logical_path() == extension.path
             || !matches!(
                 member.kind(),
-                PacbinMemberKind::SymjitApplication | PacbinMemberKind::SymbolicaExactState
+                PacbinMemberKind::SymjitApplication
+                    | PacbinMemberKind::SymbolicaExactState
+                    | PacbinMemberKind::ColorContraction
             )
         {
             return Err(RusticolError::integrity(format!(
@@ -942,6 +1791,47 @@ fn load_evaluator_payload_container(
         }
     }
     Ok(Some(Arc::new(reader)))
+}
+
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+fn validate_evaluator_payload_container_declaration<'a>(
+    extension: &EvaluatorPayloadContainerExtension,
+    payloads: &'a BTreeMap<String, Payload>,
+) -> RusticolResult<&'a Payload> {
+    if extension.kind != EVALUATOR_PAYLOAD_CONTAINER_KIND
+        || extension.schema_version != 1
+        || extension.storage_abi != EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI
+    {
+        return Err(RusticolError::compatibility(format!(
+            "unsupported evaluator payload container kind/version/ABI: {:?}/{}/{}",
+            extension.kind, extension.schema_version, extension.storage_abi
+        )));
+    }
+    validate_relative_path(&extension.path, "evaluator payload container path")?;
+    validate_sha256(
+        &extension.index_sha256,
+        "evaluator payload container index_sha256",
+    )?;
+    let payload = payloads.get(&extension.path).ok_or_else(|| {
+        RusticolError::security(format!(
+            "evaluator payload container {:?} is not a declared payload",
+            extension.path
+        ))
+    })?;
+    if payload.role != PayloadRole::EvaluatorState
+        || payload.media_type != "application/octet-stream"
+        || payload.process_id.is_some()
+    {
+        return Err(RusticolError::artifact(
+            "evaluator payload container must be a root evaluator-state octet-stream payload",
+        ));
+    }
+    parse_sha256(
+        &payload.sha256,
+        "evaluator payload container payload SHA-256",
+    )?;
+    Ok(payload)
 }
 
 fn confined_evaluator_path(value: &str) -> RusticolResult<&Path> {
@@ -1036,10 +1926,13 @@ impl ArtifactManifest {
             .processes
             .iter()
             .flat_map(|process| {
-                process.aliases.iter().filter_map(|alias| {
-                    (normalize_process_expression(&alias.expression) == requested_expression)
-                        .then(|| alias_selection(process, alias))
-                })
+                process
+                    .aliases
+                    .iter()
+                    .filter(|alias| {
+                        normalize_process_expression(&alias.expression) == requested_expression
+                    })
+                    .map(|alias| alias_selection(process, alias))
             })
             .collect::<Vec<_>>();
         match alias_expression_matches.len() {
@@ -1370,7 +2263,6 @@ fn python_number(number: &serde_json::Number) -> String {
     format!("{mantissa}e{sign}{digits:0>2}")
 }
 
-#[cfg(test)]
 fn write_python_json_string(value: &str, output: &mut String) {
     output.push('"');
     for character in value.chars() {
@@ -1904,6 +2796,8 @@ fn metadata_is_executable(metadata: &fs::Metadata) -> bool {
     }
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
 fn read_declared_payload(root: &Path, payload: &Payload) -> RusticolResult<Vec<u8>> {
     validate_payload_declaration(payload)?;
     let mut file = open_checked_payload(root, payload)?;
@@ -1995,6 +2889,8 @@ fn validate_payload_declaration(payload: &Payload) -> RusticolResult<()> {
     Ok(())
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
 fn open_checked_payload(root: &Path, payload: &Payload) -> RusticolResult<File> {
     let path = root.join(&payload.path);
     reject_symlink_chain(&path)?;
@@ -2100,6 +2996,8 @@ fn validate_relative_path(value: &str, description: &str) -> RusticolResult<()> 
     Ok(())
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
 fn reject_symlink_chain(path: &Path) -> RusticolResult<()> {
     let mut ancestors = path.ancestors().collect::<Vec<_>>();
     ancestors.reverse();
@@ -2294,6 +3192,8 @@ fn validate_runtime_capabilities(
         RuntimeCapability::RecurrenceRuntimeComplexF64V1,
         RuntimeCapability::RecurrenceLcColorV1,
         RuntimeCapability::RecurrenceContractedColorV1,
+        RuntimeCapability::RecurrenceHelicitySelectorCompanionV2,
+        RuntimeCapability::SymmetricGroupFftColorContractionV1,
         RuntimeCapability::OnTheFlyRuntimeComplexF64V1,
         RuntimeCapability::OnTheFlyContractedColorV1,
         RuntimeCapability::OnTheFlyLcColorV1,

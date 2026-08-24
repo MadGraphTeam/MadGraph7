@@ -126,7 +126,7 @@ fn native_compiled_direct_application_manifest_rejects_inconsistent_stack() {
     assert!(error.to_string().contains("logical stack metadata"));
 }
 
-fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
+pub(super) fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
     let contracted = color_accuracy != "lc";
     let color_components = if contracted {
         vec![crate::ColorComponent::ContractedColor(
@@ -250,6 +250,120 @@ fn test_physics_runtime(color_accuracy: &str) -> PhysicsRuntime {
         extensions: BTreeMap::new(),
     })
     .unwrap()
+}
+
+#[test]
+fn total_selector_canonicalization_elides_only_exact_authenticated_axes() {
+    let physics = test_physics_runtime("lc");
+    let all_helicities = physics
+        .manifest
+        .helicities
+        .iter()
+        .map(|helicity| helicity.id.clone())
+        .collect::<BTreeSet<_>>();
+    let all_colors = physics
+        .manifest
+        .color_components
+        .iter()
+        .map(|color| color.id().to_string())
+        .collect::<BTreeSet<_>>();
+    assert!(
+        physics
+            .canonical_total_helicity_selector(Some(&all_helicities))
+            .is_none()
+    );
+    assert!(
+        physics
+            .canonical_total_color_selector(Some(&all_colors))
+            .is_none()
+    );
+
+    let helicity_subset = BTreeSet::from(["hel:+-".to_string()]);
+    let color_subset = BTreeSet::from(["flow:0".to_string()]);
+    assert_eq!(
+        physics.canonical_total_helicity_selector(Some(&helicity_subset)),
+        Some(&helicity_subset)
+    );
+    assert_eq!(
+        physics.canonical_total_color_selector(Some(&color_subset)),
+        Some(&color_subset)
+    );
+
+    let same_size_unknown_helicities = BTreeSet::from([
+        "hel:+-".to_string(),
+        "hel:-+".to_string(),
+        "hel:unknown".to_string(),
+    ]);
+    let same_size_unknown_colors =
+        BTreeSet::from(["flow:0".to_string(), "flow:unknown".to_string()]);
+    let retained_helicities =
+        physics.canonical_total_helicity_selector(Some(&same_size_unknown_helicities));
+    let retained_colors = physics.canonical_total_color_selector(Some(&same_size_unknown_colors));
+    assert_eq!(retained_helicities, Some(&same_size_unknown_helicities));
+    assert_eq!(retained_colors, Some(&same_size_unknown_colors));
+    assert_eq!(
+        physics
+            .selected_helicity_indices(retained_helicities)
+            .unwrap_err()
+            .kind(),
+        crate::RusticolErrorKind::Selector
+    );
+    assert_eq!(
+        physics
+            .selected_color_indices(retained_colors)
+            .unwrap_err()
+            .kind(),
+        crate::RusticolErrorKind::Selector
+    );
+
+    let mut selected_manifest = test_physics_runtime("full").manifest;
+    selected_manifest.helicities.truncate(1);
+    selected_manifest.reduction.groups[0]
+        .physical_helicity_ids
+        .truncate(1);
+    selected_manifest.coverage.helicities = "selected".to_string();
+    let selected_physics = PhysicsRuntime::new(selected_manifest).unwrap();
+    let sole_helicity = BTreeSet::from([selected_physics.manifest.helicities[0].id.clone()]);
+    assert!(
+        selected_physics
+            .canonical_total_helicity_selector(Some(&sole_helicity))
+            .is_none()
+    );
+}
+
+#[test]
+fn compiled_symmetric_group_rejects_exhaustive_runtime_selector_before_canonicalization() {
+    let physics = test_physics_runtime("full");
+    let all_helicities = physics
+        .manifest
+        .helicities
+        .iter()
+        .map(|helicity| helicity.id.clone())
+        .collect::<BTreeSet<_>>();
+    let plan = crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+        vec![0; 13],
+        13,
+    );
+    let contraction = ColorContractionRuntime {
+        group_count: 0,
+        entries: Vec::new(),
+        repeated_block: None,
+        symmetric_group: Some(CompiledSymmetricGroupColorContraction {
+            plan,
+            ordered_group_indices: Vec::new(),
+            workspace: None,
+        }),
+        group_scratch_f64: Vec::new(),
+    };
+    let mut runtime = empty_generic_runtime();
+    runtime.physics = Some(Arc::new(physics));
+    runtime.amplitude_stage = Some(test_amplitude_runtime(Vec::new(), Some(contraction)));
+    let batch = F64MomentumBatchView::from_contiguous_prevalidated(&[], 1, 0, None).unwrap();
+    let error = runtime
+        .run_f64_selected_into_unprofiled(batch, Some(&all_helicities), None, &mut [0.0])
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+    assert!(error.message().contains("runtime selectors"));
 }
 
 fn test_external_particle(
@@ -1109,6 +1223,7 @@ fn test_amplitude_runtime(
         materialized_helicity_direct_total_plans: Vec::new(),
         materialized_helicity_direct_total_plan_capacity: 0,
         materialized_helicity_direct_total_next_replacement: 0,
+        materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
         evaluator_output_order: None,
         evaluator: Some(empty_evaluator_group()),
     }
@@ -1944,6 +2059,105 @@ fn plane_native_nlc_and_full_resolved_match_row_major_odd_tail() {
 }
 
 #[test]
+fn materialized_contracted_plan_keeps_only_selected_helicity_entries_and_caches_domain() {
+    let mut physics_manifest = test_physics_runtime("full").manifest.clone();
+    physics_manifest.reduction.groups = vec![
+        crate::ReductionGroup {
+            id: "group:7".to_string(),
+            representative_helicity_id: "hel:+-".to_string(),
+            physical_helicity_ids: vec!["hel:+-".to_string()],
+            representative_color_id: "contracted".to_string(),
+            physical_color_ids: vec!["contracted".to_string()],
+        },
+        crate::ReductionGroup {
+            id: "group:8".to_string(),
+            representative_helicity_id: "hel:-+".to_string(),
+            physical_helicity_ids: vec!["hel:-+".to_string()],
+            representative_color_id: "contracted".to_string(),
+            physical_color_ids: vec!["contracted".to_string()],
+        },
+    ];
+    let physics = PhysicsRuntime::new(physics_manifest).unwrap();
+    let groups = vec![
+        RawSumGroup {
+            id: 7,
+            indices: vec![0],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        },
+        RawSumGroup {
+            id: 8,
+            indices: vec![1],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        },
+    ];
+    let contraction = ColorContractionRuntime::new(
+        &groups,
+        vec![
+            ColorContractionEntry {
+                left_group_index: 0,
+                right_group_index: 0,
+                weight_re: 2.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+            },
+            ColorContractionEntry {
+                left_group_index: 1,
+                right_group_index: 1,
+                weight_re: 2.0,
+                weight_im: 0.0,
+                symmetry_factor: 1.0,
+            },
+        ],
+    );
+    let mut amplitude = test_amplitude_runtime(
+        vec![c64(3.0, 0.0), c64(f64::NAN, f64::NAN)],
+        Some(contraction),
+    );
+    amplitude.output_length = 2;
+    amplitude.raw_sum_weights = vec![1.0; 2];
+    amplitude.raw_sum_all_sector_weights = vec![1.0; 2];
+    amplitude.raw_sum_color_sector_ids = vec![None; 2];
+    amplitude.raw_sum_groups = groups;
+    let root_factors = [Some(c64(1.0, 0.0)), None];
+
+    let plan_index = amplitude
+        .bind_default_materialized_helicity_direct_total_plan(4, &physics, 0, &root_factors, None)
+        .unwrap();
+    let MaterializedHelicityDirectTotalReduction::Contracted { entries } =
+        &amplitude.materialized_helicity_direct_total_plans[plan_index].reduction
+    else {
+        panic!("FullColour materialized plan must use contracted reduction");
+    };
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].left_group_index, 0);
+    assert_eq!(entries[0].right_group_index, 0);
+
+    assert_eq!(
+        amplitude
+            .bind_default_materialized_helicity_direct_total_plan(
+                4,
+                &physics,
+                0,
+                &root_factors,
+                None,
+            )
+            .unwrap(),
+        plan_index
+    );
+    assert_eq!(amplitude.materialized_helicity_direct_total_plans.len(), 1);
+    assert_eq!(
+        amplitude.materialized_helicity_direct_default_plan_by_selector_domain[4]
+            .expect("selector-domain plan cache")
+            .plan_index,
+        plan_index
+    );
+}
+
+#[test]
 fn plane_native_materialized_helicity_resolved_and_add_into_match_lc_odd_tail() {
     const POINT_COUNT: usize = 129;
     const OUTPUT_COUNT: usize = 2;
@@ -2491,8 +2705,225 @@ fn reduction_test_amplitude(
         materialized_helicity_direct_total_plans: Vec::new(),
         materialized_helicity_direct_total_plan_capacity: 0,
         materialized_helicity_direct_total_next_replacement: 0,
+        materialized_helicity_direct_default_plan_by_selector_domain: Vec::new(),
         evaluator_output_order: None,
         evaluator: Some(empty_evaluator_group()),
+    }
+}
+
+#[test]
+fn compiled_symmetric_group_reducer_binds_group_ids_and_multi_root_odd_tail() {
+    const POINT_COUNT: usize = 127;
+    const PREPARED_CAPACITY: usize = 136;
+    const GROUP_COUNT: usize = 13;
+    const OUTPUT_COUNT: usize = 15;
+    let destination_ids = vec![7, 0, 12, 3, 9, 1, 11, 4, 10, 2, 8, 5, 6];
+    let vector_order = [12, 4, 1, 9, 0, 7, 3, 11, 2, 10, 5, 8, 6];
+    let mut sector_by_id = [0usize; GROUP_COUNT];
+    for (sector, destination) in destination_ids.iter().copied().enumerate() {
+        sector_by_id[destination as usize] = sector;
+    }
+    let mut next_output = 0usize;
+    let groups = vector_order
+        .into_iter()
+        .map(|id| {
+            let root_count = if id == 7 { 3 } else { 1 };
+            let indices = (next_output..next_output + root_count).collect::<Vec<_>>();
+            next_output += root_count;
+            RawSumGroup {
+                id,
+                indices,
+                weight: 1.0,
+                all_sector_weight: 1.0,
+                sector_ids: vec![sector_by_id[id as usize] as i64],
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(next_output, OUTPUT_COUNT);
+    let outputs = (0..POINT_COUNT * OUTPUT_COUNT)
+        .map(|index| {
+            c64(
+                (index * 29 % 211) as f64 * 0.03125 - 2.5,
+                (index * 43 % 197) as f64 * -0.015625 + 1.25,
+            )
+        })
+        .collect::<Vec<_>>();
+    let manifest = GenericColorContractionManifest {
+        supported: true,
+        reason: None,
+        group_count: GROUP_COUNT,
+        includes_color_factor: true,
+        entries: Vec::new(),
+        repeated_block: None,
+    };
+
+    let duplicated_destination =
+        crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+            vec![0; GROUP_COUNT],
+            GROUP_COUNT as u32,
+        );
+    let duplicate_error = match build_compiled_symmetric_group_color_contraction_runtime(
+        Some(&manifest),
+        &groups,
+        duplicated_destination,
+    ) {
+        Ok(_) => panic!("duplicate coherent destination unexpectedly bound"),
+        Err(error) => error,
+    };
+    assert_eq!(duplicate_error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(duplicate_error.message().contains("symmetric-group FFT"));
+
+    let sparse_groups = groups
+        .iter()
+        .map(|group| RawSumGroup {
+            id: group.id,
+            indices: group.indices.clone(),
+            weight: group.weight,
+            all_sector_weight: group.all_sector_weight,
+            sector_ids: group
+                .sector_ids
+                .iter()
+                .map(|sector| 2 * sector + 1)
+                .collect(),
+        })
+        .collect::<Vec<_>>();
+    let sparse_plan =
+        crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+            destination_ids.clone(),
+            GROUP_COUNT as u32,
+        )
+        .with_sparse_sector_domain_for_runtime_test();
+    let sparse_contraction = build_compiled_symmetric_group_color_contraction_runtime(
+        Some(&manifest),
+        &sparse_groups,
+        sparse_plan,
+    )
+    .expect("inactive physical sectors must not block a compiled FFT reducer");
+    assert_eq!(
+        sparse_contraction
+            .symmetric_group
+            .as_ref()
+            .unwrap()
+            .plan
+            .active_sector_count(),
+        GROUP_COUNT,
+    );
+
+    let plan = crate::recurrence::RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+        destination_ids.clone(),
+        GROUP_COUNT as u32,
+    );
+    let reducer = match plan.runtime_reducer().unwrap() {
+        crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(reducer) => {
+            reducer
+        }
+        _ => panic!("expected symmetric-group reducer"),
+    };
+    let mut expected_workspace = reducer.workspace(PREPARED_CAPACITY).unwrap();
+    reducer
+        .reduce_lanes(
+            &mut expected_workspace,
+            POINT_COUNT,
+            |local_group, point| {
+                let group_id = i64::from(destination_ids[local_group]);
+                let group = groups.iter().find(|group| group.id == group_id).unwrap();
+                let value = group.indices.iter().fold(c64(0.0, 0.0), |total, index| {
+                    total + outputs[point * OUTPUT_COUNT + *index]
+                });
+                Ok((value.re, value.im))
+            },
+        )
+        .unwrap();
+    let expected = expected_workspace.reduced(POINT_COUNT).unwrap().to_vec();
+
+    let contraction =
+        build_compiled_symmetric_group_color_contraction_runtime(Some(&manifest), &groups, plan)
+            .unwrap();
+    assert_eq!(
+        contraction
+            .symmetric_group
+            .as_ref()
+            .unwrap()
+            .ordered_group_indices,
+        destination_ids
+            .iter()
+            .map(|destination| {
+                groups
+                    .iter()
+                    .position(|group| group.id == i64::from(*destination))
+                    .unwrap()
+            })
+            .collect::<Vec<_>>(),
+    );
+    let mut amplitude = reduction_test_amplitude(OUTPUT_COUNT, outputs.clone(), groups, Vec::new());
+    amplitude.color_contraction = Some(contraction);
+    amplitude
+        .prepare_compiled_symmetric_group_workspace(PREPARED_CAPACITY)
+        .unwrap();
+    assert_eq!(
+        amplitude
+            .color_contraction
+            .as_ref()
+            .and_then(|contraction| contraction.symmetric_group.as_ref())
+            .and_then(|symmetric_group| symmetric_group.workspace.as_ref())
+            .unwrap()
+            .lane_capacity(),
+        PREPARED_CAPACITY,
+    );
+
+    let actual = plane_native_totals(&mut amplitude, &outputs, POINT_COUNT, None);
+    for (actual, expected) in actual.iter().zip(expected.iter()) {
+        assert!(
+            (actual - expected).abs() <= 1.0e-11 * expected.abs().max(1.0),
+            "compiled symmetric-group reduction {actual} differs from reference {expected}",
+        );
+    }
+
+    #[cfg(not(feature = "f64-symjit"))]
+    {
+        let mut workspace = crate::direct_arena::DirectArenaWorkspace::new(
+            0,
+            OUTPUT_COUNT as u32,
+            POINT_COUNT as u32,
+        )
+        .unwrap();
+        workspace.begin_tile(POINT_COUNT as u32).unwrap();
+        let stride = workspace.point_stride() as usize;
+        {
+            let (_, _, values_re, values_im) = workspace.split_slices_mut();
+            for point in 0..POINT_COUNT {
+                for component in 0..OUTPUT_COUNT {
+                    let value = outputs[point * OUTPUT_COUNT + component];
+                    values_re[component * stride + point] = value.re;
+                    values_im[component * stride + point] = value.im;
+                }
+            }
+        }
+        let (values_re, values_im) = workspace.amplitude_slices();
+        let planes = crate::direct_arena::DirectAmplitudePlanes::new(
+            values_re,
+            values_im,
+            stride as u32,
+            POINT_COUNT as u32,
+        )
+        .unwrap();
+        let mut totals = vec![0.0; POINT_COUNT];
+        amplitude
+            .reduce_planes_f64_into_selected_slice(planes, &mut totals, None)
+            .unwrap();
+        let (result, allocation_count, allocated_bytes) =
+            super::evaluator::native_direct::tests::count_allocations(|| {
+                amplitude.reduce_planes_f64_into_selected_slice(planes, &mut totals, None)
+            });
+        result.unwrap();
+        assert_eq!(
+            allocation_count, 0,
+            "warmed symmetric-group reduction allocated"
+        );
+        assert_eq!(
+            allocated_bytes, 0,
+            "warmed symmetric-group reduction allocated bytes",
+        );
     }
 }
 
@@ -3633,7 +4064,7 @@ fn numeric_reduction_binding_preserves_manifest_order_and_weights() {
     }
 }
 
-fn empty_generic_runtime() -> ExecutionRuntime {
+pub(super) fn empty_generic_runtime() -> ExecutionRuntime {
     ExecutionRuntime {
         process: "a b > c".to_string(),
         key: "p0".to_string(),
@@ -4647,7 +5078,7 @@ fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
 fn on_the_fly_warm_up_rejects_more_than_one_point() {
     let mut runtime = scalar_on_the_fly_native_runtime();
     let error = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&vec![0.0; 2 * 2 * 4], None, None, None)
+        .warm_up_on_the_fly_f64_with_selectors(&[0.0; 2 * 2 * 4], None, None, None)
         .unwrap_err();
     assert!(error.to_string().contains("exactly one point"));
 }
@@ -5008,6 +5439,37 @@ fn native_f64_into_matches_allocating_wrapper_and_validates_output() {
         error
             .to_string()
             .contains("output has length 5, expected 4")
+    );
+}
+
+#[test]
+fn native_f64_totals_bypass_point_selector_scratch() {
+    let point = [
+        10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, -10.0, 20.0, 0.0, 0.0, 0.0,
+    ];
+    let momenta = point.repeat(4);
+    let mut runtime = zero_native_runtime();
+    runtime
+        .point_selector_scratch
+        .planner
+        .build(4, Some(&[0, 1, 0, 1]), None, 3, 1)
+        .expect("seed point-selector planner");
+    let retained_partitions = runtime.point_selector_scratch.planner.partitions().to_vec();
+    assert!(!retained_partitions.is_empty());
+
+    let allocated = runtime
+        .evaluate_f64(&momenta, 4)
+        .expect("evaluate owned totals without selectors");
+    let mut output = [f64::NAN; 4];
+    runtime
+        .evaluate_f64_into(&momenta, 4, &mut output)
+        .expect("evaluate borrowed totals without selectors");
+
+    assert_eq!(output.as_slice(), allocated);
+    assert_eq!(
+        runtime.point_selector_scratch.planner.partitions(),
+        retained_partitions,
+        "no-selector totals must not clear or rebuild selector planner state"
     );
 }
 

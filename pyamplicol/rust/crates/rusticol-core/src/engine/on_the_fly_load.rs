@@ -12,6 +12,7 @@ use super::eager_manifest::PreparedKernelPackManifest;
 use super::on_the_fly_lane::OnTheFlyNativeRuntime;
 use super::on_the_fly_manifest::{
     ON_THE_FLY_PROCESS_SEED_MEMBER, OnTheFlyColorCoverage, OnTheFlyExecutionManifest,
+    OnTheFlyRuntimeContainer,
 };
 use super::on_the_fly_public_metadata::{
     OnTheFlyPublicMetadataV1, parse_on_the_fly_public_metadata,
@@ -19,11 +20,20 @@ use super::on_the_fly_public_metadata::{
 use super::on_the_fly_selectors::{
     OnTheFlyCompactSelectorAdapterV1, OnTheFlyLcColorCoverageV1, OnTheFlyLcSelectorPolicyV1,
 };
-use super::recurrence_backend::NativeRecurrencePreparedExecutorPool;
-use super::recurrence_lane::PreparedParameterProjectionEntry;
+use super::recurrence_backend::{
+    NativeRecurrencePreparedExecutorPool, OnTheFlySourceDomainBinding,
+};
+use super::recurrence_bootstrap::{
+    RecurrenceReadyCompanionV1, RecurrenceReadyExecutionV1, RecurrenceReadyPlanV1,
+};
+use super::recurrence_lane::{
+    PreparedParameterProjectionEntry, RecurrencePersistedHelicitySelectorRuntime,
+};
 use super::recurrence_load::{
-    build_on_the_fly_source_domains, decode_sha256, load_color_contraction_reference,
-    runtime_parameter_slots, validate_recurrence_prepared_pack_outer_target,
+    LoadedRecurrencePlan, build_direct_source_domains, build_on_the_fly_source_domains,
+    decode_ready_source_domains, decode_sha256, direct_helicity_to_physics,
+    load_color_contraction_reference, load_plan_summary, runtime_parameter_slots,
+    validate_ready_direct_helicity_to_physics, validate_recurrence_prepared_pack_outer_target,
 };
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
@@ -31,10 +41,12 @@ use crate::recurrence::on_the_fly::{
     OnTheFlyExternalColorRoleV1, OnTheFlyProcessSeedV1, decode_on_the_fly_process_seed_v1,
     validate_on_the_fly_source_mass_bindings_v1,
 };
-use crate::recurrence::template_json::project_recurrence_template_catalog_json_v1;
+use crate::recurrence::template_json::project_owned_recurrence_template_catalog_json_v1;
 use crate::recurrence::{
-    RecurrenceColorAccuracy, RecurrenceColorContraction, RecurrenceColorStorage,
+    FactorizedColorContractionKind, RecurrenceColorAccuracy, RecurrenceColorContraction,
+    RecurrenceColorStorage, decode_recurrence_helicity_dispatch_v1,
 };
+use std::rc::Rc;
 
 pub(super) struct LoadedOnTheFlyColorContractionV1 {
     pub(super) plan: RecurrenceColorContraction,
@@ -51,8 +63,27 @@ pub(super) struct LoadedOnTheFlyRuntime {
     pub(super) color_contraction: Option<LoadedOnTheFlyColorContractionV1>,
 }
 
+pub(super) struct LoadedRecurrenceHelicitySelectorCompanion {
+    pub(super) runtime: RecurrencePersistedHelicitySelectorRuntime,
+}
+
 fn clamp_query_construction_threads(requested: usize, available: usize) -> usize {
     requested.min(available.max(1))
+}
+
+fn validate_recurrence_companion_process_digest(
+    primary_process_digest: &str,
+    companion_process_digest: &str,
+    decoded_seed_process_digest: &str,
+) -> RusticolResult<()> {
+    if primary_process_digest != companion_process_digest
+        || primary_process_digest != decoded_seed_process_digest
+    {
+        return Err(RusticolError::integrity(
+            "recurrence helicity-selector companion is bound to a different primary process",
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn load_on_the_fly_native_runtime(
@@ -68,13 +99,20 @@ pub(super) fn load_on_the_fly_native_runtime(
             "on-the-fly execution metadata does not identify its decoded process seed",
         ));
     }
-    let (pack_bytes, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
-    let raw_templates = pack.recurrence_template.as_ref().ok_or_else(|| {
+    let (mut pack, payload_root) = load_prepared_pack(artifact, manifest)?;
+    let raw_templates = pack.recurrence_template.take().ok_or_else(|| {
         RusticolError::compatibility(
             "on-the-fly execution requires the prepared recurrence template catalog",
         )
     })?;
-    let templates = project_recurrence_template_catalog_json_v1(raw_templates)?.validate()?;
+    let raw_template_json = serde_json::from_str(raw_templates.get()).map_err(|error| {
+        RusticolError::serialization(format!(
+            "could not parse prepared recurrence template catalog: {error}"
+        ))
+    })?;
+    drop(raw_templates);
+    let templates =
+        project_owned_recurrence_template_catalog_json_v1(raw_template_json)?.validate()?;
     let summary = templates.summary();
     if seed.template_catalog_digest() != summary.catalog_digest
         || seed.model_digest() != summary.compiled_model_digest
@@ -99,8 +137,8 @@ pub(super) fn load_on_the_fly_native_runtime(
     validate_on_the_fly_source_mass_bindings_v1(&seed, &templates, &parameter_projection)?;
 
     let payloads = artifact.evaluator_payload_store(&payload_root)?;
-    let pool = NativeRecurrencePreparedExecutorPool::load_from_store(
-        &pack_bytes,
+    let pool = NativeRecurrencePreparedExecutorPool::load_without_plan_from_validated_pack(
+        &mut pack,
         &payloads,
         &seed.prepared_pack_digest().to_string(),
         &seed.direct_catalog_digest().to_string(),
@@ -124,8 +162,10 @@ pub(super) fn load_on_the_fly_native_runtime(
         )?;
     common.refresh_derived_model_parameters()?;
 
-    let metadata_selectors =
-        OnTheFlyCompactSelectorAdapterV1::from_seed(&seed, selector_policy(manifest))?;
+    let metadata_selectors = OnTheFlyCompactSelectorAdapterV1::from_seed(
+        &seed,
+        selector_policy(&manifest.selector_policy),
+    )?;
     let public_color_count = if manifest.uses_contracted_color() {
         1
     } else {
@@ -138,9 +178,14 @@ pub(super) fn load_on_the_fly_native_runtime(
     let color_contraction = load_on_the_fly_color_contraction(
         artifact,
         evaluator_root,
-        manifest,
-        &seed,
-        &metadata_selectors,
+        OnTheFlyColorContractionLoadV1 {
+            process_key: &manifest.key,
+            color_accuracy: &manifest.color_accuracy,
+            requested_point_tile_size: manifest.runtime_options.point_tile_size,
+            reference: manifest.runtime_metadata.color_contraction.as_ref(),
+            seed: &seed,
+            selectors: &metadata_selectors,
+        },
     )?;
     let selectors = metadata_selectors
         .clone()
@@ -156,7 +201,7 @@ pub(super) fn load_on_the_fly_native_runtime(
         requested_query_construction_threads,
         available_query_construction_threads,
     );
-    let lane = OnTheFlyNativeRuntime::new(
+    let mut lane = OnTheFlyNativeRuntime::new(
         templates,
         direct_catalog,
         seed,
@@ -167,6 +212,10 @@ pub(super) fn load_on_the_fly_native_runtime(
         projection,
         &common.model_parameter_values_f64,
     )?;
+    if let Some(workspace) = symmetric_group_workspace_for_loaded_color(color_contraction.as_ref())?
+    {
+        lane.install_symmetric_group_color_workspace(workspace)?;
+    }
     Ok(LoadedOnTheFlyRuntime {
         common,
         lane,
@@ -177,16 +226,203 @@ pub(super) fn load_on_the_fly_native_runtime(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::clamp_query_construction_threads;
+#[allow(clippy::too_many_arguments)]
+pub(super) fn load_recurrence_helicity_selector_companion(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &super::recurrence_manifest::RecurrenceExecutionManifest,
+    physics: &ProcessPhysicsV1,
+    payloads: &EvaluatorPayloadStore,
+    common: &ExecutionRuntime,
+) -> RusticolResult<LoadedRecurrenceHelicitySelectorCompanion> {
+    let companion = manifest
+        .helicity_selector_companion
+        .as_ref()
+        .ok_or_else(|| {
+            RusticolError::integrity(
+                "recurrence companion loader was called without a companion descriptor",
+            )
+        })?;
+    let LoadedRecurrencePlan {
+        plan,
+        process_executors,
+    } = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
+    validate_recurrence_companion_process_digest(
+        &manifest.plan.process_binding.process_digest,
+        &companion.process_digest,
+        &companion.plan.process_binding.process_digest,
+    )?;
+    let dispatch = load_recurrence_companion_dispatch(
+        artifact,
+        &plan,
+        companion.plan.helicity_dispatch.as_ref(),
+    )?;
+    let source_domains = build_direct_source_domains(
+        &plan,
+        &manifest.runtime_metadata,
+        &common.model_parameter_runtime_slots,
+    )?;
+    let direct_helicity_to_physics = direct_helicity_to_physics(&plan, physics)?;
+    finish_recurrence_helicity_selector_companion(
+        process_executors,
+        plan,
+        dispatch,
+        payloads,
+        RecurrenceCompanionModelIdentities {
+            compiled_model_digest: &manifest.compiled_model_digest,
+            recurrence_template_catalog_digest: &manifest.recurrence_template_catalog_digest,
+            prepared_kernel_pack_digest: &manifest.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &manifest.direct_template_catalog_digest,
+        },
+        source_domains,
+        direct_helicity_to_physics,
+        physics.helicities.len(),
+    )
+}
 
-    #[test]
-    fn query_construction_threads_are_capped_by_positive_host_availability() {
-        assert_eq!(clamp_query_construction_threads(8, 3), 3);
-        assert_eq!(clamp_query_construction_threads(2, 8), 2);
-        assert_eq!(clamp_query_construction_threads(4, 0), 1);
+#[allow(clippy::too_many_arguments)]
+pub(super) fn load_recurrence_helicity_selector_companion_from_ready_parts(
+    artifact: &VerifiedArtifact,
+    loaded_plan: LoadedRecurrencePlan,
+    plan_reference: &RecurrenceReadyPlanV1,
+    companion: &RecurrenceReadyCompanionV1,
+    ready: &RecurrenceReadyExecutionV1,
+    physics: &ProcessPhysicsV1,
+    payloads: &EvaluatorPayloadStore,
+) -> RusticolResult<LoadedRecurrenceHelicitySelectorCompanion> {
+    validate_recurrence_companion_process_digest(
+        &ready.primary_plan.process_binding.process_digest,
+        &companion.process_digest,
+        &plan_reference.process_binding.process_digest,
+    )?;
+    let LoadedRecurrencePlan {
+        plan,
+        process_executors,
+    } = loaded_plan;
+    let dispatch = load_recurrence_companion_dispatch(
+        artifact,
+        &plan,
+        plan_reference.helicity_dispatch.as_ref(),
+    )?;
+    let source_domains = decode_ready_source_domains(&companion.source_domains, &plan)?;
+    let direct_helicity_to_physics = validate_ready_direct_helicity_to_physics(
+        &plan,
+        &companion.direct_helicity_to_physics,
+        physics,
+    )?;
+    finish_recurrence_helicity_selector_companion(
+        process_executors,
+        plan,
+        dispatch,
+        payloads,
+        RecurrenceCompanionModelIdentities {
+            compiled_model_digest: &ready.compiled_model_digest,
+            recurrence_template_catalog_digest: &ready.recurrence_template_catalog_digest,
+            prepared_kernel_pack_digest: &ready.prepared_kernel_pack_digest,
+            direct_template_catalog_digest: &ready.direct_template_catalog_digest,
+        },
+        source_domains,
+        direct_helicity_to_physics,
+        physics.helicities.len(),
+    )
+}
+
+fn load_recurrence_companion_dispatch(
+    artifact: &VerifiedArtifact,
+    plan: &crate::recurrence::DirectRecurrencePlan,
+    reference: Option<&super::recurrence_manifest::RecurrenceHelicityDispatchReference>,
+) -> RusticolResult<crate::recurrence::DirectHelicityDispatch> {
+    let reference = reference.ok_or_else(|| {
+        RusticolError::integrity("recurrence helicity-selector plan has no exact helicity dispatch")
+    })?;
+    let record = artifact.payload(&reference.path)?;
+    if record.role != PayloadRole::EvaluatorState
+        || record.media_type != "application/octet-stream"
+        || record.process_id.is_some()
+        || record.executable
+        || record.size_bytes != reference.size_bytes
+        || record.sha256 != reference.sha256
+    {
+        return Err(RusticolError::integrity(
+            "recurrence helicity dispatch disagrees with its authenticated payload",
+        ));
     }
+    let bytes = artifact.read_payload(&reference.path)?;
+    let dispatch = decode_recurrence_helicity_dispatch_v1(&bytes)?;
+    dispatch.validate_for_plan(plan)?;
+    if dispatch.runtime_layout_digest().to_string() != reference.base_runtime_layout_digest
+        || dispatch.resolved_helicity_count() as u64 != reference.resolved_helicity_count
+    {
+        return Err(RusticolError::integrity(
+            "decoded recurrence helicity dispatch disagrees with its bounded summary",
+        ));
+    }
+    Ok(dispatch)
+}
+
+struct RecurrenceCompanionModelIdentities<'a> {
+    compiled_model_digest: &'a str,
+    recurrence_template_catalog_digest: &'a str,
+    prepared_kernel_pack_digest: &'a str,
+    direct_template_catalog_digest: &'a str,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_recurrence_helicity_selector_companion(
+    process_executors: super::recurrence_process_pack::ProcessDirectExecutorPack,
+    plan: crate::recurrence::DirectRecurrencePlan,
+    dispatch: crate::recurrence::DirectHelicityDispatch,
+    payloads: &EvaluatorPayloadStore,
+    identities: RecurrenceCompanionModelIdentities<'_>,
+    source_domains: Vec<super::evaluator::recurrence_source_direct::DirectSourceDispatchDomainSpec>,
+    direct_helicity_to_physics: Vec<usize>,
+    physics_helicity_count: usize,
+) -> RusticolResult<LoadedRecurrenceHelicitySelectorCompanion> {
+    let pool = Rc::new(
+        NativeRecurrencePreparedExecutorPool::load_for_direct_plan_from_process_pack(
+            &process_executors,
+            payloads,
+            &plan,
+        )?,
+    );
+    pool.validate_model_identities(
+        identities.compiled_model_digest,
+        identities.recurrence_template_catalog_digest,
+        identities.prepared_kernel_pack_digest,
+        identities.direct_template_catalog_digest,
+    )?;
+    let sources = OnTheFlySourceDomainBinding::load_for_process_plan(&plan, source_domains)?;
+    let resolver = Rc::clone(&pool).into_shared_on_the_fly_resolver(sources);
+    let runtime = RecurrencePersistedHelicitySelectorRuntime::new(
+        plan,
+        dispatch,
+        resolver,
+        direct_helicity_to_physics,
+        physics_helicity_count,
+    )?;
+    Ok(LoadedRecurrenceHelicitySelectorCompanion { runtime })
+}
+
+fn symmetric_group_workspace_for_loaded_color(
+    loaded: Option<&LoadedOnTheFlyColorContractionV1>,
+) -> RusticolResult<Option<crate::recurrence::RuntimeSymmetricGroupColorWorkspace>> {
+    let Some((reducer, point_tile_size)) = loaded.and_then(|loaded| {
+        loaded
+            .plan
+            .runtime_reducer()
+            .and_then(|reducer| match reducer {
+                crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(value) => {
+                    Some((value, loaded.point_tile_size))
+                }
+                _ => None,
+            })
+    }) else {
+        return Ok(None);
+    };
+    // `point_tile_size` was already clamped against the shared 512 MiB
+    // workspace budget while authenticating the color payload.  Allocate the
+    // final capacity here so the first multi-point evaluation is warmed too.
+    Ok(Some(reducer.workspace(point_tile_size)?))
 }
 
 fn load_public_metadata(
@@ -208,8 +444,10 @@ fn load_public_metadata(
     parse_on_the_fly_public_metadata(&bytes, &outer.physics_path, outer, manifest)
 }
 
-fn selector_policy(manifest: &OnTheFlyExecutionManifest) -> OnTheFlyLcSelectorPolicyV1 {
-    let color_coverage = match manifest.selector_policy.color_coverage {
+fn selector_policy(
+    policy: &super::on_the_fly_manifest::OnTheFlySelectorPolicy,
+) -> OnTheFlyLcSelectorPolicyV1 {
+    let color_coverage = match policy.color_coverage {
         OnTheFlyColorCoverage::Complete | OnTheFlyColorCoverage::Contracted => {
             // NLC/full still use the compact complete LC structural basis
             // internally; only the public axis is contracted.
@@ -218,28 +456,41 @@ fn selector_policy(manifest: &OnTheFlyExecutionManifest) -> OnTheFlyLcSelectorPo
     };
     OnTheFlyLcSelectorPolicyV1 {
         color_coverage,
-        reference_color_word: manifest
-            .selector_policy
+        reference_color_word: policy
             .reference_color_word
             .clone()
             .map(Vec::into_boxed_slice),
-        trace_reflections_folded: manifest.selector_policy.trace_reflections_folded,
+        trace_reflections_folded: policy.trace_reflections_folded,
     }
+}
+
+struct OnTheFlyColorContractionLoadV1<'a> {
+    process_key: &'a str,
+    color_accuracy: &'a str,
+    requested_point_tile_size: u32,
+    reference: Option<&'a super::recurrence_manifest::RecurrenceColorContractionReference>,
+    seed: &'a OnTheFlyProcessSeedV1,
+    selectors: &'a OnTheFlyCompactSelectorAdapterV1,
 }
 
 fn load_on_the_fly_color_contraction(
     artifact: &VerifiedArtifact,
     evaluator_root: &Path,
-    manifest: &OnTheFlyExecutionManifest,
-    seed: &OnTheFlyProcessSeedV1,
-    selectors: &OnTheFlyCompactSelectorAdapterV1,
+    request: OnTheFlyColorContractionLoadV1<'_>,
 ) -> RusticolResult<Option<LoadedOnTheFlyColorContractionV1>> {
-    let Some(reference) = manifest.runtime_metadata.color_contraction.as_ref() else {
+    let OnTheFlyColorContractionLoadV1 {
+        process_key,
+        color_accuracy,
+        requested_point_tile_size,
+        reference,
+        seed,
+        selectors,
+    } = request;
+    let Some(reference) = reference else {
         return Ok(None);
     };
-    let plan =
-        load_color_contraction_reference(artifact, evaluator_root, &manifest.key, reference)?;
-    let expected_accuracy = match manifest.color_accuracy.as_str() {
+    let plan = load_color_contraction_reference(artifact, evaluator_root, process_key, reference)?;
+    let expected_accuracy = match color_accuracy {
         "nlc" => RecurrenceColorAccuracy::Nlc,
         "full" => RecurrenceColorAccuracy::Full,
         _ => {
@@ -270,10 +521,15 @@ fn load_on_the_fly_color_contraction(
     let plan_sector_count = usize::try_from(plan.sector_count()).map_err(|_| {
         RusticolError::artifact("on-the-fly contracted payload sector count exceeds usize")
     })?;
+    let direct_storage =
+        plan.storage() == RecurrenceColorStorage::Expanded && plan.factorization().is_none();
+    let symmetric_group_storage = plan.storage() == RecurrenceColorStorage::ConvolutionKernels
+        && plan.factorization().is_some_and(|factorization| {
+            factorization.kind() == FactorizedColorContractionKind::SymmetricGroupFourier
+        });
     if plan.accuracy() != expected_accuracy
-        || plan.storage() != RecurrenceColorStorage::Expanded
+        || !(direct_storage || symmetric_group_storage)
         || !plan.includes_color_factor()
-        || plan.factorization().is_some()
         || plan.component_count() != 1
         || plan.active_sector_count() != owner_count
         || plan.group_count() != owner_count_u32
@@ -337,38 +593,93 @@ fn load_on_the_fly_color_contraction(
             "on-the-fly contracted groups do not cover every structural owner once",
         ));
     }
-    let mut destination_by_owner_ordinal = Vec::new();
-    destination_by_owner_ordinal
-        .try_reserve_exact(owner_count)
-        .map_err(|error| {
-            RusticolError::artifact(format!(
-                "could not reserve on-the-fly contracted destination map: {error}"
-            ))
-        })?;
-    for (owner_ordinal, owner_sector) in fixed_owner_sectors.iter().copied().enumerate() {
-        let group_id = group_by_owner_sector
-            .get(&owner_sector)
-            .copied()
-            .ok_or_else(|| {
-                RusticolError::integrity("on-the-fly contracted owner has no component-zero group")
+    let destination_by_owner_ordinal = if direct_storage {
+        let mut destinations = Vec::new();
+        destinations
+            .try_reserve_exact(owner_count)
+            .map_err(|error| {
+                RusticolError::artifact(format!(
+                    "could not reserve on-the-fly contracted destination map: {error}"
+                ))
             })?;
-        let destination = plan.destination_by_group()[group_id as usize];
-        let expected_destination = u32::try_from(owner_ordinal).map_err(|_| {
-            RusticolError::artifact("on-the-fly contracted owner ordinal exceeds u32")
-        })?;
-        if destination != expected_destination
-            || plan.ordered_group_ids().get(owner_ordinal).copied() != Some(group_id)
-        {
+        for (owner_ordinal, owner_sector) in fixed_owner_sectors.iter().copied().enumerate() {
+            let group_id = group_by_owner_sector
+                .get(&owner_sector)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "on-the-fly contracted owner has no component-zero group",
+                    )
+                })?;
+            let destination = plan.destination_by_group()[group_id as usize];
+            let expected_destination = u32::try_from(owner_ordinal).map_err(|_| {
+                RusticolError::artifact("on-the-fly contracted owner ordinal exceeds u32")
+            })?;
+            if destination != expected_destination
+                || plan.ordered_group_ids().get(owner_ordinal).copied() != Some(group_id)
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly contracted destination order disagrees with the compact structural owner basis",
+                ));
+            }
+            destinations.push(destination);
+        }
+        destinations
+    } else {
+        // Symmetric-group groups are channel/permutation ordered.  Their
+        // authenticated destination projection maps that order back to the
+        // compact selector-owner ordinals, so query construction consumes the
+        // inverse map (owner ordinal -> Fourier group ID).
+        let mut destinations = vec![u32::MAX; owner_count];
+        for (group_id, owner_ordinal) in plan.destination_by_group().iter().copied().enumerate() {
+            let owner_ordinal = usize::try_from(owner_ordinal).map_err(|_| {
+                RusticolError::artifact("on-the-fly contracted owner ordinal exceeds usize")
+            })?;
+            let slot = destinations.get_mut(owner_ordinal).ok_or_else(|| {
+                RusticolError::integrity(
+                    "on-the-fly symmetric-group destination is outside the owner domain",
+                )
+            })?;
+            if *slot != u32::MAX {
+                return Err(RusticolError::integrity(
+                    "on-the-fly symmetric-group destination projection is not one-to-one",
+                ));
+            }
+            *slot = u32::try_from(group_id).map_err(|_| {
+                RusticolError::artifact("on-the-fly symmetric-group group ID exceeds u32")
+            })?;
+        }
+        if destinations.contains(&u32::MAX) {
             return Err(RusticolError::integrity(
-                "on-the-fly contracted destination order disagrees with the compact structural owner basis",
+                "on-the-fly symmetric-group destination projection is incomplete",
             ));
         }
-        destination_by_owner_ordinal.push(destination);
-    }
-    let point_tile_size =
-        usize::try_from(manifest.runtime_options.point_tile_size).map_err(|_| {
-            RusticolError::artifact("on-the-fly contracted point tile size exceeds usize")
-        })?;
+        for (owner_ordinal, owner_sector) in fixed_owner_sectors.iter().copied().enumerate() {
+            let expected_group = group_by_owner_sector
+                .get(&owner_sector)
+                .copied()
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "on-the-fly contracted owner has no component-zero group",
+                    )
+                })?;
+            if destinations[owner_ordinal] != expected_group {
+                return Err(RusticolError::integrity(
+                    "on-the-fly symmetric-group projection disagrees with the authenticated owner sectors",
+                ));
+            }
+        }
+        destinations
+    };
+    let requested_point_tile_size = usize::try_from(requested_point_tile_size).map_err(|_| {
+        RusticolError::artifact("on-the-fly contracted point tile size exceeds usize")
+    })?;
+    let point_tile_size = match plan.runtime_reducer() {
+        Some(crate::recurrence::RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+            reducer.bounded_lane_capacity(requested_point_tile_size)?
+        }
+        _ => requested_point_tile_size,
+    };
     Ok(Some(LoadedOnTheFlyColorContractionV1 {
         plan,
         destination_by_owner_ordinal: destination_by_owner_ordinal.into_boxed_slice(),
@@ -381,14 +692,27 @@ fn load_process_seed(
     evaluator_root: &Path,
     manifest: &OnTheFlyExecutionManifest,
 ) -> RusticolResult<crate::recurrence::on_the_fly::OnTheFlyProcessSeedV1> {
-    let container = &manifest.runtime_container;
+    load_process_seed_from_container(
+        artifact,
+        evaluator_root,
+        &manifest.key,
+        &manifest.runtime_container,
+    )
+}
+
+fn load_process_seed_from_container(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    process_key: &str,
+    container: &OnTheFlyRuntimeContainer,
+) -> RusticolResult<crate::recurrence::on_the_fly::OnTheFlyProcessSeedV1> {
     let payloads = artifact.evaluator_payload_store(evaluator_root)?;
     let logical_path = payloads.logical_path(&container.path)?;
     let record = artifact.payload(&logical_path)?;
     if record.role != PayloadRole::EvaluatorState
         || record.media_type != "application/octet-stream"
         || record.executable
-        || record.process_id.as_deref() != Some(manifest.key.as_str())
+        || record.process_id.as_deref() != Some(process_key)
     {
         return Err(RusticolError::integrity(
             "on-the-fly runtime container has the wrong authenticated payload role",
@@ -417,7 +741,7 @@ fn load_process_seed(
 fn load_prepared_pack(
     artifact: &VerifiedArtifact,
     manifest: &OnTheFlyExecutionManifest,
-) -> RusticolResult<(Vec<u8>, PreparedKernelPackManifest, PathBuf)> {
+) -> RusticolResult<(PreparedKernelPackManifest, PathBuf)> {
     let path = confined_internal_path(
         &manifest.kernel_pack.manifest_path,
         "on-the-fly prepared kernel-pack manifest path",
@@ -442,7 +766,7 @@ fn load_prepared_pack(
         &manifest.kernel_pack.payload_root,
         "on-the-fly prepared kernel payload root",
     )?);
-    Ok((bytes, pack, payload_root))
+    Ok((pack, payload_root))
 }
 
 fn build_common_runtime(
@@ -596,4 +920,53 @@ fn build_common_runtime(
         values_scratch_f64: Vec::new(),
     };
     Ok((common, defaults, projection))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        LoadedOnTheFlyColorContractionV1, clamp_query_construction_threads,
+        symmetric_group_workspace_for_loaded_color, validate_recurrence_companion_process_digest,
+    };
+    use crate::recurrence::RecurrenceColorContraction;
+
+    #[test]
+    fn query_construction_threads_are_capped_by_positive_host_availability() {
+        assert_eq!(clamp_query_construction_threads(8, 3), 3);
+        assert_eq!(clamp_query_construction_threads(2, 8), 2);
+        assert_eq!(clamp_query_construction_threads(4, 0), 1);
+    }
+
+    #[test]
+    fn cross_process_companion_seed_swap_is_rejected_by_primary_binding_digest() {
+        let primary = "10".repeat(32);
+        let swapped = "20".repeat(32);
+        validate_recurrence_companion_process_digest(&primary, &primary, &primary).unwrap();
+
+        for (companion, decoded) in [
+            (&swapped, &swapped),
+            (&primary, &swapped),
+            (&swapped, &primary),
+        ] {
+            let error = validate_recurrence_companion_process_digest(&primary, companion, decoded)
+                .unwrap_err();
+            assert!(error.to_string().contains("different primary process"));
+        }
+    }
+
+    #[test]
+    fn symmetric_group_workspace_is_installed_at_the_authenticated_tile_capacity() {
+        let loaded = LoadedOnTheFlyColorContractionV1 {
+            plan: RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+                (0..13).collect(),
+                13,
+            ),
+            destination_by_owner_ordinal: (0..13).collect::<Vec<_>>().into_boxed_slice(),
+            point_tile_size: 5,
+        };
+        let workspace = symmetric_group_workspace_for_loaded_color(Some(&loaded))
+            .unwrap()
+            .expect("symmetric-group workspace");
+        assert_eq!(workspace.lane_capacity(), 5);
+    }
 }

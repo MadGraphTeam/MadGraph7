@@ -406,7 +406,7 @@ fn encode_rows<Row: FixedWidthRow>(rows: &[Row]) -> RusticolResult<Vec<u8>> {
 }
 
 fn decode_rows<Row: FixedWidthRow>(payload: &[u8]) -> RusticolResult<Vec<Row>> {
-    if payload.len() % Row::WIDTH != 0 {
+    if !payload.len().is_multiple_of(Row::WIDTH) {
         return Err(RusticolError::artifact(format!(
             "eager {} table has {} bytes, not a multiple of {}",
             Row::NAME,

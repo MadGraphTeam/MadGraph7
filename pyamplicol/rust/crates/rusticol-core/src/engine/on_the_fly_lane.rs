@@ -45,6 +45,7 @@ use crate::recurrence::on_the_fly::{
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
 use crate::recurrence::{
     PreparedDirectExecutorCatalog, RecurrenceColorContraction, RuntimeColorContractionEntry,
+    RuntimeColorContractionReducer, RuntimeSymmetricGroupColorWorkspace,
 };
 use std::time::{Duration, Instant};
 
@@ -227,6 +228,7 @@ pub(super) struct OnTheFlyNativeRuntime {
     contracted_max_live_query_outcomes: usize,
     source_momenta_scratch: Vec<f64>,
     amplitude_scratch: Vec<(f64, f64)>,
+    symmetric_group_color_workspace: Option<RuntimeSymmetricGroupColorWorkspace>,
 }
 
 fn emit_progress(
@@ -241,6 +243,37 @@ fn emit_progress(
         progress.emit(kind, stage, completed, total, message)?;
     }
     Ok(())
+}
+
+/// Map one owner-ordered selector request into the group-ordered amplitude
+/// projection retained by contracted execution.  The inverse owner map is
+/// authenticated at load, so every later reducer consumes this table directly
+/// in normalized local-group order.
+fn contracted_projection_index(
+    helicity_position: usize,
+    owner_ordinal: usize,
+    structural_color_count: usize,
+    destination_by_owner_ordinal: &[u32],
+) -> RusticolResult<usize> {
+    let group = usize::try_from(*destination_by_owner_ordinal.get(owner_ordinal).ok_or_else(
+        || {
+            RusticolError::integrity(
+                "on-the-fly contracted owner is outside its destination mapping",
+            )
+        },
+    )?)
+    .map_err(|_| RusticolError::artifact("on-the-fly contracted destination exceeds usize"))?;
+    if group >= structural_color_count {
+        return Err(RusticolError::integrity(
+            "on-the-fly contracted destination is outside the structural group domain",
+        ));
+    }
+    helicity_position
+        .checked_mul(structural_color_count)
+        .and_then(|offset| offset.checked_add(group))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("on-the-fly contracted projection exceeds usize")
+        })
 }
 
 fn emit_reused_family_progress(
@@ -365,7 +398,21 @@ impl OnTheFlyNativeRuntime {
             contracted_max_live_query_outcomes: 0,
             source_momenta_scratch: Vec::new(),
             amplitude_scratch: Vec::new(),
+            symmetric_group_color_workspace: None,
         })
+    }
+
+    pub(super) fn install_symmetric_group_color_workspace(
+        &mut self,
+        workspace: RuntimeSymmetricGroupColorWorkspace,
+    ) -> RusticolResult<()> {
+        if self.symmetric_group_color_workspace.is_some() {
+            return Err(RusticolError::internal(
+                "on-the-fly symmetric-group color workspace was installed twice",
+            ));
+        }
+        self.symmetric_group_color_workspace = Some(workspace);
+        Ok(())
     }
 
     pub(super) const fn seed(&self) -> &OnTheFlyProcessSeedV1 {
@@ -399,6 +446,7 @@ impl OnTheFlyNativeRuntime {
             selected_public_flow_id,
             public_helicities,
             true,
+            self.symmetric_group_color_workspace.is_some(),
         )?;
         let request = OnTheFlyLcQueryRequestV1::new(
             selected.query.clone(),
@@ -543,6 +591,7 @@ impl OnTheFlyNativeRuntime {
         logical_point_capacity: u32,
         progress: &mut OnTheFlyWarmUpProgress<'_>,
     ) -> RusticolResult<(bool, PreparedOnTheFlyLcFamilyV1)> {
+        let enable_cyclic_trace_reflection = self.symmetric_group_color_workspace.is_some();
         let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
             RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
         })?;
@@ -573,19 +622,19 @@ impl OnTheFlyNativeRuntime {
         let streamed = build_streamed_query_family_candidate_v1(direct_catalog, |consumer| {
             while processed_query_count < requests.len() {
                 let chunk_end = processed_query_count
-                    .checked_add(query_pool.chunk_capacity())
-                    .unwrap_or(usize::MAX)
+                    .saturating_add(query_pool.chunk_capacity())
                     .min(requests.len());
                 let expected_queries = requests[processed_query_count..chunk_end]
                     .iter()
-                    .map(|request| request.query.clone())
-                    .collect::<Vec<_>>();
+                    .map(|request| grammar.canonicalize_query(seed, request.query.clone()))
+                    .collect::<RusticolResult<Vec<_>>>()?;
                 let outcomes = query_pool.build_chunk(
                     templates,
                     direct_catalog,
                     seed,
                     coupling_policy,
                     grammar,
+                    enable_cyclic_trace_reflection,
                     expected_queries.clone(),
                 )?;
                 if outcomes.len() != expected_queries.len() {
@@ -825,11 +874,12 @@ impl OnTheFlyNativeRuntime {
                 .as_ref()
                 .map(|family| (family.logical_point_capacity, family.census.is_some()))
                 .expect("matching on-the-fly pending family disappeared");
-            if logical_point_capacity > current_capacity && has_executable_family {
-                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
-                    self.discard_pending_lc_queries()?;
-                    return Err(error);
-                }
+            if logical_point_capacity > current_capacity
+                && has_executable_family
+                && let Err(error) = self.executor.resize_active_family(logical_point_capacity)
+            {
+                self.discard_pending_lc_queries()?;
+                return Err(error);
             }
             let family = self
                 .pending_family
@@ -892,20 +942,26 @@ impl OnTheFlyNativeRuntime {
                     progress,
                 );
             }
+            let enable_cyclic_trace_reflection = self.symmetric_group_color_workspace.is_some();
             let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
             })?;
             let grammar = self.prepared_grammar.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly grammar disappeared after preparation")
             })?;
+            let expected_queries = requests
+                .iter()
+                .map(|request| grammar.canonicalize_query(&self.seed, request.query.clone()))
+                .collect::<RusticolResult<Vec<_>>>()?;
             let outcomes = build_selected_lc_query_family_v1(
                 &self.templates,
                 &self.direct_catalog,
                 &self.seed,
                 coupling_policy,
                 grammar,
+                enable_cyclic_trace_reflection,
                 self.effective_query_construction_threads,
-                requests.iter().map(|request| request.query.clone()),
+                expected_queries.iter().cloned(),
             )?;
             if outcomes.len() != requests.len() {
                 return Err(RusticolError::integrity(
@@ -927,10 +983,12 @@ impl OnTheFlyNativeRuntime {
                     "on-the-fly trace-family allocation failed: {error}"
                 ))
             })?;
-            for (request_index, (request, outcome)) in requests.iter().zip(outcomes).enumerate() {
+            for (request_index, (expected_query, outcome)) in
+                expected_queries.into_iter().zip(outcomes).enumerate()
+            {
                 match outcome {
                     OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
-                        if selected.query != request.query {
+                        if selected.query != expected_query {
                             return Err(RusticolError::integrity(
                                 "on-the-fly trace query changed during construction",
                             ));
@@ -939,7 +997,7 @@ impl OnTheFlyNativeRuntime {
                         traces.push(selected);
                     }
                     OnTheFlySelectedQueryOutcomeV1::StructuralZero { query } => {
-                        if query != request.query {
+                        if query != expected_query {
                             return Err(RusticolError::integrity(
                                 "on-the-fly structural-zero query changed during construction",
                             ));
@@ -1142,11 +1200,12 @@ impl OnTheFlyNativeRuntime {
                 .as_ref()
                 .map(|family| (family.logical_point_capacity, family.census.is_some()))
                 .expect("matching contracted pending family disappeared");
-            if logical_point_capacity > current_capacity && has_executable_family {
-                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
-                    self.discard_pending_contracted_queries()?;
-                    return Err(error);
-                }
+            if logical_point_capacity > current_capacity
+                && has_executable_family
+                && let Err(error) = self.executor.resize_active_family(logical_point_capacity)
+            {
+                self.discard_pending_contracted_queries()?;
+                return Err(error);
             }
             let family = self
                 .pending_contracted_family
@@ -1189,6 +1248,7 @@ impl OnTheFlyNativeRuntime {
                 None,
             )?;
             self.ensure_process_prepared()?;
+            let enable_cyclic_trace_reflection = self.symmetric_group_color_workspace.is_some();
             let coupling_policy = self.coupling_policy.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
             })?;
@@ -1218,8 +1278,7 @@ impl OnTheFlyNativeRuntime {
             let streamed = build_streamed_query_family_candidate_v1(direct_catalog, |consumer| {
                 while processed_query_count < query_count {
                     let chunk_end = processed_query_count
-                        .checked_add(query_pool.chunk_capacity())
-                        .unwrap_or(usize::MAX)
+                        .saturating_add(query_pool.chunk_capacity())
                         .min(query_count);
                     let mut queries = Vec::new();
                     queries
@@ -1232,11 +1291,12 @@ impl OnTheFlyNativeRuntime {
                     for request_index in processed_query_count..chunk_end {
                         let helicity_position = request_index / structural_color_count;
                         let owner_ordinal = request_index % structural_color_count;
-                        queries.push(selectors.decoded_query_at(
+                        let query = selectors.decoded_query_at(
                             seed,
                             helicity_ordinals[helicity_position],
                             owner_ordinal,
-                        )?);
+                        )?;
+                        queries.push(grammar.canonicalize_query(seed, query)?);
                     }
                     let expected_queries = queries.clone();
                     let outcomes = query_pool.build_chunk(
@@ -1245,6 +1305,7 @@ impl OnTheFlyNativeRuntime {
                         seed,
                         coupling_policy,
                         grammar,
+                        enable_cyclic_trace_reflection,
                         queries,
                     )?;
                     if outcomes.len() != expected_queries.len() {
@@ -1277,22 +1338,12 @@ impl OnTheFlyNativeRuntime {
                         let request_index = processed_query_count + chunk_offset;
                         let helicity_position = request_index / structural_color_count;
                         let owner_ordinal = request_index % structural_color_count;
-                        let contracted_destination = usize::try_from(
-                            destination_by_owner_ordinal[owner_ordinal],
-                        )
-                        .map_err(|_| {
-                            RusticolError::artifact(
-                                "on-the-fly contracted destination exceeds usize",
-                            )
-                        })?;
-                        let projection_index = helicity_position
-                            .checked_mul(structural_color_count)
-                            .and_then(|offset| offset.checked_add(contracted_destination))
-                            .ok_or_else(|| {
-                                RusticolError::invalid_argument(
-                                    "on-the-fly contracted projection exceeds usize",
-                                )
-                            })?;
+                        let projection_index = contracted_projection_index(
+                            helicity_position,
+                            owner_ordinal,
+                            structural_color_count,
+                            destination_by_owner_ordinal,
+                        )?;
                         match outcome {
                             OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
                                 if selected.query != expected_query {
@@ -1472,11 +1523,11 @@ impl OnTheFlyNativeRuntime {
                 return Ok(false);
             }
             let has_executable_family = family.census.is_some();
-            if has_executable_family {
-                if let Err(error) = self.executor.resize_active_family(logical_point_capacity) {
-                    self.discard_pending_lc_queries()?;
-                    return Err(error);
-                }
+            if has_executable_family
+                && let Err(error) = self.executor.resize_active_family(logical_point_capacity)
+            {
+                self.discard_pending_lc_queries()?;
+                return Err(error);
             }
             self.pending_family
                 .as_mut()
@@ -2152,6 +2203,43 @@ impl OnTheFlyNativeRuntime {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn reduce_current_contracted_color(
+        &mut self,
+        contraction: &RecurrenceColorContraction,
+        point_count: usize,
+        helicity_count: usize,
+        normalization_factor: f64,
+        accumulate: impl FnMut(usize, usize, f64),
+    ) -> RusticolResult<()> {
+        let Self {
+            contracted_family,
+            pending_contracted_family,
+            amplitude_scratch,
+            symmetric_group_color_workspace,
+            ..
+        } = self;
+        let family = pending_contracted_family
+            .as_ref()
+            .or(contracted_family.as_ref())
+            .ok_or_else(|| {
+                RusticolError::internal(
+                    "successful on-the-fly contracted execution lost its prepared family",
+                )
+            })?;
+        reduce_contracted_color(
+            contraction,
+            symmetric_group_color_workspace.as_mut(),
+            &family.amplitude_destinations,
+            amplitude_scratch,
+            point_count,
+            helicity_count,
+            family.structural_color_count,
+            normalization_factor,
+            accumulate,
+        )
+    }
+
     /// Evaluate a contracted NLC/full color metric without constructing a
     /// diagnostic report or reading phase clocks.
     #[allow(clippy::too_many_arguments)]
@@ -2196,16 +2284,10 @@ impl OnTheFlyNativeRuntime {
                 })?,
                 runtime_parameters,
             )?;
-            let family = self
-                .current_contracted_family()
-                .expect("successful on-the-fly contracted execution lost its prepared family");
-            reduce_contracted_color(
-                contraction.runtime_entries(),
-                &family.amplitude_destinations,
-                &self.amplitude_scratch,
+            self.reduce_current_contracted_color(
+                contraction,
                 tile_count,
                 helicity_count,
-                family.structural_color_count,
                 normalization_factor,
                 |point, _helicity, value| output[point_start + point] += value,
             )?;
@@ -2278,16 +2360,10 @@ impl OnTheFlyNativeRuntime {
                     runtime_parameters,
                 )?;
             let reduction_started = Instant::now();
-            let family = self
-                .current_contracted_family()
-                .expect("successful on-the-fly contracted execution lost its prepared family");
-            reduce_contracted_color(
-                contraction.runtime_entries(),
-                &family.amplitude_destinations,
-                &self.amplitude_scratch,
+            self.reduce_current_contracted_color(
+                contraction,
                 tile_count,
                 helicity_count,
-                family.structural_color_count,
                 normalization_factor,
                 |point, _helicity, value| output[point_start + point] += value,
             )?;
@@ -2373,16 +2449,10 @@ impl OnTheFlyNativeRuntime {
                     runtime_parameters,
                 )?;
             let reduction_started = Instant::now();
-            let family = self
-                .current_contracted_family()
-                .expect("successful on-the-fly contracted execution lost its prepared family");
-            reduce_contracted_color(
-                contraction.runtime_entries(),
-                &family.amplitude_destinations,
-                &self.amplitude_scratch,
+            self.reduce_current_contracted_color(
+                contraction,
                 tile_count,
                 helicity_count,
-                family.structural_color_count,
                 normalization_factor,
                 |point, helicity, value| {
                     let destination = (point_start + point) * helicity_count + helicity;
@@ -2575,7 +2645,9 @@ fn validate_contracted_run_shape(
 ) -> RusticolResult<()> {
     if point_count == 0
         || point_tile_size == 0
-        || point_major_momenta.len() % point_count as usize != 0
+        || !point_major_momenta
+            .len()
+            .is_multiple_of(point_count as usize)
         || !normalization_factor.is_finite()
         || normalization_factor < 0.0
         || actual_output_len != expected_output_len
@@ -2584,12 +2656,16 @@ fn validate_contracted_run_shape(
             "on-the-fly contracted input, output, tile, or normalization shape is invalid",
         ));
     }
+    let supported_reducer = matches!(
+        contraction.runtime_reducer(),
+        None | Some(RuntimeColorContractionReducer::SymmetricGroupFourier(_))
+    );
     if contraction.component_count() != 1
         || contraction.destination_count() == 0
-        || contraction.factorization().is_some()
+        || !supported_reducer
     {
         return Err(RusticolError::integrity(
-            "on-the-fly contracted execution requires an expanded one-component metric",
+            "on-the-fly contracted execution requires a supported one-component metric",
         ));
     }
     Ok(())
@@ -2600,14 +2676,15 @@ fn validate_contracted_run_shape(
 /// and therefore make every touching bilinear term exactly zero.
 #[allow(clippy::too_many_arguments)]
 fn reduce_contracted_color(
-    entries: impl IntoIterator<Item = RuntimeColorContractionEntry>,
+    contraction: &RecurrenceColorContraction,
+    symmetric_group_workspace: Option<&mut RuntimeSymmetricGroupColorWorkspace>,
     amplitude_destinations: &[Option<usize>],
     amplitudes: &[(f64, f64)],
     point_count: usize,
     helicity_count: usize,
     structural_color_count: usize,
     normalization_factor: f64,
-    mut accumulate: impl FnMut(usize, usize, f64),
+    accumulate: impl FnMut(usize, usize, f64),
 ) -> RusticolResult<()> {
     let projection_len = helicity_count
         .checked_mul(structural_color_count)
@@ -2617,6 +2694,67 @@ fn reduce_contracted_color(
     if amplitude_destinations.len() != projection_len {
         return Err(RusticolError::integrity(
             "on-the-fly contracted amplitude projection has the wrong shape",
+        ));
+    }
+    match contraction.runtime_reducer() {
+        Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+            let workspace = symmetric_group_workspace.ok_or_else(|| {
+                RusticolError::integrity("on-the-fly symmetric-group color workspace is absent")
+            })?;
+            return reduce_symmetric_group_contracted_color(
+                contraction,
+                reducer,
+                workspace,
+                amplitude_destinations,
+                amplitudes,
+                point_count,
+                helicity_count,
+                structural_color_count,
+                normalization_factor,
+                accumulate,
+            );
+        }
+        Some(RuntimeColorContractionReducer::Walsh(_)) => {
+            return Err(RusticolError::integrity(
+                "on-the-fly contracted execution does not support Walsh color storage",
+            ));
+        }
+        None => {}
+    }
+    reduce_direct_contracted_color(
+        contraction.runtime_entries(),
+        amplitude_destinations,
+        amplitudes,
+        point_count,
+        helicity_count,
+        structural_color_count,
+        normalization_factor,
+        accumulate,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reduce_direct_contracted_color(
+    entries: impl IntoIterator<Item = RuntimeColorContractionEntry>,
+    amplitude_destinations: &[Option<usize>],
+    amplitudes: &[(f64, f64)],
+    point_count: usize,
+    helicity_count: usize,
+    structural_color_count: usize,
+    normalization_factor: f64,
+    mut accumulate: impl FnMut(usize, usize, f64),
+) -> RusticolResult<()> {
+    if amplitude_destinations.len()
+        != helicity_count
+            .checked_mul(structural_color_count)
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly direct contracted projection shape exceeds usize",
+                )
+            })?
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly direct contracted amplitude projection has the wrong shape",
         ));
     }
     for entry in entries {
@@ -2667,6 +2805,59 @@ fn reduce_contracted_color(
                     * entry.contract_real_bilinear(left_re, left_im, right_re, right_im);
                 accumulate(point, helicity, value);
             }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reduce_symmetric_group_contracted_color(
+    contraction: &RecurrenceColorContraction,
+    reducer: &crate::recurrence::RuntimeSymmetricGroupColorContraction,
+    workspace: &mut RuntimeSymmetricGroupColorWorkspace,
+    amplitude_destinations: &[Option<usize>],
+    amplitudes: &[(f64, f64)],
+    point_count: usize,
+    helicity_count: usize,
+    structural_color_count: usize,
+    normalization_factor: f64,
+    mut accumulate: impl FnMut(usize, usize, f64),
+) -> RusticolResult<()> {
+    if reducer.local_group_count() != contraction.local_group_count() as usize
+        || contraction.destination_by_group().len() != structural_color_count
+        || reducer.local_group_count() != structural_color_count
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly symmetric-group reducer disagrees with its structural owner basis",
+        ));
+    }
+    for helicity in 0..helicity_count {
+        let projection_base = helicity * structural_color_count;
+        reducer.reduce_lanes(workspace, point_count, |local_group, point| {
+            // Contracted query preparation already inverted the authenticated
+            // owner projection and retained this table in normalized group
+            // order.  Applying destination_by_group here a second time would
+            // silently contract A(P^2 g) for a non-involutive permutation.
+            let Some(amplitude_destination) = amplitude_destinations[projection_base + local_group]
+            else {
+                return Ok((0.0, 0.0));
+            };
+            let amplitude_index = amplitude_destination
+                .checked_mul(point_count)
+                .and_then(|base| base.checked_add(point))
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(
+                        "on-the-fly symmetric-group amplitude offset exceeds usize",
+                    )
+                })?;
+            amplitudes.get(amplitude_index).copied().ok_or_else(|| {
+                RusticolError::integrity(
+                    "on-the-fly symmetric-group amplitude destination is absent",
+                )
+            })
+        })?;
+        for (point, value) in workspace.reduced(point_count)?.iter().copied().enumerate() {
+            accumulate(point, helicity, normalization_factor * value);
         }
     }
     Ok(())
@@ -3226,6 +3417,114 @@ mod tests {
     }
 
     #[test]
+    fn symmetric_group_contracted_query_projection_reaches_final_reducer_in_group_order() {
+        let destination_by_group = (0..13)
+            .map(|group| ((group * 5) % 13) as u32)
+            .collect::<Vec<_>>();
+        let mut destination_by_owner_ordinal = vec![0_u32; 13];
+        for (group, owner) in destination_by_group.iter().copied().enumerate() {
+            destination_by_owner_ordinal[owner as usize] = group as u32;
+        }
+        let contraction = RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+            destination_by_group.clone(),
+            13,
+        );
+        let RuntimeColorContractionReducer::SymmetricGroupFourier(reducer) =
+            contraction.runtime_reducer().unwrap()
+        else {
+            panic!("expected symmetric-group runtime reducer")
+        };
+        let covered_group_count = reducer.channel_count() * reducer.group_order();
+        assert!(reducer.channel_count() > 0);
+        assert!(reducer.local_group_count() > covered_group_count);
+        assert!(reducer.residual_entries().iter().any(|entry| {
+            entry.left_group_index < covered_group_count as u32
+                && entry.right_group_index >= covered_group_count as u32
+        }));
+        let point_count = 3;
+        let helicity_count = 2;
+        let structural_color_count = 13;
+        let normalization = 1.75;
+        let mut projection = vec![None; helicity_count * structural_color_count];
+        let mut amplitudes = Vec::new();
+        let mut local_values =
+            vec![(0.0, 0.0); helicity_count * structural_color_count * point_count];
+        // Query construction enumerates owners.  Its production slot helper
+        // stores every outcome in the inverse-mapped Fourier-group slot.  The
+        // complex values deliberately depend on the owner so a second
+        // application of this order-4 permutation cannot pass accidentally.
+        for helicity in 0..helicity_count {
+            for owner in 0..structural_color_count {
+                let group = destination_by_owner_ordinal[owner] as usize;
+                let structural_zero = helicity == 1 && group == 4;
+                if structural_zero {
+                    continue;
+                }
+                let destination = amplitudes.len() / point_count;
+                let projection_index = contracted_projection_index(
+                    helicity,
+                    owner,
+                    structural_color_count,
+                    &destination_by_owner_ordinal,
+                )
+                .unwrap();
+                projection[projection_index] = Some(destination);
+                for point in 0..point_count {
+                    let value = (
+                        (helicity * 19 + owner * 7 + point * 3) as f64 / 11.0 - 1.0,
+                        (helicity * 5 + owner * 13 + point) as f64 / 17.0 - 0.5,
+                    );
+                    amplitudes.push(value);
+                    local_values
+                        [(helicity * structural_color_count + group) * point_count + point] = value;
+                }
+            }
+        }
+
+        let mut expected = vec![0.0; helicity_count * point_count];
+        let helicity_stride = structural_color_count * point_count;
+        for helicity in 0..helicity_count {
+            let start = helicity * helicity_stride;
+            let dense = RecurrenceColorContraction::symmetric_group_s3_dense_for_runtime_test(
+                &local_values[start..start + helicity_stride],
+                point_count,
+            );
+            for (point, value) in dense.into_iter().enumerate() {
+                expected[point * helicity_count + helicity] = normalization * value;
+            }
+        }
+
+        // Install exactly the compact family state produced by query
+        // preparation, then enter the native lane's real final-reduction seam.
+        // No decoded queries or owner-indexed side table survives this point.
+        let mut lane = scalar_lane();
+        lane.pending_contracted_family = Some(PreparedOnTheFlyContractedFamilyV1 {
+            helicity_ordinals: (0..helicity_count).collect::<Vec<_>>().into_boxed_slice(),
+            structural_color_count,
+            amplitude_destinations: projection.into_boxed_slice(),
+            executor_handle: None,
+            census: None,
+            logical_point_capacity: point_count as u32,
+        });
+        lane.amplitude_scratch = amplitudes;
+        lane.install_symmetric_group_color_workspace(reducer.workspace(point_count).unwrap())
+            .unwrap();
+        let mut actual = vec![0.0; expected.len()];
+        lane.reduce_current_contracted_color(
+            &contraction,
+            point_count,
+            helicity_count,
+            normalization,
+            |point, helicity, value| actual[point * helicity_count + helicity] += value,
+        )
+        .unwrap();
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            let scale = expected.abs().max(1.0);
+            assert!((actual - expected).abs() <= 2.0e-11 * scale);
+        }
+    }
+
+    #[test]
     fn contracted_metric_preserves_imaginary_off_diagonal_terms_per_helicity() {
         let entries = [
             RuntimeColorContractionEntry {
@@ -3252,7 +3551,7 @@ mod tests {
         let projection = [Some(0), Some(1), Some(2), None];
         let amplitudes = [(1.0, 2.0), (3.0, 4.0), (2.0, 0.0)];
         let mut resolved = [0.0; 2];
-        reduce_contracted_color(
+        reduce_direct_contracted_color(
             entries,
             &projection,
             &amplitudes,
@@ -3279,7 +3578,7 @@ mod tests {
             coefficient_im: 0.0,
         };
         assert!(
-            reduce_contracted_color(
+            reduce_direct_contracted_color(
                 [entry],
                 &[Some(0)],
                 &[(1.0, 0.0)],
@@ -3292,7 +3591,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            reduce_contracted_color(
+            reduce_direct_contracted_color(
                 [RuntimeColorContractionEntry {
                     right_destination_id: 2,
                     ..entry

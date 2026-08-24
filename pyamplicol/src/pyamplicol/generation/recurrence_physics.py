@@ -26,6 +26,7 @@ from ..color import (
     ColorGroupDescriptor,
     GenericColorPlan,
     build_color_contraction_plan,
+    build_symmetric_group_color_contraction_plan,
     exact_color_contraction_factor,
 )
 from ..color.plan_types import _canonical_open_string_product_key
@@ -53,6 +54,7 @@ _NORMALIZATION_EXTENSION_KEYS = (
     "coupling_policy",
 )
 _GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE = "helicity-equivalence:global-flip-v1"
+_ZERO_SECTOR_OWNER = 0xFFFF_FFFF
 
 
 def build_recurrence_normalization(
@@ -676,6 +678,9 @@ def build_recurrence_color_contraction(
     color_plan: GenericColorPlan,
     resolved_helicities: Sequence[Sequence[int]],
     amplitude_destinations: Sequence[tuple[int, int | None]],
+    certified_structural_zero_sector_ids: Sequence[int],
+    *,
+    contraction: str = "direct",
 ) -> ColorContractionPlan | None:
     if color_plan.color_accuracy == "lc":
         return None
@@ -723,17 +728,36 @@ def build_recurrence_color_contraction(
         )
     if not descriptors:
         raise ValueError("contracted recurrence has no nonzero amplitude destination")
-    contraction = build_color_contraction_plan(color_plan, tuple(descriptors))
-    if contraction is None or not contraction.supported:
-        reason = None if contraction is None else contraction.reason
+    if contraction == "direct":
+        contraction_plan = build_color_contraction_plan(
+            color_plan,
+            tuple(descriptors),
+        )
+    elif contraction == "symmetric-group-fft":
+        active_sector_ids = {descriptor.sector_id for descriptor in descriptors}
+        contraction_plan = build_symmetric_group_color_contraction_plan(
+            color_plan,
+            tuple(descriptors),
+            sector_owner_ids=recurrence_color_sector_owner_map(
+                logical,
+                active_sector_ids,
+                set(certified_structural_zero_sector_ids),
+            ),
+        )
+    else:
+        raise ValueError(f"unknown color contraction method {contraction!r}")
+    if contraction_plan is None or not contraction_plan.supported:
+        reason = None if contraction_plan is None else contraction_plan.reason
         raise ValueError(
             f"could not build recurrence color contraction: {reason or 'unsupported'}"
         )
-    return contraction
+    return contraction_plan
 
 
 def build_on_the_fly_color_contraction(
     color_plan: GenericColorPlan,
+    *,
+    contraction: str = "direct",
 ) -> tuple[ColorContractionPlan, tuple[int, ...], tuple[int, ...]]:
     """Build the one-component metric over OTF structural color selectors.
 
@@ -769,18 +793,27 @@ def build_on_the_fly_color_contraction(
         )
         for group_id, sector_id in enumerate(owner_sector_ids)
     )
-    contraction = build_color_contraction_plan(color_plan, descriptors)
-    if contraction is None or not contraction.supported:
-        reason = None if contraction is None else contraction.reason
+    if contraction == "direct":
+        contraction_plan = build_color_contraction_plan(color_plan, descriptors)
+    elif contraction == "symmetric-group-fft":
+        contraction_plan = build_symmetric_group_color_contraction_plan(
+            color_plan,
+            descriptors,
+            sector_owner_ids=owner_by_sector,
+        )
+    else:
+        raise ValueError(f"unknown color contraction method {contraction!r}")
+    if contraction_plan is None or not contraction_plan.supported:
+        reason = None if contraction_plan is None else contraction_plan.reason
         raise ValueError(
             "could not build on-the-fly color contraction: "
             f"{reason or 'unsupported'}"
         )
-    if contraction.repeated_block is not None:
+    if contraction_plan.repeated_block is not None:
         raise ValueError(
             "one-component on-the-fly color contraction must use expanded storage"
         )
-    return contraction, owner_by_sector, owner_sector_ids
+    return contraction_plan, owner_by_sector, owner_sector_ids
 
 
 def on_the_fly_color_sector_owner_map(
@@ -847,6 +880,7 @@ def recurrence_color_contraction_destinations(
 def recurrence_color_sector_owner_map(
     logical: RecurrenceBuilderLogicalInputV1,
     active_sector_ids: set[int],
+    certified_structural_zero_sector_ids: set[int],
 ) -> tuple[int, ...]:
     """Return the independently derived canonical owner of every color sector.
 
@@ -886,23 +920,41 @@ def recurrence_color_sector_owner_map(
         raise ValueError(
             f"recurrence color destinations reference unknown sectors {sorted(unknown)}"
         )
-    result = []
+    certified = set(certified_structural_zero_sector_ids)
+    unknown_certified = certified.difference(range(len(sectors)))
+    if unknown_certified:
+        raise ValueError(
+            "recurrence structural-zero certificate references unknown sectors "
+            f"{sorted(unknown_certified)}"
+        )
+    overlap = certified.intersection(active)
+    if overlap:
+        raise ValueError(
+            "recurrence structural-zero certificate overlaps active sectors "
+            f"{sorted(overlap)}"
+        )
+    members_by_owner: dict[int, set[int]] = {}
     for sector_id, owner_id in enumerate(owners):
+        members_by_owner.setdefault(owner_id, set()).add(sector_id)
+    result = []
+    for _sector_id, owner_id in enumerate(owners):
         if owner_id in active:
             result.append(owner_id)
-        elif sector_id in active:
+            continue
+        active_members = members_by_owner[owner_id].intersection(active)
+        if active_members:
             raise ValueError(
-                f"recurrence color sector {sector_id} is active while its canonical "
-                f"owner {owner_id} is absent"
+                f"recurrence color sector class owned by {owner_id} has active "
+                f"non-owner sectors {sorted(active_members)}"
             )
-        else:
-            # Absence from the Rust-built schedule is not an independent
-            # structural-zero proof. Fail closed until the projection carries
-            # an exact model-owned zero certificate for this complete class.
+        uncertified = members_by_owner[owner_id].difference(certified)
+        if uncertified:
             raise ValueError(
                 f"recurrence color sector class owned by {owner_id} has no active "
-                "destination and no independent structural-zero certificate"
+                "destination and no complete structural-zero certificate; "
+                f"uncertified sectors={sorted(uncertified)}"
             )
+        result.append(_ZERO_SECTOR_OWNER)
     return tuple(result)
 
 
@@ -912,6 +964,32 @@ def recurrence_exact_color_coefficients(
     group_sector_ids: Sequence[int],
 ) -> tuple[ExactComplexRationalV1, ...]:
     """Return exact symmetry-folded coefficients in compact entry order."""
+
+    symmetric_group = contraction.symmetric_group_block
+    if symmetric_group is not None:
+        entries = (
+            *symmetric_group.kernel_entries,
+            *symmetric_group.residual_entries,
+        )
+        exact_weights = (
+            *symmetric_group.kernel_exact_weights,
+            *symmetric_group.residual_exact_weights,
+        )
+        result = []
+        for entry, exact in zip(entries, exact_weights, strict=True):
+            symmetry = int(entry.symmetry_factor)
+            if symmetry not in {1, 2} or float(symmetry) != entry.symmetry_factor:
+                raise ValueError(
+                    "symmetric-group color contraction has a noncanonical "
+                    "symmetry factor"
+                )
+            result.append(
+                ExactComplexRationalV1(
+                    real_numerator=exact.numerator * symmetry,
+                    real_denominator=exact.denominator,
+                )
+            )
+        return tuple(result)
 
     sector_by_id = {sector.id: sector for sector in color_plan.sectors}
     repeated = contraction.repeated_block

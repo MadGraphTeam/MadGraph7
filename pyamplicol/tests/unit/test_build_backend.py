@@ -269,15 +269,32 @@ def test_candidate_and_non_linux_wheels_preserve_frontend_settings(
     assert backend._release_wheel_config_settings(supplied) is supplied
 
 
-def test_linux_release_wheel_rejects_frontend_maturin_overrides(
+@pytest.mark.parametrize("mode", ("candidate", "release"))
+@pytest.mark.parametrize("platform_name", ("darwin", "linux"))
+@pytest.mark.parametrize("argument_key", ("maturin.build-args", "build-args"))
+def test_authenticated_wheel_rejects_frontend_maturin_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    platform_name: str,
+    argument_key: str,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", mode)
+    monkeypatch.setattr(backend.sys, "platform", platform_name)
+
+    with pytest.raises(RuntimeError, match="caller-supplied Maturin build arguments"):
+        backend._release_wheel_config_settings({argument_key: ["--profile", "dev"]})
+
+
+def test_release_bootstrap_wheel_rejects_frontend_maturin_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
-    monkeypatch.setattr(backend.sys, "platform", "linux")
-
+    monkeypatch.setattr(backend.sys, "platform", "darwin")
     with pytest.raises(RuntimeError, match="caller-supplied Maturin build arguments"):
-        backend._release_wheel_config_settings(
-            {"maturin.build-args": ["--compatibility", "off"]}
+        backend.build_release_prepared_model_bootstrap_wheel(
+            "dist",
+            bootstrap_context="test",
+            config_settings={"build-args": "--features untracked"},
         )
 
 
@@ -539,6 +556,9 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
     temporary_directory.mkdir()
     cargo_target_directory = tmp_path / "shared-cargo-target"
     base_version = backend.canonical_package_version(ROOT)
+    native_digest = backend._native_build_inputs_digest(ROOT)
+    candidate_fingerprint = native_digest[:12]
+    candidate_version = f"{base_version}-dev.0+candidate.{candidate_fingerprint}"
     with backend._overlay(
         "candidate",
         temporary_directory=temporary_directory,
@@ -551,15 +571,19 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         assert (overlay / ".cargo" / "config.toml").read_bytes() == (
             candidate_inputs[1].read_bytes()
         )
-        candidate_prefix = f'version = "{base_version}-dev.0+candidate.'
-        assert candidate_prefix in cargo
-        assert lock.count(candidate_prefix) == 3
+        candidate_version_line = f'version = "{candidate_version}"'
+        assert candidate_version_line in cargo
+        assert lock.count(candidate_version_line) == 3
         candidate_core = (
             overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
         ).read_text(encoding="utf-8")
-        with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
-            contributor = tomllib.load(stream)
-        candidate_symbolica = contributor["symbolica"]["candidate_version"]
+        with candidate_inputs[0].open("rb") as stream:
+            candidate_packages = tomllib.load(stream)["package"]
+        candidate_symbolica = next(
+            package["version"]
+            for package in candidate_packages
+            if package["name"] == "symbolica"
+        )
         with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
             release = tomllib.load(stream)
         assert (
@@ -574,8 +598,9 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         )
         assert build_info["publishable"] is False
         assert build_info["selftest_fixture_bootstrap"] is False
-        assert len(build_info["candidate_fingerprint"]) == 12
-        assert len(build_info["native_build_inputs_sha256"]) == 64
+        assert build_info["candidate_fingerprint"] == candidate_fingerprint
+        assert build_info["native_build_inputs_sha256"] == native_digest
+        assert build_info["version"] == candidate_version.replace("-dev.", ".dev")
         assert build_info["source_checkout"] == str(ROOT.resolve())
         assert build_info["source_revision"] == "a" * 40
         target = "aarch64-apple-darwin"
@@ -1134,6 +1159,15 @@ def test_overlay_excludes_managed_dependencies_and_includes_licenses() -> None:
         assert not (overlay / "build_backend" / "python_lock.py").exists()
 
 
+def test_fft_profiling_tool_is_retained_by_source_release_manifests() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    includes = {entry["path"] for entry in pyproject["tool"]["maturin"]["include"]}
+
+    assert "tools/fft_profiling" in backend.ALLOWLIST
+    assert "tools/fft_profiling/**/*" in includes
+    assert (ROOT / "tools/fft_profiling/fft_profiling.py").is_file()
+
+
 def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
     with backend._overlay("release") as (overlay, _target):
         packaged = overlay / "src" / "pyamplicol" / "_examples"
@@ -1386,51 +1420,14 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     ) == {"lib", "metadata.json"}
 
 
-def test_candidate_digest_covers_minimal_dependency_inputs(
-    tmp_path: Path,
-) -> None:
-    inputs = _candidate_inputs(tmp_path)
-    first = backend._candidate_digest(*inputs)
-
-    state = json.loads(inputs[2].read_text(encoding="utf-8"))
-    state["sources"]["symbolica"]["url"] = "https://example.invalid/symbolica.git"
-    inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    assert backend._candidate_digest(*inputs) != first
-    state["sources"]["symbolica"]["url"] = tomllib.loads(
-        (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
-    )["symbolica"]["source_url"]
-
-    state["sources"]["symbolica"]["revision"] = "0" * 40
-    inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    with pytest.raises(RuntimeError, match="contributor-lock revision"):
-        backend._candidate_digest(*inputs)
-    state["sources"]["symbolica"]["revision"] = tomllib.loads(
-        (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
-    )["symbolica"]["candidate_revision"]
-    inputs[2].write_text(json.dumps(state), encoding="utf-8")
-
-    inputs[0].write_bytes(inputs[0].read_bytes() + b"\n# identity change\n")
-    lock_changed = backend._candidate_digest(*inputs)
-    assert lock_changed != first
-
-    relocated = tmp_path / "other-root" / "dependencies" / "checkouts"
-    inputs[1].write_text(
-        "# checkout location must not affect dependency identity\n"
-        "[patch.crates-io]\n"
-        f'graphica = {{ path = "{relocated / "symbolica/lib/graphica"}" }}\n'
-        f'numerica = {{ path = "{relocated / "symbolica/lib/numerica"}" }}\n'
-        f'symbolica = {{ path = "{relocated / "symbolica"}" }}\n'
-        f'symjit = {{ path = "{relocated / "symjit"}" }}\n',
-        encoding="utf-8",
-    )
-    assert backend._candidate_digest(*inputs) == lock_changed
-
-
 def test_release_prepared_store_is_outside_native_build_identity(
     tmp_path: Path,
 ) -> None:
     cargo = tmp_path / "Cargo.toml"
     cargo.write_text("[workspace]\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_bytes(
+        (ROOT / "pyproject.toml").read_bytes()
+    )
     before = backend._native_build_inputs_digest(tmp_path)
     store = tmp_path / "release_assets" / "prepared_models"
     store.mkdir(parents=True)
@@ -1445,24 +1442,6 @@ def test_release_prepared_store_is_outside_native_build_identity(
     native.parent.mkdir()
     native.write_text("fn changed() {}\n", encoding="utf-8")
     assert backend._native_build_inputs_digest(tmp_path) != before
-
-
-def test_candidate_digest_rejects_patch_paths_outside_dependency_checkouts(
-    tmp_path: Path,
-) -> None:
-    inputs = _candidate_inputs(tmp_path)
-    checkout = tmp_path / "dependencies" / "checkouts"
-    inputs[1].write_text(
-        "[patch.crates-io]\n"
-        f'graphica = {{ path = "{checkout / "symbolica/lib/graphica"}" }}\n'
-        f'numerica = {{ path = "{checkout / "symbolica/lib/numerica"}" }}\n'
-        f'symbolica = {{ path = "{tmp_path / "symbolica"}" }}\n'
-        f'symjit = {{ path = "{checkout / "symjit"}" }}\n',
-        encoding="utf-8",
-    )
-
-    with pytest.raises(RuntimeError, match="below dependencies/checkouts"):
-        backend._candidate_digest(*inputs)
 
 
 @pytest.mark.parametrize(
@@ -1656,17 +1635,21 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
         "system_libraries": ["System"],
         "frameworks": [],
     }
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
 
     monkeypatch.setattr(sdk, "_host_target", lambda _root: link["target"])
     monkeypatch.setattr(sdk, "_requested_target", lambda host: host)
     monkeypatch.setattr(sdk, "_cargo_fetch", lambda *_args: None)
-    monkeypatch.setattr(
-        sdk.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            args=(), returncode=0, stdout="", stderr=""
-        ),
-    )
+    monkeypatch.setattr(sdk.subprocess, "run", fake_run)
     monkeypatch.setattr(sdk, "_cargo_messages", lambda _stdout: ())
     monkeypatch.setattr(sdk, "_static_library", lambda _messages: archive)
     monkeypatch.setattr(sdk, "_native_tokens", lambda _stderr: ())
@@ -1686,6 +1669,25 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
     assert not stale.exists()
     assert not (staging / "rust" / "rusticol.rs").exists()
     assert (ROOT / sdk.RUST_SDK_SOURCE).is_file()
+    contract = backend.load_native_build_contract(ROOT)["sdk"]
+    assert commands == [
+        [
+            "cargo",
+            "rustc",
+            "--locked",
+            "--offline",
+            "--release",
+            "--package",
+            contract["package"],
+            "--target",
+            link["target"],
+            "--message-format=json-render-diagnostics",
+            "--",
+            "--print",
+            "native-static-libs",
+            *contract["rustc-codegen-arguments"],
+        ]
+    ]
     metadata = json.loads((staging / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["rust_source"] == "rust/rusticol.rs"
 
@@ -2015,13 +2017,18 @@ def test_native_link_arguments_are_typed_and_allowlisted() -> None:
     ]
 
 
-def test_static_archive_byte_scan_rejects_python_markers(tmp_path: Path) -> None:
+def test_static_archive_byte_scan_ignores_random_python_text(tmp_path: Path) -> None:
     archive = tmp_path / "librusticol_capi.a"
-    archive.write_bytes(b"archive rusticol_runtime_load native-static-libs")
+    archive.write_bytes(b"archive pYO3[/ rusticol_runtime_load native-static-libs")
     sdk._scan_archive(archive)
 
-    archive.write_bytes(b"archive rusticol_runtime_load PyGILState_Ensure")
-    with pytest.raises(RuntimeError, match="PyGILState"):
+
+def test_static_archive_byte_scan_rejects_nonrelocatable_paths(
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"archive /opt/local/lib/libexample.a")
+    with pytest.raises(RuntimeError, match="non-relocatable path marker"):
         sdk._scan_archive(archive)
 
 

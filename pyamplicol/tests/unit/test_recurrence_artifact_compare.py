@@ -170,25 +170,6 @@ def _projection_body(payload: bytes = b"structural-projection-proof") -> bytes:
     return framed + hashlib.sha256(framed).digest()
 
 
-def _projection_certificate(
-    *,
-    revision: str,
-    native_build_inputs_sha256: str,
-    body: bytes,
-) -> bytes:
-    framed = (
-        b"PYAMP-COLOR-PROJECTION-CERT-V1\0"
-        + struct.pack("<I", 1)
-        + struct.pack("<I", len(revision))
-        + revision.encode("ascii")
-        + struct.pack("<I", len(native_build_inputs_sha256))
-        + native_build_inputs_sha256.encode("ascii")
-        + struct.pack("<Q", len(body))
-        + body
-    )
-    return framed + hashlib.sha256(framed).digest()
-
-
 def _pacbin(members: dict[str, tuple[int, bytes]]) -> tuple[bytes, dict[str, object]]:
     header_struct = struct.Struct("<8sHHIIIQQ24s")
     index_header_struct = struct.Struct("<8sHHIQQ")
@@ -275,20 +256,13 @@ def _artifact(
     current_count: int = 7,
     model_name: str = "same-model",
     projection_body: bytes | None = None,
-    certificate_revision_digit: str | None = None,
-    certificate_native_digit: str | None = None,
     generation_profile_counter: int | None = None,
 ) -> Path:
     revision = revision_digit * 40
     native = native_digit * 64
     members = {_PLAN_MEMBER: (7, runtime_payload)}
     if projection_body is not None:
-        certificate = _projection_certificate(
-            revision=(certificate_revision_digit or revision_digit) * 40,
-            native_build_inputs_sha256=(certificate_native_digit or native_digit) * 64,
-            body=projection_body,
-        )
-        members[_CERTIFICATE_MEMBER] = (8, certificate)
+        members[_CERTIFICATE_MEMBER] = (8, projection_body)
     runtime_container, runtime_metadata = _pacbin(members)
     _write_payload(root, _SCHEDULE_PATH, runtime_container)
 
@@ -296,10 +270,11 @@ def _artifact(
         "binding_count": 1,
         "bindings": [
             {
-                "abi": "pyamplicol-recurrence-process-binding-v2",
+                "abi": "pyamplicol-recurrence-process-binding-v4",
                 "native_schedule_semantic_digest": "d" * 64,
                 "path": "recurrence-binding.bin",
                 "process_id": "process",
+                "process_digest": "f" * 64,
                 "process_semantic_digest": "e" * 64,
                 "process_support_words": [1],
                 "remap": {"bijection_digest": "1" * 64},
@@ -700,7 +675,7 @@ def test_unlisted_file_is_rejected(tmp_path: Path) -> None:
         compare.compare_artifacts(baseline, candidate)
 
 
-def test_projection_certificate_provenance_only_difference_passes(
+def test_projection_certificate_is_independent_of_producer_identity(
     tmp_path: Path,
 ) -> None:
     body = _projection_body()
@@ -721,34 +696,16 @@ def test_projection_certificate_provenance_only_difference_passes(
     report = compare.compare_artifacts(baseline, candidate)
 
     assert report["passes"] is True
-    assert report["summary"]["exact_payload_bytes_match"] is False
+    assert report["summary"]["exact_payload_bytes_match"] is True
     assert report["summary"]["payloads_match_policy"] is True
     assert report["summary"]["runtime_schedule_plan_bytes_match"] is True
     assert report["summary"]["projection_certificate_semantic_bodies_match"] is True
-    allowed = {
-        (record["file"], record["json_path"])
-        for record in report["allowed_metadata_differences"]
-    }
-    assert (
-        _SCHEDULE_PATH,
-        f"/members[{_CERTIFICATE_MEMBER}]/source_revision",
-    ) in allowed
-    assert (
-        _SCHEDULE_PATH,
-        (f"/members[{_CERTIFICATE_MEMBER}]/native_build_inputs_sha256"),
-    ) in allowed
-    assert (
-        "recurrence/schedule-index.json",
-        f"/schedules[path={_SCHEDULE_PATH}]/sha256",
-    ) in allowed
-    assert (
-        "processes/process/execution.json",
-        "/plan/runtime_schedule/index_sha256",
-    ) in allowed
-    assert (
-        "artifact.json",
-        "/extensions/recurrence_schedule_sharing/index_sha256",
-    ) in allowed
+    schedule_comparison = next(
+        record
+        for record in report["payload_comparisons"]
+        if record["path"] == _SCHEDULE_PATH
+    )
+    assert schedule_comparison["byte_for_byte_match"] is True
 
 
 def test_projection_certificate_structural_body_difference_fails(
@@ -771,26 +728,6 @@ def test_projection_certificate_structural_body_difference_fails(
         item["kind"] == "projection-certificate-structural-body"
         for item in report["unknown_differences"]
     )
-
-
-def test_projection_certificate_cannot_claim_identity_other_than_producer(
-    tmp_path: Path,
-) -> None:
-    baseline = _artifact(
-        tmp_path / "baseline",
-        projection_body=_projection_body(),
-    )
-    candidate = _artifact(
-        tmp_path / "candidate",
-        projection_body=_projection_body(),
-        certificate_revision_digit="2",
-    )
-
-    with pytest.raises(
-        compare.ComparisonError,
-        match="not bound to artifact producer identity",
-    ):
-        compare.compare_artifacts(baseline, candidate)
 
 
 def test_evaluator_kernel_difference_remains_byte_exact_failure(

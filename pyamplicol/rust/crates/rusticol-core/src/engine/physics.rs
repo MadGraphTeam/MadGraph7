@@ -6,6 +6,8 @@ static NEXT_PHYSICS_RUNTIME_BINDING_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
 
 impl PhysicsRuntime {
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(super) fn new(manifest: ProcessPhysicsV1) -> RusticolResult<Self> {
         manifest.validate()?;
         let helicity_index_by_id = manifest
@@ -120,6 +122,20 @@ impl PhysicsRuntime {
             &mut indices,
         )?;
         Ok(indices)
+    }
+
+    pub(super) fn canonical_total_helicity_selector<'a>(
+        &self,
+        ids: Option<&'a BTreeSet<String>>,
+    ) -> Option<&'a BTreeSet<String>> {
+        canonical_total_axis_selector(ids, &self.helicity_index_by_id)
+    }
+
+    pub(super) fn canonical_total_color_selector<'a>(
+        &self,
+        ids: Option<&'a BTreeSet<String>>,
+    ) -> Option<&'a BTreeSet<String>> {
+        canonical_total_axis_selector(ids, &self.color_index_by_id)
     }
 
     pub(super) fn validate_helicity_id_slice(&self, ids: Option<&[String]>) -> RusticolResult<()> {
@@ -673,6 +689,15 @@ impl PhysicsRuntime {
             color_indices,
         })
     }
+}
+
+fn canonical_total_axis_selector<'a>(
+    ids: Option<&'a BTreeSet<String>>,
+    available: &BTreeMap<String, usize>,
+) -> Option<&'a BTreeSet<String>> {
+    ids.filter(|ids| {
+        ids.len() != available.len() || ids.iter().any(|id| !available.contains_key(id))
+    })
 }
 
 fn numeric_reduction_group(

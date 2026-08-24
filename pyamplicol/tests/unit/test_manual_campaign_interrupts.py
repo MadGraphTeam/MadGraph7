@@ -189,13 +189,13 @@ def test_running_cancellation_is_interrupted_history_and_preserves_current(
         for path in attempt_root.glob("*/manifest.json")
     }
     assert manifests[current.attempt_id]["status"] == "ok"
-    interrupted = {
-        attempt_id: manifest
-        for attempt_id, manifest in manifests.items()
-        if attempt_id != current.attempt_id
+    history_root = service.store._attempt_history_cell_root(_cell().cell_id)
+    archived = {
+        path.parent.name: json.loads(path.read_text(encoding="ascii"))
+        for path in history_root.glob("*/manifest.json")
     }
-    assert len(interrupted) == 1
-    manifest = next(iter(interrupted.values()))
+    assert len(archived) == 1
+    manifest = next(iter(archived.values()))
     assert manifest["status"] == "interrupted"
     assert manifest["result_path"] is None
     assert manifest["error"] == "worker terminated by cancellation"
@@ -388,15 +388,16 @@ def test_repeated_keyboard_interrupt_waits_for_cleanup_before_closing_lease(
         _arguments: object,
         _source: object,
         *,
+        original_amplicol_available: bool = False,
         observer: object = None,
         cancelled: object = None,
         campaign_invocation_id: str | None = None,
     ) -> object:
-        del observer
+        del observer, original_amplicol_available
         if cancelled is not None:
             assert campaign_invocation_id
             cancelled_callbacks.append(cancelled)
-        return object()
+        return SimpleNamespace(effective_cell_rss_limit=lambda: 30_000_000_000)
 
     def dashboard(*_arguments: object, **_keywords: object) -> None:
         del _keywords
@@ -447,14 +448,17 @@ def test_repeated_keyboard_interrupt_waits_for_cleanup_before_closing_lease(
         cores_per_worker=1,
         target_measurement_duration=0.1,
         batch_size=1,
-        warmups=0,
-        minimum_samples=5,
-        termination_grace=0.01,
-        cleanup_artifacts=False,
-    )
+            warmups=0,
+            minimum_samples=5,
+            termination_grace=0.01,
+            cleanup_artifacts=False,
+            original_amplicol=None,
+            madgraph=None,
+        )
     service = SimpleNamespace(
         store=object(),
-        paths=SimpleNamespace(docs_dir=tmp_path),
+        paths=SimpleNamespace(docs_dir=tmp_path, artifact_root=tmp_path / "artifacts"),
+        catalog=REPORT_CATALOG,
     )
 
     result = manual_campaign._run_campaign(

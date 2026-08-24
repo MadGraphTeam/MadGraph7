@@ -48,6 +48,30 @@ fn direct_codec_stream_matches_the_vec_adapter() {
 }
 
 #[test]
+fn direct_codec_rejects_runtime_compacted_plans() {
+    let complete = valid_plan();
+    let runtime_layout_digest = complete.runtime_layout_digest();
+    let closure_proof_digest = complete
+        .closure_proofs()
+        .expected_semantic_completeness_digest();
+    let plan = complete.into_runtime_compacted();
+    assert_eq!(plan.runtime_layout_digest(), runtime_layout_digest);
+    assert_eq!(
+        plan.closure_proofs()
+            .expected_semantic_completeness_digest(),
+        closure_proof_digest
+    );
+    assert!(plan.closure_proofs().contributions().is_empty());
+    assert!(plan.closure_proofs().groups().is_empty());
+    assert!(
+        encode_recurrence_direct_plan_v2(&plan)
+            .unwrap_err()
+            .to_string()
+            .contains("runtime-compacted plan cannot be serialized")
+    );
+}
+
+#[test]
 fn direct_codec_stream_crosses_the_former_eight_gib_boundary_without_allocating() {
     const EIGHT_GIB: u64 = 8 * 1024 * 1024 * 1024;
     let mut writer = Writer::with_bytes_written(CountingWriter::default(), EIGHT_GIB - 1);

@@ -82,6 +82,7 @@ def _lineage_digest(value: object) -> str:
 def _runtime(
     package_tree: str,
     *,
+    source_revision: str = "e" * 40,
     fingerprint: str = "candidate-fixture",
     native_build_inputs: str = "a" * 64,
 ) -> dict:
@@ -92,6 +93,7 @@ def _runtime(
         "python_package_tree": {"sha256": package_tree},
         "candidate_build_identity": {
             "candidate_fingerprint": fingerprint,
+            "source_revision": source_revision,
         },
         "native_target": {
             "triple": "aarch64-apple-darwin",
@@ -358,7 +360,7 @@ def _repository(tmp_path: Path) -> tuple[Path, Path, ArtifactStore, str, str]:
     environment = _authenticated_environment_payload(
         "macbook_M3",
         expected_source_revision=ancestor,
-        active_runtime=_runtime("c" * 64),
+        active_runtime=_runtime("c" * 64, source_revision=ancestor),
     )
     _write(
         repo,
@@ -444,6 +446,7 @@ def _finalize(
         expected_source_revision=descendant,
         active_runtime=_runtime(
             package_tree,
+            source_revision=descendant,
             native_build_inputs=native_build_inputs,
         ),
     )
@@ -471,6 +474,7 @@ def _finalize(
         expected_active_source_revision=descendant,
         runtime_auditor=lambda _revision, _root: _runtime(
             package_tree,
+            source_revision=_revision,
             native_build_inputs=native_build_inputs,
         ),
     )
@@ -490,6 +494,7 @@ def test_recurrence_summary_cap_native_transition_is_exactly_pinned() -> None:
         expected_source_revision=ancestor_revision,
         active_runtime=_runtime(
             "c" * 64,
+            source_revision=ancestor_revision,
             native_build_inputs=ancestor_digest,
         ),
     )
@@ -498,6 +503,7 @@ def test_recurrence_summary_cap_native_transition_is_exactly_pinned() -> None:
         expected_source_revision=descendant_revision,
         active_runtime=_runtime(
             "d" * 64,
+            source_revision=descendant_revision,
             native_build_inputs=descendant_digest,
         ),
     )
@@ -816,7 +822,10 @@ def test_recurrence_summary_cap_bridge_rejects_excluded_current_pointer_change(
             store,
             pending_path=pending,
             expected_active_source_revision=descendant,
-            runtime_auditor=lambda _revision, _root: _runtime("e" * 64),
+            runtime_auditor=lambda _revision, _root: _runtime(
+                "e" * 64,
+                source_revision=_revision,
+            ),
         )
 
 
@@ -1067,7 +1076,10 @@ def test_attempt_artifact_byte_tamper_blocks_finalization(tmp_path: Path) -> Non
             store,
             pending_path=pending,
             expected_active_source_revision=descendant,
-            runtime_auditor=lambda _revision, _root: _runtime("d" * 64),
+            runtime_auditor=lambda _revision, _root: _runtime(
+                "d" * 64,
+                source_revision=_revision,
+            ),
         )
     assert not (profile / MEASUREMENT_LINEAGE_FILENAME).exists()
 
@@ -1091,7 +1103,10 @@ def test_new_orphan_attempt_blocks_finalization(tmp_path: Path) -> None:
             store,
             pending_path=pending,
             expected_active_source_revision=descendant,
-            runtime_auditor=lambda _revision, _root: _runtime("d" * 64),
+            runtime_auditor=lambda _revision, _root: _runtime(
+                "d" * 64,
+                source_revision=_revision,
+            ),
         )
     assert not (profile / MEASUREMENT_LINEAGE_FILENAME).exists()
 
@@ -1111,7 +1126,7 @@ def test_failed_refresh_rolls_back_environment_and_lineage_bytes(
     expected = _authenticated_environment_payload(
         "macbook_M3",
         expected_source_revision=descendant,
-        active_runtime=_runtime("d" * 64),
+        active_runtime=_runtime("d" * 64, source_revision=descendant),
     )
 
     def corrupting_refresh(*_args: object, **_kwargs: object) -> dict[str, str]:
@@ -1136,7 +1151,10 @@ def test_failed_refresh_rolls_back_environment_and_lineage_bytes(
             store,
             pending_path=pending,
             expected_active_source_revision=descendant,
-            runtime_auditor=lambda _revision, _root: _runtime("d" * 64),
+            runtime_auditor=lambda _revision, _root: _runtime(
+                "d" * 64,
+                source_revision=_revision,
+            ),
         )
 
     assert {path: path.read_bytes() for path in before} == before

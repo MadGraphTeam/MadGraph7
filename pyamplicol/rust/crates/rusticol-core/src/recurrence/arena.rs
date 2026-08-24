@@ -205,14 +205,12 @@ pub fn assign_direct_arena(intervals: &[DirectArenaInterval]) -> RusticolResult<
             last_use: assignment.last_use,
         })
         .collect::<Vec<_>>();
-    let layout = DirectArenaLayout {
+    Ok(DirectArenaLayout {
         assignments: assignments.into_boxed_slice(),
         component_count: generic_layout.component_count(),
         total_semantic_components: generic_layout.total_semantic_components(),
         reused_semantic_components: generic_layout.reused_semantic_components(),
-    };
-    layout.validate()?;
-    Ok(layout)
+    })
 }
 
 /// Derive conservative stage-granular liveness for a semantic recurrence program.
@@ -226,7 +224,6 @@ pub fn recurrence_direct_arena_layout(
     program: &RecurrenceProgram,
     component_counts: &[u32],
 ) -> RusticolResult<DirectArenaLayout> {
-    program.validate()?;
     if component_counts.len() != program.currents().len() {
         return Err(invalid(format!(
             "direct-arena component-count catalog has {} rows for {} currents",

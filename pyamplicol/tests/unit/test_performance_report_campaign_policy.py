@@ -1399,7 +1399,11 @@ def test_legacy_generator_bootstrap_is_outside_generation_timing(
     process_file.write_text("process fixture\n", encoding="ascii")
 
     elapsed = adapter._generate_library(
-        context=SimpleNamespace(entries=(), process_file=process_file),
+        context=SimpleNamespace(
+            entries=(),
+            process_file=process_file,
+            source_pdgs=(1, -1, 21, 21),
+        ),
         repository=tmp_path / "legacy",
         raw_color=False,
         n_final=2,
@@ -1433,7 +1437,11 @@ def test_legacy_n1_library_generation_bypasses_zero_ht_scale(
     process_file.write_text("process fixture\n", encoding="ascii")
 
     adapter._generate_library(
-        context=SimpleNamespace(entries=(), process_file=process_file),
+        context=SimpleNamespace(
+            entries=(),
+            process_file=process_file,
+            source_pdgs=(1, -1, 23),
+        ),
         repository=tmp_path / "legacy",
         raw_color=False,
         n_final=1,

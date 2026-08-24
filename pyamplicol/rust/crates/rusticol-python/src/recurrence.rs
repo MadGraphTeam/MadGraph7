@@ -14,19 +14,20 @@ use pyo3::types::{PyAny, PyBytes, PyDict, PyList};
 use rusticol_core::recurrence::process;
 use rusticol_core::recurrence::template;
 use rusticol_core::recurrence::{
-    AuthenticatedRecurrenceBuilderInput, CheckedTableRange, DIRECT_NONE_U32, DirectExecutorRole,
-    DirectRecurrencePlan, DirectRecurrenceRuntimeOptions, DirectSelectorWorkSummary,
-    PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog, RECURRENCE_BUILDER_INPUT_ABI,
-    RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_PLAN_ABI,
-    RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
-    RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
-    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceGenerationTelemetry,
-    RecurrenceRelationDiscoveryMode, RecurrenceRelationDiscoveryOptions,
-    RecurrenceRelationDiscoveryReport, RecurrenceStrategy, SemanticDigest,
-    authenticate_recurrence_numerical_relation_provenance,
-    bind_recurrence_color_projection_certificate, checked_usize, lower_recurrence_direct_plan_v2,
+    AuthenticatedRecurrenceBuilderInput, CLOSURE_TARGET_DOMAIN_PROOF_KIND, CheckedTableRange,
+    DIRECT_NONE_U32, DirectExecutorRole, DirectRecurrencePlan, DirectRecurrenceRuntimeOptions,
+    DirectSelectorWorkSummary, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,
+    RECURRENCE_BUILDER_INPUT_ABI, RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
+    RECURRENCE_DIRECT_PLAN_ABI, RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
+    RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
+    RECURRENCE_DIRECT_TEMPLATE_ABI, RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress,
+    RecurrenceGenerationTelemetry, RecurrenceRelationDiscoveryMode,
+    RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryReport, RecurrenceStrategy,
+    SemanticDigest, authenticate_recurrence_numerical_relation_provenance, checked_usize,
+    lower_recurrence_direct_plan_v2, lower_recurrence_direct_plan_v2_with_helicity_dispatch,
     lower_recurrence_direct_plan_v2_with_relation_discovery,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
+    write_recurrence_helicity_dispatch_v1_atomic,
 };
 #[cfg(feature = "on-the-fly-test-support")]
 use rusticol_core::recurrence::{
@@ -58,7 +59,8 @@ const RUNTIME_CONTAINER_SCHEMA_VERSION: u32 = 1;
 const STORAGE_ABI: &str = "pacbin-v1";
 const DIRECT_BUILDER_INPUT_ABI: &str = "pyamplicol-recurrence-builder-input-v2";
 const DIRECT_LOWERING_RESULT_KIND: &str = "pyamplicol-recurrence-direct-lowering-result";
-const DIRECT_LOWERING_RESULT_SCHEMA_VERSION: u32 = 2;
+const DIRECT_LOWERING_RESULT_SCHEMA_VERSION: u32 = 4;
+const RECURRENCE_HELICITY_DISPATCH_ABI: &str = "pyamplicol-recurrence-helicity-dispatch-v1";
 const DIRECT_CANONICALIZATION_ABI: &str = "pyamplicol-canonical-json-v1";
 const DIRECT_BACKEND_ABI: &str = "rusticol.recurrence-direct-backend.v1";
 const DIRECT_PAYLOAD_BINDING_ABI: &str = "pyamplicol-recurrence-plane-binding-v2";
@@ -858,12 +860,30 @@ struct NativeDirectLoweringResult {
     prepared_kernel_count: usize,
     resolved_helicities: Vec<Vec<i32>>,
     amplitude_destinations: Vec<(u32, Option<u32>)>,
+    closure_target_domain_certificate: Option<NativeClosureTargetDomainCertificate>,
     selector_work: Vec<(DirectSelectorWorkSummary, u64)>,
     relation_discovery: Option<RecurrenceRelationDiscoveryReport>,
     exact_sections: NativeRecurrenceExactSections,
     construction: RecurrenceConstructionMetrics,
     generation_profile: RecurrenceGenerationTelemetry,
     timings: DirectLoweringTimings,
+    helicity_dispatch: Option<NativeHelicityDispatchMetadata>,
+}
+
+#[derive(Debug)]
+struct NativeClosureTargetDomainCertificate {
+    physical_sector_count: u32,
+    resolved_helicity_count: u32,
+    certified_structural_zero_physical_sector_ids: Vec<u32>,
+    semantic_digest: String,
+}
+
+#[derive(Debug)]
+struct NativeHelicityDispatchMetadata {
+    size_bytes: u64,
+    sha256: String,
+    base_runtime_layout_digest: String,
+    resolved_helicity_count: usize,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -921,8 +941,6 @@ struct AuthenticatedDirectTemplateCatalog {
     schedule_semantic_digest,
     destination,
     *,
-    source_revision,
-    native_build_inputs_sha256,
     point_tile_size,
     workspace_mib,
     relation_discovery_mode,
@@ -934,6 +952,7 @@ struct AuthenticatedDirectTemplateCatalog {
     relation_discovery_seed,
     color_accuracy,
     relation_discovery_evidence_json=None,
+    helicity_dispatch_destination=None,
     progress_callback=None
 ))]
 #[allow(clippy::too_many_arguments)]
@@ -945,8 +964,6 @@ pub(crate) fn _lower_recurrence_direct_v2(
     prepared_kernel_pack_digest: String,
     schedule_semantic_digest: String,
     destination: PathBuf,
-    source_revision: String,
-    native_build_inputs_sha256: String,
     point_tile_size: u32,
     workspace_mib: u32,
     relation_discovery_mode: String,
@@ -958,6 +975,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
     relation_discovery_seed: u64,
     color_accuracy: String,
     relation_discovery_evidence_json: Option<&Bound<'_, PyBytes>>,
+    helicity_dispatch_destination: Option<PathBuf>,
     progress_callback: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let extraction_started = Instant::now();
@@ -992,12 +1010,11 @@ pub(crate) fn _lower_recurrence_direct_v2(
                 &prepared_kernel_pack_digest,
                 &schedule_semantic_digest,
                 &destination,
-                &source_revision,
-                &native_build_inputs_sha256,
                 point_tile_size,
                 workspace_mib,
                 relation_discovery,
                 relation_discovery_evidence_json,
+                helicity_dispatch_destination.as_deref(),
                 python_extraction_seconds,
                 &mut report,
             )
@@ -2000,12 +2017,11 @@ fn lower_recurrence_direct(
     prepared_kernel_pack_digest: &str,
     schedule_semantic_digest: &str,
     destination: &std::path::Path,
-    source_revision: &str,
-    native_build_inputs_sha256: &str,
     point_tile_size: u32,
     workspace_mib: u32,
     mut relation_discovery: RecurrenceRelationDiscoveryOptions,
     relation_discovery_evidence_json: Option<Vec<u8>>,
+    helicity_dispatch_destination: Option<&std::path::Path>,
     python_extraction_seconds: f64,
     progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
 ) -> RusticolResult<NativeDirectLoweringResult> {
@@ -2015,6 +2031,21 @@ fn lower_recurrence_direct(
             "recurrence direct-plan destination already exists: {}",
             destination.display()
         )));
+    }
+    if let Some(dispatch_destination) = helicity_dispatch_destination {
+        if std::fs::symlink_metadata(dispatch_destination).is_ok() {
+            return Err(invalid(format!(
+                "recurrence helicity-dispatch destination already exists: {}",
+                dispatch_destination.display()
+            )));
+        }
+        if relation_discovery.mode != RecurrenceRelationDiscoveryMode::Off
+            || relation_discovery_evidence_json.is_some()
+        {
+            return Err(invalid(
+                "recurrence helicity-dispatch lowering requires relation discovery off",
+            ));
+        }
     }
 
     let expected_pack_digest =
@@ -2056,16 +2087,20 @@ fn lower_recurrence_direct(
     };
     let (program, generation_profile) =
         authenticated.build_with_progress_and_telemetry(&mut tracked_progress)?;
+    let closure_target_domain_certificate =
+        program
+            .closure_target_domain_certificate()
+            .map(|certificate| NativeClosureTargetDomainCertificate {
+                physical_sector_count: certificate.physical_sector_count(),
+                resolved_helicity_count: certificate.resolved_helicity_count(),
+                certified_structural_zero_physical_sector_ids: certificate
+                    .certified_structural_zero_physical_sector_ids()
+                    .to_vec(),
+                semantic_digest: certificate.semantic_digest().to_string(),
+            });
     let projection_certificate = program
         .color_projection_certificate_body()
-        .map(|body| {
-            bind_recurrence_color_projection_certificate(
-                body,
-                source_revision,
-                native_build_inputs_sha256,
-            )
-        })
-        .transpose()?;
+        .map(|body| body.to_vec());
     let semantic_construction_seconds = semantic_started.elapsed().as_secs_f64();
 
     let direct_lowering_started = Instant::now();
@@ -2086,17 +2121,31 @@ fn lower_recurrence_direct(
             &process_id,
         )?;
     }
-    let (plan, relation_discovery_report) =
-        lower_recurrence_direct_plan_v2_with_relation_discovery(
-            &program,
-            authenticated.template(),
-            &direct_catalog.catalog,
-            semantic_digest,
-            expected_pack_digest,
-            direct_catalog.catalog_digest,
-            runtime_options,
-            &relation_discovery,
-        )?;
+    let (plan, relation_discovery_report, helicity_dispatch) =
+        if helicity_dispatch_destination.is_some() {
+            let (plan, dispatch) = lower_recurrence_direct_plan_v2_with_helicity_dispatch(
+                &program,
+                authenticated.template(),
+                &direct_catalog.catalog,
+                semantic_digest,
+                expected_pack_digest,
+                direct_catalog.catalog_digest,
+                runtime_options,
+            )?;
+            (plan, None, Some(dispatch))
+        } else {
+            let (plan, report) = lower_recurrence_direct_plan_v2_with_relation_discovery(
+                &program,
+                authenticated.template(),
+                &direct_catalog.catalog,
+                semantic_digest,
+                expected_pack_digest,
+                direct_catalog.catalog_digest,
+                runtime_options,
+                &relation_discovery,
+            )?;
+            (plan, report, None)
+        };
     let direct_lowering_seconds = direct_lowering_started.elapsed().as_secs_f64();
 
     let resolved_helicities = resolved_helicities_from_direct_plan(&plan)?;
@@ -2151,6 +2200,33 @@ fn lower_recurrence_direct(
         &plan,
         projection_certificate.as_deref(),
     )?;
+    let helicity_dispatch = match (helicity_dispatch_destination, helicity_dispatch.as_ref()) {
+        (Some(dispatch_destination), Some(dispatch)) => {
+            let dispatch_metadata = match write_recurrence_helicity_dispatch_v1_atomic(
+                dispatch_destination,
+                dispatch,
+            ) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    let _ = std::fs::remove_file(destination);
+                    return Err(error);
+                }
+            };
+            Some(NativeHelicityDispatchMetadata {
+                size_bytes: dispatch_metadata.size_bytes,
+                sha256: hex_digest(dispatch_metadata.sha256),
+                base_runtime_layout_digest: dispatch.runtime_layout_digest().to_string(),
+                resolved_helicity_count: dispatch.resolved_helicity_count() as usize,
+            })
+        }
+        (None, None) => None,
+        _ => {
+            let _ = std::fs::remove_file(destination);
+            return Err(invalid(
+                "recurrence helicity-dispatch destination and lowering result disagree",
+            ));
+        }
+    };
     let serialization_seconds = serialization_started.elapsed().as_secs_f64();
     let native_total_seconds = native_started.elapsed().as_secs_f64();
 
@@ -2192,6 +2268,7 @@ fn lower_recurrence_direct(
         prepared_kernel_count: direct_catalog.prepared_kernel_count,
         resolved_helicities,
         amplitude_destinations,
+        closure_target_domain_certificate,
         selector_work,
         relation_discovery: relation_discovery_report,
         exact_sections,
@@ -2205,6 +2282,7 @@ fn lower_recurrence_direct(
             serialization_seconds,
             native_total_seconds,
         },
+        helicity_dispatch,
     })
 }
 
@@ -3574,6 +3652,23 @@ fn direct_lowering_mapping(
         certificate.set_item("sha256", sha256)?;
         inspection.set_item("color_projection_certificate", certificate)?;
     }
+    if let Some(certificate) = native.closure_target_domain_certificate.as_ref() {
+        let provenance = PyDict::new(py);
+        provenance.set_item("proof_kind", CLOSURE_TARGET_DOMAIN_PROOF_KIND)?;
+        provenance.set_item("semantic_digest", &certificate.semantic_digest)?;
+        provenance.set_item("sector_count", certificate.physical_sector_count)?;
+        provenance.set_item(
+            "resolved_helicity_count",
+            certificate.resolved_helicity_count,
+        )?;
+        provenance.set_item(
+            "certified_structural_zero_sector_count",
+            certificate
+                .certified_structural_zero_physical_sector_ids
+                .len(),
+        )?;
+        inspection.set_item("structural_zero_physical_sector_certificate", provenance)?;
+    }
 
     let timings = PyDict::new(py);
     timings.set_item(
@@ -3596,6 +3691,37 @@ fn direct_lowering_mapping(
     result.set_item("inspection_summary", inspection)?;
     result.set_item("resolved_helicities", native.resolved_helicities)?;
     result.set_item("amplitude_destinations", native.amplitude_destinations)?;
+    if let Some(certificate) = native.closure_target_domain_certificate.as_ref() {
+        let metadata = PyDict::new(py);
+        metadata.set_item("proof_kind", CLOSURE_TARGET_DOMAIN_PROOF_KIND)?;
+        metadata.set_item(
+            "sector_ids",
+            &certificate.certified_structural_zero_physical_sector_ids,
+        )?;
+        metadata.set_item("semantic_digest", &certificate.semantic_digest)?;
+        metadata.set_item("sector_count", certificate.physical_sector_count)?;
+        metadata.set_item(
+            "resolved_helicity_count",
+            certificate.resolved_helicity_count,
+        )?;
+        result.set_item("structural_zero_physical_sector_certificate", metadata)?;
+    } else {
+        result.set_item("structural_zero_physical_sector_certificate", py.None())?;
+    }
+    if let Some(dispatch) = native.helicity_dispatch.as_ref() {
+        let metadata = PyDict::new(py);
+        metadata.set_item("abi", RECURRENCE_HELICITY_DISPATCH_ABI)?;
+        metadata.set_item("size_bytes", dispatch.size_bytes)?;
+        metadata.set_item("sha256", &dispatch.sha256)?;
+        metadata.set_item(
+            "base_runtime_layout_digest",
+            &dispatch.base_runtime_layout_digest,
+        )?;
+        metadata.set_item("resolved_helicity_count", dispatch.resolved_helicity_count)?;
+        result.set_item("helicity_dispatch", metadata)?;
+    } else {
+        result.set_item("helicity_dispatch", py.None())?;
+    }
     result.set_item(
         "exact_sections",
         crate::recurrence_exact_sections_to_python(py, native.exact_sections)?,

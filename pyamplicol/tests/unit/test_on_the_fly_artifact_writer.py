@@ -55,7 +55,11 @@ _PROCESS_ID = "d_dbar_to_z"
 _SEED_MEMBER = "on-the-fly/process-seed-v1.bin"
 
 
-def _seed_identity(*, process_digest: str = "1" * 64) -> dict[str, object]:
+def _seed_identity(
+    *,
+    process_digest: str = "1" * 64,
+    external_leg_count: int = 3,
+) -> dict[str, object]:
     return {
         "abi": "pyamplicol-on-the-fly-process-seed-identity-v1",
         "process_digest": process_digest,
@@ -64,7 +68,7 @@ def _seed_identity(*, process_digest: str = "1" * 64) -> dict[str, object]:
         "prepared_kernel_pack_digest": "4" * 64,
         "recurrence_direct_template_catalog_digest": "5" * 64,
         "semantic_digest": "6" * 64,
-        "external_permutation": [0, 1, 2],
+        "external_permutation": list(range(external_leg_count)),
         "external_sources": [
             {
                 "source_slot": slot,
@@ -78,7 +82,7 @@ def _seed_identity(*, process_digest: str = "1" * 64) -> dict[str, object]:
                     }
                 ],
             }
-            for slot in range(3)
+            for slot in range(external_leg_count)
         ],
     }
 
@@ -135,11 +139,18 @@ def _prepared_model_path() -> Path:
     )
 
 
-def _configuration(color_accuracy: str = "lc") -> _GenerationConfigProvenance:
+def _configuration(
+    color_accuracy: str = "lc",
+    *,
+    contraction: str = "direct",
+) -> _GenerationConfigProvenance:
     return _GenerationConfigProvenance.from_config(
         RunConfig(
             action=Action.GENERATE,
-            color=ColorConfig(accuracy=color_accuracy),
+            color=ColorConfig(
+                accuracy=color_accuracy,
+                contraction=contraction,
+            ),
             generation=GenerationConfig(
                 emit_api_bundle=False,
                 validation=GenerationValidationConfig(
@@ -178,11 +189,12 @@ def _process_artifact(
     runtime_path = tmp_path / runtime_name
     runtime_index = _write_seed_container(runtime_path)
     bundle = load_prepared_model_bundle(_prepared_model_path())
+    process = build_process_ir(expression, color_accuracy="full")
     return OnTheFlyProcessArtifact(
         process_id=process_id,
         expression=expression,
         color_accuracy="lc",
-        external_pdgs=(1, -1, 23),
+        external_pdgs=tuple(leg.pdg for leg in process.legs),
         aliases=(),
         physics={
             "schema_version": 1,
@@ -194,15 +206,13 @@ def _process_artifact(
                 {
                     "index": index,
                     "label": index + 1,
-                    "particle": particle,
-                    "pdg": pdg,
+                    "particle": leg.particle,
+                    "pdg": leg.pdg,
                     "role": "initial" if index < 2 else "final",
                     "momentum_slot": index,
                     "momentum_components": ["E", "px", "py", "pz"],
                 }
-                for index, (particle, pdg) in enumerate(
-                    (("d", 1), ("d~", -1), ("z", 23))
-                )
+                for index, leg in enumerate(process.legs)
             ],
             "model_parameters": [],
         },
@@ -224,7 +234,9 @@ def _process_artifact(
             "external_legs": [],
             "particle_masses": [],
             "normalization": {},
-            "process_seed_identity": _seed_identity(),
+            "process_seed_identity": _seed_identity(
+                external_leg_count=len(process.legs)
+            ),
         },
         selector_policy={
             "color_coverage": "complete",
@@ -253,19 +265,25 @@ def _contracted_process_artifact(
     tmp_path: Path,
     *,
     color_accuracy: str,
+    contraction: str = "direct",
+    expression: str = "d d~ > z",
+    process_id: str = _PROCESS_ID,
 ) -> OnTheFlyProcessArtifact:
-    process = build_process_ir("d d~ > z", color_accuracy=color_accuracy)
+    process = build_process_ir(expression, color_accuracy=color_accuracy)
     color_plan = build_color_plan(
         process,
         color_accuracy=color_accuracy,
         fold_trace_reflections=False,
     )
     contracted = service_module._build_on_the_fly_contracted_color_payload_v1(
-        color_plan
+        color_plan,
+        contraction=contraction,
     )
     base = _process_artifact(
         tmp_path,
-        runtime_name=f"{color_accuracy}-runtime.pacbin",
+        runtime_name=f"{process_id}-{contraction}-runtime.pacbin",
+        process_id=process_id,
+        expression=expression,
     )
     return replace(
         base,
@@ -340,9 +358,7 @@ def test_producer_keeps_authenticated_native_digest_without_revision(
         ),
     )
 
-    producer = artifact_writer._producer_metadata(
-        RunConfig(action=Action.GENERATE)
-    )
+    producer = artifact_writer._producer_metadata(RunConfig(action=Action.GENERATE))
 
     assert producer["native_build_inputs_sha256"] == native_inputs
     assert "git_revision" not in producer
@@ -536,9 +552,7 @@ def test_on_the_fly_writer_publishes_authenticated_contracted_color(
     )
     color_payload = (output / color_path).read_bytes()
     execution = json.loads(
-        (output / f"processes/{_PROCESS_ID}/execution.json").read_text(
-            encoding="utf-8"
-        )
+        (output / f"processes/{_PROCESS_ID}/execution.json").read_text(encoding="utf-8")
     )
     reference = execution["runtime_metadata"]["color_contraction"]
 
@@ -577,6 +591,69 @@ def test_on_the_fly_writer_publishes_authenticated_contracted_color(
     assert inspected.recurrence_color_component_count == 1
     assert inspected.recurrence_color_group_count == 1
     assert inspected.recurrence_color_destination_count == 1
+
+
+def test_color_contraction_regenerates_only_the_process_artifact_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _prepare_writer_identity(monkeypatch)
+    source_path = _prepared_model_path()
+    source = ModelSource.from_path(source_path)
+    compiled = load_compiled_model(source_path)
+    expression = "g g > g g"
+    process_id = "g_g_to_g_g"
+    manifests = {}
+    color_payload_digests = {}
+
+    for contraction in ("direct", "symmetric-group-fft"):
+        output = tmp_path / contraction
+        process = _contracted_process_artifact(
+            tmp_path,
+            color_accuracy="full",
+            contraction=contraction,
+            expression=expression,
+            process_id=process_id,
+        )
+        write_schema_v3_artifact(
+            output,
+            mode="error",
+            source=source,
+            compiled_model=compiled,
+            configuration=_configuration(
+                "full",
+                contraction=contraction,
+            ),
+            processes=(process,),
+            timings={"total": 0.1},
+            api_bundle_hook=None,
+        )
+        manifest = load_manifest(output)
+        manifests[contraction] = manifest
+        color_payload_digests[contraction] = next(
+            record.sha256
+            for record in manifest.payloads
+            if record.path == f"processes/{process_id}/on-the-fly-color.bin"
+        )
+
+    direct = manifests["direct"]
+    fft = manifests["symmetric-group-fft"]
+    assert (
+        color_payload_digests["direct"] != color_payload_digests["symmetric-group-fft"]
+    )
+    assert direct.artifact_id != fft.artifact_id
+
+    # The setting selects a process-owned reduction payload. It must not
+    # invalidate either the prepared model or its authenticated native kernels.
+    assert direct.model == fft.model
+    assert (
+        direct.extensions["eager_prepared_pack"]
+        == fft.extensions["eager_prepared_pack"]
+    )
+    assert (
+        direct.producer["native_build_inputs_sha256"]
+        == fft.producer["native_build_inputs_sha256"]
+    )
 
 
 def test_on_the_fly_writer_append_skips_structural_proofs_for_complete_set(

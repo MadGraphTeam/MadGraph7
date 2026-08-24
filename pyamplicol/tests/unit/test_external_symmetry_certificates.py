@@ -621,12 +621,12 @@ def test_route_safe_mixed_line_dag_stays_below_legacy_kernel_count(
         len(builtin_dag.currents),
         len(builtin_dag.interactions),
         len(builtin_dag.amplitude_roots),
-    ) == (14_448, 37_200, 3_072)
+    ) == (14_088, 36_024, 3_072)
     assert (
         len(external_dag.currents),
         len(external_dag.interactions),
         len(external_dag.amplitude_roots),
-    ) == (14_448, 37_200, 3_072)
+    ) == (14_088, 36_024, 3_072)
 
     # Original AmpliCol evaluates 652 post-filter kernels for each of the 64
     # nonzero helicities. Ordered labels and helicity ancestry are physical
@@ -634,8 +634,8 @@ def test_route_safe_mixed_line_dag_stays_below_legacy_kernel_count(
     # proof. Exact structural pruning still keeps both model implementations
     # below the legacy kernel count.
     legacy_kernel_evaluations = 652 * 64
-    assert builtin_dag.interaction_evaluation_count == 37_200
-    assert external_dag.interaction_evaluation_count == 37_200
+    assert builtin_dag.interaction_evaluation_count == 36_024
+    assert external_dag.interaction_evaluation_count == 36_024
     assert builtin_dag.interaction_evaluation_count < legacy_kernel_evaluations
     assert external_dag.interaction_evaluation_count < legacy_kernel_evaluations
     assert assign_recursive_current_evaluation_reuse(

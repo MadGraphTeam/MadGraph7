@@ -7,13 +7,24 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ..color import (
+    ColorContractionPlan,
     ColorGroupDescriptor,
     build_color_contraction_plan,
+    build_symmetric_group_color_contraction_plan,
 )
 from ..color.plan_types import LCColorSectorReplayPartition
 from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import AmplitudeRoot, CurrentNode, GenericDAG
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeAmplitudeStageLayout:
+    """Runtime amplitude record plus its typed colour-contraction input."""
+
+    record: dict[str, object]
+    color_contraction: ColorContractionPlan | None
+    contraction_descriptors: tuple[ColorGroupDescriptor, ...]
 
 
 def build_runtime_amplitude_stage(
@@ -22,10 +33,36 @@ def build_runtime_amplitude_stage(
     *,
     current_slots: Sequence[Mapping[str, object]],
     value_slots: Mapping[tuple[int, str], Mapping[str, object]],
+    color_contraction: str = "direct",
 ) -> dict[str, object]:
     """Build evaluator roots and physical coherent-amplitude metadata."""
 
-    metadata = build_runtime_amplitude_metadata(dag, model)
+    return build_runtime_amplitude_stage_layout(
+        dag,
+        model,
+        current_slots=current_slots,
+        value_slots=value_slots,
+        color_contraction=color_contraction,
+    ).record
+
+
+def build_runtime_amplitude_stage_layout(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    current_slots: Sequence[Mapping[str, object]],
+    value_slots: Mapping[tuple[int, str], Mapping[str, object]],
+    color_contraction: str = "direct",
+) -> RuntimeAmplitudeStageLayout:
+    """Build an amplitude record while retaining its authenticated plan."""
+
+    metadata, contraction, contraction_descriptors = (
+        _build_runtime_amplitude_metadata_layout(
+            dag,
+            model,
+            color_contraction=color_contraction,
+        )
+    )
     metadata_roots = _mapping_sequence(metadata["roots"])
     roots: list[dict[str, object]] = []
     for root, record in zip(dag.amplitude_roots, metadata_roots, strict=True):
@@ -58,23 +95,56 @@ def build_runtime_amplitude_stage(
                 "all_sector_weight": record["all_sector_weight"],
             }
         )
-    return {**metadata, "roots": roots}
+    return RuntimeAmplitudeStageLayout(
+        record={**metadata, "roots": roots},
+        color_contraction=contraction,
+        contraction_descriptors=contraction_descriptors,
+    )
 
 
 def build_runtime_amplitude_metadata(
     dag: GenericDAG,
     model: Model,
+    *,
+    color_contraction: str = "direct",
 ) -> dict[str, object]:
     """Build slot-free amplitude and coherent-group metadata for one DAG."""
+
+    metadata, _, _ = _build_runtime_amplitude_metadata_layout(
+        dag,
+        model,
+        color_contraction=color_contraction,
+    )
+    return metadata
+
+
+def _build_runtime_amplitude_metadata_layout(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    color_contraction: str,
+) -> tuple[
+    dict[str, object],
+    ColorContractionPlan | None,
+    tuple[ColorGroupDescriptor, ...],
+]:
+    if color_contraction not in {"direct", "symmetric-group-fft"}:
+        raise ValueError(
+            f"unsupported runtime colour contraction {color_contraction!r}"
+        )
 
     group_ids, descriptors = _amplitude_groups(dag, dag.amplitude_roots)
     replay = _color_topology_replay_amplitudes(dag, descriptors)
     contraction_descriptors = (
         descriptors if replay is None else replay.physical_descriptors
     )
-    color_contraction = build_color_contraction_plan(
-        dag.color_plan,
-        contraction_descriptors,
+    contraction = (
+        build_color_contraction_plan(dag.color_plan, contraction_descriptors)
+        if color_contraction == "direct"
+        else build_symmetric_group_color_contraction_plan(
+            dag.color_plan,
+            contraction_descriptors,
+        )
     )
     multiple_lc_sectors = _has_multiple_lc_root_sectors(dag)
     roots: list[dict[str, object]] = []
@@ -139,30 +209,34 @@ def build_runtime_amplitude_metadata(
             }
         )
 
-    return {
-        "stage_kind": "amplitude-roots",
-        "output_count": len(roots),
-        "selected_color_sector_ids": None,
-        "coherent_groups": coherent_groups,
-        "color_topology_replay": (
-            None if replay is None else replay.to_runtime_manifest(dag)
-        ),
-        "roots": roots,
-        "final_reduction": {
-            "status": (
-                "sparse-color-contraction"
-                if color_contraction is not None
-                else "coherent-leading-color-diagonal"
+    return (
+        {
+            "stage_kind": "amplitude-roots",
+            "output_count": len(roots),
+            "selected_color_sector_ids": None,
+            "coherent_groups": coherent_groups,
+            "color_topology_replay": (
+                None if replay is None else replay.to_runtime_manifest(dag)
             ),
-            "operation": (
-                "sum root outputs into coherent helicity/color amplitudes, "
-                "then apply the requested color contraction"
+            "roots": roots,
+            "final_reduction": {
+                "status": (
+                    "sparse-color-contraction"
+                    if contraction is not None
+                    else "coherent-leading-color-diagonal"
+                ),
+                "operation": (
+                    "sum root outputs into coherent helicity/color amplitudes, "
+                    "then apply the requested color contraction"
+                ),
+            },
+            "color_contraction": (
+                None if contraction is None else contraction.to_json_dict()
             ),
         },
-        "color_contraction": (
-            None if color_contraction is None else color_contraction.to_json_dict()
-        ),
-    }
+        contraction,
+        contraction_descriptors,
+    )
 
 
 @dataclass(frozen=True, slots=True)

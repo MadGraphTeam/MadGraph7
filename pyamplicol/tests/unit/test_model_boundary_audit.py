@@ -37,6 +37,7 @@ BUILTIN_IMPORT_ALLOWLIST = {
         ("pyamplicol.models.builtin.adapters", "function"),
     },
     "generation/service.py": {
+        ("pyamplicol.models.builtin.process_catalog", "function"),
         ("pyamplicol.models.builtin.process_ir", "function"),
         ("pyamplicol.models.builtin.process_selection", "function"),
         ("pyamplicol.models.builtin.process_types", "function"),
@@ -57,7 +58,9 @@ LEGACY_PROCESS_SYMBOLS = frozenset(
         "SORT_PARTICLES",
     }
 )
-LEGACY_PROCESS_REEXPORTS: frozenset[str] = frozenset()
+LEGACY_PROCESS_SYMBOL_ALLOWLIST = {
+    "generation/service.py": frozenset({"PDGS"}),
+}
 SM_PDG_VALUES = frozenset({*range(1, 7), *range(11, 17), 21, 22, 23, 24, 25, 26, 99})
 BUILTIN_IMPLEMENTATION_DEFINITIONS = frozenset(
     {
@@ -254,17 +257,19 @@ def test_sm_catalog_and_pdg_classifiers_are_quarantined() -> None:
     for path in _runtime_python_files():
         tree = _parse(path)
         relative = _relative(path)
+        allowed_symbols = LEGACY_PROCESS_SYMBOL_ALLOWLIST.get(relative, frozenset())
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and node.id in LEGACY_PROCESS_SYMBOLS:
-                if relative not in LEGACY_PROCESS_REEXPORTS:
+                if node.id not in allowed_symbols:
                     catalog_violations.append(f"{relative}:{node.lineno}: {node.id}")
             elif isinstance(node, ast.ImportFrom):
                 imported = LEGACY_PROCESS_SYMBOLS.intersection(
                     alias.name for alias in node.names
                 )
-                if imported and relative not in LEGACY_PROCESS_REEXPORTS:
+                unexpected = imported.difference(allowed_symbols)
+                if unexpected:
                     catalog_violations.append(
-                        f"{relative}:{node.lineno}: {', '.join(sorted(imported))}"
+                        f"{relative}:{node.lineno}: {', '.join(sorted(unexpected))}"
                     )
             elif isinstance(node, ast.Compare):
                 operands = (node.left, *node.comparators)

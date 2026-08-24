@@ -374,6 +374,7 @@ pub struct DirectRecurrencePlanParts {
 pub struct DirectRecurrencePlan {
     parts: DirectRecurrencePlanParts,
     runtime_layout_digest: SemanticDigest,
+    closure_proof_rows_retained: bool,
 }
 
 fn selector_domain_contains_parts(
@@ -408,6 +409,8 @@ fn selector_domain_contains_parts(
 }
 
 impl DirectRecurrencePlan {
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn new(mut parts: DirectRecurrencePlanParts) -> RusticolResult<Self> {
         #[cfg(feature = "on-the-fly-test-support")]
         super::on_the_fly::reject_forbidden_work_if_probed(
@@ -419,7 +422,23 @@ impl DirectRecurrencePlan {
         Ok(Self {
             parts,
             runtime_layout_digest,
+            closure_proof_rows_retained: true,
         })
+    }
+
+    pub(crate) fn into_runtime_compacted(mut self) -> Self {
+        self.parts.closure_proofs.discard_rows_for_runtime();
+        self.closure_proof_rows_retained = false;
+        self
+    }
+
+    pub(crate) fn ensure_serializable(&self) -> RusticolResult<()> {
+        if !self.closure_proof_rows_retained {
+            return Err(invalid(
+                "runtime-compacted plan cannot be serialized without closure-proof rows",
+            ));
+        }
+        Ok(())
     }
 
     pub const fn strategy(&self) -> RecurrenceStrategy {
@@ -665,6 +684,10 @@ impl DirectRecurrencePlan {
     }
 
     pub fn into_parts(self) -> DirectRecurrencePlanParts {
+        assert!(
+            self.closure_proof_rows_retained,
+            "runtime-compacted DirectRecurrencePlan cannot be converted back into complete parts"
+        );
         self.parts
     }
 }
@@ -730,6 +753,9 @@ fn canonicalize_contribution_initialization(
     Ok(())
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
+#[cfg_attr(target_vendor = "apple", cold)]
 fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     if parts.point_tile_size == 0 {
         return Err(invalid("point tile size must be positive"));
@@ -903,8 +929,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     )?;
 
     let mut current_slots = BTreeSet::new();
-    let mut source_rows = BTreeSet::new();
-    let mut finalization_rows = BTreeSet::new();
+    let mut current_by_source_row = vec![None; parts.sources.len()];
+    let mut current_by_finalization_row = vec![None; parts.finalizations.len()];
     for (index, current) in parts.currents.iter().enumerate() {
         if current.semantic_current_id != index as u32 {
             return Err(invalid(format!(
@@ -960,7 +986,12 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                         "source current {index} must not have a finalization row"
                     )));
                 }
-                if !source_rows.insert(current.source_row_or_sentinel) {
+                let slot = current_by_source_row
+                    .get_mut(current.source_row_or_sentinel as usize)
+                    .ok_or_else(|| {
+                        invalid(format!("source current {index} row is out of bounds"))
+                    })?;
+                if slot.replace(index).is_some() {
                     return Err(invalid(format!(
                         "source row {} is referenced more than once",
                         current.source_row_or_sentinel
@@ -979,7 +1010,10 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                         current.finalization_row_or_sentinel,
                         finalization_count,
                     )?;
-                    if !finalization_rows.insert(current.finalization_row_or_sentinel) {
+                    let slot = current_by_finalization_row
+                        .get_mut(current.finalization_row_or_sentinel as usize)
+                        .expect("finalization reference was bounds checked");
+                    if slot.replace(index).is_some() {
                         return Err(invalid(format!(
                             "finalization row {} is referenced more than once",
                             current.finalization_row_or_sentinel
@@ -989,10 +1023,10 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             }
         }
     }
-    if source_rows.len() != parts.sources.len() {
+    if current_by_source_row.iter().any(Option::is_none) {
         return Err(invalid("not every source row is referenced exactly once"));
     }
-    if finalization_rows.len() != parts.finalizations.len() {
+    if current_by_finalization_row.iter().any(Option::is_none) {
         return Err(invalid(
             "not every finalization row is referenced exactly once",
         ));
@@ -1025,11 +1059,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             source.source_template_or_dispatch_domain,
             parts.source_template_or_dispatch_count,
         )?;
-        let current = parts
-            .currents
-            .iter()
-            .find(|current| current.source_row_or_sentinel == index as u32)
-            .expect("source references were validated");
+        let current = &parts.currents[current_by_source_row[index].expect("source row is bound")];
         if source.destination_component_base != current.component_base
             || source.momentum_form_id != current.momentum_form_id
             || source.selector_domain_id != current.selector_domain_id
@@ -1116,11 +1146,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
                 variant.source_row_id
             )));
         }
-        let current = parts
-            .currents
-            .iter()
-            .find(|current| current.source_row_or_sentinel == variant.source_row_id)
-            .expect("source references were validated");
+        let current = &parts.currents[current_by_source_row[variant.source_row_id as usize]
+            .expect("source-dispatch row is bound")];
         if variant.embedding_count != u32::from(current.component_count) {
             return Err(invalid(format!(
                 "source-dispatch variant {index} embedding does not cover its full current"
@@ -1337,11 +1364,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
             row.selector_domain_id,
             selector_count,
         )?;
-        let current = parts
-            .currents
-            .iter()
-            .find(|current| current.finalization_row_or_sentinel == index as u32)
-            .expect("finalization references were validated");
+        let current =
+            &parts.currents[current_by_finalization_row[index].expect("finalization row is bound")];
         if row.component_base != current.component_base
             || row.component_count != current.component_count
             || row.momentum_form_id != current.momentum_form_id
@@ -1691,6 +1715,8 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     Ok(())
 }
 
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", inline(never))]
 fn validate_closure_proofs(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     parts
         .closure_proofs

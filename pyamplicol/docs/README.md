@@ -32,7 +32,7 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 | choose a model, process, color approximation, or evaluator | [Configuration](user/configuration.md) and [Models and Processes](user/models-and-processes.md) |
 | call pyAmpliCol from Python | [Python API](user/python-api.md) |
 | use C, C++, Fortran, Rust, or generated Python drivers | [Native APIs](user/native-apis.md) |
-| benchmark or reproduce the performance report | [Profiling and Benchmarking](user/profiling-and-benchmarking.md) and [Profiling Campaigns](user/profiling-campaigns.md) |
+| benchmark, reproduce, or view performance reports | [Profiling and Benchmarking](user/profiling-and-benchmarking.md), [Profiling Campaigns](user/profiling-campaigns.md), and [published performance reports](performance_reports/README.md) |
 | diagnose an error | [Troubleshooting](user/troubleshooting.md) |
 
 ## Install and try it

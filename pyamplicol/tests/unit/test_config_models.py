@@ -12,6 +12,7 @@ from pyamplicol.config import (
     BenchmarkConfig,
     ColorAccuracy,
     ColorConfig,
+    ColorContraction,
     ConfigurationError,
     CppConfig,
     EagerEvaluatorConfig,
@@ -37,7 +38,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 77
+    assert len(FIELD_REGISTRY) == 78
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -67,6 +68,11 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         LCFlowLayout.TOPOLOGY_REPLAY,
         LCFlowLayout.ALL_FLOW_UNION,
     )
+    assert FIELD_REGISTRY["color.contraction"].default is ColorContraction.DIRECT
+    assert FIELD_REGISTRY["color.contraction"].choices == (
+        ColorContraction.DIRECT,
+        ColorContraction.SYMMETRIC_GROUP_FFT,
+    )
     assert FIELD_REGISTRY["evaluator.eager.point_tile_size"].default == 1024
     assert FIELD_REGISTRY["evaluator.eager.workspace_mib"].default == 256
     assert "evaluator.eager" in CONFIG_SECTIONS
@@ -80,9 +86,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         FIELD_REGISTRY["generation.relation_discovery.precision_digits"].default == 96
     )
     assert (
-        FIELD_REGISTRY[
-            "generation.relation_discovery.verification_probe_count"
-        ].default
+        FIELD_REGISTRY["generation.relation_discovery.verification_probe_count"].default
         == 4
     )
     assert (
@@ -177,6 +181,7 @@ def test_contract_defaults_are_typed() -> None:
     config = RunConfig(action="evaluate")
     assert config.action is Action.EVALUATE
     assert config.color.accuracy is ColorAccuracy.LC
+    assert config.color.contraction is ColorContraction.DIRECT
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
@@ -208,8 +213,7 @@ def test_relation_discovery_defaults_on_and_validates_certification_policy() -> 
         is RelationDiscoveryMode.CERTIFIED_REUSE
     )
     assert (
-        GenerationRelationDiscoveryConfig(mode="off").mode
-        is RelationDiscoveryMode.OFF
+        GenerationRelationDiscoveryConfig(mode="off").mode is RelationDiscoveryMode.OFF
     )
     assert (
         GenerationRelationDiscoveryConfig(mode="diagnostic").mode
@@ -262,6 +266,45 @@ def test_all_flow_union_layout_requires_lc_accuracy() -> None:
         ColorConfig(accuracy="full", lc_flow_layout="all-flow-union")
 
 
+def test_symmetric_group_fft_requires_contracted_color_and_supported_lane() -> None:
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
+        ColorConfig(contraction="symmetric-group-fft")
+
+    for accuracy in ("nlc", "full"):
+        for execution_mode in ("recurrence", "on-the-fly"):
+            config = RunConfig(
+                action="generate",
+                color=ColorConfig(
+                    accuracy=accuracy,
+                    contraction="symmetric-group-fft",
+                ),
+                evaluator=EvaluatorConfig(execution_mode=execution_mode),
+            )
+            assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+
+    compiled_direct = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="full"),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+    )
+    assert compiled_direct.color.contraction is ColorContraction.DIRECT
+
+    for execution_mode in ("compiled", "eager"):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"requires evaluator\.execution_mode='recurrence' or 'on-the-fly'",
+        ):
+            RunConfig(
+                action="generate",
+                process=ProcessConfig(selected_source_helicities={"1": 1}),
+                color=ColorConfig(
+                    accuracy="full",
+                    contraction="symmetric-group-fft",
+                ),
+                evaluator=EvaluatorConfig(execution_mode=execution_mode),
+            )
+
+
 def test_on_the_fly_execution_supports_every_color_accuracy() -> None:
     selected_flow = RunConfig(
         action="generate",
@@ -281,10 +324,7 @@ def test_on_the_fly_execution_supports_every_color_accuracy() -> None:
             evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
         )
         assert contracted.color.accuracy.value == accuracy
-        assert (
-            contracted.evaluator.execution_mode
-            is EvaluatorExecutionMode.ON_THE_FLY
-        )
+        assert contracted.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
 
 
 @pytest.mark.parametrize(

@@ -40,12 +40,14 @@ from pyamplicol.generation.recurrence_fermion_pairing import (
 )
 from pyamplicol.generation.recurrence_schedule_sharing import (
     RECURRENCE_PROCESS_BINDING_MAGIC,
+    RecurrenceProcessExecutorPack,
     RecurrenceProcessRemap,
     RecurrenceScheduleLoweringCache,
     RecurrenceScheduleSharingError,
     encode_recurrence_process_binding,
     exact_recurrence_process_bijection,
     intern_recurrence_schedules,
+    recurrence_helicity_selector_schedule_digest,
     recurrence_native_schedule_semantic_digest,
     recurrence_schedule_semantic_digest,
 )
@@ -56,6 +58,24 @@ from pyamplicol.models.recurrence_template import (
 
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def test_helicity_selector_schedule_identity_binds_dispatch_sidecar() -> None:
+    base = _digest("base schedule")
+    first_dispatch = _digest("dispatch one")
+    second_dispatch = _digest("dispatch two")
+
+    first = recurrence_helicity_selector_schedule_digest(base, first_dispatch)
+
+    assert first == recurrence_helicity_selector_schedule_digest(
+        base,
+        first_dispatch,
+    )
+    assert first != recurrence_helicity_selector_schedule_digest(
+        base,
+        second_dispatch,
+    )
+    assert first != base
 
 
 def _identity_remap(
@@ -77,6 +97,24 @@ def _identity_remap(
         direct_executor_count=4,
         parameter_slot_count=1,
     ).with_digest(_digest("identity remap"))
+
+
+def _executor_pack() -> RecurrenceProcessExecutorPack:
+    descriptor = struct.pack("<IIBBHI", 16, 0, 0, 0, 0, 1)
+    return RecurrenceProcessExecutorPack(
+        compiled_model_digest=_digest("compiled model"),
+        recurrence_template_catalog_digest=_digest("recurrence templates"),
+        prepared_kernel_pack_digest=_digest("prepared pack"),
+        direct_template_catalog_digest=_digest("direct templates"),
+        runtime_layout_digest=_digest("runtime layout"),
+        backend="jit",
+        target_triple="symjit-storage-v3-portable",
+        portable=True,
+        cpu_features=(),
+        catalog_executor_count=4,
+        executor_ids=(0,),
+        descriptor_payloads=(descriptor,),
+    )
 
 
 @dataclass(frozen=True)
@@ -196,10 +234,18 @@ def test_combined_schedule_digests_match_public_wrappers() -> None:
         "probe_count": 4,
     }
 
-    native, request = schedule_sharing._recurrence_schedule_semantic_digests(
-        logical,
-        **kwargs,
-        relation_discovery=relation_discovery,
+    native, request, sharing_domain = (
+        schedule_sharing._recurrence_schedule_semantic_digests(
+            logical,
+            **kwargs,
+            relation_discovery=relation_discovery,
+        )
+    )
+    baseline_native, baseline_request, baseline_domain = (
+        schedule_sharing._recurrence_schedule_semantic_digests(
+            logical,
+            **kwargs,
+        )
     )
 
     assert native == recurrence_native_schedule_semantic_digest(logical, **kwargs)
@@ -208,10 +254,17 @@ def test_combined_schedule_digests_match_public_wrappers() -> None:
         **kwargs,
         relation_discovery=relation_discovery,
     )
-    assert schedule_sharing._recurrence_schedule_semantic_digests(
+    assert baseline_native == baseline_request == native
+    assert sharing_domain != baseline_domain
+    _, _, other_probe_domain = schedule_sharing._recurrence_schedule_semantic_digests(
         logical,
         **kwargs,
-    ) == (native, native)
+        relation_discovery={
+            **relation_discovery,
+            "probe_process_id": "different-process",
+        },
+    )
+    assert other_probe_domain != sharing_domain
 
 
 def test_combined_schedule_digests_traverse_logical_input_once(
@@ -446,6 +499,10 @@ def _crossed_logical(*, target: bool) -> RecurrenceBuilderLogicalInputV1:
         ),
         RecurrenceSemanticDigestV1("model-catalog", _digest("model")),
         RecurrenceSemanticDigestV1("prepared-catalog", _digest("prepared")),
+        RecurrenceSemanticDigestV1(
+            "helicity-equivalence:global-flip-v1",
+            _digest(f"{process_id}:global-flip"),
+        ),
     )
     return RecurrenceBuilderLogicalInputV1(
         process_id=process_id,
@@ -501,14 +558,18 @@ def test_crossed_processes_share_only_through_an_exact_bijection() -> None:
 
     first = cache.lower_process(
         root,
-        schedule_digest=_digest("shared request"),
+        schedule_digest=_digest("root request"),
+        sharing_domain_digest=_digest("shared domain"),
+        native_schedule_semantic_digest=_digest("root native semantics"),
         direct_executor_count=4,
         parameter_slot_count=1,
         lower=lambda: lower("root"),
     )
     second = cache.lower_process(
         target,
-        schedule_digest=_digest("shared request"),
+        schedule_digest=_digest("target request"),
+        sharing_domain_digest=_digest("shared domain"),
+        native_schedule_semantic_digest=_digest("target native semantics"),
         direct_executor_count=4,
         parameter_slot_count=1,
         lower=lambda: lower("target"),
@@ -516,10 +577,13 @@ def test_crossed_processes_share_only_through_an_exact_bijection() -> None:
     assert calls == 1
     assert first.output == second.output == "root"
     assert second.schedule_digest == first.schedule_digest
+    assert second.native_schedule_semantic_digest == (
+        first.native_schedule_semantic_digest
+    )
     assert second.remap == remap
 
 
-def test_isomorphic_processes_do_not_share_different_request_identities() -> None:
+def test_isomorphic_processes_do_not_share_different_sharing_domains() -> None:
     root = _crossed_logical(target=False)
     target = _crossed_logical(target=True)
     cache = RecurrenceScheduleLoweringCache[str]()
@@ -533,6 +597,8 @@ def test_isomorphic_processes_do_not_share_different_request_identities() -> Non
     first = cache.lower_process(
         root,
         schedule_digest=_digest("root probe context"),
+        sharing_domain_digest=_digest("root probe domain"),
+        native_schedule_semantic_digest=_digest("root probe native semantics"),
         direct_executor_count=4,
         parameter_slot_count=1,
         lower=lambda: lower("root evidence"),
@@ -540,6 +606,8 @@ def test_isomorphic_processes_do_not_share_different_request_identities() -> Non
     second = cache.lower_process(
         target,
         schedule_digest=_digest("target probe context"),
+        sharing_domain_digest=_digest("target probe domain"),
+        native_schedule_semantic_digest=_digest("target probe native semantics"),
         direct_executor_count=4,
         parameter_slot_count=1,
         lower=lambda: lower("target evidence"),
@@ -632,8 +700,10 @@ def _process(
         recurrence_schedule_unpacked_size_bytes=len(payload),
         recurrence_schedule_index_sha256=_digest(f"index-{schedule_digest}"),
         builder_input_sha256=_digest(f"binding-{process_id}"),
+        process_digest=_digest(f"process-{process_id}"),
         process_support_mask=support_mask,
         recurrence_process_remap=_identity_remap(),
+        recurrence_process_executor_pack=_executor_pack(),
     )
 
 
@@ -675,9 +745,9 @@ def test_bounded_process_set_interns_before_publication(tmp_path: Path) -> None:
     assert plan.binding("u_ubar_to_g_g").artifact_path.endswith(
         "/recurrence-binding.bin"
     )
-    assert (
-        plan.binding("u_ubar_to_g_g").native_schedule_semantic_digest
-        == shared
+    assert plan.binding("u_ubar_to_g_g").native_schedule_semantic_digest == shared
+    assert plan.binding("u_ubar_to_g_g").process_digest == _digest(
+        "process-u_ubar_to_g_g"
     )
 
 
@@ -736,15 +806,13 @@ def test_shared_request_digest_rejects_different_native_semantics(
         )
 
 
-def test_legacy_binding_falls_back_only_when_native_digest_is_absent() -> None:
-    schedule_digest = _digest("legacy native schedule identity")
-    assert (
+def test_binding_requires_native_schedule_semantic_digest() -> None:
+    schedule_digest = _digest("native schedule identity")
+    with pytest.raises(ValueError, match="native schedule semantic digest"):
         _recurrence_binding_native_schedule_semantic_digest(
             {"schedule_digest": schedule_digest},
-            process_id="legacy",
+            process_id="missing",
         )
-        == schedule_digest
-    )
     with pytest.raises(ValueError, match="native schedule semantic digest"):
         _recurrence_binding_native_schedule_semantic_digest(
             {
@@ -757,22 +825,51 @@ def test_legacy_binding_falls_back_only_when_native_digest_is_absent() -> None:
 
 def test_binding_payload_is_compact_and_process_owned() -> None:
     schedule = _digest("schedule")
+    process = _digest("canonical process")
     semantic = _digest("process")
     payload = encode_recurrence_process_binding(
         process_id="u_ubar_to_g_g",
         schedule_digest=schedule,
+        process_digest=process,
         process_semantic_digest=semantic,
         process_support_mask=1 << 70,
         remap=_identity_remap(),
+        executor_pack=_executor_pack(),
     )
-    version, process_len, word_count = struct.unpack_from("<III", payload, 8)
+    (
+        version,
+        fixed_size,
+        process_len,
+        word_count,
+        target_len,
+        feature_count,
+        descriptor_count,
+        catalog_count,
+    ) = struct.unpack_from("<8I", payload, 8)
     assert payload[:8] == RECURRENCE_PROCESS_BINDING_MAGIC
-    assert version == 2
+    assert payload == encode_recurrence_process_binding(
+        process_id="u_ubar_to_g_g",
+        schedule_digest=schedule,
+        process_digest=process,
+        process_semantic_digest=semantic,
+        process_support_mask=1 << 70,
+        remap=_identity_remap(),
+        executor_pack=_executor_pack(),
+    )
+    assert version == 4
+    assert fixed_size == 344
     assert word_count == 2
-    assert payload[20:52] == bytes.fromhex(schedule)
-    assert payload[52:84] == bytes.fromhex(semantic)
-    assert payload[84:116] == bytes.fromhex(_digest("identity remap"))
-    assert payload[160 : 160 + process_len] == b"u_ubar_to_g_g"
+    assert target_len == len(b"symjit-storage-v3-portable")
+    assert feature_count == 0
+    assert descriptor_count == 1
+    assert catalog_count == 4
+    assert payload[88:120] == bytes.fromhex(schedule)
+    assert payload[120:152] == bytes.fromhex(semantic)
+    assert payload[152:184] == bytes.fromhex(_digest("compiled model"))
+    assert payload[280:312] == bytes.fromhex(_digest("runtime layout"))
+    assert payload[312:344] == bytes.fromhex(process)
+    assert payload[344 : 344 + process_len] == b"u_ubar_to_g_g"
+    assert payload.endswith(_executor_pack().descriptor_payloads[0])
     assert len(payload) < 512
 
 
@@ -818,8 +915,10 @@ def test_process_support_bits_are_independent() -> None:
         recurrence_schedule_unpacked_size_bytes=Path(__file__).stat().st_size,
         recurrence_schedule_index_sha256=_digest("index"),
         builder_input_sha256=_digest("first"),
+        process_digest=_digest("first process"),
         process_support_mask=1,
         recurrence_process_remap=_identity_remap(),
+        recurrence_process_executor_pack=_executor_pack(),
     )
     second = SimpleNamespace(**{**vars(first), "process_id": "second"})
     with pytest.raises(RecurrenceScheduleSharingError, match="support mask"):

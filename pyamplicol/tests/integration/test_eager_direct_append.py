@@ -101,7 +101,12 @@ def test_compiled_append_preserves_existing_direct_eager_process(
             generation=generation,
             evaluator=EvaluatorConfig(
                 execution_mode="compiled",
-                jit=JITConfig(optimization_level=3),
+                # The existing eager artifact is portable-64le. Keep the
+                # appended compiled evaluator inside the same canonical
+                # portable O1/O2 target contract; this regression is about
+                # heterogeneous eager/compiled pack preservation, not a
+                # target transition.
+                jit=JITConfig(optimization_level=2),
             ),
         )
     ).generate("u u~ > z", artifact, model=prepared, mode="append")

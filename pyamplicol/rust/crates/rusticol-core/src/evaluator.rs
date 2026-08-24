@@ -61,6 +61,8 @@ pub(crate) use stage::*;
 
 #[path = "evaluator/amplitude.rs"]
 mod amplitude;
+#[cfg(test)]
+pub(crate) use amplitude::build_compiled_symmetric_group_color_contraction_runtime;
 pub(crate) use amplitude::{
     build_color_contraction_runtime, build_raw_sum_groups, generic_root_group_id,
 };

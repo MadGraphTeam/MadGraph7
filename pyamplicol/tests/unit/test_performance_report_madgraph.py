@@ -193,6 +193,18 @@ def test_command_card_uses_exact_standalone_launch_sequence_and_installed_sm() -
     )
 
 
+def test_numerical_acceptance_fixture_tracks_the_canonical_driver() -> None:
+    fixture = json.loads(
+        (
+            _REPOSITORY / "tests/fixtures/numerical_acceptance/ufo-sm-seed101-v1.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert fixture["references"]["full"]["driver_sha256"] == (
+        madgraph.MADGRAPH_DRIVER_SOURCE_SHA256
+    )
+
+
 def test_generation_guard_rejects_model_fallback_and_import_failures(
     tmp_path: Path,
 ) -> None:

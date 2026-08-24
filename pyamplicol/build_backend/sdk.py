@@ -15,6 +15,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from native_build_identity import load_native_build_contract
+
 SDK_SOURCES = (
     ("rust/crates/rusticol-capi/include/rusticol.h", "include/rusticol.h"),
     ("rust/crates/rusticol-capi/include/rusticol.hpp", "include/rusticol.hpp"),
@@ -23,30 +25,6 @@ SDK_SOURCES = (
 RUST_SDK_SOURCE = "src/pyamplicol/_sdk/rust/rusticol.rs"
 RUST_SDK_WORKSPACE_MEMBER = "rust/crates/rusticol-capi"
 NATIVE_MARKER = "native-static-libs:"
-FORBIDDEN_SYMBOLS = (
-    "PyObject",
-    "PyExc_",
-    "PyGILState",
-    "PyErr_",
-    "PyLong_",
-    "PyUnicode_",
-    "PyMem_",
-    "PyType_",
-    "PyTuple_",
-    "PyList_",
-    "PyDict_",
-    "PyModule_",
-    "PyImport_",
-    "PyBytes_",
-    "PyCapsule_",
-    "PyFloat_",
-    "PyBool_",
-    "PyThread_",
-    "libpython",
-    "numpy",
-    "pyo3",
-    "python3",
-)
 FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES = (
     "pyobject",
     "pyexc_",
@@ -248,15 +226,15 @@ def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
 
 
 def _scan_archive(path: Path) -> None:
-    # Retain a byte-level scan as defense in depth for crate names and embedded
-    # strings which do not appear in the undefined-symbol table.
+    """Reject embedded host paths that would make the SDK non-relocatable.
+
+    Python linkage is checked authoritatively by the undefined-symbol scan and
+    the standalone C link probe. Searching arbitrary compressed archive bytes
+    for short text such as ``pyo3`` produces ordinary random false positives.
+    """
+
     archive_bytes = path.read_bytes()
     lowered_archive = archive_bytes.lower()
-    for marker in FORBIDDEN_SYMBOLS:
-        if marker.lower().encode() in lowered_archive:
-            raise RuntimeError(
-                f"Rusticol static archive unexpectedly references {marker}"
-            )
     for binary_marker in FORBIDDEN_BINARY_MARKERS:
         if binary_marker.lower() in lowered_archive:
             raise RuntimeError(
@@ -495,6 +473,11 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     _ensure_sdk_workspace_member(root)
     host = _host_target(root)
     target = _requested_target(host)
+    sdk_contract = load_native_build_contract(root)["sdk"]
+    profile = str(sdk_contract["profile"])
+    profile_arguments = (
+        ["--release"] if profile == "release" else ["--profile", profile]
+    )
     environment = dict(os.environ, CARGO_TARGET_DIR=str(target_dir))
     _cargo_fetch(root, target_dir, target)
     completed = subprocess.run(
@@ -503,19 +486,16 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
             "rustc",
             "--locked",
             "--offline",
-            "--release",
+            *profile_arguments,
             "--package",
-            "rusticol-capi",
+            str(sdk_contract["package"]),
             "--target",
             target,
             "--message-format=json-render-diagnostics",
             "--",
             "--print",
             "native-static-libs",
-            "-C",
-            "lto=off",
-            "-C",
-            "embed-bitcode=no",
+            *[str(value) for value in sdk_contract["rustc-codegen-arguments"]],
         ],
         cwd=root,
         env=environment,

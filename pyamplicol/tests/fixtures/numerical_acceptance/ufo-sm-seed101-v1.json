@@ -25,7 +25,7 @@
       "command_protocol": "generate-output-standalone-launch-force",
       "madgraph_version": "version = 3.7.2\ndate = 2026-07-07",
       "model_source_sha256": "f5a639915654d05a96bd3bea9bea0a21ab43f225684cf1988f8159345bd40dbf",
-      "driver_sha256": "43d313ce8bc65389730b1a24c40dd3bfcd365bfc0bb7f40a7bee71934ab33ab7",
+      "driver_sha256": "9c243fd026ddfd624fa3a2e6dbd0a2ff34a7753a19896a879f47a134b5b12110",
       "external_parameters_sha256": "d6b5072d4bfc1d6e9660a3c6349f069fb3c4a4aaafea9a8633b948ab7aafff01"
     },
     "lc": {

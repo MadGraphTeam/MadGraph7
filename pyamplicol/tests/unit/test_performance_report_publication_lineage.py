@@ -67,7 +67,9 @@ def test_report_only_descendant_accepts_canonical_and_profile_outputs(
     tmp_path: Path,
 ) -> None:
     repo, measurement_revision = _repository(tmp_path)
-    (repo / "docs/arxiv/results/cache.json").write_text(
+    canonical = repo / "src/pyamplicol/_profiling_campaign"
+    (canonical / "results").mkdir(parents=True)
+    (canonical / "results/cache.json").write_text(
         '{"measured":true}\n',
         encoding="ascii",
     )
@@ -93,7 +95,7 @@ def test_report_only_descendant_accepts_canonical_and_profile_outputs(
     changed = result["changed_paths"]
     assert isinstance(changed, list)
     assert {entry["path"] for entry in changed} == {
-        "docs/arxiv/results/cache.json",
+        "src/pyamplicol/_profiling_campaign/results/cache.json",
         "docs/performance_reports/macbook_M3/README.md",
         "docs/performance_reports/macbook_M3/architecture-profile.json",
         "docs/performance_reports/macbook_M3/pyAmpliCol.pdf",
@@ -139,7 +141,8 @@ def test_publication_descendant_rejects_executable_allowed_member(
     tmp_path: Path,
 ) -> None:
     repo, measurement_revision = _repository(tmp_path)
-    readme = repo / "docs/arxiv/README.md"
+    readme = repo / "src/pyamplicol/_profiling_campaign/README.md"
+    readme.parent.mkdir(parents=True)
     readme.write_text("# report\n", encoding="utf-8")
     readme.chmod(readme.stat().st_mode | 0o111)
     _commit(repo, "executable report")
@@ -152,7 +155,8 @@ def test_publication_descendant_rejects_symlink_allowed_member(
     tmp_path: Path,
 ) -> None:
     repo, measurement_revision = _repository(tmp_path)
-    readme = repo / "docs/arxiv/README.md"
+    readme = repo / "src/pyamplicol/_profiling_campaign/README.md"
+    readme.parent.mkdir(parents=True)
     os.symlink("../src/evaluator.py", readme)
     _commit(repo, "symlink report")
 

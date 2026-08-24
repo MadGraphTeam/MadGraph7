@@ -169,6 +169,7 @@ assign arbitrary names fixed QCD or electroweak meanings.
 ```toml
 [color]
 accuracy = "lc"                 # lc, nlc, or full
+contraction = "direct"          # direct or symmetric-group-fft
 lc_flow_layout = "topology-replay"
 ```
 
@@ -188,6 +189,21 @@ LC offers two complete-coverage layouts:
 Both preserve all physical flows and helicities for runtime selection.
 `all-flow-union` is LC-only and is incompatible with generation-fixed or
 truncated color/helicity coverage.
+
+For contracted NLC/full output, `symmetric-group-fft` evaluates the same exact
+colour interference as `direct` while Fourier-transforming certified
+permutation orbits and retaining all other terms as direct residuals. It is
+available for `recurrence` and `on-the-fly`; compiled/eager execution and LC
+flows deliberately reject it.
+
+```toml
+[color]
+accuracy = "full"
+contraction = "symmetric-group-fft"
+
+[evaluator]
+execution_mode = "recurrence"
+```
 
 ## Execution mode and evaluator backend
 
@@ -222,6 +238,14 @@ both at generation time when a deliberately specialized artifact is useful.
 Omit them to retain reusable runtime selectors. On-the-fly keeps selection at
 runtime instead: its last warmed family is retained until another selector is
 requested.
+
+For reusable contracted recurrence artifacts, generation persists one shared
+all-helicity physical-colour plan plus an exact per-helicity dispatch sidecar.
+Cold selector binding copies only the dependency-closed active row groups;
+warmed evaluation does not scan helicity-support masks. This companion belongs
+to recurrence execution. On-the-fly instead constructs the requested family
+from its compact process seed on first use and caches that family; compiled and
+eager artifacts retain their own execution layouts.
 
 On-the-fly is native binary64 only. LC retains physical flow and helicity
 selection without materializing either LC layout. NLC and full colour expose

@@ -44,6 +44,21 @@ fn evaluate_direct_color_schedule(
 }
 
 impl ExecutionRuntime {
+    fn has_compiled_symmetric_group_diagnostic(&self) -> bool {
+        self.amplitude_stage.as_ref().is_some_and(|amplitude| {
+            amplitude
+                .color_contraction
+                .as_ref()
+                .is_some_and(ColorContractionRuntime::is_symmetric_group)
+        })
+    }
+
+    fn compiled_symmetric_group_unsupported(&self, operation: &str) -> RusticolError {
+        RusticolError::compatibility(format!(
+            "compiled symmetric-group FFT diagnostic does not support {operation}; use unselected f64 total evaluation"
+        ))
+    }
+
     fn use_helicity_sum_runtime_for_selection(
         &self,
         selected_helicity_ids: Option<&BTreeSet<String>>,
@@ -155,6 +170,30 @@ impl ExecutionRuntime {
                 batch.point_count()
             )));
         }
+        if self.has_compiled_symmetric_group_diagnostic()
+            && (selected_helicity_ids.is_some() || selected_color_ids.is_some())
+        {
+            return Err(self.compiled_symmetric_group_unsupported("runtime selectors"));
+        }
+        let (selected_helicity_ids, selected_color_ids) =
+            self.physics
+                .as_ref()
+                .map_or((selected_helicity_ids, selected_color_ids), |physics| {
+                    (
+                        physics.canonical_total_helicity_selector(selected_helicity_ids),
+                        physics.canonical_total_color_selector(selected_color_ids),
+                    )
+                });
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)?
+            && self.try_run_f64_with_helicity_recurrence_into_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                output,
+            )?
+        {
+            return Ok(());
+        }
         if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
@@ -237,6 +276,17 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<ResolvedValues<f64>> {
+        if self.has_compiled_symmetric_group_diagnostic() {
+            return Err(self.compiled_symmetric_group_unsupported("resolved evaluation"));
+        }
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+            return self.run_resolved_f64_with_helicity_recurrence_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                None,
+            );
+        }
         if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
@@ -1063,7 +1113,15 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena execution was selected without a complete runtime",
             ));
         };
-        let tile_capacity = direct.tile_capacity();
+        let tile_capacity = if amplitude
+            .color_contraction
+            .as_ref()
+            .is_some_and(ColorContractionRuntime::is_symmetric_group)
+        {
+            direct.reduction_tile_capacity()
+        } else {
+            direct.tile_capacity()
+        };
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
@@ -1461,6 +1519,33 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if self.has_compiled_symmetric_group_diagnostic()
+            && (selected_helicity_ids.is_some() || selected_color_ids.is_some())
+        {
+            return Err(self.compiled_symmetric_group_unsupported("runtime selectors"));
+        }
+        let (selected_helicity_ids, selected_color_ids) =
+            self.physics
+                .as_ref()
+                .map_or((selected_helicity_ids, selected_color_ids), |physics| {
+                    (
+                        physics.canonical_total_helicity_selector(selected_helicity_ids),
+                        physics.canonical_total_color_selector(selected_color_ids),
+                    )
+                });
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+            let (resolved, mut profile) = self.run_resolved_f64_with_helicity_recurrence(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                None,
+            )?;
+            let materialization_start = Instant::now();
+            let values = resolved_f64_totals(&resolved)?;
+            profile.total_materialization_s += materialization_start.elapsed().as_secs_f64();
+            profile.total_materialized_value_count += values.len() as u64;
+            return Ok((values, profile));
+        }
         if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
@@ -1610,6 +1695,14 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+            return self.run_resolved_f64_with_helicity_recurrence(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+                None,
+            );
+        }
         if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
@@ -1825,6 +1918,9 @@ impl ExecutionRuntime {
         batch: &[Vec<[f64; 4]>],
         selected_color_sector_ids: Option<&BTreeSet<i64>>,
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
+        if self.has_compiled_symmetric_group_diagnostic() && selected_color_sector_ids.is_some() {
+            return Err(self.compiled_symmetric_group_unsupported("runtime selectors"));
+        }
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             return sum_runtime.run_f64_selected(batch, selected_color_sector_ids);
         }
@@ -1902,6 +1998,11 @@ impl ExecutionRuntime {
         &mut self,
         batch: &[Vec<[DoubleFloat; 4]>],
     ) -> RusticolResult<(Vec<DoubleFloat>, RuntimeProfile)> {
+        if self.has_compiled_symmetric_group_diagnostic() {
+            return Err(
+                self.compiled_symmetric_group_unsupported("exact/high-precision evaluation")
+            );
+        }
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             return sum_runtime.run_double(batch);
         }
@@ -1925,6 +2026,11 @@ impl ExecutionRuntime {
         batch: &[Vec<[Float; 4]>],
         binary_precision: u32,
     ) -> RusticolResult<(Vec<Float>, RuntimeProfile)> {
+        if self.has_compiled_symmetric_group_diagnostic() {
+            return Err(
+                self.compiled_symmetric_group_unsupported("exact/high-precision evaluation")
+            );
+        }
         if let Some(sum_runtime) = self.helicity_sum_runtime.as_mut() {
             return sum_runtime.run_float(batch, binary_precision);
         }
@@ -2460,6 +2566,19 @@ impl ExecutionRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        if self.has_compiled_symmetric_group_diagnostic() {
+            return Err(self
+                .compiled_symmetric_group_unsupported("resolved exact/high-precision evaluation"));
+        }
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+            return self.run_resolved_generic_with_helicity_recurrence(
+                batch,
+                binary_precision,
+                selected_helicity_ids,
+                selected_color_ids,
+                true,
+            );
+        }
         if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {

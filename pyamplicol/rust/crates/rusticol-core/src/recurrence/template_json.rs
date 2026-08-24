@@ -72,16 +72,11 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 enum OptionalField<T> {
+    #[default]
     Absent,
     Present(T),
-}
-
-impl<T> Default for OptionalField<T> {
-    fn default() -> Self {
-        Self::Absent
-    }
 }
 
 impl<'de, T> Deserialize<'de> for OptionalField<T>
@@ -397,8 +392,10 @@ struct LCColorTransitionWitnessJson {
     result_port_bindings: OptionalField<Vec<[u32; 2]>>,
 }
 
+type CanonicalPortSlices<'a> = (&'a [[[u32; 2]; 2]], &'a [[u32; 2]]);
+
 impl LCColorTransitionWitnessJson {
-    fn canonical_ports(&self) -> RusticolResult<(&[[[u32; 2]; 2]], &[[u32; 2]])> {
+    fn canonical_ports(&self) -> RusticolResult<CanonicalPortSlices<'_>> {
         match (&self.input_port_pairings, &self.result_port_bindings) {
             (OptionalField::Absent, OptionalField::Absent) => Ok((&[], &[])),
             (OptionalField::Present(pairings), OptionalField::Present(bindings))
@@ -566,11 +563,26 @@ fn enum_id(value: &str, choices: &[(&str, u8)], context: &str) -> RusticolResult
 /// The caller must pass the semantic catalog object itself, not a surrounding
 /// prepared-pack object.  The function authenticates every record digest and
 /// the catalog digest before deriving any primitive IDs.
+#[cfg(any(feature = "python-generation-bridge", test))]
 pub(crate) fn project_recurrence_template_catalog_json_v1(
     value: &Value,
 ) -> RusticolResult<OwnedRecurrenceTemplateInput> {
     authenticate_semantic_json(value)?;
-    let catalog: SemanticCatalogJson = serde_json::from_value(value.clone()).map_err(|error| {
+    project_authenticated_recurrence_template_catalog_json_v1(value.clone())
+}
+
+/// Project an owned semantic catalog without retaining its JSON representation.
+pub(crate) fn project_owned_recurrence_template_catalog_json_v1(
+    value: Value,
+) -> RusticolResult<OwnedRecurrenceTemplateInput> {
+    authenticate_semantic_json(&value)?;
+    project_authenticated_recurrence_template_catalog_json_v1(value)
+}
+
+fn project_authenticated_recurrence_template_catalog_json_v1(
+    value: Value,
+) -> RusticolResult<OwnedRecurrenceTemplateInput> {
+    let catalog: SemanticCatalogJson = serde_json::from_value(value).map_err(|error| {
         invalid(format!(
             "invalid recurrence-template semantic JSON shape: {error}"
         ))
@@ -2797,8 +2809,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        ROOT_SECTIONS, canonical_json_digest, project_recurrence_template_catalog_json_v1,
-        write_canonical_json,
+        ROOT_SECTIONS, canonical_json_digest, project_owned_recurrence_template_catalog_json_v1,
+        project_recurrence_template_catalog_json_v1, write_canonical_json,
     };
 
     const COMPILED_DIGEST: &str =
@@ -2861,6 +2873,31 @@ mod tests {
             .clone()
             .validate()
             .expect("projected empty catalog must satisfy core validation");
+    }
+
+    #[test]
+    fn owned_projection_preserves_the_authenticated_contract() {
+        let catalog = empty_catalog();
+        let retained = project_recurrence_template_catalog_json_v1(&catalog)
+            .expect("retained catalog must project")
+            .validate()
+            .expect("retained projection must validate");
+        let owned = project_owned_recurrence_template_catalog_json_v1(catalog)
+            .expect("owned catalog must project")
+            .validate()
+            .expect("owned projection must validate");
+        assert_eq!(owned.summary(), retained.summary());
+
+        let mut stale = empty_catalog();
+        stale["header"]["catalog_digest"] = Value::String(COMPILED_DIGEST.to_owned());
+        let error = project_owned_recurrence_template_catalog_json_v1(stale)
+            .expect_err("owned stale catalog must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("stale recurrence-template catalog digest"),
+            "unexpected validation error: {error}"
+        );
     }
 
     #[test]

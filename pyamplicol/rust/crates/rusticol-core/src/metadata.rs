@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: 0BSD
 
 use crate::{RUNTIME_PHYSICS_SCHEMA_VERSION, RusticolError, RusticolResult};
+use bincode::Decode;
+#[cfg(any(feature = "python-generation-bridge", test))]
+use bincode::Encode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "lowercase")]
 pub enum ColorAccuracy {
     Lc,
@@ -29,14 +33,16 @@ impl std::fmt::Display for ColorAccuracy {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "lowercase")]
 pub enum ParticleRole {
     Initial,
     Final,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(rename_all = "kebab-case")]
 pub enum ParameterKind {
     Normalization,
@@ -47,7 +53,8 @@ pub enum ParameterKind {
     Derived,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 pub enum ReductionKind {
     #[serde(rename = "lc-diagonal")]
     LcDiagonal,
@@ -55,7 +62,8 @@ pub enum ReductionKind {
     ContractedColor,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct Coverage {
     pub helicities: String,
@@ -64,7 +72,8 @@ pub struct Coverage {
     pub structural_zero_helicity_count: usize,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct ExternalParticle {
     pub index: usize,
@@ -76,7 +85,8 @@ pub struct ExternalParticle {
     pub momentum_components: [String; 4],
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct Helicity {
     pub id: String,
@@ -88,7 +98,8 @@ pub struct Helicity {
     pub coefficient: f64,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct LcColorFlow {
     pub id: String,
@@ -99,7 +110,8 @@ pub struct LcColorFlow {
     pub coefficient: f64,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct ContractedColor {
     pub id: String,
@@ -107,7 +119,8 @@ pub struct ContractedColor {
     pub description: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(tag = "kind")]
 pub enum ColorComponent {
     #[serde(rename = "lc-flow")]
@@ -139,7 +152,8 @@ impl ColorComponent {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct ReductionGroup {
     pub id: String,
@@ -149,14 +163,16 @@ pub struct ReductionGroup {
     pub physical_color_ids: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct Reduction {
     pub kind: ReductionKind,
     pub groups: Vec<ReductionGroup>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct ModelParameter {
     pub name: String,
@@ -166,7 +182,8 @@ pub struct ModelParameter {
     pub mutable: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Decode, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
 #[serde(deny_unknown_fields)]
 pub struct SelectorCapabilities {
     pub helicity: bool,

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
+#![allow(dead_code)] // Generation-bridge helpers are absent from default runtime builds.
+
 //! Cold-path construction of the compact on-the-fly process seed.
 //!
 //! The source projection is process-owned but contains no materialized

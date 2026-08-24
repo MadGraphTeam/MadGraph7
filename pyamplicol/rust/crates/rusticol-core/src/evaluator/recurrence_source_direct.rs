@@ -19,7 +19,10 @@ use crate::recurrence::direct_backend::{
     DirectResolvedSourceSelection, DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow,
     DirectSourceExecutor, DirectUnionSourceDispatchHandle,
 };
-use crate::recurrence::{DIRECT_NONE_U32, DirectSourceRow};
+use crate::recurrence::on_the_fly::{
+    OnTheFlyBoundUnionSourceProgram, OnTheFlyUnionSourceBindingView,
+};
+use crate::recurrence::{DIRECT_NONE_U32, DirectSourceRow, ExactComplexRational};
 use crate::{RusticolError, RusticolResult};
 use std::ffi::{c_int, c_void};
 use std::ptr;
@@ -161,6 +164,48 @@ struct DirectSourceExecutorContext {
     domains: Box<[DirectSourceDispatchDomain]>,
 }
 
+#[derive(Clone, Copy)]
+struct BoundUnionSourceEmbedding {
+    source_component_or_sentinel: u32,
+    scale_re: f64,
+    scale_im: f64,
+}
+
+#[derive(Clone, Copy)]
+struct BoundUnionSourceRow {
+    template: DirectSourceTemplateSpec,
+    destination_component_base: u32,
+    momentum_form_id: u32,
+    embedding_start: u32,
+    embedding_count: u32,
+}
+
+struct LoadedBoundUnionSourceProgram {
+    rows: Box<[BoundUnionSourceRow]>,
+    embeddings: Box<[BoundUnionSourceEmbedding]>,
+    current_component_count: u32,
+    momentum_form_count: u32,
+    parameter_count: u32,
+}
+
+fn source_binding_integrity(message: impl Into<String>) -> RusticolError {
+    RusticolError::integrity(format!(
+        "cold-bound recurrence union source: {}",
+        message.into()
+    ))
+}
+
+fn exact_factor_parts(value: ExactComplexRational) -> RusticolResult<(f64, f64)> {
+    let real = value.real().numerator() as f64 / value.real().denominator() as f64;
+    let imag = value.imag().numerator() as f64 / value.imag().denominator() as f64;
+    if !real.is_finite() || !imag.is_finite() {
+        return Err(source_binding_integrity(
+            "exact factor is not finite in binary64",
+        ));
+    }
+    Ok((real, imag))
+}
+
 /// Context-aware source handle published into the Direct-Arena catalog.
 #[derive(Clone, Copy)]
 pub(crate) struct ContextDirectSourceExecutorHandle {
@@ -238,6 +283,348 @@ impl LoadedDirectSourceExecutor {
             call: execute_direct_union_source_rows,
             context: ptr::from_ref(self.context.as_ref()).cast(),
         }
+    }
+
+    /// Resolve and authenticate one selected-helicity union source program.
+    ///
+    /// The returned object owns compact copies of its templates and embedded
+    /// component scales.  The complete variant/domain catalogs are consulted
+    /// only here and are absent from warmed execution.
+    pub(crate) fn bind_union_program(
+        &self,
+        view: OnTheFlyUnionSourceBindingView<'_>,
+    ) -> RusticolResult<Box<dyn OnTheFlyBoundUnionSourceProgram>> {
+        if view.sources.is_empty()
+            || view.variants.is_empty()
+            || view.embeddings.is_empty()
+            || view.selections.is_empty()
+            || view.exact_factors.is_empty()
+            || view.current_component_count == 0
+            || view.momentum_form_count == 0
+            || view.sources.len() != view.selections.len()
+        {
+            return Err(source_binding_integrity(
+                "selected source tables or execution shape are empty or inconsistent",
+            ));
+        }
+
+        let mut rows = Vec::with_capacity(view.selections.len());
+        let mut embeddings = Vec::new();
+        for (source_slot, selection) in view.selections.iter().copied().enumerate() {
+            if selection.source_slot != source_slot as u32 {
+                return Err(source_binding_integrity(
+                    "source selections are not in canonical source-slot order",
+                ));
+            }
+            let variant = view
+                .variants
+                .get(selection.dispatch_variant_id as usize)
+                .ok_or_else(|| source_binding_integrity("dispatch variant is out of bounds"))?;
+            let row = view
+                .sources
+                .get(variant.source_row_id as usize)
+                .ok_or_else(|| source_binding_integrity("source row is out of bounds"))?;
+            if row.source_slot != selection.source_slot
+                || row.source_template_or_dispatch_domain != variant.dispatch_domain_id
+                || row.momentum_form_id >= view.momentum_form_count
+            {
+                return Err(source_binding_integrity(
+                    "source row, dispatch domain, or momentum form is inconsistent",
+                ));
+            }
+            let row_factor = view
+                .exact_factors
+                .get(row.exact_factor_id as usize)
+                .ok_or_else(|| source_binding_integrity("source row factor is out of bounds"))?;
+            if *row_factor != ExactComplexRational::ONE {
+                return Err(source_binding_integrity(
+                    "union source row has a non-unit structural factor",
+                ));
+            }
+            let crossing_factor = view
+                .exact_factors
+                .get(variant.crossing_exact_factor_id as usize)
+                .copied()
+                .ok_or_else(|| source_binding_integrity("crossing factor is out of bounds"))?;
+            let (crossing_re, crossing_im) = exact_factor_parts(crossing_factor)?;
+
+            let domain = self
+                .context
+                .domains
+                .get(variant.dispatch_domain_id as usize)
+                .ok_or_else(|| source_binding_integrity("dispatch domain is out of bounds"))?;
+            let template = domain
+                .resolve(DirectSourceDispatchKey::RuntimeVariant {
+                    source_row_id: variant.source_row_id,
+                    runtime_variant_id: variant.runtime_variant_id,
+                })
+                .ok_or_else(|| {
+                    source_binding_integrity("runtime source template is absent from its domain")
+                })?;
+            if template.spin_state_class != variant.crossed_spin_state_class
+                || u32::from(template.family.component_count()) != variant.projection_count
+            {
+                return Err(source_binding_integrity(
+                    "runtime source template disagrees with its variant descriptor",
+                ));
+            }
+            if template
+                .mass_parameter_index
+                .is_some_and(|index| index >= view.parameter_count)
+            {
+                return Err(source_binding_integrity(
+                    "runtime source mass parameter is out of bounds",
+                ));
+            }
+
+            let embedding_start = usize::try_from(variant.embedding_start)
+                .map_err(|_| source_binding_integrity("embedding start exceeds usize"))?;
+            let embedding_end = embedding_start
+                .checked_add(variant.embedding_count as usize)
+                .ok_or_else(|| source_binding_integrity("embedding range overflows usize"))?;
+            let selected_embeddings = view
+                .embeddings
+                .get(embedding_start..embedding_end)
+                .ok_or_else(|| source_binding_integrity("embedding range is out of bounds"))?;
+            if selected_embeddings.is_empty() {
+                return Err(source_binding_integrity("embedding range is empty"));
+            }
+            let destination_end = row
+                .destination_component_base
+                .checked_add(variant.embedding_count)
+                .ok_or_else(|| source_binding_integrity("destination range overflows u32"))?;
+            if destination_end > view.current_component_count {
+                return Err(source_binding_integrity(
+                    "destination range is outside the current arena",
+                ));
+            }
+
+            let bound_embedding_start = u32::try_from(embeddings.len())
+                .map_err(|_| source_binding_integrity("bound embedding start exceeds u32"))?;
+            for (full_component, embedding) in selected_embeddings.iter().copied().enumerate() {
+                if embedding.full_component != full_component as u32 {
+                    return Err(source_binding_integrity(
+                        "embedding components are not in canonical order",
+                    ));
+                }
+                let factor = view
+                    .exact_factors
+                    .get(embedding.exact_factor_id as usize)
+                    .copied()
+                    .ok_or_else(|| source_binding_integrity("embedding factor is out of bounds"))?;
+                let (embedding_re, embedding_im) = exact_factor_parts(factor)?;
+                if embedding.source_component_or_sentinel != DIRECT_NONE_U32
+                    && embedding.source_component_or_sentinel
+                        >= u32::from(template.family.component_count())
+                {
+                    return Err(source_binding_integrity(
+                        "embedding source component is out of bounds",
+                    ));
+                }
+                // The legacy dispatcher does not combine an inactive
+                // embedding's otherwise-authenticated factor. Preserve that
+                // exact zero path even if two finite factors would overflow
+                // when multiplied.
+                let (scale_re, scale_im) =
+                    if embedding.source_component_or_sentinel == DIRECT_NONE_U32 {
+                        (0.0, 0.0)
+                    } else {
+                        (
+                            crossing_re * embedding_re - crossing_im * embedding_im,
+                            crossing_re * embedding_im + crossing_im * embedding_re,
+                        )
+                    };
+                embeddings.push(BoundUnionSourceEmbedding {
+                    source_component_or_sentinel: embedding.source_component_or_sentinel,
+                    scale_re,
+                    scale_im,
+                });
+            }
+            rows.push(BoundUnionSourceRow {
+                template,
+                destination_component_base: row.destination_component_base,
+                momentum_form_id: row.momentum_form_id,
+                embedding_start: bound_embedding_start,
+                embedding_count: variant.embedding_count,
+            });
+        }
+
+        Ok(Box::new(LoadedBoundUnionSourceProgram {
+            rows: rows.into_boxed_slice(),
+            embeddings: embeddings.into_boxed_slice(),
+            current_component_count: view.current_component_count,
+            momentum_form_count: view.momentum_form_count,
+            parameter_count: view.parameter_count,
+        }))
+    }
+}
+
+impl OnTheFlyBoundUnionSourceProgram for LoadedBoundUnionSourceProgram {
+    unsafe fn execute(
+        &self,
+        arena: DirectArenaView,
+        momenta: DirectMomentumView,
+        parameters: DirectParameterView,
+        point_count: u32,
+    ) -> RusticolResult<()> {
+        let expected_current_scalars = u64::from(self.current_component_count)
+            .checked_mul(u64::from(arena.point_stride))
+            .ok_or_else(|| source_binding_integrity("current arena shape overflows u64"))?;
+        let expected_momentum_scalars = u64::from(self.momentum_form_count)
+            .checked_mul(4)
+            .and_then(|planes| planes.checked_mul(u64::from(arena.point_stride)))
+            .ok_or_else(|| source_binding_integrity("momentum arena shape overflows u64"))?;
+        if point_count == 0
+            || arena.point_stride == 0
+            || point_count > arena.point_stride
+            || arena.current_re.is_null()
+            || arena.current_im.is_null()
+            || arena.current_scalar_len != expected_current_scalars
+            || momenta.values.is_null()
+            || momenta.point_stride != arena.point_stride
+            || momenta.lorentz_component_count != 4
+            || momenta.form_count != self.momentum_form_count
+            || momenta.scalar_len != expected_momentum_scalars
+            || parameters.value_count != self.parameter_count
+            || (self.parameter_count != 0 && parameters.values_re.is_null())
+        {
+            return Err(source_binding_integrity(
+                "warm Direct-Arena views disagree with the cold-bound shape",
+            ));
+        }
+        usize::try_from(expected_current_scalars)
+            .and_then(|_| usize::try_from(expected_momentum_scalars))
+            .map_err(|_| source_binding_integrity("warm Direct-Arena shape exceeds usize"))?;
+
+        for row in &self.rows {
+            let start = row.embedding_start as usize;
+            let end = start + row.embedding_count as usize;
+            // Cold binding proved every compact range against the owned
+            // embedding table.  Rechecking that invariant for every warmed
+            // source row would put a catalog bound back on the hot path.
+            let row_embeddings = unsafe { self.embeddings.get_unchecked(start..end) };
+            let mass = match row.template.mass_parameter_index {
+                Some(index) => unsafe { *parameters.values_re.add(index as usize) },
+                None => 0.0,
+            };
+            for point in 0..point_count {
+                let momentum = read_momentum(momenta, row.momentum_form_id, point);
+                match row.template.family {
+                    DirectSourceWavefunctionFamily::Scalar => unsafe {
+                        write_bound_embedded_wavefunction(
+                            arena,
+                            row.destination_component_base,
+                            point,
+                            [Complex::new(1.0, 0.0)],
+                            row_embeddings,
+                        )
+                    },
+                    DirectSourceWavefunctionFamily::WeylFermion => {
+                        let wave = match row.template.orientation {
+                            DirectSourceOrientation::Particle => {
+                                source_wavefunctions::ext_quark_weyl_array(
+                                    momentum,
+                                    row.template.helicity,
+                                    row.template.chirality,
+                                )
+                            }
+                            DirectSourceOrientation::Antiparticle => {
+                                source_wavefunctions::ext_antiquark_weyl_array(
+                                    momentum,
+                                    row.template.helicity,
+                                    row.template.chirality,
+                                )
+                            }
+                            DirectSourceOrientation::SelfConjugate => {
+                                return Err(source_binding_integrity(
+                                    "Weyl source has self-conjugate orientation",
+                                ));
+                            }
+                        };
+                        unsafe {
+                            write_bound_embedded_wavefunction(
+                                arena,
+                                row.destination_component_base,
+                                point,
+                                wave,
+                                row_embeddings,
+                            )
+                        };
+                    }
+                    DirectSourceWavefunctionFamily::DiracFermion => {
+                        let wave = match row.template.orientation {
+                            DirectSourceOrientation::Particle => {
+                                source_wavefunctions::ext_quark_dirac_massive(
+                                    momentum,
+                                    row.template.helicity,
+                                    mass,
+                                )
+                            }
+                            DirectSourceOrientation::Antiparticle => {
+                                source_wavefunctions::ext_antiquark_dirac_massive(
+                                    momentum,
+                                    row.template.helicity,
+                                    mass,
+                                )
+                            }
+                            DirectSourceOrientation::SelfConjugate => {
+                                return Err(source_binding_integrity(
+                                    "Dirac source has self-conjugate orientation",
+                                ));
+                            }
+                        };
+                        unsafe {
+                            write_bound_embedded_wavefunction(
+                                arena,
+                                row.destination_component_base,
+                                point,
+                                wave,
+                                row_embeddings,
+                            )
+                        };
+                    }
+                    DirectSourceWavefunctionFamily::Vector => {
+                        let wave = if mass == 0.0 {
+                            source_wavefunctions::ext_gluon(momentum, row.template.helicity)
+                        } else {
+                            source_wavefunctions::ext_massive_vector(
+                                momentum,
+                                row.template.helicity,
+                                mass,
+                            )
+                        };
+                        unsafe {
+                            write_bound_embedded_wavefunction(
+                                arena,
+                                row.destination_component_base,
+                                point,
+                                wave,
+                                row_embeddings,
+                            )
+                        };
+                    }
+                    DirectSourceWavefunctionFamily::Spin2 => {
+                        let wave =
+                            source_wavefunctions::ext_spin2(momentum, row.template.helicity, mass)
+                                .map_err(|_| {
+                                    RusticolError::evaluation(
+                                        "cold-bound recurrence spin-2 source evaluation failed",
+                                    )
+                                })?;
+                        unsafe {
+                            write_bound_embedded_wavefunction(
+                                arena,
+                                row.destination_component_base,
+                                point,
+                                wave,
+                                row_embeddings,
+                            )
+                        };
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -785,9 +1172,42 @@ fn write_embedded_wavefunction<const N: usize>(
     DIRECT_STATUS_OK
 }
 
+/// Write one cold-authenticated embedded source without revisiting component,
+/// factor, or arena bounds.  `LoadedBoundUnionSourceProgram::execute` checks
+/// the dynamic view shape once, while `bind_union_program` proves every
+/// component index and precombines the immutable exact scales.
+unsafe fn write_bound_embedded_wavefunction<const N: usize>(
+    arena: DirectArenaView,
+    destination_component_base: u32,
+    point: u32,
+    wave: [Complex<f64>; N],
+    embeddings: &[BoundUnionSourceEmbedding],
+) {
+    let stride = arena.point_stride as usize;
+    for (full_component, embedding) in embeddings.iter().copied().enumerate() {
+        let plane = destination_component_base as usize + full_component;
+        let offset = plane * stride + point as usize;
+        let (value_re, value_im) = if embedding.source_component_or_sentinel == DIRECT_NONE_U32 {
+            (0.0, 0.0)
+        } else {
+            let value =
+                unsafe { wave.get_unchecked(embedding.source_component_or_sentinel as usize) };
+            (
+                embedding.scale_re * value.re - embedding.scale_im * value.im,
+                embedding.scale_re * value.im + embedding.scale_im * value.re,
+            )
+        };
+        unsafe {
+            *arena.current_re.add(offset) = value_re;
+            *arena.current_im.add(offset) = value_im;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::ExactRational;
     use crate::recurrence::direct_backend::{
         DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
     };
@@ -951,6 +1371,72 @@ mod tests {
                 point_count,
             )
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn invoke_bound_union(
+        executor: &LoadedDirectSourceExecutor,
+        rows: &[DirectSourceRow],
+        variants: &[DirectSourceDispatchVariantDescriptor],
+        embeddings: &[DirectSourceEmbeddingRow],
+        selections: &[DirectResolvedSourceSelection],
+        exact_factors: &[ExactComplexRational],
+        current_re: &mut [f64],
+        current_im: &mut [f64],
+        momenta: &[f64],
+        momentum_forms: u32,
+        parameters: &[f64],
+        point_stride: u32,
+        point_count: u32,
+    ) -> RusticolResult<()> {
+        let program = executor.bind_union_program(OnTheFlyUnionSourceBindingView {
+            sources: rows,
+            variants,
+            embeddings,
+            selections,
+            exact_factors,
+            current_component_count: u32::try_from(current_re.len() / point_stride as usize)
+                .unwrap(),
+            momentum_form_count: momentum_forms,
+            parameter_count: parameters.len() as u32,
+        })?;
+        let mut amplitude_re = [0.0];
+        let mut amplitude_im = [0.0];
+        unsafe {
+            program.execute(
+                DirectArenaView {
+                    current_re: current_re.as_mut_ptr(),
+                    current_im: current_im.as_mut_ptr(),
+                    current_scalar_len: current_re.len() as u64,
+                    amplitude_re: amplitude_re.as_mut_ptr(),
+                    amplitude_im: amplitude_im.as_mut_ptr(),
+                    amplitude_scalar_len: 1,
+                    point_stride,
+                },
+                DirectMomentumView {
+                    values: momenta.as_ptr(),
+                    scalar_len: momenta.len() as u64,
+                    form_count: momentum_forms,
+                    lorentz_component_count: 4,
+                    point_stride,
+                },
+                DirectParameterView {
+                    values_re: parameters.as_ptr(),
+                    values_im: parameters.as_ptr(),
+                    value_count: parameters.len() as u32,
+                },
+                point_count,
+            )
+        }
+    }
+
+    fn exact_union_factors() -> [ExactComplexRational; 4] {
+        [
+            ExactComplexRational::ONE,
+            ExactComplexRational::new(ExactRational::ZERO, ExactRational::ONE),
+            ExactComplexRational::new(ExactRational::new(2, 1).unwrap(), ExactRational::ZERO),
+            ExactComplexRational::ZERO,
+        ]
     }
 
     #[test]
@@ -1494,6 +1980,385 @@ mod tests {
         );
         assert_eq!((current_re[1], current_im[1]), (0.0, 0.0));
         assert_eq!((current_re[3], current_im[3]), (0.0, 0.0));
+    }
+
+    #[test]
+    fn cold_bound_union_source_is_bitwise_equal_to_the_authenticated_legacy_dispatch() {
+        let executor = LoadedDirectSourceExecutor::load(vec![runtime_domain([(
+            0,
+            DirectSourceTemplateSpec {
+                spin_state_class: 1,
+                family: DirectSourceWavefunctionFamily::WeylFermion,
+                orientation: DirectSourceOrientation::Particle,
+                helicity: 1,
+                chirality: 1,
+                mass_parameter_index: None,
+            },
+        )])])
+        .unwrap();
+        let rows = [source_row(0, 0, 0, 0, 0)];
+        let variants = [DirectSourceDispatchVariantDescriptor {
+            embedding_start: 0,
+            projection_start: 0,
+            source_row_id: 0,
+            dispatch_domain_id: 0,
+            runtime_variant_id: 0,
+            source_state_index: 0,
+            source_template_id: 0,
+            source_state_template_id: 0,
+            crossed_state_template_id: 0,
+            crossed_spin_state_class: 1,
+            direct_executor_id: 0,
+            crossing_exact_factor_id: 1,
+            embedding_count: 4,
+            projection_count: 2,
+        }];
+        let embeddings = [
+            DirectSourceEmbeddingRow {
+                full_component: 0,
+                source_component_or_sentinel: 0,
+                exact_factor_id: 2,
+            },
+            DirectSourceEmbeddingRow {
+                full_component: 1,
+                source_component_or_sentinel: DIRECT_NONE_U32,
+                exact_factor_id: 3,
+            },
+            DirectSourceEmbeddingRow {
+                full_component: 2,
+                source_component_or_sentinel: 1,
+                exact_factor_id: 0,
+            },
+            DirectSourceEmbeddingRow {
+                full_component: 3,
+                source_component_or_sentinel: DIRECT_NONE_U32,
+                exact_factor_id: 3,
+            },
+        ];
+        let selections = [DirectResolvedSourceSelection {
+            source_slot: 0,
+            dispatch_variant_id: 0,
+        }];
+        let momentum = [50.0, 10.0, 20.0, 44.721359549995796];
+        let factors_re = [1.0, 0.0, 2.0, 0.0];
+        let factors_im = [0.0, 1.0, 0.0, 0.0];
+        let mut legacy_re = [99.0; 4];
+        let mut legacy_im = [-99.0; 4];
+        assert_eq!(
+            invoke_union(
+                &executor,
+                &rows,
+                &variants,
+                &embeddings,
+                &selections,
+                &mut legacy_re,
+                &mut legacy_im,
+                &momentum,
+                1,
+                &[],
+                &factors_re,
+                &factors_im,
+                1,
+                1,
+            ),
+            DIRECT_STATUS_OK
+        );
+
+        let mut bound_re = [99.0; 4];
+        let mut bound_im = [-99.0; 4];
+        invoke_bound_union(
+            &executor,
+            &rows,
+            &variants,
+            &embeddings,
+            &selections,
+            &exact_union_factors(),
+            &mut bound_re,
+            &mut bound_im,
+            &momentum,
+            1,
+            &[],
+            1,
+            1,
+        )
+        .unwrap();
+        assert_eq!(bound_re, legacy_re);
+        assert_eq!(bound_im, legacy_im);
+    }
+
+    #[test]
+    fn cold_bound_union_source_rejects_corrupt_catalogs_before_execution() {
+        let executor = LoadedDirectSourceExecutor::load(vec![runtime_domain([(
+            0,
+            DirectSourceTemplateSpec {
+                spin_state_class: 0,
+                family: DirectSourceWavefunctionFamily::Scalar,
+                orientation: DirectSourceOrientation::SelfConjugate,
+                helicity: 0,
+                chirality: 0,
+                mass_parameter_index: None,
+            },
+        )])])
+        .unwrap();
+        let rows = [source_row(0, 0, 0, 0, 0)];
+        let variant = DirectSourceDispatchVariantDescriptor {
+            embedding_start: 0,
+            projection_start: 0,
+            source_row_id: 0,
+            dispatch_domain_id: 0,
+            runtime_variant_id: 0,
+            source_state_index: 0,
+            source_template_id: 0,
+            source_state_template_id: 0,
+            crossed_state_template_id: 0,
+            crossed_spin_state_class: 0,
+            direct_executor_id: 0,
+            crossing_exact_factor_id: 0,
+            embedding_count: 1,
+            projection_count: 1,
+        };
+        let embedding = DirectSourceEmbeddingRow {
+            full_component: 0,
+            source_component_or_sentinel: 0,
+            exact_factor_id: 0,
+        };
+        let selection = DirectResolvedSourceSelection {
+            source_slot: 0,
+            dispatch_variant_id: 0,
+        };
+        let factors = [ExactComplexRational::ONE];
+        let bind = |rows: &[DirectSourceRow],
+                    variants: &[DirectSourceDispatchVariantDescriptor],
+                    embeddings: &[DirectSourceEmbeddingRow],
+                    selections: &[DirectResolvedSourceSelection],
+                    exact_factors: &[ExactComplexRational],
+                    current_component_count: u32,
+                    momentum_form_count: u32| {
+            executor.bind_union_program(OnTheFlyUnionSourceBindingView {
+                sources: rows,
+                variants,
+                embeddings,
+                selections,
+                exact_factors,
+                current_component_count,
+                momentum_form_count,
+                parameter_count: 0,
+            })
+        };
+
+        let bad_selection = DirectResolvedSourceSelection {
+            source_slot: 1,
+            ..selection
+        };
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[embedding],
+                &[bad_selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let bad_variant_id = DirectResolvedSourceSelection {
+            dispatch_variant_id: 1,
+            ..selection
+        };
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[embedding],
+                &[bad_variant_id],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let mut bad_domain = variant;
+        bad_domain.dispatch_domain_id = 1;
+        assert!(
+            bind(
+                &rows,
+                &[bad_domain],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let mut bad_template = variant;
+        bad_template.crossed_spin_state_class = 1;
+        assert!(
+            bind(
+                &rows,
+                &[bad_template],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let mut bad_range = variant;
+        bad_range.embedding_start = 1;
+        assert!(
+            bind(
+                &rows,
+                &[bad_range],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let bad_order = DirectSourceEmbeddingRow {
+            full_component: 1,
+            ..embedding
+        };
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[bad_order],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let bad_source_component = DirectSourceEmbeddingRow {
+            source_component_or_sentinel: 1,
+            ..embedding
+        };
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[bad_source_component],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let bad_factor = DirectSourceEmbeddingRow {
+            exact_factor_id: 1,
+            ..embedding
+        };
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[bad_factor],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[embedding],
+                &[selection],
+                &factors,
+                0,
+                1,
+            )
+            .is_err()
+        );
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                0,
+            )
+            .is_err()
+        );
+        let bad_destination = [source_row(0, 0, 1, 0, 0)];
+        assert!(
+            bind(
+                &bad_destination,
+                &[variant],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let bad_momentum = [source_row(0, 0, 0, 1, 0)];
+        assert!(
+            bind(
+                &bad_momentum,
+                &[variant],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let bad_row_factor = [source_row(0, 0, 0, 0, 1)];
+        assert!(
+            bind(
+                &bad_row_factor,
+                &[variant],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let mut bad_crossing_factor = variant;
+        bad_crossing_factor.crossing_exact_factor_id = 1;
+        assert!(
+            bind(
+                &rows,
+                &[bad_crossing_factor],
+                &[embedding],
+                &[selection],
+                &factors,
+                1,
+                1,
+            )
+            .is_err()
+        );
+        let nonunit =
+            ExactComplexRational::new(ExactRational::new(2, 1).unwrap(), ExactRational::ZERO);
+        assert!(
+            bind(
+                &rows,
+                &[variant],
+                &[embedding],
+                &[selection],
+                &[nonunit],
+                1,
+                1,
+            )
+            .is_err()
+        );
     }
 
     #[test]

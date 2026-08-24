@@ -95,6 +95,12 @@ All lanes implement the same public process artifact and runtime result:
 - **on-the-fly** writes a compact process seed and builds the selected query
   family on first use.
 
+Reusable contracted recurrence artifacts also carry one all-helicity
+physical-colour plan and a compact per-helicity row-group dispatch. The
+support metadata is used only during cold selector binding; warmed execution
+runs the selected rows directly. On-the-fly does not carry that recurrence
+companion: it builds and retains the requested family from its compact seed.
+
 The evaluator backend is a separate dimension: JIT, C++, or assembly. The
 default direct JIT stores a SymJIT application. Prepared recurrence/eager/OTF
 JIT kernels use the portable O2 storage contract.

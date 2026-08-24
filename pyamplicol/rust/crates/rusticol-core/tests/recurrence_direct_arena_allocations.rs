@@ -839,39 +839,41 @@ fn prove_genuine_artifact_warmed_loop_allocates_nothing(artifact: PathBuf, expec
     // Loading prepares every replay-flow or union-helicity selector. Momentum
     // parsing, output ownership, and SymJIT descriptor creation also stay
     // outside the counted region.
-    let momenta = validation_momenta(&runtime);
-    let point_count = 1;
-    let mut output = vec![f64::NAN; point_count];
-    runtime
-        .evaluate_f64_into(&momenta, point_count, &mut output)
-        .expect("warm genuine recurrence evaluation");
-    runtime
-        .evaluate_f64_into(&momenta, point_count, &mut output)
-        .expect("warm genuine recurrence descriptor caches");
-    let expected = output.clone();
-    assert!(
-        expected.iter().all(|value| value.is_finite()),
-        "genuine recurrence warmup returned a non-finite total"
-    );
+    let one_point_momenta = validation_momenta(&runtime);
+    for point_count in [1, 3] {
+        let momenta = one_point_momenta.repeat(point_count);
+        let mut output = vec![f64::NAN; point_count];
+        runtime
+            .evaluate_f64_into(&momenta, point_count, &mut output)
+            .expect("warm genuine recurrence evaluation");
+        runtime
+            .evaluate_f64_into(&momenta, point_count, &mut output)
+            .expect("warm genuine recurrence descriptor caches");
+        let expected = output.clone();
+        assert!(
+            expected.iter().all(|value| value.is_finite()),
+            "genuine recurrence warmup returned a non-finite total"
+        );
 
-    let (result, allocation_count, allocated_bytes) = count_allocations(|| {
-        for _ in 0..REAL_ARTIFACT_REPETITIONS {
-            runtime.evaluate_f64_into(&momenta, point_count, &mut output)?;
-            std::hint::black_box(output.as_slice());
-        }
-        Ok::<(), RusticolError>(())
-    });
-    result.expect("repeat genuine warmed recurrence evaluation");
+        let (result, allocation_count, allocated_bytes) = count_allocations(|| {
+            for _ in 0..REAL_ARTIFACT_REPETITIONS {
+                runtime.evaluate_f64_into(&momenta, point_count, &mut output)?;
+                std::hint::black_box(output.as_slice());
+            }
+            Ok::<(), RusticolError>(())
+        });
+        result.expect("repeat genuine warmed recurrence evaluation");
 
-    assert_eq!(output, expected, "genuine recurrence output changed");
-    assert_eq!(
-        allocation_count, 0,
-        "genuine warmed recurrence loop allocated"
-    );
-    assert_eq!(
-        allocated_bytes, 0,
-        "genuine warmed recurrence loop allocated bytes"
-    );
+        assert_eq!(output, expected, "genuine recurrence output changed");
+        assert_eq!(
+            allocation_count, 0,
+            "genuine warmed recurrence loop allocated at {point_count} points"
+        );
+        assert_eq!(
+            allocated_bytes, 0,
+            "genuine warmed recurrence loop allocated bytes at {point_count} points"
+        );
+    }
 }
 
 fn prove_genuine_contracted_selector_plan_allocates_nothing(artifact: PathBuf) {
@@ -884,12 +886,15 @@ fn prove_genuine_contracted_selector_plan_allocates_nothing(artifact: PathBuf) {
         &metadata.representative_process_key,
         "contracted-color-union",
     );
-    let helicity_id = runtime
+    let helicity_ids = runtime
         .helicity_ids()
-        .expect("load recurrence helicity IDs")
-        .into_iter()
-        .next()
-        .expect("contracted recurrence artifact has no helicity");
+        .expect("load recurrence helicity IDs");
+    assert_eq!(
+        helicity_ids.len(),
+        1,
+        "contracted allocation artifact must retain exactly one helicity"
+    );
+    let helicity_id = helicity_ids[0].clone();
     let selected_helicities = [helicity_id];
     let selector_plan = runtime
         .prepare_recurrence_selector_plan(Some(&selected_helicities), None)
@@ -900,6 +905,14 @@ fn prove_genuine_contracted_selector_plan_allocates_nothing(artifact: PathBuf) {
         .evaluate_f64_into_with_recurrence_selector_plan(&selector_plan, &momenta, 1, &mut output)
         .expect("warm genuine selected recurrence evaluation");
     let expected = output;
+    let mut total = [f64::NAN; 1];
+    runtime
+        .evaluate_f64_into(&momenta, 1, &mut total)
+        .expect("evaluate genuine recurrence through the no-selector total fast path");
+    assert_eq!(
+        total, expected,
+        "no-selector total must equal the sole retained-helicity selector"
+    );
 
     let (result, allocation_count, allocated_bytes) = count_allocations(|| {
         for _ in 0..REAL_ARTIFACT_REPETITIONS {

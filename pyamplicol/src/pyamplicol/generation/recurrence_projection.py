@@ -13,7 +13,7 @@ import hashlib
 import json
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from ..color.plan import (
@@ -22,6 +22,7 @@ from ..color.plan import (
     LCColorTopologyReplayPlan,
 )
 from ..color.plan_build import _ordered_open_line_blocks
+from ..color.plan_types import _canonical_open_string_product_key
 from ..models.base import Model, Vertex
 from ..models.recurrence_template import (
     CurrentStateTemplateV1,
@@ -69,6 +70,10 @@ _TEMPLATE_SECTIONS: Final = (
 )
 _CLOSURE_ANCHOR_PROOF_ALGORITHM_V2: Final = "canonical-lc-closure-anchor-v2"
 _CLOSURE_ANCHOR_PROOF_ALGORITHM_V3: Final = "canonical-lc-closure-anchor-v3"
+_CLOSURE_ANCHOR_PROOF_ALGORITHM_V4: Final = "canonical-lc-closure-anchor-v4"
+_IDENTITY_REPLAY_PROOF_ALGORITHM: Final = (
+    "canonical-recurrence-identity-materialization-v1"
+)
 _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: Final = (
     "helicity-support:pure-massless-adjoint-tree-v1"
 )
@@ -123,6 +128,8 @@ def project_recurrence_process_v1(
     coupling_order_limits: Mapping[str, int] | None = None,
     process_support_mask: int = 1,
     model: Model | None = None,
+    prefer_symmetric_group_closure_anchor: bool = False,
+    contracted_physical_color_union: bool = False,
 ) -> RecurrenceBuilderLogicalInputV1:
     """Return deterministic recurrence-builder records for one LC process.
 
@@ -131,7 +138,13 @@ def project_recurrence_process_v1(
     recurrence template catalog.
     """
 
-    _validate_projection_roots(process, color_plan, template_catalog, layout)
+    _validate_projection_roots(
+        process,
+        color_plan,
+        template_catalog,
+        layout,
+        contracted_physical_color_union=contracted_physical_color_union,
+    )
     if not isinstance(normalization, RecurrenceNormalizationV1):
         raise TypeError("recurrence projection requires exact normalization v1")
     if (
@@ -142,12 +155,26 @@ def project_recurrence_process_v1(
         raise RecurrenceProjectionError(
             "recurrence process support mask must be a positive integer bitmap"
         )
+    selection = generation_slice or RecurrenceGenerationSliceV1()
+    if contracted_physical_color_union and (
+        topology_replay is not None
+        or selection.selected_public_flow_ids is not None
+        or selection.selected_source_helicities is not None
+    ):
+        raise RecurrenceProjectionError(
+            "contracted physical-color union requires complete runtime flow and "
+            "source coverage without replay"
+        )
+    projected_color_plan = (
+        _physical_color_owner_plan(color_plan)
+        if contracted_physical_color_union
+        else color_plan
+    )
     reflection_contract = _closure_reflection_contract(
         template_catalog,
-        required=color_plan.trace_reflections_folded,
+        required=projected_color_plan.trace_reflections_folded,
     )
 
-    selection = generation_slice or RecurrenceGenerationSliceV1()
     template_ids, template_references = _project_template_references(template_catalog)
     external_legs, selected_sources = _project_external_legs(
         process,
@@ -157,7 +184,7 @@ def project_recurrence_process_v1(
         process_support_mask,
     )
     physical_sectors, public_flows = _project_physical_sectors(
-        color_plan,
+        projected_color_plan,
         process,
         external_legs,
         process_support_mask,
@@ -172,11 +199,19 @@ def project_recurrence_process_v1(
             )
     replay_partitions = _project_replay_partitions(
         process,
-        color_plan,
+        projected_color_plan,
         physical_sectors,
+        external_legs,
         topology_replay,
         layout,
     )
+    if prefer_symmetric_group_closure_anchor:
+        physical_sectors = _project_cyclic_trace_closure_anchors(
+            physical_sectors,
+            replay_partitions,
+            external_legs,
+            template_catalog,
+        )
     fermion_pairing = build_recurrence_fermion_pairing_catalog_v1(
         process,
         template_catalog.current_states,
@@ -184,7 +219,7 @@ def project_recurrence_process_v1(
     )
     closure_reconstruction_digest = _project_closure_obligation_roots_digest(
         process,
-        color_plan,
+        projected_color_plan,
         template_catalog,
         physical_sectors,
         fermion_pairing,
@@ -217,7 +252,7 @@ def project_recurrence_process_v1(
                 "prepared-catalog", template_catalog.catalog_digest
             ),
             RecurrenceSemanticDigestV1(
-                "color-plan", _digest(color_plan.to_json_dict())
+                "color-plan", _digest(projected_color_plan.to_json_dict())
             ),
             RecurrenceSemanticDigestV1(
                 "fermion-pairing-semantic", fermion_pairing.semantic_digest
@@ -511,6 +546,8 @@ def _validate_projection_roots(
     color_plan: GenericColorPlan,
     template_catalog: RecurrenceTemplateCatalog,
     layout: str,
+    *,
+    contracted_physical_color_union: bool,
 ) -> None:
     if not isinstance(process, CanonicalProcessIR):
         raise TypeError("recurrence projection requires CanonicalProcessIR")
@@ -518,6 +555,8 @@ def _validate_projection_roots(
         raise TypeError("recurrence projection requires GenericColorPlan")
     if not isinstance(template_catalog, RecurrenceTemplateCatalog):
         raise TypeError("recurrence projection requires RecurrenceTemplateCatalog")
+    if type(contracted_physical_color_union) is not bool:
+        raise TypeError("contracted physical-color union opt-in must be boolean")
     if layout not in {
         "topology-replay",
         "all-flow-union",
@@ -530,11 +569,24 @@ def _validate_projection_roots(
         raise RecurrenceProjectionError(
             "recurrence process and color-plan accuracies disagree"
         )
+    if contracted_physical_color_union and (
+        process.color_accuracy not in {"nlc", "full"}
+        or layout != "all-flow-union"
+        or color_plan.trace_reflections_folded
+    ):
+        raise RecurrenceProjectionError(
+            "contracted physical-color union requires complete NLC/full color, "
+            "an all-flow-union layout, and unfolded physical sectors"
+        )
     if process.color_accuracy == "lc" and layout == "contracted-color-union":
         raise RecurrenceProjectionError(
             "LC recurrence requires topology-replay or all-flow-union"
         )
-    if process.color_accuracy in {"nlc", "full"} and layout != "contracted-color-union":
+    if (
+        process.color_accuracy in {"nlc", "full"}
+        and layout != "contracted-color-union"
+        and not contracted_physical_color_union
+    ):
         raise RecurrenceProjectionError(
             "NLC/full recurrence requires the contracted-color-union strategy"
         )
@@ -559,6 +611,38 @@ def _validate_projection_roots(
         raise RecurrenceProjectionError(
             "recurrence projection requires dense physical LC sector IDs"
         )
+
+
+def _physical_color_owner_plan(color_plan: GenericColorPlan) -> GenericColorPlan:
+    """Return dense canonical tensor owners for one complete physical plan."""
+
+    owner_by_key: dict[tuple[object, ...], int] = {}
+    owners = []
+    for sector in sorted(color_plan.sectors, key=lambda item: int(item.id)):
+        sector_id = int(sector.id)
+        if sector.kind == "open-lines":
+            key: tuple[object, ...] = (
+                "open-lines",
+                _canonical_open_string_product_key(
+                    (
+                        line.fundamental_label,
+                        line.adjoint_labels,
+                        line.antifundamental_label,
+                        line.singlet_labels,
+                    )
+                    for line in sector.open_color_lines
+                ),
+            )
+        else:
+            key = (sector.kind, sector_id)
+        if owner_by_key.setdefault(key, sector_id) != sector_id:
+            continue
+        owners.append(replace(sector, id=len(owners)))
+    if not owners:
+        raise RecurrenceProjectionError(
+            "contracted physical-color union has no canonical owner sectors"
+        )
+    return replace(color_plan, sectors=tuple(owners))
 
 
 def _project_template_references(
@@ -966,12 +1050,10 @@ def _project_physical_sectors(
             word_source_slots=word_source_slots,
             closure_word_source_slots=closure_word_source_slots,
             physical_block_source_slots=tuple(
-                slots(block, "LC physical open-line block")
-                for block in physical_blocks
+                slots(block, "LC physical open-line block") for block in physical_blocks
             ),
             closure_block_source_slots=tuple(
-                slots(block, "LC closure open-line block")
-                for block in closure_blocks
+                slots(block, "LC closure open-line block") for block in closure_blocks
             ),
             process_source_label_order=tuple(int(leg.label) for leg in process.legs),
             singlet_source_slots=singlet_source_slots,
@@ -1128,10 +1210,171 @@ def _closure_anchor_contract(
     return closure_source_slot, proof_algorithm, proof_digest
 
 
+def _project_cyclic_trace_closure_anchors(
+    sectors: tuple[RecurrencePhysicalLCSectorV1, ...],
+    replay_partitions: tuple[RecurrenceReplayPartitionV1, ...],
+    external_legs: tuple[RecurrenceExternalLegV1, ...],
+    template_catalog: RecurrenceTemplateCatalog,
+) -> tuple[RecurrencePhysicalLCSectorV1, ...]:
+    """Fix one authenticated adjoint trace source as the closure sink.
+
+    This is deliberately an opt-in projection for the symmetric-group colour
+    lane.  It uses only cyclic trace equivalence plus process/template
+    contracts.  Any heterogeneous, open-line, fermionic, auxiliary, or
+    replay-incompatible channel retains its established v2/v3 anchor.
+    """
+
+    # Replay and reflection folding choose their canonical owners independently.
+    # A replay representative can therefore be the non-canonical member of a
+    # reflection orbit whose owner belongs to another replay partition.  Keep
+    # the established per-sector anchors until those two proofs are composed.
+    if replay_partitions:
+        return sectors
+
+    state_template_id = _cyclic_trace_state_template_id(
+        external_legs,
+        template_catalog,
+    )
+    if state_template_id is None:
+        return sectors
+
+    candidates: dict[int, int] = {}
+    full_source_domain = tuple(range(len(external_legs)))
+    for sector in sectors:
+        if (
+            sector.kind != "single-trace"
+            or sector.open_strings
+            or sector.singlet_source_slots
+            or not sector.trace_source_slots
+            or sector.trace_source_slots != sector.word_source_slots
+            or tuple(sorted(sector.word_source_slots)) != full_source_domain
+        ):
+            continue
+        candidates[sector.sector_id] = min(sector.word_source_slots)
+
+    # A replayed representative must keep the same distinguished source under
+    # every exact target mapping.  Fall back for the complete partition when
+    # any target cannot preserve that closure ancestry.
+    rejected: set[int] = set()
+    for partition in replay_partitions:
+        partition_sector_ids = {target.sector_id for target in partition.targets}
+        representative_anchor = candidates.get(partition.representative_sector_id)
+        if representative_anchor is None or not partition_sector_ids.issubset(
+            candidates
+        ):
+            rejected.update(partition_sector_ids)
+            continue
+        if any(
+            target.source_slot_permutation[representative_anchor]
+            != candidates[target.sector_id]
+            for target in partition.targets
+        ):
+            rejected.update(partition_sector_ids)
+
+    result: list[RecurrencePhysicalLCSectorV1] = []
+    process_source_label_order = tuple(leg.public_label for leg in external_legs)
+    fermionic_source_slots = tuple(
+        leg.source_slot for leg in external_legs if leg.is_fermionic
+    )
+    for sector in sectors:
+        closure_source_slot = candidates.get(sector.sector_id)
+        if closure_source_slot is None or sector.sector_id in rejected:
+            result.append(sector)
+            continue
+        proof_payload = {
+            "algorithm": _CLOSURE_ANCHOR_PROOF_ALGORITHM_V4,
+            "closure_source_slot": closure_source_slot,
+            "component_order_policy": "cyclic-single-trace",
+            "external_source_count": len(external_legs),
+            "fermionic_source_slots": fermionic_source_slots,
+            "open_string_count": 0,
+            "policy": "minimum-source-slot-cyclic-single-trace",
+            "process_source_label_order": process_source_label_order,
+            "sector_id": sector.sector_id,
+            "sector_kind": sector.kind,
+            "singlet_source_slots": sector.singlet_source_slots,
+            "state_template_id": state_template_id,
+            "trace_source_slots": sector.trace_source_slots,
+            "word_source_slots": sector.word_source_slots,
+        }
+        result.append(
+            replace(
+                sector,
+                closure_source_slot=closure_source_slot,
+                closure_proof_algorithm=_CLOSURE_ANCHOR_PROOF_ALGORITHM_V4,
+                closure_proof_digest=_digest(proof_payload),
+            )
+        )
+    return tuple(result)
+
+
+def _cyclic_trace_state_template_id(
+    external_legs: tuple[RecurrenceExternalLegV1, ...],
+    catalog: RecurrenceTemplateCatalog,
+) -> int | None:
+    """Return one process-wide state ID only for the certified adjoint case."""
+
+    if not external_legs or any(
+        leg.is_fermionic or not leg.source_states for leg in external_legs
+    ):
+        return None
+    state_ids = {
+        state.current_state_template_id
+        for leg in external_legs
+        for state in leg.source_states
+    }
+    if len(state_ids) != 1:
+        return None
+    state_template_id = next(iter(state_ids))
+    try:
+        state = catalog.current_states[state_template_id]
+    except IndexError:
+        return None
+    if (
+        state.orientation != "self-conjugate"
+        or state.statistics != "boson"
+        or state.particle_id != state.anti_particle_id
+        or state.color_representation != 8
+        or state.lc_color_shape_kind != "adjoint-segment"
+        or state.auxiliary_kind is not None
+    ):
+        return None
+
+    bindings = {binding.resolver_key: binding for binding in catalog.evaluator_bindings}
+    colors = {color.template_id: color for color in catalog.color_contractions}
+    for closure in catalog.closures:
+        if (
+            closure.input_state_template_ids != (state.template_id, state.template_id)
+            or closure.result_state_template_id is not None
+            or closure.coupling_parameter_ids
+            or closure.coupling_orders
+            or closure.eligible_quantum_flow_template_ids
+            or closure.output_factor_source != "none"
+            or closure.equivalence_class != "direct-contraction"
+        ):
+            continue
+        binding = bindings.get(closure.evaluator_resolver_key)
+        color = colors.get(closure.color_contraction_template_id)
+        if (
+            binding is not None
+            and binding.callable_kind == "rusticol-template"
+            and binding.contract_kind == "closure"
+            and binding.input_state_template_ids
+            == (state.template_id, state.template_id)
+            and binding.output_state_template_id is None
+            and color is not None
+            and color.input_representations == (8, 8)
+            and color.output_representation is None
+        ):
+            return state_template_id
+    return None
+
+
 def _project_replay_partitions(
     process: CanonicalProcessIR,
     color_plan: GenericColorPlan,
     physical_sectors: tuple[RecurrencePhysicalLCSectorV1, ...],
+    external_legs: tuple[RecurrenceExternalLegV1, ...],
     replay: LCColorTopologyReplayPlan | ColorTopologyReplayCertificate | None,
     layout: RecurrenceLCFlowLayout,
 ) -> tuple[RecurrenceReplayPartitionV1, ...]:
@@ -1169,15 +1412,26 @@ def _project_replay_partitions(
     labels = set(source_slot_by_label)
     physical_sector_by_id = {sector.sector_id: sector for sector in physical_sectors}
     partitions: list[RecurrenceReplayPartitionV1] = []
+    identity_materializations: dict[
+        int, tuple[str, int, Mapping[str, object] | None]
+    ] = {}
     for partition in replay.partitions:
         if partition.proof_algorithm is None or partition.proof_digest is None:
             raise RecurrenceProjectionError(
                 "topology replay partition lacks an exact proof certificate"
             )
-        targets: list[RecurrenceReplayTargetV1] = []
-        representative_anchor = physical_sector_by_id[
-            int(partition.representative_sector_id)
-        ].closure_source_slot
+        representative_sector_id = int(partition.representative_sector_id)
+        try:
+            representative_sector = physical_sector_by_id[representative_sector_id]
+        except KeyError as exc:
+            raise RecurrenceProjectionError(
+                "topology replay references a missing representative LC sector "
+                f"{representative_sector_id}"
+            ) from exc
+        representative_anchor = representative_sector.closure_source_slot
+        projected_targets: list[
+            tuple[RecurrenceReplayTargetV1, bool, int, Mapping[str, object]]
+        ] = []
         for sector_id, raw_mapping, weight, sign in zip(
             partition.active_sector_ids,
             partition.label_permutations,
@@ -1232,30 +1486,159 @@ def _project_replay_partitions(
                     "topology replay carries an unsupported non-public-flow "
                     f"multiplicity {weight!r} for sector {sector_id}"
                 )
-            target_anchor = physical_sector_by_id[int(sector_id)].closure_source_slot
-            if permutation[representative_anchor] != target_anchor:
-                raise RecurrenceProjectionError(
-                    "topology replay does not map the representative closure "
-                    "anchor onto the target sector anchor"
-                )
-            targets.append(
-                RecurrenceReplayTargetV1(
-                    sector_id=int(sector_id),
-                    external_permutation=permutation,
-                    source_slot_permutation=permutation,
-                    # Rust derives and certifies source-state and closure
-                    # bijections from this exact slot permutation.
-                    amplitude_phase=ExactComplexRationalV1(1),
-                    fermion_sign=int(sign),
+            target_sector = physical_sector_by_id[int(sector_id)]
+            target = RecurrenceReplayTargetV1(
+                sector_id=int(sector_id),
+                external_permutation=permutation,
+                source_slot_permutation=permutation,
+                # Rust derives and certifies source-state and closure
+                # bijections from this exact slot permutation.
+                amplitude_phase=ExactComplexRationalV1(1),
+                fermion_sign=int(sign),
+            )
+            target_anchor = target_sector.closure_source_slot
+            anchor_compatible = permutation[representative_anchor] == target_anchor
+            source_replay = {
+                "fermion_sign": int(sign),
+                "partition_proof_algorithm": partition.proof_algorithm,
+                "partition_proof_digest": partition.proof_digest,
+                "representative_sector_id": representative_sector_id,
+                "source_slot_permutation": permutation,
+            }
+            projected_targets.append(
+                (target, anchor_compatible, int(expected_weight), source_replay)
+            )
+
+        if not isinstance(replay, LCColorTopologyReplayPlan) and any(
+            not anchor_compatible for _, anchor_compatible, _, _ in projected_targets
+        ):
+            raise RecurrenceProjectionError(
+                "topology replay does not map the representative closure "
+                "anchor onto the target sector anchor"
+            )
+        representative_is_compatible = any(
+            target.sector_id == representative_sector_id and anchor_compatible
+            for target, anchor_compatible, _, _ in projected_targets
+        )
+        retained_targets = (
+            tuple(
+                target
+                for target, anchor_compatible, _, _ in projected_targets
+                if anchor_compatible
+            )
+            if representative_is_compatible
+            else ()
+        )
+        if retained_targets:
+            partitions.append(
+                RecurrenceReplayPartitionV1(
+                    representative_sector_id=representative_sector_id,
+                    materialized_sector_id=int(partition.materialized_sector_id),
+                    proof_algorithm=partition.proof_algorithm,
+                    proof_digest=partition.proof_digest,
+                    targets=retained_targets,
                 )
             )
+        for target, anchor_compatible, multiplicity, source_replay in projected_targets:
+            if representative_is_compatible and anchor_compatible:
+                continue
+            target_sector = physical_sector_by_id[target.sector_id]
+            mapped_word = tuple(
+                target.source_slot_permutation[source_slot]
+                for source_slot in representative_sector.word_source_slots
+            )
+            if mapped_word != target_sector.word_source_slots:
+                raise RecurrenceProjectionError(
+                    "topology replay does not map the representative LC word "
+                    "onto the target sector word"
+                )
+            for representative_slot, target_slot in enumerate(
+                target.source_slot_permutation
+            ):
+                representative_leg = external_legs[representative_slot]
+                target_leg = external_legs[target_slot]
+                representative_contracts = {
+                    state.source_template_id: (
+                        state.momentum_sign,
+                        state.crossing_phase.canonical_key,
+                    )
+                    for state in representative_leg.source_states
+                }
+                target_contracts = {
+                    state.source_template_id: (
+                        state.momentum_sign,
+                        state.crossing_phase.canonical_key,
+                    )
+                    for state in target_leg.source_states
+                }
+                if representative_contracts != target_contracts:
+                    raise RecurrenceProjectionError(
+                        "topology replay maps an external source onto one with "
+                        "a different crossing contract"
+                    )
+            identity_materializations[target.sector_id] = (
+                (
+                    "closure-anchor-incompatible"
+                    if representative_is_compatible
+                    else "representative-closure-anchor-incompatible"
+                ),
+                multiplicity,
+                source_replay,
+            )
+
+    if isinstance(replay, LCColorTopologyReplayPlan):
+        for sector_id in replay.residual_sector_ids:
+            sector = color_plan.sector(int(sector_id))
+            if sector is None:
+                raise RecurrenceProjectionError(
+                    f"topology replay references missing residual LC sector {sector_id}"
+                )
+            multiplicity = (
+                2
+                if color_plan.trace_reflections_folded
+                and sector.kind == "single-trace"
+                and len(sector.trace_labels) > 2
+                else 1
+            )
+            identity_materializations[int(sector_id)] = (
+                "replay-plan-residual",
+                multiplicity,
+                None,
+            )
+
+    identity_permutation = tuple(range(len(process.legs)))
+    for sector_id in sorted(identity_materializations):
+        reason, multiplicity, source_replay = identity_materializations[sector_id]
+        sector = physical_sector_by_id[sector_id]
+        proof_payload = {
+            "algorithm": _IDENTITY_REPLAY_PROOF_ALGORITHM,
+            "closure_proof_algorithm": sector.closure_proof_algorithm,
+            "closure_proof_digest": sector.closure_proof_digest,
+            "closure_source_slot": sector.closure_source_slot,
+            "identity_source_slot_permutation": identity_permutation,
+            "policy": "materialize-physical-sector-with-identity-replay",
+            "process_source_label_order": tuple(int(leg.label) for leg in process.legs),
+            "public_flow_multiplicity": multiplicity,
+            "reason": reason,
+            "sector_id": sector_id,
+            "source_replay": source_replay,
+            "word_source_slots": sector.word_source_slots,
+        }
         partitions.append(
             RecurrenceReplayPartitionV1(
-                representative_sector_id=int(partition.representative_sector_id),
-                materialized_sector_id=int(partition.materialized_sector_id),
-                proof_algorithm=partition.proof_algorithm,
-                proof_digest=partition.proof_digest,
-                targets=tuple(targets),
+                representative_sector_id=sector_id,
+                materialized_sector_id=sector_id,
+                proof_algorithm=_IDENTITY_REPLAY_PROOF_ALGORITHM,
+                proof_digest=_digest(proof_payload),
+                targets=(
+                    RecurrenceReplayTargetV1(
+                        sector_id=sector_id,
+                        external_permutation=identity_permutation,
+                        source_slot_permutation=identity_permutation,
+                        amplitude_phase=ExactComplexRationalV1(1),
+                        fermion_sign=1,
+                    ),
+                ),
             )
         )
     return tuple(partitions)

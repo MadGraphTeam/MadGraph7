@@ -17,7 +17,7 @@ import pytest
 
 import pyamplicol.generation.service as generation_service
 from pyamplicol import CompiledModel, Generator, ModelSource, Runtime
-from pyamplicol.api.errors import EvaluationError
+from pyamplicol.api.errors import ArtifactError, EvaluationError
 from pyamplicol.artifacts import inspect_artifact, load_manifest
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
@@ -74,6 +74,7 @@ _RECURRENCE_CAPABILITIES = {
 _CONTRACTED_RECURRENCE_CAPABILITIES = {
     "rusticol.recurrence-color.contracted.v1",
     "rusticol.recurrence-direct-arena.complex-f64.v1",
+    "rusticol.recurrence-helicity-selector-companion.v2",
 }
 _UFO_SM_ROOT = (
     Path(__file__).resolve().parents[2]
@@ -962,13 +963,8 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         candidate = lane["candidate_capture"]
         verification = lane["verification_capture"]
         assert isinstance(candidate, dict)
-        assert isinstance(verification, dict)
         assert candidate["precision_digits"] == 80
         assert candidate["point_count"] == 2
-        assert verification["point_count"] == 2
-        assert set(candidate["kinematic_sha256s"]).isdisjoint(
-            verification["kinematic_sha256s"]
-        )
         discovery = lane["discovery"]
         assert isinstance(discovery, dict)
         probe_contract = discovery["probe_contract"]
@@ -976,20 +972,40 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         assert probe_contract["algorithm"] == (
             "authenticated-independent-recursive-decimal-raw-probes-v2"
         )
-        assert probe_contract["independent_verification"] is True
         assert probe_contract["current_dimension_bound"] is True
         assert (
             probe_contract["runtime_parameter_schema_sha256"]
             == candidate["runtime_parameter_schema_sha256"]
         )
         assert candidate["parameter_contexts"]
-        assert verification["parameter_contexts"]
-        assert set(candidate["parameter_context_sha256s"]).isdisjoint(
-            verification["parameter_context_sha256s"]
-        )
+        if discovery["numerical_candidate_count"] == 0:
+            assert verification is None
+            assert probe_contract["independent_verification"] is False
+            assert probe_contract["verification_status"] == (
+                "not-required-no-candidate-hypothesis"
+            )
+            assert probe_contract["verification_point_sha256s"] == []
+            assert probe_contract["verification_capture_sha256"] is None
+        else:
+            assert isinstance(verification, dict)
+            assert verification["point_count"] == 2
+            assert set(candidate["kinematic_sha256s"]).isdisjoint(
+                verification["kinematic_sha256s"]
+            )
+            assert probe_contract["independent_verification"] is True
+            assert verification["parameter_contexts"]
+            assert set(candidate["parameter_context_sha256s"]).isdisjoint(
+                verification["parameter_context_sha256s"]
+            )
         persisted = lane["persisted_numerical_evidence"]
         assert persisted["raw_evidence_retained"] is False
-        assert persisted["generation_raw_evidence_bytes"] > 0
+        if verification is None:
+            assert persisted["verification_capture"] is None
+            assert persisted["generation_raw_evidence_bytes"] == 0
+            assert persisted["generation_evidence_transport_bytes"] == 0
+            assert persisted["generation_evidence_encoding"] is None
+        else:
+            assert persisted["generation_raw_evidence_bytes"] > 0
         assert persisted["measured_payload_bytes"] < 64 << 20
         assert (
             persisted["full_census"]["decision_sha256"] == discovery["decision_sha256"]
@@ -1004,18 +1020,24 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
             application["certified_relation_count"] == lane["certified_relation_count"]
         )
         native = manifest_report["native_relation_application"]
-        assert isinstance(native, dict)
+        certified = lane["certified_relation_count"]
+        applied = lane["applied_relation_count"]
+        if certified == 0:
+            assert applied == 0
+            assert native is None
+        else:
+            assert isinstance(native, dict)
+            assert native["requested_mode"] == lane["effective_mode"]
+            assert native["exact_certified_relation_count"] == certified
         effective_mode = lane["effective_mode"]
-        assert native["requested_mode"] == effective_mode
-        assert (
-            native["exact_certified_relation_count"] == lane["certified_relation_count"]
-        )
         if effective_mode == "diagnostic":
-            assert lane["applied_relation_count"] == 0
+            assert applied == 0
             assert lane["warning"]["required"] is False
             assert manifest_report["warning"]["required"] is False
-            assert native["applied_relation_count"] == 0
-            assert native["scale_copy_row_count"] == 0
+            if certified:
+                assert isinstance(native, dict)
+                assert native["applied_relation_count"] == 0
+                assert native["scale_copy_row_count"] == 0
             if mode == "certified-reuse":
                 assert lane["effective_reuse_state"] == "disabled"
                 assert lane["effective_mode_reason"] in {
@@ -1028,10 +1050,11 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
                 )
         else:
             assert effective_mode == mode == "certified-reuse"
-            applied = lane["applied_relation_count"]
-            assert applied == lane["certified_relation_count"]
-            assert native["applied_relation_count"] == applied
-            assert native["scale_copy_row_count"] == applied
+            assert applied == certified
+            if applied:
+                assert isinstance(native, dict)
+                assert native["applied_relation_count"] == applied
+                assert native["scale_copy_row_count"] == applied
             assert lane["warning"]["required"] is (applied > 0)
             assert manifest_report["warning"]["required"] is (applied > 0)
             assert lane["application_validation"]["status"] == (
@@ -1061,6 +1084,9 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
     for capture_name in ("candidate_capture", "verification_capture"):
         diagnostic_capture = lanes["diagnostic"][capture_name]
         certified_capture = lanes["certified-reuse"][capture_name]
+        if diagnostic_capture is None or certified_capture is None:
+            assert diagnostic_capture is certified_capture is None
+            continue
         assert isinstance(diagnostic_capture, dict)
         assert isinstance(certified_capture, dict)
         for key in (
@@ -1251,7 +1277,6 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
     executions: dict[str, dict[str, Any]] = {}
     reports: dict[str, dict[str, Any]] = {}
     lanes: dict[str, dict[str, Any]] = {}
-    native_reports: dict[str, dict[str, Any]] = {}
     runtimes: dict[str, Runtime] = {}
     active_artifact: Path | None = None
     active_mode: str | None = None
@@ -1300,11 +1325,11 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         assert isinstance(lane, dict)
         lanes[mode] = lane
         native = report["native_relation_application"]
-        if mode == "off":
+        if mode == "off" or lane["certified_relation_count"] == 0:
+            assert lane["applied_relation_count"] == 0
             assert native is None
         else:
             assert isinstance(native, dict)
-            native_reports[mode] = native
 
         runtime = Runtime.load(artifact)
         runtimes[mode] = runtime
@@ -1382,9 +1407,11 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
     }
     persisted = certified["persisted_numerical_evidence"]
     assert persisted["raw_evidence_retained"] is False
-    assert (
-        persisted["measured_payload_bytes"] < persisted["generation_raw_evidence_bytes"]
-    )
+    assert persisted["generation_raw_evidence_bytes"] == 0
+    assert persisted["generation_evidence_transport_bytes"] == 0
+    assert persisted["generation_evidence_encoding"] is None
+    assert certified["verification_capture"] is None
+    assert persisted["verification_capture"] is None
     assert persisted["full_census"] == {
         "inspected_current_count": 68,
         "tested_hypothesis_count": 0,
@@ -1402,59 +1429,11 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
             "certificate_set_sha256"
         ],
     }
-    for capture_name in ("candidate_capture", "verification_capture"):
-        replay_capture = persisted[capture_name]
-        assert replay_capture["certificate_current_ids"] == []
-        assert replay_capture["observations"] == []
-        assert replay_capture["full_batch_commitment"]["current_count"] == 68
+    replay_capture = persisted["candidate_capture"]
+    assert replay_capture["certificate_current_ids"] == []
+    assert replay_capture["observations"] == []
+    assert replay_capture["full_batch_commitment"]["current_count"] == 68
 
-    diagnostic_native = native_reports["diagnostic"]
-    certified_native = native_reports["certified-reuse"]
-    for native_report in (diagnostic_native, certified_native):
-        assert native_report["probe"]["tested_hypothesis_count"] == 0
-        assert native_report["numerical_candidate_count"] == 0
-        assert native_report["probe"]["verification_rejected_count"] == 0
-        assert native_report["uncertified_candidate_count"] == 0
-        assert native_report["exact_certified_relation_count"] == 0
-        assert native_report["rejected_hypothesis_count"] == 0
-        assert native_report["numerical_candidate_count"] == (
-            native_report["exact_certified_relation_count"]
-            + native_report["uncertified_candidate_count"]
-        )
-        assert native_report["rejected_hypothesis_count"] == (
-            native_report["probe"]["tested_hypothesis_count"]
-            - native_report["exact_certified_relation_count"]
-        )
-        assert native_report["rejected_candidates"] == []
-        assert native_report["certificates"] == []
-        assert native_report["certificate_count"] == 0
-        rejected_diagnostics = native_report["rejected_candidate_diagnostics"]
-        assert rejected_diagnostics["total_rejected_hypothesis_count"] == 0
-        assert rejected_diagnostics["retained_count"] == 0
-        assert rejected_diagnostics["truncated"] is False
-        assert rejected_diagnostics["truncation_policy"] == (
-            "none-authenticated-full-rejection-digest-v1"
-        )
-        assert (
-            rejected_diagnostics["full_rejection_sha256"]
-            == (native_report["probe"]["rejection_decision_sha256"])
-        )
-    assert diagnostic_native["exact_certified_relation_count"] == 0
-    assert diagnostic_native["applied_relation_count"] == 0
-    assert diagnostic_native["scale_copy_row_count"] == 0
-    assert diagnostic_native["requested_mode"] == "diagnostic"
-    assert certified_native["requested_mode"] == "diagnostic"
-    assert certified_native["state"] == "diagnostic-only"
-    for native_report in (diagnostic_native, certified_native):
-        assert native_report["applied_relation_count"] == 0
-        assert native_report["scale_copy_row_count"] == 0
-        assert native_report["current_count_before"] == 68
-        assert native_report["current_count_after"] == 68
-        assert native_report["contribution_count_before"] == 132
-        assert native_report["contribution_count_after"] == 132
-        assert native_report["interaction_evaluation_count_before"] == 132
-        assert native_report["interaction_evaluation_count_after"] == 132
-        assert native_report["interaction_evaluation_savings"] == 0
     _assert_runtime_values_match(
         runtimes["certified-reuse"],
         runtimes["diagnostic"],
@@ -1569,6 +1548,14 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
     )
 
     process_root = recurrence_artifact / "processes" / process_id
+    bootstrap_path = process_root / "recurrence-bootstrap.bin"
+    assert bootstrap_path.is_file()
+    bootstrap_relative_path = bootstrap_path.relative_to(recurrence_artifact).as_posix()
+    bootstrap_payload = next(
+        record for record in manifest.payloads if record.path == bootstrap_relative_path
+    )
+    assert bootstrap_payload.role == "evaluator-state"
+    assert bootstrap_payload.process_id == process_id
     execution_path = process_root / "execution.json"
     execution = json.loads(execution_path.read_text(encoding="utf-8"))
     assert execution["kind"] == _RECURRENCE_KIND
@@ -1615,6 +1602,7 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         compiled,
         points,
     )
+
     if process_expression == _PROCESS:
         _assert_recurrence_per_point_selector_patterns(
             recurrence_artifact,
@@ -1639,6 +1627,15 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         compiled,
         points,
     )
+
+    # The process-ready image is authenticated before decoding and must never
+    # fall back to the looser JSON path after corruption.
+    if process_expression == _PROCESS:
+        image = bytearray(bootstrap_path.read_bytes())
+        image[len(image) // 2] ^= 1
+        bootstrap_path.write_bytes(image)
+        with pytest.raises(ArtifactError):
+            Runtime.load(recurrence_artifact)
 
 
 @pytest.mark.parametrize(

@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from ..color import ColorContractionPlan, ColorGroupDescriptor
 from ..models.base import Model
 from .contracts import RuntimeExpressionSchema
 from .dag_types import CurrentNode, GenericDAG, InteractionNode
@@ -15,7 +16,7 @@ from .physics_metadata import (
     build_runtime_model_parameter_records,
     build_runtime_normalization,
 )
-from .runtime_amplitudes import build_runtime_amplitude_stage
+from .runtime_amplitudes import build_runtime_amplitude_stage_layout
 
 RUNTIME_PHYSICS_SCHEMA_VERSION = 1
 
@@ -46,6 +47,8 @@ class RuntimeSchemaLayout:
     momentum_slot_by_mask: dict[int, int]
     stages: tuple[RuntimeStageLayout, ...]
     amplitude_stage: dict[str, object]
+    color_contraction: ColorContractionPlan | None
+    color_contraction_descriptors: tuple[ColorGroupDescriptor, ...]
     model_parameters: list[dict[str, object]]
 
 
@@ -73,9 +76,15 @@ def build_runtime_expression_schema(
     model: Model,
     *,
     process_id: str | None = None,
+    color_contraction: str = "direct",
 ) -> RuntimeExpressionSchema:
     return RuntimeExpressionSchema.from_mapping(
-        build_runtime_schema(dag, model, process_id=process_id)
+        build_runtime_schema(
+            dag,
+            model,
+            process_id=process_id,
+            color_contraction=color_contraction,
+        )
     )
 
 
@@ -84,6 +93,7 @@ def build_runtime_schema(
     model: Model,
     *,
     process_id: str | None = None,
+    color_contraction: str = "direct",
 ) -> dict[str, object]:
     """Build the stage compiler and runtime metadata for one concrete process."""
 
@@ -91,6 +101,7 @@ def build_runtime_schema(
         dag,
         model,
         process_id=process_id,
+        color_contraction=color_contraction,
     ).runtime_schema
 
 
@@ -99,6 +110,7 @@ def build_runtime_schema_layout(
     model: Model,
     *,
     process_id: str | None = None,
+    color_contraction: str = "direct",
 ) -> RuntimeSchemaLayout:
     """Build runtime metadata while retaining its typed construction indexes."""
 
@@ -132,12 +144,14 @@ def build_runtime_schema_layout(
         int(slot["momentum_mask"]): int(slot["momentum_slot_id"])
         for slot in momentum_slots
     }
-    amplitude_stage = build_runtime_amplitude_stage(
+    amplitude_stage_layout = build_runtime_amplitude_stage_layout(
         dag,
         model,
         current_slots=current_slots,
         value_slots=value_slots,
+        color_contraction=color_contraction,
     )
+    amplitude_stage = amplitude_stage_layout.record
     model_parameters = build_runtime_model_parameter_records(
         dag,
         model,
@@ -246,6 +260,8 @@ def build_runtime_schema_layout(
         momentum_slot_by_mask=momentum_slot_by_mask,
         stages=stage_layouts,
         amplitude_stage=amplitude_stage,
+        color_contraction=amplitude_stage_layout.color_contraction,
+        color_contraction_descriptors=(amplitude_stage_layout.contraction_descriptors),
         model_parameters=model_parameters,
     )
 
@@ -277,7 +293,11 @@ def _current_slots(
                 "external_mask": index.external_mask,
                 "external_labels": list(index.external_labels),
                 "momentum_mask": index.momentum_mask,
-                "helicity_ancestry": str(index.helicity_ancestry),
+                # Decimal conversion is capped by Python for very wide
+                # full-colour helicity masks.  The runtime contract accepts
+                # canonical hexadecimal integers and does not interpret this
+                # diagnostic-only field on the hot path.
+                "helicity_ancestry": hex(index.helicity_ancestry),
                 "chirality": index.chirality,
                 "spin_state": _spin_state(index.spin_state),
                 "flavour_flow": list(index.flavour_flow),
@@ -479,9 +499,7 @@ def _stage_layouts(
                 else ("interaction", interaction.id)
             )
             if interaction.evaluation_factor != (0.0, 0.0):
-                evaluation_groups.setdefault(group_key, []).append(
-                    interaction
-                )
+                evaluation_groups.setdefault(group_key, []).append(interaction)
 
         ordered_output_current_ids = tuple(sorted(output_current_ids))
         record: dict[str, object] = {

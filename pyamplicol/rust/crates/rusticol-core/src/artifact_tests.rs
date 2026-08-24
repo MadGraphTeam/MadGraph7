@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
+use crate::pacbin::{PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,6 +38,85 @@ fn compiled_plane_arena_is_a_known_artifact_capability() {
     assert_eq!(validated, BTreeSet::from([capability]));
 }
 
+#[test]
+fn typed_compiled_color_member_is_required_and_kind_checked() {
+    let mut artifact = TestArtifact::new();
+    let destination = artifact.root.join("evaluators.pacbin");
+    let index = write_pacbin_atomic(
+        &destination,
+        vec![
+            PacbinWriteMember::from_bytes(
+                "processes/p0/compiled-color.pacrclr3",
+                PacbinMemberKind::ColorContraction,
+                b"color-payload",
+            )
+            .unwrap(),
+            PacbinWriteMember::from_bytes(
+                "processes/p0/wrong-kind.pacrclr3",
+                PacbinMemberKind::SymbolicaExactState,
+                b"wrong-kind",
+            )
+            .unwrap(),
+        ],
+        PacbinWriteOptions::default(),
+    )
+    .unwrap();
+    let container = fs::read(&destination).expect("read evaluator container");
+    add_test_payload(
+        &mut artifact,
+        "evaluators.pacbin",
+        "evaluator-state",
+        &container,
+        None,
+        true,
+    );
+    artifact.manifest["extensions"]["evaluator_payload_container"] = json!({
+        "kind": "pyamplicol-evaluator-payload-container",
+        "schema_version": 1,
+        "storage_abi": "pacbin-v1",
+        "path": "evaluators.pacbin",
+        "member_count": index.members().len(),
+        "unpacked_size_bytes": index.members().iter().map(|member| member.length()).sum::<u64>(),
+        "index_sha256": hex_digest(index.index_sha256()),
+    });
+    artifact.write_manifest();
+
+    let verified = VerifiedArtifact::open(&artifact.root).expect("typed color artifact");
+    let store = verified
+        .evaluator_payload_store(&artifact.root.join("processes/p0"))
+        .expect("process evaluator payload store");
+
+    assert_eq!(
+        store
+            .packed_member_bytes(
+                "compiled-color.pacrclr3",
+                PacbinMemberKind::ColorContraction,
+            )
+            .unwrap(),
+        b"color-payload",
+    );
+    let wrong_kind = store
+        .packed_member_bytes("wrong-kind.pacrclr3", PacbinMemberKind::ColorContraction)
+        .unwrap_err();
+    assert_eq!(wrong_kind.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(wrong_kind.message().contains("member kind"));
+    let missing = store
+        .packed_member_bytes("missing.pacrclr3", PacbinMemberKind::ColorContraction)
+        .unwrap_err();
+    assert_eq!(missing.kind(), crate::RusticolErrorKind::InvalidArgument);
+    assert!(missing.message().contains("unknown pacbin member"));
+
+    let unpacked = EvaluatorPayloadStore::directory(&artifact.root);
+    let no_pack = unpacked
+        .packed_member_bytes(
+            "compiled-color.pacrclr3",
+            PacbinMemberKind::ColorContraction,
+        )
+        .unwrap_err();
+    assert_eq!(no_pack.kind(), crate::RusticolErrorKind::Compatibility);
+    assert!(no_pack.message().contains("requires evaluators.pacbin"));
+}
+
 #[cfg(feature = "f64-symjit")]
 const PYTHON_PACBIN_GOLDEN_HEX: &str = concat!(
     "50414342494e000001004000000000004000000000000000c000000000000000",
@@ -66,6 +146,48 @@ fn distribution_version_normalization_is_narrow() {
         canonical_distribution_version("0.1.0-dev.0+candidate.0123"),
         canonical_distribution_version("0.1.0-dev.0+candidate.4567")
     );
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn compact_payload_identity_matches_the_python_canonical_contract() {
+    let artifact = TestArtifact::new();
+    let typed: ArtifactManifest =
+        serde_json::from_value(artifact.manifest.clone()).expect("typed artifact manifest");
+    assert_eq!(
+        compute_payload_artifact_id(&typed.payloads).expect("typed payload identity"),
+        artifact.manifest["artifact_id"]
+            .as_str()
+            .expect("manifest artifact ID")
+    );
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn default_recurrence_bootstrap_discovery_requires_exactly_one_stable_process() {
+    let artifact = TestArtifact::new();
+    let processes = artifact.root.join("processes");
+    fs::create_dir(&processes).expect("create process root");
+    assert_eq!(
+        discover_single_recurrence_bootstrap_process(&artifact.root).unwrap(),
+        None
+    );
+
+    let first = processes.join("p0");
+    fs::create_dir(&first).expect("create first process");
+    fs::write(first.join(RECURRENCE_BOOTSTRAP_FILENAME), b"image").expect("write first bootstrap");
+    assert_eq!(
+        discover_single_recurrence_bootstrap_process(&artifact.root).unwrap(),
+        Some("p0".to_string())
+    );
+
+    let second = processes.join("p1");
+    fs::create_dir(&second).expect("create second process");
+    fs::write(second.join(RECURRENCE_BOOTSTRAP_FILENAME), b"image")
+        .expect("write second bootstrap");
+    let error = discover_single_recurrence_bootstrap_process(&artifact.root).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(error.to_string().contains("ambiguous"));
 }
 
 struct TestArtifact {
@@ -1927,8 +2049,9 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
 }
 
 #[test]
-fn on_the_fly_capabilities_are_known_and_the_catalog_remains_closed() {
+fn on_the_fly_fft_capabilities_are_known_and_the_catalog_remains_closed() {
     let capabilities = json!([
+        crate::engine::SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
         "rusticol.on-the-fly.complex-f64.v1",
         "rusticol.on-the-fly.contracted-color.v1",
         "rusticol.on-the-fly.lc-color.v1"
@@ -2267,6 +2390,55 @@ fn portable_64le_target_accepts_only_feature_free_symjit_artifacts() {
         direct.write_manifest();
         VerifiedArtifact::open(&direct.root)
             .expect("portable eager/recurrence outer capability is pack-authenticated later");
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn packaged_portable_64le_o2_artifact_loads_through_native_runtime() {
+    let source = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../src/pyamplicol/assets/selftest/portable-64le/artifact"
+    ));
+    let mut staged = TestArtifact::new();
+    fs::remove_dir_all(&staged.root).expect("remove synthetic test artifact");
+    copy_test_artifact_tree(&source, &staged.root);
+    staged.manifest = serde_json::from_slice(
+        &fs::read(staged.root.join(ARTIFACT_MANIFEST_FILE)).expect("read portable manifest"),
+    )
+    .expect("parse portable manifest");
+    let source_artifact_id = staged.manifest["artifact_id"].clone();
+    staged.manifest["producer"]["version"] = json!(env!("CARGO_PKG_VERSION"));
+    staged.manifest["runtime"]["engine_version"] = json!(env!("CARGO_PKG_VERSION"));
+    staged.write_manifest();
+    assert_eq!(staged.manifest["artifact_id"], source_artifact_id);
+
+    let artifact =
+        VerifiedArtifact::open(&staged.root).expect("open staged portable source artifact");
+    assert_eq!(
+        artifact.manifest().producer.target.triple,
+        PORTABLE_64LE_ARTIFACT_TARGET
+    );
+
+    let runtime = crate::NativeRuntime::load(&staged.root, Some("d_dbar_to_z"), None)
+        .expect("load portable O2 artifact through the authoritative runtime");
+    assert_eq!(runtime.metadata().execution_mode, "compiled");
+}
+
+#[cfg(feature = "f64-symjit")]
+fn copy_test_artifact_tree(source: &Path, destination: &Path) {
+    fs::create_dir(destination).expect("create staged portable artifact");
+    for entry in fs::read_dir(source).expect("read portable artifact tree") {
+        let entry = entry.expect("read portable artifact entry");
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let file_type = entry.file_type().expect("read portable artifact file type");
+        if file_type.is_dir() {
+            copy_test_artifact_tree(&source_path, &destination_path);
+        } else {
+            assert!(file_type.is_file(), "portable artifact contains a symlink");
+            fs::copy(&source_path, &destination_path).expect("copy portable artifact payload");
+        }
     }
 }
 

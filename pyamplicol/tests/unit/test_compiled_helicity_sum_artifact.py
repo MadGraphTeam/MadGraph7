@@ -10,6 +10,7 @@ import pytest
 
 import pyamplicol.generation.artifact_writer as artifact_writer
 import pyamplicol.generation.service as service_module
+import pyamplicol.models.loading as model_loading
 from pyamplicol._internal.versions import (
     COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY,
     COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY,
@@ -30,8 +31,10 @@ from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
 from pyamplicol.config import (
     ColorConfig,
+    ConfigurationError,
     EvaluatorConfig,
     GenerationConfig,
+    GenerationRelationDiscoveryConfig,
     RunConfig,
 )
 from pyamplicol.generation.artifact_writer import (
@@ -63,7 +66,10 @@ def _evaluator_process(
         None,
         process_selection=selection,
     )
-    process_ir = build_process_ir(expression, color_accuracy="lc")
+    color_accuracy = (
+        config.color.accuracy.value if isinstance(config, RunConfig) else "lc"
+    )
+    process_ir = build_process_ir(expression, color_accuracy=color_accuracy)
     dag, coverage = backend._compile_concrete_process(process_ir, model)
     prepared = backend._prepare_warmup_process(
         service_module._DagProcess(
@@ -100,9 +106,7 @@ def _symjit_stage_manifest(
     application.write_bytes(f"application:{label}".encode())
     plane_application.write_bytes(f"plane-application:{label}".encode())
     state.write_bytes(f"state:{label}".encode())
-    plane_source_digest = hashlib.sha256(
-        f"instructions:{label}".encode()
-    ).hexdigest()
+    plane_source_digest = hashlib.sha256(f"instructions:{label}".encode()).hexdigest()
     evaluator = {
         "kind": "symjit-application-evaluator",
         "runtime_capability": SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -490,27 +494,65 @@ def test_primary_helicity_recurrence_capability_is_publicly_supported() -> None:
     )
 
 
-def test_complete_lc_union_dispatches_to_exact_helicity_closure_lanes() -> None:
-    _backend, _model, evaluator = _evaluator_process("d d~ > z g g g")
+def test_complete_lc_union_owns_childless_materialized_selector_lane() -> None:
+    _backend, model, evaluator = _evaluator_process("d d~ > z g g g")
 
     assert len(evaluator.helicity_selector_lanes) == 1
     union = evaluator.helicity_selector_lanes[0]
     assert union.schedule_mode == "nested-runtime"
-    assert len(union.child_lanes) == 2
-    assert {
-        sum(
-            int(stage["interaction_count"])
-            for stage in child.runtime_schema.to_mapping()["stages"]
+    assert union.child_lanes == ()
+    assert union.dag.helicity_materialization is not None
+    assert union.dag.lc_topology_replay is None
+    assert union.dag.color_topology_replay is None
+    assert (
+        service_module._compiled_helicity_selector_closure_lanes(
+            evaluator.compiled.dag,
+            evaluator.runtime_schema,
+            model,
         )
-        for child in union.child_lanes
-    } == {115}
-    assert all(
-        child.schedule_mode == "parent-closure" and not child.child_lanes
-        for child in union.child_lanes
+        == ()
     )
 
 
-def test_nested_helicity_closures_are_written_with_owned_payloads(
+@pytest.mark.parametrize("accuracy", ["nlc", "full"])
+def test_replayed_contracted_color_uses_physical_childless_selector_companion(
+    accuracy: str,
+) -> None:
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy=accuracy),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+        generation=GenerationConfig(
+            emit_api_bundle=False,
+            relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
+        ),
+    )
+    _backend, _model, evaluator = _evaluator_process(
+        "g g > g g",
+        config=config,
+    )
+
+    primary = evaluator.compiled.dag
+    assert primary.color_topology_replay is not None
+    assert len(evaluator.helicity_selector_lanes) == 1
+    companion = evaluator.helicity_selector_lanes[0]
+    assert companion.schedule_mode == "nested-runtime"
+    assert companion.child_lanes == ()
+    assert companion.dag.process.color_accuracy == accuracy
+    assert companion.dag.selected_source_helicities == ()
+    assert companion.dag.helicity_coverage == "complete"
+    assert companion.dag.color_coverage == "complete"
+    assert companion.dag.lc_topology_replay is None
+    assert companion.dag.color_topology_replay is None
+    assert companion.dag.helicity_materialization is not None
+    assert companion.dag.color_plan.sectors == primary.color_plan.sectors
+    service_module._validate_matching_helicity_selector_domains(
+        primary,
+        companion.dag,
+    )
+
+
+def test_childless_nested_helicity_selector_is_written_with_owned_payloads(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -527,6 +569,13 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
             {"triple": "aarch64-apple-darwin", "cpu_features": []},
             1,
         ),
+    )
+    monkeypatch.setattr(model_loading, "package_version", lambda: "0.1.4")
+    monkeypatch.setattr(artifact_writer, "package_version", lambda: "0.1.4")
+    monkeypatch.setattr(
+        artifact_writer,
+        "active_native_build_inputs_sha256",
+        lambda: "0" * 64,
     )
     output = tmp_path / "artifact"
     write_schema_v3_artifact(
@@ -547,14 +596,15 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
     )
     outer = execution["helicity_selector_executions"][0]
     assert outer["schedule_mode"] == "nested-runtime"
-    children = outer["execution"]["helicity_selector_executions"]
-    assert len(children) == 2
-    assert all(child["schedule_mode"] == "parent-closure" for child in children)
+    assert "helicity_selector_executions" not in outer["execution"]
 
     referenced = _payload_paths(execution)
-    nested_prefix = "helicity-selector-union/class-0/helicity-selector-union/"
-    assert any(path.startswith(f"{nested_prefix}class-0/") for path in referenced)
-    assert any(path.startswith(f"{nested_prefix}class-1/") for path in referenced)
+    nested_prefix = "helicity-selector-union/class-0/"
+    assert any(path.startswith(nested_prefix) for path in referenced)
+    assert not any(
+        path.startswith(f"{nested_prefix}helicity-selector-union/")
+        for path in referenced
+    )
     manifest = load_manifest(output)
     portable_target = {
         "triple": PORTABLE_64LE_TARGET,
@@ -572,6 +622,21 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
         members = {member.logical_path for member in container.members}
     for relative in referenced:
         assert f"processes/dual_lane/{relative}" in members
+
+
+def test_compiled_symmetric_group_is_rejected_before_generation() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match=r"requires evaluator\.execution_mode='recurrence' or 'on-the-fly'",
+    ):
+        RunConfig(
+            action="generate",
+            color=ColorConfig(
+                accuracy="full",
+                contraction="symmetric-group-fft",
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
 
 
 def test_generation_specialized_color_artifact_has_no_topology_lanes(
@@ -749,9 +814,11 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
     )
     primary_schema = artifact.runtime_schema.to_mapping()
     for record in artifact.helicity_selector_executions:
+        assert record.schedule_mode == "parent-closure"
         selector = record.execution
         selector_schema = selector.runtime_schema.to_mapping()
         assert "helicity_recurrence" not in selector_schema
+        assert selector.helicity_selector_executions == ()
         assert (
             selector_schema["physics"]["reduction"]
             == (primary_schema["physics"]["reduction"])
@@ -762,10 +829,6 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
         assert (
             selector.dag_summary["amplitude_root_count"]
             == (selector_schema["amplitude_stage"]["output_count"])
-        )
-        assert (
-            selector.dag_summary["interaction_count"]
-            < (artifact.dag_summary["interaction_count"])
         )
         assert (
             COMPILED_RUNTIME_SELECTORS_CAPABILITY
@@ -780,22 +843,20 @@ def test_compiled_materialization_builds_primary_sum_and_selector_union_lanes(
         for name, value in execution_manifest["dag_summary"].items()
         if name.endswith("_count")
     }
-    assert (
-        execution_manifest["helicity_sum_execution"]["materialization_census"][
-            "final"
-        ]
-        == {
-            name: value
-            for name, value in execution_manifest["helicity_sum_execution"][
-                "dag_summary"
-            ].items()
-            if name.endswith("_count")
-        }
-    )
+    assert execution_manifest["helicity_sum_execution"]["materialization_census"][
+        "final"
+    ] == {
+        name: value
+        for name, value in execution_manifest["helicity_sum_execution"][
+            "dag_summary"
+        ].items()
+        if name.endswith("_count")
+    }
     selector_records = execution_manifest["helicity_selector_executions"]
     assert len(selector_records) == len(artifact.helicity_selector_executions)
     for selector_record in selector_records:
         assert selector_record["selector_domain_ids"]
+        assert selector_record["schedule_mode"] == "parent-closure"
         selector_manifest = selector_record["execution"]
         assert selector_manifest["kind"] == "pyamplicol-runtime-execution"
         assert selector_manifest["materialization_census"]["final"] == {
@@ -1024,7 +1085,9 @@ def test_writer_emits_selector_and_fused_sum_lanes_and_owns_all_payloads(
     for record in selector_records:
         selector_lane = record["execution"]
         assert record["selector_domain_ids"]
+        assert record["schedule_mode"] == "parent-closure"
         assert "helicity_recurrence" not in selector_lane["runtime_schema"]
+        assert "helicity_selector_executions" not in selector_lane
         assert (
             selector_lane["physics_reduction"] == primary_schema["physics"]["reduction"]
         )

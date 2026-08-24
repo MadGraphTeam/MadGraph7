@@ -150,20 +150,31 @@ pyAmpliCol supports:
 - packaged serialized JSON and trusted UFO examples;
 - user-supplied JSON or trusted UFO model paths;
 - leading-color, contracted next-to-leading-color, and contracted full-color
-  calculations, with on-the-fly execution currently limited to leading color;
+  calculations;
 - recurrence, compiled-DAG, eager, and on-the-fly execution modes;
 - JIT, C++, and assembly evaluator backends where supported;
 - binary64 execution without importing Symbolica, plus precision-controlled
   Python evaluation when exact expressions are retained. On-the-fly execution
   currently supports native binary64 only.
 
-Generated artifacts preserve complete public helicity and color physics.
-Runtime calls can select one flow or helicity globally or per phase-space point
-without regenerating the artifact. On-the-fly artifacts keep this contract in a
-compact query-local seed rather than materializing the full axes in the
-artifact; `inspect` reports their physical census without constructing it.
+Reusable artifacts preserve complete public helicity and color physics unless
+the request explicitly fixes selectors at generation time. Runtime calls can
+then select one flow or helicity globally or per phase-space point without
+regenerating the artifact. On-the-fly artifacts always keep selection at
+runtime and carry the complete contract in a compact query-local seed rather
+than materializing the full axes; `inspect` reports their physical census
+without constructing it.
 Recurrence, eager, and on-the-fly execution reuse the same prepared model
 kernel bundle.
+
+Contracted NLC/full-colour recurrence and on-the-fly execution can use the
+exact `symmetric-group-fft` colour contraction. It transforms certified
+permutation-orbit blocks and retains unsupported terms as exact direct
+residuals. Recurrence artifacts persist one helicity-parametric physical-colour
+schedule, its helicity-support masks, and precomputed per-helicity row groups;
+loading binds those groups once, so warmed evaluation does not rescan the
+masks. On-the-fly execution instead constructs and caches the requested family
+on first use, which is why that warm-up belongs to its plotted setup time.
 
 The public C ABI is version 1. Every generated artifact can include standalone
 Python, C11, C++17, Fortran 2008, and dependency-free Rust 2021 drivers backed
@@ -189,15 +200,113 @@ intended for dedicated profiling hosts. The
 continuation, optional original-AmpliCol comparisons, artifact retention, and
 PDF generation.
 
-The repository retains only two rendered performance snapshots. Raw JSON,
-generated tables, attempts, and campaign workspaces stay untracked:
+The source checkout also contains a thin orchestrator for the dedicated
+FullColor FFT comparison. It delegates generation and timing to the existing
+pyAmpliCol profiling commands and schedules independent measurement children:
+
+```console
+python -m pip install -e '.[fft-profiling]'
+python tools/fft_profiling/fft_profiling.py \
+  --multiplicities 2 3 4 5 \
+  --cores 8 --candidate-cores 1 \
+  --memory-limit-gib 30 --time-limit-seconds 3600 \
+  --amplicol-root /path/to/AmpliCol \
+  --madgraph-root /path/to/MG5_aMC
+```
+
+`--multiplicities` adds the selected values to the persistent fill history and
+defaults to `2 ... 9`. Repeating a command resumes unfinished values already in
+that history and skips completed cells;
+`--resume` is an explicit alias for that default. `--cores` is the total
+scheduler budget, while `--candidate-cores` is one candidate child's core
+claim and evaluator setting. The memory and time limits are strict per-child
+cutoffs. Use `--output PATH` for an independent run directory. `--refresh`
+removes only that exact recognized output directory and restarts it, so a
+custom output also scopes the refresh; a path that does not exist simply starts
+cleanly. Without `--output`, fixed and summed
+workloads use separate `IMPLEMENTATION_DOCS/RESULTS/fft-profiling/runs/`
+directories named `cluster-fullcolor-n2-n9` and
+`cluster-fullcolor-helicity-sum-n2-n9`. Refresh also shares the persistent
+MadGraph cache-writer lock and refuses to delete a run while a standalone
+MadGraph profiler is using that cache.
+
+Add `--compare-helicity-sums` for the independent complete physical-helicity-
+sum workload. The fixed-helicity MadGraph lane selects the shared helicity
+through the generated `MATRIX(P,NHEL,IC)` entry point. The summed lane instead
+calls the generated `SMATRIX(P,ANS)` with `USERHEL=-1`; MadGraph applies its
+native IDEN normalization and may reuse its warmed `GOODHEL` pruning. Fixed-
+helicity and summed overlays carry distinct workload identities and cannot be
+mixed. The AmpliCol root defaults to
+`dependencies/checkouts/legacy-amplicol`; `--build-amplicol` may build its
+probe once. The MadGraph root defaults to `PYAMPLICOL_MADGRAPH_ROOT` or a
+recognized developer checkout and may be set explicitly with
+`--madgraph-root`.
+
+The published fixed-helicity MadGraph series currently has measured points
+through `n=5` for pure gluons and `n=6` for
+`d d~ > d d~ + gluons`. Pure-gluon `n=6` retains its measured resource cutoff;
+`n=7..9` are explicit protocol-scope not-applicable cells for both families.
+The independent helicity-sum MadGraph series has measured points for both
+families at `n=2..5`. Every admitted point passed the same-workload numerical
+gate before entering the PDFs.
+
+The rolling plot frontiers are per process and implementation, rather than a
+claim that every curve reaches the same `n`. Both fixed-helicity and helicity-
+sum OTF curves are requested only through final-state `n=6`; beyond that the
+publication protocol retains recurrence, AmpliCol, and Reference FFT where
+applicable. Within that frontier, cutoffs are annotated rather than hidden or
+interpolated. Pure-gluon OTF FFT reached the 3,600 s first-use runtime cap at
+`n=6` and retains its measured `n=5` point. The helicity-sum comparison extends
+the `d d~ > d d~ + gluons` curves through `n=6` using an authenticated isolated
+30 GiB extension. At that point every requested curve measured successfully.
+For OTF, direct and FFT setup took 1,725.8 s and 1,607.9 s, while warmed runtime
+was 5.321 and 3.759 ms/point respectively (a 1.416x FFT speedup). The measured
+peak RSS values were 1.17 and 1.22 GiB.
+
+The plotted *setup time* is deliberately method-specific. pyAmpliCol includes
+artifact generation, a fresh load, the first requested evaluation, and OTF
+family warm-up where applicable. Reference FFT includes its build,
+initialization, and first pass. AmpliCol includes process/color-object
+generation for the fixed workload, or process/raw-library generation and build
+plus the immutable snapshot for the summed workload. Warmed runtime is measured
+separately after those setup boundaries. Resource limits apply individually to
+each child. The retained isolated high-frontier extensions use a 30 GiB
+process-tree guard.
+
+After the first snapshot is published, rendering never waits for workers and
+uses the latest available data. Concurrent renders and refresh publication are
+serialized so an older render cannot replace a newer one:
+
+```console
+python tools/fft_profiling/fft_profiling.py --render
+python tools/fft_profiling/fft_profiling.py --render --compare-helicity-sums
+python tools/fft_profiling/fft_profiling.py --render --output /path/to/run
+```
+
+For a custom helicity-sum output, repeat `--compare-helicity-sums` on the
+render command. Default outputs also refresh the corresponding canonical PDF;
+custom outputs keep their PDF inside the selected run directory. During a
+scan, the progress display reports the active cell, total live RSS, and
+occupied core slots.
+
+An older local MadGraph overlay that predates the node-fingerprint field may
+appear only in a nonterminal anytime render, only when its system, machine, and
+Python version match the current workstation. Such plots carry an explicit
+provenance note; the strict terminal publication merger still requires the
+complete host identity produced by a fresh profiler run.
+
+The public performance index retains four selected rendered snapshots. Raw
+JSON, generated tables, attempts, and campaign workspaces stay untracked:
 
 - [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
 - [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+- [FullColor FFT selected-helicity snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final.pdf)
+- [FullColor FFT helicity-sum snapshot](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/summary_plots_final_helicity_sum.pdf)
 
 These are manual measurement snapshots rather than release-CI results; raw
-campaign data remains local and the report format is reproducible from an
-installed package.
+campaign data remains local. The general host report format is reproducible
+from an installed package, while the FullColor FFT snapshots use the source-
+checkout orchestrator above.
 
 ## Documentation
 

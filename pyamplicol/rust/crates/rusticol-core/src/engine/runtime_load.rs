@@ -2,6 +2,77 @@
 
 use super::*;
 
+fn load_compiled_symmetric_group_color_contraction(
+    payload: Option<&CompiledColorContractionPayloadManifest>,
+    payloads: &EvaluatorPayloadStore,
+    physics: &PhysicsRuntime,
+) -> RusticolResult<Option<crate::recurrence::RecurrenceColorContraction>> {
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    if !physics.has_contracted_color_axis() || physics.manifest.color_components.len() != 1 {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic requires one contracted FullColour axis",
+        ));
+    }
+    if physics.manifest.coverage.helicities != "selected" {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic requires generation-time selected helicity coverage",
+        ));
+    }
+    let live_helicity_count = physics
+        .manifest
+        .helicities
+        .iter()
+        .filter(|helicity| {
+            helicity.computed && !helicity.structural_zero && helicity.coefficient != 0.0
+        })
+        .count();
+    if live_helicity_count != 1 {
+        return Err(RusticolError::compatibility(
+            "compiled symmetric-group FFT diagnostic requires exactly one generation-time selected helicity",
+        ));
+    }
+    let bytes = payloads.packed_member_bytes(
+        &payload.path,
+        crate::pacbin::PacbinMemberKind::ColorContraction,
+    )?;
+    crate::recurrence::decode_recurrence_color_contraction_v3(bytes).map(Some)
+}
+
+#[cfg(test)]
+mod compiled_symmetric_group_load_tests {
+    use super::*;
+
+    #[test]
+    fn complete_helicity_coverage_is_rejected_even_with_one_live_helicity() {
+        let physics = crate::engine::tests::test_physics_runtime("full");
+        assert_eq!(physics.manifest.coverage.helicities, "complete");
+        assert_eq!(
+            physics
+                .manifest
+                .helicities
+                .iter()
+                .filter(|helicity| {
+                    helicity.computed && !helicity.structural_zero && helicity.coefficient != 0.0
+                })
+                .count(),
+            1,
+        );
+        let payload = CompiledColorContractionPayloadManifest {
+            path: "not-read.pacrclr3".to_string(),
+        };
+        let payloads = EvaluatorPayloadStore::directory(std::path::Path::new("."));
+
+        let error =
+            load_compiled_symmetric_group_color_contraction(Some(&payload), &payloads, &physics)
+                .expect_err("complete helicity coverage must not enter the selected diagnostic");
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.message().contains("selected helicity coverage"));
+    }
+}
+
 fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> RusticolResult<bool> {
     let declared_execution = manifest
         .required_runtime_capabilities
@@ -1387,6 +1458,22 @@ fn build_helicity_recurrence_runtime(
     let recurrence = manifest.runtime_schema.helicity_recurrence.as_ref();
     let view = HelicityRecurrenceSchemaView::from_execution_manifest(manifest)?;
     build_helicity_recurrence_runtime_from_view(recurrence, &view)
+}
+
+fn detach_compiled_helicity_load_inputs(
+    manifest: &mut ExecutionManifest,
+) -> RusticolResult<(
+    Option<GenericStageEvaluatorArtifactsManifest>,
+    Option<HelicityRecurrenceRuntime>,
+)> {
+    let helicity_recurrence = build_helicity_recurrence_runtime(manifest)?;
+    let stage_evaluators = manifest.compiled.stage_evaluators.take();
+    // The authenticated runtime owns every derived selector schedule.  Hide the
+    // source contract from the metadata-only constructor after its serialized
+    // evaluators have moved into the payload loader so it cannot rederive the
+    // schedules against an artificially empty evaluator set.
+    manifest.runtime_schema.helicity_recurrence = None;
+    Ok((stage_evaluators, helicity_recurrence))
 }
 
 fn build_helicity_recurrence_runtime_from_view(
@@ -3341,10 +3428,29 @@ impl ExecutionRuntime {
         let helicity_selector_manifests =
             std::mem::take(&mut manifest.helicity_selector_executions);
         let color_selector_manifests = std::mem::take(&mut manifest.color_selector_executions);
-        let stage_evaluators = manifest.compiled.stage_evaluators.clone();
-        let model_parameter_evaluator = manifest.compiled.model_parameter_evaluator.clone();
+        let compiled_color_payload = manifest.color_contraction_payload.take();
+        let (stage_evaluators, helicity_recurrence) =
+            detach_compiled_helicity_load_inputs(&mut manifest)?;
+        let model_parameter_evaluator = manifest.compiled.model_parameter_evaluator.take();
+        let replay_materialized_sector_ids =
+            build_lc_topology_replay_data(manifest.compiled.lc_topology_replay.as_ref())?
+                .materialized_sector_ids;
+        let compiled_color_execution_plan = stage_evaluators
+            .as_ref()
+            .map(|evaluators| {
+                build_compiled_color_execution_plan(
+                    evaluators,
+                    &manifest.runtime_schema,
+                    &replay_materialized_sector_ids,
+                )
+            })
+            .transpose()?
+            .flatten();
+        drop(replay_materialized_sector_ids);
         let amplitude_stage_manifest = manifest.runtime_schema.amplitude_stage.clone();
         let mut runtime = Self::from_manifest(manifest)?;
+        runtime.helicity_recurrence = helicity_recurrence;
+        runtime.compiled_color_execution_plan = compiled_color_execution_plan;
         let sizing_physics = if let Some(reduction) = runtime.physics_reduction_override.as_ref() {
             let mut manifest = inherited_sizing_physics.manifest.clone();
             manifest.reduction = reduction.clone();
@@ -3352,6 +3458,11 @@ impl ExecutionRuntime {
         } else {
             inherited_sizing_physics.clone()
         };
+        let mut compiled_color_contraction = load_compiled_symmetric_group_color_contraction(
+            compiled_color_payload.as_ref(),
+            payloads,
+            &sizing_physics,
+        )?;
         let routed_footprint = if runtime.lc_topology_replay_enabled {
             if let Some(stage_evaluators) = stage_evaluators.as_ref() {
                 let sizing_amplitude = AmplitudeRuntime::load_reducer_only(
@@ -3438,32 +3549,49 @@ impl ExecutionRuntime {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             if compiled_plane_arena {
                 #[cfg(feature = "symbolica-runtime")]
-                let (stages, amplitude) = {
-                    // Preserve the public exact-precision API without
-                    // instantiating a second f64 evaluator representation.
-                    // These groups own only lazy evaluator-state sources;
-                    // every f64 entry point fails closed on ExactOnly and the
-                    // production hot path remains the Direct application.
-                    (
-                        stage_evaluators
-                            .stages
-                            .iter()
-                            .map(|stage| StageRuntime::load_exact_from_plane(stage, payloads))
-                            .collect::<RusticolResult<Vec<_>>>()?,
-                        AmplitudeRuntime::load_exact_from_plane(
+                let (stages, mut amplitude) = match compiled_color_contraction.take() {
+                    Some(color) => (
+                        Vec::new(),
+                        AmplitudeRuntime::load_reducer_only_with_compiled_color(
                             &amplitude_stage_manifest,
                             &stage_evaluators.amplitude_stage,
-                            payloads,
+                            Some(color),
                         )?,
-                    )
+                    ),
+                    None => {
+                        // Preserve the public exact-precision API for ordinary
+                        // compiled artifacts without instantiating a second f64
+                        // evaluator representation. The selected-helicity SG
+                        // diagnostic rejects exact execution and therefore uses
+                        // only the reducer construction above.
+                        (
+                            stage_evaluators
+                                .stages
+                                .iter()
+                                .map(|stage| StageRuntime::load_exact_from_plane(stage, payloads))
+                                .collect::<RusticolResult<Vec<_>>>()?,
+                            AmplitudeRuntime::load_exact_from_plane(
+                                &amplitude_stage_manifest,
+                                &stage_evaluators.amplitude_stage,
+                                payloads,
+                            )?,
+                        )
+                    }
                 };
                 #[cfg(not(feature = "symbolica-runtime"))]
-                let (stages, amplitude) = (
+                let (stages, mut amplitude) = (
                     Vec::new(),
-                    AmplitudeRuntime::load_reducer_only(
-                        &amplitude_stage_manifest,
-                        &stage_evaluators.amplitude_stage,
-                    )?,
+                    match compiled_color_contraction.take() {
+                        Some(color) => AmplitudeRuntime::load_reducer_only_with_compiled_color(
+                            &amplitude_stage_manifest,
+                            &stage_evaluators.amplitude_stage,
+                            Some(color),
+                        )?,
+                        None => AmplitudeRuntime::load_reducer_only(
+                            &amplitude_stage_manifest,
+                            &stage_evaluators.amplitude_stage,
+                        )?,
+                    },
                 );
                 let maximum_resolved_component_count = sizing_physics
                     .manifest
@@ -3495,6 +3623,8 @@ impl ExecutionRuntime {
                         stage_evaluators.amplitude_stage.output_length,
                         reduction_footprint,
                     )?;
+                amplitude
+                    .prepare_compiled_symmetric_group_workspace(direct.reduction_tile_capacity())?;
                 runtime.stages = Some(stages);
                 runtime.amplitude_stage = Some(amplitude);
                 let mut color_schedules = BTreeMap::new();
@@ -3507,6 +3637,11 @@ impl ExecutionRuntime {
                 runtime.compiled_direct_color_schedules = color_schedules;
                 runtime.compiled_direct_runtime = Some(direct);
             } else {
+                if compiled_color_contraction.is_some() {
+                    return Err(RusticolError::compatibility(
+                        "compiled symmetric-group FFT diagnostic requires compiled-plane-arena-v1",
+                    ));
+                }
                 let stages = stage_evaluators
                     .stages
                     .iter()
@@ -3702,6 +3837,18 @@ fn validate_helicity_selector_executions(manifest: &ExecutionManifest) -> Rustic
         }
         match record.schedule_mode {
             HelicitySelectorScheduleMode::ParentClosure => {
+                if selector_manifest.compiled.lc_topology_replay.is_some()
+                    || selector_manifest.compiled.color_topology_replay.is_some()
+                    || selector_manifest
+                        .runtime_schema
+                        .amplitude_stage
+                        .color_topology_replay
+                        .is_some()
+                {
+                    return Err(RusticolError::integrity(
+                        "parent-closure helicity-selector execution cannot own colour-topology replay",
+                    ));
+                }
                 if selector_manifest
                     .runtime_schema
                     .helicity_recurrence
@@ -4018,6 +4165,9 @@ fn ensure_execution_capabilities_supported(manifest: &ExecutionManifest) -> Rust
             }
             .to_string(),
         );
+    }
+    if manifest.color_contraction_payload.is_some() {
+        execution_capabilities.insert(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY.to_string());
     }
     validate_declared_execution_capabilities(
         &manifest.required_runtime_capabilities,
@@ -4633,6 +4783,132 @@ mod helicity_recurrence_contract_tests {
 
     #[cfg(feature = "f64-symjit")]
     #[test]
+    fn compiled_parent_detach_preserves_selected_materialized_stage_schedule() {
+        const DIRECT: &str = "symjit.application.complex-f64.v1";
+        let mut value = crate::artifact::tests::minimal_execution_manifest(
+            "p0",
+            "a > a",
+            DIRECT,
+            crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
+        );
+        value["external_pdg_order"] = json!([1]);
+        value["runtime_schema"]["external_particles"]
+            .as_array_mut()
+            .expect("external-particle fixture")
+            .truncate(1);
+        value["runtime_schema"]["current_storage"]["current_slots"][1]["is_source"] = json!(false);
+        value["runtime_schema"]["source_fill"]["source_count"] = json!(1);
+        value["runtime_schema"]["source_fill"]["sources"]
+            .as_array_mut()
+            .expect("source fixture")
+            .truncate(1);
+        let source = &mut value["runtime_schema"]["source_fill"]["sources"][0];
+        source["source_helicity"] = json!(-1);
+        source["chirality"] = json!(-1);
+        source["spin_state"] = json!(-1);
+        source["source_ir"]["states"] = json!([
+            {"helicity": -1, "chirality": -1, "spin_state": -1},
+            {"helicity": 1, "chirality": 1, "spin_state": 1},
+        ]);
+        let root = &mut value["runtime_schema"]["amplitude_stage"]["roots"][0];
+        root["left_current_id"] = json!(1);
+        root["right_current_id"] = json!(0);
+
+        let evaluators = &mut value["compiled"]["stage_evaluators"];
+        evaluators["parameter_layout"] = json!("stage-local-value-momentum");
+        evaluators["parameter_count"] = json!(0);
+        evaluators["value_parameter_count"] = json!(0);
+        evaluators["momentum_parameter_count"] = json!(0);
+        evaluators["real_valued_inputs"] = json!([]);
+        evaluators["stage_count"] = json!(2);
+        let mut current_stage = evaluators["amplitude_stage"].clone();
+        current_stage["stage_index"] = json!(1);
+        current_stage["stage_kind"] = json!("current-combine");
+        current_stage["subset_size"] = json!(1);
+        current_stage["evaluator_label"] = json!("materialized_current");
+        current_stage["parameter_layout"] = json!("stage-local-value-momentum");
+        current_stage["output_slots"] = json!([{
+            "value_slot_id": 1,
+            "current_id": 1,
+            "variant": "unpropagated",
+            "component_start": 0,
+            "component_stop": 1,
+            "output_start": 0,
+            "output_stop": 1,
+        }]);
+        current_stage["input_value_slot_ids"] = json!([0]);
+        current_stage["output_value_slot_ids"] = json!([1]);
+        current_stage["input_components"] = json!([{
+            "kind": "value",
+            "source_id": 0,
+            "component": 0,
+            "global_component": 0,
+            "parameter_index": 0,
+            "real_valued": false,
+        }]);
+        current_stage["parameter_count"] = json!(1);
+        current_stage["value_parameter_count"] = json!(1);
+        current_stage["momentum_parameter_count"] = json!(0);
+        current_stage["real_valued_inputs"] = json!([]);
+        current_stage["evaluator"]["input_len"] = json!(1);
+        evaluators["stages"] = json!([current_stage]);
+
+        let amplitude = &mut evaluators["amplitude_stage"];
+        amplitude["parameter_layout"] = json!("stage-local-value-momentum");
+        amplitude["input_components"] = json!([
+            {
+                "kind": "value", "source_id": 0, "component": 0,
+                "global_component": 0, "parameter_index": 0,
+                "real_valued": false,
+            },
+            {
+                "kind": "value", "source_id": 1, "component": 0,
+                "global_component": 1, "parameter_index": 1,
+                "real_valued": false,
+            },
+        ]);
+        amplitude["parameter_count"] = json!(2);
+        amplitude["value_parameter_count"] = json!(2);
+        amplitude["momentum_parameter_count"] = json!(0);
+        amplitude["real_valued_inputs"] = json!([]);
+        amplitude["evaluator"]["input_len"] = json!(2);
+
+        let mut manifest = serde_json::from_value::<ExecutionManifest>(value)
+            .expect("deserialize compiled-parent fixture");
+        let (recurrence, _) = valid_materialized_contract();
+        manifest.runtime_schema.helicity_recurrence = Some(recurrence);
+
+        let (stage_evaluators, helicity_recurrence) =
+            detach_compiled_helicity_load_inputs(&mut manifest).unwrap();
+
+        assert!(stage_evaluators.is_some());
+        assert!(manifest.compiled.stage_evaluators.is_none());
+        assert!(manifest.runtime_schema.helicity_recurrence.is_none());
+        let materialization = helicity_recurrence
+            .as_ref()
+            .and_then(|recurrence| recurrence.materialization.as_ref())
+            .expect("compiled parent retained its selected-helicity schedule");
+        assert_eq!(
+            materialization.selector_schedules[0].active_stage_chunk_indices,
+            vec![vec![0]]
+        );
+        assert_eq!(
+            materialization.selector_schedules[0].active_amplitude_chunk_indices,
+            vec![0]
+        );
+
+        let mut runtime = ExecutionRuntime::from_manifest(manifest).unwrap();
+        runtime.helicity_recurrence = helicity_recurrence;
+        assert!(
+            runtime
+                .helicity_recurrence
+                .as_ref()
+                .is_some_and(|recurrence| recurrence.materialization.is_some())
+        );
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    #[test]
     fn helicity_selector_lane_rejects_parent_layout_mismatch() {
         let value = crate::artifact::tests::minimal_helicity_selector_lane_execution();
         let mut manifest = serde_json::from_value::<ExecutionManifest>(value)
@@ -4650,6 +4926,26 @@ mod helicity_recurrence_contract_tests {
             error
                 .to_string()
                 .contains("layout does not match its primary execution"),
+            "{error}"
+        );
+    }
+
+    #[cfg(feature = "f64-symjit")]
+    #[test]
+    fn parent_closure_helicity_selector_lane_rejects_topology_replay() {
+        let mut value = crate::artifact::tests::minimal_helicity_selector_lane_execution();
+        value["helicity_selector_executions"][0]["execution"]["compiled"]["color_topology_replay"] =
+            json!({"enabled": true});
+        let manifest = serde_json::from_value::<ExecutionManifest>(value)
+            .expect("deserialize replay-owning selector-lane fixture");
+
+        let error = validate_helicity_selector_executions(&manifest).unwrap_err();
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity, "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("cannot own colour-topology replay"),
             "{error}"
         );
     }

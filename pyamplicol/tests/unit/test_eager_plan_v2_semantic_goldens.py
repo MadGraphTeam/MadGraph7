@@ -606,8 +606,8 @@ def _snapshot(case: _GoldenCase) -> dict[str, object]:
     }
 
 
-# Refreshed from the audited plan-v2 lowerer at source 9001e10c after extending
-# authenticated contact-orbit semantics to five legs. These records are
+# Refreshed from the audited post-HEFT/FFT plan-v2 lowerer after extending
+# authenticated contact-orbit semantics and exact colour layouts. These records are
 # intentionally small: counts diagnose structural drift and section digests
 # identify its semantic owner without checking Python serialization bytes.
 _EXPECTED: dict[str, dict[str, object]] = {
@@ -631,13 +631,13 @@ _EXPECTED: dict[str, dict[str, object]] = {
         },
         "digests": {
             "exact": "edb6e447d9d1507a74b5ccb60011b64a7fe598dd3331cd8810c7772ad1b01fb4",
-            "layout": "afe5e25ff4839e2c2ffac67dbf7053d838edfa716fc8248c44e792bc3dedb52a",
+            "layout": "b62b48a5e371e65041aff8f7f0f47ccc6b354a838360b1ba8480de104744d83b",
             "reductions": "3864a2185e4b6613de4cd650431a1cb6a42c224556e73ffb57d471dc5424b6f1",
             "resolved": "4347816ea9472a7c77bd4638259933ac67a562a9fa7478795233da6dc43cab7b",
             "selectors": "e05447b4632d2b06aed2ecc2ecec8526d3aa65e62583ae58f52f4881207435cb",
             "tables": "5e91dc6a8d9b719546689ab1cad7580560f2105b249bd524815af0475d040f27",
         },
-        "semantic_sha256": "203c505fe3c45ebb709e866f10eab028c3f5542329bcfd9b939067e35ca60cbd",
+        "semantic_sha256": "0ab1babe79d6e93762268fbd31936bbafa27b16b534504f9bcdd865e7816d0fb",
     },
     "lc-all-flow-union": {
         "counts": {
@@ -659,13 +659,13 @@ _EXPECTED: dict[str, dict[str, object]] = {
         },
         "digests": {
             "exact": "7f331d77c15b5275cadb38dcf653e854c10e432b889328d60b0d389cede8af84",
-            "layout": "82c6111ea57f6e9468017679dc56833e09ddd88b4e3cf05b9629d1eda5813d25",
+            "layout": "24432cc2b2d22a0c83adaddfe58e0beb1ce8447c5df44417e4b6c7e00fffb690",
             "reductions": "b7d5c3c614f70ad6c4bf7f8afb1b3a0a8a5c33dcae0a0c12d271992928ec3a2a",
             "resolved": "f038d7b438a5b59baabc439fb712dbe3fd455f433f20e9da7490e574acc22927",
             "selectors": "7eafd41c8048e0c0d992c5078af4d67e94a9295688d8166a4962ff129a99b419",
             "tables": "b6912b0d758a2ef54483bf6df3f004c6333365d9fe54112243f5a25f28380b74",
         },
-        "semantic_sha256": "b6e105f3c9e1e92172e0d73132eda84ac9530cf8e92f07bfb513079c4001f341",
+        "semantic_sha256": "23d55149e8a07cc8b18e096e65241344cfd1673d03f1740892f9a3d7b63edf00",
     },
     "nlc-contracted": {
         "counts": {
@@ -687,13 +687,13 @@ _EXPECTED: dict[str, dict[str, object]] = {
         },
         "digests": {
             "exact": "a34e59f545b8a540944fdc325fa207af27658c119cc922f567db2c3a715d9599",
-            "layout": "5011450f81d92ba87006ac33fba1aceb4411ef1d86b04c2361b3e5237659e7a2",
+            "layout": "6c829c0734a995d06f4dcc63bc0967d77bd838c7c733c0ef204f68b4c80ac32a",
             "reductions": "317a7505a86b995ce56e5de37ae8d16468147e044967f9820f861fd2f1289f61",
             "resolved": "673928032c4063e5aacb8eab41076de0d6c49ea64e56b13c0fa43c149c2c2393",
             "selectors": "72534cf8b4737ba7bbf91913532f6240828386a1cd1d3146b253f44680af0a00",
             "tables": "be248179b8cab34a9dcd427a8bc3b6530cca0a37b08b25f455056c5a2f75d3e5",
         },
-        "semantic_sha256": "5102f0f40b894d674ed0a942ff6ee5a77b804e0dafab6b2520a40424266acf53",
+        "semantic_sha256": "cab8e62bc82ef649e38bd2660de8d8f340b93e23b1c56975b10c8075c266bc07",
     },
     "full-contracted": {
         "counts": {
@@ -715,13 +715,13 @@ _EXPECTED: dict[str, dict[str, object]] = {
         },
         "digests": {
             "exact": "a34e59f545b8a540944fdc325fa207af27658c119cc922f567db2c3a715d9599",
-            "layout": "ad636a8248db6743486a0d3194ff8b08d52fd84c3c46dcaa39bc333c908227d5",
+            "layout": "71ddc16d027bd79283f4861d26a53e3233faf17f2411db49c9607bd21fbb8318",
             "reductions": "3f33aa7c721a382fd58fc911e9fd87a0323d16a8a05a286a87aa28a841a6eea4",
             "resolved": "19acacf5110579b2c157b48dc5c4aacac3da5b51d76f13658ce4a5cbd73754de",
             "selectors": "6f33e6fbd9d47db7a6f0bb8434606ef5b24eb2c644fd3d03006a35201b89a6d3",
             "tables": "523cde2f838092e4e3de13660261328c4e508ba64d59f5e3c510b8fddd79c1f9",
         },
-        "semantic_sha256": "8a15ef5c420132aa2497dd2dbc1cb825850c09d52e85dfb7e2ccdb3f9ef6c4a0",
+        "semantic_sha256": "a81cdacf06355dfe4ef590391beaeaee3709b0f66a365f0795bdd9d57e4f8b69",
     },
 }
 

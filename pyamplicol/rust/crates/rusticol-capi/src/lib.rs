@@ -1596,6 +1596,7 @@ mod tests {
             vec![
                 "compiled-plane-arena-v1".to_string(),
                 "eager-direct-arena-v1".to_string(),
+                "rusticol.color-contraction.symmetric-group-fft.v1".to_string(),
                 "rusticol.compiled.color-contraction-walsh-c2k.v1".to_string(),
                 "rusticol.compiled.color-contraction-walsh.v1".to_string(),
                 "rusticol.compiled.color-topology-lanes.v1".to_string(),
@@ -1610,6 +1611,7 @@ mod tests {
                 "rusticol.recurrence-color.contracted.v1".to_string(),
                 "rusticol.recurrence-color.lc.v1".to_string(),
                 "rusticol.recurrence-direct-arena.complex-f64.v1".to_string(),
+                "rusticol.recurrence-helicity-selector-companion.v2".to_string(),
                 "symbolica.compiled-asm.complex-f64.v1".to_string(),
                 "symbolica.compiled-cpp.complex-f64.v1".to_string(),
                 "symjit.application.complex-f64.v1".to_string(),

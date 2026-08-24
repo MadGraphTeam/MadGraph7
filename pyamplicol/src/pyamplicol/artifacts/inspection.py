@@ -22,8 +22,10 @@ from pyamplicol._internal.versions import (
     RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
+    RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api.errors import ArtifactError
 
@@ -163,6 +165,15 @@ class ArtifactProcessInspection:
     recurrence_color_factorization_kind: str | None = None
     recurrence_color_factorization_rank: int | None = None
     recurrence_color_factorization_coset_count: int | None = None
+    recurrence_color_contraction_method: str | None = None
+    recurrence_color_fft_degree: int | None = None
+    recurrence_color_fft_channel_count: int | None = None
+    recurrence_color_fft_covered_local_group_count: int | None = None
+    recurrence_color_direct_residual_group_count: int | None = None
+    recurrence_color_direct_residual_entry_count: int | None = None
+    recurrence_color_raw_kernel_bytes: int | None = None
+    recurrence_color_transformed_kernel_bytes: int | None = None
+    recurrence_color_fft_capability: str | None = None
     packed_input_bytes: int | None = None
     packed_output_bytes: int | None = None
     scatter_bytes: int | None = None
@@ -351,6 +362,15 @@ class _ExecutionInspection:
     recurrence_color_factorization_kind: str | None = None
     recurrence_color_factorization_rank: int | None = None
     recurrence_color_factorization_coset_count: int | None = None
+    recurrence_color_contraction_method: str | None = None
+    recurrence_color_fft_degree: int | None = None
+    recurrence_color_fft_channel_count: int | None = None
+    recurrence_color_fft_covered_local_group_count: int | None = None
+    recurrence_color_direct_residual_group_count: int | None = None
+    recurrence_color_direct_residual_entry_count: int | None = None
+    recurrence_color_raw_kernel_bytes: int | None = None
+    recurrence_color_transformed_kernel_bytes: int | None = None
+    recurrence_color_fft_capability: str | None = None
     packed_input_bytes: int | None = None
     packed_output_bytes: int | None = None
     scatter_bytes: int | None = None
@@ -955,6 +975,13 @@ def _recurrence_execution_inspection(
     manifest: ArtifactManifest,
     execution: Mapping[str, object],
 ) -> _ExecutionInspection:
+    declared_capabilities = frozenset(
+        str(value)
+        for value in _sequence(
+            execution.get("required_runtime_capabilities"),
+            "recurrence execution.required_runtime_capabilities",
+        )
+    )
     _require_contract(
         execution,
         "builder_input_abi",
@@ -1047,9 +1074,27 @@ def _recurrence_execution_inspection(
     _require_contract(
         binding,
         "abi",
-        "pyamplicol-recurrence-process-binding-v2",
+        "pyamplicol-recurrence-process-binding-v4",
         "recurrence execution.plan.process_binding",
     )
+    primary_process_digest = _string(
+        binding.get("process_digest"),
+        "recurrence execution.plan.process_binding.process_digest",
+    )
+    if len(primary_process_digest) != 64 or any(
+        character not in "0123456789abcdef" for character in primary_process_digest
+    ):
+        raise ArtifactError(
+            "recurrence primary process binding has an invalid process digest"
+        )
+    companion_process_digest = execution.get("process_digest")
+    if (
+        companion_process_digest is not None
+        and companion_process_digest != primary_process_digest
+    ):
+        raise ArtifactError(
+            "recurrence companion process digest disagrees with its primary binding"
+        )
     summary = _mapping(
         plan.get("inspection_summary"),
         "recurrence execution.plan.inspection_summary",
@@ -1135,7 +1180,17 @@ def _recurrence_execution_inspection(
                 "recurrence direct template references an absent prepared kernel"
             )
         referenced_kernel_ids.add(parsed_kernel_id)
-    if prepared_kernel_count != len(referenced_kernel_ids):
+    complete_companion_catalog = (
+        RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+        in declared_capabilities
+    )
+    if (
+        not complete_companion_catalog
+        and prepared_kernel_count != len(referenced_kernel_ids)
+    ) or (
+        complete_companion_catalog
+        and not 0 < prepared_kernel_count <= len(referenced_kernel_ids)
+    ):
         raise ArtifactError(
             "recurrence inspection prepared-kernel count does not match its "
             "direct template catalog"
@@ -1223,6 +1278,7 @@ def _recurrence_execution_inspection(
     color_factorization_kind = None
     color_factorization_rank = None
     color_factorization_coset_count = None
+    color_fft_provenance = None
     if color_reference_raw is not None:
         color_reference = _mapping(
             color_reference_raw,
@@ -1246,9 +1302,10 @@ def _recurrence_execution_inspection(
             color_reference.get("storage"),
             "recurrence color-contraction storage",
         )
-        if color_storage not in {"expanded", "repeated"}:
+        if color_storage not in {"expanded", "repeated", "convolution-kernels"}:
             raise ArtifactError(
-                "recurrence color-contraction storage must be expanded or repeated"
+                "recurrence color-contraction storage must be expanded, repeated, "
+                "or convolution-kernels"
             )
         color_sector_count = _integer(
             color_reference.get("sector_count"),
@@ -1289,9 +1346,9 @@ def _recurrence_execution_inspection(
             raise ArtifactError(
                 "recurrence active color sectors exceed the physical sector count"
             )
-        if color_destination_count != color_group_count:
+        if color_destination_count < color_group_count:
             raise ArtifactError(
-                "recurrence color destinations do not match contraction groups"
+                "recurrence color destinations do not cover contraction groups"
             )
         if color_group_count > color_active_sector_count * color_component_count:
             raise ArtifactError(
@@ -1317,10 +1374,55 @@ def _recurrence_execution_inspection(
                 "recurrence color-contraction factorization coset count",
                 minimum=1,
             )
-            if color_storage != "repeated":
-                raise ArtifactError(
-                    "recurrence color factorization requires repeated storage"
+            valid_factorization = (
+                (
+                    color_storage == "repeated"
+                    and color_factorization_kind == "klein-four-walsh"
+                    and color_factorization_rank == 2
                 )
+                or (
+                    color_storage == "repeated"
+                    and color_factorization_kind == "elementary-abelian-walsh"
+                    and 3 <= color_factorization_rank <= 16
+                )
+                or (
+                    color_storage == "convolution-kernels"
+                    and color_factorization_kind == "symmetric-group-fourier"
+                    and 2 <= color_factorization_rank <= 10
+                )
+            )
+            if not valid_factorization:
+                raise ArtifactError(
+                    "recurrence color factorization kind, rank, and storage disagree"
+                )
+        symmetric_group_fft = color_factorization_kind == "symmetric-group-fourier"
+        if (color_storage == "convolution-kernels") != symmetric_group_fft:
+            raise ArtifactError(
+                "recurrence convolution-kernel storage requires symmetric-group "
+                "Fourier factorization"
+            )
+        if (
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY in declared_capabilities
+        ) != symmetric_group_fft:
+            raise ArtifactError(
+                "recurrence symmetric-group Fourier metadata and runtime capability "
+                "disagree"
+            )
+        color_fft_provenance = _symmetric_group_fft_provenance(
+            color_reference,
+            factorization_kind=color_factorization_kind,
+            degree=color_factorization_rank,
+            channel_count=color_factorization_coset_count,
+            group_count=color_group_count,
+            component_count=color_component_count,
+            entry_count=color_entry_count,
+            logical_entry_count=color_logical_entry_count,
+            context="recurrence color-contraction",
+        )
+    elif SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY in declared_capabilities:
+        raise ArtifactError(
+            "recurrence symmetric-group Fourier capability has no color payload"
+        )
     return _ExecutionInspection(
         execution_mode="recurrence",
         prepared_backend=_string(
@@ -1364,11 +1466,153 @@ def _recurrence_execution_inspection(
         recurrence_color_factorization_kind=color_factorization_kind,
         recurrence_color_factorization_rank=color_factorization_rank,
         recurrence_color_factorization_coset_count=(color_factorization_coset_count),
+        recurrence_color_contraction_method=(
+            None
+            if color_fft_provenance is None
+            else cast(str, color_fft_provenance["method"])
+        ),
+        recurrence_color_fft_degree=(
+            None
+            if color_fft_provenance is None
+            else cast(int, color_fft_provenance["degree"])
+        ),
+        recurrence_color_fft_channel_count=(
+            None
+            if color_fft_provenance is None
+            else cast(int, color_fft_provenance["channel_count"])
+        ),
+        recurrence_color_fft_covered_local_group_count=(
+            None
+            if color_fft_provenance is None
+            else cast(int, color_fft_provenance["covered_local_group_count"])
+        ),
+        recurrence_color_direct_residual_group_count=(
+            None
+            if color_fft_provenance is None
+            else cast(int, color_fft_provenance["residual_group_count"])
+        ),
+        recurrence_color_direct_residual_entry_count=(
+            None
+            if color_fft_provenance is None
+            else cast(int, color_fft_provenance["residual_entry_count"])
+        ),
+        recurrence_color_raw_kernel_bytes=(
+            None
+            if color_fft_provenance is None
+            else cast(int, color_fft_provenance["raw_kernel_bytes"])
+        ),
+        recurrence_color_transformed_kernel_bytes=(
+            None
+            if color_fft_provenance is None
+            else cast(int, color_fft_provenance["transformed_kernel_bytes"])
+        ),
+        recurrence_color_fft_capability=(
+            None
+            if color_fft_provenance is None
+            else cast(str, color_fft_provenance["capability"])
+        ),
         packed_input_bytes=0,
         packed_output_bytes=0,
         scatter_bytes=0,
         native_profile_phases=_RECURRENCE_PROFILE_PHASES,
     )
+
+
+def _symmetric_group_fft_provenance(
+    reference: Mapping[str, object],
+    *,
+    factorization_kind: str | None,
+    degree: int | None,
+    channel_count: int | None,
+    group_count: int,
+    component_count: int,
+    entry_count: int,
+    logical_entry_count: int,
+    context: str,
+) -> dict[str, int | str] | None:
+    raw = reference.get("fft_provenance")
+    if factorization_kind != "symmetric-group-fourier":
+        if raw is not None or "fft_provenance" in reference:
+            raise ArtifactError(f"{context} non-FFT summary carries FFT provenance")
+        return None
+    if degree is None or channel_count is None:
+        raise ArtifactError(f"{context} symmetric-group factorization is incomplete")
+    provenance = _mapping(raw, f"{context} FFT provenance")
+    expected_fields = {
+        "method",
+        "degree",
+        "channel_count",
+        "covered_local_group_count",
+        "residual_group_count",
+        "residual_entry_count",
+        "raw_kernel_bytes",
+        "transformed_kernel_bytes",
+        "capability",
+    }
+    if set(provenance) != expected_fields:
+        raise ArtifactError(f"{context} FFT provenance has unsupported fields")
+    if group_count % component_count:
+        raise ArtifactError(f"{context} FFT component map is not rectangular")
+    local_group_count = group_count // component_count
+    group_order = math.factorial(degree)
+    covered_local_group_count = channel_count * group_order
+    if covered_local_group_count > local_group_count:
+        raise ArtifactError(f"{context} FFT channels exceed the local group domain")
+    residual_group_count = local_group_count - covered_local_group_count
+    residual_entry_count = (
+        local_group_count * (local_group_count + 1) // 2
+        - covered_local_group_count * (covered_local_group_count + 1) // 2
+    )
+    kernel_entry_count = channel_count * (channel_count + 1) // 2 * group_order
+    raw_kernel_bytes = kernel_entry_count * 16
+    transformed_kernel_bytes = kernel_entry_count * 8
+    values: dict[str, int | str] = {
+        "method": _string(provenance.get("method"), f"{context} FFT method"),
+        "degree": _integer(provenance.get("degree"), f"{context} FFT degree"),
+        "channel_count": _integer(
+            provenance.get("channel_count"), f"{context} FFT channel count"
+        ),
+        "covered_local_group_count": _integer(
+            provenance.get("covered_local_group_count"),
+            f"{context} FFT-covered local group count",
+        ),
+        "residual_group_count": _integer(
+            provenance.get("residual_group_count"),
+            f"{context} direct residual group count",
+        ),
+        "residual_entry_count": _integer(
+            provenance.get("residual_entry_count"),
+            f"{context} direct residual entry count",
+        ),
+        "raw_kernel_bytes": _integer(
+            provenance.get("raw_kernel_bytes"), f"{context} raw kernel bytes"
+        ),
+        "transformed_kernel_bytes": _integer(
+            provenance.get("transformed_kernel_bytes"),
+            f"{context} transformed kernel bytes",
+        ),
+        "capability": _string(
+            provenance.get("capability"), f"{context} FFT capability"
+        ),
+    }
+    expected: dict[str, int | str] = {
+        "method": "symmetric-group-fourier",
+        "degree": degree,
+        "channel_count": channel_count,
+        "covered_local_group_count": covered_local_group_count,
+        "residual_group_count": residual_group_count,
+        "residual_entry_count": residual_entry_count,
+        "raw_kernel_bytes": raw_kernel_bytes,
+        "transformed_kernel_bytes": transformed_kernel_bytes,
+        "capability": SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+    }
+    if (
+        values != expected
+        or entry_count != kernel_entry_count + residual_entry_count
+        or logical_entry_count != entry_count * component_count
+    ):
+        raise ArtifactError(f"{context} symmetric-group FFT provenance is inconsistent")
+    return values
 
 
 def _on_the_fly_color_reference(
@@ -1406,6 +1650,8 @@ def _on_the_fly_color_reference(
         "size_bytes",
         "sha256",
     }
+    if reference.get("factorization") is not None:
+        expected_fields.add("fft_provenance")
     if set(reference) != expected_fields:
         raise ArtifactError(
             "on-the-fly color-contraction reference has unsupported fields"
@@ -1467,12 +1713,45 @@ def _on_the_fly_color_reference(
         reference.get("sha256"),
         "on-the-fly color-contraction SHA-256",
     )
+    factorization_raw = reference.get("factorization")
+    symmetric_group_fft = False
+    factorization_rank = None
+    factorization_coset_count = None
+    if factorization_raw is not None:
+        factorization = _mapping(
+            factorization_raw,
+            "on-the-fly color-contraction factorization",
+        )
+        if set(factorization) != {"kind", "rank", "coset_count"}:
+            raise ArtifactError(
+                "on-the-fly color-contraction factorization has unsupported fields"
+            )
+        factorization_kind = _string(
+            factorization.get("kind"),
+            "on-the-fly color-contraction factorization kind",
+        )
+        factorization_rank = _integer(
+            factorization.get("rank"),
+            "on-the-fly color-contraction factorization degree",
+            minimum=2,
+        )
+        factorization_coset_count = _integer(
+            factorization.get("coset_count"),
+            "on-the-fly color-contraction channel count",
+            minimum=1,
+        )
+        symmetric_group_fft = (
+            factorization_kind == "symmetric-group-fourier" and factorization_rank <= 10
+        )
+        if not symmetric_group_fft:
+            raise ArtifactError(
+                "on-the-fly color factorization must be symmetric-group Fourier"
+            )
     if (
         accuracy != color_accuracy
         or accuracy not in {"nlc", "full"}
-        or storage != "expanded"
+        or storage != ("convolution-kernels" if symmetric_group_fft else "expanded")
         or reference.get("includes_color_factor") is not True
-        or reference.get("factorization") is not None
         or component_count != 1
         or active_sector_count != group_count
         or destination_count != group_count
@@ -1483,9 +1762,18 @@ def _on_the_fly_color_reference(
         or len(payload_sha256) != 64
         or any(character not in "0123456789abcdef" for character in payload_sha256)
     ):
-        raise ArtifactError(
-            "on-the-fly color-contraction reference is noncanonical"
-        )
+        raise ArtifactError("on-the-fly color-contraction reference is noncanonical")
+    fft_provenance = _symmetric_group_fft_provenance(
+        reference,
+        factorization_kind=("symmetric-group-fourier" if symmetric_group_fft else None),
+        degree=factorization_rank,
+        channel_count=factorization_coset_count,
+        group_count=group_count,
+        component_count=component_count,
+        entry_count=entry_count,
+        logical_entry_count=logical_entry_count,
+        context="on-the-fly color-contraction",
+    )
     _integer(
         reference.get("size_bytes"),
         "on-the-fly color-contraction payload size",
@@ -1501,6 +1789,40 @@ def _on_the_fly_color_reference(
         "destination_count": destination_count,
         "entry_count": entry_count,
         "logical_entry_count": logical_entry_count,
+        "factorization_kind": (
+            "symmetric-group-fourier" if symmetric_group_fft else None
+        ),
+        "factorization_rank": factorization_rank,
+        "factorization_coset_count": factorization_coset_count,
+        "contraction_method": (
+            None if fft_provenance is None else fft_provenance["method"]
+        ),
+        "fft_degree": (None if fft_provenance is None else fft_provenance["degree"]),
+        "fft_channel_count": (
+            None if fft_provenance is None else fft_provenance["channel_count"]
+        ),
+        "fft_covered_local_group_count": (
+            None
+            if fft_provenance is None
+            else fft_provenance["covered_local_group_count"]
+        ),
+        "direct_residual_group_count": (
+            None if fft_provenance is None else fft_provenance["residual_group_count"]
+        ),
+        "direct_residual_entry_count": (
+            None if fft_provenance is None else fft_provenance["residual_entry_count"]
+        ),
+        "raw_kernel_bytes": (
+            None if fft_provenance is None else fft_provenance["raw_kernel_bytes"]
+        ),
+        "transformed_kernel_bytes": (
+            None
+            if fft_provenance is None
+            else fft_provenance["transformed_kernel_bytes"]
+        ),
+        "fft_capability": (
+            None if fft_provenance is None else fft_provenance["capability"]
+        ),
     }
 
 
@@ -1540,14 +1862,20 @@ def _execution_inspection(
             ON_THE_FLY_RUNTIME_CAPABILITY,
             selected_color_capability,
         }
-        if capability_values != on_the_fly_capabilities or len(capabilities) != 2:
+        symmetric_group_fft_capability = (
+            SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY in capability_values
+        )
+        if symmetric_group_fft_capability:
+            on_the_fly_capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
+        if capability_values != on_the_fly_capabilities or len(capabilities) != len(
+            on_the_fly_capabilities
+        ):
             raise ArtifactError(
-                "on-the-fly execution must declare exactly its two runtime "
+                "on-the-fly execution must declare exactly its required runtime "
                 "capabilities"
             )
         contracted_color = (
-            selected_color_capability
-            == ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
+            selected_color_capability == ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
         )
         expected_color_accuracies = {"nlc", "full"} if contracted_color else {"lc"}
         execution = _json_mapping(execution_path, "process execution manifest")
@@ -1596,7 +1924,7 @@ def _execution_inspection(
             )
             or execution.get("schema_version") != 3
             or kind != _ON_THE_FLY_RUNTIME_KIND
-            or len(declared_capabilities) != 2
+            or len(declared_capabilities) != len(on_the_fly_capabilities)
             or declared_capability_values != on_the_fly_capabilities
             or execution.get("process") != process.get("expression")
             or execution.get("key") != process.get("id")
@@ -1637,6 +1965,15 @@ def _execution_inspection(
             color_accuracy=str(execution.get("color_accuracy")),
             contracted=contracted_color,
         )
+        reference_uses_symmetric_group_fft = (
+            color_reference is not None
+            and color_reference["factorization_kind"] == "symmetric-group-fourier"
+        )
+        if reference_uses_symmetric_group_fft != symmetric_group_fft_capability:
+            raise ArtifactError(
+                "on-the-fly symmetric-group Fourier metadata and runtime "
+                "capability disagree"
+            )
         selector_policy = _mapping(
             execution.get("selector_policy"),
             "on-the-fly execution.selector_policy",
@@ -1756,9 +2093,7 @@ def _execution_inspection(
                 else color_reference["active_sector_count"]
             ),
             recurrence_color_component_count=(
-                None
-                if color_reference is None
-                else color_reference["component_count"]
+                None if color_reference is None else color_reference["component_count"]
             ),
             recurrence_color_group_count=(
                 None if color_reference is None else color_reference["group_count"]
@@ -1775,6 +2110,60 @@ def _execution_inspection(
                 None
                 if color_reference is None
                 else color_reference["logical_entry_count"]
+            ),
+            recurrence_color_factorization_kind=(
+                None
+                if color_reference is None
+                else color_reference["factorization_kind"]
+            ),
+            recurrence_color_factorization_rank=(
+                None
+                if color_reference is None
+                else color_reference["factorization_rank"]
+            ),
+            recurrence_color_factorization_coset_count=(
+                None
+                if color_reference is None
+                else color_reference["factorization_coset_count"]
+            ),
+            recurrence_color_contraction_method=(
+                None
+                if color_reference is None
+                else color_reference["contraction_method"]
+            ),
+            recurrence_color_fft_degree=(
+                None if color_reference is None else color_reference["fft_degree"]
+            ),
+            recurrence_color_fft_channel_count=(
+                None
+                if color_reference is None
+                else color_reference["fft_channel_count"]
+            ),
+            recurrence_color_fft_covered_local_group_count=(
+                None
+                if color_reference is None
+                else color_reference["fft_covered_local_group_count"]
+            ),
+            recurrence_color_direct_residual_group_count=(
+                None
+                if color_reference is None
+                else color_reference["direct_residual_group_count"]
+            ),
+            recurrence_color_direct_residual_entry_count=(
+                None
+                if color_reference is None
+                else color_reference["direct_residual_entry_count"]
+            ),
+            recurrence_color_raw_kernel_bytes=(
+                None if color_reference is None else color_reference["raw_kernel_bytes"]
+            ),
+            recurrence_color_transformed_kernel_bytes=(
+                None
+                if color_reference is None
+                else color_reference["transformed_kernel_bytes"]
+            ),
+            recurrence_color_fft_capability=(
+                None if color_reference is None else color_reference["fft_capability"]
             ),
             native_profile_phases=_ON_THE_FLY_PROFILE_PHASES,
         )
@@ -2451,6 +2840,27 @@ def _process_inspection(
         recurrence_color_factorization_coset_count=(
             execution.recurrence_color_factorization_coset_count
         ),
+        recurrence_color_contraction_method=(
+            execution.recurrence_color_contraction_method
+        ),
+        recurrence_color_fft_degree=execution.recurrence_color_fft_degree,
+        recurrence_color_fft_channel_count=(
+            execution.recurrence_color_fft_channel_count
+        ),
+        recurrence_color_fft_covered_local_group_count=(
+            execution.recurrence_color_fft_covered_local_group_count
+        ),
+        recurrence_color_direct_residual_group_count=(
+            execution.recurrence_color_direct_residual_group_count
+        ),
+        recurrence_color_direct_residual_entry_count=(
+            execution.recurrence_color_direct_residual_entry_count
+        ),
+        recurrence_color_raw_kernel_bytes=(execution.recurrence_color_raw_kernel_bytes),
+        recurrence_color_transformed_kernel_bytes=(
+            execution.recurrence_color_transformed_kernel_bytes
+        ),
+        recurrence_color_fft_capability=(execution.recurrence_color_fft_capability),
         packed_input_bytes=execution.packed_input_bytes,
         packed_output_bytes=execution.packed_output_bytes,
         scatter_bytes=execution.scatter_bytes,

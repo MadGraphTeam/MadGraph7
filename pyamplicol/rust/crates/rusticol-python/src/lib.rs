@@ -16,7 +16,9 @@ use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyTuple};
-use rusticol_core::__private::compile_symbolica_program_to_plane_application_bytes;
+use rusticol_core::__private::{
+    build_recurrence_bootstrap_image_v1, compile_symbolica_program_to_plane_application_bytes,
+};
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
     NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpObserver,
@@ -633,12 +635,12 @@ impl Runtime {
             )));
         }
         let momenta = momenta.as_slice().to_vec();
-        if let Some(callback) = progress_callback.as_ref() {
-            if !callback.bind(py).is_callable() {
-                return Err(PyTypeError::new_err(
-                    "on-the-fly warm_up progress_callback must be callable or None",
-                ));
-            }
+        if let Some(callback) = progress_callback.as_ref()
+            && !callback.bind(py).is_callable()
+        {
+            return Err(PyTypeError::new_err(
+                "on-the-fly warm_up progress_callback must be callable or None",
+            ));
         }
         let callback_error = Arc::new(Mutex::new(None));
         let detached_callback_error = Arc::clone(&callback_error);
@@ -1223,7 +1225,7 @@ fn nested_f64_values(
     let point_width = helicity_count
         .checked_mul(color_count)
         .ok_or_else(|| EvaluationError::new_err("resolved shape overflow"))?;
-    if point_width == 0 || values.len() % point_width != 0 {
+    if point_width == 0 || !values.len().is_multiple_of(point_width) {
         return Err(EvaluationError::new_err(
             "resolved value buffer does not match its shape",
         ));
@@ -1648,6 +1650,18 @@ fn _compile_symjit_plane_application_v2(
     )
     .map_err(python_error)?;
     Ok(PyBytes::new(py, &application).unbind())
+}
+
+#[pyfunction]
+fn _build_recurrence_bootstrap_v1(
+    py: Python<'_>,
+    context_json: &[u8],
+    execution_json: &[u8],
+    physics_json: &[u8],
+) -> PyResult<Py<PyBytes>> {
+    let image = build_recurrence_bootstrap_image_v1(context_json, execution_json, physics_json)
+        .map_err(python_error)?;
+    Ok(PyBytes::new(py, &image).unbind())
 }
 
 #[pyfunction]
@@ -2224,6 +2238,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
         _compile_symjit_plane_application_v2,
         module
     )?)?;
+    module.add_function(wrap_pyfunction!(_build_recurrence_bootstrap_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_eager_direct_descriptor_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_reduction_groups_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_exact_sections_v1, module)?)?;

@@ -21,7 +21,12 @@ use super::contact_orbit_owner::{
     PreparedContactOrbitTransition, prepare_contact_orbit_transition,
     selected_contact_orbit_owner_tokens,
 };
-use super::direct_backend::{DirectExecutorHandle, clear_direct_executor_error_detail};
+use super::direct_backend::{
+    DirectExecutorHandle, DirectInteractionExecutorCapability, DirectInteractionGroupAction,
+    DirectInteractionGroupView, DirectInteractionProgram, DirectInteractionScheduleView,
+    DirectSingletonContributionFanoutProgram, DirectUnionSourceDispatchHandle,
+    clear_direct_executor_error_detail,
+};
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectClosureRow, DirectContributionRow,
     DirectExecutorRole, DirectFinalizationRow, DirectSourceRow,
@@ -36,7 +41,7 @@ use super::{
     CurrentSourceBinding, DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational,
     LCColorComponent, LCColorComponentKind, LCColorSourceSeed, LCColorWitnessTermId, MomentumTerm,
     PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog, RecurrenceNodeKind,
-    SemanticDigest, SourceStateAssignment,
+    RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
 };
 use crate::direct_arena::{
     AlignedF64Buffer, DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
@@ -55,6 +60,7 @@ fn integrity(message: impl Into<String>) -> RusticolError {
     RusticolError::integrity(format!("on-the-fly recurrence: {}", message.into()))
 }
 
+#[allow(dead_code)] // Query-local compatibility and probe error constructor.
 fn evaluation(message: impl Into<String>) -> RusticolError {
     RusticolError::evaluation(format!("on-the-fly recurrence: {}", message.into()))
 }
@@ -90,6 +96,7 @@ fn final_digest(hash: Sha256) -> RusticolResult<SemanticDigest> {
 mod coupling_policy;
 mod family;
 mod interpreter;
+mod persisted;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 mod probe_guard;
 mod projection;
@@ -105,34 +112,42 @@ mod trace;
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(crate) use coupling_policy::OnTheFlyCouplingPolicyCensusV1;
-pub(crate) use coupling_policy::{
-    OnTheFlyResolvedCouplingPolicyV1, resolve_on_the_fly_coupling_policy_v1,
-};
+pub(crate) use coupling_policy::OnTheFlyResolvedCouplingPolicyV1;
 pub use family::OnTheFlyQueryFamilyCensusV1;
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[cfg(feature = "on-the-fly-test-support")]
 pub use family::on_the_fly_query_family_census_v1;
 pub(crate) use family::{
     OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1,
     OnTheFlyQueryFamilyHandleV1, QueryFamilyTraceInput, build_streamed_query_family_candidate_v1,
 };
+#[allow(unused_imports)] // Query-local interpreter remains available to opt-in test support.
 pub(crate) use interpreter::{
-    OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
+    OnTheFlyBoundUnionSourceProgram, OnTheFlyPreparedExecutorResolver,
+    OnTheFlyStructuralInterpreter, OnTheFlyUnionSourceBindingView, OnTheFlyWorkspaceV1,
     ResolvedOnTheFlyExecutor,
 };
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
-pub(crate) use probe_guard::{
-    OnTheFlyForbiddenWorkGuardV1, OnTheFlyForbiddenWorkV1, reject_forbidden_work_if_probed,
+pub(crate) use persisted::{
+    PersistedHelicityAmplitudeTileV1, PersistedHelicityFamilyCacheCensusV1,
+    PersistedHelicityFamilyExecutionReportV1, PersistedHelicityFamilyExecutorV1,
+    PersistedHelicityFamilyInspectionCensusV1,
 };
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) use probe_guard::OnTheFlyForbiddenWorkGuardV1;
+#[cfg(feature = "on-the-fly-test-support")]
+pub(crate) use probe_guard::{OnTheFlyForbiddenWorkV1, reject_forbidden_work_if_probed};
 use projection::*;
+use public_query::OnTheFlyClosureAnchorPolicyV1;
 pub(crate) use public_query::OnTheFlyLcSelectorV1;
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
 pub(crate) use seed_codec::decode_on_the_fly_process_seed_v1;
+#[allow(unused_imports)] // Generation-only entries share this runtime validation seam.
 pub(crate) use source_builder::{
     build_on_the_fly_process_seed_v1, build_on_the_fly_process_seeds_v1,
     parse_on_the_fly_process_seed_projection_v1, validate_on_the_fly_source_mass_bindings_v1,
 };
 #[cfg(test)]
 pub(crate) use source_seed::scalar_adapter_test_seed;
+#[allow(unused_imports)] // Pairing records are consumed by nested generation/test modules.
 pub(crate) use source_seed::{
     ON_THE_FLY_PROCESS_SEED_IDENTITY_ABI, OnTheFlyCouplingOrderPolicyV1,
     OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1, OnTheFlyPairingEndpointV1,
@@ -143,13 +158,13 @@ pub(crate) use source_seed::{
 use sweep::*;
 pub(crate) use templates::PreparedOnTheFlyGrammarV1;
 use templates::*;
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[cfg(feature = "on-the-fly-test-support")]
 pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
 #[cfg(feature = "on-the-fly-test-support")]
 pub(crate) use test_support::{
     build_on_the_fly_selected_trace_against_seed_v1, build_on_the_fly_selected_trace_v1,
 };
-#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[cfg(feature = "on-the-fly-test-support")]
 pub(crate) use trace::ON_THE_FLY_WORK_CENSUS_BASIS_V1;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(crate) use trace::hash_current_key;
@@ -178,11 +193,13 @@ pub(crate) struct OnTheFlySelectedQueryTraceV1 {
     pub(crate) projection: OnTheFlyProjectionProbeV1,
 }
 
+#[allow(clippy::large_enum_variant)] // Cold-path trace ownership avoids an extra allocation.
 pub(crate) enum OnTheFlySelectedQueryOutcomeV1 {
     Trace(OnTheFlySelectedQueryTraceV1),
     StructuralZero { query: DecodedLcQueryV1 },
 }
 
+#[allow(dead_code)] // Compatibility entry point for the query-local probe path.
 pub(crate) fn build_selected_lc_query_trace_v1(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
@@ -192,6 +209,7 @@ pub(crate) fn build_selected_lc_query_trace_v1(
 ) -> RusticolResult<OnTheFlySelectedQueryOutcomeV1> {
     let catalog = validate_seed_against_templates(templates, seed)?;
     let grammar = prepare_on_the_fly_grammar_v1(templates, &catalog, seed)?;
+    let query = grammar.canonicalize_query(seed, query)?;
     build_selected_lc_query_trace_impl(
         templates,
         direct,
@@ -200,6 +218,7 @@ pub(crate) fn build_selected_lc_query_trace_v1(
         &grammar,
         query,
         true,
+        false,
     )
 }
 
@@ -264,6 +283,7 @@ impl OnTheFlyQueryConstructionPoolV1 {
         seed: &OnTheFlyProcessSeedV1,
         coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
         grammar: &PreparedOnTheFlyGrammarV1,
+        enable_cyclic_trace_reflection: bool,
         queries: Vec<DecodedLcQueryV1>,
     ) -> RusticolResult<Vec<OnTheFlySelectedQueryOutcomeV1>> {
         if queries.len() > self.thread_count {
@@ -280,6 +300,7 @@ impl OnTheFlyQueryConstructionPoolV1 {
                 grammar,
                 query,
                 true,
+                enable_cyclic_trace_reflection,
             )
         };
         let outcomes = if let Some(pool) = &self.pool {
@@ -297,6 +318,7 @@ fn build_selected_lc_query_family_serial_v1(
     seed: &OnTheFlyProcessSeedV1,
     coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
     grammar: &PreparedOnTheFlyGrammarV1,
+    enable_cyclic_trace_reflection: bool,
     queries: impl IntoIterator<Item = DecodedLcQueryV1>,
 ) -> RusticolResult<Vec<OnTheFlySelectedQueryOutcomeV1>> {
     queries
@@ -310,6 +332,7 @@ fn build_selected_lc_query_family_serial_v1(
                 grammar,
                 query,
                 true,
+                enable_cyclic_trace_reflection,
             )
         })
         .collect()
@@ -318,12 +341,14 @@ fn build_selected_lc_query_family_serial_v1(
 /// Build one exact public query family while sharing all immutable grammar
 /// preparation.  Independent query-local sweeps run in parallel; their
 /// outcomes and errors retain public selector order.
+#[allow(clippy::too_many_arguments)] // Explicit cold-build context and execution policy.
 pub(crate) fn build_selected_lc_query_family_v1(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
     seed: &OnTheFlyProcessSeedV1,
     coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
     grammar: &PreparedOnTheFlyGrammarV1,
+    enable_cyclic_trace_reflection: bool,
     query_construction_threads: usize,
     queries: impl IntoIterator<Item = DecodedLcQueryV1>,
 ) -> RusticolResult<Vec<OnTheFlySelectedQueryOutcomeV1>> {
@@ -339,6 +364,7 @@ pub(crate) fn build_selected_lc_query_family_v1(
             seed,
             coupling_policy,
             grammar,
+            enable_cyclic_trace_reflection,
             queries,
         );
     }
@@ -351,6 +377,7 @@ pub(crate) fn build_selected_lc_query_family_v1(
             seed,
             coupling_policy,
             grammar,
+            enable_cyclic_trace_reflection,
             queries,
         );
     }
@@ -375,6 +402,7 @@ pub(crate) fn build_selected_lc_query_family_v1(
                     grammar,
                     query,
                     true,
+                    enable_cyclic_trace_reflection,
                 )
             })
             .collect::<Vec<_>>()
@@ -383,14 +411,17 @@ pub(crate) fn build_selected_lc_query_family_v1(
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[allow(dead_code)] // Feature-only probe entry point.
 pub(crate) fn build_selected_lc_query_trace_for_probe_v1(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
     seed: &OnTheFlyProcessSeedV1,
     query: DecodedLcQueryV1,
     enable_projection: bool,
+    enable_cyclic_trace_reflection: bool,
 ) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
     let (grammar, coupling_policy) = prepare_on_the_fly_process_v1(templates, seed)?;
+    let query = grammar.canonicalize_query(seed, query)?;
     match build_selected_lc_query_trace_impl(
         templates,
         direct,
@@ -399,6 +430,7 @@ pub(crate) fn build_selected_lc_query_trace_for_probe_v1(
         &grammar,
         query,
         enable_projection,
+        enable_cyclic_trace_reflection,
     )? {
         OnTheFlySelectedQueryOutcomeV1::Trace(selected) => Ok(selected),
         OnTheFlySelectedQueryOutcomeV1::StructuralZero { .. } => Err(evaluation(
@@ -407,6 +439,7 @@ pub(crate) fn build_selected_lc_query_trace_for_probe_v1(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Explicit cold-build context and probe switches.
 fn build_selected_lc_query_trace_impl(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
@@ -415,6 +448,7 @@ fn build_selected_lc_query_trace_impl(
     grammar: &PreparedOnTheFlyGrammarV1,
     query: DecodedLcQueryV1,
     enable_projection: bool,
+    enable_cyclic_trace_reflection: bool,
 ) -> RusticolResult<OnTheFlySelectedQueryOutcomeV1> {
     if seed.direct_catalog_digest() != direct.direct_template_catalog_digest() {
         return Err(integrity(
@@ -428,6 +462,7 @@ fn build_selected_lc_query_trace_impl(
             "resolved coupling policy belongs to a different compact seed",
         ));
     }
+    grammar.authenticate_canonical_query(seed, &query)?;
     let Some((trace, projection)) = build_selected_lc_trace_impl(
         templates,
         seed,
@@ -435,6 +470,7 @@ fn build_selected_lc_query_trace_impl(
         coupling_policy.effective_limits(),
         &query,
         enable_projection,
+        enable_cyclic_trace_reflection,
         true,
     )?
     else {
@@ -476,19 +512,22 @@ fn selected_graph_counts(
 
 /// Build one selected LC structural trace without constructing any global
 /// recurrence/process projection.
+#[allow(dead_code)] // Compatibility entry point for the query-local probe path.
 pub(crate) fn build_selected_lc_trace(
     templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
     let (grammar, coupling_policy) = prepare_on_the_fly_process_v1(templates, seed)?;
+    let query = grammar.canonicalize_query(seed, query.clone())?;
     build_selected_lc_trace_impl(
         templates,
         seed,
         &grammar,
         coupling_policy.effective_limits(),
-        query,
+        &query,
         true,
+        false,
         false,
     )?
     .map(|(trace, _)| trace)
@@ -496,6 +535,7 @@ pub(crate) fn build_selected_lc_trace(
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[allow(dead_code)] // Feature-only probe entry point.
 pub(crate) fn build_selected_lc_trace_for_probe(
     templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
@@ -503,13 +543,15 @@ pub(crate) fn build_selected_lc_trace_for_probe(
     enable_projection: bool,
 ) -> RusticolResult<(OnTheFlyStructuralTraceV1, OnTheFlyProjectionProbeV1)> {
     let (grammar, coupling_policy) = prepare_on_the_fly_process_v1(templates, seed)?;
+    let query = grammar.canonicalize_query(seed, query.clone())?;
     let (trace, probe) = build_selected_lc_trace_impl(
         templates,
         seed,
         &grammar,
         coupling_policy.effective_limits(),
-        query,
+        &query,
         enable_projection,
+        false,
         true,
     )?
     .ok_or_else(|| evaluation("selected probe query is an exact structural zero"))?;
@@ -519,6 +561,7 @@ pub(crate) fn build_selected_lc_trace_for_probe(
     ))
 }
 
+#[allow(clippy::too_many_arguments)] // Explicit cold-build context and probe switches.
 fn build_selected_lc_trace_impl(
     templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
@@ -526,6 +569,7 @@ fn build_selected_lc_trace_impl(
     coupling_limits: &[Option<u32>],
     query: &DecodedLcQueryV1,
     enable_projection: bool,
+    enable_cyclic_trace_reflection: bool,
     collect_projection_probe: bool,
 ) -> RusticolResult<Option<(OnTheFlyStructuralTraceV1, Option<OnTheFlyProjectionProbeV1>)>> {
     if query.seed_digest != seed.semantic_digest() {
@@ -536,11 +580,16 @@ fn build_selected_lc_trace_impl(
     let mut colors = DynamicLCColorStateInterner::default();
     let mut currents = Vec::new();
     let mut current_ids = BTreeMap::new();
+    let enable_cyclic_trace_reflection = enable_cyclic_trace_reflection
+        && grammar
+            .closure_anchor_policy
+            .certifies_cyclic_trace_reflection(seed, query);
     insert_selected_sources(
         grammar,
         seed,
         coupling_limits,
         query,
+        enable_cyclic_trace_reflection,
         &mut colors,
         &mut currents,
         &mut current_ids,
@@ -548,7 +597,9 @@ fn build_selected_lc_trace_impl(
     build_forward_currents(
         templates,
         &grammar.transitions,
+        &grammar.transition_reflections,
         &grammar.contact_orbits,
+        enable_cyclic_trace_reflection,
         seed,
         &grammar.fermion_ordering,
         query.closure_anchor_slot,
@@ -572,6 +623,7 @@ fn build_selected_lc_trace_impl(
         seed,
         &grammar.fermion_ordering,
         query,
+        enable_cyclic_trace_reflection,
         &colors,
         &currents,
     )?
@@ -684,6 +736,7 @@ mod structural_zero_tests {
             &seed,
             seed.explicit_coupling_limits(),
             &query,
+            false,
             &mut colors,
             &mut currents,
             &mut current_ids,
@@ -709,6 +762,7 @@ mod structural_zero_tests {
             &seed,
             &grammar.fermion_ordering,
             &query,
+            false,
             &colors,
             &currents,
         )

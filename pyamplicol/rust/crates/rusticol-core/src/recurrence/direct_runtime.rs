@@ -2,9 +2,11 @@
 
 //! Owned workspace for direct-arena recurrence execution.
 //!
-//! Construction performs every allocation needed by a point tile. Callers
+//! Ordinary construction performs every allocation needed by a point tile.
+//! Packed-singleton-capable runtimes allocate only their scalar point storage
+//! initially and materialize the aligned tiled storage on first use. Callers
 //! fill the persistent momentum and parameter arenas, then execute the
-//! authenticated direct plan without resizing any runtime storage.
+//! authenticated direct plan without resizing the active runtime storage.
 
 use std::collections::BTreeSet;
 use std::mem::size_of;
@@ -14,11 +16,13 @@ use std::time::{Duration, Instant};
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 use super::direct_backend::observe_direct_amplitudes_before_replay;
 use super::direct_backend::{
-    DIRECT_STATUS_OK, DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
-    DirectFactorView, DirectMomentumView, DirectParameterView, DirectUnionSourceDispatchHandle,
-    DirectWorkspace, execute_direct_plan_profiled_with_traffic,
-    execute_direct_plan_selected_profiled_with_traffic, execute_direct_plan_selected_unprofiled,
-    execute_direct_plan_unprofiled,
+    DIRECT_STATUS_OK, DirectContributionFanoutProgram, DirectExecutionCounters,
+    DirectExecutionRoleTimings, DirectExecutorCatalog, DirectFactorView, DirectMomentumView,
+    DirectParameterView, DirectUnionSourceDispatchHandle, DirectWorkspace,
+    execute_direct_plan_profiled_with_fanout_and_traffic,
+    execute_direct_plan_selected_profiled_with_fanout_and_traffic,
+    execute_direct_plan_selected_unprofiled_with_fanout,
+    execute_direct_plan_unprofiled_with_fanout,
 };
 use super::direct_plan::{
     DirectAmplitudeDestinationDescriptor, DirectExecutorRole, DirectRecurrencePlan,
@@ -229,6 +233,66 @@ struct DirectReplaySelectorIdentity {
     representative_flow_id: u32,
 }
 
+struct DirectPointStorage {
+    arena: DirectArenaWorkspace,
+    momenta: AlignedF64Buffer,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn allocate_point_storage(
+    current_component_count: u32,
+    amplitude_destination_count: u32,
+    momentum_plane_count: u32,
+    momentum_form_count: u32,
+    lorentz_component_count: u16,
+    tile_capacity: u32,
+    packed_singleton: bool,
+    parameters: DirectParameterView,
+    factors: DirectFactorView,
+) -> RusticolResult<DirectPointStorage> {
+    let mut arena = if packed_singleton {
+        DirectArenaWorkspace::new_packed_singleton(
+            current_component_count,
+            amplitude_destination_count,
+        )?
+    } else {
+        DirectArenaWorkspace::new(
+            current_component_count,
+            amplitude_destination_count,
+            tile_capacity,
+        )?
+    };
+    let point_stride = arena.point_stride();
+    arena.begin_tile(if packed_singleton { 1 } else { tile_capacity })?;
+    let momentum_label = if packed_singleton {
+        "packed singleton momentum arena"
+    } else {
+        "momentum arena"
+    };
+    let momenta = AlignedF64Buffer::zeroed(
+        checked_plane_scalar_len(momentum_plane_count, point_stride, momentum_label)?,
+        if packed_singleton {
+            "packed singleton momentum"
+        } else {
+            "momentum"
+        },
+    )?;
+    validate_direct_views(
+        arena.view()?,
+        DirectMomentumView {
+            values: momenta.as_ptr(),
+            scalar_len: u64::try_from(momenta.len())
+                .map_err(|_| invalid("momentum arena exceeds u64"))?,
+            form_count: momentum_form_count,
+            lorentz_component_count,
+            point_stride,
+        },
+        parameters,
+        factors,
+    )?;
+    Ok(DirectPointStorage { arena, momenta })
+}
+
 /// One owned, thread-local direct recurrence execution workspace.
 pub struct DirectRecurrenceExecutionRuntime {
     plan: DirectRecurrencePlan,
@@ -239,12 +303,18 @@ pub struct DirectRecurrenceExecutionRuntime {
     parameters_im: AlignedF64Buffer,
     factors_re: AlignedF64Buffer,
     factors_im: AlignedF64Buffer,
+    contribution_fanout: DirectContributionFanoutProgram,
     union_source_dispatch: Option<DirectUnionSourceDispatchHandle>,
     additive_amplitude_ranges: Vec<Range<usize>>,
     momentum_form_count: u32,
     lorentz_component_count: u16,
+    runtime_current_component_count: u32,
+    momentum_plane_count: u32,
     tile_capacity: u32,
     point_stride: u32,
+    alternate_point_storage: Option<DirectPointStorage>,
+    deferred_tiled_layout_error: Option<RusticolError>,
+    packed_singleton_active: bool,
     momenta_are_compact: bool,
     momentum_filled_points: u32,
     momentum_replay_selector: Option<DirectReplaySelectorIdentity>,
@@ -260,8 +330,9 @@ pub struct DirectRecurrenceExecutionRuntime {
 }
 
 impl DirectRecurrenceExecutionRuntime {
-    /// Allocate a complete workspace and convert the plan's exact factors to
-    /// their persistent binary64 split-complex catalog.
+    /// Allocate the initial workspace and convert the plan's exact factors to
+    /// their persistent binary64 split-complex catalog. Packed-capable
+    /// runtimes defer aligned tiled point storage until it is needed.
     pub fn new(
         plan: DirectRecurrencePlan,
         executors: DirectExecutorCatalog,
@@ -292,6 +363,8 @@ impl DirectRecurrenceExecutionRuntime {
         )
     }
 
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", inline(never))]
     fn new_inner(
         plan: DirectRecurrencePlan,
         executors: DirectExecutorCatalog,
@@ -302,9 +375,15 @@ impl DirectRecurrenceExecutionRuntime {
             return Err(invalid("Lorentz component count must be positive"));
         }
 
+        let contribution_fanout = DirectContributionFanoutProgram::build(&plan, &executors)?;
+        let runtime_current_component_count = plan
+            .current_arena_components()
+            .checked_add(contribution_fanout.scratch_component_count())
+            .ok_or_else(|| invalid("direct fanout current arena exceeds u32"))?;
+
         let momentum_form_count = u32::try_from(plan.momentum_forms().len())
             .map_err(|_| invalid("momentum form count exceeds u32"))?;
-        let split_complex_scalar_count = usize::try_from(plan.current_arena_components())
+        let split_complex_scalar_count = usize::try_from(runtime_current_component_count)
             .ok()
             .and_then(|current| current.checked_mul(2))
             .and_then(|current| {
@@ -314,8 +393,11 @@ impl DirectRecurrenceExecutionRuntime {
                     .and_then(|amplitude| current.checked_add(amplitude))
             })
             .ok_or_else(|| invalid("split-complex per-point workspace size overflows usize"))?;
-        let cache_split_complex_scalar_count =
-            replay_cache_split_complex_scalar_count(&plan, split_complex_scalar_count)?;
+        let cache_split_complex_scalar_count = replay_cache_split_complex_scalar_count(
+            &plan,
+            split_complex_scalar_count,
+            contribution_fanout.scratch_component_count(),
+        )?;
         let momentum_scalar_count = usize::try_from(momentum_form_count)
             .ok()
             .and_then(|forms| forms.checked_mul(usize::from(lorentz_component_count)))
@@ -340,12 +422,7 @@ impl DirectRecurrenceExecutionRuntime {
             workspace_bytes,
             usize::MAX,
             per_point_scalar_count,
-        )
-        .map_err(|error| {
-            invalid(format!(
-                "could not derive a hard-budget Direct-Arena tile: {error}"
-            ))
-        })?;
+        );
         let split_complex_per_point_bytes = cache_split_complex_scalar_count
             .checked_mul(size_of::<f64>())
             .filter(|bytes| *bytes != 0)
@@ -356,30 +433,37 @@ impl DirectRecurrenceExecutionRuntime {
         // The accepted recurrence cache policy is deliberately lane-local:
         // it counts current+amplitude split halves, while the hard workspace
         // budget above counts those halves plus every momentum plane.
-        let tile_capacity =
-            hard_budget_tile.min(u32::try_from(cache_tile).unwrap_or(u32::MAX).max(1));
-        let mut arena = DirectArenaWorkspace::new(
-            plan.current_arena_components(),
-            plan.amplitude_destination_count(),
-            tile_capacity,
-        )?;
-        let point_stride = arena.point_stride();
+        let packed_singleton_capable = executors.packed_singleton_capable();
+        let (tile_capacity, deferred_tiled_layout_error) = match hard_budget_tile {
+            Ok(hard_budget_tile) => (
+                hard_budget_tile.min(u32::try_from(cache_tile).unwrap_or(u32::MAX).max(1)),
+                None,
+            ),
+            Err(error)
+                if packed_singleton_capable
+                    && error
+                        .message()
+                        .starts_with("minimum aligned Direct-Arena pitch requires") =>
+            {
+                (1, Some(hard_budget_tile_error(error)))
+            }
+            Err(error) => return Err(hard_budget_tile_error(error)),
+        };
         let momentum_plane_count = usize::try_from(momentum_form_count)
             .ok()
             .and_then(|forms| forms.checked_mul(usize::from(lorentz_component_count)))
             .ok_or_else(|| invalid("momentum plane count overflows usize"))?;
-        let momentum_len = checked_plane_scalar_len(
-            u32::try_from(momentum_plane_count)
-                .map_err(|_| invalid("momentum plane count exceeds u32"))?,
-            point_stride,
-            "momentum arena",
-        )?;
+        let momentum_plane_count_u32 = u32::try_from(momentum_plane_count)
+            .map_err(|_| invalid("momentum plane count exceeds u32"))?;
         let parameter_len = usize::try_from(plan.parameter_value_count())
             .map_err(|_| invalid("parameter value count exceeds usize"))?;
-        let factor_len = plan.exact_factors().len();
+        let factor_len = plan
+            .exact_factors()
+            .len()
+            .checked_add(usize::from(contribution_fanout.needs_unit_factor()))
+            .ok_or_else(|| invalid("direct fanout factor catalog exceeds usize"))?;
 
         let additive_amplitude_ranges = amplitude_clear_ranges(&plan)?;
-        let momenta = AlignedF64Buffer::zeroed(momentum_len, "momentum")?;
         let parameters_re = AlignedF64Buffer::zeroed(parameter_len, "parameter real")?;
         let parameters_im = AlignedF64Buffer::zeroed(parameter_len, "parameter imaginary")?;
         let mut factors_re = AlignedF64Buffer::zeroed(factor_len, "factor real")?;
@@ -393,16 +477,11 @@ impl DirectRecurrenceExecutionRuntime {
             *factor_re = factor.real().numerator() as f64 / factor.real().denominator() as f64;
             *factor_im = factor.imag().numerator() as f64 / factor.imag().denominator() as f64;
         }
-        arena.begin_tile(tile_capacity)?;
-        let arena_view = arena.view()?;
-        let momentum_view = DirectMomentumView {
-            values: momenta.as_ptr(),
-            scalar_len: u64::try_from(momenta.len())
-                .map_err(|_| invalid("momentum arena exceeds u64"))?,
-            form_count: momentum_form_count,
-            lorentz_component_count,
-            point_stride,
-        };
+        if contribution_fanout.needs_unit_factor() {
+            let unit = plan.exact_factors().len();
+            factors_re.as_mut_slice()[unit] = 1.0;
+            factors_im.as_mut_slice()[unit] = 0.0;
+        }
         let parameter_view = DirectParameterView {
             values_re: parameters_re.as_ptr(),
             values_im: parameters_im.as_ptr(),
@@ -415,7 +494,19 @@ impl DirectRecurrenceExecutionRuntime {
             value_count: u32::try_from(factors_re.len())
                 .map_err(|_| invalid("factor catalog exceeds u32"))?,
         };
-        validate_direct_views(arena_view, momentum_view, parameter_view, factor_view)?;
+        let point_storage = allocate_point_storage(
+            runtime_current_component_count,
+            plan.amplitude_destination_count(),
+            momentum_plane_count_u32,
+            momentum_form_count,
+            lorentz_component_count,
+            tile_capacity,
+            packed_singleton_capable,
+            parameter_view,
+            factor_view,
+        )?;
+        let DirectPointStorage { arena, momenta } = point_storage;
+        let point_stride = arena.point_stride();
         let allocation_counters = [
             momenta.allocation_counters(),
             parameters_re.allocation_counters(),
@@ -437,12 +528,18 @@ impl DirectRecurrenceExecutionRuntime {
             parameters_im,
             factors_re,
             factors_im,
+            contribution_fanout,
             union_source_dispatch,
             additive_amplitude_ranges,
             momentum_form_count,
             lorentz_component_count,
+            runtime_current_component_count,
+            momentum_plane_count: momentum_plane_count_u32,
             tile_capacity,
             point_stride,
+            alternate_point_storage: None,
+            deferred_tiled_layout_error,
+            packed_singleton_active: packed_singleton_capable,
             momenta_are_compact: false,
             momentum_filled_points: 0,
             momentum_replay_selector: None,
@@ -467,6 +564,8 @@ impl DirectRecurrenceExecutionRuntime {
     }
 
     /// Physical component-plane pitch passed through every direct ABI view.
+    /// This is `1` while packed singleton storage is active and changes to the
+    /// aligned tiled pitch after a successful layout transition.
     pub const fn point_stride(&self) -> u32 {
         self.point_stride
     }
@@ -662,46 +761,53 @@ impl DirectRecurrenceExecutionRuntime {
     /// The generic Direct-Arena ABI uses [`Self::point_stride`] internally.
     /// When alignment padding separates physical planes, this accessor
     /// compacts active plane storage in place and restores it before the next
-    /// direct call. No allocation or auxiliary packet buffer is involved.
-    pub fn momenta_mut(&mut self) -> &mut [f64] {
+    /// direct call. A packed runtime allocates its aligned tiled storage on
+    /// first legacy access; no auxiliary packet buffer is involved.
+    pub fn momenta_mut(&mut self) -> RusticolResult<&mut [f64]> {
+        self.force_tiled_layout()?;
         self.compact_momenta_for_legacy_access();
         self.momentum_filled_points = self.tile_capacity;
         self.momentum_replay_selector = None;
         let compact_len = self.compact_momentum_len();
-        &mut self.momenta.as_mut_slice()[..compact_len]
+        Ok(&mut self.momenta.as_mut_slice()[..compact_len])
     }
 
     /// Mutable physical Direct-Arena momentum storage.
     ///
     /// Plane starts use [`Self::point_stride`], including alignment padding.
-    pub fn physical_momenta_mut(&mut self) -> &mut [f64] {
+    /// A packed runtime allocates its aligned tiled storage on first access.
+    pub fn physical_momenta_mut(&mut self) -> RusticolResult<&mut [f64]> {
+        self.force_tiled_layout()?;
         self.restore_physical_momenta();
         self.momentum_filled_points = self.tile_capacity;
         self.momentum_replay_selector = None;
-        self.momenta.as_mut_slice()
+        Ok(self.momenta.as_mut_slice())
     }
 
     /// One persistent momentum plane using the compatibility-facing semantic
-    /// tile pitch, including its inactive semantic tile tail.
+    /// tile pitch, including its inactive semantic tile tail. A packed runtime
+    /// allocates its aligned tiled storage on first valid access.
     pub fn momentum_plane_mut(
         &mut self,
         momentum_form_id: u32,
         lorentz_component: u16,
-    ) -> Option<&mut [f64]> {
+    ) -> RusticolResult<Option<&mut [f64]>> {
         if momentum_form_id >= self.momentum_form_count
             || lorentz_component >= self.lorentz_component_count
         {
-            return None;
+            return Ok(None);
         }
+        self.force_tiled_layout()?;
         self.compact_momenta_for_legacy_access();
         self.momentum_filled_points = self.tile_capacity;
         self.momentum_replay_selector = None;
         let plane = momentum_form_id as usize * usize::from(self.lorentz_component_count)
             + usize::from(lorentz_component);
         let start = plane * self.tile_capacity as usize;
-        self.momenta
+        Ok(self
+            .momenta
             .as_mut_slice()
-            .get_mut(start..start + self.tile_capacity as usize)
+            .get_mut(start..start + self.tile_capacity as usize))
     }
 
     /// Fill every canonical momentum form from point-major external
@@ -751,6 +857,7 @@ impl DirectRecurrenceExecutionRuntime {
             )));
         }
 
+        self.activate_point_layout(point_count)?;
         self.restore_physical_momenta();
         let started = PROFILE.then(Instant::now);
         let point_stride = self.point_stride as usize;
@@ -871,6 +978,7 @@ impl DirectRecurrenceExecutionRuntime {
             )));
         }
 
+        self.activate_point_layout(point_count)?;
         self.restore_physical_momenta();
         let started = PROFILE.then(Instant::now);
         let point_stride = self.point_stride as usize;
@@ -950,9 +1058,10 @@ impl DirectRecurrenceExecutionRuntime {
     }
 
     pub fn factors_mut(&mut self) -> (&mut [f64], &mut [f64]) {
+        let public_count = self.plan.exact_factors().len();
         (
-            self.factors_re.as_mut_slice(),
-            self.factors_im.as_mut_slice(),
+            &mut self.factors_re.as_mut_slice()[..public_count],
+            &mut self.factors_im.as_mut_slice()[..public_count],
         )
     }
 
@@ -964,16 +1073,21 @@ impl DirectRecurrenceExecutionRuntime {
     }
 
     pub fn set_factors(&mut self, values_re: &[f64], values_im: &[f64]) -> RusticolResult<()> {
-        validate_split_values("factor", self.factors_re.len(), values_re, values_im)?;
-        self.factors_re.as_mut_slice().copy_from_slice(values_re);
-        self.factors_im.as_mut_slice().copy_from_slice(values_im);
+        let public_count = self.plan.exact_factors().len();
+        validate_split_values("factor", public_count, values_re, values_im)?;
+        self.factors_re.as_mut_slice()[..public_count].copy_from_slice(values_re);
+        self.factors_im.as_mut_slice()[..public_count].copy_from_slice(values_im);
         Ok(())
     }
 
+    /// Current planes in the active packed or tiled physical layout.
     pub fn current_arenas(&self) -> (&[f64], &[f64]) {
-        self.arena.current_slices()
+        let (real, imaginary) = self.arena.current_slices();
+        let public_len = self.plan.current_arena_components() as usize * self.point_stride as usize;
+        (&real[..public_len], &imaginary[..public_len])
     }
 
+    /// Amplitude planes in the active packed or tiled physical layout.
     pub fn amplitude_arenas(&self) -> (&[f64], &[f64]) {
         self.arena.amplitude_slices()
     }
@@ -1064,6 +1178,7 @@ impl DirectRecurrenceExecutionRuntime {
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
         self.validate_replay_selector(selector)?;
         self.validate_point_count(point_count)?;
+        self.activate_point_layout(point_count)?;
         if self.momentum_filled_points != point_count
             || self.momentum_replay_selector != Some(selector.identity())
         {
@@ -1073,6 +1188,23 @@ impl DirectRecurrenceExecutionRuntime {
         }
 
         self.execute_selected_direct_tile_impl::<PROFILE>(selector, point_count)?;
+        self.scale_replay_amplitudes::<PROFILE>(selector, None, point_count)?;
+        self.last_point_count = point_count;
+        self.last_public_flow_id = Some(selector.public_flow_id);
+        self.last_representative_flow_id = Some(selector.representative_flow_id);
+        Ok(self.borrowed_output(
+            point_count,
+            self.last_public_flow_id,
+            self.last_representative_flow_id,
+        ))
+    }
+
+    fn scale_replay_amplitudes<const PROFILE: bool>(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        selected_destination_ids: Option<&[u32]>,
+        point_count: u32,
+    ) -> RusticolResult<()> {
         let started = PROFILE.then(Instant::now);
         let scale_re = selector.phase_re * f64::from(selector.multiplicity);
         let scale_im = selector.phase_im * f64::from(selector.multiplicity);
@@ -1083,6 +1215,11 @@ impl DirectRecurrenceExecutionRuntime {
         for destination_id in 0..self.plan.amplitude_destinations().len() {
             let destination = self.plan.amplitude_destinations()[destination_id];
             if destination.target_sector_id != selector.representative_flow_id {
+                continue;
+            }
+            if selected_destination_ids
+                .is_some_and(|selected| selected.binary_search(&(destination_id as u32)).is_err())
+            {
                 continue;
             }
             let start = destination_id * point_stride;
@@ -1110,14 +1247,7 @@ impl DirectRecurrenceExecutionRuntime {
                 .expect("profiled replay mapping has a start time")
                 .elapsed();
         }
-        self.last_point_count = point_count;
-        self.last_public_flow_id = Some(selector.public_flow_id);
-        self.last_representative_flow_id = Some(selector.representative_flow_id);
-        Ok(self.borrowed_output(
-            point_count,
-            self.last_public_flow_id,
-            self.last_representative_flow_id,
-        ))
+        Ok(())
     }
 
     /// Fill and execute one selected replay tile without any intermediate
@@ -1366,6 +1496,7 @@ impl DirectRecurrenceExecutionRuntime {
         selector: Option<&DirectReplaySelectorPlan>,
     ) -> RusticolResult<()> {
         self.validate_point_count(point_count)?;
+        self.activate_point_layout(point_count)?;
         self.restore_physical_momenta();
         self.arena.begin_tile(point_count)?;
         self.last_point_count = 0;
@@ -1408,37 +1539,43 @@ impl DirectRecurrenceExecutionRuntime {
             };
             let started = PROFILE.then(Instant::now);
             let result = match (PROFILE, selector) {
-                (true, Some(selector)) => execute_direct_plan_selected_profiled_with_traffic(
+                (true, Some(selector)) => {
+                    execute_direct_plan_selected_profiled_with_fanout_and_traffic(
+                        &self.plan,
+                        &selector.row_groups,
+                        selector.representative_flow_id,
+                        &self.executors,
+                        &self.contribution_fanout,
+                        &mut workspace,
+                        point_count,
+                        &mut self.counters,
+                        &mut self.role_timings,
+                        &mut self.traffic_counters,
+                    )
+                }
+                (false, Some(selector)) => execute_direct_plan_selected_unprofiled_with_fanout(
                     &self.plan,
                     &selector.row_groups,
                     selector.representative_flow_id,
                     &self.executors,
+                    &self.contribution_fanout,
+                    &mut workspace,
+                    point_count,
+                ),
+                (true, None) => execute_direct_plan_profiled_with_fanout_and_traffic(
+                    &self.plan,
+                    &self.executors,
+                    &self.contribution_fanout,
                     &mut workspace,
                     point_count,
                     &mut self.counters,
                     &mut self.role_timings,
                     &mut self.traffic_counters,
                 ),
-                (false, Some(selector)) => execute_direct_plan_selected_unprofiled(
-                    &self.plan,
-                    &selector.row_groups,
-                    selector.representative_flow_id,
-                    &self.executors,
-                    &mut workspace,
-                    point_count,
-                ),
-                (true, None) => execute_direct_plan_profiled_with_traffic(
+                (false, None) => execute_direct_plan_unprofiled_with_fanout(
                     &self.plan,
                     &self.executors,
-                    &mut workspace,
-                    point_count,
-                    &mut self.counters,
-                    &mut self.role_timings,
-                    &mut self.traffic_counters,
-                ),
-                (false, None) => execute_direct_plan_unprofiled(
-                    &self.plan,
-                    &self.executors,
+                    &self.contribution_fanout,
                     &mut workspace,
                     point_count,
                 ),
@@ -1488,6 +1625,13 @@ impl DirectRecurrenceExecutionRuntime {
         if point_count == 0 {
             return Err(invalid("point count must be positive"));
         }
+        if point_count > 1
+            && self.packed_singleton_active
+            && self.alternate_point_storage.is_none()
+            && let Some(error) = self.deferred_tiled_layout_error.as_ref()
+        {
+            return Err(error.clone());
+        }
         if point_count > self.tile_capacity {
             return Err(invalid(format!(
                 "point count {point_count} exceeds point tile size {}",
@@ -1501,6 +1645,126 @@ impl DirectRecurrenceExecutionRuntime {
         self.momentum_form_count as usize
             * usize::from(self.lorentz_component_count)
             * self.tile_capacity as usize
+    }
+
+    fn activate_point_layout(&mut self, point_count: u32) -> RusticolResult<()> {
+        let packed = point_count == 1;
+        if packed == self.packed_singleton_active || !self.executors.packed_singleton_capable() {
+            return Ok(());
+        }
+        if !packed {
+            self.ensure_tiled_point_storage()?;
+        }
+        if self.alternate_point_storage.is_none() {
+            return Ok(());
+        }
+        if packed {
+            self.restore_physical_momenta();
+            self.copy_momentum_point_zero_to_alternate();
+            let exact_singleton = self.momentum_filled_points == 1;
+            let legacy_full_tile = self.momentum_replay_selector.is_none()
+                && self.momentum_filled_points == self.tile_capacity;
+            let replay_selector = exact_singleton
+                .then_some(self.momentum_replay_selector)
+                .flatten();
+            self.swap_point_storage();
+            self.momentum_filled_points = u32::from(exact_singleton || legacy_full_tile);
+            self.momentum_replay_selector = replay_selector;
+            return Ok(());
+        }
+        self.copy_momentum_point_zero_to_alternate();
+        self.swap_point_storage();
+        Ok(())
+    }
+
+    fn force_tiled_layout(&mut self) -> RusticolResult<()> {
+        if self.packed_singleton_active {
+            self.ensure_tiled_point_storage()?;
+            self.copy_momentum_point_zero_to_alternate();
+            self.swap_point_storage();
+        }
+        Ok(())
+    }
+
+    fn ensure_tiled_point_storage(&mut self) -> RusticolResult<()> {
+        if self.alternate_point_storage.is_some() {
+            return Ok(());
+        }
+        if let Some(error) = self.deferred_tiled_layout_error.as_ref() {
+            return Err(error.clone());
+        }
+        let parameter_view = DirectParameterView {
+            values_re: self.parameters_re.as_ptr(),
+            values_im: self.parameters_im.as_ptr(),
+            value_count: u32::try_from(self.parameters_re.len())
+                .map_err(|_| invalid("parameter catalog exceeds u32"))?,
+        };
+        let factor_view = DirectFactorView {
+            values_re: self.factors_re.as_ptr(),
+            values_im: self.factors_im.as_ptr(),
+            value_count: u32::try_from(self.factors_re.len())
+                .map_err(|_| invalid("factor catalog exceeds u32"))?,
+        };
+        let storage = allocate_point_storage(
+            self.runtime_current_component_count,
+            self.plan.amplitude_destination_count(),
+            self.momentum_plane_count,
+            self.momentum_form_count,
+            self.lorentz_component_count,
+            self.tile_capacity,
+            false,
+            parameter_view,
+            factor_view,
+        )?;
+        let allocation_counters = self
+            .allocation_counters
+            .checked_add(storage.arena.allocation_counters())?
+            .checked_add(storage.momenta.allocation_counters())?;
+        self.alternate_point_storage = Some(storage);
+        self.allocation_counters = allocation_counters;
+        Ok(())
+    }
+
+    fn copy_momentum_point_zero_to_alternate(&mut self) {
+        let source_stride = self.point_stride as usize;
+        let alternate = self
+            .alternate_point_storage
+            .as_mut()
+            .expect("point-zero copy requires alternate point storage");
+        let destination_stride = alternate.arena.point_stride() as usize;
+        let plane_count = self.momentum_plane_count as usize;
+        assert_eq!(
+            self.momenta.len(),
+            plane_count * source_stride,
+            "active momentum storage must cover every physical plane"
+        );
+        assert_eq!(
+            alternate.momenta.len(),
+            plane_count * destination_stride,
+            "alternate momentum storage must cover every physical plane"
+        );
+        let source = self.momenta.as_slice();
+        let destination = alternate.momenta.as_mut_slice();
+        for plane in 0..plane_count {
+            destination[plane * destination_stride] = source[plane * source_stride];
+        }
+    }
+
+    fn swap_point_storage(&mut self) {
+        let alternate = self
+            .alternate_point_storage
+            .as_mut()
+            .expect("layout switching requires alternate point storage");
+        std::mem::swap(&mut self.arena, &mut alternate.arena);
+        std::mem::swap(&mut self.momenta, &mut alternate.momenta);
+        self.point_stride = self.arena.point_stride();
+        self.momenta_are_compact = false;
+        self.momentum_filled_points = 0;
+        self.momentum_replay_selector = None;
+        self.packed_singleton_active = !self.packed_singleton_active;
+        self.last_point_count = 0;
+        self.last_public_flow_id = None;
+        self.last_representative_flow_id = None;
     }
 
     fn compact_momenta_for_legacy_access(&mut self) {
@@ -1689,6 +1953,7 @@ impl DirectRecurrenceExecutionRuntime {
 fn replay_cache_split_complex_scalar_count(
     plan: &DirectRecurrencePlan,
     persisted_split_complex_scalar_count: usize,
+    fanout_scratch_component_count: u32,
 ) -> RusticolResult<usize> {
     if plan.strategy() != RecurrenceStrategy::TopologyReplay {
         return Ok(persisted_split_complex_scalar_count);
@@ -1710,6 +1975,7 @@ fn replay_cache_split_complex_scalar_count(
             .min(current_arena_components);
         let active_complex_planes = active_current_components
             .checked_add(summary.amplitude_destination_count)
+            .and_then(|count| count.checked_add(u64::from(fanout_scratch_component_count)))
             .ok_or_else(|| invalid("selected replay cache plane count overflows u64"))?;
         let active_split_scalars = active_complex_planes
             .checked_mul(2)
@@ -1905,6 +2171,12 @@ fn validate_split_values(
         )));
     }
     Ok(())
+}
+
+fn hard_budget_tile_error(error: RusticolError) -> RusticolError {
+    invalid(format!(
+        "could not derive a hard-budget Direct-Arena tile: {error}"
+    ))
 }
 
 fn invalid(message: impl Into<String>) -> RusticolError {

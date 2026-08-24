@@ -3,11 +3,8 @@
 """Fail-closed comparison of baseline and candidate recurrence artifacts.
 
 This is a developer tool, not a public pyAmpliCol CLI command.  Runtime plan,
-binding, evaluator, and model bytes must be exact.  A topology color-projection
-certificate may differ only in its authenticated source-revision and
-native-build identities when its complete structural body is byte-identical.
-Only hashes proven to derive transitively from that envelope (or from the
-explicitly permitted execution timing metadata) are then normalized.
+projection certificate, binding, evaluator, and model bytes must be exact.
+Only explicitly permitted metadata differences are normalized.
 """
 
 from __future__ import annotations
@@ -40,9 +37,6 @@ ARTIFACT_ALLOWED_METADATA_PATHS = (
     "/extensions/generation/phase_timings_seconds",
     "/extensions/generation/recurrence_schedule_profiles",
     "/extensions/generation/concrete_processes/*/execution_manifest_sha256",
-    "/extensions/recurrence_schedule_sharing/index_sha256",
-    "/payloads/*[recurrence-runtime.pacbin]/sha256",
-    "/payloads/*[schedule-index.json]/sha256",
     "/payloads/*[execution.json]/sha256",
     "/payloads/*[execution.json]/size_bytes",
     "/payloads/*[structural-source-proof.json]/sha256",
@@ -50,17 +44,6 @@ ARTIFACT_ALLOWED_METADATA_PATHS = (
 )
 EXECUTION_ALLOWED_METADATA_PATHS = (
     "/plan/inspection_summary/generation_timings_seconds",
-    "/plan/inspection_summary/color_projection_certificate/sha256",
-    "/plan/runtime_schedule/index_sha256",
-    "/plan/runtime_schedule/sha256",
-)
-SCHEDULE_INDEX_ALLOWED_METADATA_PATHS = (
-    "/schedules/*/index_sha256",
-    "/schedules/*/sha256",
-)
-PROJECTION_CERTIFICATE_ALLOWED_METADATA_PATHS = (
-    "/source_revision",
-    "/native_build_inputs_sha256",
 )
 STRUCTURAL_PROOF_ALLOWED_METADATA_PATHS = (
     "/source_identity/git_revision",
@@ -128,7 +111,6 @@ _PACBIN_INDEX_MAGIC = b"PACIDX\x00\x00"
 _PACBIN_FOOTER_MAGIC = b"PACEND\x00\x00"
 
 _CERTIFICATE_BODY_MAGIC = b"PYAMP-COLOR-PROJECTION-BODY-V1\0\0"
-_CERTIFICATE_MAGIC = b"PYAMP-COLOR-PROJECTION-CERT-V1\0"
 _GENERATION_PROFILE_TIMINGS = frozenset(
     {
         "transition-catalog",
@@ -243,10 +225,8 @@ class PacbinMemberSnapshot:
 
 @dataclass(frozen=True)
 class ProjectionCertificateSnapshot:
-    """Authenticated offsets and identities for one projection certificate."""
+    """Authenticated byte range for one structural projection certificate."""
 
-    source_revision: str
-    native_build_inputs_sha256: str
     body_offset: int
     body_length: int
     sha256: str
@@ -272,7 +252,6 @@ class RecurrencePacbinComparison:
     policy_match: bool
     plan_bytes_match: bool
     projection_certificate_bodies_match: bool
-    projection_provenance_changed: bool
 
 
 @dataclass(frozen=True)
@@ -535,133 +514,37 @@ def _parse_projection_certificate(
     member: PacbinMemberSnapshot,
     description: str,
 ) -> ProjectionCertificateSnapshot:
-    minimum_size = (
-        len(_CERTIFICATE_MAGIC)
-        + 4
-        + 4
-        + 40
-        + 4
-        + 64
-        + 8
-        + len(_CERTIFICATE_BODY_MAGIC)
-        + 4
-        + 32
-        + 32
-    )
+    minimum_size = len(_CERTIFICATE_BODY_MAGIC) + 4 + 32
     if member.length < minimum_size:
         raise ComparisonError(f"{description} is too short")
     member_end = member.offset + member.length
-    cursor = member.offset
     prefix = _read_exact_at(
         stream,
-        cursor,
-        len(_CERTIFICATE_MAGIC) + 4,
+        member.offset,
+        len(_CERTIFICATE_BODY_MAGIC) + 4,
         description=f"{description} prefix",
     )
-    if not prefix.startswith(_CERTIFICATE_MAGIC) or prefix[
-        len(_CERTIFICATE_MAGIC) :
-    ] != (1).to_bytes(4, "little"):
-        raise ComparisonError(f"{description} has invalid framing")
-    cursor += len(prefix)
-
-    def read_length(field: str, width: int) -> int:
-        nonlocal cursor
-        encoded = _read_exact_at(
-            stream,
-            cursor,
-            width,
-            description=f"{description} {field} length",
-        )
-        cursor += width
-        return int.from_bytes(encoded, "little")
-
-    revision_length = read_length("source revision", 4)
-    if revision_length != 40:
-        raise ComparisonError(f"{description} source revision length is invalid")
-    revision_bytes = _read_exact_at(
-        stream,
-        cursor,
-        revision_length,
-        description=f"{description} source revision",
-    )
-    cursor += revision_length
-    try:
-        source_revision = revision_bytes.decode("ascii")
-    except UnicodeDecodeError as error:
-        raise ComparisonError(f"{description} source revision is not ASCII") from error
-    if _GIT_REVISION_RE.fullmatch(source_revision) is None:
-        raise ComparisonError(f"{description} source revision is invalid")
-
-    native_length = read_length("native-build identity", 4)
-    if native_length != 64:
-        raise ComparisonError(f"{description} native-build identity length is invalid")
-    native_bytes = _read_exact_at(
-        stream,
-        cursor,
-        native_length,
-        description=f"{description} native-build identity",
-    )
-    cursor += native_length
-    try:
-        native_build_inputs_sha256 = native_bytes.decode("ascii")
-    except UnicodeDecodeError as error:
-        raise ComparisonError(
-            f"{description} native-build identity is not ASCII"
-        ) from error
-    if _SHA256_RE.fullmatch(native_build_inputs_sha256) is None:
-        raise ComparisonError(f"{description} native-build identity is invalid")
-
-    body_length = read_length("structural body", 8)
-    body_offset = cursor
-    body_end = body_offset + body_length
-    if body_end + 32 != member_end:
-        raise ComparisonError(f"{description} has trailing or missing bytes")
-    body_minimum = len(_CERTIFICATE_BODY_MAGIC) + 4 + 32
-    if body_length < body_minimum:
-        raise ComparisonError(f"{description} structural body is too short")
-    body_prefix = _read_exact_at(
-        stream,
-        body_offset,
-        len(_CERTIFICATE_BODY_MAGIC) + 4,
-        description=f"{description} structural-body prefix",
-    )
-    if not body_prefix.startswith(_CERTIFICATE_BODY_MAGIC) or body_prefix[
+    if not prefix.startswith(_CERTIFICATE_BODY_MAGIC) or prefix[
         len(_CERTIFICATE_BODY_MAGIC) :
     ] != (1).to_bytes(4, "little"):
-        raise ComparisonError(f"{description} structural body has invalid framing")
+        raise ComparisonError(f"{description} has invalid framing")
     expected_body_digest = _read_exact_at(
         stream,
-        body_end - 32,
+        member_end - 32,
         32,
         description=f"{description} structural-body digest",
     ).hex()
     actual_body_digest = _hash_stream_range(
         stream,
-        offset=body_offset,
-        length=body_length - 32,
+        offset=member.offset,
+        length=member.length - 32,
         description=f"{description} structural body",
     )
     if actual_body_digest != expected_body_digest:
         raise ComparisonError(f"{description} structural-body digest mismatch")
-    expected_envelope_digest = _read_exact_at(
-        stream,
-        member_end - 32,
-        32,
-        description=f"{description} envelope digest",
-    ).hex()
-    actual_envelope_digest = _hash_stream_range(
-        stream,
-        offset=member.offset,
-        length=member.length - 32,
-        description=f"{description} envelope",
-    )
-    if actual_envelope_digest != expected_envelope_digest:
-        raise ComparisonError(f"{description} envelope digest mismatch")
     return ProjectionCertificateSnapshot(
-        source_revision=source_revision,
-        native_build_inputs_sha256=native_build_inputs_sha256,
-        body_offset=body_offset,
-        body_length=body_length,
+        body_offset=member.offset,
+        body_length=member.length,
         sha256=member.sha256,
     )
 
@@ -1299,15 +1182,6 @@ def _validate_linked_recurrence_metadata(
             f"{label} schedule-index inventory does not match runtime PACBINs"
         )
 
-    producer = _mapping(manifest.get("producer"), description=f"{label} producer")
-    producer_revision = _nonempty_string(
-        producer.get("git_revision"),
-        description=f"{label} producer.git_revision",
-    )
-    producer_native = _sha256(
-        producer.get("native_build_inputs_sha256"),
-        description=f"{label} producer native-build identity",
-    )
     schedules: dict[str, RecurrencePacbinSnapshot] = {}
     for path, record in schedule_records.items():
         payload = payloads[path]
@@ -1374,15 +1248,6 @@ def _validate_linked_recurrence_metadata(
             raise ComparisonError(
                 f"{label} schedule record has stale linked fields for {path}: "
                 + ", ".join(stale_fields)
-            )
-        certificate = pacbin.projection_certificate
-        if certificate is not None and (
-            certificate.source_revision != producer_revision
-            or certificate.native_build_inputs_sha256 != producer_native
-        ):
-            raise ComparisonError(
-                f"{label} projection certificate is not bound to artifact producer "
-                f"identity: {path}"
             )
         schedules[path] = pacbin
 
@@ -1917,7 +1782,6 @@ def _compare_recurrence_pacbins(
     candidate: RecurrencePacbinSnapshot,
     *,
     relative_path: str,
-    allowed: list[dict[str, object]],
     unknown: list[dict[str, object]],
 ) -> RecurrencePacbinComparison:
     exact_bytes_match = _files_equal(baseline.path, candidate.path)
@@ -1937,7 +1801,6 @@ def _compare_recurrence_pacbins(
             policy_match=False,
             plan_bytes_match=False,
             projection_certificate_bodies_match=False,
-            projection_provenance_changed=False,
         )
 
     structural_member_mismatch = False
@@ -2023,7 +1886,6 @@ def _compare_recurrence_pacbins(
             policy_match=False,
             plan_bytes_match=plan_bytes_match,
             projection_certificate_bodies_match=False,
-            projection_provenance_changed=False,
         )
     if left_certificate is None:
         if not exact_bytes_match:
@@ -2046,7 +1908,6 @@ def _compare_recurrence_pacbins(
             policy_match=exact_bytes_match and plan_bytes_match,
             plan_bytes_match=plan_bytes_match,
             projection_certificate_bodies_match=True,
-            projection_provenance_changed=False,
         )
 
     assert right_certificate is not None
@@ -2084,34 +1945,13 @@ def _compare_recurrence_pacbins(
                 },
             }
         )
-    provenance_changed = (
-        left_certificate.source_revision != right_certificate.source_revision
-        or left_certificate.native_build_inputs_sha256
-        != right_certificate.native_build_inputs_sha256
-    )
-    _record_allowed(
-        allowed,
-        file=relative_path,
-        json_path=(f"/members[{_CERTIFICATE_MEMBER_PATH}]/source_revision"),
-        category="projection-certificate-provenance",
-        baseline=left_certificate.source_revision,
-        candidate=right_certificate.source_revision,
-    )
-    _record_allowed(
-        allowed,
-        file=relative_path,
-        json_path=(f"/members[{_CERTIFICATE_MEMBER_PATH}]/native_build_inputs_sha256"),
-        category="projection-certificate-provenance",
-        baseline=left_certificate.native_build_inputs_sha256,
-        candidate=right_certificate.native_build_inputs_sha256,
-    )
     policy_match = (
         not structural_member_mismatch
         and plan_bytes_match
         and certificate_bodies_match
-        and (exact_bytes_match or provenance_changed)
+        and exact_bytes_match
     )
-    if not exact_bytes_match and not provenance_changed:
+    if not exact_bytes_match:
         unknown.append(
             {
                 "kind": "pacbin-unexplained-container-difference",
@@ -2131,7 +1971,6 @@ def _compare_recurrence_pacbins(
         policy_match=policy_match,
         plan_bytes_match=plan_bytes_match,
         projection_certificate_bodies_match=certificate_bodies_match,
-        projection_provenance_changed=provenance_changed,
     )
 
 
@@ -2659,81 +2498,12 @@ def _normalize_structural_proof_pair(
     return left, right
 
 
-def _normalize_schedule_index_pair(
-    baseline: Mapping[str, Any],
-    candidate: Mapping[str, Any],
-    *,
-    transitive_schedule_paths: set[str],
-    allowed: list[dict[str, object]],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    left = copy.deepcopy(dict(baseline))
-    right = copy.deepcopy(dict(candidate))
-
-    def schedules_by_path(
-        value: dict[str, Any],
-        *,
-        label: str,
-    ) -> dict[str, dict[str, Any]]:
-        result: dict[str, dict[str, Any]] = {}
-        for index, record in enumerate(
-            _sequence(
-                value.get("schedules"),
-                description=f"{label} recurrence schedule-index schedules",
-            )
-        ):
-            if not isinstance(record, dict):
-                raise ComparisonError(
-                    f"{label} recurrence schedule-index schedules[{index}] "
-                    "must be an object"
-                )
-            path = _payload_relative_path(
-                record.get("path"),
-                description=(f"{label} recurrence schedule-index schedules[{index}]"),
-            )
-            if path in result:
-                raise ComparisonError(
-                    f"{label} recurrence schedule-index duplicates {path}"
-                )
-            result[path] = record
-        return result
-
-    left_schedules = schedules_by_path(left, label="baseline")
-    right_schedules = schedules_by_path(right, label="candidate")
-    for path in sorted(
-        transitive_schedule_paths & set(left_schedules) & set(right_schedules)
-    ):
-        left_record = left_schedules[path]
-        right_record = right_schedules[path]
-        for key in ("sha256", "index_sha256"):
-            left_value = _sha256(
-                left_record.get(key),
-                description=f"baseline schedule {path}.{key}",
-            )
-            right_value = _sha256(
-                right_record.get(key),
-                description=f"candidate schedule {path}.{key}",
-            )
-            _record_allowed(
-                allowed,
-                file=_SCHEDULE_INDEX_PATH,
-                json_path=f"/schedules[path={path}]/{key}",
-                category="derived-projection-certificate-metadata",
-                baseline=left_value,
-                candidate=right_value,
-            )
-            left_record[key] = _NORMALIZED
-            right_record[key] = _NORMALIZED
-    return left, right
-
-
 def _normalize_manifest_pair(
     baseline: Mapping[str, Any],
     candidate: Mapping[str, Any],
     *,
     matched_execution_paths: set[str],
     matched_structural_proof_paths: set[str],
-    transitive_schedule_paths: set[str],
-    schedule_index_matches: bool,
     allowed: list[dict[str, object]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     left = copy.deepcopy(dict(baseline))
@@ -2921,71 +2691,6 @@ def _normalize_manifest_pair(
             left_record[key] = _NORMALIZED
             right_record[key] = _NORMALIZED
 
-    for path in sorted(
-        transitive_schedule_paths & set(left_payloads) & set(right_payloads)
-    ):
-        left_record = left_payloads[path]
-        right_record = right_payloads[path]
-        left_digest = _sha256(
-            left_record.get("sha256"),
-            description=f"payload {path}.sha256",
-        )
-        right_digest = _sha256(
-            right_record.get("sha256"),
-            description=f"payload {path}.sha256",
-        )
-        _record_allowed(
-            allowed,
-            file="artifact.json",
-            json_path=f"/payloads[path={path}]/sha256",
-            category="derived-projection-certificate-metadata",
-            baseline=left_digest,
-            candidate=right_digest,
-        )
-        left_record["sha256"] = _NORMALIZED
-        right_record["sha256"] = _NORMALIZED
-
-    if schedule_index_matches:
-        if (
-            _SCHEDULE_INDEX_PATH not in left_payloads
-            or _SCHEDULE_INDEX_PATH not in right_payloads
-        ):
-            raise ComparisonError(
-                "recurrence schedule-index payload metadata is missing"
-            )
-        left_record = left_payloads[_SCHEDULE_INDEX_PATH]
-        right_record = right_payloads[_SCHEDULE_INDEX_PATH]
-        left_digest = _sha256(
-            left_record.get("sha256"),
-            description="baseline schedule-index payload digest",
-        )
-        right_digest = _sha256(
-            right_record.get("sha256"),
-            description="candidate schedule-index payload digest",
-        )
-        _record_allowed(
-            allowed,
-            file="artifact.json",
-            json_path=(f"/payloads[path={_SCHEDULE_INDEX_PATH}]/sha256"),
-            category="derived-projection-certificate-metadata",
-            baseline=left_digest,
-            candidate=right_digest,
-        )
-        left_record["sha256"] = _NORMALIZED
-        right_record["sha256"] = _NORMALIZED
-        _replace_pair(
-            left,
-            right,
-            ("extensions", "recurrence_schedule_sharing", "index_sha256"),
-            file="artifact.json",
-            json_path="/extensions/recurrence_schedule_sharing/index_sha256",
-            category="derived-projection-certificate-metadata",
-            validate=lambda value: _sha256(
-                value,
-                description="recurrence schedule-sharing index digest",
-            ),
-            allowed=allowed,
-        )
     return left, right
 
 
@@ -3027,7 +2732,6 @@ def _normalize_execution_pair(
     candidate: Mapping[str, Any],
     *,
     path: str,
-    transitive_schedule_paths: set[str],
     allowed: list[dict[str, object]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     left = copy.deepcopy(dict(baseline))
@@ -3044,58 +2748,6 @@ def _normalize_execution_pair(
         ),
         allowed=allowed,
     )
-    left_runtime = _mapping(
-        _mapping(left.get("plan"), description=f"{path}.plan").get("runtime_schedule"),
-        description=f"{path}.plan.runtime_schedule",
-    )
-    right_runtime = _mapping(
-        _mapping(right.get("plan"), description=f"{path}.plan").get("runtime_schedule"),
-        description=f"{path}.plan.runtime_schedule",
-    )
-    left_schedule_path = _payload_relative_path(
-        left_runtime.get("path"),
-        description=f"{path}.plan.runtime_schedule",
-    )
-    right_schedule_path = _payload_relative_path(
-        right_runtime.get("path"),
-        description=f"{path}.plan.runtime_schedule",
-    )
-    if (
-        left_schedule_path == right_schedule_path
-        and left_schedule_path in transitive_schedule_paths
-    ):
-        for key in ("sha256", "index_sha256"):
-            _replace_pair(
-                left,
-                right,
-                ("plan", "runtime_schedule", key),
-                file=path,
-                json_path=f"/plan/runtime_schedule/{key}",
-                category="derived-projection-certificate-metadata",
-                validate=lambda value, field=key: _sha256(
-                    value,
-                    description=f"{path}.plan.runtime_schedule.{field}",
-                ),
-                allowed=allowed,
-            )
-        _replace_pair(
-            left,
-            right,
-            (
-                "plan",
-                "inspection_summary",
-                "color_projection_certificate",
-                "sha256",
-            ),
-            file=path,
-            json_path=("/plan/inspection_summary/color_projection_certificate/sha256"),
-            category="derived-projection-certificate-metadata",
-            validate=lambda value: _sha256(
-                value,
-                description=f"{path} projection-certificate digest",
-            ),
-            allowed=allowed,
-        )
     return left, right
 
 
@@ -3135,7 +2787,6 @@ def compare_artifacts(
     common_paths = baseline_paths & candidate_paths
     exact_payload_bytes_match = inventories_match
     payloads_match_policy = inventories_match
-    transitive_schedule_paths: set[str] = set()
     pacbin_comparisons: dict[str, RecurrencePacbinComparison] = {}
 
     for path in sorted(
@@ -3147,7 +2798,6 @@ def compare_artifacts(
             baseline.recurrence_schedules[path],
             candidate.recurrence_schedules[path],
             relative_path=path,
-            allowed=allowed,
             unknown=unknown,
         )
         pacbin_comparisons[path] = comparison
@@ -3155,19 +2805,10 @@ def compare_artifacts(
             exact_payload_bytes_match and comparison.exact_bytes_match
         )
         payloads_match_policy = payloads_match_policy and comparison.policy_match
-        if (
-            comparison.policy_match
-            and not comparison.exact_bytes_match
-            and comparison.projection_provenance_changed
-        ):
-            transitive_schedule_paths.add(path)
         payload_comparisons.append(
             {
                 "path": path,
-                "comparison": (
-                    "recurrence-pacbin-exact-plan-and-projection-body-"
-                    "except-bound-provenance"
-                ),
+                "comparison": "recurrence-pacbin-exact-plan-and-projection-body",
                 "baseline_sha256": left.sha256,
                 "candidate_sha256": right.sha256,
                 "byte_for_byte_match": comparison.exact_bytes_match,
@@ -3175,26 +2816,16 @@ def compare_artifacts(
                 "projection_certificate_body_match": (
                     comparison.projection_certificate_bodies_match
                 ),
-                "projection_provenance_changed": (
-                    comparison.projection_provenance_changed
-                ),
                 "matches_policy": comparison.policy_match,
             }
         )
 
-    left_schedule_index, right_schedule_index = _normalize_schedule_index_pair(
+    schedule_index_differences = _json_differences(
         baseline.schedule_index,
         candidate.schedule_index,
-        transitive_schedule_paths=transitive_schedule_paths,
-        allowed=allowed,
-    )
-    schedule_index_differences = _json_differences(
-        left_schedule_index,
-        right_schedule_index,
         file=_SCHEDULE_INDEX_PATH,
     )
     unknown.extend(schedule_index_differences)
-    schedule_index_matches = not schedule_index_differences
     left_schedule_index_payload = baseline.payloads[_SCHEDULE_INDEX_PATH]
     right_schedule_index_payload = candidate.payloads[_SCHEDULE_INDEX_PATH]
     schedule_index_bytes_match = (
@@ -3206,16 +2837,34 @@ def compare_artifacts(
             right_schedule_index_payload.path,
         )
     )
+    if not schedule_index_bytes_match:
+        unknown.append(
+            {
+                "kind": "payload-bytes",
+                "path": _SCHEDULE_INDEX_PATH,
+                "baseline": {
+                    "sha256": left_schedule_index_payload.sha256,
+                    "size_bytes": left_schedule_index_payload.size_bytes,
+                },
+                "candidate": {
+                    "sha256": right_schedule_index_payload.sha256,
+                    "size_bytes": right_schedule_index_payload.size_bytes,
+                },
+            }
+        )
+    schedule_index_matches = (
+        schedule_index_bytes_match and not schedule_index_differences
+    )
     exact_payload_bytes_match = exact_payload_bytes_match and schedule_index_bytes_match
     payloads_match_policy = payloads_match_policy and schedule_index_matches
     payload_comparisons.append(
         {
             "path": _SCHEDULE_INDEX_PATH,
-            "comparison": ("json-exact-except-derived-projection-certificate-digests"),
+            "comparison": "byte-for-byte",
             "baseline_sha256": left_schedule_index_payload.sha256,
             "candidate_sha256": right_schedule_index_payload.sha256,
             "byte_for_byte_match": schedule_index_bytes_match,
-            "normalized_match": schedule_index_matches,
+            "matches": schedule_index_matches,
         }
     )
 
@@ -3234,7 +2883,6 @@ def compare_artifacts(
             baseline.executions[path],
             candidate.executions[path],
             path=path,
-            transitive_schedule_paths=transitive_schedule_paths,
             allowed=allowed,
         )
         differences = _json_differences(left_json, right_json, file=path)
@@ -3247,10 +2895,7 @@ def compare_artifacts(
         payload_comparisons.append(
             {
                 "path": path,
-                "comparison": (
-                    "json-exact-except-timing-and-derived-projection-"
-                    "certificate-digests"
-                ),
+                "comparison": "json-exact-except-timing",
                 "baseline_sha256": left_payload.sha256,
                 "candidate_sha256": right_payload.sha256,
                 "byte_for_byte_match": execution_bytes_match,
@@ -3383,8 +3028,6 @@ def compare_artifacts(
         candidate.manifest,
         matched_execution_paths=matched_execution_paths,
         matched_structural_proof_paths=matched_structural_proof_paths,
-        transitive_schedule_paths=transitive_schedule_paths,
-        schedule_index_matches=schedule_index_matches,
         allowed=allowed,
     )
     manifest_differences = _json_differences(
@@ -3435,17 +3078,10 @@ def compare_artifacts(
         },
         "policy": {
             "ordinary_payloads": "byte-for-byte-and-sha256-v1",
-            "recurrence_runtime_pacbins": (
-                "exact-plan-and-projection-body-except-bound-provenance-v1"
-            ),
-            "schedule_index": (
-                "exact-except-derived-projection-certificate-digests-v1"
-            ),
+            "recurrence_runtime_pacbins": "exact-plan-and-projection-body-v1",
+            "schedule_index": "exact-v1",
             "artifact_manifest": "exact-except-enumerated-metadata-v2",
-            "execution_manifests": (
-                "exact-except-generation-timings-and-derived-projection-"
-                "certificate-digests-v2"
-            ),
+            "execution_manifests": "exact-except-generation-timings-v2",
             "structural_source_proofs": (
                 "exact-except-authenticated-provenance-and-derived-execution-"
                 "metadata-v1"
@@ -3454,12 +3090,6 @@ def compare_artifacts(
             "execution_allowed_metadata_paths": list(EXECUTION_ALLOWED_METADATA_PATHS),
             "structural_proof_allowed_metadata_paths": list(
                 STRUCTURAL_PROOF_ALLOWED_METADATA_PATHS
-            ),
-            "schedule_index_allowed_metadata_paths": list(
-                SCHEDULE_INDEX_ALLOWED_METADATA_PATHS
-            ),
-            "projection_certificate_allowed_metadata_paths": list(
-                PROJECTION_CERTIFICATE_ALLOWED_METADATA_PATHS
             ),
         },
         "summary": {

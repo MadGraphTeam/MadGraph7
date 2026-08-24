@@ -53,6 +53,59 @@ _UFO_SM_ROOT = (
 )
 
 
+@pytest.mark.parametrize("model_source", ("built-in", "ufo-sm"))
+def test_symmetric_group_trace_anchor_uses_model_generic_catalog_contracts(
+    model_source: str,
+) -> None:
+    if model_source == "built-in":
+        model = BuiltinSMModel()
+        process = build_process_ir("g g > g g", color_accuracy="full")
+    else:
+        compiled = compile_model_source(
+            _UFO_SM_ROOT / "sm.json",
+            restriction=str((_UFO_SM_ROOT / "restrict_default.json").resolve()),
+            use_cache=True,
+        )
+        model = CompiledUFOModel(compiled)
+        process = build_model_process_ir(
+            "g g > g g",
+            compiled.ir,
+            color_accuracy="full",
+        )
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    color_plan = build_color_plan(process, color_accuracy="full")
+    logical = project_recurrence_process_v1(
+        process,
+        color_plan,
+        recurrence_catalog,
+        layout="contracted-color-union",
+        normalization=RecurrenceNormalizationV1(
+            ExactComplexRationalV1(1),
+            "model-generic-cyclic-anchor-canary-v1",
+            "9" * 64,
+        ),
+        coupling_order_limits=infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+        ),
+        model=model,
+        prefer_symmetric_group_closure_anchor=True,
+    )
+
+    assert logical.physical_sectors
+    assert all(
+        sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v4"
+        and sector.closure_source_slot == 0
+        for sector in logical.physical_sectors
+    )
+    build_recurrence_builder_input_v1(logical)
+
+
 def test_ufo_full_ddbar_to_ee_prepares_source_only_electron_mass() -> None:
     compiled = compile_model_source(
         _UFO_SM_ROOT / "sm.json",
@@ -369,6 +422,86 @@ def test_open_line_projection_skips_singlet_slot_zero_and_emits_v3() -> None:
     assert sector.closure_source_slot == 5
     assert sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v3"
     build_recurrence_builder_input_v1(logical)
+
+
+def test_same_sign_quark_replay_materializes_v3_anchor_mismatches() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("d d > d d g g", color_accuracy="lc")
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    color_plan = build_color_plan(
+        process,
+        color_accuracy="lc",
+        fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(process),
+    )
+    replay = build_lc_topology_replay_plan(color_plan, model)
+    assert replay is not None
+    assert replay.residual_sector_ids == ()
+
+    logical = project_recurrence_process_v1(
+        process,
+        color_plan,
+        recurrence_catalog,
+        layout="topology-replay",
+        topology_replay=replay,
+        normalization=RecurrenceNormalizationV1(
+            ExactComplexRationalV1(1),
+            "same-sign-quark-v3-replay-canary-v1",
+            "4" * 64,
+        ),
+        coupling_order_limits=infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+        ),
+        model=model,
+    )
+
+    replayed = tuple(
+        partition
+        for partition in logical.replay_partitions
+        if partition.proof_algorithm
+        != "canonical-recurrence-identity-materialization-v1"
+    )
+    materialized = tuple(
+        partition
+        for partition in logical.replay_partitions
+        if partition.proof_algorithm
+        == "canonical-recurrence-identity-materialization-v1"
+    )
+    assert tuple(
+        tuple(target.sector_id for target in partition.targets)
+        for partition in replayed
+    ) == ((0, 3), (1, 4), (2, 5))
+    assert tuple(partition.representative_sector_id for partition in materialized) == (
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+    )
+    identity = tuple(range(len(process.legs)))
+    assert all(
+        partition.materialized_sector_id
+        == partition.representative_sector_id
+        == partition.targets[0].sector_id
+        and partition.targets[0].source_slot_permutation == identity
+        and partition.targets[0].external_permutation == identity
+        and partition.targets[0].fermion_sign == 1
+        for partition in materialized
+    )
+    assert {
+        target.sector_id
+        for partition in logical.replay_partitions
+        for target in partition.targets
+    } == set(replay.physical_sector_ids)
+    columnar = build_recurrence_builder_input_v1(logical)
+    assert columnar.table("replay_partitions").row_count == 9
+    assert columnar.table("replay_targets").row_count == 12
 
 
 def test_builtin_two_line_contracted_color_keeps_unique_construction_flows() -> None:

@@ -47,7 +47,7 @@ impl<'a> DirectAmplitudePlanes<'a> {
         let shape = DirectPlaneShape::new(scalar_len, point_stride, "amplitude reduction")?;
         let alignment_scalars = u32::try_from(DIRECT_ARENA_ALIGNMENT / size_of::<f64>())
             .map_err(|_| invalid("direct amplitude alignment exceeds u32"))?;
-        if point_stride % alignment_scalars != 0 {
+        if !point_stride.is_multiple_of(alignment_scalars) {
             return Err(invalid(
                 "direct amplitude point stride does not preserve per-plane alignment",
             ));

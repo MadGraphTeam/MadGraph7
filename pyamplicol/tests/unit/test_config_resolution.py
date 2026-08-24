@@ -8,6 +8,7 @@ import pytest
 
 from pyamplicol.config import (
     ClampRequest,
+    ColorContraction,
     ConfigurationError,
     EvaluatorExecutionMode,
     LCFlowLayout,
@@ -205,11 +206,36 @@ def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
     plain = config_to_dict(config)
     assert plain["color"] == {  # type: ignore[index]
         "accuracy": "lc",
+        "contraction": "direct",
         "lc_flow_layout": "all-flow-union",
     }
     assert resolve_config(plain).effective == config
     serialized = config_to_toml(config)
     assert 'lc_flow_layout = "all-flow-union"' in serialized
+    assert resolve_config(tomllib.loads(serialized)).effective == config
+
+
+def test_symmetric_group_fft_card_and_dotted_override_round_trip() -> None:
+    pytest.importorskip("tomli_w")
+    config = resolve_config(
+        {
+            "action": "generate",
+            "color": {"accuracy": "full", "contraction": "direct"},
+            "evaluator": {"execution_mode": "recurrence"},
+        },
+        overrides=("color.contraction=symmetric-group-fft",),
+    ).effective
+
+    assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    plain = config_to_dict(config)
+    assert plain["color"] == {  # type: ignore[index]
+        "accuracy": "full",
+        "contraction": "symmetric-group-fft",
+        "lc_flow_layout": "topology-replay",
+    }
+    assert resolve_config(plain).effective == config
+    serialized = config_to_toml(config)
+    assert 'contraction = "symmetric-group-fft"' in serialized
     assert resolve_config(tomllib.loads(serialized)).effective == config
 
 
