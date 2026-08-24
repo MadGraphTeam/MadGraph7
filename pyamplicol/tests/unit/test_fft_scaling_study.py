@@ -349,6 +349,22 @@ def test_publication_generation_uses_normal_optimized_defaults() -> None:
     assert command[command.index("--set") + 1] == "evaluator.batch_size=1"
 
 
+def test_timed_command_uses_python_getrusage_wrapper_on_linux(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(scaling.sys, "platform", "linux")
+
+    command, normalizer = scaling._timed_command(("payload",), python="python-test")
+
+    assert command == (
+        "python-test",
+        str(scaling.Path(scaling.__file__).resolve()),
+        "_time-rss",
+        "payload",
+    )
+    assert normalizer is None
+
+
 def _higher_n_arguments() -> object:
     return scaling._parser().parse_args(
         (

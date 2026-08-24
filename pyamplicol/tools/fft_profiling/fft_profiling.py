@@ -1344,10 +1344,23 @@ def _selected_pending_cells(
 def _run_checked(
     command: Sequence[str], *, environment: Mapping[str, str] | None = None
 ) -> None:
-    completed = subprocess.run(tuple(command), check=False, env=environment)
+    completed = subprocess.run(
+        tuple(command),
+        check=False,
+        env=environment,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
     if completed.returncode != 0:
+        stdout = completed.stdout.strip()
+        detail = (
+            f"command failed with status {completed.returncode}: "
+            f"{shlex.join(command)}"
+        )
+        if stdout:
+            detail = f"{detail}\nstdout:\n{stdout}"
         raise ProfilingError(
-            f"command failed with status {completed.returncode}: {shlex.join(command)}"
+            detail
         )
 
 
@@ -2721,15 +2734,10 @@ def _acquire_execution_lock(run_directory: Path) -> BinaryIO:
 
 
 def _render_phase_boundary(
-    arguments: argparse.Namespace, run_directory: Path, phase_number: int
+    arguments: argparse.Namespace, run_directory: Path
 ) -> Path:
     _publish_master(arguments, run_directory)
-    pdf = render_snapshot(arguments, renderer_preflight=False)
-    _diagnostic(
-        f"Updated phase-{phase_number} profiling PDF: {pdf}",
-        colorama.Fore.CYAN,
-    )
-    return pdf
+    return render_snapshot(arguments, renderer_preflight=False)
 
 
 def run_campaign(arguments: argparse.Namespace) -> Path:
@@ -2774,11 +2782,11 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
             )
             dashboard.update(_completed_cells(initial), phase="initializing", active=())
             _phase(arguments, run_directory, 1, dashboard)
-            _render_phase_boundary(arguments, run_directory, 1)
+            _render_phase_boundary(arguments, run_directory)
             _phase(arguments, run_directory, 2, dashboard)
-            _render_phase_boundary(arguments, run_directory, 2)
+            _render_phase_boundary(arguments, run_directory)
             _phase(arguments, run_directory, 3, dashboard)
-            _render_phase_boundary(arguments, run_directory, 3)
+            _render_phase_boundary(arguments, run_directory)
             terminal = _publish_master(arguments, run_directory)
             if not _selected_master_complete(
                 arguments, terminal, multiplicities=requested

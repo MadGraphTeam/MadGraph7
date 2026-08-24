@@ -482,6 +482,52 @@ def test_darwin_reference_command_uses_getrusage_for_gnu_and_direct_wrappers() -
     )
 
 
+def test_gnu_reference_command_uses_getrusage_and_resolves_wrappers_from_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tools = {
+        "timeout": "/nix/bin/timeout",
+        "prlimit": "/nix/bin/prlimit",
+    }
+    monkeypatch.setattr(acceptance.shutil, "which", tools.__getitem__)
+    wrapped = (
+        "/usr/bin/timeout",
+        "--signal=TERM",
+        "--kill-after=5s",
+        "600s",
+        "/usr/bin/time",
+        "--format=BENCHMARK_MAX_RSS_KIB %M",
+        "/usr/bin/prlimit",
+        "--as=32212254720",
+        "--",
+        "/workspace/reference-driver",
+        "default-bg",
+        "fft",
+    )
+
+    translated, measured = acceptance._translate_gnu_reference_command(
+        wrapped,
+        python="/venv/python",
+    )
+
+    assert measured is True
+    assert translated == (
+        "/venv/python",
+        str(acceptance.SCALING_STUDY_DRIVER),
+        "_time-rss",
+        "/nix/bin/timeout",
+        "--signal=TERM",
+        "--kill-after=5s",
+        "600s",
+        "/nix/bin/prlimit",
+        "--as=32212254720",
+        "--",
+        "/workspace/reference-driver",
+        "default-bg",
+        "fft",
+    )
+
+
 def test_darwin_getrusage_rss_is_adapted_to_the_reference_protocol() -> None:
     getrusage = subprocess.CompletedProcess(
         args=("_time-rss", "reference-driver"),

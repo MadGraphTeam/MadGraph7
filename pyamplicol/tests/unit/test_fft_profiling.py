@@ -715,6 +715,20 @@ def test_render_freezes_once_and_publishes_only_complete_set(
     assert calls[0][2] == calls[1][calls[1].index("--campaign-report") + 1]
 
 
+def test_run_checked_suppresses_success_stdout(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    profiling._run_checked(
+        (
+            sys.executable,
+            "-c",
+            "print('generated/path.png')",
+        )
+    )
+
+    assert capsys.readouterr().out == ""
+
+
 def test_default_campaign_render_atomically_publishes_canonical_pdf(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

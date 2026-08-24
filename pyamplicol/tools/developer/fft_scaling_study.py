@@ -729,9 +729,7 @@ def _numerical_evidence(
 def _timed_command(
     command: Sequence[str], *, python: str
 ) -> tuple[tuple[str, ...], Any]:
-    if sys.platform == "darwin":
-        return (python, str(Path(__file__).resolve()), "_time-rss", *command), None
-    return ("/usr/bin/time", f"--format={RSS_MARKER} %M", *command), None
+    return (python, str(Path(__file__).resolve()), "_time-rss", *command), None
 
 
 def _parse_rss_marker(stderr: str) -> int:
@@ -3568,7 +3566,7 @@ def _exec_in(argv: Sequence[str]) -> int:
 
 
 def _time_rss(argv: Sequence[str]) -> int:
-    """Run one Darwin child and report its getrusage high-water mark."""
+    """Run one child and report its getrusage high-water mark."""
 
     if not argv:
         raise StudyError("_time-rss requires a command")

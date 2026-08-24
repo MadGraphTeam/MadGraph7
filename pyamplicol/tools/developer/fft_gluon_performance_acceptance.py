@@ -22,6 +22,7 @@ import json
 import math
 import os
 import re
+import shutil
 import shlex
 import stat
 import statistics
@@ -1018,6 +1019,62 @@ def _translate_darwin_reference_command(
     return (python, str(SCALING_STUDY_DRIVER), "_time-rss", *payload), True
 
 
+def _resolve_gnu_tool(name: str, fallback: str) -> str:
+    resolved = shutil.which(name)
+    if resolved is not None:
+        return resolved
+    if Path(fallback).is_file():
+        return fallback
+    raise AcceptanceError(
+        f"required GNU utility is unavailable: {name} "
+        f"(also checked {fallback})"
+    )
+
+
+def _translate_gnu_reference_command(
+    command: Sequence[str],
+    *,
+    python: str = sys.executable,
+) -> tuple[tuple[str, ...], bool]:
+    """Measure Linux reference commands with getrusage and resolved wrappers."""
+
+    original = tuple(str(item) for item in command)
+    if original[:2] == ("/usr/bin/time", "-l"):
+        payload = original[2:]
+        if not payload:
+            raise AcceptanceError("time wrapper has no payload")
+        return (python, str(SCALING_STUDY_DRIVER), "_time-rss", *payload), True
+    if not original or original[0] != "/usr/bin/timeout":
+        return original, False
+    if (
+        len(original) < 10
+        or original[1:3] != ("--signal=TERM", "--kill-after=5s")
+        or not original[3].endswith("s")
+        or original[4] != "/usr/bin/time"
+        or original[5] != f"--format={REFERENCE_RSS_MARKER} %M"
+        or original[6] != "/usr/bin/prlimit"
+        or not original[7].startswith("--as=")
+        or original[8] != "--"
+    ):
+        raise AcceptanceError("unrecognized GNU reference measurement wrapper")
+    try:
+        timeout_value = float(original[3][:-1])
+        memory_bytes = int(original[7].partition("=")[2])
+    except ValueError as error:
+        raise AcceptanceError("invalid GNU reference measurement bound") from error
+    if not _positive_finite(timeout_value) or memory_bytes < 1:
+        raise AcceptanceError("invalid GNU reference measurement bound")
+    return (
+        python,
+        str(SCALING_STUDY_DRIVER),
+        "_time-rss",
+        _resolve_gnu_tool("timeout", original[0]),
+        *original[1:4],
+        _resolve_gnu_tool("prlimit", original[6]),
+        *original[7:],
+    ), True
+
+
 def _synthesize_reference_rss_marker(
     completed: subprocess.CompletedProcess[str],
 ) -> subprocess.CompletedProcess[str]:
@@ -1434,6 +1491,11 @@ def _run_reference(
         )
         if sys.platform == "darwin":
             command_to_run, translated = _translate_darwin_reference_command(
+                command_to_run,
+                python=python,
+            )
+        else:
+            command_to_run, translated = _translate_gnu_reference_command(
                 command_to_run,
                 python=python,
             )
