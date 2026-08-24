@@ -32,6 +32,20 @@ Release dependencies include Symbolica 2.2.0 and the official
 [`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.22.0 at
 immutable revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`.
 
+## 0.2.0 release candidate
+
+The current source tree is preparing version `0.2.0`. It is not yet a tagged
+or published release. Its source distribution and platform wheels must first
+complete the validated release-artifacts workflow; publication will then reuse
+those exact files without rebuilding them. Until validation, tagging, and
+publication complete, version `0.1.4` remains the current PyPI release and the
+supported release boundary described above.
+
+Version `0.2.0` adds exact symmetric-group FFT full-colour contraction,
+helicity-parametric recurrence and on-the-fly scheduling, built-in SM+HEFT and
+trusted UFO HEFT support, and the resumable fixed-helicity/helicity-sum FFT
+profiling workflow with its final comparison reports.
+
 ## 0.1.4 release
 
 Version `0.1.4` adds on-the-fly generation and its explicit one-point

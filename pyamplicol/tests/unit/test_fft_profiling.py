@@ -444,6 +444,69 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
         profiling._create_or_resume_manifest(arguments, output)
 
 
+def test_line_groups_accumulate_and_schedule_only_requested_work(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "line-groups"
+    common = ("--output", str(output), "--madgraph-root", str(tmp_path / "mg5"))
+    reference = _arguments(
+        *common,
+        "--multiplicities",
+        "2",
+        "--lines",
+        "reference-fft",
+    )
+    first = profiling._create_or_resume_manifest(reference, output)
+    assert first["requested_line_groups"] == ["reference-fft"]
+    reference_plan = profiling.dry_run_plan(reference)
+    assert {
+        name for name, shard in reference_plan["shards"].items() if shard["scheduled"]
+    } == {"gg-reference"}
+    assert reference_plan["madgraph"]["applicable"] is False
+
+    otf = _arguments(
+        *common,
+        "--multiplicities",
+        "3",
+        "--lines",
+        "otf",
+    )
+    expanded = profiling._create_or_resume_manifest(otf, output)
+    assert expanded["requested_multiplicities"] == [2, 3]
+    assert expanded["requested_line_groups"] == ["reference-fft", "otf"]
+    otf_plan = profiling.dry_run_plan(otf)
+    assert {
+        name for name, shard in otf_plan["shards"].items() if shard["scheduled"]
+    } == {"gg-reference", "gg-otf", "ddbar-amplicol", "ddbar-otf"}
+    assert otf_plan["madgraph"]["applicable"] is False
+    assert otf_plan["shards"]["gg-recurrence"]["argv"] is None
+
+    with_madgraph = _arguments(
+        *common,
+        "--multiplicities",
+        "4",
+        "--lines",
+        "madgraph",
+    )
+    final = profiling._create_or_resume_manifest(with_madgraph, output)
+    assert final["requested_multiplicities"] == [2, 3, 4]
+    assert final["requested_line_groups"] == [
+        "reference-fft",
+        "otf",
+        "madgraph",
+    ]
+    madgraph_plan = profiling.dry_run_plan(with_madgraph)
+    assert madgraph_plan["madgraph"]["applicable"] is True
+    assert madgraph_plan["madgraph"]["argv"] is not None
+    assert madgraph_plan["shards"]["ddbar-recurrence"]["scheduled"] is True
+
+
+def test_line_groups_reject_duplicates() -> None:
+    arguments = _arguments("--lines", "otf", "otf")
+    with pytest.raises(profiling.ProfilingError, match="--lines"):
+        profiling._validate_arguments(arguments)
+
+
 def test_status_rejects_workload_mismatch_with_existing_output(tmp_path: Path) -> None:
     output = tmp_path / "fixed-run"
     fixed = _arguments("--output", str(output), "--multiplicities", "2")
@@ -1381,6 +1444,53 @@ def test_helicity_sum_n2_n3_campaign_runs_summed_madgraph_and_renders_sum_pdf(
     assert render_calls == [False, False, False, False]
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["identity"]["scan"]["helicity_workload"] == "sum"
+
+
+def test_campaign_without_madgraph_line_group_skips_madgraph_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "reference-only"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--lines",
+        "reference-fft",
+    )
+    report = {"status": "running", "cells": {}}
+    monkeypatch.setattr(profiling, "_preflight", lambda _arguments: None)
+    monkeypatch.setattr(
+        profiling,
+        "_publish_master",
+        lambda *_args, **_kwargs: report,
+    )
+    monkeypatch.setattr(profiling, "_phase", lambda *_args: None)
+    monkeypatch.setattr(profiling, "_completed_cells", lambda _report: 0)
+    monkeypatch.setattr(
+        profiling, "_selected_pending_cells", lambda *_args, **_kwargs: 0
+    )
+    monkeypatch.setattr(
+        profiling, "_selected_master_complete", lambda *_args, **_kwargs: True
+    )
+    monkeypatch.setattr(
+        profiling,
+        "_freeze_madgraph_source",
+        lambda *_args: pytest.fail("MadGraph source should not be frozen"),
+    )
+    monkeypatch.setattr(
+        profiling,
+        "_run_madgraph",
+        lambda *_args: pytest.fail("MadGraph should not run"),
+    )
+    expected = output / "render" / "current" / "summary_plots_final.pdf"
+    monkeypatch.setattr(
+        profiling,
+        "render_snapshot",
+        lambda *_args, **_kwargs: expected,
+    )
+
+    assert profiling.run_campaign(arguments) == expected
 
 
 def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(

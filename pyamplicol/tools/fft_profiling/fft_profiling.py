@@ -9,6 +9,7 @@ plotting, and PDF assembly remain owned by the existing developer tools.
 Typical use::
 
     python tools/fft_profiling/fft_profiling.py --dry-run --cores 8
+    python tools/fft_profiling/fft_profiling.py --lines reference-fft recurrence
     python tools/fft_profiling/fft_profiling.py --cores 8 --candidate-cores 2
     python tools/fft_profiling/fft_profiling.py --compare-helicity-sums --cores 8
     python tools/fft_profiling/fft_profiling.py --resume --cores 16
@@ -177,6 +178,20 @@ SHARD_BY_NAME = {shard.name: shard for shard in SHARDS}
 MODE_OWNER = {
     (shard.family, mode): shard.name for shard in SHARDS for mode in shard.owned_modes
 }
+LINE_GROUPS = (
+    "reference-fft",
+    "amplicol",
+    "recurrence",
+    "otf",
+    "madgraph",
+)
+LINE_GROUP_SHARDS = {
+    "reference-fft": ("gg-reference",),
+    "amplicol": ("ddbar-amplicol", "gg-amplicol"),
+    "recurrence": ("gg-recurrence", "ddbar-recurrence"),
+    "otf": ("gg-otf", "ddbar-otf"),
+    "madgraph": (),
+}
 
 
 def _positive_finite(raw: str) -> float:
@@ -268,6 +283,19 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "final-state multiplicities to add to the resumable scan; unfinished "
             "prior requests are also recovered (default: 2 3 ... 9)"
+        ),
+    )
+    parser.add_argument(
+        "--lines",
+        nargs="+",
+        choices=LINE_GROUPS,
+        default=list(LINE_GROUPS),
+        metavar="LINE",
+        help=(
+            "plot line groups to add to the resumable scan: reference-fft, "
+            "amplicol, recurrence (direct and FFT), otf (direct and FFT), "
+            "and/or madgraph; repeated runs union line groups and "
+            "multiplicities in the same --output (default: all)"
         ),
     )
     parser.add_argument(
@@ -395,6 +423,62 @@ def _universe(arguments: argparse.Namespace) -> tuple[int, ...]:
 
 def _selection(arguments: argparse.Namespace) -> tuple[int, ...]:
     return tuple(sorted(set(arguments.multiplicities)))
+
+
+def _line_selection(arguments: argparse.Namespace) -> tuple[str, ...]:
+    selected = set(arguments.lines)
+    return tuple(line for line in LINE_GROUPS if line in selected)
+
+
+def _requested_line_groups(
+    arguments: argparse.Namespace, run_directory: Path
+) -> tuple[str, ...]:
+    path = _manifest_path(run_directory)
+    if not path.is_file():
+        return _line_selection(arguments)
+    manifest = _load_json(path, context="profiling manifest")
+    values = manifest.get("requested_line_groups", list(LINE_GROUPS))
+    if (
+        not isinstance(values, list)
+        or any(not isinstance(value, str) for value in values)
+        or not set(values).issubset(LINE_GROUPS)
+    ):
+        raise ProfilingError("profiling manifest has invalid line-group history")
+    selected = set(values)
+    return tuple(line for line in LINE_GROUPS if line in selected)
+
+
+def _madgraph_requested(arguments: argparse.Namespace, run_directory: Path) -> bool:
+    return "madgraph" in _requested_line_groups(arguments, run_directory)
+
+
+def _requested_shards(
+    arguments: argparse.Namespace, run_directory: Path
+) -> tuple[Shard, ...]:
+    names = {
+        name
+        for line in _requested_line_groups(arguments, run_directory)
+        for name in LINE_GROUP_SHARDS[line]
+    }
+    if _madgraph_requested(arguments, run_directory):
+        source_modes = (
+            publication.SUM_SOURCE_MODE
+            if arguments.compare_helicity_sums
+            else publication.SOURCE_MODE
+        )
+        names.update(
+            MODE_OWNER[(family, mode)] for family, mode in source_modes.items()
+        )
+    pending = list(names)
+    while pending:
+        shard = SHARD_BY_NAME[pending.pop()]
+        if shard.dependency is None:
+            continue
+        dependency_name, _ = shard.dependency
+        if dependency_name not in names:
+            names.add(dependency_name)
+            pending.append(dependency_name)
+    return tuple(shard for shard in SHARDS if shard.name in names)
 
 
 def _shard_study_root(run_directory: Path, shard: Shard) -> Path:
@@ -584,6 +668,8 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         )
     if len(set(arguments.multiplicities)) != len(arguments.multiplicities):
         raise ProfilingError("--multiplicities must not contain duplicates")
+    if len(set(arguments.lines)) != len(arguments.lines):
+        raise ProfilingError("--lines must not contain duplicates")
     # The authoritative parser owns run-id, n-range, mode, and resource checks.
     _master_arguments(arguments, _run_directory(arguments))
     if arguments.campaign_report is not None and not arguments.render:
@@ -728,8 +814,14 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
     run_directory = _run_directory(arguments)
     example_stage = run_directory / "render" / ".staging-EXAMPLE"
     pdf_filename = _pdf_filename(arguments)
+    requested_shard_names = {
+        shard.name for shard in _requested_shards(arguments, run_directory)
+    }
+    requested_lines = _requested_line_groups(arguments, run_directory)
+    madgraph_requested = _madgraph_requested(arguments, run_directory)
     commands = {
         shard.name: {
+            "scheduled": shard.name in requested_shard_names,
             "phase": shard.phase,
             "family": shard.family,
             "modes": list(shard.modes),
@@ -747,18 +839,22 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
             "report": str(_shard_report_path(run_directory, shard)),
             "argv": (
                 list(_child_command(arguments, run_directory, shard))
-                if _measurement_multiplicities(arguments, shard)
+                if shard.name in requested_shard_names
+                and _measurement_multiplicities(arguments, shard)
                 else None
             ),
             "shell_command": (
                 shlex.join(_child_command(arguments, run_directory, shard))
-                if _measurement_multiplicities(arguments, shard)
+                if shard.name in requested_shard_names
+                and _measurement_multiplicities(arguments, shard)
                 else None
             ),
         }
         for shard in SHARDS
     }
-    strict = _publication_profile(arguments)
+    strict = set(requested_lines) == set(LINE_GROUPS) and _publication_profile(
+        arguments
+    )
     render_commands = _render_commands(
         arguments,
         source_report=_master_report_path(run_directory),
@@ -774,6 +870,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
         "helicity_workload": _helicity_workload(arguments),
         "batch_size": arguments.batch_size,
         "requested_fill_multiplicities": list(_selection(arguments)),
+        "requested_line_groups": list(requested_lines),
         "identity": _identity(arguments, run_directory),
         "scheduler": {
             "total_core_budget": arguments.cores,
@@ -784,7 +881,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
         "shards": commands,
         "madgraph": {
             "phase": 4,
-            "applicable": True,
+            "applicable": madgraph_requested,
             "helicity_workload": _helicity_workload(arguments),
             "measurement_multiplicities": [
                 n
@@ -796,17 +893,23 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
                 for n in _requested_multiplicities(arguments, run_directory)
                 if n > madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
             ],
-            "dependency": "completed pyAmpliCol cells for the requested fill",
-            "not_applicable_reason": None,
+            "dependency": (
+                "completed pyAmpliCol cells for the requested fill"
+                if madgraph_requested
+                else None
+            ),
+            "not_applicable_reason": (
+                None if madgraph_requested else "madgraph line group not selected"
+            ),
             "report": str(_madgraph_overlay_path(run_directory)),
             "argv": (
                 list(_madgraph_command(arguments, run_directory))
-                if arguments.madgraph_root is not None
+                if madgraph_requested and arguments.madgraph_root is not None
                 else None
             ),
             "shell_command": (
                 shlex.join(_madgraph_command(arguments, run_directory))
-                if arguments.madgraph_root is not None
+                if madgraph_requested and arguments.madgraph_root is not None
                 else None
             ),
         },
@@ -836,8 +939,12 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
             f"legacy AmpliCol checkout: {_absolute(arguments.amplicol_root)}",
             (
                 f"MadGraph installation: {_absolute(arguments.madgraph_root)}"
-                if arguments.madgraph_root is not None
-                else "MadGraph installation: REQUIRED (--madgraph-root)"
+                if madgraph_requested and arguments.madgraph_root is not None
+                else (
+                    "MadGraph installation: REQUIRED (--madgraph-root)"
+                    if madgraph_requested
+                    else "MadGraph installation: not required by selected lines"
+                )
             ),
         ],
     }
@@ -910,6 +1017,21 @@ def _create_or_resume_manifest(
         cumulative = sorted(set(prior) | set(_selection(arguments)))
         if cumulative != prior:
             manifest["requested_multiplicities"] = cumulative
+        prior_lines = manifest.get("requested_line_groups", list(LINE_GROUPS))
+        if (
+            not isinstance(prior_lines, list)
+            or any(not isinstance(value, str) for value in prior_lines)
+            or not set(prior_lines).issubset(LINE_GROUPS)
+        ):
+            raise ProfilingError("profiling manifest has invalid line-group history")
+        cumulative_lines = [
+            line
+            for line in LINE_GROUPS
+            if line in set(prior_lines) | set(_line_selection(arguments))
+        ]
+        if cumulative_lines != prior_lines:
+            manifest["requested_line_groups"] = cumulative_lines
+        if cumulative != prior or cumulative_lines != prior_lines:
             _write_json_atomic(path, manifest)
         return manifest
     selected = list(_selection(arguments))
@@ -919,6 +1041,7 @@ def _create_or_resume_manifest(
         "identity": requested_identity,
         "initial_scheduler_core_budget": arguments.cores,
         "requested_multiplicities": selected,
+        "requested_line_groups": list(_line_selection(arguments)),
     }
     _write_json_atomic(path, manifest)
     return manifest
@@ -1160,18 +1283,19 @@ def _selected_master_complete(
     *,
     multiplicities: Sequence[int] | None = None,
 ) -> bool:
+    run_directory = _run_directory(arguments)
     return not str(report.get("status", "")).startswith("stopped") and all(
         study.selected_cells_complete(
             report,
-            family=family,
-            modes=publication.FAMILY_MODES[family],
+            family=shard.family,
+            modes=shard.owned_modes,
             multiplicities=(
                 _selection(arguments)
                 if multiplicities is None
                 else tuple(multiplicities)
             ),
         )
-        for family in ("gg", "ddbar")
+        for shard in _requested_shards(arguments, run_directory)
     )
 
 
@@ -1181,18 +1305,19 @@ def _selected_pending_cells(
     *,
     multiplicities: Sequence[int] | None = None,
 ) -> int:
+    run_directory = _run_directory(arguments)
     requested = (
         _selection(arguments) if multiplicities is None else tuple(multiplicities)
     )
     return sum(
         not study.selected_cells_complete(
             report,
-            family=family,
+            family=shard.family,
             modes=(mode,),
             multiplicities=(final_multiplicity,),
         )
-        for family in ("gg", "ddbar")
-        for mode in publication.FAMILY_MODES[family]
+        for shard in _requested_shards(arguments, run_directory)
+        for mode in shard.owned_modes
         for final_multiplicity in requested
     )
 
@@ -1939,29 +2064,34 @@ def _dependency_status(arguments: argparse.Namespace) -> dict[str, Any]:
 
 def _preflight(arguments: argparse.Namespace) -> None:
     status = _dependency_status(arguments)
+    run_directory = _run_directory(arguments)
+    requested_shards = _requested_shards(arguments, run_directory)
     for key in ("python", "cxx", "fortran"):
         if status[key]["available"] is not True:
             raise ProfilingError(
                 f"required {key} executable is unavailable: {status[key]['path']}"
             )
-    amplicol = status["amplicol_root"]
-    if amplicol["compatible"] is not True:
-        raise ProfilingError(f"invalid --amplicol-root: {amplicol['path']}")
-    if (
-        not arguments.compare_helicity_sums
-        and amplicol["probe_available"] is not True
-        and not arguments.build_amplicol
-    ):
-        raise ProfilingError(
-            "AmpliCol probe is missing; pass --build-amplicol to build it once: "
-            f"{amplicol['probe']}"
-        )
-    madgraph = status["madgraph_root"]
-    if madgraph["compatible"] is not True:
-        raise ProfilingError(
-            "MadGraph installation is missing or incompatible; pass "
-            "--madgraph-root PATH containing bin/mg5_aMC and VERSION"
-        )
+    needs_amplicol = any("amplicol" in shard.modes for shard in requested_shards)
+    if needs_amplicol:
+        amplicol = status["amplicol_root"]
+        if amplicol["compatible"] is not True:
+            raise ProfilingError(f"invalid --amplicol-root: {amplicol['path']}")
+        if (
+            not arguments.compare_helicity_sums
+            and amplicol["probe_available"] is not True
+            and not arguments.build_amplicol
+        ):
+            raise ProfilingError(
+                "AmpliCol probe is missing; pass --build-amplicol to build it once: "
+                f"{amplicol['probe']}"
+            )
+    if _madgraph_requested(arguments, run_directory):
+        madgraph = status["madgraph_root"]
+        if madgraph["compatible"] is not True:
+            raise ProfilingError(
+                "MadGraph installation is missing or incompatible; pass "
+                "--madgraph-root PATH containing bin/mg5_aMC and VERSION"
+            )
     _preflight_renderer(arguments)
 
 
@@ -2340,7 +2470,7 @@ def _phase(
 ) -> None:
     pending = []
     requested = _requested_multiplicities(arguments, run_directory)
-    for shard in SHARDS:
+    for shard in _requested_shards(arguments, run_directory):
         if shard.phase != phase_number:
             continue
         _seed_protocol_scope(arguments, run_directory, shard)
@@ -2582,6 +2712,8 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                 + _selected_pending_cells(arguments, initial, multiplicities=requested)
                 + (
                     2 * len(_requested_multiplicities(arguments, run_directory))
+                    if _madgraph_requested(arguments, run_directory)
+                    else 0
                 )
             )
             dashboard = Dashboard(
@@ -2604,16 +2736,17 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                 raise ProfilingError(
                     "pyAmpliCol master did not complete the requested fill"
                 )
-            _freeze_madgraph_source(arguments, run_directory)
-            if _canonical_madgraph_overlay_authenticated(
-                arguments, run_directory, terminal
-            ):
-                _diagnostic(
-                    "Reusing the authenticated terminal MadGraph overlay.",
-                    colorama.Fore.CYAN,
-                )
-            else:
-                _run_madgraph(arguments, run_directory, dashboard)
+            if _madgraph_requested(arguments, run_directory):
+                _freeze_madgraph_source(arguments, run_directory)
+                if _canonical_madgraph_overlay_authenticated(
+                    arguments, run_directory, terminal
+                ):
+                    _diagnostic(
+                        "Reusing the authenticated terminal MadGraph overlay.",
+                        colorama.Fore.CYAN,
+                    )
+                else:
+                    _run_madgraph(arguments, run_directory, dashboard)
             final_count = _completed_cells(terminal) + _madgraph_completed(
                 arguments, run_directory
             )
@@ -2622,7 +2755,10 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
             message = (
                 "Completed profiling scan"
                 if terminal.get("status") in TERMINAL_STATUSES
-                else "Completed requested fill; campaign snapshot remains in progress"
+                else (
+                    "Completed requested line groups and multiplicities; "
+                    "campaign snapshot remains resumable"
+                )
             )
             _diagnostic(f"{message}: {pdf}", colorama.Fore.GREEN)
             return pdf
@@ -2671,6 +2807,11 @@ def status_payload(arguments: argparse.Namespace) -> dict[str, Any]:
         "helicity_workload": _helicity_workload(arguments),
         "batch_size": arguments.batch_size,
         "output": str(run_directory),
+        "requested_line_groups": (
+            list(_requested_line_groups(arguments, run_directory))
+            if manifest is not None
+            else list(_line_selection(arguments))
+        ),
         "manifest": str(manifest_path),
         "manifest_available": manifest is not None,
         "configured_tools": (
@@ -2691,7 +2832,11 @@ def status_payload(arguments: argparse.Namespace) -> dict[str, Any]:
         "dependencies": _dependency_status(arguments),
         "madgraph_overlay": {
             "path": str(_madgraph_overlay_path(run_directory)),
-            "applicable": True,
+            "applicable": (
+                _madgraph_requested(arguments, run_directory)
+                if manifest is not None
+                else "madgraph" in _line_selection(arguments)
+            ),
             "helicity_workload": _helicity_workload(arguments),
             "available": (
                 _matching_madgraph_overlay(arguments, run_directory) is not None

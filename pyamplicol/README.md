@@ -35,10 +35,11 @@ python -m pip install pyamplicol
 The binary wheels include the Rust runtime and native SDK; wheel users do not
 need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 
-Build the tagged 0.1.4 source snapshot with:
+After the 0.2.0 release candidate is validated and tagged, build its source
+snapshot with:
 
 ```console
-git clone --branch v0.1.4 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v0.2.0 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -208,6 +209,7 @@ pyAmpliCol profiling commands and schedules independent measurement children:
 python -m pip install -e '.[fft-profiling]'
 python tools/fft_profiling/fft_profiling.py \
   --multiplicities 2 3 4 5 \
+  --lines reference-fft amplicol recurrence otf madgraph \
   --cores 8 --candidate-cores 1 \
   --memory-limit-gib 30 --time-limit-seconds 3600 \
   --amplicol-root /path/to/AmpliCol \
@@ -215,8 +217,12 @@ python tools/fft_profiling/fft_profiling.py \
 ```
 
 `--multiplicities` adds the selected values to the persistent fill history and
-defaults to `2 ... 9`. Repeating a command resumes unfinished values already in
-that history and skips completed cells;
+defaults to `2 ... 9`. `--lines` similarly adds any combination of
+`reference-fft`, `amplicol`, `recurrence`, `otf`, and `madgraph`; recurrence
+and OTF each schedule their direct and FFT companion curves together so they
+reuse the same generation lane. Dependencies are selected automatically.
+Repeating a command against the same output unions both selections, resumes
+unfinished cells, and skips completed cells;
 `--resume` is an explicit alias for that default. `--cores` is the total
 scheduler budget, while `--candidate-cores` is one candidate child's core
 claim and evaluator setting. The memory and time limits are strict per-child
