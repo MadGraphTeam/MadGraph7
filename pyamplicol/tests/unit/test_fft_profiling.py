@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import argparse
 import builtins
+import io
 import json
+import os
 import sys
 import tomllib
 from pathlib import Path
@@ -197,9 +200,7 @@ def test_workload_defaults_are_separate_and_explicit_output_is_exact(
     fixed = _arguments()
     summed = _arguments("--compare-helicity-sums")
     explicit_path = tmp_path / "chosen"
-    explicit = _arguments(
-        "--compare-helicity-sums", "--output", str(explicit_path)
-    )
+    explicit = _arguments("--compare-helicity-sums", "--output", str(explicit_path))
 
     assert profiling._run_directory(fixed) == profiling.DEFAULT_FIXED_OUTPUT
     assert profiling._run_directory(summed) == profiling.DEFAULT_SUM_OUTPUT
@@ -207,10 +208,7 @@ def test_workload_defaults_are_separate_and_explicit_output_is_exact(
     assert fixed.batch_size == 128
     assert summed.batch_size == 128
     assert profiling._pdf_filename(fixed) == "summary_plots_final.pdf"
-    assert (
-        profiling._pdf_filename(summed)
-        == "summary_plots_final_helicity_sum.pdf"
-    )
+    assert profiling._pdf_filename(summed) == "summary_plots_final_helicity_sum.pdf"
 
 
 def test_dashboard_headline_displays_workload_batch_cores_and_rss(
@@ -329,10 +327,9 @@ def test_otf_protocol_scope_keeps_fixed_n6_and_skips_n7_n8_n9() -> None:
     assert changed is True
     for mode in shard.owned_modes:
         assert "6" not in report["cells"]["gg"][mode]
-        assert {
-            report["cells"]["gg"][mode][str(n)]["status"]
-            for n in (7, 8, 9)
-        } == {"skipped"}
+        assert {report["cells"]["gg"][mode][str(n)]["status"] for n in (7, 8, 9)} == {
+            "skipped"
+        }
     assert not profiling._selected_shard_complete(arguments, shard, report)
 
     plan = profiling.dry_run_plan(arguments)
@@ -341,7 +338,7 @@ def test_otf_protocol_scope_keeps_fixed_n6_and_skips_n7_n8_n9() -> None:
     assert plan["shards"]["gg-otf"]["argv"] is not None
 
 
-def test_composer_refuses_terminal_status_after_out_of_order_frontier() -> None:
+def test_composer_retains_measured_cells_above_out_of_order_frontier() -> None:
     arguments = study._parser().parse_args(
         (
             "--multiplicity",
@@ -367,8 +364,273 @@ def test_composer_refuses_terminal_status_after_out_of_order_frontier() -> None:
         {"gg": {"reference-fft": {"2": failed, "8": measured}}},
     )
 
-    assert report["status"] == "stopped-protocol-investigation"
+    assert report["status"] == "complete-with-failures"
     assert report["cells"]["gg"]["reference-fft"]["8"] == measured
+    assert report["resource_frontier_inversions"] == [["gg", "reference-fft", 2, 8]]
+
+
+def test_dry_run_exposes_per_multiplicity_workers(tmp_path: Path) -> None:
+    arguments = _arguments(
+        "--dry-run",
+        "--output",
+        str(tmp_path / "run"),
+        "--multiplicities",
+        "2",
+        "3",
+        "4",
+        "--lines",
+        "reference-fft",
+        "--cores",
+        "3",
+    )
+
+    plan = profiling.dry_run_plan(arguments)
+    reference = plan["shards"]["gg-reference"]
+    jobs = reference["jobs"]
+
+    assert plan["scheduler"]["parallelism"] == (
+        "weighted dependency-aware shard-multiplicity workers"
+    )
+    assert [job["n"] for job in jobs] == [2, 3, 4]
+    assert len({job["study_root"] for job in jobs}) == 3
+    assert reference["argv"] == jobs[0]["argv"]
+    assert [
+        job["argv"][index + 1]
+        for job in jobs
+        for index, value in enumerate(job["argv"])
+        if value == "--fill-multiplicity"
+    ] == ["2", "3", "4"]
+
+
+def test_isolated_shard_reports_merge_and_retain_started_higher_measurement(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "3",
+        "--lines",
+        "reference-fft",
+    )
+    profiling._create_or_resume_manifest(arguments, output)
+    shard = profiling.SHARD_BY_NAME["gg-reference"]
+    failed = study._cell_base("gg", study.MODE_BY_KEY["reference-fft"], 2) | {
+        "status": "failed",
+        "failure_category": "memory-limit",
+        "failure_reason": "memory cap",
+        "censors_higher_multiplicities": True,
+    }
+    measured = study._cell_base("gg", study.MODE_BY_KEY["reference-fft"], 3) | {
+        "status": "measured",
+        "generation_seconds": 1.0,
+        "warm_seconds_per_point": 1.0e-6,
+        "max_rss_kib": 1024,
+    }
+    for final_multiplicity, cell in ((2, failed), (3, measured)):
+        report = study.compose_report(
+            profiling._shard_arguments(arguments, output, shard, final_multiplicity),
+            {"gg": {"reference-fft": {str(final_multiplicity): cell}}},
+        )
+        profiling._write_json_atomic(
+            profiling._shard_report_path(output, shard, final_multiplicity),
+            report,
+        )
+
+    report = profiling._load_shard_report(arguments, output, shard, required=True)
+
+    assert report["status"] == "running"
+    curve = report["cells"]["gg"]["reference-fft"]
+    assert curve["2"]["status"] == "failed"
+    assert curve["3"] == measured
+    assert study.resource_frontier_inversions(report) == (
+        ("gg", "reference-fft", 2, 3),
+    )
+
+
+def test_isolated_shard_reports_preserve_prior_measurement_over_later_failure(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "9",
+        "--lines",
+        "amplicol",
+    )
+    profiling._create_or_resume_manifest(arguments, output)
+    shard = profiling.SHARD_BY_NAME["ddbar-amplicol"]
+    measured = study._cell_base("ddbar", study.MODE_BY_KEY["amplicol"], 9) | {
+        "status": "measured",
+        "generation_seconds": 1.0,
+        "warm_seconds_per_point": 1.0e-6,
+        "max_rss_kib": 1024,
+    }
+    failed = study._cell_base("ddbar", study.MODE_BY_KEY["amplicol"], 9) | {
+        "status": "failed",
+        "failure_category": "legacy-amplicol-structural-limit",
+        "failure_reason": "legacy crash",
+        "censors_higher_multiplicities": True,
+    }
+    aggregate = study.compose_report(
+        profiling._shard_arguments(arguments, output, shard),
+        {"ddbar": {"amplicol": {"9": measured}}},
+    )
+    retry = study.compose_report(
+        profiling._shard_arguments(arguments, output, shard, 9),
+        {"ddbar": {"amplicol": {"9": failed}}},
+    )
+    profiling._write_json_atomic(profiling._shard_report_path(output, shard), aggregate)
+    profiling._write_json_atomic(profiling._shard_report_path(output, shard, 9), retry)
+
+    report = profiling._load_shard_report(arguments, output, shard, required=True)
+
+    assert report["cells"]["ddbar"]["amplicol"]["9"] == measured
+
+
+def test_phase_refresh_does_not_queue_higher_work_after_lower_resource_failure(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "3",
+        "4",
+        "--lines",
+        "reference-fft",
+    )
+    profiling._create_or_resume_manifest(arguments, output)
+    shard = profiling.SHARD_BY_NAME["gg-reference"]
+    failed = study._cell_base("gg", study.MODE_BY_KEY["reference-fft"], 2) | {
+        "status": "failed",
+        "failure_category": "runtime-time-limit",
+        "failure_reason": "runtime cap",
+        "censors_higher_multiplicities": True,
+    }
+    report = study.compose_report(
+        profiling._shard_arguments(arguments, output, shard, 2),
+        {"gg": {"reference-fft": {"2": failed}}},
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, shard, 2),
+        report,
+    )
+
+    pending = profiling._refresh_phase_pending(
+        arguments,
+        output,
+        profiling._phase_work_items(arguments, output, 1),
+        active=(),
+    )
+    merged = profiling._load_shard_report(arguments, output, shard, required=True)
+
+    assert pending == []
+    assert {
+        n: merged["cells"]["gg"]["reference-fft"][str(n)]["status"] for n in (2, 3, 4)
+    } == {2: "failed", 3: "skipped", 4: "skipped"}
+    assert profiling._shard_report_path(output, shard).is_file()
+
+
+def test_phase_launches_independent_multiplicity_workers_when_cores_allow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "run"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "3",
+        "4",
+        "--lines",
+        "reference-fft",
+        "--cores",
+        "3",
+        "--poll-seconds",
+        "0.001",
+    )
+    profiling._create_or_resume_manifest(arguments, output)
+    shard = profiling.SHARD_BY_NAME["gg-reference"]
+    launched: list[int] = []
+    active_counts: list[int] = []
+
+    class FakeProcess:
+        def __init__(self, work: profiling.ShardWork) -> None:
+            self.pid = 12345 + work.final_multiplicity
+            self.returncode: int | None = None
+            self.work = work
+
+        def poll(self) -> int | None:
+            if self.returncode is None:
+                cell = study._cell_base(
+                    self.work.shard.family,
+                    study.MODE_BY_KEY["reference-fft"],
+                    self.work.final_multiplicity,
+                ) | {"status": "measured"}
+                report = study.compose_report(
+                    profiling._shard_arguments(
+                        arguments,
+                        output,
+                        self.work.shard,
+                        self.work.final_multiplicity,
+                    ),
+                    {
+                        self.work.shard.family: {
+                            "reference-fft": {str(self.work.final_multiplicity): cell}
+                        }
+                    },
+                )
+                profiling._write_json_atomic(
+                    profiling._shard_report_path(
+                        output,
+                        self.work.shard,
+                        self.work.final_multiplicity,
+                    ),
+                    report,
+                )
+                self.returncode = 0
+            return self.returncode
+
+    class FakeDashboard:
+        def update(self, _completed, *, phase, active) -> None:
+            assert phase == "phase 1"
+            active_counts.append(len(active))
+
+    def launch(_arguments, _output, work: profiling.ShardWork):
+        launched.append(work.final_multiplicity)
+        return profiling.ActiveJob(
+            shard=work.shard,
+            final_multiplicity=work.final_multiplicity,
+            command=(),
+            process=FakeProcess(work),
+            stdout=io.BytesIO(),
+            stderr=io.BytesIO(),
+            sampler=object(),
+            claimed_cores=profiling._claimed_cores(arguments, work),
+            detail="",
+        )
+
+    monkeypatch.setattr(profiling, "_launch_shard", launch)
+
+    profiling._phase(arguments, output, 1, FakeDashboard())
+
+    assert launched[:3] == [2, 3, 4]
+    assert max(active_counts) == 3
+    merged = profiling._load_shard_report(arguments, output, shard, required=True)
+    assert study.selected_cells_complete(
+        merged,
+        family="gg",
+        modes=("reference-fft",),
+        multiplicities=(2, 3, 4),
+    )
 
 
 def test_candidate_core_setting_is_passed_to_generation() -> None:
@@ -395,11 +657,13 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
 
     later = _arguments("--output", str(output), "--multiplicities", "4", "5")
     expanded = profiling._create_or_resume_manifest(later, output)
-    assert expanded["requested_multiplicities"] == [2, 3, 4, 5]
+    assert expanded["requested_multiplicities"] == [4, 5]
+    assert expanded["active_multiplicities"] == [4, 5]
+    assert expanded["fill_history_multiplicities"] == [2, 3, 4, 5]
     shard_arguments = profiling._shard_arguments(
         later, output, profiling.SHARD_BY_NAME["ddbar-recurrence"]
     )
-    assert shard_arguments.fill_multiplicities == [2, 3, 4, 5]
+    assert shard_arguments.fill_multiplicities == [4, 5]
 
     changed = _arguments(
         "--output",
@@ -445,7 +709,47 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
         profiling._create_or_resume_manifest(arguments, output)
 
 
-def test_line_groups_accumulate_and_schedule_only_requested_work(
+def test_existing_manifest_history_does_not_expand_current_multiplicity_request(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    broad = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "--lines",
+        "reference-fft",
+    )
+    profiling._create_or_resume_manifest(broad, output)
+    lower = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "3",
+        "--lines",
+        "reference-fft",
+    )
+
+    manifest = profiling._create_or_resume_manifest(lower, output)
+    work = profiling._phase_work_items(lower, output, 1)
+    plan = profiling.dry_run_plan(lower)
+
+    assert manifest["requested_multiplicities"] == [2, 3]
+    assert manifest["fill_history_multiplicities"] == list(range(2, 10))
+    assert [item.final_multiplicity for item in work] == [2, 3]
+    assert [job["n"] for job in plan["shards"]["gg-reference"]["jobs"]] == [2, 3]
+
+
+def test_line_groups_track_history_but_schedule_only_requested_work(
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "line-groups"
@@ -473,8 +777,10 @@ def test_line_groups_accumulate_and_schedule_only_requested_work(
         "pyamplicol-otf",
     )
     expanded = profiling._create_or_resume_manifest(otf, output)
-    assert expanded["requested_multiplicities"] == [2, 3]
-    assert expanded["requested_line_groups"] == [
+    assert expanded["requested_multiplicities"] == [3]
+    assert expanded["requested_line_groups"] == ["pyamplicol-otf"]
+    assert expanded["fill_history_multiplicities"] == [2, 3]
+    assert expanded["line_group_history"] == [
         "reference-fft",
         "pyamplicol-otf",
     ]
@@ -493,8 +799,10 @@ def test_line_groups_accumulate_and_schedule_only_requested_work(
         "madgraph",
     )
     final = profiling._create_or_resume_manifest(with_madgraph, output)
-    assert final["requested_multiplicities"] == [2, 3, 4]
-    assert final["requested_line_groups"] == [
+    assert final["requested_multiplicities"] == [4]
+    assert final["requested_line_groups"] == ["madgraph"]
+    assert final["fill_history_multiplicities"] == [2, 3, 4]
+    assert final["line_group_history"] == [
         "reference-fft",
         "pyamplicol-otf",
         "madgraph",
@@ -746,9 +1054,7 @@ def test_default_campaign_render_atomically_publishes_canonical_pdf(
             plot_root.mkdir(parents=True)
             for family in ("gg", "ddbar"):
                 for metric in ("generation", "warm-runtime", "rss"):
-                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(
-                        b"png"
-                    )
+                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
             Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
 
@@ -824,16 +1130,12 @@ def test_bare_render_compares_existing_primary_with_isolated_composite(
         command = tuple(command)
         if Path(command[1]) == profiling.PLOT_TOOL:
             frozen = json.loads(Path(command[2]).read_text(encoding="utf-8"))
-            rendered_cell.update(
-                frozen["cells"]["ddbar"]["recurrence-direct"]["2"]
-            )
+            rendered_cell.update(frozen["cells"]["ddbar"]["recurrence-direct"]["2"])
             plot_root = Path(command[3])
             plot_root.mkdir(parents=True)
             for family in ("gg", "ddbar"):
                 for metric in ("generation", "warm-runtime", "rss"):
-                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(
-                        b"png"
-                    )
+                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
             Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
 
@@ -969,9 +1271,7 @@ def test_summed_bare_render_preserves_n6_extension_and_n2_n5_madgraph(
             plot_root.mkdir(parents=True)
             for family in ("gg", "ddbar"):
                 for metric in ("generation", "warm-runtime", "rss"):
-                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(
-                        b"png"
-                    )
+                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
             Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
 
@@ -1071,9 +1371,7 @@ def test_fixed_bare_render_combines_otf_frontier_with_valid_madgraph_overlay(
                     "warm_fixed_helicity": True,
                     "warm_helicity_sum": False,
                     "maximum_measured_multiplicity": 6,
-                    "higher_multiplicity_policy": (
-                        "not-applicable-protocol-scope"
-                    ),
+                    "higher_multiplicity_policy": ("not-applicable-protocol-scope"),
                 },
                 "runtime_series": overlay_series,
             }
@@ -1105,9 +1403,7 @@ def test_fixed_bare_render_combines_otf_frontier_with_valid_madgraph_overlay(
             plot_root.mkdir(parents=True)
             for family in ("gg", "ddbar"):
                 for metric in ("generation", "warm-runtime", "rss"):
-                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(
-                        b"png"
-                    )
+                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
             Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
 
@@ -1117,12 +1413,8 @@ def test_fixed_bare_render_combines_otf_frontier_with_valid_madgraph_overlay(
     arguments = _arguments("--render")
     requested = set(profiling._selection(arguments))
 
-    assert profiling._render_inventory(
-        primary_report, requested=requested
-    )[0] == 70
-    assert profiling._render_inventory(
-        composite_report, requested=requested
-    )[0] == 65
+    assert profiling._render_inventory(primary_report, requested=requested)[0] == 70
+    assert profiling._render_inventory(composite_report, requested=requested)[0] == 65
     assert profiling._implicit_render_selection(
         arguments, output
     ) == profiling.RenderSelection(
@@ -1136,9 +1428,7 @@ def test_fixed_bare_render_combines_otf_frontier_with_valid_madgraph_overlay(
     measured_madgraph = {
         (family, int(final_multiplicity))
         for family, family_cells in rendered["runtime_series"].items()
-        for final_multiplicity, cell in family_cells[
-            "madgraph-standalone"
-        ].items()
+        for final_multiplicity, cell in family_cells["madgraph-standalone"].items()
         if cell["status"] == "measured"
     }
     expected_madgraph = {
@@ -1317,9 +1607,10 @@ def test_renderer_requirements_match_the_project_extra() -> None:
     with (ROOT / "pyproject.toml").open("rb") as stream:
         project = tomllib.load(stream)
 
-    assert tuple(
-        project["project"]["optional-dependencies"]["fft-profiling"]
-    ) == profiling.RENDER_REQUIREMENTS
+    assert (
+        tuple(project["project"]["optional-dependencies"]["fft-profiling"])
+        == profiling.RENDER_REQUIREMENTS
+    )
 
 
 def test_renderer_preflight_rejects_selected_python_version_mismatch(
@@ -1336,6 +1627,123 @@ def test_renderer_preflight_rejects_selected_python_version_mismatch(
 
     with pytest.raises(profiling.ProfilingError, match="profiling driver uses"):
         profiling._preflight_renderer(_arguments())
+
+
+def _available_preflight_status(tmp_path: Path) -> dict[str, object]:
+    return {
+        "python": {"available": True, "path": sys.executable},
+        "cxx": {"available": True, "path": "c++"},
+        "fortran": {"available": True, "path": "gfortran"},
+        "amplicol_root": {
+            "compatible": True,
+            "path": str(tmp_path / "amplicol"),
+            "probe_available": True,
+            "probe": str(tmp_path / "amplicol" / "amplicol_color_probe"),
+        },
+        "reference_fft_root": {
+            "compatible": True,
+            "path": str(tmp_path / "reference-fft"),
+        },
+        "madgraph_root": {
+            "compatible": True,
+            "path": str(tmp_path / "mg5"),
+        },
+    }
+
+
+def test_preflight_skips_pyamplicol_runtime_for_reference_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arguments = _arguments(
+        "--output",
+        str(tmp_path / "run"),
+        "--lines",
+        "reference-fft",
+    )
+    monkeypatch.setattr(
+        profiling,
+        "_dependency_status",
+        lambda _arguments: _available_preflight_status(tmp_path),
+    )
+    monkeypatch.setattr(profiling, "_preflight_renderer", lambda _arguments: None)
+    monkeypatch.setattr(
+        profiling,
+        "_preflight_pyamplicol_runtime",
+        lambda _arguments: pytest.fail(
+            "reference-only scan should not import pyAmpliCol"
+        ),
+    )
+
+    profiling._preflight(arguments)
+
+
+def test_preflight_checks_pyamplicol_runtime_for_ddbar_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arguments = _arguments(
+        "--output",
+        str(tmp_path / "run"),
+        "--lines",
+        "amplicol",
+    )
+    calls: list[argparse.Namespace] = []
+    monkeypatch.setattr(
+        profiling,
+        "_dependency_status",
+        lambda _arguments: _available_preflight_status(tmp_path),
+    )
+    monkeypatch.setattr(profiling, "_preflight_renderer", lambda _arguments: None)
+    monkeypatch.setattr(
+        profiling,
+        "_preflight_pyamplicol_runtime",
+        lambda runtime_arguments: calls.append(runtime_arguments),
+    )
+
+    profiling._preflight(arguments)
+
+    assert calls == [arguments]
+
+
+def test_pyamplicol_preflight_uses_checkout_source_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTHONPATH", "/already/configured")
+    arguments = _arguments()
+
+    environment = profiling._python_source_environment(arguments)
+
+    assert environment["PYTHONPATH"].split(os.pathsep)[:2] == [
+        str(ROOT / "src"),
+        "/already/configured",
+    ]
+
+
+def test_pyamplicol_preflight_reports_import_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_environment: dict[str, str] = {}
+
+    def fake_run(*_args, **kwargs):
+        captured_environment.update(kwargs["env"])
+        return type(
+            "Result",
+            (),
+            {
+                "returncode": 1,
+                "stdout": "",
+                "stderr": "candidate wheel source checkout is unavailable",
+            },
+        )()
+
+    monkeypatch.setattr(profiling.subprocess, "run", fake_run)
+
+    with pytest.raises(profiling.ProfilingError) as raised:
+        profiling._preflight_pyamplicol_runtime(_arguments())
+
+    message = str(raised.value)
+    assert "just dev-install" in message
+    assert "candidate wheel source checkout is unavailable" in message
+    assert captured_environment["PYTHONPATH"].split(os.pathsep)[0] == str(ROOT / "src")
 
 
 def test_executable_normalization_preserves_virtualenv_symlink(
@@ -1394,9 +1802,7 @@ def test_summed_overlay_replaces_stale_madgraph_omission_note(
         json.dumps(
             {
                 "kind": profiling.madgraph.KIND,
-                "host": {
-                    key: current[key] for key in ("system", "machine", "python")
-                },
+                "host": {key: current[key] for key in ("system", "machine", "python")},
                 "policy": {
                     "helicity_workload": "sum",
                     "warm_fixed_helicity": False,
@@ -1427,7 +1833,7 @@ def test_summed_overlay_replaces_stale_madgraph_omission_note(
     assert notes == [
         profiling.LEGACY_MADGRAPH_NOTE,
         "MadGraph standalone uses generated SMATRIX with USERHEL=-1; warmed "
-        "GOODHEL pruning remains enabled."
+        "GOODHEL pruning remains enabled.",
     ]
 
 
@@ -1565,9 +1971,7 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
                 "policy": {
                     "final_state_multiplicities": [2, 3],
                     "maximum_measured_multiplicity": 6,
-                    "higher_multiplicity_policy": (
-                        "not-applicable-protocol-scope"
-                    ),
+                    "higher_multiplicity_policy": ("not-applicable-protocol-scope"),
                 },
                 "runtime_series": {},
             }
@@ -1596,9 +2000,7 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
     overlay.write_text(json.dumps(legacy_payload), encoding="utf-8")
     assert profiling._matching_madgraph_overlay(arguments, output) is None
     assert (
-        profiling._matching_madgraph_overlay(
-            arguments, output, require_exact=False
-        )
+        profiling._matching_madgraph_overlay(arguments, output, require_exact=False)
         == overlay
     )
     assert profiling._madgraph_render_source(arguments, output) == overlay
@@ -1606,9 +2008,7 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
     legacy_payload["host"]["machine"] = "foreign-machine"
     overlay.write_text(json.dumps(legacy_payload), encoding="utf-8")
     assert (
-        profiling._matching_madgraph_overlay(
-            arguments, output, require_exact=False
-        )
+        profiling._matching_madgraph_overlay(arguments, output, require_exact=False)
         is None
     )
 
@@ -1617,8 +2017,6 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
     } | {"node_sha256": "malformed-modern-fingerprint"}
     overlay.write_text(json.dumps(legacy_payload), encoding="utf-8")
     assert (
-        profiling._matching_madgraph_overlay(
-            arguments, output, require_exact=False
-        )
+        profiling._matching_madgraph_overlay(arguments, output, require_exact=False)
         is None
     )

@@ -572,6 +572,8 @@ def _failure_detail(report: Mapping[str, Any], cell: Mapping[str, Any]) -> str:
     reason_text = reason if isinstance(reason, str) else ""
     if category == "memory-limit":
         return "memory watchdog limit"
+    if category == "legacy-amplicol-structural-limit":
+        return "legacy AmpliCol structural limit"
     if category in {"runtime-time-limit", "runtime-timeout"}:
         return f"{_timeout_label(report, 'runtime_timeout_seconds')} runtime limit"
     if category == "setup-or-runtime-time-limit":

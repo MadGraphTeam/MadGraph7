@@ -727,8 +727,11 @@ def _write_watched_command_record(
     timed_out: bool,
     returncode: int,
     watchdog_report: Path | None = None,
+    command: list[str] | None = None,
+    stdout: str | None = None,
+    stderr: str | None = None,
 ) -> None:
-    command = ["amplicol_color_library_probe", "1"]
+    command = command or ["amplicol_color_library_probe", "1"]
     watchdog_command = [
         sys.executable,
         str(scaling.performance.WATCHDOG),
@@ -745,11 +748,15 @@ def _write_watched_command_record(
                 "watchdog_command": watchdog_command,
                 "elapsed_seconds": 0.75,
                 "returncode": returncode,
-                "stdout": (
+                "stdout": stdout
+                if stdout is not None
+                else (
                     "Could not map colour row to generated-library integral 2\n"
                     "row permutation: 3 1 2 4\n"
                 ),
-                "stderr": "timing metadata: runtime was below its deadline",
+                "stderr": stderr
+                if stderr is not None
+                else "timing metadata: runtime was below its deadline",
                 "timed_out": timed_out,
                 "timeout_cleanup": "not-required",
                 "watchdog_report": (
@@ -790,6 +797,87 @@ def test_structural_command_failure_is_not_misclassified_as_a_resource_limit(
     assert cell["censors_higher_multiplicities"] is False
 
 
+def test_legacy_amplicol_colour_init_segfault_censors_the_curve(
+    tmp_path: Path,
+) -> None:
+    command_log = tmp_path / "amplicol" / "ddbar" / "n9" / "probe.json"
+    _write_watched_command_record(
+        command_log,
+        command=["amplicol_color_probe", "1000000000", "2", "1", "full"],
+        timed_out=False,
+        returncode=245,
+        stdout="Initialising amplitude for:\n",
+        stderr=(
+            "Program received signal SIGSEGV: Segmentation fault - invalid memory "
+            "reference.\n"
+            "#1 0x000000 in __amplitude_qcd_mod_MOD_init_col\n"
+        ),
+    )
+    base = scaling._cell_base("ddbar", scaling.MODE_BY_KEY["amplicol"], 9)
+    cell = scaling._failure_cell(
+        base,
+        scaling._CellCommandError(
+            "AmpliCol setup/runtime probe failed: "
+            f"command failed with status 245; see {command_log}",
+            timeout_category="setup-or-runtime-time-limit",
+        ),
+        tmp_path,
+    )
+
+    assert (
+        cell["failure_category"] == scaling.LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY
+    )
+    assert (
+        cell["failure_reason_short"]
+        == "legacy AmpliCol structural colour-init limit"
+    )
+    assert cell["censors_higher_multiplicities"] is True
+
+
+def test_loaded_legacy_amplicol_colour_init_segfault_report_is_normalized(
+    tmp_path: Path,
+) -> None:
+    run_root = tmp_path / "historical-aggregate"
+    command_log = tmp_path / "isolated" / "cells" / "n9" / "probe.json"
+    _write_watched_command_record(
+        command_log,
+        command=["amplicol_color_probe", "1000000000", "2", "1", "full"],
+        timed_out=False,
+        returncode=245,
+        stdout="Initialising amplitude for:\n",
+        stderr=(
+            "Program received signal SIGSEGV: Segmentation fault - invalid memory "
+            "reference.\n"
+            "#1 0x000000 in __amplitude_qcd_mod_MOD_init_col\n"
+        ),
+    )
+    report: dict[str, object] = {
+        "cells": {
+            "ddbar": {
+                "amplicol": {
+                    "9": {
+                        "status": "failed",
+                        "censors_higher_multiplicities": False,
+                        "failure_category": "error",
+                        "failure_reason": (
+                            "AmpliCol setup/runtime probe failed: "
+                            f"command failed with status 245; see {command_log}"
+                        ),
+                    }
+                }
+            }
+        }
+    }
+
+    assert scaling.normalize_loaded_failure_cells(report, run_root) is True
+
+    cell = report["cells"]["ddbar"]["amplicol"]["9"]  # type: ignore[index]
+    assert (
+        cell["failure_category"] == scaling.LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY
+    )
+    assert cell["censors_higher_multiplicities"] is True
+
+
 def test_typed_watched_command_timeout_censors_the_curve(tmp_path: Path) -> None:
     command_log = tmp_path / "commands" / "probe.json"
     _write_watched_command_record(
@@ -809,6 +897,99 @@ def test_typed_watched_command_timeout_censors_the_curve(tmp_path: Path) -> None
 
     assert cell["failure_category"] == "runtime-time-limit"
     assert cell["censors_higher_multiplicities"] is True
+
+
+def test_candidate_generation_retries_symbolica_single_instance_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    arguments = scaling._parser().parse_args(
+        ("--generation-timeout", "60", "--memory-limit-gib", "100")
+    )
+    mode = scaling.MODE_BY_KEY["recurrence-direct"]
+    environment = {
+        scaling.SYMBOLICA_GENERATION_LOCK_ENV: str(tmp_path / "symbolica.lock")
+    }
+    calls: list[tuple[str, ...]] = []
+    sleeps: list[float] = []
+
+    def fake_run_watched(
+        command: tuple[str, ...], **kwargs: object
+    ) -> scaling.performance.WatchedCompletedProcess:
+        calls.append(tuple(command))
+        log_path = Path(str(kwargs["log_path"]))
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if len(calls) == 1:
+            log_path.write_text(
+                json.dumps(
+                    {
+                        "command": list(command),
+                        "elapsed_seconds": 1.0,
+                        "returncode": 134,
+                        "stdout": scaling.SYMBOLICA_LICENSE_BUSY_FRAGMENT,
+                        "stderr": "",
+                        "timed_out": False,
+                        "timeout_cleanup": "not-required",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            raise scaling.performance.AcceptanceError("generation failed")
+        log_path.write_text(
+            json.dumps(
+                {
+                    "command": list(command),
+                    "elapsed_seconds": 1.0,
+                    "returncode": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_cleanup": "not-required",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return scaling.performance.WatchedCompletedProcess(
+            command,
+            0,
+            "",
+            "",
+            elapsed_seconds=1.0,
+            log_write_seconds=0.0,
+            timed_out=False,
+            timeout_cleanup="not-required",
+        )
+
+    monkeypatch.setattr(scaling.performance, "_run_watched", fake_run_watched)
+    monkeypatch.setattr(scaling.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    result = scaling._run_candidate_generation(
+        arguments=arguments,
+        family="ddbar",
+        final_multiplicity=2,
+        mode=mode,
+        artifact=tmp_path / "cell" / "artifact",
+        cell_root=tmp_path / "cell",
+        environment=environment,
+    )
+
+    assert result.returncode == 0
+    assert len(calls) == 2
+    assert sleeps == [scaling.SYMBOLICA_BUSY_RETRY_SECONDS]
+
+
+def test_symbolica_generation_lock_is_skipped_for_explicit_license() -> None:
+    assert (
+        scaling._symbolica_generation_lock_path({"SYMBOLICA_LICENSE": "configured"})
+        is None
+    )
+    assert (
+        scaling._symbolica_generation_lock_path(
+            {"SYMBOLICA_LICENSE": "configured"}, force=True
+        )
+        is not None
+    )
 
 
 @pytest.mark.parametrize("with_report", [False, True])

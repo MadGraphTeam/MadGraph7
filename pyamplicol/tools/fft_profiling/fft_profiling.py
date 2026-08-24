@@ -108,9 +108,16 @@ class Shard:
     candidate: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ShardWork:
+    shard: Shard
+    final_multiplicity: int
+
+
 @dataclass(slots=True)
 class ActiveJob:
     shard: Shard
+    final_multiplicity: int | None
     command: tuple[str, ...]
     process: subprocess.Popen[bytes]
     stdout: BinaryIO
@@ -399,9 +406,7 @@ def _configured_run_path(arguments: argparse.Namespace) -> Path:
     if arguments.output is not None:
         return arguments.output
     return (
-        DEFAULT_SUM_OUTPUT
-        if arguments.compare_helicity_sums
-        else DEFAULT_FIXED_OUTPUT
+        DEFAULT_SUM_OUTPUT if arguments.compare_helicity_sums else DEFAULT_FIXED_OUTPUT
     )
 
 
@@ -448,18 +453,8 @@ def _line_selection(arguments: argparse.Namespace) -> tuple[str, ...]:
 def _requested_line_groups(
     arguments: argparse.Namespace, run_directory: Path
 ) -> tuple[str, ...]:
-    path = _manifest_path(run_directory)
-    if not path.is_file():
-        return _line_selection(arguments)
-    manifest = _load_json(path, context="profiling manifest")
-    values = manifest.get("requested_line_groups", list(LINE_GROUPS))
-    if (
-        not isinstance(values, list)
-        or any(not isinstance(value, str) for value in values)
-        or not set(values).issubset(LINE_GROUPS)
-    ):
-        raise ProfilingError("profiling manifest has invalid line-group history")
-    selected = set(values)
+    _ = run_directory
+    selected = set(_line_selection(arguments))
     return tuple(line for line in LINE_GROUPS if line in selected)
 
 
@@ -496,12 +491,35 @@ def _requested_shards(
     return tuple(shard for shard in SHARDS if shard.name in names)
 
 
-def _shard_study_root(run_directory: Path, shard: Shard) -> Path:
-    return run_directory / "shards" / shard.name / "study"
+def _shard_run_id(shard: Shard, final_multiplicity: int | None = None) -> str:
+    if final_multiplicity is None:
+        return shard.name
+    return f"{shard.name}-n{final_multiplicity}"
 
 
-def _shard_report_path(run_directory: Path, shard: Shard) -> Path:
-    return _shard_study_root(run_directory, shard) / "runs" / shard.name / "report.json"
+def _shard_cell_root(
+    run_directory: Path, shard: Shard, final_multiplicity: int
+) -> Path:
+    return run_directory / "shards" / shard.name / "cells" / f"n{final_multiplicity}"
+
+
+def _shard_study_root(
+    run_directory: Path, shard: Shard, final_multiplicity: int | None = None
+) -> Path:
+    if final_multiplicity is None:
+        return run_directory / "shards" / shard.name / "study"
+    return _shard_cell_root(run_directory, shard, final_multiplicity) / "study"
+
+
+def _shard_report_path(
+    run_directory: Path, shard: Shard, final_multiplicity: int | None = None
+) -> Path:
+    return (
+        _shard_study_root(run_directory, shard, final_multiplicity)
+        / "runs"
+        / _shard_run_id(shard, final_multiplicity)
+        / "report.json"
+    )
 
 
 def _master_study_root(run_directory: Path) -> Path:
@@ -527,16 +545,33 @@ def _madgraph_cache_path(run_directory: Path) -> Path:
 def _requested_multiplicities(
     arguments: argparse.Namespace, run_directory: Path
 ) -> tuple[int, ...]:
-    path = _manifest_path(run_directory)
-    if not path.is_file():
-        return _selection(arguments)
-    manifest = _load_json(path, context="profiling manifest")
-    values = manifest.get("requested_multiplicities")
+    _ = run_directory
+    return _selection(arguments)
+
+
+def _manifest_int_history(
+    manifest: Mapping[str, Any], primary: str, fallback: str
+) -> list[int]:
+    values = manifest.get(primary, manifest.get(fallback, []))
     if not isinstance(values, list) or any(
         not isinstance(value, int) for value in values
     ):
         raise ProfilingError("profiling manifest has invalid fill history")
-    return tuple(values)
+    return values
+
+
+def _manifest_line_history(manifest: Mapping[str, Any]) -> list[str]:
+    values = manifest.get(
+        "line_group_history", manifest.get("requested_line_groups", [])
+    )
+    if (
+        not isinstance(values, list)
+        or any(not isinstance(value, str) for value in values)
+        or not set(values).issubset(LINE_GROUPS)
+    ):
+        raise ProfilingError("profiling manifest has invalid line-group history")
+    selected = set(values)
+    return [line for line in LINE_GROUPS if line in selected]
 
 
 def _madgraph_source_path(arguments: argparse.Namespace, run_directory: Path) -> Path:
@@ -613,17 +648,24 @@ def _study_cli_arguments(
 
 
 def _shard_cli_arguments(
-    arguments: argparse.Namespace, run_directory: Path, shard: Shard
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    final_multiplicity: int | None = None,
 ) -> tuple[str, ...]:
     return _study_cli_arguments(
         arguments,
-        study_root=_shard_study_root(run_directory, shard),
-        run_id=shard.name,
+        study_root=_shard_study_root(run_directory, shard, final_multiplicity),
+        run_id=_shard_run_id(shard, final_multiplicity),
         families=(shard.family,),
         modes=shard.modes,
         resume=True,
         build_amplicol=arguments.build_amplicol and shard.name == "ddbar-amplicol",
-        fill_multiplicities=_requested_multiplicities(arguments, run_directory),
+        fill_multiplicities=(
+            _requested_multiplicities(arguments, run_directory)
+            if final_multiplicity is None
+            else (final_multiplicity,)
+        ),
     )
 
 
@@ -656,10 +698,13 @@ def _master_arguments(
 
 
 def _shard_arguments(
-    arguments: argparse.Namespace, run_directory: Path, shard: Shard
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    final_multiplicity: int | None = None,
 ) -> argparse.Namespace:
     namespace = study._parser().parse_args(
-        _shard_cli_arguments(arguments, run_directory, shard)
+        _shard_cli_arguments(arguments, run_directory, shard, final_multiplicity)
     )
     study._validate_arguments(namespace)
     return namespace
@@ -745,12 +790,15 @@ def _identity(arguments: argparse.Namespace, run_directory: Path) -> dict[str, A
 
 
 def _child_command(
-    arguments: argparse.Namespace, run_directory: Path, shard: Shard
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    final_multiplicity: int | None = None,
 ) -> tuple[str, ...]:
     return (
         str(arguments.python),
         str(STUDY_TOOL),
-        *_shard_cli_arguments(arguments, run_directory, shard),
+        *_shard_cli_arguments(arguments, run_directory, shard, final_multiplicity),
     )
 
 
@@ -837,6 +885,38 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
     }
     requested_lines = _requested_line_groups(arguments, run_directory)
     madgraph_requested = _madgraph_requested(arguments, run_directory)
+    shard_jobs = {
+        shard.name: [
+            {
+                "n": final_multiplicity,
+                "study_root": str(
+                    _shard_study_root(run_directory, shard, final_multiplicity)
+                ),
+                "report": str(
+                    _shard_report_path(run_directory, shard, final_multiplicity)
+                ),
+                "argv": list(
+                    _child_command(
+                        arguments,
+                        run_directory,
+                        shard,
+                        final_multiplicity,
+                    )
+                ),
+                "shell_command": shlex.join(
+                    _child_command(
+                        arguments,
+                        run_directory,
+                        shard,
+                        final_multiplicity,
+                    )
+                ),
+            }
+            for final_multiplicity in _measurement_multiplicities(arguments, shard)
+            if shard.name in requested_shard_names
+        ]
+        for shard in SHARDS
+    }
     commands = {
         shard.name: {
             "scheduled": shard.name in requested_shard_names,
@@ -855,16 +935,13 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
             ),
             "study_root": str(_shard_study_root(run_directory, shard)),
             "report": str(_shard_report_path(run_directory, shard)),
+            "jobs": shard_jobs[shard.name],
             "argv": (
-                list(_child_command(arguments, run_directory, shard))
-                if shard.name in requested_shard_names
-                and _measurement_multiplicities(arguments, shard)
-                else None
+                shard_jobs[shard.name][0]["argv"] if shard_jobs[shard.name] else None
             ),
             "shell_command": (
-                shlex.join(_child_command(arguments, run_directory, shard))
-                if shard.name in requested_shard_names
-                and _measurement_multiplicities(arguments, shard)
+                shard_jobs[shard.name][0]["shell_command"]
+                if shard_jobs[shard.name]
                 else None
             ),
         }
@@ -892,9 +969,9 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
         "identity": _identity(arguments, run_directory),
         "scheduler": {
             "total_core_budget": arguments.cores,
-            "candidate_cores_per_active_candidate_shard": arguments.candidate_cores,
-            "baseline_cores_per_active_shard": 1,
-            "parallelism": "weighted dependency-aware curve shards",
+            "candidate_cores_per_active_candidate_work_item": arguments.candidate_cores,
+            "baseline_cores_per_active_work_item": 1,
+            "parallelism": "weighted dependency-aware shard-multiplicity workers",
         },
         "shards": commands,
         "madgraph": {
@@ -935,9 +1012,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
             "manifest": str(_manifest_path(run_directory)),
             "master_report": str(_master_report_path(run_directory)),
             "render_pointer": str(run_directory / "render" / "current"),
-            "final_pdf": str(
-                run_directory / "render" / "current" / pdf_filename
-            ),
+            "final_pdf": str(run_directory / "render" / "current" / pdf_filename),
             "canonical_pdf": (
                 str(_canonical_pdf_path(arguments))
                 if _canonical_publication_enabled(arguments)
@@ -1028,48 +1103,302 @@ def _create_or_resume_manifest(
             raise ProfilingError(
                 "resume measurement identity differs from the manifest:\n  " + preview
             )
-        prior = manifest.get("requested_multiplicities", [])
-        if not isinstance(prior, list) or any(
-            not isinstance(value, int) for value in prior
-        ):
-            raise ProfilingError("profiling manifest has invalid fill history")
-        cumulative = sorted(set(prior) | set(_selection(arguments)))
-        if cumulative != prior:
-            manifest["requested_multiplicities"] = cumulative
-        prior_lines = manifest.get("requested_line_groups", list(LINE_GROUPS))
-        if (
-            not isinstance(prior_lines, list)
-            or any(not isinstance(value, str) for value in prior_lines)
-            or not set(prior_lines).issubset(LINE_GROUPS)
-        ):
-            raise ProfilingError("profiling manifest has invalid line-group history")
-        cumulative_lines = [
+        selected = list(_selection(arguments))
+        selected_lines = list(_line_selection(arguments))
+        prior = _manifest_int_history(
+            manifest, "fill_history_multiplicities", "requested_multiplicities"
+        )
+        history = sorted(set(prior) | set(selected))
+        prior_lines = _manifest_line_history(manifest)
+        line_history = [
             line
             for line in LINE_GROUPS
-            if line in set(prior_lines) | set(_line_selection(arguments))
+            if line in set(prior_lines) | set(selected_lines)
         ]
-        if cumulative_lines != prior_lines:
-            manifest["requested_line_groups"] = cumulative_lines
-        if cumulative != prior or cumulative_lines != prior_lines:
+        updates = {
+            "requested_multiplicities": selected,
+            "requested_line_groups": selected_lines,
+            "active_multiplicities": selected,
+            "active_line_groups": selected_lines,
+            "fill_history_multiplicities": history,
+            "line_group_history": line_history,
+        }
+        if any(manifest.get(key) != value for key, value in updates.items()):
+            manifest.update(updates)
             _write_json_atomic(path, manifest)
         return manifest
     selected = list(_selection(arguments))
+    selected_lines = list(_line_selection(arguments))
     manifest = {
         "kind": KIND,
         "schema_version": SCHEMA_VERSION,
         "identity": requested_identity,
         "initial_scheduler_core_budget": arguments.cores,
         "requested_multiplicities": selected,
-        "requested_line_groups": list(_line_selection(arguments)),
+        "requested_line_groups": selected_lines,
+        "active_multiplicities": selected,
+        "active_line_groups": selected_lines,
+        "fill_history_multiplicities": selected,
+        "line_group_history": selected_lines,
     }
     _write_json_atomic(path, manifest)
     return manifest
 
 
 def _expected_shard_policy(
-    arguments: argparse.Namespace, run_directory: Path, shard: Shard
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    final_multiplicity: int | None = None,
 ) -> dict[str, object]:
-    return study.dry_run_plan(_shard_arguments(arguments, run_directory, shard))
+    return study.dry_run_plan(
+        _shard_arguments(arguments, run_directory, shard, final_multiplicity)
+    )
+
+
+def _validate_shard_report(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    report: Mapping[str, Any],
+    *,
+    context: str,
+    final_multiplicity: int | None = None,
+) -> None:
+    if (
+        report.get("kind") != study.KIND
+        or report.get("schema_version") != study.SCHEMA_VERSION
+        or report.get("policy")
+        != _expected_shard_policy(arguments, run_directory, shard, final_multiplicity)
+    ):
+        raise ProfilingError(f"{context} policy/schema differs")
+    cells = report.get("cells")
+    if not isinstance(cells, Mapping):
+        raise ProfilingError(f"{context} has no cells")
+    family_cells = cells.get(shard.family)
+    if not isinstance(family_cells, Mapping) or set(family_cells) != set(shard.modes):
+        raise ProfilingError(f"{context} mode set differs")
+
+
+def _load_single_shard_report(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    path: Path,
+    *,
+    final_multiplicity: int | None = None,
+) -> dict[str, Any]:
+    report = _load_json(path, context=f"{shard.name} shard report")
+    _validate_shard_report(
+        arguments,
+        run_directory,
+        shard,
+        report,
+        context=f"{shard.name} shard report",
+        final_multiplicity=final_multiplicity,
+    )
+    study.normalize_loaded_failure_cells(report, path.parent)
+    return report
+
+
+def _merge_cell_record(
+    target_curve: dict[str, object],
+    raw_n: str,
+    cell: Mapping[str, Any],
+) -> None:
+    existing = target_curve.get(raw_n)
+    if (
+        isinstance(existing, Mapping)
+        and existing.get("status") == "measured"
+        and cell.get("status") != "measured"
+    ):
+        return
+    target_curve[raw_n] = copy.deepcopy(dict(cell))
+
+
+def _resource_frontier_failure_at(
+    cell: Mapping[str, Any], fallback_multiplicity: int
+) -> int | None:
+    if cell.get("censors_higher_multiplicities") is not True or cell.get(
+        "status"
+    ) not in {"failed", "skipped"}:
+        return None
+    failed_at = cell.get("failed_at_n")
+    if isinstance(failed_at, int) and not isinstance(failed_at, bool):
+        return failed_at
+    return fallback_multiplicity
+
+
+def _mode_resource_frontier(
+    curve: Mapping[str, Any], final_multiplicity: int
+) -> int | None:
+    frontier: int | None = None
+    for raw_n, cell in curve.items():
+        if not str(raw_n).isdigit() or not isinstance(cell, Mapping):
+            continue
+        failed_at = _resource_frontier_failure_at(cell, int(raw_n))
+        if failed_at is not None and failed_at < final_multiplicity:
+            frontier = min(frontier if frontier is not None else failed_at, failed_at)
+    return frontier
+
+
+def _resource_frontier_skip_cell(
+    arguments: argparse.Namespace,
+    *,
+    family: str,
+    mode: str,
+    final_multiplicity: int,
+    failed_at: int,
+) -> dict[str, object]:
+    reason = f"curve censored after resource limit at n={failed_at}"
+    return study._cell_base(
+        family,
+        study.MODE_BY_KEY[mode],
+        final_multiplicity,
+        sum_helicities=arguments.compare_helicity_sums,
+    ) | {
+        "status": "skipped",
+        "failure_reason": reason,
+        "failed_at_n": failed_at,
+        "censors_higher_multiplicities": True,
+    }
+
+
+def _apply_resource_frontier_censoring(
+    arguments: argparse.Namespace,
+    report: dict[str, Any],
+    shard: Shard,
+    *,
+    modes: Sequence[str],
+    multiplicities: Sequence[int],
+) -> bool:
+    cells = report["cells"]
+    assert isinstance(cells, dict)
+    family_cells = cells[shard.family]
+    assert isinstance(family_cells, dict)
+    changed = False
+    for mode in modes:
+        curve = family_cells[mode]
+        assert isinstance(curve, dict)
+        for final_multiplicity in multiplicities:
+            frontier = _mode_resource_frontier(curve, final_multiplicity)
+            if frontier is None:
+                continue
+            raw_n = str(final_multiplicity)
+            existing = curve.get(raw_n)
+            if isinstance(existing, Mapping):
+                if (
+                    existing.get("status") in {"failed", "skipped"}
+                    and existing.get("censors_higher_multiplicities") is True
+                ):
+                    continue
+                if existing.get("status") == "measured":
+                    continue
+            curve[raw_n] = _resource_frontier_skip_cell(
+                arguments,
+                family=shard.family,
+                mode=mode,
+                final_multiplicity=final_multiplicity,
+                failed_at=frontier,
+            )
+            changed = True
+    return changed
+
+
+def _dependency_skip_cell(
+    arguments: argparse.Namespace,
+    *,
+    shard: Shard,
+    mode: str,
+    final_multiplicity: int,
+    dependency_name: str,
+    dependency_mode: str,
+    dependency_cell: Mapping[str, Any],
+) -> dict[str, object]:
+    failed_at = _resource_frontier_failure_at(dependency_cell, final_multiplicity)
+    dependency: dict[str, object] = {
+        "shard": dependency_name,
+        "family": shard.family,
+        "mode": dependency_mode,
+        "n": final_multiplicity,
+        "status": str(dependency_cell.get("status")),
+    }
+    if failed_at is not None:
+        dependency["resource_failure_at_n"] = failed_at
+    return study._cell_base(
+        shard.family,
+        study.MODE_BY_KEY[mode],
+        final_multiplicity,
+        sum_helicities=arguments.compare_helicity_sums,
+    ) | {
+        "status": "skipped",
+        "failure_category": "dependency-unavailable",
+        "failure_reason": (
+            f"{dependency_mode} baseline/input unavailable because "
+            f"{dependency_name} recorded "
+            f"{dependency_cell.get('status')} at n={final_multiplicity}"
+        ),
+        "censors_higher_multiplicities": False,
+        "dependency": dependency,
+    }
+
+
+def _apply_dependency_skips(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    report: dict[str, Any],
+    shard: Shard,
+    *,
+    multiplicities: Sequence[int],
+) -> bool:
+    if shard.dependency is None:
+        return False
+    dependency_name, dependency_mode = shard.dependency
+    dependency_shard = SHARD_BY_NAME[dependency_name]
+    source = _load_shard_report(arguments, run_directory, dependency_shard)
+    if source is None:
+        return False
+    source_cells = source["cells"]
+    target_cells = report["cells"]
+    assert isinstance(source_cells, Mapping)
+    assert isinstance(target_cells, dict)
+    source_family = source_cells[shard.family]
+    target_family = target_cells[shard.family]
+    assert isinstance(source_family, Mapping)
+    assert isinstance(target_family, dict)
+    dependency_curve = source_family[dependency_mode]
+    assert isinstance(dependency_curve, Mapping)
+    changed = False
+    for final_multiplicity in multiplicities:
+        if not study.selected_cells_complete(
+            source,
+            family=shard.family,
+            modes=(dependency_mode,),
+            multiplicities=(final_multiplicity,),
+        ):
+            continue
+        dependency_cell = dependency_curve.get(str(final_multiplicity))
+        if (
+            not isinstance(dependency_cell, Mapping)
+            or dependency_cell.get("status") == "measured"
+        ):
+            continue
+        for mode in shard.owned_modes:
+            curve = target_family[mode]
+            assert isinstance(curve, dict)
+            if str(final_multiplicity) in curve:
+                continue
+            curve[str(final_multiplicity)] = _dependency_skip_cell(
+                arguments,
+                shard=shard,
+                mode=mode,
+                final_multiplicity=final_multiplicity,
+                dependency_name=dependency_name,
+                dependency_mode=dependency_mode,
+                dependency_cell=dependency_cell,
+            )
+            changed = True
+    return changed
 
 
 def _load_shard_report(
@@ -1079,25 +1408,100 @@ def _load_shard_report(
     *,
     required: bool = False,
 ) -> dict[str, Any] | None:
-    path = _shard_report_path(run_directory, shard)
-    if not path.is_file():
-        if required:
-            raise ProfilingError(f"required shard report is missing: {path}")
-        return None
-    report = _load_json(path, context=f"{shard.name} shard report")
-    if (
-        report.get("kind") != study.KIND
-        or report.get("schema_version") != study.SCHEMA_VERSION
-        or report.get("policy")
-        != _expected_shard_policy(arguments, run_directory, shard)
+    sources: list[tuple[dict[str, Any], int | None]] = []
+    aggregate_path = _shard_report_path(run_directory, shard)
+    if aggregate_path.is_file():
+        sources.append(
+            (
+                _load_single_shard_report(
+                    arguments,
+                    run_directory,
+                    shard,
+                    aggregate_path,
+                    final_multiplicity=None,
+                ),
+                None,
+            )
+        )
+    stored_multiplicities = {
+        int(path.parent.parent.parent.parent.name[1:])
+        for path in (run_directory / "shards" / shard.name / "cells").glob(
+            "n*/study/runs/*/report.json"
+        )
+        if path.parent.parent.parent.parent.name[1:].isdigit()
+    }
+    for final_multiplicity in sorted(
+        stored_multiplicities | set(_requested_multiplicities(arguments, run_directory))
     ):
-        raise ProfilingError(f"{shard.name} shard report policy/schema differs")
-    cells = report.get("cells")
-    if not isinstance(cells, Mapping):
-        raise ProfilingError(f"{shard.name} shard report has no cells")
-    family_cells = cells.get(shard.family)
-    if not isinstance(family_cells, Mapping) or set(family_cells) != set(shard.modes):
-        raise ProfilingError(f"{shard.name} shard mode set differs")
+        path = _shard_report_path(run_directory, shard, final_multiplicity)
+        if not path.is_file():
+            continue
+        sources.append(
+            (
+                _load_single_shard_report(
+                    arguments,
+                    run_directory,
+                    shard,
+                    path,
+                    final_multiplicity=final_multiplicity,
+                ),
+                final_multiplicity,
+            )
+        )
+    if not sources:
+        if required:
+            raise ProfilingError(f"required shard report is missing: {aggregate_path}")
+        return None
+    curve_sources: dict[str, dict[str, dict[str, object]]] = {
+        shard.family: {mode: {} for mode in shard.modes}
+    }
+    target_family = curve_sources[shard.family]
+    for source, source_multiplicity in sources:
+        cells = source["cells"]
+        assert isinstance(cells, Mapping)
+        family_cells = cells[shard.family]
+        assert isinstance(family_cells, Mapping)
+        for mode in shard.modes:
+            source_curve = family_cells[mode]
+            assert isinstance(source_curve, Mapping)
+            target_curve = target_family[mode]
+            if source_multiplicity is None:
+                for raw_n, cell in source_curve.items():
+                    if (
+                        isinstance(raw_n, str)
+                        and raw_n.isdigit()
+                        and isinstance(cell, Mapping)
+                    ):
+                        _merge_cell_record(target_curve, raw_n, cell)
+                continue
+            cell = source_curve.get(str(source_multiplicity))
+            if isinstance(cell, Mapping):
+                _merge_cell_record(
+                    target_curve, str(source_multiplicity), cell
+                )
+    report = study.compose_report(
+        _shard_arguments(arguments, run_directory, shard),
+        curve_sources,
+    )
+    _apply_resource_frontier_censoring(
+        arguments,
+        report,
+        shard,
+        modes=shard.modes,
+        multiplicities=_requested_multiplicities(arguments, run_directory),
+    )
+    return study.compose_report(
+        _shard_arguments(arguments, run_directory, shard),
+        report["cells"],
+    )
+
+
+def _publish_shard_report(
+    arguments: argparse.Namespace, run_directory: Path, shard: Shard
+) -> dict[str, Any] | None:
+    report = _load_shard_report(arguments, run_directory, shard)
+    if report is not None:
+        _write_json_atomic(_shard_report_path(run_directory, shard), report)
     return report
 
 
@@ -1124,43 +1528,136 @@ def _selected_shard_complete(
     )
 
 
-def _seed_dependency(
-    arguments: argparse.Namespace, run_directory: Path, shard: Shard
-) -> None:
-    if shard.dependency is None:
-        return
-    target = _shard_report_path(run_directory, shard)
-    dependency_name, dependency_mode = shard.dependency
-    dependency_shard = SHARD_BY_NAME[dependency_name]
-    source = _load_shard_report(
-        arguments, run_directory, dependency_shard, required=True
+def _selected_work_complete(
+    work: ShardWork,
+    report: Mapping[str, Any] | None,
+) -> bool:
+    return report is not None and study.selected_cells_complete(
+        report,
+        family=work.shard.family,
+        modes=work.shard.owned_modes,
+        multiplicities=(work.final_multiplicity,),
     )
-    if not study.selected_cells_complete(
-        source,
-        family=shard.family,
-        modes=(dependency_mode,),
-        multiplicities=_requested_multiplicities(arguments, run_directory),
-    ):
-        raise ProfilingError(
-            f"dependency {dependency_name} has not completed this fill selection"
+
+
+def _phase_work_items(
+    arguments: argparse.Namespace, run_directory: Path, phase_number: int
+) -> tuple[ShardWork, ...]:
+    works = [
+        ShardWork(shard, final_multiplicity)
+        for final_multiplicity in _requested_multiplicities(arguments, run_directory)
+        for shard in _requested_shards(arguments, run_directory)
+        if shard.phase == phase_number
+    ]
+    return tuple(
+        sorted(
+            works,
+            key=lambda work: (
+                work.final_multiplicity,
+                0 if work.shard.name == "gg-amplicol" else 1,
+                work.shard.name,
+            ),
         )
-    namespace = _shard_arguments(arguments, run_directory, shard)
-    report = (
-        _load_shard_report(arguments, run_directory, shard, required=True)
-        if target.is_file()
-        else study.compose_report(namespace, {})
     )
-    source_cells = source["cells"]
+
+
+def _work_dependency_ready(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> bool:
+    if work.shard.dependency is None:
+        return True
+    dependency_name, dependency_mode = work.shard.dependency
+    dependency_shard = SHARD_BY_NAME[dependency_name]
+    source = _load_shard_report(arguments, run_directory, dependency_shard)
+    return source is not None and study.selected_cells_complete(
+        source,
+        family=work.shard.family,
+        modes=(dependency_mode,),
+        multiplicities=(work.final_multiplicity,),
+    )
+
+
+def _empty_cell_report(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> dict[str, Any]:
+    return study.compose_report(
+        _shard_arguments(arguments, run_directory, work.shard, work.final_multiplicity),
+        {},
+    )
+
+
+def _load_cell_report(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> dict[str, Any]:
+    path = _shard_report_path(run_directory, work.shard, work.final_multiplicity)
+    if not path.is_file():
+        return _empty_cell_report(arguments, run_directory, work)
+    return _load_single_shard_report(
+        arguments,
+        run_directory,
+        work.shard,
+        path,
+        final_multiplicity=work.final_multiplicity,
+    )
+
+
+def _seed_cell_inputs(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> None:
+    report = _load_cell_report(arguments, run_directory, work)
     target_cells = report["cells"]
-    assert isinstance(source_cells, Mapping)
     assert isinstance(target_cells, dict)
-    family_source = source_cells[shard.family]
-    family_target = target_cells[shard.family]
-    assert isinstance(family_source, Mapping)
-    assert isinstance(family_target, dict)
-    family_target[dependency_mode] = copy.deepcopy(family_source[dependency_mode])
+    target_family = target_cells[work.shard.family]
+    assert isinstance(target_family, dict)
+
+    existing = _load_shard_report(arguments, run_directory, work.shard)
+    if existing is not None:
+        existing_cells = existing["cells"]
+        assert isinstance(existing_cells, Mapping)
+        existing_family = existing_cells[work.shard.family]
+        assert isinstance(existing_family, Mapping)
+        for mode in work.shard.owned_modes:
+            source_curve = existing_family[mode]
+            target_curve = target_family[mode]
+            assert isinstance(source_curve, Mapping)
+            assert isinstance(target_curve, dict)
+            target_curve.update(copy.deepcopy(dict(source_curve)))
+
+    if work.shard.dependency is not None:
+        dependency_name, dependency_mode = work.shard.dependency
+        dependency_shard = SHARD_BY_NAME[dependency_name]
+        source = _load_shard_report(
+            arguments, run_directory, dependency_shard, required=True
+        )
+        if not study.selected_cells_complete(
+            source,
+            family=work.shard.family,
+            modes=(dependency_mode,),
+            multiplicities=(work.final_multiplicity,),
+        ):
+            raise ProfilingError(
+                f"dependency {dependency_name} has not completed "
+                f"{work.shard.family}/{dependency_mode}/n{work.final_multiplicity}"
+            )
+        source_cells = source["cells"]
+        assert isinstance(source_cells, Mapping)
+        source_family = source_cells[work.shard.family]
+        assert isinstance(source_family, Mapping)
+        dependency_curve = source_family[dependency_mode]
+        target_curve = target_family[dependency_mode]
+        assert isinstance(dependency_curve, Mapping)
+        assert isinstance(target_curve, dict)
+        dependency_cell = dependency_curve.get(str(work.final_multiplicity))
+        if isinstance(dependency_cell, Mapping):
+            target_curve[str(work.final_multiplicity)] = copy.deepcopy(
+                dict(dependency_cell)
+            )
+
     report["status"] = "running"
-    _write_json_atomic(target, report)
+    _write_json_atomic(
+        _shard_report_path(run_directory, work.shard, work.final_multiplicity),
+        report,
+    )
 
 
 def _seed_protocol_scope(
@@ -1170,11 +1667,9 @@ def _seed_protocol_scope(
         return
     target = _shard_report_path(run_directory, shard)
     namespace = _shard_arguments(arguments, run_directory, shard)
-    report = (
-        _load_shard_report(arguments, run_directory, shard, required=True)
-        if target.is_file()
-        else study.compose_report(namespace, {})
-    )
+    report = _load_shard_report(
+        arguments, run_directory, shard
+    ) or study.compose_report(namespace, {})
     if study.apply_protocol_scope_cells(
         report,
         family=shard.family,
@@ -1244,7 +1739,9 @@ def _compose_master(
     assert isinstance(policy, dict)
     measurement = policy["measurement"]
     assert isinstance(measurement, dict)
-    measurement["schedule_order"] = "dependency-ordered-parallel-curve-shards"
+    measurement["schedule_order"] = (
+        "dependency-ordered-parallel-shard-multiplicity-workers"
+    )
     plot = policy.setdefault("plot", {})
     assert isinstance(plot, dict)
     if arguments.compare_helicity_sums:
@@ -1293,6 +1790,29 @@ def _completed_cells(report: Mapping[str, Any]) -> int:
         if isinstance(family_cells, Mapping)
         for mode_cells in family_cells.values()
         if isinstance(mode_cells, Mapping)
+    )
+
+
+def _selected_completed_cells(
+    arguments: argparse.Namespace,
+    report: Mapping[str, Any],
+    *,
+    multiplicities: Sequence[int] | None = None,
+) -> int:
+    run_directory = _run_directory(arguments)
+    requested = (
+        _selection(arguments) if multiplicities is None else tuple(multiplicities)
+    )
+    return sum(
+        study.selected_cells_complete(
+            report,
+            family=shard.family,
+            modes=(mode,),
+            multiplicities=(final_multiplicity,),
+        )
+        for shard in _requested_shards(arguments, run_directory)
+        for mode in shard.owned_modes
+        for final_multiplicity in requested
     )
 
 
@@ -1354,14 +1874,11 @@ def _run_checked(
     if completed.returncode != 0:
         stdout = completed.stdout.strip()
         detail = (
-            f"command failed with status {completed.returncode}: "
-            f"{shlex.join(command)}"
+            f"command failed with status {completed.returncode}: {shlex.join(command)}"
         )
         if stdout:
             detail = f"{detail}\nstdout:\n{stdout}"
-        raise ProfilingError(
-            detail
-        )
+        raise ProfilingError(detail)
 
 
 def _source_snapshot(path: Path) -> tuple[bytes, dict[str, Any], str]:
@@ -1432,10 +1949,7 @@ def _render_inventory(
                 if not isinstance(mode_cells, Mapping):
                     continue
                 for raw_n, cell in mode_cells.items():
-                    if (
-                        not str(raw_n).isdigit()
-                        or not isinstance(cell, Mapping)
-                    ):
+                    if not str(raw_n).isdigit() or not isinstance(cell, Mapping):
                         continue
                     identity = (str(family), str(mode), int(raw_n))
                     recorded.add(identity)
@@ -1757,8 +2271,7 @@ def _matching_madgraph_overlay(
         )
         or policy.get("maximum_measured_multiplicity")
         != madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
-        or policy.get("higher_multiplicity_policy")
-        != "not-applicable-protocol-scope"
+        or policy.get("higher_multiplicity_policy") != "not-applicable-protocol-scope"
     ):
         return None
     if (
@@ -1900,9 +2413,7 @@ def _render_snapshot_locked(
         )
     )
     overlay = selection.overlay if strict else None
-    partial_overlay = selection.overlay or (
-        run_directory / "madgraph" / ".unavailable"
-    )
+    partial_overlay = selection.overlay or (run_directory / "madgraph" / ".unavailable")
 
     render_root = run_directory / "render"
     render_root.mkdir(parents=True, exist_ok=True)
@@ -1968,9 +2479,7 @@ def _render_snapshot_locked(
             raise ProfilingError(
                 "render commands did not produce one complete output set"
             )
-        published = _publish_render_generation(
-            stage, render_root, digest, pdf_filename
-        )
+        published = _publish_render_generation(stage, render_root, digest, pdf_filename)
         if _canonical_publication_enabled(arguments):
             _publish_canonical_pdf(published, arguments)
         return published
@@ -2085,9 +2594,7 @@ def _dependency_status(arguments: argparse.Namespace) -> dict[str, Any]:
         },
         "reference_fft_root": {
             "path": str(reference_fft),
-            "compatible": (
-                reference_fft / "Benchmark" / "run_benchmark.py"
-            ).is_file(),
+            "compatible": (reference_fft / "Benchmark" / "run_benchmark.py").is_file(),
         },
         "madgraph_root": {
             "path": str(madgraph) if madgraph is not None else None,
@@ -2110,6 +2617,8 @@ def _preflight(arguments: argparse.Namespace) -> None:
             raise ProfilingError(
                 f"required {key} executable is unavailable: {status[key]['path']}"
             )
+    if _pyamplicol_runtime_required(requested_shards):
+        _preflight_pyamplicol_runtime(arguments)
     needs_amplicol = any("amplicol" in shard.modes for shard in requested_shards)
     if needs_amplicol:
         amplicol = status["amplicol_root"]
@@ -2236,8 +2745,7 @@ def _madgraph_command(
             (
                 (
                     "--multiplicity"
-                    if multiplicity
-                    <= madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
+                    if multiplicity <= madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
                     else "--protocol-scope-multiplicity"
                 ),
                 str(multiplicity),
@@ -2426,19 +2934,76 @@ def _diagnostic(message: str, color: str = "") -> None:
     print(f"{color}{message}{suffix}", file=sys.stderr, flush=True)
 
 
-def _claimed_cores(arguments: argparse.Namespace, shard: Shard) -> int:
+def _python_source_environment(arguments: argparse.Namespace) -> dict[str, str]:
+    environment = os.environ.copy()
+    source = str(ROOT / "src")
+    existing = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        source if not existing else os.pathsep.join((source, existing))
+    )
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment.setdefault("SYMBOLICA_HIDE_BANNER", "1")
+    environment["FFT_ACCEPTANCE_PYTHON"] = str(arguments.python)
+    return environment
+
+
+def _pyamplicol_runtime_required(requested_shards: Sequence[Shard]) -> bool:
+    return any(
+        shard.family == "ddbar"
+        or any(study.MODE_BY_KEY[mode].kind == "candidate" for mode in shard.modes)
+        for shard in requested_shards
+    )
+
+
+def _preflight_pyamplicol_runtime(arguments: argparse.Namespace) -> None:
+    completed = subprocess.run(
+        (
+            str(arguments.python),
+            "-c",
+            (
+                "import pyamplicol; "
+                "from pyamplicol.generation.phase_space import "
+                "massive_rambo_final_state; "
+                "print(pyamplicol.__version__)"
+            ),
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_python_source_environment(arguments),
+    )
+    if completed.returncode == 0:
+        return
+    detail = (completed.stderr or completed.stdout).strip()
+    if len(detail) > 4000:
+        detail = detail[-4000:]
+    raise ProfilingError(
+        "selected --python cannot import pyAmpliCol from this checkout; "
+        "rerun `just dev-install` in this workspace or fix the Python/native "
+        f"runtime before profiling.\n{detail}"
+    )
+
+
+def _claimed_cores(arguments: argparse.Namespace, shard: Shard | ShardWork) -> int:
+    if isinstance(shard, ShardWork):
+        shard = shard.shard
     return arguments.candidate_cores if shard.candidate else 1
 
 
 def _launch_shard(
-    arguments: argparse.Namespace, run_directory: Path, shard: Shard
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
 ) -> ActiveJob:
-    command = _child_command(arguments, run_directory, shard)
-    log_root = run_directory / "shards" / shard.name / "orchestrator-logs"
+    command = _child_command(
+        arguments, run_directory, work.shard, work.final_multiplicity
+    )
+    log_root = (
+        _shard_cell_root(run_directory, work.shard, work.final_multiplicity)
+        / "orchestrator-logs"
+    )
     log_root.mkdir(parents=True, exist_ok=True)
     stdout = (log_root / "stdout.log").open("wb")
     stderr = (log_root / "stderr.log").open("wb")
-    claimed = _claimed_cores(arguments, shard)
+    claimed = _claimed_cores(arguments, work)
     environment = os.environ.copy()
     for key in (
         "OMP_NUM_THREADS",
@@ -2462,15 +3027,31 @@ def _launch_shard(
         stderr.close()
         raise
     return ActiveJob(
-        shard=shard,
+        shard=work.shard,
+        final_multiplicity=work.final_multiplicity,
         command=command,
         process=process,
         stdout=stdout,
         stderr=stderr,
         sampler=memory_watchdog.ProcessTreeSampler(process.pid, process.pid),
         claimed_cores=claimed,
-        detail=f"{shard.family}/{shard.owned_modes[0]}/n{_selection(arguments)[0]}",
+        detail=f"{work.shard.family}/{work.shard.owned_modes[0]}/n{work.final_multiplicity}",
     )
+
+
+def _work_detail(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> str:
+    report = _load_shard_report(arguments, run_directory, work.shard)
+    for mode in work.shard.owned_modes:
+        if report is None or not study.selected_cells_complete(
+            report,
+            family=work.shard.family,
+            modes=(mode,),
+            multiplicities=(work.final_multiplicity,),
+        ):
+            return f"{work.shard.family}/{mode}/n{work.final_multiplicity}"
+    return f"{work.shard.name}/n{work.final_multiplicity}/finalizing"
 
 
 def _shard_detail(
@@ -2478,14 +3059,9 @@ def _shard_detail(
 ) -> str:
     report = _load_shard_report(arguments, run_directory, shard)
     for final_multiplicity in _requested_multiplicities(arguments, run_directory):
-        for mode in shard.owned_modes:
-            if report is None or not study.selected_cells_complete(
-                report,
-                family=shard.family,
-                modes=(mode,),
-                multiplicities=(final_multiplicity,),
-            ):
-                return f"{shard.family}/{mode}/n{final_multiplicity}"
+        work = ShardWork(shard, final_multiplicity)
+        if not _selected_work_complete(work, report):
+            return _work_detail(arguments, run_directory, work)
     return f"{shard.name}/finalizing"
 
 
@@ -2525,44 +3101,115 @@ def _termination_signal_handlers():
             signal.signal(signum, handler)
 
 
+def _prepare_phase_shard_state(
+    arguments: argparse.Namespace, run_directory: Path, shard: Shard
+) -> dict[str, Any] | None:
+    _seed_protocol_scope(arguments, run_directory, shard)
+    report = _load_shard_report(arguments, run_directory, shard)
+    loaded = report is not None
+    if report is None and shard.dependency is None:
+        return None
+    if report is None:
+        report = study.compose_report(
+            _shard_arguments(arguments, run_directory, shard), {}
+        )
+    changed = _apply_resource_frontier_censoring(
+        arguments,
+        report,
+        shard,
+        modes=shard.owned_modes,
+        multiplicities=_requested_multiplicities(arguments, run_directory),
+    )
+    changed = (
+        _apply_dependency_skips(
+            arguments,
+            run_directory,
+            report,
+            shard,
+            multiplicities=_requested_multiplicities(arguments, run_directory),
+        )
+        or changed
+    )
+    if changed:
+        report = study.compose_report(
+            _shard_arguments(arguments, run_directory, shard), report["cells"]
+        )
+    if loaded or changed:
+        _write_json_atomic(_shard_report_path(run_directory, shard), report)
+    return report
+
+
+def _refresh_phase_pending(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    pending: Sequence[ShardWork],
+    active: Sequence[ActiveJob],
+) -> list[ShardWork]:
+    reports: dict[str, dict[str, Any] | None] = {}
+    for shard in {work.shard for work in pending}:
+        reports[shard.name] = _prepare_phase_shard_state(
+            arguments, run_directory, shard
+        )
+    active_keys = {
+        (job.shard.name, job.final_multiplicity)
+        for job in active
+        if job.final_multiplicity is not None
+    }
+    return [
+        work
+        for work in pending
+        if (work.shard.name, work.final_multiplicity) not in active_keys
+        and not _selected_work_complete(
+            work,
+            reports.get(work.shard.name)
+            if work.shard.name in reports
+            else _load_shard_report(arguments, run_directory, work.shard),
+        )
+    ]
+
+
+def _work_launch_conflicts(
+    arguments: argparse.Namespace, work: ShardWork, active: Sequence[ActiveJob]
+) -> bool:
+    if not arguments.build_amplicol or work.shard.name != "ddbar-amplicol":
+        return False
+    probe = _absolute(arguments.amplicol_root) / "amplicol_color_probe"
+    return not probe.is_file() and any(
+        job.shard.name == work.shard.name for job in active
+    )
+
+
 def _phase(
     arguments: argparse.Namespace,
     run_directory: Path,
     phase_number: int,
     dashboard: Dashboard,
 ) -> None:
-    pending = []
-    requested = _requested_multiplicities(arguments, run_directory)
-    for shard in _requested_shards(arguments, run_directory):
-        if shard.phase != phase_number:
-            continue
-        _seed_protocol_scope(arguments, run_directory, shard)
-        report = _load_shard_report(arguments, run_directory, shard)
-        if not _selected_shard_complete(
-            arguments, shard, report, multiplicities=requested
-        ):
-            pending.append(shard)
-    pending.sort(
-        key=lambda shard: (
-            0 if shard.name == "gg-amplicol" else 1,
-            shard.name,
-        )
-    )
+    pending = list(_phase_work_items(arguments, run_directory, phase_number))
     active: list[ActiveJob] = []
     failure: str | None = None
     try:
         while pending or active:
+            pending = _refresh_phase_pending(arguments, run_directory, pending, active)
             used = sum(job.claimed_cores for job in active)
             launched = True
             while launched:
                 launched = False
-                for index, shard in enumerate(pending):
-                    claim = _claimed_cores(arguments, shard)
+                for index, work in enumerate(pending):
+                    if not _work_dependency_ready(arguments, run_directory, work):
+                        continue
+                    claim = _claimed_cores(arguments, work)
                     if used + claim > arguments.cores:
                         continue
-                    if shard.dependency is not None:
-                        _seed_dependency(arguments, run_directory, shard)
-                    job = _launch_shard(arguments, run_directory, shard)
+                    if _work_launch_conflicts(arguments, work, active):
+                        continue
+                    _seed_cell_inputs(arguments, run_directory, work)
+                    report = _publish_shard_report(arguments, run_directory, work.shard)
+                    if _selected_work_complete(work, report):
+                        pending.pop(index)
+                        launched = True
+                        break
+                    job = _launch_shard(arguments, run_directory, work)
                     active.append(job)
                     pending.pop(index)
                     used += claim
@@ -2570,15 +3217,43 @@ def _phase(
                     break
 
             for job in active:
-                job.detail = _shard_detail(arguments, run_directory, job.shard)
-            names = tuple(job.shard.name for job in active)
+                assert job.final_multiplicity is not None
+                job.detail = _work_detail(
+                    arguments,
+                    run_directory,
+                    ShardWork(job.shard, job.final_multiplicity),
+                )
+            names = tuple(
+                f"{job.shard.name}:n{job.final_multiplicity}" for job in active
+            )
             master = _publish_master(arguments, run_directory, active=names)
             dashboard.update(
-                _completed_cells(master)
+                _selected_completed_cells(arguments, master)
                 + _madgraph_completed(arguments, run_directory),
                 phase=f"phase {phase_number}",
                 active=active,
             )
+            if not active and pending:
+                unready = next(
+                    (
+                        work
+                        for work in pending
+                        if not _work_dependency_ready(arguments, run_directory, work)
+                    ),
+                    None,
+                )
+                if unready is not None:
+                    dependency_name = (
+                        unready.shard.dependency[0]
+                        if unready.shard.dependency is not None
+                        else "unknown"
+                    )
+                    failure = (
+                        f"{unready.shard.name} cannot start "
+                        f"n{unready.final_multiplicity} because dependency "
+                        f"{dependency_name} is incomplete"
+                    )
+                    break
             if not active:
                 break
             time.sleep(arguments.poll_seconds)
@@ -2589,18 +3264,14 @@ def _phase(
                 job.stdout.close()
                 job.stderr.close()
                 active.remove(job)
-                report = _load_shard_report(
-                    arguments, run_directory, job.shard, required=True
-                )
-                if returncode != 0 or not _selected_shard_complete(
-                    arguments,
-                    job.shard,
-                    report,
-                    multiplicities=requested,
-                ):
+                assert job.final_multiplicity is not None
+                report = _publish_shard_report(arguments, run_directory, job.shard)
+                work = ShardWork(job.shard, job.final_multiplicity)
+                if returncode != 0 or not _selected_work_complete(work, report):
                     failure = (
-                        f"{job.shard.name} exited {returncode} without completing "
-                        "the requested authoritative cells; inspect its "
+                        f"{job.shard.name} n{job.final_multiplicity} exited "
+                        f"{returncode} without completing the requested "
+                        "authoritative cells; inspect its "
                         "orchestrator logs"
                     )
                     break
@@ -2633,6 +3304,7 @@ def _run_madgraph(
     pseudo = Shard("madgraph", "gg", (), (), None, 4, False)
     job = ActiveJob(
         shard=pseudo,
+        final_multiplicity=None,
         command=command,
         process=process,
         stdout=stdout,
@@ -2661,7 +3333,7 @@ def _run_madgraph(
                 _master_report_path(run_directory), context="master report"
             )
             dashboard.update(
-                _completed_cells(master)
+                _selected_completed_cells(arguments, master)
                 + _madgraph_completed(arguments, run_directory),
                 phase="phase 4",
                 active=(job,),
@@ -2733,9 +3405,7 @@ def _acquire_execution_lock(run_directory: Path) -> BinaryIO:
     return handle
 
 
-def _render_phase_boundary(
-    arguments: argparse.Namespace, run_directory: Path
-) -> Path:
+def _render_phase_boundary(arguments: argparse.Namespace, run_directory: Path) -> Path:
     _publish_master(arguments, run_directory)
     return render_snapshot(arguments, renderer_preflight=False)
 
@@ -2765,11 +3435,14 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
             _preflight(arguments)
             initial = _publish_master(arguments, run_directory)
             requested = _requested_multiplicities(arguments, run_directory)
+            completed = _selected_completed_cells(
+                arguments, initial, multiplicities=requested
+            )
             total = (
-                _completed_cells(initial)
+                completed
                 + _selected_pending_cells(arguments, initial, multiplicities=requested)
                 + (
-                    2 * len(_requested_multiplicities(arguments, run_directory))
+                    2 * len(requested)
                     if _madgraph_requested(arguments, run_directory)
                     else 0
                 )
@@ -2780,7 +3453,7 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                 helicity_workload=_helicity_workload(arguments),
                 batch_size=arguments.batch_size,
             )
-            dashboard.update(_completed_cells(initial), phase="initializing", active=())
+            dashboard.update(completed, phase="initializing", active=())
             _phase(arguments, run_directory, 1, dashboard)
             _render_phase_boundary(arguments, run_directory)
             _phase(arguments, run_directory, 2, dashboard)
@@ -2805,9 +3478,9 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                     )
                 else:
                     _run_madgraph(arguments, run_directory, dashboard)
-            final_count = _completed_cells(terminal) + _madgraph_completed(
-                arguments, run_directory
-            )
+            final_count = _selected_completed_cells(
+                arguments, terminal, multiplicities=requested
+            ) + _madgraph_completed(arguments, run_directory)
             dashboard.update(final_count, phase="rendering", active=())
             pdf = render_snapshot(arguments, renderer_preflight=False)
             message = (
@@ -2865,10 +3538,17 @@ def status_payload(arguments: argparse.Namespace) -> dict[str, Any]:
         "helicity_workload": _helicity_workload(arguments),
         "batch_size": arguments.batch_size,
         "output": str(run_directory),
-        "requested_line_groups": (
-            list(_requested_line_groups(arguments, run_directory))
+        "requested_multiplicities": list(_selection(arguments)),
+        "requested_line_groups": list(_requested_line_groups(arguments, run_directory)),
+        "fill_history_multiplicities": (
+            _manifest_int_history(
+                manifest, "fill_history_multiplicities", "requested_multiplicities"
+            )
             if manifest is not None
-            else list(_line_selection(arguments))
+            else []
+        ),
+        "line_group_history": (
+            _manifest_line_history(manifest) if manifest is not None else []
         ),
         "manifest": str(manifest_path),
         "manifest_available": manifest is not None,
@@ -2882,6 +3562,12 @@ def status_payload(arguments: argparse.Namespace) -> dict[str, Any]:
         "campaign_status": master.get("status")
         if master is not None
         else "not-started",
+        "completed_requested_measurement_cells": (
+            _selected_completed_cells(arguments, master)
+            + _madgraph_completed(arguments, run_directory)
+            if master is not None
+            else 0
+        ),
         "completed_measurement_cells": (
             _completed_cells(master) + _madgraph_completed(arguments, run_directory)
             if master is not None

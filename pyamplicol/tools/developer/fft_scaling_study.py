@@ -25,13 +25,17 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
+SOURCE_ROOT = ROOT / "src"
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -80,6 +84,20 @@ AMPLI_COL_TIMING_ROW = re.compile(
 RSS_MARKER = performance.DARWIN_RSS_MARKER
 WATCHDOG_PEAK_GUARD = re.compile(r"peak_guard=([0-9]+(?:\.[0-9]+)?) GiB")
 WATCHDOG_PEAK_RSS = re.compile(r"peak_rss=([0-9]+(?:\.[0-9]+)?) GiB")
+JSON_PATH_REFERENCE = re.compile(
+    r"(?P<path>(?:/|\.{1,2}/)[^\s'\"<>]+?\.json)(?=$|[\s,;:)])"
+)
+SYMBOLICA_LICENSE_BUSY_FRAGMENT = (
+    "cannot start new unlicensed symbolica instance since there is already another "
+    "one running on the machine"
+)
+SYMBOLICA_GENERATION_LOCK_ENV = "PYAMPICOL_FFT_SYMBOLICA_GENERATION_LOCK"
+SYMBOLICA_BUSY_RETRY_SECONDS = 5.0
+SYMBOLICA_LOCK_POLL_SECONDS = 0.25
+LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY = "legacy-amplicol-structural-limit"
+_LEGACY_AMPLICOL_PROBE_NAMES = frozenset(
+    {"amplicol_color_probe", "amplicol_color_library_probe"}
+)
 
 
 class StudyError(RuntimeError):
@@ -93,6 +111,9 @@ _RESOURCE_FAILURE_CATEGORIES = frozenset(
         "runtime-time-limit",
         "setup-or-runtime-time-limit",
     }
+)
+_CENSORING_FAILURE_CATEGORIES = _RESOURCE_FAILURE_CATEGORIES | frozenset(
+    {LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY}
 )
 
 
@@ -879,6 +900,7 @@ def _load_report(path: Path, arguments: argparse.Namespace) -> dict[str, object]
         raise StudyError("existing scaling-study report has no cells")
     if payload.get("policy") != dry_run_plan(arguments):
         raise StudyError("resume arguments differ from the stored study policy")
+    normalize_loaded_failure_cells(payload, path.parent)
     payload["status"] = "running"
     return payload
 
@@ -1052,21 +1074,19 @@ def compose_report(
         for family in _selected_families(arguments)
     )
     inversions = resource_frontier_inversions(report)
+    if inversions:
+        report["resource_frontier_inversions"] = [list(item) for item in inversions]
+    else:
+        report.pop("resource_frontier_inversions", None)
     if halt_reason is not None:
         report["status"] = "stopped-correctness-failure"
         report["status_reason"] = halt_reason
-    elif inversions:
-        report["status"] = "stopped-protocol-investigation"
-        report["status_reason"] = (
-            "out-of-order sparse fills retained measured cells above a newly "
-            "observed lower resource frontier; strict terminal composition is "
-            "refused until the lower frontier is remeasured or the scan refreshed"
-        )
-        report["resource_frontier_inversions"] = [list(item) for item in inversions]
     elif complete:
         report["status"] = "complete-with-failures" if failures else "complete"
+        report.pop("status_reason", None)
     else:
         report["status"] = "running"
+        report.pop("status_reason", None)
     report["failure_count"] = failures
     return report
 
@@ -1255,17 +1275,24 @@ def _referenced_command_records(
 ) -> tuple[tuple[Path, Mapping[str, object]], ...]:
     """Load only watched-command records explicitly cited by the exception."""
 
+    candidate_paths: dict[str, Path] = {}
+    for match in JSON_PATH_REFERENCE.finditer(detail):
+        raw_path = Path(match.group("path"))
+        path = raw_path if raw_path.is_absolute() else cell_root / raw_path
+        candidate_paths[str(path.resolve(strict=False))] = path
     records: list[tuple[Path, Mapping[str, object]]] = []
     try:
-        paths = sorted(cell_root.rglob("*.json"))
+        local_paths = sorted(cell_root.rglob("*.json"))
     except OSError:
-        return ()
-    for path in paths:
+        local_paths = []
+    for path in local_paths:
         rendered_paths = {str(path)}
         with contextlib.suppress(OSError):
             rendered_paths.add(str(path.resolve()))
         if not any(rendered in detail for rendered in rendered_paths):
             continue
+        candidate_paths[str(path.resolve(strict=False))] = path
+    for path in sorted(candidate_paths.values(), key=str):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, TypeError):
@@ -1290,6 +1317,72 @@ def _referenced_command_records(
             continue
         records.append((path, payload))
     return tuple(records)
+
+
+def _legacy_amplicol_probe_command(record: Mapping[str, object]) -> bool:
+    command = record.get("command")
+    if not isinstance(command, list):
+        return False
+    return any(
+        isinstance(value, str) and Path(value).name in _LEGACY_AMPLICOL_PROBE_NAMES
+        for value in command
+    )
+
+
+def _legacy_amplicol_structural_crash(record: Mapping[str, object]) -> bool:
+    if not _legacy_amplicol_probe_command(record):
+        return False
+    output = "\n".join(
+        str(record.get(field, "")) for field in ("stdout", "stderr")
+    ).lower()
+    return (
+        ("program received signal sigsegv" in output or "segmentation fault" in output)
+        and "init_col" in output
+    )
+
+
+def _mark_legacy_amplicol_structural_limit(cell: dict[str, object]) -> None:
+    cell["failure_category"] = LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY
+    cell["failure_reason_short"] = "legacy AmpliCol structural colour-init limit"
+    cell["censors_higher_multiplicities"] = True
+
+
+def normalize_loaded_failure_cells(
+    report: dict[str, object], run_root: Path
+) -> bool:
+    """Upgrade historical legacy-probe colour-init crashes to censoring cells."""
+
+    cells = report.get("cells")
+    if not isinstance(cells, dict):
+        return False
+    changed = False
+    for family, family_cells in cells.items():
+        if not isinstance(family, str) or not isinstance(family_cells, dict):
+            continue
+        curve = family_cells.get("amplicol")
+        if not isinstance(curve, dict):
+            continue
+        for raw_n, cell in curve.items():
+            if (
+                not isinstance(raw_n, str)
+                or not raw_n.isdigit()
+                or not isinstance(cell, dict)
+                or cell.get("status") != "failed"
+                or cell.get("failure_category")
+                == LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY
+            ):
+                continue
+            reason = cell.get("failure_reason")
+            if not isinstance(reason, str):
+                continue
+            cell_root = run_root / "amplicol" / family / f"n{raw_n}"
+            if any(
+                _legacy_amplicol_structural_crash(record)
+                for _, record in _referenced_command_records(reason, cell_root)
+            ):
+                _mark_legacy_amplicol_structural_limit(cell)
+                changed = True
+    return changed
 
 
 def _is_memory_watchdog_record(record: Mapping[str, object]) -> bool:
@@ -1364,6 +1457,8 @@ def _typed_command_failure_category(
             and _is_memory_watchdog_record(record)
         ):
             return "memory-limit"
+    if any(_legacy_amplicol_structural_crash(record) for _, record in records):
+        return LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY
     return "error"
 
 
@@ -1396,13 +1491,16 @@ def _failure_cell(
         category = _typed_command_failure_category(
             error, cell_root, command_records
         )
-    resource_failure = category in _RESOURCE_FAILURE_CATEGORIES
-    return dict(base) | {
+    censors_higher_multiplicities = category in _CENSORING_FAILURE_CATEGORIES
+    cell = dict(base) | {
         "status": "failed",
-        "censors_higher_multiplicities": resource_failure,
+        "censors_higher_multiplicities": censors_higher_multiplicities,
         "failure_category": category,
         "failure_reason": detail,
     }
+    if category == LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY:
+        _mark_legacy_amplicol_structural_limit(cell)
+    return cell
 
 
 def _reference_cell(
@@ -2294,6 +2392,129 @@ def _candidate_cli_failure_allows_generation_reuse(
     )
 
 
+def _symbolica_generation_lock_path(
+    environment: Mapping[str, str], *, force: bool = False
+) -> Path | None:
+    configured = environment.get(SYMBOLICA_GENERATION_LOCK_ENV)
+    if configured is not None:
+        if configured.strip().lower() in {"", "0", "false", "no", "off", "none"}:
+            return None
+        return Path(configured).expanduser().resolve(strict=False)
+    if not force and environment.get("SYMBOLICA_LICENSE", "").strip():
+        return None
+    uid = str(os.getuid()) if hasattr(os, "getuid") else "unknown"
+    root = Path("/tmp") if os.name == "posix" else Path(tempfile.gettempdir())
+    return root / f"pyamplicol-symbolica-generation-{uid}.lock"
+
+
+@contextlib.contextmanager
+def _bounded_symbolica_generation_lock(
+    lock_path: Path | None, timeout_seconds: float
+) -> Iterator[None]:
+    if lock_path is None:
+        yield
+        return
+    deadline = time.monotonic() + timeout_seconds
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as handle:
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as error:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    raise _CellResourceLimitError(
+                        "candidate artifact generation waited for the Symbolica "
+                        "generation lock until the strict generation cap",
+                        category="generation-time-limit",
+                    ) from error
+                time.sleep(min(SYMBOLICA_LOCK_POLL_SECONDS, remaining))
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _symbolica_license_busy_log(log_path: Path) -> bool:
+    try:
+        payload = json.loads(log_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, Mapping):
+        return False
+    output = "\n".join(
+        str(payload.get(field, "")) for field in ("stdout", "stderr")
+    ).lower()
+    return SYMBOLICA_LICENSE_BUSY_FRAGMENT in output
+
+
+def _candidate_generation_time_exhausted() -> _CellResourceLimitError:
+    return _CellResourceLimitError(
+        "candidate artifact generation exhausted the strict generation cap",
+        category="generation-time-limit",
+    )
+
+
+def _run_candidate_generation(
+    *,
+    arguments: argparse.Namespace,
+    family: str,
+    final_multiplicity: int,
+    mode: Mode,
+    artifact: Path,
+    cell_root: Path,
+    environment: Mapping[str, str],
+) -> performance.WatchedCompletedProcess:
+    command = _candidate_generation_command(
+        python=arguments.python,
+        family=family,
+        final_multiplicity=final_multiplicity,
+        mode=mode,
+        artifact=artifact,
+        batch_size=arguments.batch_size,
+        optimization_cores=arguments.optimization_cores,
+    )
+    log_path = cell_root / "generation.json"
+    started = time.monotonic()
+    lock_path = _symbolica_generation_lock_path(environment)
+    attempts = 0
+    maximum_attempts = (
+        max(2, math.ceil(arguments.generation_timeout / SYMBOLICA_BUSY_RETRY_SECONDS))
+        + 1
+    )
+    while True:
+        attempts += 1
+        remaining = arguments.generation_timeout - (time.monotonic() - started)
+        if remaining <= 0.0:
+            raise _candidate_generation_time_exhausted()
+        try:
+            with _bounded_symbolica_generation_lock(lock_path, remaining):
+                remaining = arguments.generation_timeout - (time.monotonic() - started)
+                if remaining <= 0.0:
+                    raise _candidate_generation_time_exhausted()
+                return performance._run_watched(
+                    command,
+                    python=arguments.python,
+                    environment=environment,
+                    timeout_seconds=remaining,
+                    log_path=log_path,
+                    memory_limit_gib=arguments.memory_limit_gib,
+                )
+        except performance.AcceptanceError as error:
+            if not _symbolica_license_busy_log(log_path):
+                raise
+            if attempts >= maximum_attempts:
+                raise _candidate_generation_time_exhausted() from error
+            lock_path = lock_path or _symbolica_generation_lock_path(
+                environment, force=True
+            )
+            remaining = arguments.generation_timeout - (time.monotonic() - started)
+            if remaining <= SYMBOLICA_BUSY_RETRY_SECONDS:
+                raise _candidate_generation_time_exhausted() from error
+            time.sleep(min(SYMBOLICA_BUSY_RETRY_SECONDS, remaining))
+
+
 def _validate_publication_candidate_artifact(
     artifact: Path,
     process: str,
@@ -2444,21 +2665,14 @@ def _candidate_cell(
     artifact = cell_root / "artifact"
     generation = _load_successful_candidate_generation(cell_root)
     if generation is None:
-        generation = performance._run_watched(
-            _candidate_generation_command(
-                python=arguments.python,
-                family=family,
-                final_multiplicity=final_multiplicity,
-                mode=mode,
-                artifact=artifact,
-                batch_size=arguments.batch_size,
-                optimization_cores=arguments.optimization_cores,
-            ),
-            python=arguments.python,
+        generation = _run_candidate_generation(
+            arguments=arguments,
+            family=family,
+            final_multiplicity=final_multiplicity,
+            mode=mode,
+            artifact=artifact,
+            cell_root=cell_root,
             environment=environment,
-            timeout_seconds=arguments.generation_timeout,
-            log_path=cell_root / "generation.json",
-            memory_limit_gib=arguments.memory_limit_gib,
         )
     generation_helicity_count = _validate_publication_candidate_artifact(
         artifact,
@@ -3117,19 +3331,9 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
     failures = _failure_count(report)
     inversions = resource_frontier_inversions(report)
     if inversions:
-        report["status"] = "stopped-protocol-investigation"
-        report["status_reason"] = (
-            "out-of-order sparse fills retained measured cells above a newly "
-            "observed lower resource frontier"
-        )
         report["resource_frontier_inversions"] = [list(item) for item in inversions]
-        report["failure_count"] = failures
-        performance._write_report(report_path, report)
-        campaign_lock.close()
-        raise StudyError(
-            "resource frontier appeared below a retained higher-n measurement; "
-            "strict terminal composition is refused"
-        )
+    else:
+        report.pop("resource_frontier_inversions", None)
     policy_complete = all(
         str(final_multiplicity) in _curve(report, family, mode.key)
         for final_multiplicity in multiplicities
@@ -3141,6 +3345,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
         if policy_complete
         else "running"
     )
+    report.pop("status_reason", None)
     report["failure_count"] = failures
     performance._write_report(report_path, report)
     campaign_lock.close()
