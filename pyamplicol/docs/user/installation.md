@@ -141,6 +141,10 @@ inputs and are omitted by default. Request either or both explicitly:
 just dev-install --with-legacy-amplicol --with-reference-fft
 ```
 
+Either opt-in also installs the `fft-profiling` Python extra into `.venv`, so
+the profiling driver and PDF renderer are ready without reinstalling the
+project in editable mode.
+
 > Candidate wheels are deliberately marked non-publishable. Published builds
 > use the release dependency lock and CI workflow instead.
 

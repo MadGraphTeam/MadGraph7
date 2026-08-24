@@ -76,6 +76,7 @@ MERGE_TOOL = ROOT / "tools" / "developer" / "fft_scaling_final_publication_repor
 PLOT_TOOL = ROOT / "tools" / "developer" / "fft_scaling_study_plots.py"
 PDF_TOOL = ROOT / "tools" / "developer" / "fft_results_summary_pdf.py"
 MADGRAPH_TOOL = ROOT / "tools" / "developer" / "fft_madgraph_selected_runtime.py"
+RENDER_REQUIREMENTS = ("matplotlib==3.10.8", "reportlab==4.4.4")
 TERMINAL_STATUSES = frozenset({"complete", "complete-with-failures"})
 LEGACY_MADGRAPH_NOTE = (
     "MadGraph points are retained from a same-workstation snapshot that "
@@ -356,7 +357,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=study.performance.DEFAULT_REFERENCE_ROOT,
         help=(
-            "pinned MultipletRecursion checkout for Reference FFT "
+            "pinned AllGluonsMultipletFFT checkout for Reference FFT "
             "(default path is populated by dev-install --with-reference-fft)"
         ),
     )
@@ -2152,9 +2153,18 @@ def _preflight_renderer(arguments: argparse.Namespace) -> None:
         env=_renderer_environment(arguments),
     )
     if renderer.returncode != 0:
+        install_command = shlex.join(
+            (
+                str(arguments.python),
+                "-m",
+                "pip",
+                "install",
+                *RENDER_REQUIREMENTS,
+            )
+        )
         raise ProfilingError(
             "plot/PDF dependencies are missing from --python; install them with "
-            f"{arguments.python} -m pip install -e '.[fft-profiling]'"
+            f"{install_command}"
         )
     selected_version = renderer.stdout.strip()
     driver_version = str(madgraph.measurement_host_identity()["python"])

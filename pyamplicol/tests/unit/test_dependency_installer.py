@@ -59,9 +59,11 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
     reference = next(
         item for item in with_references if item.key == "reference-fft"
     )
-    assert reference.url == payload["reference_fft"]["source_url"]
-    assert reference.branch == payload["reference_fft"]["branch"]
-    assert reference.revision == payload["reference_fft"]["revision"]
+    assert reference.url == (
+        "https://github.com/rikkert-frederix/AllGluonsMultipletFFT.git"
+    )
+    assert reference.branch == "main"
+    assert reference.revision == "9c3cb4fb4658200884553bab796e85bd5e7fe7a9"
 
 
 def test_profiling_references_require_explicit_cli_opt_in() -> None:
@@ -89,6 +91,7 @@ def test_installer_wires_only_explicit_reference_opt_ins(
 ) -> None:
     module = _module()
     selections: list[dict[str, bool]] = []
+    profiling_extras: list[bool] = []
     monkeypatch.setattr(module, "_lock", lambda: {})
 
     def sources(_payload, **selection):
@@ -98,15 +101,27 @@ def test_installer_wires_only_explicit_reference_opt_ins(
     monkeypatch.setattr(module, "_sources", sources)
     for name in (
         "_ensure_just",
-        "_ensure_venv",
         "_configure_sources",
         "_write_cargo_config",
         "_write_candidate_lock",
         "_write_state",
     ):
         monkeypatch.setattr(module, name, lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        module,
+        "_ensure_venv",
+        lambda *_args, **kwargs: profiling_extras.append(
+            kwargs["with_fft_profiling"]
+        ),
+    )
 
     assert module.main(["--dry-run", "--no-build"]) == 0
+    assert module.main(
+        ["--dry-run", "--no-build", "--with-legacy-amplicol"]
+    ) == 0
+    assert module.main(
+        ["--dry-run", "--no-build", "--with-reference-fft"]
+    ) == 0
     assert module.main(
         [
             "--dry-run",
@@ -117,8 +132,11 @@ def test_installer_wires_only_explicit_reference_opt_ins(
     ) == 0
     assert selections == [
         {"with_legacy": False, "with_reference_fft": False},
+        {"with_legacy": True, "with_reference_fft": False},
+        {"with_legacy": False, "with_reference_fft": True},
         {"with_legacy": True, "with_reference_fft": True},
     ]
+    assert profiling_extras == [False, True, True, True]
 
 
 def test_ratatui_distribution_and_ffi_source_are_exactly_pinned() -> None:
@@ -407,6 +425,42 @@ def test_legacy_checkout_clones_the_named_branch_then_pins_its_commit(
     ]
 
 
+def test_checkout_update_migrates_origin_before_fetching(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    checkouts = tmp_path / "checkouts"
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    source = module.Source(
+        "reference-fft",
+        "https://github.com/rikkert-frederix/AllGluonsMultipletFFT.git",
+        "9c3cb4fb4658200884553bab796e85bd5e7fe7a9",
+        "main",
+    )
+    destination = checkouts / source.key
+    (destination / ".git").mkdir(parents=True)
+    calls: list[tuple[list[str], Path | None, bool]] = []
+
+    class FakeRunner:
+        dry_run = False
+
+        def run(self, command, *, cwd=None, capture=False, **_kwargs):
+            rendered = [str(item) for item in command]
+            calls.append((rendered, cwd, capture))
+            stdout = "0" * 40 + "\n" if rendered[1:] == ["rev-parse", "HEAD"] else ""
+            return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    module._checkout(FakeRunner(), source, update=True)
+
+    assert calls == [
+        (["git", "rev-parse", "HEAD"], destination, True),
+        (["git", "remote", "set-url", "origin", source.url], destination, False),
+        (["git", "fetch", "origin", "main"], destination, False),
+        (["git", "checkout", "--detach", source.revision], destination, False),
+    ]
+
+
 def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> None:
     module = _module()
     requirements = module._runtime_requirements_text()
@@ -446,6 +500,15 @@ def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> N
     assert requirements == expected
     assert requirements.count("maturin==1.14.1") == 1
     assert "pypdf>=5,<6" in requirements
+
+    profiling_requirements = module._contributor_python_requirements(
+        with_fft_profiling=True
+    )
+    assert profiling_requirements == tuple(
+        dict.fromkeys((*expected, *optional["fft-profiling"]))
+    )
+    assert "matplotlib==3.10.8" in profiling_requirements
+    assert "reportlab==4.4.4" in profiling_requirements
 
 
 def test_candidate_dependency_only_build_installs_and_verifies_symbolica(

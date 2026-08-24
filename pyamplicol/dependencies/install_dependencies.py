@@ -392,6 +392,13 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
             f"{destination} is at {head}, expected {source.revision}; "
             "rerun with --update or --reset"
         )
+    # The pinned source URL may move while retaining the same managed checkout
+    # name.  Refresh origin before fetching so --update also migrates existing
+    # contributor checkouts away from an obsolete or private repository.
+    runner.run(
+        ["git", "remote", "set-url", "origin", source.url],
+        cwd=destination,
+    )
     fetch_ref = source.branch or source.revision
     runner.run(["git", "fetch", "origin", fetch_ref], cwd=destination)
     runner.run(
@@ -786,8 +793,11 @@ def _runtime_requirements_text() -> str:
     return "\n".join(lines) + "\n"
 
 
-def _contributor_python_requirements() -> tuple[str, ...]:
-    """Reuse the project's build, test, and documentation requirements."""
+def _contributor_python_requirements(
+    *,
+    with_fft_profiling: bool = False,
+) -> tuple[str, ...]:
+    """Reuse the selected contributor requirements from ``pyproject.toml``."""
 
     with PYPROJECT.open("rb") as stream:
         project_file = tomllib.load(stream)
@@ -800,11 +810,19 @@ def _contributor_python_requirements() -> tuple[str, ...]:
         raise SetupError("pyproject must define optional dependencies")
 
     requirements: list[str] = []
-    for description, raw in (
+    selected = [
         ("build-system.requires", build_system.get("requires")),
         ("project.optional-dependencies.test", optional.get("test")),
         ("project.optional-dependencies.docs", optional.get("docs")),
-    ):
+    ]
+    if with_fft_profiling:
+        selected.append(
+            (
+                "project.optional-dependencies.fft-profiling",
+                optional.get("fft-profiling"),
+            )
+        )
+    for description, raw in selected:
         if not isinstance(raw, list) or not all(
             isinstance(item, str) and item for item in raw
         ):
@@ -822,7 +840,7 @@ def _venv_bootstrap_python() -> Path:
     return Path(sys.executable)
 
 
-def _ensure_venv(runner: Runner) -> None:
+def _ensure_venv(runner: Runner, *, with_fft_profiling: bool) -> None:
     if not _venv_python().is_file():
         runner.run([_venv_bootstrap_python(), "-m", "venv", VENV])
     python = _venv_python()
@@ -843,7 +861,9 @@ def _ensure_venv(runner: Runner) -> None:
             )
     contributor_tools = [
         "pip",
-        *_contributor_python_requirements(),
+        *_contributor_python_requirements(
+            with_fft_profiling=with_fft_profiling,
+        ),
         "setuptools>=68,<81",
     ]
     runner.run(
@@ -1220,12 +1240,18 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--with-legacy-amplicol",
         action="store_true",
-        help="clone the optional pinned original-AmpliCol profiling reference",
+        help=(
+            "clone the optional pinned original-AmpliCol reference and install "
+            "the FFT profiling Python extra"
+        ),
     )
     parser.add_argument(
         "--with-reference-fft",
         action="store_true",
-        help="clone the optional pinned MultipletRecursion FFT reference",
+        help=(
+            "clone the optional pinned public FFT reference and install the FFT "
+            "profiling Python extra"
+        ),
     )
     build_mode = parser.add_mutually_exclusive_group()
     build_mode.add_argument("--no-build", action="store_true")
@@ -1252,7 +1278,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         with_reference_fft=args.with_reference_fft,
     )
     _ensure_just(runner)
-    _ensure_venv(runner)
+    _ensure_venv(
+        runner,
+        with_fft_profiling=(
+            args.with_legacy_amplicol or args.with_reference_fft
+        ),
+    )
     for source in sources:
         _checkout(runner, source, update=args.update)
     _configure_sources(runner)

@@ -101,11 +101,16 @@ or sdist.
 The Reference FFT checkout is likewise developer-only and is used only by the
 FFT profiling and hardware-sensitive acceptance tools. Enable it with
 `just dev-install --with-reference-fft`, which clones the exact
-`fft_reference_for_pyamplicol` revision recorded in `contributor-lock.toml`
-into `dependencies/checkouts/reference-fft`. That
-branch keeps the upstream contraction implementation and adds the calibrated
+public `AllGluonsMultipletFFT` revision recorded in `contributor-lock.toml`
+into `dependencies/checkouts/reference-fft`. That repository keeps the
+upstream contraction implementation and adds the calibrated
 batch/helicity-sum benchmark interface plus a high-multiplicity roundoff guard.
 It is never redistributed in a wheel or sdist. Ordinary `just dev-install`
 runs omit both external references. Enable both for the complete FFT profiling
 toolchain with
 `just dev-install --with-legacy-amplicol --with-reference-fft`.
+Enabling either external profiling reference also installs the project-owned
+`fft-profiling` Python extra into `.venv`; no editable project reinstall is
+required or supported. When updating a source tree that already has the former
+Reference FFT checkout, add `--update`; the installer migrates its managed
+`origin` to the public repository before fetching the pinned revision.

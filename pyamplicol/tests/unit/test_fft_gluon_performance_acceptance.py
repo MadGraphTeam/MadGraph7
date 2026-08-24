@@ -1529,7 +1529,7 @@ def test_reference_source_identity_requires_the_locked_revision(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert acceptance.REFERENCE_REVISION == "dcaa6d057e7efd86fda86f74eb409e2f9ef7663f"
+    assert acceptance.REFERENCE_REVISION == "9c3cb4fb4658200884553bab796e85bd5e7fe7a9"
     repository = tmp_path / "reference"
     repository.mkdir()
     subprocess.run(

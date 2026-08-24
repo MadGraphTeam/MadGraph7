@@ -48,9 +48,9 @@ redistributed = false
 license_evidence = "No LICENSE or COPYING file exists at the pinned branch revision"
 
 [reference_fft]
-source_url = "https://github.com/rikkert-frederix/MultipletRecursion.git"
-branch = "fft_reference_for_pyamplicol"
-revision = "dcaa6d057e7efd86fda86f74eb409e2f9ef7663f"
+source_url = "https://github.com/rikkert-frederix/AllGluonsMultipletFFT.git"
+branch = "main"
+revision = "9c3cb4fb4658200884553bab796e85bd5e7fe7a9"
 release_status = "developer-only"
 license = "NOASSERTION"
 redistributed = false

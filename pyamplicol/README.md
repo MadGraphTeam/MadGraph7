@@ -207,14 +207,13 @@ pyAmpliCol profiling commands and schedules independent measurement children:
 
 ```console
 just dev-install --with-legacy-amplicol --with-reference-fft
-python -m pip install -e '.[fft-profiling]'
-python tools/fft_profiling/fft_profiling.py \
+.venv/bin/python tools/fft_profiling/fft_profiling.py \
   --multiplicities 2 3 4 5 \
   --lines reference-fft amplicol pyamplicol-recurrence pyamplicol-otf madgraph \
   --cores 8 --candidate-cores 1 \
   --memory-limit-gib 30 --time-limit-seconds 3600 \
   --amplicol-root /path/to/AmpliCol \
-  --reference-fft-root /path/to/MultipletRecursion \
+  --reference-fft-root /path/to/AllGluonsMultipletFFT \
   --madgraph-root /path/to/MG5_aMC
 ```
 
@@ -247,7 +246,8 @@ native IDEN normalization and may reuse its warmed `GOODHEL` pruning. Fixed-
 helicity and summed overlays carry distinct workload identities and cannot be
 mixed. `just dev-install` omits the developer-only AmpliCol and Reference FFT
 repositories unless they are requested with `--with-legacy-amplicol` and
-`--with-reference-fft`. Their profiler roots default to
+`--with-reference-fft`; either opt-in also installs the `fft-profiling` Python
+extra into `.venv`. Their profiler roots default to
 `dependencies/checkouts/legacy-amplicol` and
 `dependencies/checkouts/reference-fft`; `--build-amplicol` may build the
 AmpliCol probe once. Both paths can be overridden explicitly with

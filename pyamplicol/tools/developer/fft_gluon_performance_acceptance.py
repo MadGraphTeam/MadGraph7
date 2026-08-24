@@ -49,7 +49,7 @@ PERFORMANCE_ROOT = ROOT / ".artifacts" / "fft-performance"
 DEFAULT_REFERENCE_ROOT = ROOT / "dependencies" / "checkouts" / "reference-fft"
 REFERENCE_ROOT = DEFAULT_REFERENCE_ROOT
 REFERENCE_DRIVER = REFERENCE_ROOT / "Benchmark" / "run_benchmark.py"
-REFERENCE_REVISION = "dcaa6d057e7efd86fda86f74eb409e2f9ef7663f"
+REFERENCE_REVISION = "9c3cb4fb4658200884553bab796e85bd5e7fe7a9"
 PROBE_SOURCE = ROOT / "tools" / "developer" / "fft_gluon_candidate_probe.cpp"
 SCALING_STUDY_DRIVER = ROOT / "tools" / "developer" / "fft_scaling_study.py"
 WATCHDOG = ROOT / "tools" / "ci" / "memory_watchdog.py"
@@ -2340,7 +2340,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_REFERENCE_ROOT,
         help=(
-            "pinned MultipletRecursion checkout used by Reference FFT "
+            "pinned AllGluonsMultipletFFT checkout used by Reference FFT "
             "(default path is populated by "
             "dev-install --with-reference-fft)"
         ),

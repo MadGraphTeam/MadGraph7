@@ -4,6 +4,7 @@ from __future__ import annotations
 import builtins
 import json
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -1280,7 +1281,7 @@ def test_render_prefers_matching_running_madgraph_progress(
     assert attached == [progress_path]
 
 
-def test_renderer_preflight_has_actionable_optional_extra(
+def test_renderer_preflight_has_actionable_direct_requirements(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(profiling, "_command_available", lambda _command: True)
@@ -1289,8 +1290,22 @@ def test_renderer_preflight_has_actionable_optional_extra(
         "run",
         lambda *_args, **_kwargs: type("Result", (), {"returncode": 1})(),
     )
-    with pytest.raises(profiling.ProfilingError, match="fft-profiling"):
+    with pytest.raises(profiling.ProfilingError) as raised:
         profiling._preflight_renderer(_arguments())
+    message = str(raised.value)
+    assert "pip install" in message
+    assert "-e" not in message
+    for requirement in profiling.RENDER_REQUIREMENTS:
+        assert requirement in message
+
+
+def test_renderer_requirements_match_the_project_extra() -> None:
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        project = tomllib.load(stream)
+
+    assert tuple(
+        project["project"]["optional-dependencies"]["fft-profiling"]
+    ) == profiling.RENDER_REQUIREMENTS
 
 
 def test_renderer_preflight_rejects_selected_python_version_mismatch(
