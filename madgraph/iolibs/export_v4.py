@@ -3540,24 +3540,22 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                 "libdhelas and libmodel individually. This normally indicates "
                 "a problem in Source/makefile and should be reported. The "
                 "failure was:\n%s", source_dir, error)
+            # Build through the libext-agnostic phony targets that both
+            # Source/makefile templates provide, not '../lib/libXXX.a':
+            # the latter is only a real target when the makefile was
+            # configured with the default static libext. With 'dynamic' set
+            # (make_opts) libext is 'so'/'dylib', the makefile then only
+            # knows '../lib/libdhelas.$(libext)', and make stops with
+            #     No rule to make target `../lib/libdhelas.a'
+            # -- which is what ends up reported to the user instead of the
+            # real failure logged just above.
             try:
-                misc.compile(arg=['../lib/libdhelas.a'], cwd=source_dir, mode='fortran')
-                misc.compile(arg=['../lib/libmodel.a'], cwd=source_dir, mode='fortran')
-            except Exception as fallback_error:
-                # '../lib/libXXX.a' is only a valid target when the makefile was
-                # configured with the default static libext. When 'dynamic' is
-                # set (make_opts), libext is 'so'/'dylib', the makefile only
-                # knows about '../lib/libdhelas.$(libext)' and these two targets
-                # do not exist at all -- make then stops with
-                #     No rule to make target `../lib/libdhelas.a'
-                # Retry through the libext-agnostic phony targets that both
-                # Source/makefile templates provide before giving up, and
-                # re-raise the original error if that does not help either.
-                try:
-                    misc.compile(arg=['libdhelas'], cwd=source_dir, mode='fortran')
-                    misc.compile(arg=['libmodel'], cwd=source_dir, mode='fortran')
-                except Exception:
-                    raise fallback_error
+                misc.compile(arg=['libdhelas'], cwd=source_dir, mode='fortran')
+                misc.compile(arg=['libmodel'], cwd=source_dir, mode='fortran')
+            except Exception:
+                # The per-library build is only a work-around; the useful
+                # diagnostic is why the plain 'make' failed, so report that.
+                raise error
 
     #===========================================================================
     # Create proc_card_mg5.dat for Standalone directory
