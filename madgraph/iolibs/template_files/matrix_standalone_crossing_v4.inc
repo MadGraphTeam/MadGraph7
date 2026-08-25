@@ -147,9 +147,16 @@ C     LOCAL
         P(3,XK) = P_IN(3,PERM(XK))
         IC(XK) = SGN(XK)*IC_IN(PERM(XK))
       ENDDO
+C     TAU, not sigma: the helicity slots are NOT permuted, only sign-flipped,
+C     and the sign is carried by IC above (HELAS builds its spinors from
+C     nhel*nsf). IC stays aligned with the MOMENTA -- it is also the NSF
+C     direction flag -- so slot XK gets P_IN(PERM(XK)) and NHEL_IN(XK), and the
+C     effective helicity is NHEL_IN(XK)*SGN(XK). That is the same map the
+C     recycled optim and the madmatrix lanes can realise, so one good-helicity
+C     filter now describes every backend (see CROSS_GHIDX).
       DO XR = 1, NROW
         DO XK = 1, NEXTERNAL
-          NHEL(XK,XR) = NHEL_IN(PERM(XK),XR)
+          NHEL(XK,XR) = NHEL_IN(XK,XR)
         ENDDO
       ENDDO
 
@@ -371,8 +378,10 @@ C     IHEL, so the uncrossed path is unchanged.
         GHIDX = 0
         RETURN
       ENDIF
+C     TAU: sign-flip in place, no slot permutation -- the gate has to live in
+C     the same space as what APPLY_CROSSING_TABLE actually evaluates.
       DO K=1,NEXTERNAL
-        TGT(PERM(K)) = SGN(K)*NHELCOL(K)
+        TGT(K) = SGN(K)*NHELCOL(K)
       ENDDO
       GHIDX = 0
       DO K=1,NEXTERNAL

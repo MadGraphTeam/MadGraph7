@@ -276,16 +276,23 @@ for cross in range(1, base * base):
               for h in range(1, ncomb + 1))
     if tot == 0:
         continue
-    sigma = {}
+    # TAU, not sigma: the matrix element sign-flips the helicity IN PLACE and
+    # does not permute the slots (APPLY_CROSSING_TABLE), so the map relating a
+    # crossed row to its identity row is ic[k]*nhel[k,h) -- no perm[] indexing.
+    # This is the same map the recycled optim and the madmatrix lanes realise,
+    # which is the point: one good-helicity relation now describes every
+    # backend. tau is a clean bijection (each leg's states are closed under
+    # negation), so this stays an EQUALITY rather than a containment.
+    tau = {}
     for h in range(ncomb):
-        cfg = tuple(ic[k] * nhel[perm[k], h] for k in range(nexternal))
+        cfg = tuple(ic[k] * nhel[k, h] for k in range(nexternal))
         hp = row_of.get(cfg)
-        assert hp is not None, 'cross %%d: sigma is not a row bijection' %% cross
-        sigma[h + 1] = hp
-    expected = {sigma[h] for h in g_id}
+        assert hp is not None, 'cross %%d: tau is not a row bijection' %% cross
+        tau[h + 1] = hp
+    expected = {tau[h] for h in g_id}
     g_cr = good_set(flav_idx)
     assert g_cr == expected, (
-        'cross %%d (I=%%d,J=%%d): crossed good-hel %%s != sigma(identity) %%s'
+        'cross %%d (I=%%d,J=%%d): crossed good-hel %%s != tau(identity) %%s'
         %% (cross, I, J, sorted(g_cr), sorted(expected)))
     checked += 1
     if perm != list(range(nexternal)):
@@ -1383,7 +1390,8 @@ print("F2PY_PDG_OK")
 
         Builds the f2py module for `process` and, for every DERIVABLE crossing,
         asserts the crossed good-helicity set equals the identity's mapped
-        through the crossing permutation sigma (the invariant GHREMAP encodes).
+        through TAU, the sign-only map every backend can realise (the invariant
+        the shared good-helicity filter encodes).
         Skips if the f2py toolchain is unavailable, exactly like the other
         compiled-module tests.
         """
