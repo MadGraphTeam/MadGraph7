@@ -629,8 +629,8 @@ class MadgraphProcess:
             variance = 0.
             count_opt = 0
             for status in channel_status[chan_offset:chan_offset + len(ps.channels)]:
-                mean += status.mean
-                variance += status.error**2
+                mean += status.mean_abs
+                variance += status.error_abs**2
                 count_opt += status.count_opt
             rsd = (variance * count_opt)**0.5 / mean
             subproc.set_madnis_auto_settings(rsd)

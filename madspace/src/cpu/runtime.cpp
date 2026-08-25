@@ -786,10 +786,11 @@ void op_unweight(
             auto& rand_gen = runtime.rand_gen();
             std::size_t count = 0;
             for (std::size_t i = 0; i < batch_size; ++i) {
-                double w = weights_view[i], w_max = max_weight_view[i];
-                if (w != 0. && w > rand_gen.generate_double() * w_max) {
+                double w = weights_view[i], aw = std::abs(w),
+                       w_max = max_weight_view[i];
+                if (aw != 0. && aw > rand_gen.generate_double() * w_max) {
                     indices_view[count] = i;
-                    uw_weights_view[count] = w > w_max ? w : w_max;
+                    uw_weights_view[count] = std::copysign(std::max(aw, w_max), w);
                     ++count;
                 }
             }

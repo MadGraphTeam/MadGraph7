@@ -29,6 +29,8 @@ EventGenerator::EventGenerator(
         .name = "",
         .mean = 0.,
         .error = 0.,
+        .mean_abs = 0.,
+        .error_abs = 0.,
         .rel_std_dev = 0.,
         .count = 0,
         .count_opt = 0,
@@ -225,7 +227,7 @@ void EventGenerator::survey(std::size_t survey_pass) {
                 continue;
             }
             if (iter >= min_iters &&
-                channel->cross_section().rel_error() < target_precision) {
+                channel->abs_cross_section().rel_error() < target_precision) {
                 ++i;
                 continue;
             }
@@ -304,7 +306,7 @@ void EventGenerator::survey(std::size_t survey_pass) {
                     --channel_job_count;
                     --_context_job_counts.at(uw_job.context_index);
                     if (channel_job_count == 0 &&
-                        channel->cross_section().rel_error() < target_precision) {
+                        channel->abs_cross_section().rel_error() < target_precision) {
                         done = false;
                     }
                     if (channel_job_count == 0) {
@@ -329,13 +331,13 @@ void EventGenerator::survey(std::size_t survey_pass) {
 std::size_t EventGenerator::next_batch_event_count(std::size_t channel_index) const {
     auto& channel = _channels.at(channel_index);
     auto& status = channel->status();
-    auto& cross_section = channel->cross_section();
+    auto& abs_cross_section = channel->abs_cross_section();
     return compute_generation_batch_event_count(
         status.count_target,
         status.count_unweighted,
         status.count_opt,
-        cross_section.count(),
-        cross_section.rel_error(),
+        abs_cross_section.count(),
+        abs_cross_section.rel_error(),
         _config
     );
 }
@@ -433,6 +435,7 @@ void EventGenerator::update_integral() {
 
 void EventGenerator::update_integral_status() {
     double total_mean = 0., total_var = 0.;
+    double total_mean_abs = 0., total_var_abs = 0.;
     std::size_t total_count = 0, total_count_opt = 0;
     std::size_t total_count_after_cuts = 0, total_count_after_cuts_opt = 0;
     std::size_t total_integ_count = 0;
@@ -442,14 +445,19 @@ void EventGenerator::update_integral_status() {
     for (auto& channel : _channels) {
         auto& status = channel->status();
         auto& cross_section = channel->cross_section();
+        auto& abs_cross_section = channel->abs_cross_section();
         // special case for channels with 0 samples, as they have nan variance
         if (bad_channel == nullptr && cross_section.count() > 0 &&
             (!std::isfinite(cross_section.mean()) ||
-             !std::isfinite(cross_section.variance()))) {
+             !std::isfinite(cross_section.variance()) ||
+             !std::isfinite(abs_cross_section.mean()) ||
+             !std::isfinite(abs_cross_section.variance()))) {
             bad_channel = channel.get();
         }
         total_mean += cross_section.mean();
         total_var += cross_section.variance() / cross_section.count();
+        total_mean_abs += abs_cross_section.mean();
+        total_var_abs += abs_cross_section.variance() / abs_cross_section.count();
         total_count += status.count;
         total_count_opt += status.count_opt;
         total_count_after_cuts += status.count_after_cuts;
@@ -460,7 +468,8 @@ void EventGenerator::update_integral_status() {
             optimized = false;
         }
     }
-    if (bad_channel != nullptr || !std::isfinite(total_mean)) {
+    if (bad_channel != nullptr || !std::isfinite(total_mean) ||
+        !std::isfinite(total_mean_abs)) {
         std::string where = bad_channel != nullptr
             ? std::format(
                   "channel '{}' after {} samples (mean={}, variance={})",
@@ -487,7 +496,9 @@ void EventGenerator::update_integral_status() {
 
     _status.mean = total_mean;
     _status.error = std::sqrt(total_var);
-    _status.rel_std_dev = std::sqrt(total_var * total_integ_count) / total_mean;
+    _status.mean_abs = total_mean_abs;
+    _status.error_abs = std::sqrt(total_var_abs);
+    _status.rel_std_dev = std::sqrt(total_var_abs * total_integ_count) / total_mean_abs;
     _status.count = total_count;
     _status.count_opt = total_count_opt;
     _status.count_after_cuts = total_count_after_cuts;
@@ -499,7 +510,7 @@ void EventGenerator::update_integral_status() {
 void EventGenerator::update_integral_fractions() {
     for (auto [channel, integral_fraction] :
          zip(_channels, _channel_integral_fractions)) {
-        integral_fraction = channel->cross_section().mean() / _status.mean;
+        integral_fraction = channel->abs_cross_section().mean() / _status.mean_abs;
     }
 
     // Distribute events between channels, ensure sum is exactly target_count
@@ -841,7 +852,7 @@ EventGenerator::init_combine() {
             .buffer_index = 0,
         });
     }
-    return {channel_data, particle_count, _status.mean * count_sum / weight_sum};
+    return {channel_data, particle_count, _status.mean_abs * count_sum / weight_sum};
 }
 
 void EventGenerator::read_and_combine(
@@ -892,7 +903,11 @@ void EventGenerator::read_and_combine(
 
         auto event_in = sampled_chan->event_buffer.event(sampled_chan->buffer_index);
         auto event_out = buffer.event(event_index);
-        event_out.weight() = std::max(1., weight / channel->max_weight()) * norm_factor;
+        event_out.weight() =
+            std::copysign(
+                std::max(1., std::abs(weight) / channel->max_weight()), weight
+            ) *
+            norm_factor;
         event_out.subprocess_index() = has_subproc_index
             ? event_in.subprocess_index().value()
             : static_cast<int>(channel->status().subprocess);
@@ -1175,9 +1190,10 @@ void EventGenerator::print_gen_update_pretty(bool done) {
     );
 
     if (!std::isnan(_status.error)) {
-        double rel_err = _status.error / _status.mean;
         int_str = format_with_error(_status.mean, _status.error);
-        rel_str = std::format("{:.4f} %", rel_err * 100);
+        if (std::abs(_status.error) < std::abs(_status.mean)) {
+            rel_str = std::format("{:.4f} %", _status.error / _status.mean * 100);
+        }
         rsd_str = std::format("{:.3f}", _status.rel_std_dev);
         uweff_str = std::format(
             "{:.5f} before cuts, {:.5f} after",
@@ -1212,7 +1228,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
     if (_channels.size() > 1) {
         auto channels = channel_status();
         std::sort(channels.begin(), channels.end(), [](auto& chan1, auto& chan2) {
-            return chan1.mean > chan2.mean;
+            return chan1.mean_abs > chan2.mean_abs;
         });
 
         for (std::size_t row = 1; auto& channel : channels | std::views::take(20)) {
@@ -1261,15 +1277,18 @@ void EventGenerator::print_gen_update_log(bool done) {
     }
     _last_print_time = now;
 
+    std::string rel_str = std::abs(_status.error) < std::abs(_status.mean)
+        ? std::format("{:.4f} %", _status.error / _status.mean * 100)
+        : "";
     Logger::info(
         std::format(
-            "generating, events: {} / {}, integral: {}, rel. error: {:.4f} %, "
+            "generating, events: {} / {}, integral: {}, rel. error: {}, "
             "RSD: {:.3f}, samps: {}, samps. after cuts: {}, "
             "unw. eff.: {:.5f}, unw. eff. after cuts: {:.5f}, time: {:%H:%M:%S}",
             format_si_prefix(_status.count_unweighted),
             format_si_prefix(_status.count_target),
             format_with_error(_status.mean, _status.error),
-            _status.error / _status.mean * 100,
+            rel_str,
             _status.rel_std_dev,
             format_si_prefix(_status.count),
             format_si_prefix(_status.count_after_cuts),

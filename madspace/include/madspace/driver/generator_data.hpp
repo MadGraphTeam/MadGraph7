@@ -77,8 +77,8 @@ std::size_t compute_generation_batch_event_count(
     std::size_t count_target,
     double count_unweighted,
     std::size_t count_opt,
-    std::size_t cross_section_count,
-    double cross_section_rel_error,
+    std::size_t abs_cross_section_count,
+    double abs_cross_section_rel_error,
     const GeneratorConfig& config
 );
 
@@ -87,6 +87,8 @@ struct GeneratorStatus {
     std::string name;
     double mean;
     double error;
+    double mean_abs;  // E[|w|]
+    double error_abs; // error on E[|w|]
     double rel_std_dev;
     std::size_t count;
     std::size_t count_opt;

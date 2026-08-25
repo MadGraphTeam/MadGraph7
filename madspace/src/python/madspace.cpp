@@ -1509,8 +1509,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("count_target"),
         py::arg("count_unweighted"),
         py::arg("count_opt"),
-        py::arg("cross_section_count"),
-        py::arg("cross_section_rel_error"),
+        py::arg("abs_cross_section_count"),
+        py::arg("abs_cross_section_rel_error"),
         py::arg("config")
     );
 
@@ -1520,6 +1520,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("name", &GeneratorStatus::name)
         .def_readwrite("mean", &GeneratorStatus::mean)
         .def_readwrite("error", &GeneratorStatus::error)
+        .def_readwrite("mean_abs", &GeneratorStatus::mean_abs)
+        .def_readwrite("error_abs", &GeneratorStatus::error_abs)
         .def_readwrite("rel_std_dev", &GeneratorStatus::rel_std_dev)
         .def_readwrite("count", &GeneratorStatus::count)
         .def_readwrite("count_opt", &GeneratorStatus::count_opt)

@@ -1081,8 +1081,9 @@ __global__ void kernel_unweight(
     for (std::size_t i = t; i < batch_size; i += stride) {
         auto rand = rng.flat();
         auto weight = weights_in[i], max_weight = max_weights_in[i];
-        bool accepted = max_weight * rand < weight;
-        auto weight_clipped = weight < max_weight ? max_weight : weight;
+        auto abs_weight = fabs(weight);
+        bool accepted = max_weight * rand < abs_weight;
+        auto weight_clipped = copysign(fmax(abs_weight, max_weight), weight);
         weights_out[i] = accepted ? weight_clipped : 0.;
         indices_out[i] = accepted ? static_cast<me_int_t>(i) : -1;
     }

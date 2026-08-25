@@ -9,8 +9,8 @@ std::size_t madspace::compute_generation_batch_event_count(
     std::size_t count_target,
     double count_unweighted,
     std::size_t count_opt,
-    std::size_t cross_section_count,
-    double cross_section_rel_error,
+    std::size_t abs_cross_section_count,
+    double abs_cross_section_rel_error,
     const GeneratorConfig& config
 ) {
     double efficiency = count_opt > 0
@@ -26,8 +26,9 @@ std::size_t madspace::compute_generation_batch_event_count(
         );
     }
 
-    double rel_error = cross_section_count > 1 && std::isfinite(cross_section_rel_error)
-        ? cross_section_rel_error
+    double rel_error =
+        abs_cross_section_count > 1 && std::isfinite(abs_cross_section_rel_error)
+        ? abs_cross_section_rel_error
         : 1.;
 
     double target_uncertainty = static_cast<double>(count_target) * rel_error;
@@ -47,6 +48,8 @@ void madspace::to_json(nlohmann::json& j, const GeneratorStatus& status) {
         {"name", status.name},
         {"mean", status.mean},
         {"error", status.error},
+        {"mean_abs", status.mean_abs},
+        {"error_abs", status.error_abs},
         {"rel_std_dev", status.rel_std_dev},
         {"count", status.count},
         {"count_opt", status.count_opt},

@@ -46,6 +46,7 @@ public:
 
     const GeneratorStatus& status() const { return _status; }
     const RunningIntegral& cross_section() const { return _cross_section; }
+    const RunningIntegral& abs_cross_section() const { return _abs_cross_section; }
     const std::vector<Histogram>& histograms() const { return _histograms; }
     EventFile& event_file() { return _event_file; }
     EventFile& weight_file() { return _weight_file; }
@@ -147,6 +148,7 @@ private:
     Function _unweighter_function;
     std::optional<Function> _histogram_function;
     RunningIntegral _cross_section;
+    RunningIntegral _abs_cross_section;
     double _max_weight = 0.;
     // Monotonic per-job counters keying each job's deterministic random stream;
     // never reset. Separate for survey/generate so neither depends on the other.

@@ -90,6 +90,8 @@ ChannelEventGenerator::ChannelEventGenerator(
         .name = name,
         .mean = 0.,
         .error = 0.,
+        .mean_abs = 0.,
+        .error_abs = 0.,
         .rel_std_dev = 0.,
         .count = 0,
         .count_opt = 0,
@@ -214,6 +216,8 @@ ChannelEventGenerator::ChannelEventGenerator(
         .name = name,
         .mean = 0.,
         .error = 0.,
+        .mean_abs = 0.,
+        .error_abs = 0.,
         .rel_std_dev = 0.,
         .count = 0,
         .count_opt = 0,
@@ -333,10 +337,12 @@ void ChannelEventGenerator::unweight_file(MixMaxRandom& rand_gen) {
         _weight_file.read(buffer, buf_size);
         for (std::size_t j = 0; j < buffer.event_count(); ++j) {
             auto weight = buffer.event(j).weight();
-            if (weight / _max_weight < rand_gen.generate_double()) {
+            if (std::abs(weight.value()) / _max_weight < rand_gen.generate_double()) {
                 weight = 0;
             } else {
-                weight = std::max(weight.value(), _max_weight);
+                weight = std::copysign(
+                    std::max(std::abs(weight.value()), _max_weight), weight.value()
+                );
                 ++accept_count;
             }
         }
@@ -356,10 +362,13 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
             ++sample_count_after_cuts;
         }
         _cross_section.push(w_view[i]);
+        _abs_cross_section.push(std::abs(w_view[i]));
     }
     _status.mean = _cross_section.mean();
     _status.error = _cross_section.error();
-    _status.rel_std_dev = _cross_section.rel_std_dev();
+    _status.mean_abs = _abs_cross_section.mean();
+    _status.error_abs = _abs_cross_section.error();
+    _status.rel_std_dev = _abs_cross_section.rel_std_dev();
     _status.count += w_view.size();
     _status.count_opt += w_view.size();
     _status.count_after_cuts += sample_count_after_cuts;
@@ -394,7 +403,7 @@ void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
     if (_discrete_optimizer) {
         _discrete_optimizer->optimize();
     }
-    double rsd = _cross_section.rel_std_dev();
+    double rsd = _abs_cross_section.rel_std_dev();
     if (rsd < _config.optimization_threshold * _best_rsd) {
         _iters_without_improvement = 0;
     } else {
@@ -425,8 +434,7 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
             if (weight == 0.) {
                 continue;
             }
-            weight_sum += weight / _max_weight;
-            _unweighted_count = 0;
+            weight_sum += std::abs(weight) / _max_weight;
             ++unweighted_count;
         }
         if (done) {
@@ -627,6 +635,7 @@ void ChannelEventGenerator::clear_events() {
     _event_file.clear();
     _weight_file.clear();
     _cross_section.reset();
+    _abs_cross_section.reset();
     _large_weights.clear();
     for (auto& hist : _histograms) {
         std::fill(hist.bin_values.begin(), hist.bin_values.end(), 0.);
