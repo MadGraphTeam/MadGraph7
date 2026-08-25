@@ -983,7 +983,9 @@ void op_discrete_histogram(
 CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concurrent) :
     _context(context),
     _input_count(function.inputs().size()),
-    _rand_gens(context->thread_pool(), []() { return MixMaxRandom(); }),
+    _rand_gens(context->global_resource<MixMaxRandom>(
+        "cpu_rand_gen", []() { return MixMaxRandom(); }
+    )),
     _concurrent(concurrent) {
     if (context->device()->device_type() != DeviceType::cpu) {
         throw std::runtime_error("Context has incompatible device");

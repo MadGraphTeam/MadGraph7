@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <typeindex>
 #include <unordered_map>
 
 #include "madspace/compgraphs.hpp"
@@ -150,15 +151,18 @@ class Context {
 public:
     Context(int thread_count = -1) :
         _device(cpu_device()),
-        _thread_pool(std::make_unique<ThreadPool>(thread_count)) {
-        reset_cache();
-    }
+        _thread_pool(std::make_unique<ThreadPool>(thread_count)),
+        _tensor_cache(global_resource<TensorVec>(tensor_cache_resource_name, []() {
+            return TensorVec{};
+        })) {}
     Context(DevicePtr device, int thread_count = -1) :
-        _device(device), _thread_pool(std::make_unique<ThreadPool>(thread_count)) {
-        reset_cache();
-    }
-    Context(Context&&) = default;
-    Context& operator=(Context&&) = default;
+        _device(device),
+        _thread_pool(std::make_unique<ThreadPool>(thread_count)),
+        _tensor_cache(global_resource<TensorVec>(tensor_cache_resource_name, []() {
+            return TensorVec{};
+        })) {}
+    Context(Context&&) = delete;
+    Context& operator=(Context&&) = delete;
     Context(const Context&) = delete;
     Context& operator=(const Context&) = delete;
     const MatrixElementApi&
@@ -189,15 +193,48 @@ public:
             return TensorVec{};
         });
     }
+    // Not thread-safe: callers must acquire the reference once during
+    // single-threaded initialization (e.g. a Runtime constructor) and reuse it.
+    template <typename T>
+    ThreadResource<T>& global_resource(
+        const std::string& name,
+        std::function<T()> constructor,
+        std::optional<std::function<void(T&)>> destructor = std::nullopt
+    ) {
+        auto search = _resources.find(name);
+        if (search == _resources.end()) {
+            auto res = std::make_shared<ThreadResource<T>>(
+                thread_pool(), constructor, destructor
+            );
+            _resources.emplace(
+                name,
+                std::pair<std::type_index, std::shared_ptr<void>>(
+                    std::type_index(typeid(T)), res
+                )
+            );
+            return *res;
+        } else {
+            auto& [tid, res] = search->second;
+            if (std::type_index(typeid(T)) != tid) {
+                throw std::runtime_error(
+                    std::format("incompatible resource type for '{}'", name)
+                );
+            }
+            return *std::static_pointer_cast<ThreadResource<T>>(res);
+        }
+    }
 
 private:
+    static constexpr const char* tensor_cache_resource_name = "__tensor_cache";
     DevicePtr _device;
     std::unique_ptr<ThreadPool> _thread_pool;
     std::unordered_map<std::string, std::pair<Tensor, bool>> _globals;
     std::vector<std::unique_ptr<MatrixElementApi>> _matrix_elements;
     std::vector<std::string> _param_card_paths;
     std::size_t _seed_index = 0;
-    ThreadResource<TensorVec> _tensor_cache;
+    std::unordered_map<std::string, std::pair<std::type_index, std::shared_ptr<void>>>
+        _resources;
+    ThreadResource<TensorVec>& _tensor_cache;
 };
 
 using ContextPtr = std::shared_ptr<Context>;

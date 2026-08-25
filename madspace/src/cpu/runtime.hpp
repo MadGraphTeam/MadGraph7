@@ -86,7 +86,7 @@ private:
     std::vector<Sizes> _grad_global_shapes;
     std::size_t _grad_global_total_size;
     ContextPtr _context;
-    ThreadResource<MixMaxRandom> _rand_gens;
+    ThreadResource<MixMaxRandom>& _rand_gens;
     bool _concurrent;
     SizeVec _ready_instructions_init;
     SizeVec _ready_instructions_backward_init;

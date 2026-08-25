@@ -1506,15 +1506,15 @@ private:
 GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     _context(context),
     _input_count(function_arg.inputs().size()),
-    _gpublas_handle(
-        context->thread_pool(),
+    _gpublas_handle(context->global_resource<gpublasHandle_t>(
+        "gpublas_handle",
         []() {
             gpublasHandle_t handle;
             check_error(gpublasCreate(&handle));
             return handle;
         },
         [](gpublasHandle_t handle) { check_error(gpublasDestroy(handle)); }
-    ),
+    )),
     _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
     _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }) {
     if (context->device()->device_type() != GpuDevice::gpu_device_type) {
@@ -1800,7 +1800,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         }
     );
     if (_uses_random) {
-        _rng = ThreadResource<GpuRandom>(context->thread_pool(), []() {
+        _rng = context->global_resource<GpuRandom>("gpu_rng", []() {
             return GpuRandom();
         });
     }
