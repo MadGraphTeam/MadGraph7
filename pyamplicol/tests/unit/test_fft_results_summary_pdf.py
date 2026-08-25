@@ -206,6 +206,41 @@ def test_pdf_plot_manifest_rejects_changed_plot(tmp_path: Path) -> None:
         )
 
 
+def test_pdf_validates_and_publishes_raw_plot_data_sidecar(tmp_path: Path) -> None:
+    campaign_report = tmp_path / "report.json"
+    campaign_report.write_text("{}\n", encoding="utf-8")
+    plot_directory = tmp_path / "plots"
+    plot_directory.mkdir()
+    raw_data = (
+        json.dumps(
+            {
+                "kind": "pyamplicol-fft-scaling-plot-data",
+                "schema_version": 1,
+                "report_sha256": summary_pdf._sha256(campaign_report),
+                "helicity_workload": "fixed",
+                "families": {"gg": {}, "ddbar": {}},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode()
+    (plot_directory / summary_pdf.PLOT_DATA_NAME).write_bytes(raw_data)
+
+    assert (
+        summary_pdf._validated_plot_data_bytes(
+            plot_directory, campaign_report, "fixed"
+        )
+        == raw_data
+    )
+    destination = summary_pdf._publish_plot_data_sidecar(
+        raw_data, tmp_path / "summary_plots_final.pdf"
+    )
+
+    assert destination == tmp_path / "summary_plots_final.json"
+    assert destination.read_bytes() == raw_data
+
+
 def test_pdf_note_rejects_missing_otf_comparison() -> None:
     report = {
         "policy": {

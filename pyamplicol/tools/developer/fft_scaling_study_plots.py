@@ -117,6 +117,7 @@ MODE_PUBLICATION_MAX_MULTIPLICITY = {
 }
 EXIT_STATUS = re.compile(r"command failed with status\s+(-?\d+)")
 PLOT_MANIFEST_NAME = "plot-manifest.json"
+PLOT_DATA_NAME = "plot-data.json"
 PLOT_FILENAMES = tuple(
     f"fullcolor-{family}-{metric.slug}.png"
     for family in FAMILIES
@@ -942,6 +943,94 @@ def _plot_metric(
     temporary_path.replace(output_path)
 
 
+def _point_payload(point: tuple[int, float]) -> dict[str, float | int]:
+    return {"n": point[0], "value": point[1]}
+
+
+def _source_boundary_payload(
+    report: Mapping[str, Any], metric: Metric
+) -> dict[str, float | str] | None:
+    boundary = _source_boundary(report, metric.key)
+    if boundary is None:
+        return None
+    x_position, label = boundary
+    return {"x": x_position, "label": label}
+
+
+def _metric_data_payload(
+    report: Mapping[str, Any], family: str, metric: Metric
+) -> dict[str, Any]:
+    family_cells, modes = _family_cells_for_metric(report, family, metric)
+    series = {mode: _series(family_cells, mode, metric) for mode in modes}
+    baseline = FAMILY_BASELINES[family]
+    baseline_values = dict(series.get(baseline, ()))
+    mode_payloads: dict[str, Any] = {}
+    for mode in modes:
+        values = series[mode]
+        ratios = [
+            (n, value / baseline_values[n])
+            for n, value in values
+            if n in baseline_values and baseline_values[n] > 0.0
+        ]
+        mode_payloads[mode] = {
+            "label": _label(family_cells, mode),
+            "series": [_point_payload(point) for point in values],
+            "ratio_to_baseline": [_point_payload(point) for point in ratios],
+        }
+    return {
+        "source_metric_key": metric.key,
+        "slug": metric.slug,
+        "title": _metric_title(report, metric),
+        "axis_label": _metric_axis_label(report, metric),
+        "scale_from_report": metric.scale,
+        "source_boundary": _source_boundary_payload(report, metric),
+        "baseline_mode": baseline,
+        "modes": mode_payloads,
+    }
+
+
+def _plot_data_payload(
+    report_sha256: str, report: Mapping[str, Any]
+) -> dict[str, Any]:
+    return {
+        "kind": "pyamplicol-fft-scaling-plot-data",
+        "schema_version": 1,
+        "report_sha256": report_sha256,
+        "helicity_workload": _helicity_workload(report),
+        "families": {
+            family: {
+                "title": FAMILY_TITLES[family],
+                "metrics": {
+                    metric.slug: _metric_data_payload(report, family, metric)
+                    for metric in METRICS
+                },
+            }
+            for family in FAMILIES
+        },
+    }
+
+
+def _write_plot_data(
+    report_sha256: str,
+    report: Mapping[str, Any],
+    output_directory: Path,
+) -> Path:
+    data_path = output_directory / PLOT_DATA_NAME
+    temporary_path = data_path.with_suffix(data_path.suffix + ".tmp")
+    temporary_path.write_text(
+        json.dumps(
+            _plot_data_payload(report_sha256, report),
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    temporary_path.replace(data_path)
+    return data_path
+
+
 def _configure_matplotlib() -> None:
     plt.rcParams.update(
         {
@@ -1012,6 +1101,11 @@ def main() -> int:
         report, report_sha256 = _load_report_snapshot(arguments.report)
         _render(report, arguments.output_directory, dpi=arguments.dpi)
         _write_plot_manifest(
+            report_sha256,
+            report,
+            arguments.output_directory,
+        )
+        _write_plot_data(
             report_sha256,
             report,
             arguments.output_directory,

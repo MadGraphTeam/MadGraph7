@@ -299,6 +299,17 @@ def _fill_multiplicities(arguments: argparse.Namespace) -> tuple[int, ...]:
     return tuple(sorted(set(requested)))
 
 
+def _fill_modes(arguments: argparse.Namespace, family: str) -> tuple[Mode, ...]:
+    """Return policy modes selected for this fill without changing identity."""
+
+    policy = _selected_modes(arguments, family)
+    requested = arguments.fill_modes
+    if requested is None:
+        return policy
+    requested_set = set(requested)
+    return tuple(mode for mode in policy if mode.key in requested_set)
+
+
 def _study_root(arguments: argparse.Namespace) -> Path:
     return arguments.study_root.expanduser().resolve(strict=False)
 
@@ -3001,8 +3012,11 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
     modes_by_family = {
         family: _selected_modes(arguments, family) for family in families
     }
+    fill_modes_by_family = {
+        family: _fill_modes(arguments, family) for family in families
+    }
     selected_modes = {
-        mode.key: mode for modes in modes_by_family.values() for mode in modes
+        mode.key: mode for modes in fill_modes_by_family.values() for mode in modes
     }
 
     if any(mode.kind == "amplicol" for mode in selected_modes.values()):
@@ -3037,7 +3051,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
     )
     for final_multiplicity in fill_multiplicities:
         for family in families:
-            for mode in modes_by_family[family]:
+            for mode in fill_modes_by_family[family]:
                 curve = _curve(report, family, mode.key)
                 candidate_cell_root = (
                     run_root
@@ -3622,6 +3636,16 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--fill-mode",
+        dest="fill_modes",
+        action="append",
+        choices=tuple(MODE_BY_KEY),
+        help=(
+            "populate only this mode in the fixed --mode policy; repeat for a "
+            "bounded resumable fill (not part of report identity)"
+        ),
+    )
+    parser.add_argument(
         "--family",
         dest="families",
         action="append",
@@ -3746,6 +3770,18 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
     }
     if any(not modes for modes in modes_by_family.values()):
         raise StudyError("the selected --mode values leave a family with no curves")
+    if arguments.fill_modes is not None:
+        policy_modes = {
+            mode.key for modes in modes_by_family.values() for mode in modes
+        }
+        outside_policy = sorted(set(arguments.fill_modes) - policy_modes)
+        if outside_policy:
+            raise StudyError(
+                "--fill-mode values must belong to the fixed --mode policy: "
+                + ", ".join(outside_policy)
+            )
+        if not any(_fill_modes(arguments, family) for family in families):
+            raise StudyError("--fill-mode leaves no selected curves to populate")
     gg_modes = {mode.key for mode in modes_by_family.get("gg", ())}
     if gg_modes - {"reference-fft"} and "reference-fft" not in gg_modes:
         raise StudyError("gg candidate/AmpliCol curves require --mode reference-fft")

@@ -890,6 +890,148 @@ def test_process_family_selector_rejects_inapplicable_line() -> None:
         profiling._validate_arguments(arguments)
 
 
+def test_madgraph_completed_ignores_overlay_when_not_requested(tmp_path: Path) -> None:
+    output = tmp_path / "reference-only-with-overlay"
+    overlay = profiling._madgraph_overlay_path(output)
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text(
+        json.dumps(
+            {
+                "host": profiling.madgraph.measurement_host_identity(),
+                "policy": {
+                    "final_state_multiplicities": [2],
+                    "maximum_measured_multiplicity": 6,
+                    "higher_multiplicity_policy": "not-applicable-protocol-scope",
+                },
+                "runtime_series": {
+                    "gg": {
+                        "madgraph-standalone": {
+                            "2": {
+                                "status": "measured",
+                                "warm_seconds_per_point": 1.0e-6,
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--lines",
+        "reference-fft",
+    )
+
+    assert profiling._madgraph_completed(arguments, output) == 0
+
+
+def test_retry_invalidates_failed_selected_cell_without_dependency_count(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "retry"
+    initial = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "7",
+        "--families",
+        "gg",
+        "--lines",
+        "recurrence-direct",
+        "--memory-limit-gib",
+        "100",
+    )
+    retry = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "7",
+        "--families",
+        "gg",
+        "--lines",
+        "recurrence-direct",
+        "--memory-limit-gib",
+        "160",
+        "--retry",
+    )
+    profiling._create_or_resume_manifest(initial, output)
+    reference = profiling.SHARD_BY_NAME["gg-reference"]
+    recurrence = profiling.SHARD_BY_NAME["gg-recurrence"]
+    reference_cell = study._cell_base("gg", study.MODE_BY_KEY["reference-fft"], 7) | {
+        "status": "measured",
+        "generation_seconds": 1.0,
+        "warm_seconds_per_point": 1.0e-6,
+        "max_rss_kib": 1024,
+    }
+    failed_cell = study._cell_base("gg", study.MODE_BY_KEY["recurrence-direct"], 7) | {
+        "status": "failed",
+        "failure_category": "memory-limit",
+        "failure_reason": "memory cap",
+        "censors_higher_multiplicities": True,
+    }
+    reference_report = study.compose_report(
+        profiling._shard_arguments(initial, output, reference),
+        {"gg": {"reference-fft": {"7": reference_cell}}},
+    )
+    recurrence_cells = {
+        "gg": {
+            "reference-fft": {"7": reference_cell},
+            "recurrence-direct": {"7": failed_cell},
+        }
+    }
+    recurrence_aggregate = study.compose_report(
+        profiling._shard_arguments(initial, output, recurrence),
+        recurrence_cells,
+    )
+    recurrence_cell_report = study.compose_report(
+        profiling._shard_arguments(initial, output, recurrence, 7),
+        recurrence_cells,
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, reference),
+        reference_report,
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, recurrence),
+        recurrence_aggregate,
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, recurrence, 7),
+        recurrence_cell_report,
+    )
+
+    manifest = profiling._create_or_resume_manifest(retry, output)
+    removed = profiling._apply_retry_invalidation(retry, output)
+    master = profiling._publish_master(retry, output)
+    per_cell = json.loads(
+        profiling._shard_report_path(output, recurrence, 7).read_text(
+            encoding="utf-8"
+        )
+    )
+    plan = profiling.dry_run_plan(retry)
+
+    assert manifest["identity"]["resources"]["per_cell_memory_limit_gib"] == 160.0
+    assert removed == 1
+    assert profiling._phase_work_items(retry, output, 1) == ()
+    assert [
+        (work.shard.name, work.final_multiplicity)
+        for work in profiling._phase_work_items(retry, output, 2)
+    ] == [("gg-recurrence", 7)]
+    assert profiling._selected_completed_cells(retry, master, multiplicities=(7,)) == 0
+    assert profiling._selected_pending_cells(retry, master, multiplicities=(7,)) == 1
+    assert (
+        per_cell["cells"]["gg"]["reference-fft"]["7"]["status"] == "measured"
+    )
+    assert "7" not in per_cell["cells"]["gg"]["recurrence-direct"]
+    assert plan["shards"]["gg-reference"]["scheduled"] is False
+    assert plan["shards"]["gg-reference"]["jobs"] == []
+    assert [job["n"] for job in plan["shards"]["gg-recurrence"]["jobs"]] == [7]
+
+
 def test_narrow_line_selector_reuses_existing_broader_shard_report(
     tmp_path: Path,
 ) -> None:
@@ -936,6 +1078,90 @@ def test_narrow_line_selector_reuses_existing_broader_shard_report(
 
     assert set(family) == {"reference-fft", "recurrence-fft"}
     assert family["recurrence-fft"]["2"]["status"] == "measured"
+
+
+def test_output_render_rebuilds_master_from_manifest_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "render-history"
+    shard = profiling.SHARD_BY_NAME["gg-recurrence"]
+    broad = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--families",
+        "gg",
+        "--lines",
+        "pyamplicol-recurrence",
+    )
+    narrow = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--families",
+        "gg",
+        "--lines",
+        "recurrence-direct",
+    )
+    profiling._create_or_resume_manifest(broad, output)
+    profiling._create_or_resume_manifest(narrow, output)
+    cells = {"gg": {}}
+    for mode in ("reference-fft", "recurrence-direct", "recurrence-fft"):
+        cells["gg"][mode] = {
+            "2": study._cell_base("gg", study.MODE_BY_KEY[mode], 2)
+            | {
+                "status": "measured",
+                "generation_seconds": 1.0,
+                "warm_seconds_per_point": 1.0e-6,
+                "max_rss_kib": 1024,
+            }
+        }
+    per_cell = study.compose_report(
+        profiling._shard_arguments(broad, output, shard, 2),
+        cells,
+    )
+    partial_aggregate = study.compose_report(
+        profiling._shard_arguments(narrow, output, shard),
+        {
+            "gg": {
+                mode: cells["gg"][mode]
+                for mode in ("reference-fft", "recurrence-direct")
+            }
+        },
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, shard, 2),
+        per_cell,
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, shard),
+        partial_aggregate,
+    )
+    rendered: dict[str, object] = {}
+
+    def fake_run(command, **_kwargs):
+        command = tuple(command)
+        if Path(command[1]) == profiling.PLOT_TOOL:
+            rendered.update(json.loads(Path(command[2]).read_text(encoding="utf-8")))
+            plot_root = Path(command[3])
+            plot_root.mkdir(parents=True)
+            for family in ("gg", "ddbar"):
+                for metric in ("generation", "warm-runtime", "rss"):
+                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(
+                        b"png"
+                    )
+        else:
+            _write_fake_pdf_output(command)
+
+    monkeypatch.setattr(profiling, "_run_checked", fake_run)
+    monkeypatch.setattr(profiling, "_preflight_renderer", lambda _arguments: None)
+
+    profiling.render_snapshot(_arguments("--render", "--output", str(output)))
+
+    assert rendered["cells"]["gg"]["recurrence-direct"]["2"]["status"] == "measured"
+    assert rendered["cells"]["gg"]["recurrence-fft"]["2"]["status"] == "measured"
 
 
 def test_line_groups_reject_duplicates() -> None:
@@ -1099,6 +1325,12 @@ def _partial_report(output: Path, *, summed: bool = False) -> dict[str, object]:
     return report
 
 
+def _write_fake_pdf_output(command: tuple[str, ...]) -> None:
+    output = Path(command[command.index("--output") + 1])
+    output.write_bytes(b"pdf")
+    output.with_suffix(".json").write_text("{}\n", encoding="utf-8")
+
+
 def test_render_freezes_once_and_publishes_only_complete_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1118,7 +1350,7 @@ def test_render_freezes_once_and_publishes_only_complete_set(
                 for metric in ("generation", "warm-runtime", "rss"):
                     (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         elif Path(command[1]) == profiling.PDF_TOOL:
-            Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
+            _write_fake_pdf_output(command)
 
     monkeypatch.setattr(profiling, "_run_checked", fake_run)
     monkeypatch.setattr(profiling, "_preflight_renderer", lambda _arguments: None)
@@ -1181,7 +1413,7 @@ def test_default_campaign_render_atomically_publishes_canonical_pdf(
                 for metric in ("generation", "warm-runtime", "rss"):
                     (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
-            Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
+            _write_fake_pdf_output(command)
 
     monkeypatch.setattr(profiling, "_run_checked", fake_run)
     arguments = _arguments("--render")
@@ -1189,6 +1421,7 @@ def test_default_campaign_render_atomically_publishes_canonical_pdf(
     profiling.render_snapshot(arguments)
 
     assert profiling._canonical_pdf_path(arguments).read_bytes() == b"pdf"
+    assert profiling._canonical_pdf_path(arguments).with_suffix(".json").is_file()
 
 
 def test_bare_render_falls_back_to_richest_compatible_existing_report(
@@ -1262,7 +1495,7 @@ def test_bare_render_compares_existing_primary_with_isolated_composite(
                 for metric in ("generation", "warm-runtime", "rss"):
                     (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
-            Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
+            _write_fake_pdf_output(command)
 
     monkeypatch.setattr(profiling, "_run_checked", fake_run)
     monkeypatch.setattr(profiling, "_preflight_renderer", lambda _arguments: None)
@@ -1398,7 +1631,7 @@ def test_summed_bare_render_preserves_n6_extension_and_n2_n5_madgraph(
                 for metric in ("generation", "warm-runtime", "rss"):
                     (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
-            Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
+            _write_fake_pdf_output(command)
 
     monkeypatch.setattr(profiling, "_attach_partial_overlay", attach)
     monkeypatch.setattr(profiling, "_run_checked", fake_run)
@@ -1530,7 +1763,7 @@ def test_fixed_bare_render_combines_otf_frontier_with_valid_madgraph_overlay(
                 for metric in ("generation", "warm-runtime", "rss"):
                     (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
-            Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
+            _write_fake_pdf_output(command)
 
     monkeypatch.setattr(profiling, "_attach_partial_overlay", attach)
     monkeypatch.setattr(profiling, "_run_checked", fake_run)
@@ -1700,7 +1933,7 @@ def test_render_prefers_matching_running_madgraph_progress(
                 for metric in ("generation", "warm-runtime", "rss"):
                     (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
         else:
-            Path(command[command.index("--output") + 1]).write_bytes(b"pdf")
+            _write_fake_pdf_output(command)
 
     monkeypatch.setattr(profiling, "_run_checked", fake_run)
     arguments = _arguments("--render", "--output", str(output))

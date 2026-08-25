@@ -33,6 +33,7 @@ FINAL_REPORT = (
     / "campaign-report-scalar-selected-n2-n9-final.json"
 )
 PLOT_MANIFEST_NAME = "plot-manifest.json"
+PLOT_DATA_NAME = "plot-data.json"
 PLOT_FILENAMES = (
     "fullcolor-gg-generation.png",
     "fullcolor-gg-warm-runtime.png",
@@ -359,6 +360,42 @@ def _validate_plot_manifest(
             raise ValueError(f"plot manifest hash does not match {filename}")
 
 
+def _validated_plot_data_bytes(
+    plot_directory: Path,
+    campaign_report: Path,
+    helicity_workload: str,
+) -> bytes:
+    data_path = plot_directory / PLOT_DATA_NAME
+    try:
+        raw = data_path.read_bytes()
+        payload = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot read plot data {data_path}: {error}") from error
+    if not isinstance(payload, Mapping):
+        raise ValueError("plot data must be a JSON object")
+    if (
+        payload.get("kind") != "pyamplicol-fft-scaling-plot-data"
+        or payload.get("schema_version") != 1
+    ):
+        raise ValueError("plot data has an unsupported identity or schema")
+    if payload.get("report_sha256") != _sha256(campaign_report):
+        raise ValueError("plot data was rendered from a different campaign report")
+    if payload.get("helicity_workload") != helicity_workload:
+        raise ValueError("plot data helicity workload does not match the campaign")
+    families = payload.get("families")
+    if not isinstance(families, Mapping) or set(families) != {"gg", "ddbar"}:
+        raise ValueError("plot data must contain gg and ddbar families")
+    return raw
+
+
+def _publish_plot_data_sidecar(raw: bytes, output: Path) -> Path:
+    destination = output.with_suffix(".json")
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_bytes(raw)
+    temporary.replace(destination)
+    return destination
+
+
 def _campaign_note_lines(
     campaign_note: str,
     *,
@@ -478,6 +515,11 @@ def main() -> int:
             arguments.campaign_report,
             helicity_workload,
         )
+        plot_data = _validated_plot_data_bytes(
+            pages[0].path.parent,
+            arguments.campaign_report,
+            helicity_workload,
+        )
     except ValueError as error:
         raise SystemExit(f"invalid plot provenance: {error}") from error
 
@@ -506,6 +548,7 @@ def main() -> int:
         )
     document.save()
     temporary.replace(output)
+    _publish_plot_data_sidecar(plot_data, output)
     print(output)
     return 0
 

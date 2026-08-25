@@ -227,6 +227,81 @@ def test_plot_manifest_binds_report_workload_and_exact_pngs(tmp_path: Path) -> N
     )
 
 
+def test_plot_data_payload_records_plotted_values_and_ratios(tmp_path: Path) -> None:
+    report = _report(None)
+    report["policy"].update(
+        {
+            "process_families": {
+                "gg": {"modes": ["reference-fft", "recurrence-direct"]},
+                "ddbar": {"modes": ["amplicol"]},
+            },
+            "measurement": {"warm_fixed_helicity": True},
+        }
+    )
+    measured = {
+        "status": "measured",
+        "warm_fixed_helicity": True,
+    }
+    report["cells"] = {
+        "gg": {
+            "reference-fft": {
+                "2": measured
+                | {
+                    "label": "Reference FFT",
+                    "metrics": {
+                        "generation_seconds": 2.0,
+                        "warm_seconds_per_point": 0.2,
+                        "max_rss_kib": 2048.0,
+                    },
+                }
+            },
+            "recurrence-direct": {
+                "2": measured
+                | {
+                    "metrics": {
+                        "generation_seconds": 4.0,
+                        "warm_seconds_per_point": 0.1,
+                        "max_rss_kib": 4096.0,
+                    },
+                }
+            },
+        },
+        "ddbar": {
+            "amplicol": {
+                "2": measured
+                | {
+                    "metrics": {
+                        "generation_seconds": 3.0,
+                        "warm_seconds_per_point": 0.3,
+                        "max_rss_kib": 1024.0,
+                    },
+                }
+            }
+        },
+    }
+
+    payload = plots._plot_data_payload("abc123", report)
+    output_directory = tmp_path / "plots"
+    output_directory.mkdir()
+    data_path = plots._write_plot_data("abc123", report, output_directory)
+    persisted = json.loads(data_path.read_text(encoding="utf-8"))
+
+    generation = payload["families"]["gg"]["metrics"]["generation"]
+    rss = payload["families"]["gg"]["metrics"]["rss"]
+
+    assert persisted == payload
+    assert payload["kind"] == "pyamplicol-fft-scaling-plot-data"
+    assert generation["source_metric_key"] == "generation_seconds"
+    assert generation["modes"]["reference-fft"]["series"] == [
+        {"n": 2, "value": 2.0}
+    ]
+    assert generation["modes"]["recurrence-direct"]["ratio_to_baseline"] == [
+        {"n": 2, "value": 2.0}
+    ]
+    assert rss["axis_label"] == "Peak RSS [MiB]"
+    assert rss["modes"]["reference-fft"]["series"] == [{"n": 2, "value": 2.0}]
+
+
 def test_final_series_palette_line_styles_and_legend_grouping() -> None:
     assert plots.MODE_STYLES["reference-fft"] == ("#000000", "o", "-")
     assert plots.MODE_STYLES["amplicol"] == ("#F0E442", "D", "-")
