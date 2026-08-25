@@ -13,8 +13,6 @@ namespace madspace {
 class Runtime {
 public:
     virtual ~Runtime() = default;
-    // `seed`, when set, makes this call's random numbers a deterministic function of
-    // `seed` alone. Backends that can't support this should reject it, not ignore it.
     virtual TensorVec run(const TensorVec& inputs) = 0;
     virtual std::tuple<TensorVec, TensorVec, std::vector<bool>> run_with_grad(
         const TensorVec& inputs, const std::vector<bool>& input_requires_grad

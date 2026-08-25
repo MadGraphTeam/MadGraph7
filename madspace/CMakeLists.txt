@@ -81,7 +81,6 @@ if(COMPILE_CUDA)
 endif()
 if(COMPILE_HIP)
     find_package(rocblas REQUIRED)
-    find_package(rocrand REQUIRED)
     find_package(rocthrust REQUIRED)
     find_package(hipcub REQUIRED)
 endif()
@@ -381,6 +380,7 @@ if(COMPILE_CUDA)
         src/gpu/tensor.cuh
         src/gpu/device.hpp
         src/gpu/gpu_abstraction.cuh
+        src/gpu/random.cuh
         ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
         ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
         ${KERNEL_SRC}
@@ -390,7 +390,6 @@ if(COMPILE_CUDA)
     set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
     target_link_libraries(madspace_cuda PRIVATE madspace)
     target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
-    target_link_libraries(madspace_cuda PRIVATE CUDA::curand)
     install(TARGETS madspace_cuda DESTINATION madspace/lib)
 endif()
 
@@ -405,6 +404,7 @@ if(COMPILE_HIP)
         src/gpu/tensor.cuh
         src/gpu/device.hpp
         src/gpu/gpu_abstraction.cuh
+        src/gpu/random.cuh
         ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
         ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
         ${KERNEL_SRC}
@@ -416,7 +416,6 @@ if(COMPILE_HIP)
     target_link_libraries(madspace_hip PRIVATE madspace)
     target_link_libraries(madspace_hip PRIVATE hip::device)
     target_link_libraries(madspace_hip PRIVATE roc::rocblas)
-    target_link_libraries(madspace_hip PRIVATE roc::rocrand)
     target_link_libraries(madspace_hip PRIVATE roc::rocthrust)
     target_link_libraries(madspace_hip PRIVATE hip::hipcub)
     install(TARGETS madspace_hip DESTINATION madspace/lib)

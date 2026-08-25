@@ -4,7 +4,6 @@
 #include <array>
 #include <format>
 #include <functional>
-#include <random>
 #include <tuple>
 
 #include <thrust/copy.h>
@@ -20,6 +19,7 @@
 #include "../kernels/operations.hpp"
 #include "device.hpp"
 #include "madspace/util.hpp"
+#include "random.cuh"
 #include "tensor.cuh"
 
 using namespace madspace;
@@ -999,6 +999,17 @@ void op_quantile(
     tmp.reset(device);
 }
 
+__global__ void
+kernel_random(std::size_t count, mixmax_engine* engines, double* output) {
+    std::size_t stride = blockDim.x * gridDim.x;
+    std::size_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    mixmax_engine rng = engines[t];
+    for (std::size_t i = t; i < count; i += stride) {
+        output[i] = rng.flat();
+    }
+    engines[t] = rng;
+}
+
 void op_random(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
@@ -1010,28 +1021,29 @@ void op_random(
     output = Tensor(
         DataType::dt_float, {batch_size, dim}, device, instruction.output_alloc_hints[0]
     );
-    gpurandGenerator_t generator = instruction.runtime.gpurand_generator();
-    check_error(gpurandSetStream(generator, device.stream()));
-    check_error(gpurandGenerateUniformDouble(
-        generator, static_cast<double*>(output.data()), batch_size * dim
-    ));
+    launch_rng_kernel(
+        kernel_random,
+        batch_size * dim,
+        instruction.runtime.rng(),
+        device.stream(),
+        static_cast<double*>(output.data())
+    );
 }
 
-__global__ void kernel_double_to_int_range(
-    std::size_t batch_size,
-    me_int_t max_val,
-    GpuTensorView<double, 1, true> double_in,
-    GpuTensorView<me_int_t, 1, true> int_out
+__global__ void kernel_random_int(
+    std::size_t count, mixmax_engine* engines, me_int_t max_val, me_int_t* output
 ) {
-    me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i >= batch_size) {
-        return;
+    std::size_t stride = blockDim.x * gridDim.x;
+    std::size_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    mixmax_engine rng = engines[t];
+    for (std::size_t i = t; i < count; i += stride) {
+        me_int_t rand_int = rng.flat() * max_val;
+        if (rand_int >= max_val) {
+            rand_int = max_val - 1;
+        }
+        output[i] = rand_int;
     }
-    me_int_t rand_int = double_in[i] * max_val;
-    if (rand_int >= max_val) {
-        rand_int = max_val - 1;
-    }
-    int_out[i] = rand_int;
+    engines[t] = rng;
 }
 
 void op_random_int(
@@ -1042,45 +1054,39 @@ void op_random_int(
     auto batch_size = locals[instruction.input_indices[0]].batch_sizes()[0];
     auto max_val = locals[instruction.input_indices[1]].batch_sizes()[0];
     auto& output = locals[instruction.output_indices[0]];
-    Tensor tmp(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
     output = Tensor(
         DataType::dt_int, {batch_size}, device, instruction.output_alloc_hints[0]
     );
-    gpurandGenerator_t generator = instruction.runtime.gpurand_generator();
-    check_error(gpurandSetStream(generator, device.stream()));
-    check_error(gpurandGenerateUniformDouble(
-        generator, static_cast<double*>(tmp.data()), batch_size
-    ));
-    launch_kernel(
-        kernel_double_to_int_range,
+    launch_rng_kernel(
+        kernel_random_int,
         batch_size,
+        instruction.runtime.rng(),
         device.stream(),
-        batch_size,
         max_val,
-        tmp.view<double, 1>(),
-        output.view<me_int_t, 1>()
+        static_cast<me_int_t*>(output.data())
     );
-    tmp.reset(device);
 }
 
 __global__ void kernel_unweight(
     std::size_t batch_size,
-    GpuTensorView<double, 1, true> rand_in,
+    mixmax_engine* engines,
     GpuTensorView<double, 1, true> weights_in,
     GpuTensorView<double, 1, true> max_weights_in,
     GpuTensorView<double, 1, true> weights_out,
     GpuTensorView<me_int_t, 1, true> indices_out
 ) {
-    me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i >= batch_size) {
-        return;
+    std::size_t stride = blockDim.x * gridDim.x;
+    std::size_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    mixmax_engine rng = engines[t];
+    for (std::size_t i = t; i < batch_size; i += stride) {
+        auto rand = rng.flat();
+        auto weight = weights_in[i], max_weight = max_weights_in[i];
+        bool accepted = max_weight * rand < weight;
+        auto weight_clipped = weight < max_weight ? max_weight : weight;
+        weights_out[i] = accepted ? weight_clipped : 0.;
+        indices_out[i] = accepted ? static_cast<me_int_t>(i) : -1;
     }
-
-    auto rand = rand_in[i], weight = weights_in[i], max_weight = max_weights_in[i];
-    bool accepted = max_weight * rand < weight;
-    auto weight_clipped = weight < max_weight ? max_weight : weight;
-    weights_out[i] = accepted ? weight_clipped : 0.;
-    indices_out[i] = accepted ? i : -1;
+    engines[t] = rng;
 }
 
 void op_unweight(
@@ -1103,23 +1109,15 @@ void op_unweight(
         return;
     }
 
-    Tensor rand(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
-    gpurandGenerator_t generator = instruction.runtime.gpurand_generator();
-    check_error(gpurandSetStream(generator, stream));
-    check_error(gpurandGenerateUniformDouble(
-        generator, static_cast<double*>(rand.data()), batch_size
-    ));
-
     Tensor indices_tmp(DataType::dt_int, {batch_size}, device, AllocHint::temporary);
     Tensor uw_weights_tmp(
         DataType::dt_float, {batch_size}, device, AllocHint::temporary
     );
-    launch_kernel(
+    launch_rng_kernel(
         kernel_unweight,
         batch_size,
+        instruction.runtime.rng(),
         stream,
-        batch_size,
-        rand.view<double, 1>(),
         weights.view<double, 1>(),
         max_weight.view<double, 1>(),
         uw_weights_tmp.view<double, 1>(),
@@ -1156,7 +1154,6 @@ void op_unweight(
         ptr_all_weights,
         ptr_uw_weights
     );
-    rand.reset(device);
     indices_tmp.reset(device);
     uw_weights_tmp.reset(device);
     indices_compacted.reset(device);
@@ -1518,17 +1515,6 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         },
         [](gpublasHandle_t handle) { check_error(gpublasDestroy(handle)); }
     ),
-    _gpurand_generator(
-        context->thread_pool(),
-        []() {
-            gpurandGenerator_t handle;
-            check_error(gpurandCreateGenerator(&handle, GPURAND_RNG_PSEUDO_DEFAULT));
-            std::random_device rand_dev;
-            check_error(gpurandSetPseudoRandomGeneratorSeed(handle, rand_dev()));
-            return handle;
-        },
-        [](gpurandGenerator_t handle) { check_error(gpurandDestroyGenerator(handle)); }
-    ),
     _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
     _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }) {
     if (context->device()->device_type() != GpuDevice::gpu_device_type) {
@@ -1554,6 +1540,9 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     for (auto& instr : function.instructions()) {
         if (instr.stream_index >= stream_count) {
             stream_count = instr.stream_index + 1;
+        }
+        if (instr.instruction->is_random()) {
+            _uses_random = true;
         }
     }
     SyncTracker sync_tracker(stream_count);
@@ -1810,19 +1799,30 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
             }
         }
     );
+    if (_uses_random) {
+        _rng = ThreadResource<GpuRandom>(context->thread_pool(), []() {
+            return GpuRandom();
+        });
+    }
 }
 
-TensorVec GpuRuntime::run(const TensorVec& inputs, std::optional<std::uint64_t> seed) {
+void GpuRuntime::set_seed(DerivedSeed seed) {
+    if (_uses_random) {
+        rng().set_seed(seed);
+    }
+}
+
+TensorVec GpuRuntime::run(const TensorVec& inputs) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     auto& streams = _streams.get();
     auto& events = _events.get();
     gpu_device.activate();
-    if (seed) {
-        check_error(gpurandSetPseudoRandomGeneratorSeed(gpurand_generator(), *seed));
-    }
     auto locals = _locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
     gpuStream_t main_stream = streams.at(0);
+    if (_uses_random) {
+        rng().reseed_if_needed(main_stream);
+    }
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
 
     for (auto& instr : _instructions) {
@@ -1855,17 +1855,12 @@ TensorVec GpuRuntime::run(const TensorVec& inputs, std::optional<std::uint64_t> 
 }
 
 std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
-    const TensorVec& inputs,
-    const std::vector<bool>& input_requires_grad,
-    std::optional<std::uint64_t> seed
+    const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     auto& streams = _streams.get();
     auto& events = _events.get();
     gpu_device.activate();
-    if (seed) {
-        check_error(gpurandSetPseudoRandomGeneratorSeed(gpurand_generator(), *seed));
-    }
     auto locals = _locals_init;
     auto requires_grad = _requires_grad_init;
     std::vector<bool> store_local(locals.size());
@@ -1875,6 +1870,9 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         input_requires_grad.begin(), input_requires_grad.end(), requires_grad.begin()
     );
     gpuStream_t main_stream = streams.at(0);
+    if (_uses_random) {
+        rng().reseed_if_needed(main_stream);
+    }
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
 
     for (auto [instr, instr_eval_grad] : zip(_instructions, eval_grad)) {
