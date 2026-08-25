@@ -79,3 +79,6 @@ nsqso_born.inc
 docs/build/
 tests/input_files/IOTestsComparison_BackUp/
 tests/input_files/IOTestsComparison/**/*.BackUp
+
+# output of ./tests/test_manager.py
+UNITTEST_proc/

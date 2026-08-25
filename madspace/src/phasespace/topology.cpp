@@ -97,7 +97,11 @@ void build_decays(
              diagram.outgoing_masses().at(line_ref.index()),
              0.,
              0.,
-             0.}
+             0.,
+             0,
+             false,
+             false,
+             Topology::no_propagator}
         );
         outgoing_indices.at(line_ref.index()) = decay_index;
         break;
@@ -112,6 +116,9 @@ void build_decays(
             propagator.e_min,
             propagator.e_max,
             propagator.pdg_id,
+            false,
+            false,
+            line_ref.index(),
         });
         decay_indices.push_back(decay_index);
         integration_order.push_back(propagator.integration_order);
@@ -341,7 +348,9 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
             0
         );
     } else {
-        topo._decays.push_back({0, 0, {}, 0., 0.});
+        topo._decays.push_back(
+            {0, 0, {}, 0., 0., 0., 0., 0, false, false, Topology::no_propagator}
+        );
         decay_indices.push_back(0);
         integration_order.push_back(0);
         for (auto [t_vertex, line] : zip(t_vertices, lines_after_t)) {

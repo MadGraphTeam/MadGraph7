@@ -221,7 +221,8 @@ public:
         double beta1,
         double beta2,
         double eps,
-        double bias_corr2_sqrt
+        double bias_corr2_sqrt,
+        double weight_decay
     ) const = 0;
 };
 
@@ -641,6 +642,7 @@ private:
             }
             if (owns_data && data != nullptr) {
                 device.free(data);
+                --Tensor::tensor_count;
             } else if (data_owner != nullptr) {
                 data_owner->reset(device);
             } else if (external_reset) {
@@ -673,10 +675,15 @@ private:
             parent.impl->incref();
             impl->owns_data = false;
             impl->data_owner = parent.impl;
+        } else if (data != nullptr) {
+            ++tensor_count;
         }
     }
 
     TensorImpl* impl;
+
+public:
+    static inline std::size_t tensor_count = 0;
 };
 
 } // namespace madspace
