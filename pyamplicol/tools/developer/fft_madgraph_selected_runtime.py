@@ -932,6 +932,10 @@ def _terminate_process(process: subprocess.Popen[Any]) -> None:
         process.wait()
 
 
+def _python_script_command(script: Path, *arguments: str) -> list[str]:
+    return [str(sys.executable), str(script), *arguments]
+
+
 def _generation_worker(arguments: argparse.Namespace) -> int:
     output = arguments.generated_output.resolve(strict=False)
     result_path = arguments.worker_result.resolve(strict=False)
@@ -965,7 +969,9 @@ def _generation_worker(arguments: argparse.Namespace) -> int:
     with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
         try:
             process = subprocess.Popen(
-                [str(arguments.mg5_root / "bin" / "mg5_aMC"), str(card)],
+                _python_script_command(
+                    arguments.mg5_root / "bin" / "mg5_aMC", str(card)
+                ),
                 cwd=arguments.mg5_root,
                 stdout=stdout,
                 stderr=stderr,
@@ -1192,7 +1198,7 @@ def _generation_attempt(
     worker_result = attempt / "result.json"
     watchdog_report = attempt / "watchdog.json"
     command = [
-        str(Path(__file__).resolve()),
+        *_python_script_command(Path(__file__).resolve()),
         "_generate-cell",
         "--mg5-root",
         str(mg5_root),
@@ -1411,7 +1417,7 @@ def _run_bounded_command(
         if not math.isfinite(timeout_seconds) or timeout_seconds <= 0.0:
             raise SelectedMadGraphError("cold-to-ready time budget is exhausted")
         bounded = [
-            str(Path(__file__).resolve()),
+            *_python_script_command(Path(__file__).resolve()),
             "_run-with-timeout",
             "--timeout-seconds",
             format(timeout_seconds, ".17g"),
@@ -1495,6 +1501,7 @@ def _measure_generated_cell(
     cell_dir: Path,
     fc: str,
     fflags: str,
+    make: str,
     limit_gib: float,
     mg5_root: Path,
     cold_to_ready_limit_seconds: float,
@@ -1554,7 +1561,7 @@ def _measure_generated_cell(
     retained_executable = retained / "check"
     shutil.copy2(matrix_source, retained_matrix)
     shutil.copy2(check_source, retained_check)
-    build_command = ["make", "check", f"FC={fc}", f"FFLAGS={fflags}"]
+    build_command = [make, "check", f"FC={fc}", f"FFLAGS={fflags}"]
     build, build_watchdog = _run_bounded_command(
         build_command,
         cwd=process_dir,
@@ -1997,6 +2004,7 @@ def _checkpoint_identity(
     mg5_root: Path,
     fc: str,
     fflags: str,
+    make: str,
     timeout_seconds: float,
     memory_limit_gib: float,
 ) -> dict[str, Any]:
@@ -2035,6 +2043,7 @@ def _checkpoint_identity(
         "mg5_version_sha256": _sha256(mg5_root / "VERSION"),
         "fc": fc,
         "fflags": fflags,
+        "make": make,
         "generation_timeout_seconds": timeout_seconds,
         "memory_limit_gib": memory_limit_gib,
     }
@@ -2419,6 +2428,7 @@ def build_runtime_report(
     cache_dir: Path,
     fc: str,
     fflags: str,
+    make: str = os.environ.get("MAKE", "make"),
     timeout_seconds: float,
     mg5_root: Path,
     family: str | None = None,
@@ -2438,6 +2448,7 @@ def build_runtime_report(
             cache_dir=resolved_cache,
             fc=fc,
             fflags=fflags,
+            make=make,
             timeout_seconds=timeout_seconds,
             mg5_root=mg5_root,
             family=family,
@@ -2459,6 +2470,7 @@ def _build_runtime_report_locked(
     cache_dir: Path,
     fc: str,
     fflags: str,
+    make: str,
     timeout_seconds: float,
     mg5_root: Path,
     family: str | None = None,
@@ -2548,6 +2560,7 @@ def _build_runtime_report_locked(
             mg5_root,
             fc,
             fflags,
+            make,
             timeout_seconds,
             memory_limit_gib,
         )
@@ -2696,6 +2709,7 @@ def _build_runtime_report_locked(
                 mg5_root,
                 fc,
                 fflags,
+                make,
                 timeout_seconds,
                 memory_limit_gib,
             )
@@ -2746,6 +2760,7 @@ def _build_runtime_report_locked(
                             cell_dir=cell_dir,
                             fc=fc,
                             fflags=fflags,
+                            make=make,
                             limit_gib=memory_limit_gib,
                             mg5_root=mg5_root,
                             cold_to_ready_limit_seconds=timeout_seconds,
@@ -2820,6 +2835,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--mg5-root", type=Path, required=True)
     parser.add_argument("--fc", default=os.environ.get("FC", "gfortran"))
     parser.add_argument("--fflags", default="-O3")
+    parser.add_argument("--make", default=os.environ.get("MAKE", "make"))
     parser.add_argument(
         "--generation-timeout-seconds",
         "--timeout-seconds",
@@ -2928,6 +2944,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             cache_dir=arguments.cache_dir,
             fc=arguments.fc,
             fflags=arguments.fflags,
+            make=arguments.make,
             timeout_seconds=arguments.timeout_seconds,
             family=arguments.family,
             min_n=arguments.min_n,

@@ -813,6 +813,89 @@ def test_line_groups_track_history_but_schedule_only_requested_work(
     assert madgraph_plan["shards"]["ddbar-recurrence"]["scheduled"] is True
 
 
+def test_concrete_line_selector_schedules_only_requested_fft_variant(
+    tmp_path: Path,
+) -> None:
+    arguments = _arguments(
+        "--dry-run",
+        "--output",
+        str(tmp_path / "line-mode"),
+        "--multiplicities",
+        "2",
+        "--lines",
+        "recurrence-fft",
+    )
+
+    plan = profiling.dry_run_plan(arguments)
+    scheduled = {name for name, shard in plan["shards"].items() if shard["scheduled"]}
+    gg = plan["shards"]["gg-recurrence"]
+    ddbar = plan["shards"]["ddbar-recurrence"]
+
+    assert plan["requested_line_groups"] == ["recurrence-fft"]
+    assert scheduled == {
+        "gg-reference",
+        "ddbar-amplicol",
+        "gg-recurrence",
+        "ddbar-recurrence",
+    }
+    assert gg["modes"] == ["reference-fft", "recurrence-fft"]
+    assert gg["owned_modes"] == ["recurrence-fft"]
+    assert ddbar["modes"] == ["amplicol", "recurrence-fft"]
+    assert ddbar["owned_modes"] == ["recurrence-fft"]
+    assert gg["argv"] is not None
+    assert "--mode recurrence-fft" in gg["shell_command"]
+    assert "--mode recurrence-direct" not in gg["shell_command"]
+    assert plan["shards"]["gg-otf"]["scheduled"] is False
+
+
+def test_narrow_line_selector_reuses_existing_broader_shard_report(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "line-mode-resume"
+    shard = profiling.SHARD_BY_NAME["gg-recurrence"]
+    broad = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--lines",
+        "pyamplicol-recurrence",
+    )
+    narrow = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--lines",
+        "recurrence-fft",
+    )
+    cells = {"gg": {}}
+    for mode in ("reference-fft", "recurrence-direct", "recurrence-fft"):
+        cells["gg"][mode] = {
+            "2": study._cell_base("gg", study.MODE_BY_KEY[mode], 2)
+            | {
+                "status": "measured",
+                "generation_seconds": 1.0,
+                "warm_seconds_per_point": 1.0e-6,
+                "max_rss_kib": 1024,
+            }
+        }
+    report = study.compose_report(
+        profiling._shard_arguments(broad, output, shard, 2),
+        cells,
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, shard, 2),
+        report,
+    )
+
+    loaded = profiling._load_shard_report(narrow, output, shard, required=True)
+    family = loaded["cells"]["gg"]
+
+    assert set(family) == {"reference-fft", "recurrence-fft"}
+    assert family["recurrence-fft"]["2"]["status"] == "measured"
+
+
 def test_line_groups_reject_duplicates() -> None:
     arguments = _arguments(
         "--lines",

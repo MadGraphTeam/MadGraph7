@@ -314,7 +314,7 @@ def _selected_modes(arguments: argparse.Namespace, family: str) -> tuple[Mode, .
         if arguments.modes is None
         else set(arguments.modes)
     )
-    if arguments.fft_enabled:
+    if arguments.fft_enabled and not getattr(arguments, "explicit_modes", False):
         selected_execution_modes = {
             MODE_BY_KEY[key].execution_mode
             for key in requested
@@ -3643,6 +3643,11 @@ def _parser() -> argparse.ArgumentParser:
             "for every selected applicable pyAmpliCol execution mode, retain "
             "its direct curve and add its symmetric-group FFT curve"
         ),
+    )
+    parser.add_argument(
+        "--explicit-modes",
+        action="store_true",
+        help="honor repeated --mode values exactly without FFT companion expansion",
     )
     parser.add_argument(
         "--batch-size",

@@ -624,6 +624,103 @@ def test_hidden_timeout_worker_propagates_exit_and_terminates_late_child() -> No
     )
 
 
+def test_generation_worker_runs_madgraph_with_current_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_python.write_text("#!/bin/sh\nexit 93\n", encoding="ascii")
+    fake_python.chmod(0o755)
+    monkeypatch.setenv("PATH", str(fake_bin))
+
+    mg5_root = tmp_path / "mg5"
+    (mg5_root / "bin").mkdir(parents=True)
+    (mg5_root / "VERSION").write_text("test-version\n", encoding="ascii")
+    mg5 = mg5_root / "bin" / "mg5_aMC"
+    mg5.write_text(
+        """#!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+card = Path(sys.argv[1])
+output = None
+for line in card.read_text(encoding="utf-8").splitlines():
+    if line.startswith("output standalone "):
+        output = Path(line.removeprefix("output standalone ").rsplit(" -f", 1)[0])
+if output is None:
+    raise SystemExit(2)
+process = output / "SubProcesses" / "P0_test"
+process.mkdir(parents=True)
+(process / "matrix.f").write_text("      REAL*8 FUNCTION MATRIX()\\n      END\\n")
+""",
+        encoding="ascii",
+    )
+    mg5.chmod(0o755)
+
+    cell_dir = tmp_path / "gg" / "n2"
+    result = cell_dir / "generation-attempts" / "attempt-001" / "result.json"
+    result.parent.mkdir(parents=True)
+    arguments = madgraph._worker_parser().parse_args(
+        [
+            "--mg5-root",
+            str(mg5_root),
+            "--generated-output",
+            str(cell_dir / "generated"),
+            "--worker-result",
+            str(result),
+            "--process",
+            "g g > g g",
+            "--generation-timeout-seconds",
+            "10",
+        ]
+    )
+
+    assert madgraph._generation_worker(arguments) == 0
+    payload = json.loads(result.read_text(encoding="utf-8"))
+
+    assert payload["status"] == "measured"
+    assert payload["returncode"] == 0
+    assert payload["process_dirs"] == [
+        str(cell_dir / "generated" / "SubProcesses" / "P0_test")
+    ]
+
+
+def test_bounded_command_uses_current_python_for_timeout_wrapper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def watchdog(
+        command: list[str], *, cwd: Path, report: Path, limit_gib: float
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, limit_gib
+        calls.append(command)
+        report.write_text(json.dumps(_watchdog_report(elapsed=1.0)), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "stdout", "stderr")
+
+    monkeypatch.setattr(madgraph, "_run_watchdog", watchdog)
+
+    madgraph._run_bounded_command(
+        ["probe"],
+        cwd=tmp_path,
+        report=tmp_path / "watchdog.json",
+        limit_gib=1.0,
+        timeout_seconds=5.0,
+    )
+
+    wrapper_index = calls[0].index(sys.executable)
+    assert calls[0][wrapper_index:] == [
+        sys.executable,
+        str(Path(madgraph.__file__).resolve()),
+        "_run-with-timeout",
+        "--timeout-seconds",
+        "5",
+        "--",
+        "probe",
+    ]
+
+
 def _watchdog_report(*, elapsed: float, peak_kib: int = 1024) -> dict[str, object]:
     return {
         "passes": True,
@@ -711,6 +808,7 @@ def test_measurement_runtime_consumes_remaining_cold_budget(
         cell_dir=cell_dir,
         fc="gfortran",
         fflags="-O3",
+        make="make",
         limit_gib=30.0,
         mg5_root=mg5_root,
         cold_to_ready_limit_seconds=20.0,
