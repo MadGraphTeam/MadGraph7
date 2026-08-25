@@ -238,6 +238,10 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
+      # tests.unit_tests.madspin.test_madspin imports numpy (the density
+      # primitives, the sequential accept/reject and the maxwgt decomposition
+      # all work on arrays), which is not on the runner by default.
+      - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_decay_chain_different_order1 test_decay_chain_different_order2 test_decay_chain_different_order3 test_decay_chain_different_pdgs test_decay_chain_process_overall_orders test_decay_processes_different_is_particles test_equal_decay_chains test_helas_multi_process test_helas_multiprocess_pp_nj test_majorana_decay_chain_process test_multistage_decay_chain_process test_multistage_symmetryfactor test_non_combine_processes test_setget_wavefunction_exceptions test_values_for_prop test_identify_me_tag_qq_qqg test_non_identify_me_tag_qq_qqg test_identify_me_tag_qq_qg test_extract_info test_get_final_state_particle test_get_proc_with_decay_LO test_get_proc_with_decay_NLO test_madspin_event test_find_symmetry_uu_tt test_find_symmetry_uu_tt_with_subprocess_group
