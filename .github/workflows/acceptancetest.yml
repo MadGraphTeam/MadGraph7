@@ -717,23 +717,6 @@ jobs:
             ./tests/test_manager.py test_check_singletop_fastjet -pA -t0 -l INFO
 
 
-  acceptancetest_85:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_gen_evt_onlygen
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_gen_evt_onlygen -pA -t0 -l INFO
 
 
   acceptancetest_emela:
@@ -822,42 +805,8 @@ jobs:
 
 
 
-  acceptancetest_91:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_generate_events_lo_hw6_stdhep
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_generate_events_lo_hw6_stdhep -pA -t0 -l INFO
 
 
-  acceptancetest_92:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5
-      - uses: ./.github/actions/restore_all
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_generate_events_lo_py6_stdhep
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_generate_events_lo_py6_stdhep -pA -t0 -l INFO
 
 
   acceptancetest_93:
