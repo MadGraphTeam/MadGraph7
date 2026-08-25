@@ -26,6 +26,9 @@ on:
         type: boolean
         default: false
         description: 'Rebuild the dedicated ROOT/Delphes cache (independent of heptools)'
+      reset_pip:
+        type: boolean
+        default: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -58,8 +61,14 @@ jobs:
       - name: Delete ufo cache
         if: inputs.reset_ufo == 'true'
         run: |
-          gh cache delete pip-numpy-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
           gh cache delete ufomodel-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Delete pip cache
+        if: inputs.reset_pip == 'true'
+        run: | 
+          gh cache delete pip-numpy-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
         env:
           GH_TOKEN: ${{ github.token }}
 

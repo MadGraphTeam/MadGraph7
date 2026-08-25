@@ -2525,6 +2525,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     return "%id0/%id0" % (frac.numerator, frac.denominator)
             elif frac.real == frac:
                 #misc.sprint(frac.real, frac)
+                # +0.0 drops the sign of negative zeros, which depends on the python version
                 return ('%.15e' % (frac.real + 0.0)).replace('e','d')
                 #str(float(frac.real)).replace('e','d')
             else:
@@ -3533,9 +3534,30 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         logger.info("Running make for Source directory")
         try:
             misc.compile(cwd=source_dir, mode='fortran')
-        except:
-            misc.compile(arg=['../lib/libdhelas.a'], cwd=source_dir, mode='fortran')
-            misc.compile(arg=['../lib/libmodel.a'], cwd=source_dir, mode='fortran')
+        except Exception as error:
+            logger.warning(
+                "Running 'make' in %s failed; falling back to building "
+                "libdhelas and libmodel individually. This normally indicates "
+                "a problem in Source/makefile and should be reported. The "
+                "failure was:\n%s", source_dir, error)
+            try:
+                misc.compile(arg=['../lib/libdhelas.a'], cwd=source_dir, mode='fortran')
+                misc.compile(arg=['../lib/libmodel.a'], cwd=source_dir, mode='fortran')
+            except Exception as fallback_error:
+                # '../lib/libXXX.a' is only a valid target when the makefile was
+                # configured with the default static libext. When 'dynamic' is
+                # set (make_opts), libext is 'so'/'dylib', the makefile only
+                # knows about '../lib/libdhelas.$(libext)' and these two targets
+                # do not exist at all -- make then stops with
+                #     No rule to make target `../lib/libdhelas.a'
+                # Retry through the libext-agnostic phony targets that both
+                # Source/makefile templates provide before giving up, and
+                # re-raise the original error if that does not help either.
+                try:
+                    misc.compile(arg=['libdhelas'], cwd=source_dir, mode='fortran')
+                    misc.compile(arg=['libmodel'], cwd=source_dir, mode='fortran')
+                except Exception:
+                    raise fallback_error
 
     #===========================================================================
     # Create proc_card_mg5.dat for Standalone directory
@@ -5147,6 +5169,7 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         # Extract number of external particles
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
         replace_dict['nexternal'] = nexternal
+        replace_dict['nincoming'] = ninitial
 
         # Extract ncomb
         ncomb = matrix_element.get_helicity_combinations()

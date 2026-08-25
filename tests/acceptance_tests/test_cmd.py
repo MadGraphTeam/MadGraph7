@@ -295,6 +295,22 @@ class TestCmdShell2(unittest.TestCase,
     
     join_path = TestCmdShell1.join_path
 
+    @staticmethod
+    def _dens_value_for_key(dm, key):
+        """Return the complex value of DensityMatrix entry whose helicity label
+        tuple matches ``key``.
+
+        Replaces the old ``dm.matrix[ind][1]`` indexing, which relied on the
+        legacy structured-array storage that was removed when DensityMatrix
+        was refactored to parallel ``helicities`` / ``values`` arrays.
+        """
+        import numpy as np
+        key_arr = np.asarray(key, dtype=np.int32)
+        matches = np.where((dm.helicities == key_arr).all(axis=1))[0]
+        if len(matches) == 0:
+            raise KeyError('helicity key %s not found in DensityMatrix' % (key,))
+        return complex(dm.values[matches[0]])
+
     def do(self, line, force=False):
         """ exec a line in the cmd under test """
         if force:
@@ -2523,7 +2539,7 @@ class TestCmdShell2(unittest.TestCase,
 
         # madspin_report holds the (pre-IDEN) density values reported by madspin;
         # the standalone prod_dens now carries the 1/IDEN normalisation from
-        # GET_INTER, so we restore iden_prod when comparing.
+        # GET_INTER, so we restore iden_prod (resp. iden_dec) when comparing.
         for key in madspin_report_dict:
             ref_val = self._dens_value_for_key(prod_dens, key)
             self.assertAlmostEqual(madspin_report_dict[key].real/(ref_val.real * iden_prod), 1, places=4)
