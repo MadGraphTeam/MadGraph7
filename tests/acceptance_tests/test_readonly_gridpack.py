@@ -79,7 +79,12 @@ class TestReadOnlyGridpack(unittest.TestCase):
             fp.write('\n'.join([
                 'set automatic_html_opening False --no_save',
                 'generate %s' % self.process,
-                'output %s' % medir,
+                # explicitly the Fortran madevent exporter: gridpacks are a
+                # madevent feature (bin/generate_events, run_01_gridpack.tar.gz,
+                # madevent/, restore_data) and MG5's default output mode is
+                # 'mg7' in MadGraph7, which writes a run_card.toml and no
+                # Cards/run_card.dat for the gridpack switch below.
+                'output madevent %s' % medir,
             ]) + '\n')
 
         mlog = pjoin(self.tmpdir, 'mg5.log')
