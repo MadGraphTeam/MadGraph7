@@ -186,6 +186,7 @@ SHARD_BY_NAME = {shard.name: shard for shard in SHARDS}
 MODE_OWNER = {
     (shard.family, mode): shard.name for shard in SHARDS for mode in shard.owned_modes
 }
+FAMILIES = ("gg", "ddbar")
 LINE_GROUPS = (
     "reference-fft",
     "amplicol",
@@ -331,6 +332,18 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--families",
+        "--process-families",
+        nargs="+",
+        choices=FAMILIES,
+        default=list(FAMILIES),
+        metavar="FAMILY",
+        help=(
+            "process families to add to the scan: gg for g g > g g + gluons, "
+            "ddbar for d d~ > d d~ + gluons (default: both)"
+        ),
+    )
+    parser.add_argument(
         "--cores",
         type=_positive_integer,
         default=max(1, os.cpu_count() or 1),
@@ -469,6 +482,11 @@ def _selection(arguments: argparse.Namespace) -> tuple[int, ...]:
     return tuple(sorted(set(arguments.multiplicities)))
 
 
+def _family_selection(arguments: argparse.Namespace) -> tuple[str, ...]:
+    selected = set(arguments.families)
+    return tuple(family for family in FAMILIES if family in selected)
+
+
 def _line_selection(arguments: argparse.Namespace) -> tuple[str, ...]:
     selected = set(arguments.lines)
     return tuple(line for line in LINE_CHOICES if line in selected)
@@ -489,10 +507,12 @@ def _madgraph_requested(arguments: argparse.Namespace, run_directory: Path) -> b
 def _requested_shards(
     arguments: argparse.Namespace, run_directory: Path
 ) -> tuple[Shard, ...]:
+    selected_families = set(_family_selection(arguments))
     names = {
         name
         for line in _requested_line_groups(arguments, run_directory)
         for name in LINE_SELECTOR_SHARDS[line]
+        if SHARD_BY_NAME[name].family in selected_families
     }
     if _madgraph_requested(arguments, run_directory):
         source_modes = (
@@ -501,7 +521,9 @@ def _requested_shards(
             else publication.SOURCE_MODE
         )
         names.update(
-            MODE_OWNER[(family, mode)] for family, mode in source_modes.items()
+            MODE_OWNER[(family, mode)]
+            for family, mode in source_modes.items()
+            if family in selected_families
         )
     pending = list(names)
     while pending:
@@ -644,6 +666,27 @@ def _manifest_line_history(manifest: Mapping[str, Any]) -> list[str]:
     return [line for line in LINE_CHOICES if line in selected]
 
 
+def _manifest_family_history(manifest: Mapping[str, Any]) -> list[str]:
+    identity = manifest.get("identity")
+    scan = identity.get("scan") if isinstance(identity, Mapping) else None
+    fallback = (
+        scan.get("families")
+        if isinstance(scan, Mapping) and isinstance(scan.get("families"), list)
+        else []
+    )
+    values = manifest.get(
+        "process_family_history", manifest.get("requested_families", fallback)
+    )
+    if (
+        not isinstance(values, list)
+        or any(not isinstance(value, str) for value in values)
+        or not set(values).issubset(FAMILIES)
+    ):
+        raise ProfilingError("profiling manifest has invalid process-family history")
+    selected = set(values)
+    return [family for family in FAMILIES if family in selected]
+
+
 def _madgraph_source_path(arguments: argparse.Namespace, run_directory: Path) -> Path:
     multiplicities = _requested_multiplicities(arguments, run_directory)
     selection = "-".join(str(value) for value in multiplicities)
@@ -746,7 +789,7 @@ def _master_arguments(
     modes = tuple(
         dict.fromkeys(
             mode
-            for family in ("gg", "ddbar")
+            for family in FAMILIES
             for mode in publication.FAMILY_MODES[family]
         )
     )
@@ -757,7 +800,7 @@ def _master_arguments(
             arguments,
             study_root=_master_study_root(run_directory),
             run_id="campaign",
-            families=("gg", "ddbar"),
+            families=FAMILIES,
             modes=modes,
             resume=True,
         )
@@ -803,10 +846,21 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         raise ProfilingError("--multiplicities must not contain duplicates")
     if len(set(arguments.lines)) != len(arguments.lines):
         raise ProfilingError("--lines must not contain duplicates")
+    if len(set(arguments.families)) != len(arguments.families):
+        raise ProfilingError("--families must not contain duplicates")
     # The authoritative parser owns run-id, n-range, mode, and resource checks.
     _master_arguments(arguments, _run_directory(arguments))
     if arguments.campaign_report is not None and not arguments.render:
         raise ProfilingError("--campaign-report is valid only with --render")
+    run_directory = _run_directory(arguments)
+    if (
+        not arguments.render
+        and not _requested_shards(arguments, run_directory)
+        and not _madgraph_requested(arguments, run_directory)
+    ):
+        raise ProfilingError(
+            "the selected --families and --lines leave no applicable profiling work"
+        )
 
 
 def _normalize_executables(arguments: argparse.Namespace) -> None:
@@ -830,10 +884,10 @@ def _identity(arguments: argparse.Namespace, run_directory: Path) -> dict[str, A
         "scan": {
             "multiplicity_universe": list(_universe(arguments)),
             "helicity_workload": _helicity_workload(arguments),
-            "families": ["gg", "ddbar"],
+            "families": list(FAMILIES),
             "modes": {
                 family: list(publication.FAMILY_MODES[family])
-                for family in ("gg", "ddbar")
+                for family in FAMILIES
             },
             "batch_size": arguments.batch_size,
             "fft_enabled": True,
@@ -958,6 +1012,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
         shard.name for shard in _requested_shards(arguments, run_directory)
     }
     requested_lines = _requested_line_groups(arguments, run_directory)
+    requested_families = _family_selection(arguments)
     madgraph_requested = _madgraph_requested(arguments, run_directory)
     shard_jobs = {
         shard.name: [
@@ -1023,8 +1078,10 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
         }
         for shard in SHARDS
     }
-    strict = set(requested_lines) == set(LINE_GROUPS) and _publication_profile(
-        arguments
+    strict = (
+        set(requested_lines) == set(LINE_GROUPS)
+        and requested_families == FAMILIES
+        and _publication_profile(arguments)
     )
     render_commands = _render_commands(
         arguments,
@@ -1041,6 +1098,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
         "helicity_workload": _helicity_workload(arguments),
         "batch_size": arguments.batch_size,
         "requested_fill_multiplicities": list(_selection(arguments)),
+        "requested_process_families": list(requested_families),
         "requested_line_groups": list(requested_lines),
         "identity": _identity(arguments, run_directory),
         "scheduler": {
@@ -1054,6 +1112,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
             "phase": 4,
             "applicable": madgraph_requested,
             "helicity_workload": _helicity_workload(arguments),
+            "process_families": list(requested_families),
             "measurement_multiplicities": [
                 n
                 for n in _requested_multiplicities(arguments, run_directory)
@@ -1182,6 +1241,7 @@ def _create_or_resume_manifest(
             )
         selected = list(_selection(arguments))
         selected_lines = list(_line_selection(arguments))
+        selected_families = list(_family_selection(arguments))
         prior = _manifest_int_history(
             manifest, "fill_history_multiplicities", "requested_multiplicities"
         )
@@ -1192,12 +1252,21 @@ def _create_or_resume_manifest(
             for line in LINE_CHOICES
             if line in set(prior_lines) | set(selected_lines)
         ]
+        prior_families = _manifest_family_history(manifest)
+        family_history = [
+            family
+            for family in FAMILIES
+            if family in set(prior_families) | set(selected_families)
+        ]
         updates = {
             "requested_multiplicities": selected,
+            "requested_families": selected_families,
             "requested_line_groups": selected_lines,
             "active_multiplicities": selected,
+            "active_families": selected_families,
             "active_line_groups": selected_lines,
             "fill_history_multiplicities": history,
+            "process_family_history": family_history,
             "line_group_history": line_history,
         }
         if any(manifest.get(key) != value for key, value in updates.items()):
@@ -1206,16 +1275,20 @@ def _create_or_resume_manifest(
         return manifest
     selected = list(_selection(arguments))
     selected_lines = list(_line_selection(arguments))
+    selected_families = list(_family_selection(arguments))
     manifest = {
         "kind": KIND,
         "schema_version": SCHEMA_VERSION,
         "identity": requested_identity,
         "initial_scheduler_core_budget": arguments.cores,
         "requested_multiplicities": selected,
+        "requested_families": selected_families,
         "requested_line_groups": selected_lines,
         "active_multiplicities": selected,
+        "active_families": selected_families,
         "active_line_groups": selected_lines,
         "fill_history_multiplicities": selected,
+        "process_family_history": selected_families,
         "line_group_history": selected_lines,
     }
     _write_json_atomic(path, manifest)
@@ -1861,7 +1934,7 @@ def _compose_master(
         "gg": {},
         "ddbar": {},
     }
-    for family in ("gg", "ddbar"):
+    for family in FAMILIES:
         for mode in publication.FAMILY_MODES[family]:
             owner = SHARD_BY_NAME[MODE_OWNER[(family, mode)]]
             owner_report = reports[owner.name]
@@ -2430,6 +2503,11 @@ def _matching_madgraph_overlay(
         return None
     requested = _requested_multiplicities(arguments, run_directory)
     observed = tuple(raw_multiplicities)
+    raw_families = policy.get("selected_process_families")
+    if isinstance(raw_families, list) and set(raw_families) < set(
+        _family_selection(arguments)
+    ):
+        return None
     if require_exact:
         if observed != requested:
             return None
@@ -2913,6 +2991,9 @@ def _madgraph_command(
                 str(multiplicity),
             )
         )
+    selected_families = _family_selection(arguments)
+    if len(selected_families) == 1:
+        result.extend(("--family", selected_families[0]))
     if arguments.compare_helicity_sums:
         result.append("--compare-helicity-sums")
     return tuple(result)
@@ -2921,7 +3002,7 @@ def _madgraph_command(
 def _freeze_madgraph_source(arguments: argparse.Namespace, run_directory: Path) -> Path:
     master_path = _master_report_path(run_directory)
     raw, master, _ = _source_snapshot(master_path)
-    for family in ("gg", "ddbar"):
+    for family in _family_selection(arguments):
         source_mode = madgraph.source_mode(family, _helicity_workload(arguments))
         if not study.selected_cells_complete(
             master,
@@ -3002,6 +3083,11 @@ def _matching_madgraph_progress(
         != list(_requested_multiplicities(arguments, run_directory))
     ):
         return None
+    raw_families = policy.get("selected_process_families")
+    if isinstance(raw_families, list) and set(raw_families) < set(
+        _family_selection(arguments)
+    ):
+        return None
     return payload
 
 
@@ -3016,20 +3102,22 @@ def _madgraph_completed(arguments: argparse.Namespace, run_directory: Path) -> i
         report = progress_payload
     else:
         return 0
-    summary = report.get("summary")
-    if isinstance(summary, Mapping) and isinstance(
-        summary.get("completed_cell_count"), int
-    ):
-        return int(summary["completed_cell_count"])
     series = report.get("runtime_series")
     if not isinstance(series, Mapping):
         return 0
+    requested_families = set(_family_selection(arguments))
+    requested_multiplicities = {
+        str(value) for value in _requested_multiplicities(arguments, run_directory)
+    }
     return sum(
-        len(mode_cells)
-        for family_cells in series.values()
+        1
+        for family, family_cells in series.items()
+        if family in requested_families
         if isinstance(family_cells, Mapping)
         for mode_cells in family_cells.values()
         if isinstance(mode_cells, Mapping)
+        for raw_n in mode_cells
+        if str(raw_n) in requested_multiplicities
     )
 
 
@@ -3612,7 +3700,7 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                 completed
                 + _selected_pending_cells(arguments, initial, multiplicities=requested)
                 + (
-                    2 * len(requested)
+                    len(_family_selection(arguments)) * len(requested)
                     if _madgraph_requested(arguments, run_directory)
                     else 0
                 )
@@ -3709,6 +3797,7 @@ def status_payload(arguments: argparse.Namespace) -> dict[str, Any]:
         "batch_size": arguments.batch_size,
         "output": str(run_directory),
         "requested_multiplicities": list(_selection(arguments)),
+        "requested_families": list(_family_selection(arguments)),
         "requested_line_groups": list(_requested_line_groups(arguments, run_directory)),
         "fill_history_multiplicities": (
             _manifest_int_history(
@@ -3719,6 +3808,9 @@ def status_payload(arguments: argparse.Namespace) -> dict[str, Any]:
         ),
         "line_group_history": (
             _manifest_line_history(manifest) if manifest is not None else []
+        ),
+        "process_family_history": (
+            _manifest_family_history(manifest) if manifest is not None else []
         ),
         "manifest": str(manifest_path),
         "manifest_available": manifest is not None,

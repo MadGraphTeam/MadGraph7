@@ -118,6 +118,7 @@ def test_helicity_sum_dry_run_generates_a_distinct_summed_madgraph_series(
         "phase": 4,
         "applicable": True,
         "helicity_workload": "sum",
+        "process_families": ["gg", "ddbar"],
         "measurement_multiplicities": [2, 3],
         "protocol_scope_multiplicities": [],
         "dependency": "completed pyAmpliCol cells for the requested fill",
@@ -846,6 +847,47 @@ def test_concrete_line_selector_schedules_only_requested_fft_variant(
     assert "--mode recurrence-fft" in gg["shell_command"]
     assert "--mode recurrence-direct" not in gg["shell_command"]
     assert plan["shards"]["gg-otf"]["scheduled"] is False
+
+
+def test_process_family_selector_limits_scheduled_shards_and_madgraph(
+    tmp_path: Path,
+) -> None:
+    arguments = _arguments(
+        "--dry-run",
+        "--output",
+        str(tmp_path / "family-mode"),
+        "--multiplicities",
+        "2",
+        "--families",
+        "gg",
+        "--lines",
+        "recurrence-fft",
+        "madgraph",
+        "--madgraph-root",
+        str(tmp_path / "mg5"),
+    )
+
+    plan = profiling.dry_run_plan(arguments)
+    scheduled = {name for name, shard in plan["shards"].items() if shard["scheduled"]}
+    madgraph_argv = plan["madgraph"]["argv"]
+
+    assert plan["requested_process_families"] == ["gg"]
+    assert scheduled == {"gg-reference", "gg-recurrence"}
+    assert plan["shards"]["ddbar-amplicol"]["scheduled"] is False
+    assert plan["madgraph"]["process_families"] == ["gg"]
+    assert madgraph_argv is not None
+    assert madgraph_argv[madgraph_argv.index("--family") + 1] == "gg"
+
+
+def test_process_family_selector_rejects_inapplicable_line() -> None:
+    arguments = _arguments(
+        "--families",
+        "ddbar",
+        "--lines",
+        "reference-fft",
+    )
+    with pytest.raises(profiling.ProfilingError, match="no applicable"):
+        profiling._validate_arguments(arguments)
 
 
 def test_narrow_line_selector_reuses_existing_broader_shard_report(

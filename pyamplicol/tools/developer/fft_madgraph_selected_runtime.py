@@ -413,9 +413,12 @@ def load_source_selection(
     path: Path,
     *,
     multiplicities: Sequence[int] = FINAL_MULTIPLICITIES,
+    families: Sequence[str] = FAMILIES,
     helicity_workload: str = "fixed",
 ) -> SourceSelection:
     _workload_label(helicity_workload)
+    if not families or any(family not in FAMILIES for family in families):
+        raise SelectedMadGraphError("source selection families are unsupported")
     path = path.expanduser().resolve(strict=False)
     try:
         raw = path.read_bytes()
@@ -457,7 +460,8 @@ def load_source_selection(
     cells = _mapping(payload.get("cells"), context="source report cells")
     selected: dict[str, dict[int, SelectedCell]] = {}
     unavailable: dict[str, dict[int, str]] = {}
-    for family in FAMILIES:
+    selected_families = tuple(family for family in FAMILIES if family in set(families))
+    for family in selected_families:
         mode = source_mode(family, helicity_workload)
         raw_family = _mapping(
             cells.get(family), context=f"source report cells.{family}"
@@ -2519,9 +2523,16 @@ def _build_runtime_report_locked(
         for n in selected_multiplicities
         if n <= MAX_PROTOCOL_MEASURED_MULTIPLICITY
     )
+    cache_dir = cache_dir.expanduser().resolve(strict=False)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    selected_families = FAMILIES if family is None else (family,)
+    runtime_series: dict[str, dict[str, dict[str, Any]]] = {
+        name: {MODE: {}} for name in FAMILIES
+    }
     source = load_source_selection(
         source_report,
         multiplicities=measured_multiplicities,
+        families=selected_families,
         helicity_workload=helicity_workload,
     )
     local_host = measurement_host_identity()
@@ -2529,12 +2540,6 @@ def _build_runtime_report_locked(
         raise SelectedMadGraphError(
             "source campaign and MadGraph runtime must use the same measurement host"
         )
-    cache_dir = cache_dir.expanduser().resolve(strict=False)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    selected_families = FAMILIES if family is None else (family,)
-    runtime_series: dict[str, dict[str, dict[str, Any]]] = {
-        name: {MODE: {}} for name in FAMILIES
-    }
     started_at_utc = datetime.now(UTC).isoformat()
     progress_path = (
         progress_output.expanduser().resolve(strict=False)

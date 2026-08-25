@@ -224,6 +224,19 @@ def test_source_selection_authenticates_both_families_and_all_points(
     )
 
 
+def test_source_selection_can_authenticate_one_family(
+    source_report: Path,
+) -> None:
+    source = madgraph.load_source_selection(
+        source_report, multiplicities=(2,), families=("gg",)
+    )
+
+    assert set(source.cells) == {"gg"}
+    assert set(source.unavailable) == {"gg"}
+    assert set(source.cells["gg"]) == {2}
+    assert source.cells["gg"][2].process == "g g > g g"
+
+
 def test_source_selection_rejects_changed_event_helicity(
     tmp_path: Path,
     source_report: Path,
