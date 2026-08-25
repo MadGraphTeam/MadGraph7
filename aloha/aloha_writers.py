@@ -1794,8 +1794,16 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
                 addon = ''
             else:
                 name = short_name
-    if unknown_tag:
+    if unknown_tag and outgoing:
         addon += '%(propa)s'
+    elif unknown_tag:
+        # For an amplitude (outgoing == 0) the caller fills 'propa' with '' and
+        # puts the FLV_Coupling flag ('M') into 'tags' instead -- see
+        # HelasAmplitude.get_helas_call_dict; a wavefunction gets the flag
+        # through 'propa'. Same convention as the FFV1_2 scheme above, which
+        # has been guarded this way for a while. Without it the call site
+        # emits FFV2_FFS1_0 while ALOHA writes FFV2_FFS1M_0.
+        addon += '%(tags)s'
 
 #    if outgoing is not None:
 #        return '_'.join((name,) + tuple(other_names)) + addon + '_%s' % outgoing
