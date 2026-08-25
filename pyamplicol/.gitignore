@@ -15,6 +15,7 @@ build/
 dist/
 target/
 wheelhouse/
+/FFT_FEATURE_RESOURCES/
 *.whl
 *.mod
 src/pyamplicol/_rusticol*.so
