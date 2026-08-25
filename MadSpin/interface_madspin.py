@@ -5831,7 +5831,13 @@ class MadSpinInterface(extended_cmd.Cmd):
         nb_loose_skip = sum(s['nb_loose_skip'] for s in stats_list)
 
         eff = float(n_written) / nb_try if nb_try else 0.0
-        logger.info(
+        # logger.critical, not .info: this is the run's headline summary and it
+        # has to survive the driver. do_launch carries @misc.mute_logger(), and
+        # both the madevent and the mg7 post-processing adapters run MadSpin
+        # with the decay loggers raised above INFO, so an .info line is dropped
+        # from the run log entirely -- which is what
+        # test_madspin_mixed_flavor_decay_log_summary(_mg7) checks for.
+        logger.critical(
             "MadSpin unweight efficiency: %.4f (%d written / %d trials, %.2f trials/event)",
             eff, n_written, nb_try, (1.0 / eff if eff else float("inf"))
         )
