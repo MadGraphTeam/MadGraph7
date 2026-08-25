@@ -3141,6 +3141,16 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # crossing gate -- and the crossed-group detection -- clear of it.
         if process.get('perturbation_couplings'):
             return True
+        # Leg polarization ({0}/{T}/...) selects helicity STATES on a named leg,
+        # and a crossing moves legs between the initial and the final state, so
+        # the selection would have to be re-read through the crossing before the
+        # per-row polarization gate (IS_BORN_HEL_SELECTED) could mean anything.
+        # Beam polarization is already refused outright against crossing (see
+        # common_run_interface); this is the same decision for the per-leg case,
+        # taken at generation so no crossing is ever recorded for such a process
+        # rather than emitted and then mis-consulted at run time.
+        if any(leg.get('polarization') for leg in process.get('legs')):
+            return True
         return any(ProcessExporterFortran.breaks_crossing_symmetry(decay)
                    for decay in process.get('decay_chains'))
 
