@@ -3596,7 +3596,7 @@ set draw_rivet_plots True
         set nb_core 2
         set nb_core_delphes 2
         generate p p > e+ e-
-        output %s -f
+        output madevent %s -f
         launch
         shower=pythia8
         detector=Delphes
@@ -3618,9 +3618,13 @@ set draw_rivet_plots True
             devnull = open(os.devnull, 'w')
             stdout = devnull
             stderr = devnull
-        subprocess.call([pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'),
-                         pjoin(self.path, 'mg5_cmd')],
-                        stdout=stdout, stderr=stderr)
+        ret = subprocess.call([pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'),
+                               pjoin(self.path, 'mg5_cmd')],
+                              stdout=stdout, stderr=stderr)
+        # Without this a failed run only shows up further down as
+        # "TypeError: 'NoneType' object is not subscriptable" out of
+        # load_result, because HTML/results.pkl was never written.
+        self.assertEqual(ret, 0, 'mg5_aMC run failed (rc=%s)' % ret)
 
         # Parton level (the same lhe drives every split) and Pythia8 output.
         self.check_parton_output(target_event=nevents)
