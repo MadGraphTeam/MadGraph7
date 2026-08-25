@@ -11093,7 +11093,13 @@ class MadSpinInterface(extended_cmd.Cmd):
             #        break
             # ctypes.CDLL(me_library)
 
-            if self.model_init:
+            # Only the v1 modes reach this with a single extension module that
+            # still needs the model initialised. density/onshell keep the
+            # production and decay extensions in self.f2py_module[0]/[1] and
+            # initialise each one through initialise_f2py_module (guarded by
+            # model_init_prod / model_init_decay), so mymod is a list here and
+            # calling .initialise() on it raises AttributeError.
+            if self.model_init and not isinstance(mymod, (list, tuple)):
                 self.model_init = False
                 with misc.chdir(pjoin(self.path_me, 'madspin_me', 'SubProcesses', pdir)):
                     with misc.stdchannel_redirected(sys.stdout, os.devnull):
