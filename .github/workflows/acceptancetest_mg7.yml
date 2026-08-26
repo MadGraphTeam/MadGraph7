@@ -265,10 +265,10 @@ jobs:
 
   acceptancetest_mg7_madnis_reproducible_mode:
     needs: build_madspace
-    # mg7 madnis.reproducible = True (p p > t t~): madnis training itself must be
-    # byte-identical for the same seed independent of the cpu thread pool size,
-    # both with online-only training and with buffered (off-policy replay)
-    # training enabled. Self-skips if the madspace + LHAPDF(NNPDF23) stack is
+    # mg7 madnis training (p p > t t~): training itself must be byte-identical
+    # for the same seed independent of the cpu thread pool size, both with
+    # online-only training and with buffered (off-policy replay) training
+    # enabled. Self-skips if the madspace + LHAPDF(NNPDF23) stack is
     # unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true

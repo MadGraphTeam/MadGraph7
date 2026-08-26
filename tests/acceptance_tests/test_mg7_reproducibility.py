@@ -21,11 +21,11 @@ sha256); a different seed must change the result. Covers:
   * ``test_vegas_reproducibility_mg7`` -- a plain survey (VEGAS-optimized)
     + generate run, through ``bin/generate_events``.
   * ``test_madnis_reproducible_mode_mg7`` -- a full survey + madnis training +
-    generate run, through ``bin/generate_events`` (no gridpack export), with
-    ``madnis.reproducible = True``: training is required to be
-    thread-count-independent and byte-identical for the same seed, both with
-    online-only training and with buffered (off-policy replay) training
-    enabled. GPU multi-channel batches are not covered by this mode.
+    generate run, through ``bin/generate_events`` (no gridpack export):
+    training itself is required to be thread-count-independent and
+    byte-identical for the same seed, both with online-only training and with
+    buffered (off-policy replay) training enabled. GPU multi-channel batches
+    are not covered by this test.
   * ``test_gridpack_reproducibility_mg7`` -- a gridpack trained with madnis,
     then standalone event generation from that gridpack (its own
     ``bin/generate_events --seed``), which is the normal way a gridpack is
@@ -229,12 +229,12 @@ class MG7ReproducibilityTest(unittest.TestCase):
                             'different seeds produced identical LHE content')
 
     def test_madnis_reproducible_mode_mg7(self):
-        """With madnis.reproducible = True (CPU codepath), madnis training
-        itself -- not just event generation -- is byte-identical for the same
-        seed independent of the cpu thread pool size, both with online-only
-        training and with buffered (off-policy replay) training enabled.
-        Covers the scheduling fix in MadnisTraining::maybe_start_generator_jobs
-        / start_generator_jobs (deterministic round dispatch + deferred buffer
+        """madnis training itself (CPU codepath) -- not just event generation
+        -- is byte-identical for the same seed independent of the cpu thread
+        pool size, both with online-only training and with buffered
+        (off-policy replay) training enabled. Covers the deterministic
+        scheduling in MadnisTraining::maybe_start_generator_jobs /
+        start_generator_jobs (deterministic round dispatch + deferred buffer
         flush) and the seeding of BufferUnweighter/BatchSampler (see
         salt::madnis_train_unweight / salt::buffered_batch_sample in
         random.hpp) -- both required for this test to pass reliably."""
@@ -246,7 +246,6 @@ class MG7ReproducibilityTest(unittest.TestCase):
             'postprocessing.systematics': False,
             'madnis.enable': True,
             'madnis.train_batches': 60,
-            'madnis.reproducible': True,
         }
 
         # Online-only training (buffering disabled).
@@ -259,7 +258,7 @@ class MG7ReproducibilityTest(unittest.TestCase):
             **{'run.cpu_thread_pool_size': 1})
         self.assertEqual(
             hash_online_multi, hash_online_single,
-            'madnis.reproducible training (buffering disabled) produced '
+            'madnis training (buffering disabled) produced '
             'different LHE content with a single-threaded cpu thread pool')
 
         # Buffered (off-policy replay) training enabled.
@@ -280,7 +279,7 @@ class MG7ReproducibilityTest(unittest.TestCase):
             **{'run.cpu_thread_pool_size': 1})
         self.assertEqual(
             hash_buffered_multi, hash_buffered_single,
-            'madnis.reproducible training (buffering enabled) produced '
+            'madnis training (buffering enabled) produced '
             'different LHE content with a single-threaded cpu thread pool')
 
         hash_buffered_b = self._generate_and_hash(

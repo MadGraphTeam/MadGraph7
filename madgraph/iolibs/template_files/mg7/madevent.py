@@ -711,7 +711,6 @@ class MadgraphProcess:
             config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
             config.softclip_threshold = madnis_args["softclip_threshold"]
             config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
-            config.reproducible = madnis_args["reproducible"]
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
             training_args.append(

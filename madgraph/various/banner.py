@@ -6612,7 +6612,6 @@ class RunCardMG7(RunCard):
             allowed=['none', 'uniform', 'learned'])
         self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True)
         self.add_toml_param('madnis', 'softclip_threshold', 30.0)
-        self.add_toml_param('madnis', 'reproducible', False)
         self.add_toml_param('madnis', 'compressed_channel_weight_count', 50)
 
         # ----------------- dynamic (free-form) sections ---------------

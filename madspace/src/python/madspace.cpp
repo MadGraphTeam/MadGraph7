@@ -1402,7 +1402,6 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "softclip_threshold", &MadnisTraining::Config::softclip_threshold
         )
-        .def_readwrite("reproducible", &MadnisTraining::Config::reproducible)
         .def_readwrite(
             "compressed_channel_weight_count",
             &MadnisTraining::Config::compressed_channel_weight_count

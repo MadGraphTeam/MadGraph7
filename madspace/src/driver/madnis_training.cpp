@@ -327,14 +327,12 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
         return;
     }
     bool is_gpu = _generator_context->device()->device_type() != DeviceType::cpu;
-    if (_config.reproducible) {
-        // flush buffer samples staged since the last round (see process_job_results)
-        for (auto& channel : _channels) {
-            for (auto& pending : channel.pending_buffer_samples) {
-                buffer_store(channel, pending);
-            }
-            channel.pending_buffer_samples.clear();
+    // flush buffer samples staged since the last round (see process_job_results)
+    for (auto& channel : _channels) {
+        for (auto& pending : channel.pending_buffer_samples) {
+            buffer_store(channel, pending);
         }
+        channel.pending_buffer_samples.clear();
     }
     _generator_params.copy_from(_optimizer->parameters());
     std::size_t chan_count = counts.size();
@@ -357,22 +355,14 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
         (_config.gpu_generator_batch_size + _config.gpu_generator_batch_granularity -
          1) /
         _config.gpu_generator_batch_granularity;
-    // reproducible mode: dispatch exactly what this round needs, uncapped by
-    // thread count, so round contents don't depend on thread count
-    std::size_t available_jobs;
-    if (_config.reproducible) {
-        available_jobs = 0;
-        for (auto count : missing_batch_counts) {
-            available_jobs += count;
-        }
-        for (auto count : target_batch_counts) {
-            available_jobs += count;
-        }
-    } else {
-        available_jobs = _generator_context->thread_pool().thread_count();
-        if (is_gpu) {
-            available_jobs *= gpu_subbatches;
-        }
+    // dispatch exactly what this round needs, uncapped by thread count, so
+    // round contents don't depend on thread count
+    std::size_t available_jobs = 0;
+    for (auto count : missing_batch_counts) {
+        available_jobs += count;
+    }
+    for (auto count : target_batch_counts) {
+        available_jobs += count;
     }
     std::vector<std::size_t> channel_sizes;
     if (is_gpu) {
@@ -437,28 +427,27 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
     }
 }
 
-// Reproducible mode (CPU only) additionally requires an online attempt and the
-// online cache to be exhausted or about to be, both deterministic conditions.
+// Requires an online attempt and the online cache to be exhausted or about to
+// be, both deterministic conditions, so round contents don't depend on thread
+// scheduling.
 void MadnisTraining::maybe_start_generator_jobs(
     const std::vector<std::size_t>& counts, bool is_online_attempt
 ) {
     if (_running_jobs.size() > 0) {
         return;
     }
-    if (_config.reproducible) {
-        if (!is_online_attempt) {
-            return;
+    if (!is_online_attempt) {
+        return;
+    }
+    bool depletion_imminent = false;
+    for (auto [channel, count] : zip(_channels, counts)) {
+        if (count >= channel.sample_count) {
+            depletion_imminent = true;
+            break;
         }
-        bool depletion_imminent = false;
-        for (auto [channel, count] : zip(_channels, counts)) {
-            if (count >= channel.sample_count) {
-                depletion_imminent = true;
-                break;
-            }
-        }
-        if (!depletion_imminent) {
-            return;
-        }
+    }
+    if (!depletion_imminent) {
+        return;
     }
     start_generator_jobs(counts);
 }
@@ -690,14 +679,11 @@ void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids
             _generated_event_count += committed_job.samples.size;
             channel.sample_batches.push_back(std::move(committed_job.samples));
             if (committed_job.unweighted_samples.size > 0) {
-                if (_config.reproducible) {
-                    // flushed into buffer at the start of the next round instead
-                    channel.pending_buffer_samples.push_back(
-                        std::move(committed_job.unweighted_samples)
-                    );
-                } else {
-                    buffer_store(channel, committed_job.unweighted_samples);
-                }
+                // flushed into buffer at the start of the next round (see
+                // start_generator_jobs)
+                channel.pending_buffer_samples.push_back(
+                    std::move(committed_job.unweighted_samples)
+                );
             }
         }
     }
@@ -735,13 +721,9 @@ void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids
                         tensor.slice(0, unw_offset, unw_offset + unw_chan_size)
                     );
                 }
-                if (_config.reproducible) {
-                    channel.pending_buffer_samples.push_back(
-                        std::move(chan_unweighted_samples)
-                    );
-                } else {
-                    buffer_store(channel, chan_unweighted_samples);
-                }
+                channel.pending_buffer_samples.push_back(
+                    std::move(chan_unweighted_samples)
+                );
                 unw_offset += unw_chan_size;
             }
             batch.size = chan_size;

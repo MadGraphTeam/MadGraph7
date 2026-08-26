@@ -46,10 +46,6 @@ public:
         double buffer_unweighting_quantile = 0.99;
         double fixed_cwnet_fraction = 0.33;
         double softclip_threshold = 0.0;
-        // Makes generator-job scheduling (CPU only) deterministic given the same
-        // seed, independent of thread count, at some cost to throughput/memory.
-        // GPU multi-channel batches are unaffected and stay non-deterministic.
-        bool reproducible = false;
         std::size_t compressed_channel_weight_count = 50;
     };
     MadnisTraining(
@@ -125,7 +121,7 @@ private:
         std::size_t next_dispatch_seq = 0;
         std::size_t commit_cursor = 0;
         std::unordered_map<std::size_t, std::size_t> ready_job_ids;
-        // reproducible mode: samples staged here, flushed into buffer next round
+        // samples staged here, flushed into buffer at the start of the next round
         std::vector<SampleBatch> pending_buffer_samples;
     };
 

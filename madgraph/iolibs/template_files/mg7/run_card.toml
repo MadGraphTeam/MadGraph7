@@ -147,5 +147,4 @@ batch_size_threshold = %(madnis.batch_size_threshold)s
 channel_grouping_mode = %(madnis.channel_grouping_mode)s # options: none, uniform, learned
 fixed_cwnet_fraction = %(madnis.fixed_cwnet_fraction)s
 softclip_threshold = %(madnis.softclip_threshold)s
-reproducible = %(madnis.reproducible)s # make training fully reproducible for a given seed, independent of thread count (CPU only, some throughput/memory cost)
 compressed_channel_weight_count = %(madnis.compressed_channel_weight_count)s
