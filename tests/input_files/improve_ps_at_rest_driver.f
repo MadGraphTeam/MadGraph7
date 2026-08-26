@@ -18,9 +18,14 @@ C     *****************************************************************
       DOUBLE PRECISION PW(0:3,NEXTERNAL)
       REAL*16 QW(0:3,NEXTERNAL)
       INTEGER I,J,MODE,IREST
+      LOGICAL KEEP_OFFSHELL(NEXTERNAL)
       DOUBLE PRECISION MZ,EE,PP,TH,PH,SQS
       INCLUDE 'MadLoopParams.inc'
       INCLUDE 'mp_coupl.inc'
+
+      DO I=1,NEXTERNAL
+        KEEP_OFFSHELL(I)=.FALSE.
+      ENDDO
 
       MZ = 9.11880000000000D+01
       MP__MDL_MZ = 9.11880000000000E+01_16
@@ -69,7 +74,7 @@ C         entry point 1: the double precision wrapper
               PW(J,I)=PB(J,I)
             ENDDO
           ENDDO
-          CALL __PFX__IMPROVE_PS_POINT_PRECISION(PW)
+          CALL __PFX__IMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL,PW)
           WRITE(*,'(A,I2,I2,A,3E26.16)') 'RESULT DP ',IREST,MODE,
      &     ' ',PW(1,IREST),PW(2,IREST),PW(3,IREST)
 C         entry point 2: the quad routine SET_MP_PS calls
@@ -78,7 +83,7 @@ C         entry point 2: the quad routine SET_MP_PS calls
               QW(J,I)=PB(J,I)
             ENDDO
           ENDDO
-          CALL __PFX__MP_IMPROVE_PS_POINT_PRECISION(QW)
+          CALL __PFX__MP_IMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL,QW)
           WRITE(*,'(A,I2,I2,A,3E26.16)') 'RESULT QP ',IREST,MODE,
      &     ' ',DBLE(QW(1,IREST)),DBLE(QW(2,IREST)),DBLE(QW(3,IREST))
         ENDDO
