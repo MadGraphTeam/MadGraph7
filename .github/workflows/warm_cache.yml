@@ -50,25 +50,25 @@ jobs:
       - name: Delete heptools related cache
         if: inputs.reset_heptools == 'true'
         run: | 
-          gh cache delete heptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete lhapdf-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete emela-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete contur-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+          gh cache delete heptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete lhapdf-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete emela-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete contur-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Delete ufo cache
         if: inputs.reset_ufo == 'true'
         run: |
-          gh cache delete ufomodel-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+          gh cache delete ufomodel-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Delete pip cache
         if: inputs.reset_pip == 'true'
         run: | 
-          gh cache delete pip-numpy-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+          gh cache delete pip-numpy-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -78,8 +78,8 @@ jobs:
       - name: Delete root/delphes cache
         if: inputs.reset_delphes == 'true'
         run: |
-          gh cache delete root-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete delphes-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+          gh cache delete root-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete delphes-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -467,7 +467,7 @@ jobs:
       # sub-caches succeeded, so a partial rebuild never replaces a good cache.
       - name: Delete previous combined cache (so the fresh one can be saved)
         if: needs.pythia8_cache.result == 'success' && needs.emela_cache.result == 'success' && needs.contur_cache.result == 'success' && needs.looptools_cache.result == 'success'
-        run: gh cache delete heptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+        run: gh cache delete heptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -480,11 +480,11 @@ jobs:
       - name: Cleanup intermediate caches (only if all succeeded)
         if: needs.pythia8_cache.result == 'success' && needs.emela_cache.result == 'success' && needs.contur_cache.result == 'success' && needs.looptools_cache.result == 'success'
         run: |
-          gh cache delete lhapdf-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete emela-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete contur-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
-          gh cache delete looptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY || true
+          gh cache delete lhapdf-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete emela-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete contur-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          gh cache delete looptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
