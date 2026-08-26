@@ -42,8 +42,11 @@ class LoopColorBasis(color_amp.ColorBasis):
         """ Defines the instance attribute compute_loop_nc.
         The compute_loop_nc sets wheter independent tracking of Nc power coming
         from the color loop trace is necessary or not (it is time consuming)."""
-        
+
         self.compute_loop_nc = compute_loop_nc
+        self._list_color_dict = []
+        # ColorBasis.__init__ is deliberately not called: _canonical_dict must
+        # stay the class-level memo, shared across matrix elements.
 
     def closeColorLoop(self, colorize_dict, lcut_charge, lcut_numbers):
         """ Add a color delta in the right representation (depending on the 

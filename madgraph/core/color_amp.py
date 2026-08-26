@@ -47,7 +47,9 @@ class ColorBasis(dict):
     diagram, coeff the corresponding coefficient (a fraction), is_imaginary
     if this contribution is real or complex, and Nc_power the Nc power."""
 
-    # Dictionary to save simplifications already done in a canonical form
+    # Memo of simplified color structures, keyed on the canonical string alone:
+    # coeff is divided out on store and re-applied on a hit, loop_Nc_power is
+    # stamped per use, is_imaginary/Nc_power are fixed by the structure itself.
     _canonical_dict = {}
 
     # Dictionary store the raw colorize information
@@ -268,6 +270,8 @@ class ColorBasis(dict):
                 # Remove overall coefficient
                 for cs in canonical_col_fact:
                     cs.coeff = cs.coeff / col_str.coeff
+                    # not a property of the canonical structure
+                    cs.loop_Nc_power = 0
                 self._canonical_dict[canonical_rep] = canonical_col_fact
             else:
                 # If this representation has already been considered,
@@ -288,6 +292,10 @@ class ColorBasis(dict):
                 # Here we need to force a specific order for the summed indices
                 # in case we have K6 or K6bar Clebsch Gordan coefficients
                 for colstr in col_fact: colstr.order_summation()
+
+            # The memo does not carry loop_Nc_power; set it on both paths.
+            for cs in col_fact:
+                cs.loop_Nc_power = col_str.loop_Nc_power
 
             # loop over color strings in the resulting color factor
             for col_str in col_fact:
