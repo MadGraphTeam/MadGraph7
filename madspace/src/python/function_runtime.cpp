@@ -100,14 +100,21 @@ std::tuple<int, int> madspace_py::dlpack_device(Tensor tensor) {
 
 py::object madspace_py::tensor_to_dlpack(
     Tensor tensor,
-    std::optional<int> stream,
+    std::optional<std::int64_t> stream,
     std::optional<std::tuple<int, int>> max_version,
-    std::optional<int> dl_device,
+    std::optional<std::tuple<int, int>> dl_device,
     std::optional<bool> copy
 ) {
-    // TODO: do something with the arguments
+    // TODO: honor the stream argument
     if (!tensor) {
         return py::none();
+    }
+
+    if (copy && *copy) {
+        throw py::buffer_error("dlpack export cannot copy the tensor");
+    }
+    if (dl_device && *dl_device != dlpack_device(tensor)) {
+        throw py::buffer_error("dlpack export cannot change the device");
     }
 
     DLManagedTensor* dl_tensor;

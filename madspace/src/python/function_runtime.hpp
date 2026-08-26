@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <pybind11/pybind11.h>
 #include <unordered_map>
 #include <vector>
@@ -15,9 +16,9 @@ namespace madspace_py {
 std::tuple<int, int> dlpack_device(Tensor tensor);
 py::object tensor_to_dlpack(
     Tensor tensor,
-    std::optional<int> stream = std::nullopt,
+    std::optional<std::int64_t> stream = std::nullopt,
     std::optional<std::tuple<int, int>> max_version = std::nullopt,
-    std::optional<int> dl_device = std::nullopt,
+    std::optional<std::tuple<int, int>> dl_device = std::nullopt,
     std::optional<bool> copy = std::nullopt
 );
 Tensor dlpack_to_tensor(

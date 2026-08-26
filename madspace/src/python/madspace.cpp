@@ -236,6 +236,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "__dlpack__",
             &tensor_to_dlpack,
+            py::kw_only(),
             py::arg("stream") = std::nullopt,
             py::arg("max_version") = std::nullopt,
             py::arg("dl_device") = std::nullopt,
