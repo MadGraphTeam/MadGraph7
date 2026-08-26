@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tomllib
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -121,7 +122,14 @@ def test_helicity_sum_dry_run_generates_a_distinct_summed_madgraph_series(
         "process_families": ["gg", "ddbar"],
         "measurement_multiplicities": [2, 3],
         "protocol_scope_multiplicities": [],
-        "dependency": "completed pyAmpliCol cells for the requested fill",
+        "measurement_multiplicities_by_family": {
+            "gg": [2, 3],
+            "ddbar": [2, 3],
+        },
+        "protocol_scope_multiplicities_by_family": {"gg": [], "ddbar": []},
+        "dependency": (
+            "completed pyAmpliCol source cells for the requested MadGraph fill"
+        ),
         "not_applicable_reason": None,
         "report": str(tmp_path / "summed" / "madgraph" / "overlay.json"),
         "argv": plan["madgraph"]["argv"],
@@ -129,6 +137,9 @@ def test_helicity_sum_dry_run_generates_a_distinct_summed_madgraph_series(
     }
     assert plan["madgraph"]["argv"] is not None
     assert "--compare-helicity-sums" in plan["madgraph"]["argv"]
+    assert plan["madgraph"]["argv"][
+        plan["madgraph"]["argv"].index("--target-seconds") + 1
+    ] == "180"
     assert plan["outputs"]["final_pdf"].endswith(
         "/summary_plots_final_helicity_sum.pdf"
     )
@@ -158,8 +169,17 @@ def test_madgraph_command_protocol_scopes_n_above_six(tmp_path: Path) -> None:
 
     assert plan["madgraph"]["measurement_multiplicities"] == [6]
     assert plan["madgraph"]["protocol_scope_multiplicities"] == [7, 8]
+    assert plan["madgraph"]["measurement_multiplicities_by_family"] == {
+        "gg": [],
+        "ddbar": [6],
+    }
+    assert plan["madgraph"]["protocol_scope_multiplicities_by_family"] == {
+        "gg": [6, 7, 8],
+        "ddbar": [7, 8],
+    }
     assert argv is not None
     assert argv[argv.index("--multiplicity") + 1] == "6"
+    assert argv[argv.index("--target-seconds") + 1] == "180"
     assert [
         argv[index + 1]
         for index, value in enumerate(argv)
@@ -339,6 +359,91 @@ def test_otf_protocol_scope_keeps_fixed_n6_and_skips_n7_n8_n9() -> None:
     assert plan["shards"]["gg-otf"]["argv"] is not None
 
 
+def test_otf_protocol_scope_can_be_extended_for_selective_top_up() -> None:
+    arguments = _arguments(
+        "--multiplicities",
+        "7",
+        "8",
+        "--families",
+        "ddbar",
+        "--lines",
+        "pyamplicol-otf",
+        "--otf-max-multiplicity",
+        "8",
+    )
+
+    plan = profiling.dry_run_plan(arguments)
+    otf = plan["shards"]["ddbar-otf"]
+
+    assert otf["measurement_multiplicities"] == [7, 8]
+    assert otf["protocol_skip_multiplicities"] == []
+    assert [(job["n"], job["mode"]) for job in otf["jobs"]] == [
+        (7, "otf-direct"),
+        (7, "otf-fft"),
+        (8, "otf-direct"),
+        (8, "otf-fft"),
+    ]
+    for job in otf["jobs"]:
+        option = job["argv"].index("--otf-max-multiplicity")
+        assert job["argv"][option + 1] == "8"
+
+
+def test_candidate_direct_and_fft_modes_are_distinct_work_items(tmp_path: Path) -> None:
+    output = tmp_path / "split"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "6",
+        "--families",
+        "gg",
+        "--lines",
+        "pyamplicol-otf",
+    )
+
+    works = profiling._phase_work_items(arguments, output, 2)
+
+    assert [
+        (work.shard.name, work.final_multiplicity, work.owned_mode)
+        for work in works
+    ] == [
+        ("gg-otf", 6, "otf-direct"),
+        ("gg-otf", 6, "otf-fft"),
+    ]
+    assert len({profiling._work_report_path(output, work) for work in works}) == 2
+    for work in works:
+        command = profiling._child_command(arguments, output, work)
+        assert command.count("--fill-mode") == 1
+        assert command[command.index("--fill-mode") + 1] == work.owned_mode
+
+
+def test_helicity_sum_amplicol_work_items_do_not_overlap_shared_overlay() -> None:
+    arguments = _arguments("--compare-helicity-sums")
+    first = profiling.ShardWork(
+        profiling.SHARD_BY_NAME["ddbar-amplicol"], 2, "amplicol"
+    )
+    second = profiling.ShardWork(
+        profiling.SHARD_BY_NAME["gg-amplicol"], 2, "amplicol"
+    )
+    active = [
+        profiling.ActiveJob(
+            shard=first.shard,
+            final_multiplicity=first.final_multiplicity,
+            owned_mode=first.owned_mode,
+            command=(),
+            process=object(),
+            stdout=io.BytesIO(),
+            stderr=io.BytesIO(),
+            sampler=object(),
+            claimed_cores=1,
+            detail="",
+        )
+    ]
+
+    assert profiling._work_launch_conflicts(arguments, second, active) is True
+    assert profiling._work_launch_conflicts(arguments, first, ()) is False
+
+
 def test_composer_retains_measured_cells_above_out_of_order_frontier() -> None:
     arguments = study._parser().parse_args(
         (
@@ -493,6 +598,63 @@ def test_isolated_shard_reports_preserve_prior_measurement_over_later_failure(
     assert report["cells"]["ddbar"]["amplicol"]["9"] == measured
 
 
+def test_shard_policy_compatibility_accepts_sampling_policy_updates(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "5",
+        "--lines",
+        "pyamplicol-otf",
+        "--compare-helicity-sums",
+        "--memory-limit-gib",
+        "100",
+        "--time-limit-seconds",
+        "3600",
+    )
+    shard = profiling.SHARD_BY_NAME["gg-otf"]
+    modes = ("reference-fft", "otf-direct")
+    expected = profiling._expected_shard_policy(
+        arguments,
+        output,
+        shard,
+        5,
+        modes=modes,
+    )
+    stale = deepcopy(expected)
+    measurement = stale["measurement"]
+    measurement["calibration_target_seconds"] = 0.25
+    measurement["candidate_profile_target_runtime_seconds"] = 0.25
+    measurement["candidate_profile_warmup_runs"] = 2
+    measurement["candidate_profile_minimum_samples"] = 10
+    measurement["warm_samples"] = 10
+    measurement["warm_sample_count"] = 10
+    measurement["warm_timing_metric"] = {"pyamplicol": "old short sampling"}
+    measurement["generation_timeout_seconds"] = 60.0
+    measurement["runtime_timeout_seconds"] = 60.0
+    measurement["requested_memory_ceiling_gib"] = 10.0
+    measurement["memory_watchdog_gib"] = 10.0
+    measurement["cell_admission_limits"] = {}
+
+    assert profiling._shard_policy_matches_requested_modes(
+        stale,
+        expected,
+        family="gg",
+        modes=modes,
+    )
+
+    measurement["alpha_s"] = 0.2
+    assert not profiling._shard_policy_matches_requested_modes(
+        stale,
+        expected,
+        family="gg",
+        modes=modes,
+    )
+
+
 def test_phase_refresh_does_not_queue_higher_work_after_lower_resource_failure(
     tmp_path: Path,
 ) -> None:
@@ -610,6 +772,7 @@ def test_phase_launches_independent_multiplicity_workers_when_cores_allow(
         return profiling.ActiveJob(
             shard=work.shard,
             final_multiplicity=work.final_multiplicity,
+            owned_mode=work.owned_mode,
             command=(),
             process=FakeProcess(work),
             stdout=io.BytesIO(),
@@ -631,6 +794,97 @@ def test_phase_launches_independent_multiplicity_workers_when_cores_allow(
         family="gg",
         modes=("reference-fft",),
         multiplicities=(2, 3, 4),
+    )
+
+
+def test_phase_accepts_authoritative_failed_cell_from_nonzero_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "run"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--families",
+        "ddbar",
+        "--multiplicities",
+        "9",
+        "--lines",
+        "amplicol",
+        "--cores",
+        "1",
+        "--poll-seconds",
+        "0.001",
+    )
+    profiling._create_or_resume_manifest(arguments, output)
+
+    class FakeProcess:
+        def __init__(self, work: profiling.ShardWork) -> None:
+            self.pid = 45678
+            self.returncode: int | None = None
+            self.work = work
+
+        def poll(self) -> int | None:
+            if self.returncode is None:
+                cell = study._cell_base(
+                    self.work.shard.family,
+                    study.MODE_BY_KEY[self.work.owned_mode],
+                    self.work.final_multiplicity,
+                ) | {
+                    "status": "failed",
+                    "failure_category": "error",
+                    "failure_reason": "legacy checkout contains tracked edits",
+                    "censors_higher_multiplicities": False,
+                }
+                report = study.compose_report(
+                    profiling._work_arguments(arguments, output, self.work),
+                    {
+                        self.work.shard.family: {
+                            self.work.owned_mode: {
+                                str(self.work.final_multiplicity): cell
+                            }
+                        }
+                    },
+                )
+                report["status"] = "stopped-correctness-failure"
+                profiling._write_json_atomic(
+                    profiling._work_report_path(output, self.work),
+                    report,
+                )
+                self.returncode = 1
+            return self.returncode
+
+    class FakeDashboard:
+        def update(self, _completed, *, phase, active) -> None:
+            assert phase == "phase 1"
+
+    def launch(_arguments, _output, work: profiling.ShardWork):
+        return profiling.ActiveJob(
+            shard=work.shard,
+            final_multiplicity=work.final_multiplicity,
+            owned_mode=work.owned_mode,
+            command=(),
+            process=FakeProcess(work),
+            stdout=io.BytesIO(),
+            stderr=io.BytesIO(),
+            sampler=object(),
+            claimed_cores=1,
+            detail="",
+        )
+
+    monkeypatch.setattr(profiling, "_launch_shard", launch)
+
+    profiling._phase(arguments, output, 1, FakeDashboard())
+    report = profiling._publish_master(arguments, output)
+
+    assert profiling._selected_completed_cells(
+        arguments, report, multiplicities=(9,)
+    ) == 1
+    assert (
+        profiling._selected_pending_cells(arguments, report, multiplicities=(9,)) == 0
+    )
+    assert (
+        report["cells"]["ddbar"]["amplicol"]["9"]["failure_category"] == "error"
     )
 
 
@@ -666,7 +920,7 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
     )
     assert shard_arguments.fill_multiplicities == [4, 5]
 
-    changed = _arguments(
+    resource_changed = _arguments(
         "--output",
         str(output),
         "--multiplicities",
@@ -674,9 +928,32 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
         "3",
         "--memory-limit-gib",
         "64",
+        "--time-limit-seconds",
+        "7200",
     )
-    with pytest.raises(profiling.ProfilingError, match="measurement identity"):
-        profiling._create_or_resume_manifest(changed, output)
+    resource_updated = profiling._create_or_resume_manifest(resource_changed, output)
+    assert resource_updated["identity"]["resources"] == {
+        "candidate_optimization_cores": 1,
+        "per_cell_generation_timeout_seconds": 7200.0,
+        "per_cell_memory_limit_gib": 64.0,
+        "per_cell_runtime_timeout_seconds": 7200.0,
+    }
+
+    target_changed = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "3",
+        "--memory-limit-gib",
+        "64",
+        "--time-limit-seconds",
+        "7200",
+        "--target-seconds",
+        "30",
+    )
+    target_updated = profiling._create_or_resume_manifest(target_changed, output)
+    assert target_updated["identity"]["scan"]["target_seconds"] == 30.0
 
     summed = _arguments(
         "--compare-helicity-sums",
@@ -685,6 +962,10 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
         "--multiplicities",
         "2",
         "3",
+        "--memory-limit-gib",
+        "64",
+        "--time-limit-seconds",
+        "7200",
     )
     with pytest.raises(profiling.ProfilingError, match="helicity_workload"):
         profiling._create_or_resume_manifest(summed, output)
@@ -697,6 +978,10 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
         "3",
         "--batch-size",
         "1",
+        "--memory-limit-gib",
+        "64",
+        "--time-limit-seconds",
+        "7200",
     )
     with pytest.raises(profiling.ProfilingError, match="batch_size"):
         profiling._create_or_resume_manifest(scalar, output)
@@ -707,7 +992,79 @@ def test_matching_manifest_resumes_automatically_and_rejects_identity_change(
         profiling.madgraph, "measurement_host_identity", lambda: other_host
     )
     with pytest.raises(profiling.ProfilingError, match="measurement_host"):
-        profiling._create_or_resume_manifest(arguments, output)
+        profiling._create_or_resume_manifest(resource_changed, output)
+
+
+def test_render_arguments_inherit_helicity_workload_from_manifest(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "summed"
+    profiling._create_or_resume_manifest(
+        _arguments(
+            "--output",
+            str(output),
+            "--compare-helicity-sums",
+            "--multiplicities",
+            "2",
+        ),
+        output,
+    )
+
+    rendered = profiling._composition_arguments(
+        _arguments("--render", "--output", str(output)), output
+    )
+
+    assert rendered.compare_helicity_sums is True
+    assert profiling._helicity_workload(rendered) == "sum"
+    assert profiling._pdf_filename(rendered) == "summary_plots_final_helicity_sum.pdf"
+
+
+def test_resume_manifest_allows_midrun_resource_limit_decreases(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "run"
+    initial = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--memory-limit-gib",
+        "800",
+        "--time-limit-seconds",
+        "360000",
+    )
+    lowered = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--memory-limit-gib",
+        "200",
+        "--time-limit-seconds",
+        "36000",
+    )
+    status = _arguments(
+        "--status",
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--memory-limit-gib",
+        "100",
+        "--time-limit-seconds",
+        "18000",
+    )
+
+    profiling._create_or_resume_manifest(initial, output)
+    manifest = profiling._create_or_resume_manifest(lowered, output)
+
+    assert manifest["identity"]["resources"] == {
+        "candidate_optimization_cores": 1,
+        "per_cell_generation_timeout_seconds": 36000.0,
+        "per_cell_memory_limit_gib": 200.0,
+        "per_cell_runtime_timeout_seconds": 36000.0,
+    }
+    assert profiling.status_payload(status)["requested_multiplicities"] == [2]
 
 
 def test_existing_manifest_history_does_not_expand_current_multiplicity_request(
@@ -901,6 +1258,10 @@ def test_madgraph_completed_ignores_overlay_when_not_requested(tmp_path: Path) -
                 "policy": {
                     "final_state_multiplicities": [2],
                     "maximum_measured_multiplicity": 6,
+                    "family_maximum_measured_multiplicity": {
+                        "gg": 5,
+                        "ddbar": 6,
+                    },
                     "higher_multiplicity_policy": "not-applicable-protocol-scope",
                 },
                 "runtime_series": {
@@ -1078,6 +1439,125 @@ def test_narrow_line_selector_reuses_existing_broader_shard_report(
 
     assert set(family) == {"reference-fft", "recurrence-fft"}
     assert family["recurrence-fft"]["2"]["status"] == "measured"
+
+
+def test_broad_line_selector_tops_up_existing_narrow_shard_reports(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "line-mode-top-up"
+    shard = profiling.SHARD_BY_NAME["gg-recurrence"]
+    direct = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--families",
+        "gg",
+        "--lines",
+        "recurrence-direct",
+    )
+    fft = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--families",
+        "gg",
+        "--lines",
+        "recurrence-fft",
+    )
+    broad = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--families",
+        "gg",
+        "--lines",
+        "pyamplicol-recurrence",
+    )
+    cells = {"gg": {}}
+    for mode in ("reference-fft", "recurrence-direct", "recurrence-fft"):
+        cells["gg"][mode] = {
+            "2": study._cell_base("gg", study.MODE_BY_KEY[mode], 2)
+            | {
+                "status": "measured",
+                "generation_seconds": 1.0,
+                "warm_seconds_per_point": 1.0e-6,
+                "max_rss_kib": 1024,
+            }
+        }
+    direct_aggregate = study.compose_report(
+        profiling._shard_arguments(direct, output, shard),
+        {
+            "gg": {
+                mode: cells["gg"][mode]
+                for mode in ("reference-fft", "recurrence-direct")
+            }
+        },
+    )
+    fft_per_cell = study.compose_report(
+        profiling._shard_arguments(fft, output, shard, 2),
+        {
+            "gg": {
+                mode: cells["gg"][mode]
+                for mode in ("reference-fft", "recurrence-fft")
+            }
+        },
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, shard),
+        direct_aggregate,
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, shard, 2),
+        fft_per_cell,
+    )
+
+    loaded = profiling._load_shard_report(broad, output, shard, required=True)
+    family = loaded["cells"]["gg"]
+
+    assert set(family) == {"reference-fft", "recurrence-direct", "recurrence-fft"}
+    assert family["recurrence-direct"]["2"]["status"] == "measured"
+    assert family["recurrence-fft"]["2"]["status"] == "measured"
+
+
+def test_mode_cell_report_run_root_does_not_block_shard_merge(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "mode-cell-run-root"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--families",
+        "ddbar",
+        "--lines",
+        "otf-direct",
+        "--compare-helicity-sums",
+    )
+    shard = profiling.SHARD_BY_NAME["ddbar-otf"]
+    work = profiling.ShardWork(shard, 2, "otf-direct")
+    amplicol_cell = study._cell_base(
+        "ddbar", study.MODE_BY_KEY["amplicol"], 2, sum_helicities=True
+    ) | {
+        "status": "measured",
+    }
+    otf_cell = study._cell_base(
+        "ddbar", study.MODE_BY_KEY["otf-direct"], 2, sum_helicities=True
+    ) | {
+        "status": "measured",
+    }
+    report = study.compose_report(
+        profiling._work_arguments(arguments, output, work),
+        {"ddbar": {"amplicol": {"2": amplicol_cell}, "otf-direct": {"2": otf_cell}}},
+    )
+    profiling._write_json_atomic(profiling._work_report_path(output, work), report)
+
+    loaded = profiling._load_shard_report(arguments, output, shard, required=True)
+
+    assert loaded["cells"]["ddbar"]["otf-direct"]["2"]["status"] == "measured"
 
 
 def test_output_render_rebuilds_master_from_manifest_history(
@@ -1329,6 +1809,125 @@ def _write_fake_pdf_output(command: tuple[str, ...]) -> None:
     output = Path(command[command.index("--output") + 1])
     output.write_bytes(b"pdf")
     output.with_suffix(".json").write_text("{}\n", encoding="utf-8")
+
+
+def test_render_forwards_recola_results_to_plotter_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "render-recola"
+    source = tmp_path / "live.json"
+    recola_results = tmp_path / "recola.json"
+    source.write_text(json.dumps(_partial_report(output)), encoding="utf-8")
+    recola_results.write_text("{}\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(command, **_kwargs):
+        command = tuple(command)
+        calls.append(command)
+        if Path(command[1]) == profiling.PLOT_TOOL:
+            plot_root = Path(command[3])
+            plot_root.mkdir(parents=True)
+            for family in ("gg", "ddbar"):
+                for metric in ("generation", "warm-runtime", "rss"):
+                    (plot_root / f"fullcolor-{family}-{metric}.png").write_bytes(b"png")
+        elif Path(command[1]) == profiling.PDF_TOOL:
+            _write_fake_pdf_output(command)
+
+    monkeypatch.setattr(profiling, "_run_checked", fake_run)
+    monkeypatch.setattr(profiling, "_preflight_renderer", lambda _arguments: None)
+    monkeypatch.setattr(
+        profiling,
+        "_madgraph_render_source",
+        lambda *_args: pytest.fail("external report must not inherit output MG data"),
+    )
+
+    profiling.render_snapshot(
+        _arguments(
+            "--render",
+            "--output",
+            str(output),
+            "--campaign-report",
+            str(source),
+            "--recola-results",
+            str(recola_results),
+            "--main-y-range",
+            "1e-6",
+            "1e3",
+            "--ratio-y-range",
+            "0",
+            "5",
+            "--ratio-y-scale",
+            "linear",
+            "--main-include-lines",
+            "recola",
+            "madgraph",
+            "--main-veto-lines",
+            "pyamplicol-recurrence",
+            "--ratio-include-lines",
+            "recola",
+            "--ratio-veto-lines",
+            "madgraph",
+        )
+    )
+
+    plot_command, pdf_command = calls
+    assert plot_command[plot_command.index("--recola-results") + 1] == str(
+        recola_results.resolve(strict=False)
+    )
+    assert plot_command[plot_command.index("--main-y-range") + 1 :][0:2] == (
+        "1e-06",
+        "1000.0",
+    )
+    assert plot_command[plot_command.index("--ratio-y-range") + 1 :][0:2] == (
+        "0.0",
+        "5.0",
+    )
+    assert plot_command[plot_command.index("--ratio-y-scale") + 1] == "linear"
+    assert plot_command[plot_command.index("--main-include-lines") + 1 :][0:2] == (
+        "recola",
+        "madgraph",
+    )
+    assert plot_command[plot_command.index("--main-veto-lines") + 1] == (
+        "pyamplicol-recurrence"
+    )
+    assert plot_command[plot_command.index("--ratio-include-lines") + 1] == "recola"
+    assert plot_command[plot_command.index("--ratio-veto-lines") + 1] == "madgraph"
+    assert "--recola-results" not in pdf_command
+    assert "--main-y-range" not in pdf_command
+    assert "--ratio-y-range" not in pdf_command
+    assert "--ratio-y-scale" not in pdf_command
+    assert "--main-include-lines" not in pdf_command
+    assert "--main-veto-lines" not in pdf_command
+    assert "--ratio-include-lines" not in pdf_command
+    assert "--ratio-veto-lines" not in pdf_command
+
+
+def test_render_axis_options_are_validated() -> None:
+    arguments = _arguments("--render", "--main-y-range", "0", "1")
+
+    with pytest.raises(profiling.ProfilingError, match="logarithmic y-axis"):
+        profiling._validate_arguments(arguments)
+
+    arguments = _arguments(
+        "--render",
+        "--ratio-y-scale",
+        "linear",
+        "--ratio-y-range",
+        "0",
+        "2",
+    )
+
+    profiling._validate_arguments(arguments)
+
+
+def test_render_line_filters_are_render_only_and_deduplicated() -> None:
+    arguments = _arguments("--main-include-lines", "recola")
+    with pytest.raises(profiling.ProfilingError, match="valid only with --render"):
+        profiling._validate_arguments(arguments)
+
+    arguments = _arguments("--render", "--main-include-lines", "recola", "recola")
+    with pytest.raises(profiling.ProfilingError, match="duplicates"):
+        profiling._validate_arguments(arguments)
 
 
 def test_render_freezes_once_and_publishes_only_complete_set(
@@ -1729,6 +2328,10 @@ def test_fixed_bare_render_combines_otf_frontier_with_valid_madgraph_overlay(
                     "warm_fixed_helicity": True,
                     "warm_helicity_sum": False,
                     "maximum_measured_multiplicity": 6,
+                    "family_maximum_measured_multiplicity": {
+                        "gg": 5,
+                        "ddbar": 6,
+                    },
                     "higher_multiplicity_policy": ("not-applicable-protocol-scope"),
                 },
                 "runtime_series": overlay_series,
@@ -2195,6 +2798,53 @@ def test_summed_overlay_replaces_stale_madgraph_omission_note(
     ]
 
 
+def test_madgraph_source_freeze_depends_only_on_source_cells(tmp_path: Path) -> None:
+    output = tmp_path / "mg-source"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "--lines",
+        "madgraph",
+    )
+    gg_source = study._cell_base("gg", study.MODE_BY_KEY["reference-fft"], 2) | {
+        "status": "measured"
+    }
+    ddbar_source = study._cell_base(
+        "ddbar", study.MODE_BY_KEY["recurrence-fft"], 2
+    ) | {"status": "measured"}
+    unrelated = study._cell_base("gg", study.MODE_BY_KEY["otf-direct"], 2) | {
+        "status": "measured",
+        "generation_seconds": 1.0,
+    }
+    cells = {
+        "gg": {
+            "reference-fft": {"2": gg_source},
+            "otf-direct": {"2": unrelated},
+        },
+        "ddbar": {"recurrence-fft": {"2": ddbar_source}},
+    }
+    master = study.compose_report(
+        profiling._master_arguments(arguments, output),
+        cells,
+    )
+    master["measurement_host"] = profiling.madgraph.measurement_host_identity()
+    profiling._write_json_atomic(profiling._master_report_path(output), master)
+
+    path = profiling._freeze_madgraph_source(arguments, output)
+    frozen = json.loads(path.read_text(encoding="utf-8"))
+
+    assert frozen["kind"] == profiling.madgraph.SOURCE_KIND
+    assert set(frozen["cells"]["gg"]) == {"reference-fft"}
+    assert set(frozen["cells"]["ddbar"]) == {"recurrence-fft"}
+
+    master["cells"]["gg"]["otf-direct"]["2"]["generation_seconds"] = 2.0
+    profiling._write_json_atomic(profiling._master_report_path(output), master)
+
+    assert profiling._freeze_madgraph_source(arguments, output) == path
+
+
 def test_helicity_sum_n2_n3_campaign_runs_summed_madgraph_and_renders_sum_pdf(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2209,6 +2859,7 @@ def test_helicity_sum_n2_n3_campaign_runs_summed_madgraph_and_renders_sum_pdf(
     )
     report = {"status": "running", "cells": {}}
     phases: list[int] = []
+    steps: list[str] = []
 
     class FakeDashboard:
         def __init__(self, **_kwargs) -> None:
@@ -2227,11 +2878,11 @@ def test_helicity_sum_n2_n3_campaign_runs_summed_madgraph_and_renders_sum_pdf(
         "_publish_master",
         lambda *_args, **_kwargs: report,
     )
-    monkeypatch.setattr(
-        profiling,
-        "_phase",
-        lambda _arguments, _output, phase, _dashboard: phases.append(phase),
-    )
+    def fake_phase(_arguments, _output, phase, _dashboard, **_kwargs):
+        phases.append(phase)
+        steps.append(f"phase-{phase}")
+
+    monkeypatch.setattr(profiling, "_phase", fake_phase)
     monkeypatch.setattr(profiling, "_completed_cells", lambda _report: 0)
     monkeypatch.setattr(
         profiling, "_selected_pending_cells", lambda *_args, **_kwargs: 0
@@ -2239,16 +2890,23 @@ def test_helicity_sum_n2_n3_campaign_runs_summed_madgraph_and_renders_sum_pdf(
     monkeypatch.setattr(
         profiling, "_selected_master_complete", lambda *_args, **_kwargs: True
     )
+    monkeypatch.setattr(profiling, "_madgraph_source_ready", lambda *_args: True)
     madgraph_steps: list[str] = []
+
+    def fake_start_madgraph(*_args):
+        steps.append("madgraph-start")
+        madgraph_steps.append("start")
+        return None
+
     monkeypatch.setattr(
         profiling,
-        "_freeze_madgraph_source",
-        lambda *_args: madgraph_steps.append("freeze"),
+        "_start_madgraph_overlay",
+        fake_start_madgraph,
     )
     monkeypatch.setattr(
         profiling,
         "_run_madgraph",
-        lambda *_args: madgraph_steps.append("run"),
+        lambda *_args: pytest.fail("MadGraph should not block the campaign"),
     )
     expected = output / "render" / "current" / "summary_plots_final_helicity_sum.pdf"
     render_calls: list[bool] = []
@@ -2262,9 +2920,10 @@ def test_helicity_sum_n2_n3_campaign_runs_summed_madgraph_and_renders_sum_pdf(
     result = profiling.run_campaign(arguments)
 
     assert result == expected
-    assert phases == [1, 2, 3]
-    assert madgraph_steps == ["freeze", "run"]
-    assert render_calls == [False, False, False, False]
+    assert phases == [1, 2]
+    assert steps == ["phase-1", "madgraph-start", "phase-2"]
+    assert madgraph_steps == ["start"]
+    assert render_calls == [False, False, False]
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["identity"]["scan"]["helicity_workload"] == "sum"
 
@@ -2288,7 +2947,7 @@ def test_campaign_without_madgraph_line_group_skips_madgraph_phase(
         "_publish_master",
         lambda *_args, **_kwargs: report,
     )
-    monkeypatch.setattr(profiling, "_phase", lambda *_args: None)
+    monkeypatch.setattr(profiling, "_phase", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(profiling, "_completed_cells", lambda _report: 0)
     monkeypatch.setattr(
         profiling, "_selected_pending_cells", lambda *_args, **_kwargs: 0
@@ -2329,6 +2988,10 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
                 "policy": {
                     "final_state_multiplicities": [2, 3],
                     "maximum_measured_multiplicity": 6,
+                    "family_maximum_measured_multiplicity": {
+                        "gg": 5,
+                        "ddbar": 6,
+                    },
                     "higher_multiplicity_policy": ("not-applicable-protocol-scope"),
                 },
                 "runtime_series": {},
@@ -2378,3 +3041,43 @@ def test_partial_render_can_reuse_ordered_subset_madgraph_overlay(
         profiling._matching_madgraph_overlay(arguments, output, require_exact=False)
         is None
     )
+
+
+def test_partial_render_can_reuse_ordered_subset_madgraph_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "expanded-progress"
+    progress = profiling._madgraph_progress_path(output)
+    progress.parent.mkdir(parents=True)
+    progress.write_text("{}", encoding="utf-8")
+    payload = {
+        "status": "running",
+        "host": profiling.madgraph.measurement_host_identity(),
+        "policy": {
+            "final_state_multiplicities": [2, 3, 4, 5, 6],
+            "helicity_workload": "fixed",
+            "selected_process_families": ["gg", "ddbar"],
+            "family_maximum_measured_multiplicity": {
+                "gg": 5,
+                "ddbar": 6,
+            },
+        },
+        "runtime_series": {},
+    }
+    arguments = _arguments("--output", str(output), "--multiplicities", "4")
+    monkeypatch.setattr(
+        profiling,
+        "_requested_multiplicities",
+        lambda _arguments, _output: (2, 3, 4, 5, 6, 7, 8, 9),
+    )
+    monkeypatch.setattr(
+        profiling.madgraph,
+        "load_runtime_progress",
+        lambda _path: payload,
+    )
+
+    assert profiling._matching_madgraph_progress(arguments, output) == payload
+    assert profiling._madgraph_render_source(arguments, output) == progress
+
+    payload["policy"]["final_state_multiplicities"] = [6, 5, 4]
+    assert profiling._matching_madgraph_progress(arguments, output) is None

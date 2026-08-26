@@ -127,7 +127,7 @@ def _campaign(tmp_path: Path) -> dict[str, Any]:
                 "warm_fixed_helicity": True,
                 "fixed_helicity": True,
                 "warm_benchmark_batch_size": 128,
-                "warm_sample_count": 10,
+                "warm_sample_count": final_report.WARM_SAMPLE_COUNT,
                 "compiled_fft_enabled": False,
                 "memory_policy": "per-cell-strictly-below-publication-ceiling",
                 "requested_memory_ceiling_gib": 30.0,
@@ -208,6 +208,7 @@ def _madgraph_cell(
 
 
 def _madgraph_scope_cell(family: str, n: int) -> dict[str, Any]:
+    measured_limit = final_report.MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY[family]
     return {
         "status": "not-applicable",
         "family": family,
@@ -216,11 +217,18 @@ def _madgraph_scope_cell(family: str, n: int) -> dict[str, Any]:
         "n": n,
         "total_external": n + 2,
         "process": final_report._process_expression(family, n),
-        "failure_category": "protocol-scope-n>6",
-        "failure_reason": "final-plot protocol measures MadGraph only through n=6",
+        "failure_category": (
+            "protocol-scope-pure-gluon-n6"
+            if (family, n) == ("gg", 6)
+            else f"protocol-scope-n>{measured_limit}"
+        ),
+        "failure_reason": (
+            f"final-plot protocol measures {family} MadGraph only through "
+            f"n={measured_limit}"
+        ),
         "censors_higher_multiplicities": False,
         "protocol_scope": {
-            "maximum_measured_multiplicity": 6,
+            "maximum_measured_multiplicity": measured_limit,
             "disposition": "not-applicable",
         },
     }
@@ -232,7 +240,8 @@ def _overlay(campaign: dict[str, Any], source_path: Path) -> dict[str, Any]:
             "madgraph-standalone": {
                 str(n): (
                     _madgraph_cell(campaign, source_path, family, n)
-                    if n <= final_report.MADGRAPH_MAX_MEASURED_MULTIPLICITY
+                    if n
+                    <= final_report.MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY[family]
                     else _madgraph_scope_cell(family, n)
                 )
                 for n in final_report.FINAL_MULTIPLICITIES
@@ -251,13 +260,16 @@ def _overlay(campaign: dict[str, Any], source_path: Path) -> dict[str, Any]:
             "process_families": list(final_report.FAMILY_MODES),
             "point_validation_count": 10,
             "warm_timed_point_index": 1,
-            "warm_sample_count": 10,
+            "warm_sample_count": final_report.WARM_SAMPLE_COUNT,
             "generation_timeout_seconds": 3595.0,
             "outer_memory_watchdog_gib": 30.0,
             "watchdog_enforced_per_generation_build_and_runtime": True,
             "generation_helicity_coverage": "all",
             "warm_fixed_helicity": True,
             "maximum_measured_multiplicity": 6,
+            "family_maximum_measured_multiplicity": (
+                final_report.MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY
+            ),
             "higher_multiplicity_policy": "not-applicable-protocol-scope",
             "metric_scope": {
                 "generation_seconds": "cold to ready",
@@ -267,8 +279,8 @@ def _overlay(campaign: dict[str, Any], source_path: Path) -> dict[str, Any]:
         },
         "summary": {
             "runtime_series_status_counts": {
-                "measured": 10,
-                "not-applicable": 6,
+                "measured": 9,
+                "not-applicable": 7,
             }
         },
         "runtime_series": cells,
@@ -317,8 +329,8 @@ def test_merge_preserves_fresh_cells_and_policy_and_adds_all_metrics(
     assert report["summary"] == {
         "cell_status_counts": {"measured": 88},
         "runtime_series_status_counts": {
-            "measured": 10,
-            "not-applicable": 6,
+            "measured": 9,
+            "not-applicable": 7,
         },
         "total_failure_count": 0,
     }
@@ -377,7 +389,10 @@ def test_merge_authenticates_a_native_smatrix_helicity_sum(
     )
     for family in final_report.FAMILY_MODES:
         source_mode = final_report.SUM_SOURCE_MODE[family]
-        for n in range(2, final_report.MADGRAPH_MAX_MEASURED_MULTIPLICITY + 1):
+        measured_limit = final_report.MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY[
+            family
+        ]
+        for n in range(2, measured_limit + 1):
             cell = overlay["runtime_series"][family]["madgraph-standalone"][str(n)]
             source = campaign["cells"][family][source_mode][str(n)]
             cell.update(
@@ -655,22 +670,22 @@ def test_merge_preserves_otf_numerical_and_event_checks(
 def test_merge_preserves_a_madgraph_failure_frontier(tmp_path: Path) -> None:
     _, campaign_path, overlay, _ = _inputs(tmp_path)
     curve = overlay["runtime_series"]["gg"]["madgraph-standalone"]
-    curve["6"] = {
+    curve["5"] = {
         "status": "failed",
         "family": "gg",
         "mode": "madgraph-standalone",
         "label": "MadGraph standalone (fixed h)",
-        "n": 6,
-        "total_external": 8,
-        "process": final_report._process_expression("gg", 6),
+        "n": 5,
+        "total_external": 7,
+        "process": final_report._process_expression("gg", 5),
         "failure_reason": "strict resource frontier",
     }
     overlay["status"] = "complete-with-failures"
     overlay["failure_count"] = 1
     overlay["summary"]["runtime_series_status_counts"] = {
         "failed": 1,
-        "measured": 9,
-        "not-applicable": 6,
+        "measured": 8,
+        "not-applicable": 7,
     }
     overlay_path = _write_json(tmp_path / "madgraph.json", overlay)
 

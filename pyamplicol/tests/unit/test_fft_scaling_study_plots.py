@@ -78,7 +78,7 @@ def test_protocol_summary_records_fft_and_helicity_contract() -> None:
         "setup/warm workload: one fixed helicity | pyAmpliCol CLI profile: batch 128 "
         "(cyclic 10 points) | Reference/AmpliCol: scalar aggregates normalized "
         "per point | compiled FFT disabled | "
-        "log-scale Y axes"
+        "main Y log; ratio Y log"
     )
     assert plots.METRICS[0].title == "Setup time"
 
@@ -105,7 +105,7 @@ def test_protocol_summary_and_warm_title_record_helicity_sum() -> None:
         "AmpliCol: create-raw bulk H family | pyAmpliCol CLI profile: batch 128 "
         "(cyclic 10 points) | Reference/AmpliCol: scalar aggregates normalized "
         "per point | compiled FFT disabled | "
-        "log-scale Y axes"
+        "main Y log; ratio Y log"
     )
     assert plots._metric_title(report, plots.METRICS[1]) == (
         "Warmed helicity-summed runtime per point"
@@ -120,7 +120,7 @@ def test_protocol_summary_and_warm_title_record_helicity_sum() -> None:
         "AmpliCol: create-raw bulk H family | pyAmpliCol CLI profile: batch 128 "
         "(cyclic 10 points)",
         "Reference/AmpliCol: scalar aggregates normalized per point | "
-        "compiled FFT disabled | log-scale Y axes",
+        "compiled FFT disabled | main Y log; ratio Y log",
     )
     assert max(map(len, protocol_lines)) <= 110
 
@@ -302,6 +302,311 @@ def test_plot_data_payload_records_plotted_values_and_ratios(tmp_path: Path) -> 
     assert rss["modes"]["reference-fft"]["series"] == [{"n": 2, "value": 2.0}]
 
 
+def test_plot_data_payload_records_custom_axis_options() -> None:
+    report = _report(None)
+    report["policy"].update(
+        {
+            "process_families": {
+                "gg": {"modes": ["reference-fft", "recurrence-direct"]},
+                "ddbar": {"modes": ["amplicol"]},
+            },
+            "measurement": {"warm_fixed_helicity": True},
+        }
+    )
+    measured = {
+        "status": "measured",
+        "warm_fixed_helicity": True,
+    }
+    report["cells"] = {
+        "gg": {
+            "reference-fft": {
+                "2": measured
+                | {"metrics": {"generation_seconds": 2.0}},
+            },
+            "recurrence-direct": {
+                "2": measured
+                | {"metrics": {"generation_seconds": 4.0}},
+            },
+        },
+        "ddbar": {
+            "amplicol": {
+                "2": measured
+                | {"metrics": {"generation_seconds": 3.0}},
+            }
+        },
+    }
+    axis_options = plots.AxisOptions(
+        main_y_range=(1.0, 10.0),
+        ratio_y_range=(0.0, 3.0),
+        ratio_y_scale="linear",
+    )
+
+    payload = plots._plot_data_payload(
+        "abc123",
+        report,
+        axis_options=axis_options,
+    )
+    generation = payload["families"]["gg"]["metrics"]["generation"]
+
+    assert generation["main_axis"] == {"scale": "log", "range": [1.0, 10.0]}
+    assert generation["ratio_axis"] == {
+        "scale": "linear",
+        "range": [0.0, 3.0],
+    }
+
+
+def test_plot_data_payload_filters_main_and_ratio_lines_independently() -> None:
+    report = _report(None)
+    report["policy"].update(
+        {
+            "process_families": {
+                "gg": {
+                    "modes": [
+                        "reference-fft",
+                        "recurrence-direct",
+                        "madgraph-standalone",
+                    ]
+                },
+                "ddbar": {"modes": ["amplicol"]},
+            },
+            "measurement": {"warm_fixed_helicity": True},
+        }
+    )
+    measured = {
+        "status": "measured",
+        "warm_fixed_helicity": True,
+    }
+    report["cells"] = {
+        "gg": {
+            "reference-fft": {
+                "2": measured | {"metrics": {"generation_seconds": 2.0}},
+            },
+            "recurrence-direct": {
+                "2": measured | {"metrics": {"generation_seconds": 4.0}},
+            },
+            "madgraph-standalone": {
+                "2": measured | {"metrics": {"generation_seconds": 6.0}},
+            },
+        },
+        "ddbar": {
+            "amplicol": {
+                "2": measured | {"metrics": {"generation_seconds": 3.0}},
+            }
+        },
+    }
+    line_filters = plots.LineFilterOptions(
+        main_include_lines=("reference-fft",),
+        main_veto_lines=("reference-fft",),
+        ratio_veto_lines=("pyamplicol-recurrence",),
+    )
+
+    payload = plots._plot_data_payload(
+        "abc123",
+        report,
+        line_filters=line_filters,
+    )
+    generation = payload["families"]["gg"]["metrics"]["generation"]
+
+    assert payload["line_filters"]["main"]["include_lines"] == ["reference-fft"]
+    assert payload["line_filters"]["main"]["veto_lines"] == ["reference-fft"]
+    assert generation["main_axis"]["range"] == pytest.approx([1.0, 4.0])
+    assert generation["ratio_axis"]["range"] == pytest.approx(
+        [10**-0.1, 3.0 * 10**0.1]
+    )
+    assert set(generation["modes"]) == {"reference-fft", "madgraph-standalone"}
+    assert generation["modes"]["reference-fft"]["visible_in_main"] is True
+    assert generation["modes"]["reference-fft"]["visible_in_ratio"] is True
+    assert generation["modes"]["reference-fft"]["series"] == [
+        {"n": 2, "value": 2.0}
+    ]
+    assert generation["modes"]["madgraph-standalone"]["visible_in_main"] is False
+    assert generation["modes"]["madgraph-standalone"]["visible_in_ratio"] is True
+    assert generation["modes"]["madgraph-standalone"]["series"] == []
+    assert generation["modes"]["madgraph-standalone"]["ratio_to_baseline"] == [
+        {"n": 2, "value": 3.0}
+    ]
+
+
+def test_axis_options_validate_log_positive_ranges() -> None:
+    linear = plots._parser().parse_args(
+        [
+            "report.json",
+            "plots",
+            "--ratio-y-scale",
+            "linear",
+            "--ratio-y-range",
+            "0",
+            "2",
+        ]
+    )
+    assert plots._axis_options_from_arguments(linear).ratio_y_range == (0.0, 2.0)
+
+    log = plots._parser().parse_args(
+        ["report.json", "plots", "--ratio-y-range", "0", "2"]
+    )
+    with pytest.raises(plots.PlotError, match="logarithmic y-axis"):
+        plots._axis_options_from_arguments(log)
+
+
+def test_recola_results_overlay_is_plotted_and_exported(tmp_path: Path) -> None:
+    report = _report(None)
+    report["policy"].update(
+        {
+            "process_families": {
+                "gg": {"modes": ["reference-fft"]},
+                "ddbar": {"modes": ["amplicol"]},
+            },
+            "measurement": {"warm_fixed_helicity": True},
+        }
+    )
+    report["status"] = "complete"
+    measured = {
+        "status": "measured",
+        "warm_fixed_helicity": True,
+    }
+    report["cells"] = {
+        "gg": {
+            "reference-fft": {
+                "2": measured
+                | {
+                    "metrics": {
+                        "generation_seconds": 2.0,
+                        "warm_seconds_per_point": 0.2,
+                        "max_rss_kib": 2048.0,
+                    }
+                }
+            }
+        },
+        "ddbar": {
+            "amplicol": {
+                "2": measured
+                | {
+                    "metrics": {
+                        "generation_seconds": 4.0,
+                        "warm_seconds_per_point": 0.4,
+                        "max_rss_kib": 4096.0,
+                    }
+                }
+            }
+        },
+    }
+    recola_path = tmp_path / "recola.json"
+    recola_path.write_text(
+        json.dumps(
+            {
+                "config": {"polarized": True},
+                "results": {
+                    "all_gluon": {
+                        "2": {
+                            "family": "all_gluon",
+                            "process": "g g -> g g",
+                            "gen_time_s": 5.0,
+                            "run_time_s": 0.5,
+                            "ram_after_generation_mib": 7.0,
+                            "ram_after_profile_mib": 8.0,
+                            "peak_generation_rss_mib": 6.0,
+                            "polarized": True,
+                            "helicity": [1, 1, 1, 1],
+                            "profiled_call": "get_polarized_squared_amplitude_rcl",
+                        },
+                        "3": None,
+                        "4": {
+                            "status": "limit_reached",
+                            "error": "all_gluon, n=4: generation time exceeded",
+                        },
+                    },
+                    "down_quark_qcd": {
+                        "2": {
+                            "family": "down_quark_qcd",
+                            "process": "d d~ -> d d~",
+                            "gen_time_s": 6.0,
+                            "run_time_s": 0.6,
+                            "peak_generation_rss_mib": 9.0,
+                            "polarized": True,
+                        }
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metadata = plots._attach_recola_results(report, recola_path)
+    external_sources = {"recola_results": metadata}
+    payload = plots._plot_data_payload(
+        "abc123",
+        report,
+        external_sources=external_sources,
+    )
+    output_directory = tmp_path / "plots"
+    output_directory.mkdir()
+    data_path = plots._write_plot_data(
+        "abc123",
+        report,
+        output_directory,
+        external_sources=external_sources,
+    )
+    persisted = json.loads(data_path.read_text(encoding="utf-8"))
+
+    generation = payload["families"]["gg"]["metrics"]["generation"]
+    warm = payload["families"]["gg"]["metrics"]["warm-runtime"]
+    rss = payload["families"]["gg"]["metrics"]["rss"]
+    ddbar_generation = payload["families"]["ddbar"]["metrics"]["generation"]
+
+    assert payload["external_sources"]["recola_results"]["sha256"] == plots._sha256(
+        recola_path
+    )
+    assert persisted == payload
+    assert generation["modes"]["recola"]["label"] == "Recola"
+    assert generation["modes"]["recola"]["series"] == [{"n": 2, "value": 5.0}]
+    assert generation["modes"]["recola"]["ratio_to_baseline"] == [
+        {"n": 2, "value": 2.5}
+    ]
+    assert warm["modes"]["recola"]["series"] == [{"n": 2, "value": 0.5}]
+    assert rss["modes"]["recola"]["series"] == [{"n": 2, "value": 8.0}]
+    assert ddbar_generation["modes"]["recola"]["series"] == [
+        {"n": 2, "value": 6.0}
+    ]
+    assert plots._status_notes(
+        report,
+        "gg",
+        ("recola",),
+        family_cells=report["runtime_series"]["gg"],
+    ) == ["Recola: n=4 failed (configured setup-time limit)."]
+
+
+def test_recola_results_overlay_rejects_workload_mismatch(tmp_path: Path) -> None:
+    report = _report(None)
+    report["policy"].update(
+        {
+            "process_families": {"gg": {"modes": ["reference-fft"]}},
+            "measurement": {"warm_fixed_helicity": True},
+        }
+    )
+    report["cells"] = {"gg": {"reference-fft": {}}}
+    recola_path = tmp_path / "recola-unpolarized.json"
+    recola_path.write_text(
+        json.dumps(
+            {
+                "config": {"polarized": False},
+                "results": {
+                    "all_gluon": {
+                        "2": {
+                            "family": "all_gluon",
+                            "gen_time_s": 1.0,
+                            "run_time_s": 0.1,
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(plots.PlotError, match="campaign report is fixed"):
+        plots._attach_recola_results(report, recola_path)
+
+
 def test_final_series_palette_line_styles_and_legend_grouping() -> None:
     assert plots.MODE_STYLES["reference-fft"] == ("#000000", "o", "-")
     assert plots.MODE_STYLES["amplicol"] == ("#F0E442", "D", "-")
@@ -310,6 +615,7 @@ def test_final_series_palette_line_styles_and_legend_grouping() -> None:
     assert plots.MODE_STYLES["recurrence-direct"] == ("#009E73", "o", "--")
     assert plots.MODE_STYLES["otf-fft"] == ("#0072B2", "v", "-")
     assert plots.MODE_STYLES["otf-direct"] == ("#0072B2", "^", "--")
+    assert plots.MODE_STYLES["recola"] == ("#AA4499", "h", "-")
 
     assert plots.LEGEND_MODE_ORDER["gg"] == (
         "reference-fft",
@@ -319,6 +625,7 @@ def test_final_series_palette_line_styles_and_legend_grouping() -> None:
         "otf-fft",
         "otf-direct",
         "madgraph-standalone",
+        "recola",
     )
     assert plots.LEGEND_MODE_ORDER["ddbar"] == (
         "amplicol",
@@ -327,6 +634,7 @@ def test_final_series_palette_line_styles_and_legend_grouping() -> None:
         "recurrence-direct",
         "otf-fft",
         "otf-direct",
+        "recola",
     )
 
 

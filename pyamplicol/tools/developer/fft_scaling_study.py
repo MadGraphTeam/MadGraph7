@@ -64,15 +64,17 @@ SCHEMA_VERSION = 1
 STUDY_ROOT = ROOT / "IMPLEMENTATION_DOCS" / "RESULTS" / "fft-scaling-study" / "raw"
 FINAL_MULTIPLICITIES = tuple(range(2, 8))
 POINT_COUNT = performance.POINT_COUNT
-WARM_SAMPLES = performance.WARM_SAMPLE_COUNT
 BENCHMARK_BATCH_SIZE = 128
-PROFILE_WARMUP_RUNS = 2
+DEFAULT_PROFILE_TARGET_SECONDS = 3.0 * 60.0
+PROFILE_SAMPLE_COUNT = 1
+PROFILE_WARMUP_RUNS = 0
 PROFILE_PRECISION = 16
 REQUESTED_MEMORY_LIMIT_GIB = 30.0
 MAX_MEMORY_LIMIT_GIB = REQUESTED_MEMORY_LIMIT_GIB
 DEFAULT_TIME_LIMIT_SECONDS = 60.0 * 60.0
 MAX_TIME_LIMIT_SECONDS = 60.0 * 60.0
 DEFAULT_ALPHA_S = 0.118
+DEFAULT_OTF_MAX_MULTIPLICITY = 6
 NUMERICAL_RELATIVE_TOLERANCE = 1.0e-10
 AMPLI_COL_MAX_POINTS = 1_000_000_000
 AMPLI_COL_CALIBRATION_HEADROOM = 1.05
@@ -114,6 +116,23 @@ _RESOURCE_FAILURE_CATEGORIES = frozenset(
 )
 _CENSORING_FAILURE_CATEGORIES = _RESOURCE_FAILURE_CATEGORIES | frozenset(
     {LEGACY_AMPLICOL_STRUCTURAL_LIMIT_CATEGORY}
+)
+MUTABLE_RESUME_MEASUREMENT_POLICY_KEYS = frozenset(
+    {
+        "calibration_target_seconds",
+        "candidate_profile_minimum_samples",
+        "candidate_profile_target_runtime_seconds",
+        "candidate_profile_warmup_runs",
+        "cell_admission_limits",
+        "generation_timeout_seconds",
+        "memory_policy",
+        "memory_watchdog_gib",
+        "requested_memory_ceiling_gib",
+        "runtime_timeout_seconds",
+        "warm_sample_count",
+        "warm_samples",
+        "warm_timing_metric",
+    }
 )
 
 
@@ -561,6 +580,7 @@ def _candidate_profile_command(
     sum_helicities: bool,
     target_seconds: float,
     batch_size: int,
+    minimum_samples: int = PROFILE_SAMPLE_COUNT,
 ) -> tuple[str, ...]:
     command = (
         python,
@@ -581,7 +601,7 @@ def _candidate_profile_command(
         "--warmup-runs",
         str(PROFILE_WARMUP_RUNS),
         "--minimum-samples",
-        str(WARM_SAMPLES),
+        str(minimum_samples),
     )
     if not sum_helicities:
         command += ("--helicity", _helicity_identifier(helicity))
@@ -636,6 +656,7 @@ def _parse_candidate_profile_json(
     sum_helicities: bool,
     target_seconds: float,
     batch_size: int,
+    minimum_samples: int = PROFILE_SAMPLE_COUNT,
 ) -> dict[str, object]:
     try:
         payload = json.loads(output)
@@ -648,7 +669,7 @@ def _parse_candidate_profile_json(
         "batch_size": batch_size,
         "color_flow_ids": [],
         "helicity_ids": expected_helicities,
-        "minimum_samples": WARM_SAMPLES,
+        "minimum_samples": minimum_samples,
         "precision": PROFILE_PRECISION,
         "target_runtime": target_seconds,
         "warmup_runs": PROFILE_WARMUP_RUNS,
@@ -684,7 +705,7 @@ def _parse_candidate_profile_json(
         != artifact.expanduser().resolve(strict=False)
         or payload.get("interrupted") is not False
         or environment.get("interrupted") is not False
-        or sample_count < WARM_SAMPLES
+        or sample_count < minimum_samples
         or completed_samples != sample_count
         or repetitions < 1
         or measured_points != sample_count * repetitions * batch_size
@@ -853,7 +874,7 @@ def _collect_amplicol_warm_samples(
     target_seconds: float,
     run_sample: Callable[[int, int, int], str],
 ) -> AmpliColWarmSamples:
-    """Collect ten equal-repetition aggregates that each meet the time floor."""
+    """Collect equal-repetition profiling aggregates that meet the time floor."""
 
     repetitions = _amplicol_fixed_repetitions(
         seed_points, seed_total_seconds, target_seconds
@@ -863,7 +884,7 @@ def _collect_amplicol_warm_samples(
         sample_set_attempt += 1
         samples: list[float] = []
         totals: list[float] = []
-        for sample_index in range(1, WARM_SAMPLES + 1):
+        for sample_index in range(1, PROFILE_SAMPLE_COUNT + 1):
             output = run_sample(sample_set_attempt, sample_index, repetitions)
             _, total, observed_points = _parse_amplicol_timing_aggregate(output)
             if observed_points != repetitions:
@@ -909,11 +930,28 @@ def _load_report(path: Path, arguments: argparse.Namespace) -> dict[str, object]
         raise StudyError("existing scaling-study report has the wrong schema")
     if not isinstance(payload.get("cells"), dict):
         raise StudyError("existing scaling-study report has no cells")
-    if payload.get("policy") != dry_run_plan(arguments):
-        raise StudyError("resume arguments differ from the stored study policy")
+    requested_policy = dry_run_plan(arguments)
+    if payload.get("policy") != requested_policy:
+        stored_comparison = _resume_policy_comparison(payload.get("policy"))
+        requested_comparison = _resume_policy_comparison(requested_policy)
+        if stored_comparison != requested_comparison:
+            raise StudyError("resume arguments differ from the stored study policy")
+        payload["policy"] = requested_policy
     normalize_loaded_failure_cells(payload, path.parent)
     payload["status"] = "running"
     return payload
+
+
+def _resume_policy_comparison(policy: object) -> object:
+    if not isinstance(policy, Mapping):
+        return policy
+    normalized = copy.deepcopy(dict(policy))
+    normalized.pop("run_root", None)
+    measurement = normalized.get("measurement")
+    if isinstance(measurement, dict):
+        for key in MUTABLE_RESUME_MEASUREMENT_POLICY_KEYS:
+            measurement.pop(key, None)
+    return normalized
 
 
 def _record(
@@ -1227,10 +1265,10 @@ def otf_protocol_scope_cell(
     mode: Mode,
     final_multiplicity: int,
     sum_helicities: bool = False,
+    maximum_multiplicity: int = DEFAULT_OTF_MAX_MULTIPLICITY,
 ) -> dict[str, object] | None:
     """Apply the workload-specific OTF publication frontier."""
 
-    maximum_multiplicity = 6
     if (
         mode.execution_mode != "on-the-fly"
         or final_multiplicity <= maximum_multiplicity
@@ -1260,6 +1298,7 @@ def apply_protocol_scope_cells(
     family: str,
     modes: Sequence[str],
     multiplicities: Sequence[int],
+    maximum_multiplicity: int = DEFAULT_OTF_MAX_MULTIPLICITY,
 ) -> bool:
     """Populate deliberate non-measurement OTF cells for an orchestrated shard."""
 
@@ -1274,6 +1313,7 @@ def apply_protocol_scope_cells(
                 mode=mode,
                 final_multiplicity=final_multiplicity,
                 sum_helicities=sum_helicities,
+                maximum_multiplicity=maximum_multiplicity,
             )
             if cell is not None and str(final_multiplicity) not in curve:
                 curve[str(final_multiplicity)] = cell
@@ -1535,6 +1575,7 @@ def _reference_cell(
             cold_limit_seconds=arguments.generation_timeout,
             memory_limit_gib=arguments.memory_limit_gib,
             repetition_quantum=arguments.batch_size,
+            warm_sample_count=PROFILE_SAMPLE_COUNT,
             sum_helicities=arguments.compare_helicity_sums,
         )
     except performance.ReferenceColdLimitError as error:
@@ -1932,8 +1973,8 @@ def _amplicol_summed_cell(
         warmup_points=1,
         minimum_points=1,
         maximum_points=AMPLI_COL_MAX_POINTS,
-        minimum_profile_chunks=WARM_SAMPLES,
-        maximum_profile_chunks=max(64, WARM_SAMPLES),
+        minimum_profile_chunks=PROFILE_SAMPLE_COUNT,
+        maximum_profile_chunks=PROFILE_SAMPLE_COUNT + 1,
         jobs=1,
         repository=arguments.amplicol_repository,
         validate_checkout=False,
@@ -2330,7 +2371,7 @@ def _amplicol_cell(
             "max_rss_kib": max_rss_kib,
         },
         "adaptive_runtime_points": adaptive_points,
-        "warm_repetitions": [warm.repetitions] * WARM_SAMPLES,
+        "warm_repetitions": [warm.repetitions] * len(warm.samples_seconds),
         "warm_samples_seconds": list(warm.samples_seconds),
         "warm_sample_totals_seconds": list(warm.sample_totals_seconds),
         "warm_sample_set_attempts": warm.sample_set_attempts,
@@ -3019,10 +3060,15 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
         mode.key: mode for modes in fill_modes_by_family.values() for mode in modes
     }
 
-    if any(mode.kind == "amplicol" for mode in selected_modes.values()):
+    # Summed AmpliCol cells patch the generated-library probe source under
+    # legacy_structural_probe_lock(); validating here would race with peer cells.
+    if (
+        any(mode.kind == "amplicol" for mode in selected_modes.values())
+        and not arguments.compare_helicity_sums
+    ):
         legacy_amplicol.validate_checkout(arguments.amplicol_repository)
         amplicol_probe = arguments.amplicol_repository / "amplicol_color_probe"
-        if not arguments.compare_helicity_sums and not amplicol_probe.is_file():
+        if not amplicol_probe.is_file():
             if not arguments.build_amplicol:
                 raise StudyError(
                     "AmpliCol probe is missing; rerun with --build-amplicol: "
@@ -3064,6 +3110,17 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
                 )
                 reuse_candidate_generation = False
                 existing = curve.get(str(final_multiplicity))
+                if isinstance(existing, dict):
+                    obsolete_protocol_scope = (
+                        existing.get("failure_category")
+                        == "publication-protocol-scope"
+                        and mode.execution_mode == "on-the-fly"
+                        and final_multiplicity <= arguments.otf_max_multiplicity
+                    )
+                    if obsolete_protocol_scope:
+                        del curve[str(final_multiplicity)]
+                        performance._write_report(report_path, report)
+                        existing = None
                 if isinstance(existing, dict):
                     higher_measurement_exists = any(
                         isinstance(other, dict)
@@ -3154,6 +3211,7 @@ def _campaign(arguments: argparse.Namespace) -> dict[str, object]:
                     mode=mode,
                     final_multiplicity=final_multiplicity,
                     sum_helicities=arguments.compare_helicity_sums,
+                    maximum_multiplicity=arguments.otf_max_multiplicity,
                 )
                 if otf_scope is not None:
                     _record(
@@ -3402,7 +3460,7 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, object]:
     candidate_warm_metric = (
         "public `pyamplicol profile --json` wall_time_per_point from true "
         f"{arguments.batch_size}-point calls cycling the ten shared points; two "
-        f"warm-up calls, at least {WARM_SAMPLES} independent timed blocks, and "
+        f"warm-up calls, at least {PROFILE_SAMPLE_COUNT} independent timed block, and "
         f"{arguments.target_seconds:g}s cumulative target runtime"
     )
     plan = {
@@ -3435,13 +3493,13 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, object]:
             "n_definition": "final-state-particle-count",
             "generation_helicity_coverage": "all",
             "warm_fixed_helicity": True,
-            "warm_samples": WARM_SAMPLES,
+            "warm_samples": PROFILE_SAMPLE_COUNT,
             "calibration_target_seconds": arguments.target_seconds,
             "candidate_profile_target_runtime_seconds": arguments.target_seconds,
             "candidate_profile_warmup_runs": PROFILE_WARMUP_RUNS,
-            "candidate_profile_minimum_samples": WARM_SAMPLES,
+            "candidate_profile_minimum_samples": PROFILE_SAMPLE_COUNT,
             "warm_benchmark_batch_size": arguments.batch_size,
-            "warm_sample_count": WARM_SAMPLES,
+            "warm_sample_count": PROFILE_SAMPLE_COUNT,
             "candidate_optimization_cores": (
                 arguments.optimization_cores
                 if arguments.optimization_cores is not None
@@ -3513,15 +3571,17 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, object]:
             ),
             "warm_timing_metric": {
                 "reference-fft": (
-                    "median of 10 process-CPU samples after calibrating whole "
+                    f"median of {PROFILE_SAMPLE_COUNT} process-CPU sample(s) "
+                    "after calibrating whole "
                     f"{arguments.batch_size}-call scalar repetition groups; "
                     "normalized per evaluation "
                     "(not a vectorized batch API)"
                 ),
                 "amplicol": (
-                    "median of 10 independent process-CPU aggregates with one "
-                    "fixed scalar repetition count; every retained aggregate meets "
-                    "the calibration target and is normalized per evaluation"
+                    f"median of {PROFILE_SAMPLE_COUNT} independent process-CPU "
+                    "aggregate(s) with one fixed scalar repetition count; every "
+                    "retained aggregate meets the calibration target and is "
+                    "normalized per evaluation"
                 ),
                 "pyamplicol": candidate_warm_metric,
             },
@@ -3570,13 +3630,15 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, object]:
         warm_metric = measurement["warm_timing_metric"]
         assert isinstance(warm_metric, dict)
         warm_metric["reference-fft"] = (
-            "median of 10 calibrated process-CPU samples of one complete "
-            "analytic-nonzero helicity sum at the representative point"
+            f"median of {PROFILE_SAMPLE_COUNT} calibrated process-CPU sample(s) "
+            "of one complete analytic-nonzero helicity sum at the "
+            "representative point"
         )
         warm_metric["amplicol"] = (
-            "adaptive aggregate of at least 10 independently timed create-raw "
-            "bulk-family evaluations followed by a complete physical-helicity "
-            "sum with probe-local no-row pruning, normalized per point"
+            f"adaptive aggregate of at least {PROFILE_SAMPLE_COUNT} independently "
+            "timed create-raw bulk-family evaluations followed by a complete "
+            "physical-helicity sum with probe-local no-row pruning, normalized "
+            "per point"
         )
     return plan
 
@@ -3694,7 +3756,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     parser.add_argument("--fc", default=os.environ.get("FC", "gfortran"))
     parser.add_argument("--alpha-s", type=float, default=DEFAULT_ALPHA_S)
-    parser.add_argument("--target-seconds", type=float, default=0.25)
+    parser.add_argument(
+        "--target-seconds",
+        type=float,
+        default=DEFAULT_PROFILE_TARGET_SECONDS,
+        help=(
+            "target cumulative runtime for each timed profiling cell after the "
+            "first calibration/probe evaluation (default: 180)"
+        ),
+    )
     parser.add_argument(
         "--generation-timeout", type=float, default=DEFAULT_TIME_LIMIT_SECONDS
     )
@@ -3702,6 +3772,15 @@ def _parser() -> argparse.ArgumentParser:
         "--runtime-timeout", type=float, default=DEFAULT_TIME_LIMIT_SECONDS
     )
     parser.add_argument("--memory-limit-gib", type=float, default=MAX_MEMORY_LIMIT_GIB)
+    parser.add_argument(
+        "--otf-max-multiplicity",
+        type=int,
+        default=DEFAULT_OTF_MAX_MULTIPLICITY,
+        help=(
+            "largest final-state multiplicity admitted for on-the-fly modes "
+            f"(default publication frontier: {DEFAULT_OTF_MAX_MULTIPLICITY})"
+        ),
+    )
     parser.add_argument(
         "--amplicol-repository",
         type=Path,
@@ -3760,6 +3839,8 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         raise StudyError("--runtime-timeout must be positive and finite")
     if not _positive_finite(arguments.memory_limit_gib):
         raise StudyError("--memory-limit-gib must be positive and finite")
+    if arguments.otf_max_multiplicity < 2:
+        raise StudyError("--otf-max-multiplicity must be at least 2")
     if arguments.optimization_cores is not None and arguments.optimization_cores < 1:
         raise StudyError("--optimization-cores must be positive")
     families = _selected_families(arguments)

@@ -78,8 +78,12 @@ PDF_TOOL = ROOT / "tools" / "developer" / "fft_results_summary_pdf.py"
 MADGRAPH_TOOL = ROOT / "tools" / "developer" / "fft_madgraph_selected_runtime.py"
 RENDER_REQUIREMENTS = ("matplotlib==3.10.8", "reportlab==4.4.4")
 TERMINAL_STATUSES = frozenset({"complete", "complete-with-failures"})
-RETRY_MUTABLE_RESOURCE_PATHS = frozenset(
+ORCHESTRATOR_TERMINAL_CELL_STATUSES = frozenset(
+    {"measured", "failed", "skipped", "not-applicable"}
+)
+MUTABLE_RESOURCE_IDENTITY_PATHS = frozenset(
     {
+        "scan.target_seconds",
         "resources.per_cell_generation_timeout_seconds",
         "resources.per_cell_memory_limit_gib",
         "resources.per_cell_runtime_timeout_seconds",
@@ -120,12 +124,14 @@ class Shard:
 class ShardWork:
     shard: Shard
     final_multiplicity: int
+    owned_mode: str
 
 
 @dataclass(slots=True)
 class ActiveJob:
     shard: Shard
     final_multiplicity: int | None
+    owned_mode: str | None
     command: tuple[str, ...]
     process: subprocess.Popen[bytes]
     stdout: BinaryIO
@@ -159,7 +165,7 @@ SHARDS = (
         ("reference-fft", "otf-direct", "otf-fft"),
         ("otf-direct", "otf-fft"),
         ("gg-reference", "reference-fft"),
-        3,
+        2,
         True,
     ),
     Shard(
@@ -177,7 +183,7 @@ SHARDS = (
         ("amplicol", "otf-direct", "otf-fft"),
         ("otf-direct", "otf-fft"),
         ("ddbar-amplicol", "amplicol"),
-        3,
+        2,
         True,
     ),
     Shard(
@@ -209,6 +215,13 @@ LINE_MODE_SELECTORS = (
     "otf-fft",
 )
 LINE_CHOICES = (*LINE_GROUPS, *LINE_MODE_SELECTORS)
+RENDER_LINE_CHOICES = (
+    *LINE_CHOICES,
+    "madgraph-standalone",
+    "recola",
+    "compiled-direct",
+    "compiled-fft",
+)
 LINE_SELECTOR_SHARDS = {
     "reference-fft": ("gg-reference",),
     "amplicol": ("ddbar-amplicol", "gg-amplicol"),
@@ -237,6 +250,13 @@ def _positive_finite(raw: str) -> float:
     value = float(raw)
     if not math.isfinite(value) or value <= 0.0:
         raise argparse.ArgumentTypeError("must be positive and finite")
+    return value
+
+
+def _finite_float(raw: str) -> float:
+    value = float(raw)
+    if not math.isfinite(value):
+        raise argparse.ArgumentTypeError("must be finite")
     return value
 
 
@@ -400,7 +420,25 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     parser.add_argument("--fc", default=os.environ.get("FC", "gfortran"))
     parser.add_argument("--make", default=os.environ.get("MAKE", "make"))
-    parser.add_argument("--target-seconds", type=_positive_finite, default=0.25)
+    parser.add_argument(
+        "--target-seconds",
+        type=_positive_finite,
+        default=study.DEFAULT_PROFILE_TARGET_SECONDS,
+        help=(
+            "target runtime for each profiling cell after its first "
+            "calibration/probe evaluation (default: 180)"
+        ),
+    )
+    parser.add_argument(
+        "--otf-max-multiplicity",
+        type=int,
+        default=study.DEFAULT_OTF_MAX_MULTIPLICITY,
+        help=(
+            "largest final-state multiplicity to admit for pyAmpliCol OTF "
+            "measurements; raise this for an explicit high-multiplicity top-up "
+            f"(default: {study.DEFAULT_OTF_MAX_MULTIPLICITY})"
+        ),
+    )
     parser.add_argument(
         "--amplicol-root",
         "--amplicol-repository",
@@ -444,6 +482,59 @@ def _parser() -> argparse.ArgumentParser:
         "--campaign-report",
         type=Path,
         help="with --render, freeze and render this existing live report",
+    )
+    parser.add_argument(
+        "--recola-results",
+        type=Path,
+        help="with --render, overlay a Recola profiling JSON as a Recola line",
+    )
+    parser.add_argument(
+        "--main-y-range",
+        type=_finite_float,
+        nargs=2,
+        metavar=("MIN", "MAX"),
+        help="with --render, force the main-panel log y-range for every plot",
+    )
+    parser.add_argument(
+        "--ratio-y-range",
+        type=_finite_float,
+        nargs=2,
+        metavar=("MIN", "MAX"),
+        help="with --render, force the ratio-panel y-range for every plot",
+    )
+    parser.add_argument(
+        "--ratio-y-scale",
+        choices=("log", "linear"),
+        default="log",
+        help="with --render, ratio-panel y-axis scale (default: log)",
+    )
+    parser.add_argument(
+        "--main-include-lines",
+        nargs="+",
+        choices=RENDER_LINE_CHOICES,
+        metavar="LINE",
+        help="with --render, main-panel line ids to include; overrides vetoes",
+    )
+    parser.add_argument(
+        "--main-veto-lines",
+        nargs="+",
+        choices=RENDER_LINE_CHOICES,
+        metavar="LINE",
+        help="with --render, main-panel line ids to hide when include is absent",
+    )
+    parser.add_argument(
+        "--ratio-include-lines",
+        nargs="+",
+        choices=RENDER_LINE_CHOICES,
+        metavar="LINE",
+        help="with --render, ratio-panel line ids to include; overrides vetoes",
+    )
+    parser.add_argument(
+        "--ratio-veto-lines",
+        nargs="+",
+        choices=RENDER_LINE_CHOICES,
+        metavar="LINE",
+        help="with --render, ratio-panel line ids to hide when include is absent",
     )
     parser.add_argument("--dpi", type=int, default=160)
     parser.add_argument("--poll-seconds", type=_positive_finite, default=0.5)
@@ -629,10 +720,33 @@ def _shard_run_id(shard: Shard, final_multiplicity: int | None = None) -> str:
     return f"{shard.name}-n{final_multiplicity}"
 
 
+def _work_split_path(work: ShardWork) -> bool:
+    return len(work.shard.owned_modes) > 1
+
+
+def _work_run_id(work: ShardWork) -> str:
+    if not _work_split_path(work):
+        return _shard_run_id(work.shard, work.final_multiplicity)
+    return f"{work.shard.name}-{work.owned_mode}-n{work.final_multiplicity}"
+
+
 def _shard_cell_root(
     run_directory: Path, shard: Shard, final_multiplicity: int
 ) -> Path:
     return run_directory / "shards" / shard.name / "cells" / f"n{final_multiplicity}"
+
+
+def _work_cell_root(run_directory: Path, work: ShardWork) -> Path:
+    if not _work_split_path(work):
+        return _shard_cell_root(run_directory, work.shard, work.final_multiplicity)
+    return (
+        run_directory
+        / "shards"
+        / work.shard.name
+        / "mode-cells"
+        / work.owned_mode
+        / f"n{work.final_multiplicity}"
+    )
 
 
 def _shard_study_root(
@@ -643,6 +757,10 @@ def _shard_study_root(
     return _shard_cell_root(run_directory, shard, final_multiplicity) / "study"
 
 
+def _work_study_root(run_directory: Path, work: ShardWork) -> Path:
+    return _work_cell_root(run_directory, work) / "study"
+
+
 def _shard_report_path(
     run_directory: Path, shard: Shard, final_multiplicity: int | None = None
 ) -> Path:
@@ -650,6 +768,15 @@ def _shard_report_path(
         _shard_study_root(run_directory, shard, final_multiplicity)
         / "runs"
         / _shard_run_id(shard, final_multiplicity)
+        / "report.json"
+    )
+
+
+def _work_report_path(run_directory: Path, work: ShardWork) -> Path:
+    return (
+        _work_study_root(run_directory, work)
+        / "runs"
+        / _work_run_id(work)
         / "report.json"
     )
 
@@ -740,6 +867,9 @@ def _manifest_backed_arguments(
     backed = copy.copy(arguments)
     scan = identity.get("scan")
     if isinstance(scan, Mapping):
+        workload = scan.get("helicity_workload")
+        if workload in {"fixed", "sum"}:
+            backed.compare_helicity_sums = workload == "sum"
         if isinstance(scan.get("batch_size"), int):
             backed.batch_size = scan["batch_size"]
         if isinstance(scan.get("target_seconds"), int | float):
@@ -835,6 +965,8 @@ def _study_cli_arguments(
         format(arguments.time_limit_seconds, ".17g"),
         "--memory-limit-gib",
         format(arguments.memory_limit_gib, ".17g"),
+        "--otf-max-multiplicity",
+        str(arguments.otf_max_multiplicity),
         "--amplicol-repository",
         str(_absolute(arguments.amplicol_root)),
         "--reference-fft-root",
@@ -943,6 +1075,81 @@ def _shard_arguments(
     return namespace
 
 
+def _work_owned_modes(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> tuple[str, ...]:
+    counted = _counted_owned_modes(arguments, run_directory, work.shard)
+    if work.owned_mode not in counted:
+        return ()
+    return (work.owned_mode,)
+
+
+def _work_modes(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> tuple[str, ...]:
+    selected = set(_work_owned_modes(arguments, run_directory, work))
+    if selected and work.shard.dependency is not None:
+        _, dependency_mode = work.shard.dependency
+        selected.add(dependency_mode)
+    return tuple(mode for mode in work.shard.modes if mode in selected)
+
+
+def _work_cli_arguments(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> tuple[str, ...]:
+    return _study_cli_arguments(
+        arguments,
+        study_root=_work_study_root(run_directory, work),
+        run_id=_work_run_id(work),
+        families=(work.shard.family,),
+        modes=_work_modes(arguments, run_directory, work),
+        resume=True,
+        build_amplicol=arguments.build_amplicol and work.shard.name == "ddbar-amplicol",
+        fill_multiplicities=(work.final_multiplicity,),
+        fill_modes=_work_owned_modes(arguments, run_directory, work),
+    )
+
+
+def _work_arguments(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> argparse.Namespace:
+    namespace = study._parser().parse_args(
+        _work_cli_arguments(arguments, run_directory, work)
+    )
+    study._validate_arguments(namespace)
+    return namespace
+
+
+def _validate_y_range(
+    values: Sequence[float] | None,
+    *,
+    option: str,
+    positive: bool,
+) -> None:
+    if values is None:
+        return
+    if len(values) != 2:
+        raise ProfilingError(f"{option} requires exactly two values")
+    low, high = (float(values[0]), float(values[1]))
+    if not math.isfinite(low) or not math.isfinite(high):
+        raise ProfilingError(f"{option} values must be finite")
+    if high <= low:
+        raise ProfilingError(f"{option} requires MIN < MAX")
+    if positive and low <= 0.0:
+        raise ProfilingError(f"{option} must be positive for a logarithmic y-axis")
+
+
+def _validate_render_line_filter(values: Sequence[str] | None, *, option: str) -> None:
+    if values is None:
+        return
+    selected = tuple(str(value) for value in values)
+    if len(set(selected)) != len(selected):
+        raise ProfilingError(f"{option} must not contain duplicates")
+    invalid = sorted(set(selected) - set(RENDER_LINE_CHOICES))
+    if invalid:
+        raise ProfilingError(f"{option} has unknown line id(s): {', '.join(invalid)}")
+
+
 def _validate_arguments(arguments: argparse.Namespace) -> None:
     _normalize_executables(arguments)
     if arguments.refresh:
@@ -955,8 +1162,32 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
         raise ProfilingError("--candidate-cores cannot exceed --cores")
     if arguments.dpi < 72 or arguments.dpi > 600:
         raise ProfilingError("--dpi must be between 72 and 600")
+    _validate_y_range(arguments.main_y_range, option="--main-y-range", positive=True)
+    _validate_y_range(
+        arguments.ratio_y_range,
+        option="--ratio-y-range",
+        positive=arguments.ratio_y_scale == "log",
+    )
+    _validate_render_line_filter(
+        arguments.main_include_lines,
+        option="--main-include-lines",
+    )
+    _validate_render_line_filter(
+        arguments.main_veto_lines,
+        option="--main-veto-lines",
+    )
+    _validate_render_line_filter(
+        arguments.ratio_include_lines,
+        option="--ratio-include-lines",
+    )
+    _validate_render_line_filter(
+        arguments.ratio_veto_lines,
+        option="--ratio-veto-lines",
+    )
     if arguments.target_seconds < 0.25:
         raise ProfilingError("--target-seconds must be at least 0.25")
+    if not 2 <= arguments.otf_max_multiplicity <= 9:
+        raise ProfilingError("--otf-max-multiplicity must be in the range 2..9")
     if (
         not arguments.multiplicities
         or min(arguments.multiplicities) < 2
@@ -975,6 +1206,25 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
     _master_arguments(arguments, _run_directory(arguments))
     if arguments.campaign_report is not None and not arguments.render:
         raise ProfilingError("--campaign-report is valid only with --render")
+    if arguments.recola_results is not None:
+        if not arguments.render:
+            raise ProfilingError("--recola-results is valid only with --render")
+        if not _absolute(arguments.recola_results).is_file():
+            raise ProfilingError(
+                f"Recola results JSON is missing: {_absolute(arguments.recola_results)}"
+            )
+    render_only_options = {
+        "--main-y-range": arguments.main_y_range is not None,
+        "--ratio-y-range": arguments.ratio_y_range is not None,
+        "--ratio-y-scale": arguments.ratio_y_scale != "log",
+        "--main-include-lines": arguments.main_include_lines is not None,
+        "--main-veto-lines": arguments.main_veto_lines is not None,
+        "--ratio-include-lines": arguments.ratio_include_lines is not None,
+        "--ratio-veto-lines": arguments.ratio_veto_lines is not None,
+    }
+    for option, configured in render_only_options.items():
+        if configured and not arguments.render:
+            raise ProfilingError(f"{option} is valid only with --render")
     run_directory = _run_directory(arguments)
     if (
         not arguments.render
@@ -1040,62 +1290,31 @@ def _identity(arguments: argparse.Namespace, run_directory: Path) -> dict[str, A
 def _child_command(
     arguments: argparse.Namespace,
     run_directory: Path,
-    shard: Shard,
-    final_multiplicity: int | None = None,
+    work: ShardWork,
 ) -> tuple[str, ...]:
-    modes = _retry_policy_modes_for_child(
-        arguments, run_directory, shard, final_multiplicity
-    )
-    fill_modes = (
-        _counted_owned_modes(arguments, run_directory, shard)
-        if arguments.retry
-        else None
-    )
     return (
         str(arguments.python),
         str(STUDY_TOOL),
-        *_shard_cli_arguments(
-            arguments,
-            run_directory,
-            shard,
-            final_multiplicity,
-            modes=modes,
-            fill_modes=fill_modes,
-        ),
+        *_work_cli_arguments(arguments, run_directory, work),
     )
-
-
-def _retry_policy_modes_for_child(
-    arguments: argparse.Namespace,
-    run_directory: Path,
-    shard: Shard,
-    final_multiplicity: int | None,
-) -> tuple[str, ...] | None:
-    if not arguments.retry:
-        return None
-    required = set(_shard_modes(arguments, run_directory, shard))
-    for path in (
-        _shard_report_path(run_directory, shard, final_multiplicity),
-        _shard_report_path(run_directory, shard),
-    ):
-        if not path.is_file():
-            continue
-        try:
-            report = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if not isinstance(report, Mapping):
-            continue
-        modes = _report_modes_for_shard(report, shard)
-        if required and required.issubset(set(modes)):
-            return modes
-    return None
 
 
 def _measurement_multiplicities(
     arguments: argparse.Namespace, run_directory: Path, shard: Shard
 ) -> tuple[int, ...]:
     owned_modes = _counted_owned_modes(arguments, run_directory, shard)
+    return _measurement_multiplicities_for_modes(
+        arguments, run_directory, shard, owned_modes
+    )
+
+
+def _measurement_multiplicities_for_modes(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    owned_modes: Sequence[str],
+) -> tuple[int, ...]:
+    _ = run_directory
     if not owned_modes:
         return ()
     return tuple(
@@ -1107,10 +1326,22 @@ def _measurement_multiplicities(
                 mode=study.MODE_BY_KEY[mode],
                 final_multiplicity=final_multiplicity,
                 sum_helicities=arguments.compare_helicity_sums,
+                maximum_multiplicity=arguments.otf_max_multiplicity,
             )
             is not None
             for mode in owned_modes
         )
+    )
+
+
+def _work_measurement_multiplicities(
+    arguments: argparse.Namespace, run_directory: Path, work: ShardWork
+) -> tuple[int, ...]:
+    return _measurement_multiplicities_for_modes(
+        arguments,
+        run_directory,
+        work.shard,
+        _work_owned_modes(arguments, run_directory, work),
     )
 
 
@@ -1144,16 +1375,39 @@ def _render_commands(
             )
         )
         plot_report = staged_report
+    plot_command = [
+        str(arguments.python),
+        str(PLOT_TOOL),
+        str(plot_report),
+        str(staged_plots),
+        "--dpi",
+        str(arguments.dpi),
+    ]
+    if arguments.recola_results is not None:
+        plot_command.extend(
+            ("--recola-results", str(_absolute(arguments.recola_results)))
+        )
+    if arguments.main_y_range is not None:
+        plot_command.extend(
+            ("--main-y-range", *(str(value) for value in arguments.main_y_range))
+        )
+    if arguments.ratio_y_range is not None:
+        plot_command.extend(
+            ("--ratio-y-range", *(str(value) for value in arguments.ratio_y_range))
+        )
+    if arguments.ratio_y_scale != "log":
+        plot_command.extend(("--ratio-y-scale", arguments.ratio_y_scale))
+    for option, values in (
+        ("--main-include-lines", arguments.main_include_lines),
+        ("--main-veto-lines", arguments.main_veto_lines),
+        ("--ratio-include-lines", arguments.ratio_include_lines),
+        ("--ratio-veto-lines", arguments.ratio_veto_lines),
+    ):
+        if values is not None:
+            plot_command.extend((option, *(str(value) for value in values)))
     commands.extend(
         (
-            (
-                str(arguments.python),
-                str(PLOT_TOOL),
-                str(plot_report),
-                str(staged_plots),
-                "--dpi",
-                str(arguments.dpi),
-            ),
+            tuple(plot_command),
             (
                 str(arguments.python),
                 str(PDF_TOOL),
@@ -1176,40 +1430,26 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
     requested_shard_names = {
         shard.name for shard in _scheduled_shards(arguments, run_directory)
     }
+    works_by_shard: dict[str, list[ShardWork]] = {shard.name: [] for shard in SHARDS}
+    for phase_number in _scheduled_phase_numbers(arguments, run_directory):
+        for work in _phase_work_items(arguments, run_directory, phase_number):
+            works_by_shard[work.shard.name].append(work)
     requested_lines = _requested_line_groups(arguments, run_directory)
     requested_families = _family_selection(arguments)
     madgraph_requested = _madgraph_requested(arguments, run_directory)
     shard_jobs = {
         shard.name: [
             {
-                "n": final_multiplicity,
-                "study_root": str(
-                    _shard_study_root(run_directory, shard, final_multiplicity)
-                ),
-                "report": str(
-                    _shard_report_path(run_directory, shard, final_multiplicity)
-                ),
-                "argv": list(
-                    _child_command(
-                        arguments,
-                        run_directory,
-                        shard,
-                        final_multiplicity,
-                    )
-                ),
+                "n": work.final_multiplicity,
+                "mode": work.owned_mode,
+                "study_root": str(_work_study_root(run_directory, work)),
+                "report": str(_work_report_path(run_directory, work)),
+                "argv": list(_child_command(arguments, run_directory, work)),
                 "shell_command": shlex.join(
-                    _child_command(
-                        arguments,
-                        run_directory,
-                        shard,
-                        final_multiplicity,
-                    )
+                    _child_command(arguments, run_directory, work)
                 ),
             }
-            for final_multiplicity in _measurement_multiplicities(
-                arguments, run_directory, shard
-            )
-            if shard.name in requested_shard_names
+            for work in works_by_shard[shard.name]
         ]
         for shard in SHARDS
     }
@@ -1281,15 +1521,37 @@ def dry_run_plan(arguments: argparse.Namespace) -> dict[str, Any]:
             "measurement_multiplicities": [
                 n
                 for n in _requested_multiplicities(arguments, run_directory)
-                if n <= madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
+                if any(
+                    madgraph.protocol_measures_multiplicity(family, n)
+                    for family in requested_families
+                )
             ],
             "protocol_scope_multiplicities": [
                 n
                 for n in _requested_multiplicities(arguments, run_directory)
-                if n > madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
+                if not any(
+                    madgraph.protocol_measures_multiplicity(family, n)
+                    for family in requested_families
+                )
             ],
+            "measurement_multiplicities_by_family": {
+                family: [
+                    n
+                    for n in _requested_multiplicities(arguments, run_directory)
+                    if madgraph.protocol_measures_multiplicity(family, n)
+                ]
+                for family in requested_families
+            },
+            "protocol_scope_multiplicities_by_family": {
+                family: [
+                    n
+                    for n in _requested_multiplicities(arguments, run_directory)
+                    if not madgraph.protocol_measures_multiplicity(family, n)
+                ]
+                for family in requested_families
+            },
             "dependency": (
-                "completed pyAmpliCol cells for the requested fill"
+                "completed pyAmpliCol source cells for the requested MadGraph fill"
                 if madgraph_requested
                 else None
             ),
@@ -1403,11 +1665,17 @@ def _identity_path_value(identity: object, path: str) -> object:
     return value
 
 
-def _retry_identity_update_allowed(
+def _identity_difference_path(difference: str) -> str:
+    return difference.split(":", 1)[0]
+
+
+def _mutable_resource_identity_update_allowed(
     stored: object, requested: object, differences: Sequence[str]
 ) -> bool:
-    changed_paths = {difference.split(":", 1)[0] for difference in differences}
-    if not changed_paths or not changed_paths <= RETRY_MUTABLE_RESOURCE_PATHS:
+    changed_paths = {
+        _identity_difference_path(difference) for difference in differences
+    }
+    if not changed_paths or not changed_paths <= MUTABLE_RESOURCE_IDENTITY_PATHS:
         return False
     for path in changed_paths:
         old = _identity_path_value(stored, path)
@@ -1417,10 +1685,18 @@ def _retry_identity_update_allowed(
             or isinstance(old, bool)
             or not isinstance(new, int | float)
             or isinstance(new, bool)
-            or float(new) < float(old)
+            or float(new) <= 0
         ):
             return False
     return True
+
+
+def _immutable_identity_differences(differences: Sequence[str]) -> list[str]:
+    return [
+        difference
+        for difference in differences
+        if _identity_difference_path(difference) not in MUTABLE_RESOURCE_IDENTITY_PATHS
+    ]
 
 
 def _create_or_resume_manifest(
@@ -1438,7 +1714,7 @@ def _create_or_resume_manifest(
         differences = _identity_diff(manifest.get("identity"), requested_identity)
         identity_updated = False
         if differences:
-            if arguments.retry and _retry_identity_update_allowed(
+            if _mutable_resource_identity_update_allowed(
                 manifest.get("identity"), requested_identity, differences
             ):
                 manifest["identity"] = requested_identity
@@ -1548,6 +1824,7 @@ def _policy_with_expected_mode_subset(
     if not isinstance(policy, Mapping):
         return policy
     normalized = copy.deepcopy(dict(policy))
+    normalized.pop("run_root", None)
     process_families = normalized.get("process_families")
     if isinstance(process_families, dict):
         family_policy = process_families.get(family)
@@ -1575,6 +1852,7 @@ def _policy_with_expected_mode_subset(
     if isinstance(measurement, dict):
         for key in (
             "cell_admission_limits",
+            *study.MUTABLE_RESUME_MEASUREMENT_POLICY_KEYS,
             "generation_timeout_seconds",
             "memory_policy",
             "memory_watchdog_gib",
@@ -1666,6 +1944,51 @@ def _load_single_shard_report(
     return report
 
 
+def _mode_set_validation_error(error: ProfilingError) -> bool:
+    return str(error).endswith(" mode set differs")
+
+
+def _load_compatible_shard_report(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    path: Path,
+    *,
+    final_multiplicity: int | None = None,
+    modes: Sequence[str] | None = None,
+    allow_partial_modes: bool = False,
+) -> dict[str, Any] | None:
+    try:
+        return _load_single_shard_report(
+            arguments,
+            run_directory,
+            shard,
+            path,
+            final_multiplicity=final_multiplicity,
+            modes=modes,
+            allow_partial_modes=allow_partial_modes,
+        )
+    except ProfilingError as error:
+        if allow_partial_modes:
+            return None
+        if not _mode_set_validation_error(error):
+            raise
+    try:
+        return _load_single_shard_report(
+            arguments,
+            run_directory,
+            shard,
+            path,
+            final_multiplicity=final_multiplicity,
+            modes=modes,
+            allow_partial_modes=True,
+        )
+    except ProfilingError as error:
+        if _mode_set_validation_error(error):
+            return None
+        raise
+
+
 def _merge_cell_record(
     target_curve: dict[str, object],
     raw_n: str,
@@ -1679,6 +2002,54 @@ def _merge_cell_record(
     ):
         return
     target_curve[raw_n] = copy.deepcopy(dict(cell))
+
+
+def _obsolete_otf_protocol_scope_cell(
+    arguments: argparse.Namespace,
+    *,
+    mode: str,
+    raw_n: str,
+    cell: Mapping[str, Any],
+) -> bool:
+    return (
+        raw_n.isdigit()
+        and mode in study.MODE_BY_KEY
+        and study.MODE_BY_KEY[mode].execution_mode == "on-the-fly"
+        and int(raw_n) <= arguments.otf_max_multiplicity
+        and cell.get("failure_category") == "publication-protocol-scope"
+    )
+
+
+def _cell_terminal_for_orchestrator(cell: object) -> bool:
+    return (
+        isinstance(cell, Mapping)
+        and cell.get("status") in ORCHESTRATOR_TERMINAL_CELL_STATUSES
+    )
+
+
+def _selected_cells_terminal_for_orchestrator(
+    report: Mapping[str, Any],
+    *,
+    family: str,
+    modes: Sequence[str],
+    multiplicities: Sequence[int],
+) -> bool:
+    cells = report.get("cells")
+    if not isinstance(cells, Mapping):
+        return False
+    family_cells = cells.get(family)
+    if not isinstance(family_cells, Mapping):
+        return False
+    for mode in modes:
+        curve = family_cells.get(mode)
+        if not isinstance(curve, Mapping):
+            return False
+        for final_multiplicity in multiplicities:
+            if not _cell_terminal_for_orchestrator(
+                curve.get(str(final_multiplicity))
+            ):
+                return False
+    return True
 
 
 def _report_modes_for_shard(report: Mapping[str, Any], shard: Shard) -> tuple[str, ...]:
@@ -1800,6 +2171,20 @@ def _apply_retry_invalidation(
                     multiplicities=(final_multiplicity,),
                 )
             )
+            for mode in _counted_owned_modes(arguments, run_directory, shard):
+                removed.update(
+                    _rewrite_retry_report(
+                        arguments,
+                        run_directory,
+                        shard,
+                        _work_report_path(
+                            run_directory,
+                            ShardWork(shard, final_multiplicity, mode),
+                        ),
+                        final_multiplicity=final_multiplicity,
+                        multiplicities=(final_multiplicity,),
+                    )
+                )
     return len(removed)
 
 
@@ -1957,7 +2342,7 @@ def _apply_dependency_skips(
     assert isinstance(dependency_curve, Mapping)
     changed = False
     for final_multiplicity in multiplicities:
-        if not study.selected_cells_complete(
+        if not _selected_cells_terminal_for_orchestrator(
             source,
             family=shard.family,
             modes=(dependency_mode,),
@@ -1970,9 +2355,9 @@ def _apply_dependency_skips(
             or dependency_cell.get("status") == "measured"
         ):
             continue
-            for mode in _shard_owned_modes(arguments, run_directory, shard):
-                curve = target_family[mode]
-                assert isinstance(curve, dict)
+        for mode in _shard_owned_modes(arguments, run_directory, shard):
+            curve = target_family[mode]
+            assert isinstance(curve, dict)
             if str(final_multiplicity) in curve:
                 continue
             curve[str(final_multiplicity)] = _dependency_skip_cell(
@@ -2005,48 +2390,56 @@ def _load_shard_report(
     sources: list[tuple[dict[str, Any], int | None]] = []
     aggregate_path = _shard_report_path(run_directory, shard)
     if aggregate_path.is_file():
-        try:
-            aggregate = _load_single_shard_report(
-                arguments,
-                run_directory,
-                shard,
-                aggregate_path,
-                final_multiplicity=None,
-                modes=shard_modes,
-                allow_partial_modes=allow_partial_modes,
-            )
-        except ProfilingError:
-            if not allow_partial_modes:
-                raise
-        else:
-            sources.append((aggregate, None))
-    stored_multiplicities = {
-        int(path.parent.parent.parent.parent.name[1:])
-        for path in (run_directory / "shards" / shard.name / "cells").glob(
-            "n*/study/runs/*/report.json"
+        aggregate = _load_compatible_shard_report(
+            arguments,
+            run_directory,
+            shard,
+            aggregate_path,
+            final_multiplicity=None,
+            modes=shard_modes,
+            allow_partial_modes=allow_partial_modes,
         )
-        if path.parent.parent.parent.parent.name[1:].isdigit()
-    }
-    for final_multiplicity in sorted(
-        stored_multiplicities | set(_requested_multiplicities(arguments, run_directory))
+        if aggregate is not None:
+            sources.append((aggregate, None))
+    cell_reports: dict[Path, int] = {}
+    for path in (run_directory / "shards" / shard.name / "cells").glob(
+        "n*/study/runs/*/report.json"
     ):
-        path = _shard_report_path(run_directory, shard, final_multiplicity)
+        raw_n = path.parent.parent.parent.parent.name
+        if raw_n.startswith("n") and raw_n[1:].isdigit():
+            cell_reports[path] = int(raw_n[1:])
+    for path in (run_directory / "shards" / shard.name / "mode-cells").glob(
+        "*/n*/study/runs/*/report.json"
+    ):
+        raw_n = path.parent.parent.parent.parent.name
+        if raw_n.startswith("n") and raw_n[1:].isdigit():
+            cell_reports[path] = int(raw_n[1:])
+    for final_multiplicity in _requested_multiplicities(arguments, run_directory):
+        legacy_path = _shard_report_path(run_directory, shard, final_multiplicity)
+        if legacy_path.is_file():
+            cell_reports[legacy_path] = final_multiplicity
+        for mode in shard_modes:
+            if mode not in shard.owned_modes:
+                continue
+            work = ShardWork(shard, final_multiplicity, mode)
+            work_path = _work_report_path(run_directory, work)
+            if work_path.is_file():
+                cell_reports[work_path] = final_multiplicity
+    for path, final_multiplicity in sorted(
+        cell_reports.items(), key=lambda item: (item[1], str(item[0]))
+    ):
         if not path.is_file():
             continue
-        try:
-            report = _load_single_shard_report(
-                arguments,
-                run_directory,
-                shard,
-                path,
-                final_multiplicity=final_multiplicity,
-                modes=shard_modes,
-                allow_partial_modes=allow_partial_modes,
-            )
-        except ProfilingError:
-            if not allow_partial_modes:
-                raise
-        else:
+        report = _load_compatible_shard_report(
+            arguments,
+            run_directory,
+            shard,
+            path,
+            final_multiplicity=final_multiplicity,
+            modes=shard_modes,
+            allow_partial_modes=allow_partial_modes,
+        )
+        if report is not None:
             sources.append((report, final_multiplicity))
     if not sources:
         if required:
@@ -2072,11 +2465,22 @@ def _load_shard_report(
                         isinstance(raw_n, str)
                         and raw_n.isdigit()
                         and isinstance(cell, Mapping)
+                        and not _obsolete_otf_protocol_scope_cell(
+                            arguments,
+                            mode=mode,
+                            raw_n=raw_n,
+                            cell=cell,
+                        )
                     ):
                         _merge_cell_record(target_curve, raw_n, cell)
                 continue
             cell = source_curve.get(str(source_multiplicity))
-            if isinstance(cell, Mapping):
+            if isinstance(cell, Mapping) and not _obsolete_otf_protocol_scope_cell(
+                arguments,
+                mode=mode,
+                raw_n=str(source_multiplicity),
+                cell=cell,
+            ):
                 _merge_cell_record(
                     target_curve, str(source_multiplicity), cell
                 )
@@ -2116,7 +2520,7 @@ def _selected_shard_complete(
     return (
         report is not None
         and not str(report.get("status", "")).startswith("stopped")
-        and study.selected_cells_complete(
+        and _selected_cells_terminal_for_orchestrator(
             report,
             family=shard.family,
             modes=_counted_owned_modes(arguments, _run_directory(arguments), shard),
@@ -2135,10 +2539,10 @@ def _selected_work_complete(
     work: ShardWork,
     report: Mapping[str, Any] | None,
 ) -> bool:
-    return report is not None and study.selected_cells_complete(
+    return report is not None and _selected_cells_terminal_for_orchestrator(
         report,
         family=work.shard.family,
-        modes=_counted_owned_modes(arguments, run_directory, work.shard),
+        modes=_work_owned_modes(arguments, run_directory, work),
         multiplicities=(work.final_multiplicity,),
     )
 
@@ -2147,10 +2551,17 @@ def _phase_work_items(
     arguments: argparse.Namespace, run_directory: Path, phase_number: int
 ) -> tuple[ShardWork, ...]:
     works = [
-        ShardWork(shard, final_multiplicity)
+        ShardWork(shard, final_multiplicity, owned_mode)
         for final_multiplicity in _requested_multiplicities(arguments, run_directory)
         for shard in _scheduled_shards(arguments, run_directory)
         if shard.phase == phase_number
+        for owned_mode in _counted_owned_modes(arguments, run_directory, shard)
+        if final_multiplicity
+        in _work_measurement_multiplicities(
+            arguments,
+            run_directory,
+            ShardWork(shard, final_multiplicity, owned_mode),
+        )
     ]
     return tuple(
         sorted(
@@ -2164,6 +2575,20 @@ def _phase_work_items(
     )
 
 
+def _scheduled_phase_numbers(
+    arguments: argparse.Namespace, run_directory: Path
+) -> tuple[int, ...]:
+    return tuple(
+        sorted(
+            {
+                shard.phase
+                for shard in _scheduled_shards(arguments, run_directory)
+                if _counted_owned_modes(arguments, run_directory, shard)
+            }
+        )
+    )
+
+
 def _work_dependency_ready(
     arguments: argparse.Namespace, run_directory: Path, work: ShardWork
 ) -> bool:
@@ -2172,7 +2597,7 @@ def _work_dependency_ready(
     dependency_name, dependency_mode = work.shard.dependency
     dependency_shard = SHARD_BY_NAME[dependency_name]
     source = _load_shard_report(arguments, run_directory, dependency_shard)
-    return source is not None and study.selected_cells_complete(
+    return source is not None and _selected_cells_terminal_for_orchestrator(
         source,
         family=work.shard.family,
         modes=(dependency_mode,),
@@ -2183,17 +2608,26 @@ def _work_dependency_ready(
 def _empty_cell_report(
     arguments: argparse.Namespace, run_directory: Path, work: ShardWork
 ) -> dict[str, Any]:
-    return study.compose_report(
-        _shard_arguments(arguments, run_directory, work.shard, work.final_multiplicity),
-        {},
-    )
+    return study.compose_report(_work_arguments(arguments, run_directory, work), {})
 
 
 def _load_cell_report(
     arguments: argparse.Namespace, run_directory: Path, work: ShardWork
 ) -> dict[str, Any]:
-    path = _shard_report_path(run_directory, work.shard, work.final_multiplicity)
+    path = _work_report_path(run_directory, work)
     if not path.is_file():
+        legacy_path = _shard_report_path(
+            run_directory, work.shard, work.final_multiplicity
+        )
+        if legacy_path.is_file() and legacy_path != path:
+            return _load_single_shard_report(
+                arguments,
+                run_directory,
+                work.shard,
+                legacy_path,
+                final_multiplicity=work.final_multiplicity,
+                modes=_work_modes(arguments, run_directory, work),
+            )
         return _empty_cell_report(arguments, run_directory, work)
     return _load_single_shard_report(
         arguments,
@@ -2201,6 +2635,7 @@ def _load_cell_report(
         work.shard,
         path,
         final_multiplicity=work.final_multiplicity,
+        modes=_work_modes(arguments, run_directory, work),
     )
 
 
@@ -2219,7 +2654,7 @@ def _seed_cell_inputs(
         assert isinstance(existing_cells, Mapping)
         existing_family = existing_cells[work.shard.family]
         assert isinstance(existing_family, Mapping)
-        for mode in _counted_owned_modes(arguments, run_directory, work.shard):
+        for mode in _work_owned_modes(arguments, run_directory, work):
             source_curve = existing_family[mode]
             target_curve = target_family[mode]
             assert isinstance(source_curve, Mapping)
@@ -2232,7 +2667,7 @@ def _seed_cell_inputs(
         source = _load_shard_report(
             arguments, run_directory, dependency_shard, required=True
         )
-        if not study.selected_cells_complete(
+        if not _selected_cells_terminal_for_orchestrator(
             source,
             family=work.shard.family,
             modes=(dependency_mode,),
@@ -2257,10 +2692,7 @@ def _seed_cell_inputs(
             )
 
     report["status"] = "running"
-    _write_json_atomic(
-        _shard_report_path(run_directory, work.shard, work.final_multiplicity),
-        report,
-    )
+    _write_json_atomic(_work_report_path(run_directory, work), report)
 
 
 def _seed_protocol_scope(
@@ -2279,6 +2711,7 @@ def _seed_protocol_scope(
         family=shard.family,
         modes=owned_modes,
         multiplicities=_requested_multiplicities(arguments, run_directory),
+        maximum_multiplicity=arguments.otf_max_multiplicity,
     ):
         report["status"] = "running"
         _write_json_atomic(target, report)
@@ -2425,7 +2858,7 @@ def _selected_completed_cells(
         _selection(arguments) if multiplicities is None else tuple(multiplicities)
     )
     return sum(
-        study.selected_cells_complete(
+        _selected_cells_terminal_for_orchestrator(
             report,
             family=shard.family,
             modes=(mode,),
@@ -2445,7 +2878,7 @@ def _selected_master_complete(
 ) -> bool:
     run_directory = _run_directory(arguments)
     return not str(report.get("status", "")).startswith("stopped") and all(
-        study.selected_cells_complete(
+        _selected_cells_terminal_for_orchestrator(
             report,
             family=shard.family,
             modes=_counted_owned_modes(arguments, run_directory, shard),
@@ -2470,7 +2903,7 @@ def _selected_pending_cells(
         _selection(arguments) if multiplicities is None else tuple(multiplicities)
     )
     return sum(
-        not study.selected_cells_complete(
+        not _selected_cells_terminal_for_orchestrator(
             report,
             family=shard.family,
             modes=(mode,),
@@ -2892,6 +3325,8 @@ def _matching_madgraph_overlay(
         )
         or policy.get("maximum_measured_multiplicity")
         != madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
+        or policy.get("family_maximum_measured_multiplicity")
+        != madgraph.protocol_measured_multiplicity_limits()
         or policy.get("higher_multiplicity_policy") != "not-applicable-protocol-scope"
     ):
         return None
@@ -3400,19 +3835,25 @@ def _madgraph_command(
         format(_madgraph_timeout(arguments), ".17g"),
         "--memory-limit-gib",
         format(arguments.memory_limit_gib, ".17g"),
+        "--target-seconds",
+        format(arguments.target_seconds, ".17g"),
     ]
+    selected_families = _family_selection(arguments)
     for multiplicity in _requested_multiplicities(arguments, run_directory):
+        measured_by_requested_family = any(
+            madgraph.protocol_measures_multiplicity(family, multiplicity)
+            for family in selected_families
+        )
         result.extend(
             (
                 (
                     "--multiplicity"
-                    if multiplicity <= madgraph.MAX_PROTOCOL_MEASURED_MULTIPLICITY
+                    if measured_by_requested_family
                     else "--protocol-scope-multiplicity"
                 ),
                 str(multiplicity),
             )
         )
-    selected_families = _family_selection(arguments)
     if len(selected_families) == 1:
         result.extend(("--family", selected_families[0]))
     if arguments.compare_helicity_sums:
@@ -3420,39 +3861,157 @@ def _madgraph_command(
     return tuple(result)
 
 
+def _madgraph_source_projection(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    report: Mapping[str, Any],
+) -> dict[str, Any]:
+    policy = report.get("policy")
+    if not isinstance(policy, Mapping):
+        raise ProfilingError("MadGraph source report has no policy")
+    measurement = policy.get("measurement")
+    if not isinstance(measurement, Mapping):
+        raise ProfilingError("MadGraph source report has no measurement policy")
+    alpha_s = measurement.get("alpha_s")
+    if not isinstance(alpha_s, int | float) or isinstance(alpha_s, bool):
+        raise ProfilingError("MadGraph source report has invalid alpha_s")
+    workload = _helicity_workload(arguments)
+    cells = report.get("cells")
+    if not isinstance(cells, Mapping):
+        raise ProfilingError("MadGraph source report has no cells")
+    requested = {
+        str(value) for value in _requested_multiplicities(arguments, run_directory)
+    }
+    source_cells: dict[str, dict[str, dict[str, object]]] = {}
+    for family in _family_selection(arguments):
+        mode = madgraph.source_mode(family, _helicity_workload(arguments))
+        family_cells = cells.get(family)
+        if not isinstance(family_cells, Mapping):
+            raise ProfilingError(f"MadGraph source report has no {family} cells")
+        curve = family_cells.get(mode)
+        if not isinstance(curve, Mapping):
+            raise ProfilingError(f"MadGraph source report has no {family}/{mode} curve")
+        source_cells[family] = {
+            mode: {
+                str(raw_n): copy.deepcopy(cell)
+                for raw_n, cell in curve.items()
+                if str(raw_n) in requested
+            }
+        }
+    projected: dict[str, Any] = {
+        "kind": madgraph.SOURCE_KIND,
+        "schema_version": 1,
+        "status": "complete",
+        "policy": {
+            "helicity_workload": workload,
+            "measurement": {
+                "alpha_s": float(alpha_s),
+                "helicity_workload": workload,
+                "warm_fixed_helicity": workload == "fixed",
+                "warm_helicity_sum": workload == "sum",
+            },
+        },
+        "cells": source_cells,
+    }
+    if isinstance(report.get("measurement_host"), Mapping):
+        projected["measurement_host"] = copy.deepcopy(report["measurement_host"])
+    return projected
+
+
 def _freeze_madgraph_source(arguments: argparse.Namespace, run_directory: Path) -> Path:
     master_path = _master_report_path(run_directory)
-    raw, master, _ = _source_snapshot(master_path)
+    _raw, master, _ = _source_snapshot(master_path)
+    if not _madgraph_source_ready(arguments, run_directory, master):
+        raise ProfilingError(
+            "cannot freeze MadGraph source before its selected source cells "
+            "are complete"
+        )
+    source = _madgraph_source_projection(arguments, run_directory, master)
+    destination = _madgraph_source_path(arguments, run_directory)
+    if destination.is_file():
+        existing = _load_json(destination, context="frozen MadGraph source")
+        normalized_existing = _madgraph_source_projection(
+            arguments, run_directory, existing
+        )
+        if normalized_existing == source:
+            return destination
+    _write_json_atomic(destination, source)
+    return destination
+
+
+def _madgraph_source_ready(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    master: Mapping[str, Any] | None = None,
+) -> bool:
+    if not _madgraph_requested(arguments, run_directory):
+        return False
+    if master is None:
+        master_path = _master_report_path(run_directory)
+        if not master_path.is_file():
+            return False
+        _raw, master, _ = _source_snapshot(master_path)
     for family in _family_selection(arguments):
         source_mode = madgraph.source_mode(family, _helicity_workload(arguments))
-        if not study.selected_cells_complete(
+        if not _selected_cells_terminal_for_orchestrator(
             master,
             family=family,
             modes=(source_mode,),
             multiplicities=_requested_multiplicities(arguments, run_directory),
         ):
-            raise ProfilingError(
-                "cannot freeze MadGraph source before its selected source cells "
-                "are complete"
-            )
-    destination = _madgraph_source_path(arguments, run_directory)
-    if destination.is_file():
-        existing = _load_json(destination, context="frozen MadGraph source")
-        normalized_master = copy.deepcopy(master)
-        normalized_existing = copy.deepcopy(existing)
-        normalized_master.pop("profiling_orchestration", None)
-        normalized_existing.pop("profiling_orchestration", None)
-        if normalized_existing != normalized_master:
-            raise ProfilingError(
-                "candidate measurements changed after this MadGraph selection "
-                "source was frozen; use --refresh to restart this output safely"
-            )
-        return destination
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(".json.tmp")
-    temporary.write_bytes(raw)
-    temporary.replace(destination)
-    return destination
+            return False
+    return True
+
+
+def _ensure_madgraph_overlay(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    dashboard: Dashboard,
+) -> None:
+    if not _madgraph_requested(arguments, run_directory):
+        return
+    _freeze_madgraph_source(arguments, run_directory)
+    if _matching_madgraph_overlay(arguments, run_directory) is not None:
+        _diagnostic(
+            "Reusing the matching MadGraph overlay.",
+            colorama.Fore.CYAN,
+        )
+        return
+    _run_madgraph(arguments, run_directory, dashboard)
+
+
+def _start_madgraph_overlay(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+) -> ActiveJob | None:
+    if not _madgraph_requested(arguments, run_directory):
+        return None
+    _freeze_madgraph_source(arguments, run_directory)
+    if _matching_madgraph_overlay(arguments, run_directory) is not None:
+        _diagnostic(
+            "Reusing the matching MadGraph overlay.",
+            colorama.Fore.CYAN,
+        )
+        return None
+    return _launch_madgraph_job(arguments, run_directory)
+
+
+def _maybe_start_madgraph_overlay(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    active: list[ActiveJob],
+) -> bool:
+    if (
+        active
+        or not _madgraph_requested(arguments, run_directory)
+        or not _madgraph_source_ready(arguments, run_directory)
+    ):
+        return False
+    job = _start_madgraph_overlay(arguments, run_directory)
+    if job is None:
+        return True
+    active.append(job)
+    return False
 
 
 def _format_duration(seconds: float | None) -> str:
@@ -3496,12 +4055,26 @@ def _matching_madgraph_progress(
         )
     except madgraph.SelectedMadGraphError:
         return None
+    requested_multiplicities = _requested_multiplicities(arguments, run_directory)
+    raw_multiplicities = policy.get("final_state_multiplicities")
     if (
         not isinstance(policy, Mapping)
         or progress_workload != _helicity_workload(arguments)
         or progress_host != madgraph.measurement_host_identity()
-        or policy.get("final_state_multiplicities")
-        != list(_requested_multiplicities(arguments, run_directory))
+        or policy.get("family_maximum_measured_multiplicity")
+        != madgraph.protocol_measured_multiplicity_limits()
+    ):
+        return None
+    if (
+        not isinstance(raw_multiplicities, list)
+        or not raw_multiplicities
+        or any(not isinstance(value, int) for value in raw_multiplicities)
+    ):
+        return None
+    observed_multiplicities = tuple(raw_multiplicities)
+    observed_set = set(observed_multiplicities)
+    if observed_multiplicities != tuple(
+        value for value in requested_multiplicities if value in observed_set
     ):
         return None
     raw_families = policy.get("selected_process_families")
@@ -3666,13 +4239,8 @@ def _claimed_cores(arguments: argparse.Namespace, shard: Shard | ShardWork) -> i
 def _launch_shard(
     arguments: argparse.Namespace, run_directory: Path, work: ShardWork
 ) -> ActiveJob:
-    command = _child_command(
-        arguments, run_directory, work.shard, work.final_multiplicity
-    )
-    log_root = (
-        _shard_cell_root(run_directory, work.shard, work.final_multiplicity)
-        / "orchestrator-logs"
-    )
+    command = _child_command(arguments, run_directory, work)
+    log_root = _work_cell_root(run_directory, work) / "orchestrator-logs"
     log_root.mkdir(parents=True, exist_ok=True)
     stdout = (log_root / "stdout.log").open("wb")
     stderr = (log_root / "stderr.log").open("wb")
@@ -3702,17 +4270,14 @@ def _launch_shard(
     return ActiveJob(
         shard=work.shard,
         final_multiplicity=work.final_multiplicity,
+        owned_mode=work.owned_mode,
         command=command,
         process=process,
         stdout=stdout,
         stderr=stderr,
         sampler=memory_watchdog.ProcessTreeSampler(process.pid, process.pid),
         claimed_cores=claimed,
-        detail=(
-            f"{work.shard.family}/"
-            f"{_counted_owned_modes(arguments, run_directory, work.shard)[0]}"
-            f"/n{work.final_multiplicity}"
-        ),
+        detail=f"{work.shard.family}/{work.owned_mode}/n{work.final_multiplicity}",
     )
 
 
@@ -3720,8 +4285,8 @@ def _work_detail(
     arguments: argparse.Namespace, run_directory: Path, work: ShardWork
 ) -> str:
     report = _load_shard_report(arguments, run_directory, work.shard)
-    for mode in _counted_owned_modes(arguments, run_directory, work.shard):
-        if report is None or not study.selected_cells_complete(
+    for mode in _work_owned_modes(arguments, run_directory, work):
+        if report is None or not _selected_cells_terminal_for_orchestrator(
             report,
             family=work.shard.family,
             modes=(mode,),
@@ -3736,9 +4301,10 @@ def _shard_detail(
 ) -> str:
     report = _load_shard_report(arguments, run_directory, shard)
     for final_multiplicity in _requested_multiplicities(arguments, run_directory):
-        work = ShardWork(shard, final_multiplicity)
-        if not _selected_work_complete(arguments, run_directory, work, report):
-            return _work_detail(arguments, run_directory, work)
+        for mode in _counted_owned_modes(arguments, run_directory, shard):
+            work = ShardWork(shard, final_multiplicity, mode)
+            if not _selected_work_complete(arguments, run_directory, work, report):
+                return _work_detail(arguments, run_directory, work)
     return f"{shard.name}/finalizing"
 
 
@@ -3828,14 +4394,15 @@ def _refresh_phase_pending(
             arguments, run_directory, shard
         )
     active_keys = {
-        (job.shard.name, job.final_multiplicity)
+        (job.shard.name, job.final_multiplicity, job.owned_mode)
         for job in active
         if job.final_multiplicity is not None
     }
     return [
         work
         for work in pending
-        if (work.shard.name, work.final_multiplicity) not in active_keys
+        if (work.shard.name, work.final_multiplicity, work.owned_mode)
+        not in active_keys
         and not _selected_work_complete(
             arguments,
             run_directory,
@@ -3850,6 +4417,8 @@ def _refresh_phase_pending(
 def _work_launch_conflicts(
     arguments: argparse.Namespace, work: ShardWork, active: Sequence[ActiveJob]
 ) -> bool:
+    if arguments.compare_helicity_sums and work.owned_mode == "amplicol":
+        return any(job.owned_mode == "amplicol" for job in active)
     if not arguments.build_amplicol or work.shard.name != "ddbar-amplicol":
         return False
     probe = _absolute(arguments.amplicol_root) / "amplicol_color_probe"
@@ -3863,14 +4432,21 @@ def _phase(
     run_directory: Path,
     phase_number: int,
     dashboard: Dashboard,
-) -> None:
+    *,
+    background: list[ActiveJob] | None = None,
+    madgraph_overlay_ready: bool = False,
+) -> bool:
     pending = list(_phase_work_items(arguments, run_directory, phase_number))
     active: list[ActiveJob] = []
     failure: str | None = None
+    background_jobs = background if background is not None else []
     try:
         while pending or active:
+            failure = _poll_madgraph_jobs(arguments, run_directory, background_jobs)
+            if failure is not None:
+                break
             pending = _refresh_phase_pending(arguments, run_directory, pending, active)
-            used = sum(job.claimed_cores for job in active)
+            used = sum(job.claimed_cores for job in active + background_jobs)
             launched = True
             while launched:
                 launched = False
@@ -3897,22 +4473,38 @@ def _phase(
 
             for job in active:
                 assert job.final_multiplicity is not None
+                assert job.owned_mode is not None
                 job.detail = _work_detail(
                     arguments,
                     run_directory,
-                    ShardWork(job.shard, job.final_multiplicity),
+                    ShardWork(job.shard, job.final_multiplicity, job.owned_mode),
                 )
             names = tuple(
-                f"{job.shard.name}:n{job.final_multiplicity}" for job in active
+                (
+                    f"{job.shard.name}:{job.owned_mode}:n{job.final_multiplicity}"
+                    if job.owned_mode is not None
+                    else f"{job.shard.name}:n{job.final_multiplicity}"
+                )
+                for job in active
             )
             master = _publish_master(arguments, run_directory, active=names)
+            if not madgraph_overlay_ready:
+                madgraph_overlay_ready = _maybe_start_madgraph_overlay(
+                    arguments, run_directory, background_jobs
+                )
             dashboard.update(
                 _selected_completed_cells(arguments, master)
                 + _madgraph_completed(arguments, run_directory),
                 phase=f"phase {phase_number}",
-                active=active,
+                active=tuple(background_jobs) + tuple(active),
             )
             if not active and pending:
+                if background_jobs and any(
+                    _work_dependency_ready(arguments, run_directory, work)
+                    for work in pending
+                ):
+                    time.sleep(arguments.poll_seconds)
+                    continue
                 unready = next(
                     (
                         work
@@ -3936,6 +4528,9 @@ def _phase(
             if not active:
                 break
             time.sleep(arguments.poll_seconds)
+            failure = _poll_madgraph_jobs(arguments, run_directory, background_jobs)
+            if failure is not None:
+                break
             for job in tuple(active):
                 returncode = job.process.poll()
                 if returncode is None:
@@ -3944,9 +4539,10 @@ def _phase(
                 job.stderr.close()
                 active.remove(job)
                 assert job.final_multiplicity is not None
+                assert job.owned_mode is not None
                 report = _publish_shard_report(arguments, run_directory, job.shard)
-                work = ShardWork(job.shard, job.final_multiplicity)
-                if returncode != 0 or not _selected_work_complete(
+                work = ShardWork(job.shard, job.final_multiplicity, job.owned_mode)
+                if not _selected_work_complete(
                     arguments, run_directory, work, report
                 ):
                     failure = (
@@ -3964,6 +4560,7 @@ def _phase(
     if failure is not None:
         _publish_master(arguments, run_directory, halt_reason=failure)
         raise ProfilingError(failure)
+    return madgraph_overlay_ready
 
 
 def _run_madgraph(
@@ -3971,6 +4568,18 @@ def _run_madgraph(
     run_directory: Path,
     dashboard: Dashboard,
 ) -> None:
+    active = [_launch_madgraph_job(arguments, run_directory)]
+    try:
+        _wait_madgraph_jobs(arguments, run_directory, dashboard, active)
+    except BaseException:
+        if active:
+            _terminate_jobs(active)
+        raise
+
+
+def _launch_madgraph_job(
+    arguments: argparse.Namespace, run_directory: Path
+) -> ActiveJob:
     command = _madgraph_command(arguments, run_directory)
     log_root = run_directory / "madgraph" / "orchestrator-logs"
     log_root.mkdir(parents=True, exist_ok=True)
@@ -3986,6 +4595,7 @@ def _run_madgraph(
     job = ActiveJob(
         shard=pseudo,
         final_multiplicity=None,
+        owned_mode=None,
         command=command,
         process=process,
         stdout=stdout,
@@ -3994,45 +4604,68 @@ def _run_madgraph(
         claimed_cores=1,
         detail="madgraph/initializing",
     )
+    return job
+
+
+def _update_madgraph_job_detail(run_directory: Path, job: ActiveJob) -> None:
+    progress_path = _madgraph_progress_path(run_directory)
+    if not progress_path.is_file():
+        return
     try:
-        while process.poll() is None:
-            progress_path = _madgraph_progress_path(run_directory)
-            if progress_path.is_file():
-                try:
-                    progress = madgraph.load_runtime_progress(progress_path)
-                    current = progress.get("current_cell")
-                    if isinstance(current, Mapping):
-                        job.detail = (
-                            f"{current.get('family')}/{current.get('mode')}/"
-                            f"n{current.get('n')}"
-                        )
-                    else:
-                        job.detail = "madgraph/finalizing"
-                except madgraph.SelectedMadGraphError:
-                    job.detail = "madgraph/progress-unavailable"
-            master = _load_json(
-                _master_report_path(run_directory), context="master report"
+        progress = madgraph.load_runtime_progress(progress_path)
+        current = progress.get("current_cell")
+        if isinstance(current, Mapping):
+            job.detail = (
+                f"{current.get('family')}/{current.get('mode')}/"
+                f"n{current.get('n')}"
             )
-            dashboard.update(
-                _selected_completed_cells(arguments, master)
-                + _madgraph_completed(arguments, run_directory),
-                phase="phase 4",
-                active=(job,),
-            )
-            time.sleep(arguments.poll_seconds)
-    except BaseException:
-        _terminate_jobs((job,))
-        raise
-    finally:
-        stdout.close()
-        stderr.close()
-    if (
-        process.returncode != 0
-        or _matching_madgraph_overlay(arguments, run_directory) is None
-    ):
-        raise ProfilingError(
-            f"MadGraph series exited {process.returncode}; inspect {log_root}"
+        else:
+            job.detail = "madgraph/finalizing"
+    except madgraph.SelectedMadGraphError:
+        job.detail = "madgraph/progress-unavailable"
+
+
+def _poll_madgraph_jobs(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    active: list[ActiveJob],
+) -> str | None:
+    log_root = run_directory / "madgraph" / "orchestrator-logs"
+    for job in tuple(active):
+        _update_madgraph_job_detail(run_directory, job)
+        returncode = job.process.poll()
+        if returncode is None:
+            continue
+        job.stdout.close()
+        job.stderr.close()
+        active.remove(job)
+        if (
+            returncode != 0
+            or _matching_madgraph_overlay(arguments, run_directory) is None
+        ):
+            return f"MadGraph series exited {returncode}; inspect {log_root}"
+    return None
+
+
+def _wait_madgraph_jobs(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    dashboard: Dashboard,
+    active: list[ActiveJob],
+) -> None:
+    while active:
+        failure = _poll_madgraph_jobs(arguments, run_directory, active)
+        if failure is not None:
+            raise ProfilingError(failure)
+        master = _load_json(_master_report_path(run_directory), context="master report")
+        dashboard.update(
+            _selected_completed_cells(arguments, master)
+            + _madgraph_completed(arguments, run_directory),
+            phase="phase 4",
+            active=active,
         )
+        if active:
+            time.sleep(arguments.poll_seconds)
 
 
 def _canonical_madgraph_overlay_authenticated(
@@ -4099,6 +4732,7 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
         _validate_refresh_target(run_directory)
     lock = _acquire_execution_lock(run_directory)
     dashboard: Dashboard | None = None
+    madgraph_jobs: list[ActiveJob] = []
     try:
         with _termination_signal_handlers():
             if arguments.refresh:
@@ -4142,12 +4776,21 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                 batch_size=arguments.batch_size,
             )
             dashboard.update(completed, phase="initializing", active=())
-            _phase(arguments, run_directory, 1, dashboard)
-            _render_phase_boundary(arguments, run_directory)
-            _phase(arguments, run_directory, 2, dashboard)
-            _render_phase_boundary(arguments, run_directory)
-            _phase(arguments, run_directory, 3, dashboard)
-            _render_phase_boundary(arguments, run_directory)
+            madgraph_overlay_ready = False
+            for phase_number in _scheduled_phase_numbers(arguments, run_directory):
+                madgraph_overlay_ready = _phase(
+                    arguments,
+                    run_directory,
+                    phase_number,
+                    dashboard,
+                    background=madgraph_jobs,
+                    madgraph_overlay_ready=madgraph_overlay_ready,
+                ) or madgraph_overlay_ready
+                if not madgraph_overlay_ready:
+                    madgraph_overlay_ready = _maybe_start_madgraph_overlay(
+                        arguments, run_directory, madgraph_jobs
+                    )
+                _render_phase_boundary(arguments, run_directory)
             terminal = _publish_master(arguments, run_directory)
             if not _selected_master_complete(
                 arguments, terminal, multiplicities=requested
@@ -4156,16 +4799,21 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                     "pyAmpliCol master did not complete the requested fill"
                 )
             if _madgraph_requested(arguments, run_directory):
-                _freeze_madgraph_source(arguments, run_directory)
+                if madgraph_jobs:
+                    _wait_madgraph_jobs(
+                        arguments, run_directory, dashboard, madgraph_jobs
+                    )
+                    madgraph_overlay_ready = True
+                elif not madgraph_overlay_ready:
+                    _ensure_madgraph_overlay(arguments, run_directory, dashboard)
+                    madgraph_overlay_ready = True
                 if _canonical_madgraph_overlay_authenticated(
                     arguments, run_directory, terminal
                 ):
                     _diagnostic(
-                        "Reusing the authenticated terminal MadGraph overlay.",
+                        "MadGraph overlay authenticated for the terminal snapshot.",
                         colorama.Fore.CYAN,
                     )
-                else:
-                    _run_madgraph(arguments, run_directory, dashboard)
             final_count = _selected_completed_cells(
                 arguments, terminal, multiplicities=requested
             ) + _madgraph_completed(arguments, run_directory)
@@ -4190,6 +4838,8 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
             )
         raise
     finally:
+        if madgraph_jobs:
+            _terminate_jobs(madgraph_jobs)
         if dashboard is not None:
             dashboard.finish()
         lock.close()
@@ -4210,9 +4860,10 @@ def status_payload(arguments: argparse.Namespace) -> dict[str, Any]:
         else None
     )
     if manifest is not None:
-        differences = _identity_diff(
+        identity_diff = _identity_diff(
             manifest.get("identity"), _identity(arguments, run_directory)
         )
+        differences = _immutable_identity_differences(identity_diff)
         if differences:
             preview = "\n  ".join(differences[:12])
             raise ProfilingError(

@@ -1555,6 +1555,8 @@ def _planned_sample_count(
     *,
     probe_seconds: float,
 ) -> int:
+    if config.minimum_samples == 1:
+        return 1
     runtime_samples = math.ceil(config.target_runtime / _MAX_SAMPLE_RUNTIME_SECONDS)
     desired = max(config.minimum_samples, runtime_samples)
     maximum_for_runtime = max(
@@ -1603,6 +1605,21 @@ def _calibrate_repetitions(
     probe_seconds = initial_seconds
     sample_count = _planned_sample_count(config, probe_seconds=probe_seconds)
     target_sample_seconds = config.target_runtime / sample_count
+    if sample_count == 1:
+        return _Calibration(
+            sample_count=sample_count,
+            repetitions_per_sample=_estimated_repetitions(
+                1,
+                probe_seconds,
+                target_sample_seconds,
+            ),
+            target_sample_seconds=target_sample_seconds,
+            probe_seconds=probe_seconds,
+            block_count=block_count,
+            evaluation_count=evaluation_count,
+            elapsed_seconds=calibration_elapsed,
+        )
+
     observed_seconds = initial_seconds
     repetitions = 1
     for _ in range(_MAX_CALIBRATION_BLOCKS):

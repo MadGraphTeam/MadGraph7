@@ -14,9 +14,9 @@ helicity.  ``--compare-helicity-sums`` instead calls the generated
 sum, its IDEN normalization, and the warmed ``GOODHEL`` pruning; summed runs
 never reuse fixed-helicity measurements.
 
-The final-plot protocol measures MadGraph only through ``n=6``.  Requested
-higher multiplicities are retained as explicit not-applicable cells without
-loading their event data or invoking MadGraph.
+The final-plot protocol measures MadGraph only through family-specific
+multiplicity limits.  Requested higher multiplicities are retained as explicit
+not-applicable cells without loading their event data or invoking MadGraph.
 
 Each measured overlay cell contains cold-to-ready wall time, a conservative
 peak RSS across generation/build/runtime, and the median of ten warm point-01
@@ -60,6 +60,15 @@ SOURCE_KIND = "pyamplicol-fullcolor-selected-scalar-composite"
 SCALING_STUDY_KIND = "pyamplicol-fullcolor-fft-scaling-study"
 SCHEMA_VERSION = 1
 MEASUREMENT_HOST_SCHEMA_VERSION = 1
+CHECKPOINT_PROTOCOL = {
+    "kind": "pyamplicol-selected-madgraph-runtime-cell",
+    "schema_version": 1,
+}
+LEGACY_CHECKPOINT_PRODUCER_KEY = "producer_sha256"
+CHECKPOINT_RESOURCE_LIMIT_KEYS = frozenset(
+    {"generation_timeout_seconds", "memory_limit_gib"}
+)
+CHECKPOINT_TIMING_POLICY_KEYS = frozenset({"target_seconds", "warm_sample_count"})
 MEASUREMENT_HOST_KEYS = frozenset(
     {"schema_version", "node_sha256", "system", "machine", "python"}
 )
@@ -70,10 +79,11 @@ LABEL = FIXED_LABEL
 FAMILIES = ("gg", "ddbar")
 FINAL_MULTIPLICITIES = tuple(range(2, 10))
 MAX_PROTOCOL_MEASURED_MULTIPLICITY = 6
+FAMILY_MAX_PROTOCOL_MEASURED_MULTIPLICITY = {"gg": 5, "ddbar": 6}
 POINT_COUNT = 10
-WARM_SAMPLE_COUNT = 10
+WARM_SAMPLE_COUNT = 1
 TIMING_DRIVER_BATCH_COUNT = WARM_SAMPLE_COUNT + 1
-TARGET_SECONDS = 0.25
+TARGET_SECONDS = 3.0 * 60.0
 RELATIVE_TOLERANCE = 1.0e-10
 MAX_GENERATION_SECONDS = 3600.0
 DEFAULT_GENERATION_TIMEOUT_SECONDS = 3595.0
@@ -140,12 +150,18 @@ class SelectedCell:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceUnavailable:
+    reason: str
+    censors_higher_multiplicities: bool
+
+
+@dataclass(frozen=True, slots=True)
 class SourceSelection:
     path: Path
     sha256: str
     alpha_s: float
     cells: Mapping[str, Mapping[int, SelectedCell]]
-    unavailable: Mapping[str, Mapping[int, str]]
+    unavailable: Mapping[str, Mapping[int, SourceUnavailable]]
     helicity_workload: str
     measurement_host: Mapping[str, Any] | None
 
@@ -212,6 +228,27 @@ def process_expression(family: str, n: int) -> str:
     extra = " ".join("g" for _ in range(n - 2))
     base = "g g > g g" if family == "gg" else "d d~ > d d~"
     return base + (f" {extra}" if extra else "")
+
+
+def protocol_measured_multiplicity_limit(family: str) -> int:
+    if family not in FAMILIES:
+        raise SelectedMadGraphError(f"unsupported process family {family!r}")
+    return FAMILY_MAX_PROTOCOL_MEASURED_MULTIPLICITY.get(
+        family, MAX_PROTOCOL_MEASURED_MULTIPLICITY
+    )
+
+
+def protocol_measures_multiplicity(family: str, n: int) -> bool:
+    if isinstance(n, bool) or not isinstance(n, int) or n < 2:
+        raise SelectedMadGraphError(f"unsupported final-state multiplicity {n}")
+    return n <= protocol_measured_multiplicity_limit(family)
+
+
+def protocol_measured_multiplicity_limits() -> dict[str, int]:
+    return {
+        family: protocol_measured_multiplicity_limit(family)
+        for family in FAMILIES
+    }
 
 
 def _mapping(value: object, *, context: str) -> Mapping[str, Any]:
@@ -412,7 +449,7 @@ def _read_event(
 def load_source_selection(
     path: Path,
     *,
-    multiplicities: Sequence[int] = FINAL_MULTIPLICITIES,
+    multiplicities: Sequence[int] | Mapping[str, Sequence[int]] = FINAL_MULTIPLICITIES,
     families: Sequence[str] = FAMILIES,
     helicity_workload: str = "fixed",
 ) -> SourceSelection:
@@ -459,7 +496,7 @@ def load_source_selection(
     default_strong_coupling = math.sqrt(4.0 * math.pi * alpha_s)
     cells = _mapping(payload.get("cells"), context="source report cells")
     selected: dict[str, dict[int, SelectedCell]] = {}
-    unavailable: dict[str, dict[int, str]] = {}
+    unavailable: dict[str, dict[int, SourceUnavailable]] = {}
     selected_families = tuple(family for family in FAMILIES if family in set(families))
     for family in selected_families:
         mode = source_mode(family, helicity_workload)
@@ -471,7 +508,16 @@ def load_source_selection(
         )
         selected[family] = {}
         unavailable[family] = {}
-        for n in multiplicities:
+        family_multiplicities = (
+            multiplicities.get(family, ())
+            if isinstance(multiplicities, Mapping)
+            else multiplicities
+        )
+        if isinstance(family_multiplicities, str):
+            raise SelectedMadGraphError(
+                "source selection multiplicities must be integer sequences"
+            )
+        for n in family_multiplicities:
             context = f"source report cells.{family}.{mode}.{n}"
             cell = _mapping(raw_mode.get(str(n)), context=context)
             expected_process = process_expression(family, n)
@@ -489,14 +535,18 @@ def load_source_selection(
             if cell.get("status") != "measured":
                 if (
                     cell.get("status") in {"failed", "skipped"}
-                    and cell.get("censors_higher_multiplicities") is True
                     and isinstance(cell.get("failure_reason"), str)
                     and cell["failure_reason"].strip()
                 ):
-                    unavailable[family][n] = str(cell["failure_reason"])
+                    unavailable[family][n] = SourceUnavailable(
+                        reason=str(cell["failure_reason"]),
+                        censors_higher_multiplicities=(
+                            cell.get("censors_higher_multiplicities") is True
+                        ),
+                    )
                     continue
                 raise SelectedMadGraphError(
-                    f"{context}.status is not a measured or resource-frontier cell"
+                    f"{context}.status is not a measured or unavailable cell"
                 )
             cell_workload = _declared_helicity_workload(cell)
             if cell_workload != helicity_workload:
@@ -706,7 +756,11 @@ def _fortran_double(value: float) -> str:
 
 
 def render_check_source(
-    selected: SelectedCell, *, summed_helicity_coverage_count: int | None = None
+    selected: SelectedCell,
+    *,
+    summed_helicity_coverage_count: int | None = None,
+    target_seconds: float = TARGET_SECONDS,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
 ) -> str:
     """Render a check driver; the generated MATRIX remains helicity-general."""
 
@@ -735,12 +789,25 @@ def render_check_source(
         helicity_coverage_count = summed_helicity_coverage_count
     else:
         helicity_coverage_count = 1
+    if (
+        isinstance(target_seconds, bool)
+        or not math.isfinite(target_seconds)
+        or target_seconds <= 0.0
+    ):
+        raise SelectedMadGraphError("target_seconds must be positive and finite")
+    if (
+        isinstance(warm_sample_count, bool)
+        or not isinstance(warm_sample_count, int)
+        or warm_sample_count < 1
+    ):
+        raise SelectedMadGraphError("warm_sample_count must be positive")
+    timing_driver_batch_count = warm_sample_count + 1
     lines = [
         "      PROGRAM DRIVER",
         "      IMPLICIT NONE",
         "      INTEGER NEXTERNAL,NEVENTS,NSAMPLES",
         f"      PARAMETER (NEXTERNAL={n_external},NEVENTS={POINT_COUNT})",
-        f"      PARAMETER (NSAMPLES={TIMING_DRIVER_BATCH_COUNT})",
+        f"      PARAMETER (NSAMPLES={timing_driver_batch_count})",
         "      INTEGER E,B,R,NREP,CLOCK0,CLOCK1,CLOCKRATE",
         "      INTEGER HEL(NEXTERNAL),IC(NEXTERNAL)",
         "      DOUBLE PRECISION P(0:3,NEXTERNAL,NEVENTS)",
@@ -805,7 +872,7 @@ def render_check_source(
     repeated_evaluation = tuple(f"  {line}" for line in timed_evaluation)
     lines.extend(
         [
-            f"      TARGET={_fortran_double(TARGET_SECONDS)}",
+            f"      TARGET={_fortran_double(target_seconds)}",
             f"      ASVALUE={as_value}",
             *(("      USERHEL=-1",) if summed else ()),
             "      CALL SYSTEM_CLOCK(CLOCK0,CLOCKRATE)",
@@ -1154,25 +1221,9 @@ def _load_checkpoint_cell(
     identity: Mapping[str, Any],
     cell_dir: Path,
     keep_generated: bool,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     saved = _read_json(checkpoint, context="MadGraph cell checkpoint")
     saved_identity = saved.get("checkpoint_identity")
-    identity_matches = saved_identity == identity
-    if not identity_matches and isinstance(saved_identity, Mapping):
-        compatible = dict(saved_identity)
-        expected = dict(identity)
-        if compatible.get("source_cell_sha256") == expected.get(
-            "source_cell_sha256"
-        ) and isinstance(compatible.get("source_cell_sha256"), str):
-            # Expanding a sparse source report does not change this cell's inputs.
-            compatible.pop("source_report_sha256", None)
-            expected.pop("source_report_sha256", None)
-        identity_matches = compatible == expected
-    if not identity_matches:
-        raise SelectedMadGraphError(
-            f"checkpoint identity changed at {cell_dir.parent.name}/{cell_dir.name}; "
-            "use a fresh cache directory"
-        )
     cell = dict(_mapping(saved.get("cell"), context="checkpoint.cell"))
     status = cell.get("status")
     if status == "failed":
@@ -1185,9 +1236,73 @@ def _load_checkpoint_cell(
         raise SelectedMadGraphError(
             f"checkpoint contains unsupported cell status {status!r}"
         )
+    identity_matches = saved_identity == identity
+    if not identity_matches and isinstance(saved_identity, Mapping):
+        compatible, expected = _checkpoint_identity_comparison(
+            saved_identity, identity, cell_status=str(status)
+        )
+        if compatible != expected and status == "failed":
+            reusable_failure = dict(compatible)
+            requested_failure = dict(expected)
+            resource_limit_changed = any(
+                reusable_failure.get(key) != requested_failure.get(key)
+                for key in CHECKPOINT_RESOURCE_LIMIT_KEYS
+            )
+            timing_policy_changed = any(
+                reusable_failure.get(key) != requested_failure.get(key)
+                for key in CHECKPOINT_TIMING_POLICY_KEYS
+            )
+            for key in CHECKPOINT_RESOURCE_LIMIT_KEYS | CHECKPOINT_TIMING_POLICY_KEYS:
+                reusable_failure.pop(key, None)
+                requested_failure.pop(key, None)
+            if (
+                (resource_limit_changed or timing_policy_changed)
+                and reusable_failure == requested_failure
+            ):
+                if not keep_generated:
+                    _prune_cell_generated(cell_dir)
+                return None
+        identity_matches = compatible == expected
+    if not identity_matches:
+        raise SelectedMadGraphError(
+            f"checkpoint identity changed at {cell_dir.parent.name}/{cell_dir.name}; "
+            "use a fresh cache directory"
+        )
     if not keep_generated:
         _prune_cell_generated(cell_dir)
     return cell
+
+
+def _checkpoint_identity_comparison(
+    saved_identity: Mapping[str, Any],
+    identity: Mapping[str, Any],
+    *,
+    cell_status: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    compatible = dict(saved_identity)
+    expected = dict(identity)
+    same_source_cell = compatible.get("source_cell_sha256") == expected.get(
+        "source_cell_sha256"
+    ) and isinstance(compatible.get("source_cell_sha256"), str)
+    if not same_source_cell:
+        return compatible, expected
+    # Expanding a sparse source report does not change this cell's inputs.
+    compatible.pop("source_report_sha256", None)
+    expected.pop("source_report_sha256", None)
+    if (
+        LEGACY_CHECKPOINT_PRODUCER_KEY in compatible
+        and "checkpoint_protocol" in expected
+        and "checkpoint_protocol" not in compatible
+    ):
+        compatible.pop(LEGACY_CHECKPOINT_PRODUCER_KEY, None)
+        expected.pop("checkpoint_protocol", None)
+    if cell_status == "measured":
+        # Successful timings remain usable if only retry caps or the sampling
+        # target changed; new/retried cells record the current policy.
+        for key in CHECKPOINT_RESOURCE_LIMIT_KEYS | CHECKPOINT_TIMING_POLICY_KEYS:
+            compatible.pop(key, None)
+            expected.pop(key, None)
+    return compatible, expected
 
 
 def _generation_attempt(
@@ -1509,6 +1624,8 @@ def _measure_generated_cell(
     limit_gib: float,
     mg5_root: Path,
     cold_to_ready_limit_seconds: float,
+    target_seconds: float = TARGET_SECONDS,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
 ) -> dict[str, Any]:
     process_dirs = generation.get("process_dirs")
     if (
@@ -1550,6 +1667,8 @@ def _measure_generated_cell(
             if selected.helicity_workload == "sum"
             else None
         ),
+        target_seconds=target_seconds,
+        warm_sample_count=warm_sample_count,
     )
     check_source.write_text(check_body, encoding="ascii")
 
@@ -1634,7 +1753,7 @@ def _measure_generated_cell(
         )
     parsed = parse_driver_output(
         runtime.stdout,
-        batches=TIMING_DRIVER_BATCH_COUNT,
+        batches=warm_sample_count + 1,
         expected_total_external=selected.total_external,
         expected_events=POINT_COUNT,
         helicity_workload=selected.helicity_workload,
@@ -1664,14 +1783,14 @@ def _measure_generated_cell(
         raise SelectedMadGraphError(
             f"MadGraph points disagree with {selected.source_mode} "
             f"(maximum relative error {maximum_error:.6e})"
-        )
+    )
     calibration = parsed.cell_seconds[0][0]
     warm_samples = tuple(row[0] for row in parsed.cell_seconds[1:])
-    if len(warm_samples) != WARM_SAMPLE_COUNT or any(
+    if len(warm_samples) != warm_sample_count or any(
         value <= 0.0 for value in warm_samples
     ):
         raise SelectedMadGraphError(
-            "MadGraph did not provide ten positive warm samples"
+            "MadGraph did not provide the requested positive warm samples"
         )
     warm = statistics.median(warm_samples)
     cold_to_ready_seconds = (
@@ -1735,10 +1854,10 @@ def _measure_generated_cell(
             "timer_source": "process-cpu-time",
             "warm_median_seconds": warm,
             "warm_samples_seconds": list(warm_samples),
-            "warm_sample_count": WARM_SAMPLE_COUNT,
-            "calibration_target_seconds": TARGET_SECONDS,
+            "warm_sample_count": warm_sample_count,
+            "calibration_target_seconds": target_seconds,
             "calibration_sample_seconds": calibration,
-            "published_driver_batches": list(range(2, TIMING_DRIVER_BATCH_COUNT + 1)),
+            "published_driver_batches": list(range(2, warm_sample_count + 2)),
             "timed_event_index": 1,
             "validation_event_count": POINT_COUNT,
             "validation_first_pass_seconds": parsed.first_pass_seconds,
@@ -1799,10 +1918,10 @@ def _measure_generated_cell(
             "final_state_symmetry_factor": summed,
             "timer_source": "process-cpu-time",
             "batch_size": 1,
-            "warm_sample_count": WARM_SAMPLE_COUNT,
+            "warm_sample_count": warm_sample_count,
             "validated_point_count": POINT_COUNT,
             "timed_point_index": 1,
-            "calibration_target_seconds": TARGET_SECONDS,
+            "calibration_target_seconds": target_seconds,
             "fixed_repetitions_after_calibration": True,
             "calibration_sample_included": False,
             "initialization_included": False,
@@ -1908,9 +2027,14 @@ def _failure_cell(selected: SelectedCell, category: str, reason: str) -> dict[st
 
 
 def _dependency_failure_cell(
-    family: str, n: int, reason: str, *, helicity_workload: str = "fixed"
+    family: str,
+    n: int,
+    reason: str,
+    *,
+    helicity_workload: str = "fixed",
+    censors_higher_multiplicities: bool = True,
 ) -> dict[str, Any]:
-    return {
+    cell: dict[str, Any] = {
         "status": "failed",
         "family": family,
         "mode": MODE,
@@ -1924,9 +2048,11 @@ def _dependency_failure_cell(
             f"source {source_mode(family, helicity_workload)} cell is unavailable: "
             f"{reason}"
         ),
-        "censors_higher_multiplicities": True,
-        "availability_frontier_n": n - 1,
+        "censors_higher_multiplicities": censors_higher_multiplicities,
     }
+    if censors_higher_multiplicities:
+        cell["availability_frontier_n"] = n - 1
+    return cell
 
 
 def _frontier_cell(
@@ -1976,9 +2102,26 @@ def _diagnostic_skip_cell(
 def _protocol_scope_cell(
     family: str, n: int, *, helicity_workload: str = "fixed"
 ) -> dict[str, Any]:
-    if n <= MAX_PROTOCOL_MEASURED_MULTIPLICITY:
+    limit = protocol_measured_multiplicity_limit(family)
+    if protocol_measures_multiplicity(family, n):
         raise SelectedMadGraphError(
             f"MadGraph protocol scope does not apply at n={n}"
+        )
+    if family == "gg" and n == 6:
+        category = "protocol-scope-pure-gluon-n6"
+        reason = (
+            "final-plot protocol skips pure-gluon MadGraph standalone n=6: "
+            "the generated 116 MiB matrix.f source triggered a deterministic "
+            "gfortran -O3 f951 internal compiler error after a 6h41m build "
+            "attempt; higher candidate and reference frontiers are profiled "
+            "independently"
+        )
+    else:
+        category = f"protocol-scope-n>{limit}"
+        reason = (
+            f"final-plot protocol measures {family} MadGraph standalone only "
+            f"through n={limit}; higher candidate and reference frontiers are "
+            "profiled independently"
         )
     return {
         "status": "not-applicable",
@@ -1989,14 +2132,11 @@ def _protocol_scope_cell(
         "total_external": n + 2,
         "process": process_expression(family, n),
         "helicity_workload": helicity_workload,
-        "failure_category": "protocol-scope-n>6",
-        "failure_reason": (
-            "final-plot protocol measures MadGraph only through n=6; higher "
-            "candidate and reference frontiers are profiled independently"
-        ),
+        "failure_category": category,
+        "failure_reason": reason,
         "censors_higher_multiplicities": False,
         "protocol_scope": {
-            "maximum_measured_multiplicity": MAX_PROTOCOL_MEASURED_MULTIPLICITY,
+            "maximum_measured_multiplicity": limit,
             "disposition": "not-applicable",
         },
     }
@@ -2011,6 +2151,8 @@ def _checkpoint_identity(
     make: str,
     timeout_seconds: float,
     memory_limit_gib: float,
+    target_seconds: float,
+    warm_sample_count: int,
 ) -> dict[str, Any]:
     source_cell_payload = {
         "schema_version": 1,
@@ -2033,7 +2175,7 @@ def _checkpoint_identity(
         ).encode("utf-8")
     ).hexdigest()
     return {
-        "producer_sha256": _sha256(Path(__file__).resolve()),
+        "checkpoint_protocol": CHECKPOINT_PROTOCOL,
         "measurement_host": measurement_host_identity(),
         "source_report_sha256": source.sha256,
         "source_cell_sha256": source_cell_sha256,
@@ -2050,6 +2192,8 @@ def _checkpoint_identity(
         "make": make,
         "generation_timeout_seconds": timeout_seconds,
         "memory_limit_gib": memory_limit_gib,
+        "target_seconds": target_seconds,
+        "warm_sample_count": warm_sample_count,
     }
 
 
@@ -2079,6 +2223,8 @@ def _runtime_policy(
     *,
     timeout_seconds: float,
     memory_limit_gib: float,
+    target_seconds: float = TARGET_SECONDS,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
     helicity_workload: str = "fixed",
 ) -> dict[str, Any]:
     summed = helicity_workload == "sum"
@@ -2088,8 +2234,8 @@ def _runtime_policy(
         "process_families": list(FAMILIES),
         "point_validation_count": POINT_COUNT,
         "warm_timed_point_index": 1,
-        "warm_sample_count": WARM_SAMPLE_COUNT,
-        "calibration_target_seconds": TARGET_SECONDS,
+        "warm_sample_count": warm_sample_count,
+        "calibration_target_seconds": target_seconds,
         "generation_timeout_seconds": timeout_seconds,
         "outer_memory_watchdog_gib": memory_limit_gib,
         "watchdog_enforced_per_generation_build_and_runtime": True,
@@ -2104,6 +2250,9 @@ def _runtime_policy(
         "warm_fixed_helicity": not summed,
         "warm_helicity_sum": summed,
         "maximum_measured_multiplicity": MAX_PROTOCOL_MEASURED_MULTIPLICITY,
+        "family_maximum_measured_multiplicity": (
+            protocol_measured_multiplicity_limits()
+        ),
         "higher_multiplicity_policy": "not-applicable-protocol-scope",
         "metric_scope": {
             "generation_seconds": (
@@ -2115,7 +2264,8 @@ def _runtime_policy(
                 "generation, build, and initialized runtime"
             ),
             "warm_seconds_per_point": (
-                "median of ten post-calibration point-01 CPU samples of one "
+                f"median of {warm_sample_count} post-calibration point-01 CPU "
+                "sample(s) of one "
                 + (
                     "complete physical-helicity sum"
                     if summed
@@ -2147,6 +2297,8 @@ def _runtime_progress_report(
     selected_families: Sequence[str],
     timeout_seconds: float,
     memory_limit_gib: float,
+    target_seconds: float,
+    warm_sample_count: int,
     started_at_utc: str,
     current_cell: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
@@ -2191,6 +2343,8 @@ def _runtime_progress_report(
             selected_multiplicities,
             timeout_seconds=timeout_seconds,
             memory_limit_gib=memory_limit_gib,
+            target_seconds=target_seconds,
+            warm_sample_count=warm_sample_count,
             helicity_workload=source.helicity_workload,
         )
         | {"selected_process_families": list(selected_families)},
@@ -2264,6 +2418,8 @@ def load_runtime_progress(path: Path) -> dict[str, Any]:
     if (
         policy.get("maximum_measured_multiplicity")
         != MAX_PROTOCOL_MEASURED_MULTIPLICITY
+        or policy.get("family_maximum_measured_multiplicity")
+        != protocol_measured_multiplicity_limits()
         or policy.get("higher_multiplicity_policy")
         != "not-applicable-protocol-scope"
     ):
@@ -2324,9 +2480,8 @@ def load_runtime_progress(path: Path) -> dict[str, Any]:
                 raise SelectedMadGraphError(
                     "MadGraph runtime progress cell status is invalid"
                 )
-            if (cell_status == "not-applicable") != (
-                n > MAX_PROTOCOL_MEASURED_MULTIPLICITY
-            ):
+            is_protocol_scoped = not protocol_measures_multiplicity(family, n)
+            if (cell_status == "not-applicable") != is_protocol_scoped:
                 raise SelectedMadGraphError(
                     "MadGraph runtime progress protocol scope is invalid"
                 )
@@ -2440,6 +2595,8 @@ def build_runtime_report(
     max_n: int = 9,
     multiplicities: Sequence[int] | None = None,
     memory_limit_gib: float = MAX_MEMORY_GIB,
+    target_seconds: float = TARGET_SECONDS,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
     keep_generated: bool = False,
     progress_output: Path | None = None,
     helicity_workload: str = "fixed",
@@ -2460,6 +2617,8 @@ def build_runtime_report(
             max_n=max_n,
             multiplicities=multiplicities,
             memory_limit_gib=memory_limit_gib,
+            target_seconds=target_seconds,
+            warm_sample_count=warm_sample_count,
             keep_generated=keep_generated,
             progress_output=progress_output,
             helicity_workload=helicity_workload,
@@ -2482,6 +2641,8 @@ def _build_runtime_report_locked(
     max_n: int = 9,
     multiplicities: Sequence[int] | None = None,
     memory_limit_gib: float = MAX_MEMORY_GIB,
+    target_seconds: float = TARGET_SECONDS,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
     keep_generated: bool = False,
     progress_output: Path | None = None,
     helicity_workload: str = "fixed",
@@ -2510,6 +2671,18 @@ def _build_runtime_report_locked(
         or memory_limit_gib <= 0.0
     ):
         raise SelectedMadGraphError("memory limit must be positive and finite")
+    if (
+        isinstance(target_seconds, bool)
+        or not math.isfinite(target_seconds)
+        or target_seconds <= 0.0
+    ):
+        raise SelectedMadGraphError("target seconds must be positive and finite")
+    if (
+        isinstance(warm_sample_count, bool)
+        or not isinstance(warm_sample_count, int)
+        or warm_sample_count < 1
+    ):
+        raise SelectedMadGraphError("warm sample count must be positive")
     mg5_root = mg5_root.expanduser().resolve(strict=True)
     if (
         not (mg5_root / "bin" / "mg5_aMC").is_file()
@@ -2518,14 +2691,17 @@ def _build_runtime_report_locked(
         raise SelectedMadGraphError(f"invalid MadGraph installation: {mg5_root}")
     if not WATCHDOG.is_file():
         raise SelectedMadGraphError(f"memory watchdog is missing: {WATCHDOG}")
-    measured_multiplicities = tuple(
-        n
-        for n in selected_multiplicities
-        if n <= MAX_PROTOCOL_MEASURED_MULTIPLICITY
-    )
     cache_dir = cache_dir.expanduser().resolve(strict=False)
     cache_dir.mkdir(parents=True, exist_ok=True)
     selected_families = FAMILIES if family is None else (family,)
+    measured_multiplicities = {
+        name: tuple(
+            n
+            for n in selected_multiplicities
+            if protocol_measures_multiplicity(name, n)
+        )
+        for name in selected_families
+    }
     runtime_series: dict[str, dict[str, dict[str, Any]]] = {
         name: {MODE: {}} for name in FAMILIES
     }
@@ -2550,7 +2726,7 @@ def _build_runtime_report_locked(
     def load_reusable_checkpoint(name: str, n: int) -> dict[str, Any] | None:
         if (
             name not in selected_families
-            or n > MAX_PROTOCOL_MEASURED_MULTIPLICITY
+            or not protocol_measures_multiplicity(name, n)
             or n in source.unavailable[name]
         ):
             return None
@@ -2568,6 +2744,8 @@ def _build_runtime_report_locked(
             make,
             timeout_seconds,
             memory_limit_gib,
+            target_seconds,
+            warm_sample_count,
         )
         cell = _load_checkpoint_cell(
             checkpoint,
@@ -2575,6 +2753,8 @@ def _build_runtime_report_locked(
             cell_dir=cell_dir,
             keep_generated=keep_generated,
         )
+        if cell is None:
+            return None
         cell, provenance_changed = _rebind_source_provenance(
             cell, source=source, selected=selected
         )
@@ -2601,6 +2781,8 @@ def _build_runtime_report_locked(
             selected_families=selected_families,
             timeout_seconds=timeout_seconds,
             memory_limit_gib=memory_limit_gib,
+            target_seconds=target_seconds,
+            warm_sample_count=warm_sample_count,
             started_at_utc=started_at_utc,
             current_cell=current_cell,
         )
@@ -2610,7 +2792,7 @@ def _build_runtime_report_locked(
     for name in FAMILIES:
         if name not in selected_families:
             for n in selected_multiplicities:
-                if n > MAX_PROTOCOL_MEASURED_MULTIPLICITY:
+                if not protocol_measures_multiplicity(name, n):
                     publish_progress(
                         _progress_cell_identity(
                             name, n, helicity_workload=helicity_workload
@@ -2639,7 +2821,7 @@ def _build_runtime_report_locked(
         failure_n: int | None = None
         failure_reason = ""
         for n in selected_multiplicities:
-            if n > MAX_PROTOCOL_MEASURED_MULTIPLICITY:
+            if not protocol_measures_multiplicity(name, n):
                 publish_progress(
                     _progress_cell_identity(
                         name, n, helicity_workload=helicity_workload
@@ -2669,27 +2851,40 @@ def _build_runtime_report_locked(
                 continue
             reusable = runtime_series[name][MODE].get(str(n))
             if reusable is not None:
-                if reusable.get("status") == "failed":
+                if (
+                    reusable.get("status") == "failed"
+                    and reusable.get("censors_higher_multiplicities") is True
+                ):
                     failure_n = n
                     failure_reason = str(reusable.get("failure_reason"))
                 continue
-            unavailable_reason = source.unavailable[name].get(n)
-            if unavailable_reason is not None:
+            unavailable = source.unavailable[name].get(n)
+            if unavailable is not None:
                 publish_progress(
                     _progress_cell_identity(
                         name, n, helicity_workload=helicity_workload
                     )
-                    | {"stage": "source-dependency-frontier"}
+                    | {
+                        "stage": (
+                            "source-dependency-frontier"
+                            if unavailable.censors_higher_multiplicities
+                            else "source-dependency-unavailable"
+                        )
+                    }
                 )
                 cell = _dependency_failure_cell(
                     name,
                     n,
-                    unavailable_reason,
+                    unavailable.reason,
                     helicity_workload=helicity_workload,
+                    censors_higher_multiplicities=(
+                        unavailable.censors_higher_multiplicities
+                    ),
                 )
                 runtime_series[name][MODE][str(n)] = cell
-                failure_n = n
-                failure_reason = str(cell["failure_reason"])
+                if unavailable.censors_higher_multiplicities:
+                    failure_n = n
+                    failure_reason = str(cell["failure_reason"])
                 publish_progress(None)
                 continue
             selected = source.cells[name][n]
@@ -2717,7 +2912,10 @@ def _build_runtime_report_locked(
                 make,
                 timeout_seconds,
                 memory_limit_gib,
+                target_seconds,
+                warm_sample_count,
             )
+            cell: dict[str, Any] | None = None
             if checkpoint.is_file():
                 cell = _load_checkpoint_cell(
                     checkpoint,
@@ -2725,15 +2923,16 @@ def _build_runtime_report_locked(
                     cell_dir=cell_dir,
                     keep_generated=keep_generated,
                 )
-                cell, provenance_changed = _rebind_source_provenance(
-                    cell, source=source, selected=selected
-                )
-                if provenance_changed:
-                    _json_atomic(
-                        checkpoint,
-                        {"checkpoint_identity": identity, "cell": cell},
+                if cell is not None:
+                    cell, provenance_changed = _rebind_source_provenance(
+                        cell, source=source, selected=selected
                     )
-            else:
+                    if provenance_changed:
+                        _json_atomic(
+                            checkpoint,
+                            {"checkpoint_identity": identity, "cell": cell},
+                        )
+            if cell is None:
                 generation, generation_watchdog = _generation_attempt(
                     selected=selected,
                     cell_dir=cell_dir,
@@ -2769,6 +2968,8 @@ def _build_runtime_report_locked(
                             limit_gib=memory_limit_gib,
                             mg5_root=mg5_root,
                             cold_to_ready_limit_seconds=timeout_seconds,
+                            target_seconds=target_seconds,
+                            warm_sample_count=warm_sample_count,
                         )
                     except ResourceFrontierError as error:
                         cell = _failure_cell(selected, error.category, str(error))
@@ -2789,7 +2990,10 @@ def _build_runtime_report_locked(
                 if not keep_generated:
                     _prune_cell_generated(cell_dir)
             runtime_series[name][MODE][str(n)] = cell
-            if cell.get("status") == "failed":
+            if (
+                cell.get("status") == "failed"
+                and cell.get("censors_higher_multiplicities") is True
+            ):
                 failure_n = n
                 failure_reason = str(cell.get("failure_reason"))
             publish_progress(None)
@@ -2812,6 +3016,8 @@ def _build_runtime_report_locked(
             selected_multiplicities,
             timeout_seconds=timeout_seconds,
             memory_limit_gib=memory_limit_gib,
+            target_seconds=target_seconds,
+            warm_sample_count=warm_sample_count,
             helicity_workload=helicity_workload,
         ),
         "host": local_host,
@@ -2849,6 +3055,12 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_GENERATION_TIMEOUT_SECONDS,
     )
     parser.add_argument("--memory-limit-gib", type=float, default=MAX_MEMORY_GIB)
+    parser.add_argument(
+        "--target-seconds",
+        type=float,
+        default=TARGET_SECONDS,
+        help="target post-calibration runtime for the timed MadGraph sample",
+    )
     parser.add_argument("--family", choices=FAMILIES)
     parser.add_argument("--min-n", type=int, default=2)
     parser.add_argument("--max-n", type=int, default=9)
@@ -2865,7 +3077,8 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         type=int,
         help=(
-            "requested n>6 recorded as not-applicable without measurement; "
+            "requested multiplicity recorded as not-applicable without "
+            "measurement when outside the selected family protocol scope; "
             "repeat for a sparse final-plot scan"
         ),
     )
@@ -2916,18 +3129,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         measured = tuple(arguments.multiplicities or ())
         scoped = tuple(arguments.protocol_scope_multiplicities or ())
+        selected_families = (
+            FAMILIES if arguments.family is None else (arguments.family,)
+        )
         if scoped and any(
-            n <= MAX_PROTOCOL_MEASURED_MULTIPLICITY for n in scoped
+            any(
+                protocol_measures_multiplicity(family, n)
+                for family in selected_families
+            )
+            for n in scoped
         ):
             raise SelectedMadGraphError(
-                "--protocol-scope-multiplicity accepts only n>6"
+                "--protocol-scope-multiplicity accepts only multiplicities outside "
+                "the selected family protocol scope"
             )
         if measured and any(
-            n > MAX_PROTOCOL_MEASURED_MULTIPLICITY for n in measured
+            not any(
+                protocol_measures_multiplicity(family, n)
+                for family in selected_families
+            )
+            for n in measured
         ):
             raise SelectedMadGraphError(
-                "--multiplicity measures only n<=6; use "
-                "--protocol-scope-multiplicity for n>6"
+                "--multiplicity must measure at least one selected family; use "
+                "--protocol-scope-multiplicity for pure protocol-scope cells"
             )
         if set(measured) & set(scoped):
             raise SelectedMadGraphError(
@@ -2957,6 +3182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             multiplicities=selected_multiplicities,
             mg5_root=arguments.mg5_root,
             memory_limit_gib=arguments.memory_limit_gib,
+            target_seconds=arguments.target_seconds,
             keep_generated=arguments.keep_generated,
             progress_output=progress_output,
             helicity_workload=(

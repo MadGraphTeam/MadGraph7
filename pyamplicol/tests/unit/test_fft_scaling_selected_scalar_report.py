@@ -183,13 +183,21 @@ def _madgraph_cell(family: str, n: int, status: str) -> dict[str, Any]:
             }
         )
     elif status == "not-applicable":
+        measured_limit = selected.MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY[family]
         cell.update(
             {
-                "failure_category": "protocol-scope-n>6",
-                "failure_reason": "final-plot protocol measures only through n=6",
+                "failure_category": (
+                    "protocol-scope-pure-gluon-n6"
+                    if (family, n) == ("gg", 6)
+                    else f"protocol-scope-n>{measured_limit}"
+                ),
+                "failure_reason": (
+                    f"final-plot protocol measures {family} only through "
+                    f"n={measured_limit}"
+                ),
                 "censors_higher_multiplicities": False,
                 "protocol_scope": {
-                    "maximum_measured_multiplicity": 6,
+                    "maximum_measured_multiplicity": measured_limit,
                     "disposition": "not-applicable",
                 },
             }
@@ -203,6 +211,15 @@ def _madgraph_overlay() -> dict[str, Any]:
     return {
         "kind": selected.RUNTIME_SERIES_OVERLAY_KIND,
         "schema_version": 1,
+        "policy": {
+            "final_state_multiplicities": list(selected.FINAL_MULTIPLICITIES),
+            "helicity_workload": "fixed",
+            "warm_fixed_helicity": True,
+            "warm_helicity_sum": False,
+            "family_maximum_measured_multiplicity": (
+                selected.MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY
+            ),
+        },
         "runtime_series": {
             "gg": {
                 "madgraph-standalone": {
@@ -214,8 +231,6 @@ def _madgraph_overlay() -> dict[str, Any]:
                             if n <= 4
                             else "failed"
                             if n == 5
-                            else "skipped"
-                            if n == 6
                             else "not-applicable"
                         ),
                     )
@@ -482,8 +497,8 @@ def test_runtime_series_is_separate_from_the_46_existing_cells(
     assert report["summary"]["runtime_series_status_counts"] == {
         "failed": 2,
         "measured": 3,
-        "not-applicable": 6,
-        "skipped": 5,
+        "not-applicable": 7,
+        "skipped": 4,
     }
     assert (
         report["runtime_series"]["gg"]["madgraph-standalone"]["4"][
@@ -497,6 +512,31 @@ def test_runtime_series_is_separate_from_the_46_existing_cells(
         "max_rss_kib": 4096.0,
     }
     assert "madgraph-standalone" not in report["cells"]["gg"]
+
+
+def test_runtime_series_uses_policy_warm_sample_count(tmp_path: Path) -> None:
+    scalar_path, canonical_path, high_path = _sources(tmp_path)
+    overlay = _madgraph_overlay()
+    overlay["policy"]["warm_sample_count"] = 1
+    for family_series in overlay["runtime_series"].values():
+        for cell in family_series["madgraph-standalone"].values():
+            if cell["status"] == "measured":
+                cell["warm_samples_seconds"] = [cell["warm_seconds_per_point"]]
+    overlay_path = _write(tmp_path / "madgraph.json", overlay)
+
+    report = selected.build_selected_report(
+        scalar_path=scalar_path,
+        canonical_path=canonical_path,
+        high_path=high_path,
+        runtime_series_overlay_path=overlay_path,
+    )
+
+    assert (
+        report["runtime_series"]["gg"]["madgraph-standalone"]["2"][
+            "warm_samples_seconds"
+        ]
+        == [2.0]
+    )
 
 
 def test_runtime_series_progress_accepts_authenticated_sparse_cells(

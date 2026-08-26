@@ -22,8 +22,8 @@ import json
 import math
 import os
 import re
-import shutil
 import shlex
+import shutil
 import stat
 import statistics
 import subprocess
@@ -1328,7 +1328,14 @@ def _reference_arguments(
     timeout_seconds: float,
     memory_limit_gib: float = MEMORY_LIMIT_GIB,
     repetition_quantum: int | None = None,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
 ) -> argparse.Namespace:
+    if (
+        isinstance(warm_sample_count, bool)
+        or not isinstance(warm_sample_count, int)
+        or warm_sample_count < 1
+    ):
+        raise AcceptanceError("reference warm_sample_count must be positive")
     argv = (
         "--min-gluons",
         str(total_gluons),
@@ -1347,7 +1354,7 @@ def _reference_arguments(
         "--target-seconds",
         f"{target_seconds:.17g}",
         "--batches",
-        str(WARM_SAMPLE_COUNT),
+        str(warm_sample_count),
         "--initialization-runs",
         "1",
         "--skip-initialization-preflight",
@@ -1370,19 +1377,22 @@ def _reference_arguments(
 
 def _reference_representative_warm_samples(
     cell_timings: Mapping[tuple[int, int, int], float],
+    *,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
 ) -> tuple[float, ...]:
     """Validate DefaultBG's one representative event/configuration per batch."""
 
     expected = {
-        (batch, REPRESENTATIVE_POINT, 1) for batch in range(1, WARM_SAMPLE_COUNT + 1)
+        (batch, REPRESENTATIVE_POINT, 1)
+        for batch in range(1, warm_sample_count + 1)
     }
     if set(cell_timings) != expected:
         raise AcceptanceError(
-            "reference must report one point-1 cell in each of 10 batches"
+            "reference must report one point-1 cell in each requested batch"
         )
     values = tuple(
         cell_timings[(batch, REPRESENTATIVE_POINT, 1)]
-        for batch in range(1, WARM_SAMPLE_COUNT + 1)
+        for batch in range(1, warm_sample_count + 1)
     )
     if not all(_positive_finite(value) for value in values):
         raise AcceptanceError("reference representative timing cells are not positive")
@@ -1440,6 +1450,7 @@ def _run_reference(
     cold_limit_seconds: float | None = None,
     memory_limit_gib: float = MEMORY_LIMIT_GIB,
     repetition_quantum: int | None = None,
+    warm_sample_count: int = WARM_SAMPLE_COUNT,
     sum_helicities: bool = False,
 ) -> _ReferenceRun:
     reference_root = run_root / "reference" / f"N{total_gluons}"
@@ -1456,6 +1467,7 @@ def _run_reference(
         timeout_seconds=timeout_seconds,
         memory_limit_gib=memory_limit_gib,
         repetition_quantum=effective_repetition_quantum,
+        warm_sample_count=warm_sample_count,
     )
     command_index = 0
     command_log_write_seconds = 0.0
@@ -1629,13 +1641,16 @@ def _run_reference(
     finally:
         reference.run_command = original_run_command
 
-    batch_values = _reference_representative_warm_samples(run.cell_timings)
+    batch_values = _reference_representative_warm_samples(
+        run.cell_timings,
+        warm_sample_count=warm_sample_count,
+    )
     warm_repetitions: tuple[int, ...] = ()
     warm_calibration_seconds: tuple[float, ...] = ()
     if effective_repetition_quantum is not None:
         expected_repetition_keys = {
             (batch, REPRESENTATIVE_POINT, 1)
-            for batch in range(1, WARM_SAMPLE_COUNT + 1)
+            for batch in range(1, warm_sample_count + 1)
         }
         if (
             run.cell_repetitions is None
@@ -1651,7 +1666,7 @@ def _run_reference(
             )
         warm_repetitions = tuple(
             run.cell_repetitions[(batch, REPRESENTATIVE_POINT, 1)]
-            for batch in range(1, WARM_SAMPLE_COUNT + 1)
+            for batch in range(1, warm_sample_count + 1)
         )
         if len(set(warm_repetitions)) != 1:
             raise AcceptanceError("reference changed repetitions after calibration")

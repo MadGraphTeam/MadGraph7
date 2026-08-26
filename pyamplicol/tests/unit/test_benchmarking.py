@@ -1275,6 +1275,34 @@ def test_benchmark_calibrates_blocks_and_repetitions_toward_target(
     assert all("\x1b[" not in (event.message or "") for event in updates)
 
 
+def test_benchmark_single_sample_uses_probe_then_one_profile_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _Clock()
+    monkeypatch.setattr(benchmark_module.time, "perf_counter", clock.perf_counter)
+    runtime = _TimedRuntime(clock)
+    config = BenchmarkConfig(
+        target_runtime=1.0,
+        batch_size=2,
+        warmup_runs=0,
+        minimum_samples=1,
+    )
+
+    result = BenchmarkBackend(config, None).run(
+        runtime,
+        points=(((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert result.sample_count == 1
+    assert result.repetitions_per_sample == 1000
+    assert result.evaluation_count == 1000
+    assert runtime.calls == 1001
+    assert result.environment["elapsed_seconds"] == pytest.approx(1.0)
+    assert result.environment["initial_planned_sample_count"] == 1
+    assert result.environment["adaptive_extension_sample_count"] == 0
+    assert result.environment["calibration_evaluation_count"] == 1
+
+
 def test_benchmark_chunk_guard_runs_before_the_next_calibrated_call() -> None:
     runtime = _RuntimeWithValidation()
     runtime.calls = 0

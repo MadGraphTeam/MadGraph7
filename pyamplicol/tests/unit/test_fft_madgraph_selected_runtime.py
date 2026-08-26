@@ -194,6 +194,7 @@ def test_cli_requires_explicit_source_report_and_madgraph_installation(
     )
     assert arguments.source_report == tmp_path / "source.json"
     assert arguments.mg5_root == tmp_path / "mg5"
+    assert arguments.target_seconds == madgraph.TARGET_SECONDS
 
 
 def test_source_selection_authenticates_both_families_and_all_points(
@@ -340,7 +341,7 @@ def test_rendered_check_fixes_only_timing_helicity_and_calls_direct_matrix(
 def _driver_output(
     *,
     total_external: int = 4,
-    batches: int = 11,
+    batches: int = madgraph.TIMING_DRIVER_BATCH_COUNT,
     point_values: tuple[float, ...] | None = None,
     initialization_seconds: float = 1.0e-3,
     helicity_workload: str = "fixed",
@@ -381,7 +382,7 @@ def _driver_output(
     return "\n".join(lines) + "\n"
 
 
-def test_driver_output_requires_ten_points_and_eleven_timing_batches() -> None:
+def test_driver_output_requires_ten_points_and_configured_timing_batches() -> None:
     parsed = madgraph.parse_driver_output(
         _driver_output(),
         batches=madgraph.TIMING_DRIVER_BATCH_COUNT,
@@ -389,16 +390,19 @@ def test_driver_output_requires_ten_points_and_eleven_timing_batches() -> None:
         expected_events=10,
     )
     assert parsed.point_values == tuple(float(index) for index in range(1, 11))
-    assert len(parsed.cell_seconds) == 11
+    assert len(parsed.cell_seconds) == madgraph.TIMING_DRIVER_BATCH_COUNT
     assert parsed.initialization_seconds == 1.0e-3
 
     incomplete = _driver_output().replace(
-        "EVALUATION_CELL_SECONDS 11 1 1 11.0D-6\n", ""
+        "EVALUATION_CELL_SECONDS "
+        f"{madgraph.TIMING_DRIVER_BATCH_COUNT} 1 1 "
+        f"{madgraph.TIMING_DRIVER_BATCH_COUNT}.0D-6\n",
+        "",
     )
     with pytest.raises(madgraph.SelectedMadGraphError, match="incomplete timing"):
         madgraph.parse_driver_output(
             incomplete,
-            batches=11,
+            batches=madgraph.TIMING_DRIVER_BATCH_COUNT,
             expected_total_external=4,
             expected_events=10,
         )
@@ -602,8 +606,8 @@ def test_disk_exhaustion_is_infrastructure_not_physics_frontier() -> None:
 def test_time_and_memory_limits_are_strict_publication_caps() -> None:
     assert madgraph.DEFAULT_GENERATION_TIMEOUT_SECONDS < 3600.0
     assert madgraph.MAX_MEMORY_GIB == 30.0
-    assert madgraph.TARGET_SECONDS == 0.25
-    assert madgraph.WARM_SAMPLE_COUNT == 10
+    assert madgraph.TARGET_SECONDS == 180.0
+    assert madgraph.WARM_SAMPLE_COUNT == 1
 
 
 def test_hidden_timeout_worker_propagates_exit_and_terminates_late_child() -> None:
@@ -976,6 +980,103 @@ def test_checkpoint_reuse_ignores_only_unrelated_source_report_expansion(
     )
 
 
+def test_measured_checkpoint_reuse_ignores_caps_timing_and_legacy_producer(
+    tmp_path: Path,
+) -> None:
+    cell_dir = tmp_path / "gg" / "n2"
+    cell_dir.mkdir(parents=True)
+    checkpoint = cell_dir / "cell.json"
+    current = {
+        "checkpoint_protocol": madgraph.CHECKPOINT_PROTOCOL,
+        "source_report_sha256": "expanded-report",
+        "source_cell_sha256": "same-cell",
+        "family": "gg",
+        "n": 2,
+        "generation_timeout_seconds": 36000.0,
+        "memory_limit_gib": 200.0,
+        "target_seconds": 180.0,
+        "warm_sample_count": 1,
+    }
+    madgraph._json_atomic(
+        checkpoint,
+        {
+            "checkpoint_identity": {
+                "producer_sha256": "old-script-hash",
+                "source_report_sha256": "sparse-report",
+                "source_cell_sha256": "same-cell",
+                "family": "gg",
+                "n": 2,
+                "generation_timeout_seconds": 3600.0,
+                "memory_limit_gib": 100.0,
+                "target_seconds": 0.25,
+                "warm_sample_count": 10,
+            },
+            "cell": {"status": "measured"},
+        },
+    )
+
+    assert (
+        madgraph._load_checkpoint_cell(
+            checkpoint,
+            identity=current,
+            cell_dir=cell_dir,
+            keep_generated=True,
+        )["status"]
+        == "measured"
+    )
+
+
+def test_failed_checkpoint_cap_or_timing_change_is_not_reused(
+    tmp_path: Path,
+) -> None:
+    cell_dir = tmp_path / "gg" / "n2"
+    generated = cell_dir / "generated"
+    generated.mkdir(parents=True)
+    checkpoint = cell_dir / "cell.json"
+    current = {
+        "checkpoint_protocol": madgraph.CHECKPOINT_PROTOCOL,
+        "source_report_sha256": "expanded-report",
+        "source_cell_sha256": "same-cell",
+        "family": "gg",
+        "n": 2,
+        "generation_timeout_seconds": 36000.0,
+        "memory_limit_gib": 200.0,
+        "target_seconds": 180.0,
+        "warm_sample_count": 1,
+    }
+    madgraph._json_atomic(
+        checkpoint,
+        {
+            "checkpoint_identity": {
+                "producer_sha256": "old-script-hash",
+                "source_report_sha256": "sparse-report",
+                "source_cell_sha256": "same-cell",
+                "family": "gg",
+                "n": 2,
+                "generation_timeout_seconds": 3600.0,
+                "memory_limit_gib": 100.0,
+                "target_seconds": 0.25,
+                "warm_sample_count": 10,
+            },
+            "cell": {
+                "status": "failed",
+                "failure_category": "memory-limit",
+            },
+        },
+    )
+
+    assert (
+        madgraph._load_checkpoint_cell(
+            checkpoint,
+            identity=current,
+            cell_dir=cell_dir,
+            keep_generated=False,
+        )
+        is None
+    )
+    assert not generated.exists()
+
+
 def test_generated_cleanup_refuses_symlink_target(tmp_path: Path) -> None:
     cell_dir = tmp_path / "gg" / "n2"
     cell_dir.mkdir(parents=True)
@@ -1230,6 +1331,61 @@ def test_scaling_source_records_dependency_frontier_without_losing_lower_n(
     assert progress["pending_cells"] == []
 
 
+def test_scaling_source_non_frontier_failure_does_not_censor_higher_n(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_report: Path,
+) -> None:
+    payload = json.loads(source_report.read_text(encoding="utf-8"))
+    payload["kind"] = madgraph.SCALING_STUDY_KIND
+    failed = payload["cells"]["ddbar"]["recurrence-fft"]["3"]
+    failed.update(
+        {
+            "status": "failed",
+            "failure_category": "error",
+            "failure_reason": "source diagnostic failed at this cell",
+            "censors_higher_multiplicities": False,
+        }
+    )
+    source_path = _write_source_payload(tmp_path, payload, "source.json")
+    source = madgraph.load_source_selection(
+        source_path, multiplicities=(2, 3, 4)
+    )
+    assert set(source.cells["ddbar"]) == {2, 4}
+    assert set(source.unavailable["ddbar"]) == {3}
+    assert source.unavailable["ddbar"][3].censors_higher_multiplicities is False
+
+    monkeypatch.setattr(madgraph, "FAMILIES", ("ddbar",))
+    attempted: list[int] = []
+
+    def generation_attempt(**arguments: object) -> tuple[dict[str, object], dict]:
+        selected = arguments["selected"]
+        assert isinstance(selected, madgraph.SelectedCell)
+        attempted.append(selected.n)
+        return {"status": "measured"}, {}
+
+    monkeypatch.setattr(madgraph, "_generation_attempt", generation_attempt)
+    monkeypatch.setattr(madgraph, "_measure_generated_cell", _measured_stub)
+    report = madgraph.build_runtime_report(
+        source_report=source_path,
+        cache_dir=tmp_path / "cache",
+        fc="gfortran",
+        fflags="-O3",
+        timeout_seconds=7200.0,
+        mg5_root=_fake_mg5_root(tmp_path),
+        multiplicities=(2, 3, 4),
+        memory_limit_gib=64.0,
+    )
+
+    cells = report["runtime_series"]["ddbar"][madgraph.MODE]
+    assert attempted == [2, 4]
+    assert cells["2"]["status"] == "measured"
+    assert cells["3"]["failure_category"] == "dependency-unavailable"
+    assert cells["3"]["censors_higher_multiplicities"] is False
+    assert "availability_frontier_n" not in cells["3"]
+    assert cells["4"]["status"] == "measured"
+
+
 def test_progress_is_atomic_sparse_and_names_the_current_cell(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1351,7 +1507,7 @@ def test_resumed_progress_prehydrates_compatible_checkpoint_prefix(
     assert first["pending_cells"][0]["n"] == 3
 
 
-def test_final_plot_protocol_never_launches_madgraph_above_n6(
+def test_final_plot_protocol_skips_pure_gluon_n6(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     source_report: Path,
@@ -1381,18 +1537,60 @@ def test_final_plot_protocol_never_launches_madgraph_above_n6(
         progress_output=progress_path,
     )
 
-    assert attempted == list(range(2, 7))
+    assert attempted == list(range(2, 6))
     cells = report["runtime_series"]["gg"][madgraph.MODE]
-    assert {cells[str(n)]["status"] for n in range(7, 10)} == {
+    assert {cells[str(n)]["status"] for n in range(6, 10)} == {
         "not-applicable"
     }
+    assert cells["6"]["failure_category"] == "protocol-scope-pure-gluon-n6"
+    assert "gfortran -O3 f951 internal compiler error" in cells["6"][
+        "failure_reason"
+    ]
     assert report["policy"]["maximum_measured_multiplicity"] == 6
+    assert report["policy"]["family_maximum_measured_multiplicity"] == {"gg": 5}
     assert report["summary"]["runtime_series_status_counts"] == {
-        "measured": 5,
-        "not-applicable": 3,
+        "measured": 4,
+        "not-applicable": 4,
     }
     progress = madgraph.load_runtime_progress(progress_path)
     assert progress["status"] == "complete"
+
+
+def test_final_plot_protocol_still_launches_ddbar_n6(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_report: Path,
+) -> None:
+    monkeypatch.setattr(madgraph, "FAMILIES", ("ddbar",))
+    attempted: list[int] = []
+
+    def generation_attempt(**arguments: object) -> tuple[dict[str, object], dict]:
+        selected = arguments["selected"]
+        assert isinstance(selected, madgraph.SelectedCell)
+        attempted.append(selected.n)
+        return {"status": "measured"}, {}
+
+    monkeypatch.setattr(madgraph, "_generation_attempt", generation_attempt)
+    monkeypatch.setattr(madgraph, "_measure_generated_cell", _measured_stub)
+
+    report = madgraph.build_runtime_report(
+        source_report=source_report,
+        cache_dir=tmp_path / "cache",
+        fc="gfortran",
+        fflags="-O3",
+        timeout_seconds=10.0,
+        mg5_root=_fake_mg5_root(tmp_path),
+        multiplicities=(5, 6, 7),
+        memory_limit_gib=1.0,
+    )
+
+    assert attempted == [5, 6]
+    cells = report["runtime_series"]["ddbar"][madgraph.MODE]
+    assert cells["6"]["status"] == "measured"
+    assert cells["7"]["status"] == "not-applicable"
+    assert report["policy"]["family_maximum_measured_multiplicity"] == {
+        "ddbar": 6
+    }
 
 
 def test_diagnostic_exit_leaves_completed_progress_renderable(

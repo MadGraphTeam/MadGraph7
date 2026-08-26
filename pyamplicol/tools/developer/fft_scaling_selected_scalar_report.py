@@ -85,6 +85,8 @@ EXPECTED_CENSORED_CELLS = {
 }
 RUNTIME_SERIES_MODES = frozenset(("madgraph-standalone",))
 MADGRAPH_MAX_MEASURED_MULTIPLICITY = 6
+MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY = {"gg": 5, "ddbar": 6}
+LEGACY_MADGRAPH_WARM_SAMPLE_COUNT = 10
 
 
 class CompositeError(RuntimeError):
@@ -510,8 +512,20 @@ def _runtime_target_keys() -> set[tuple[str, str, int]]:
 
 
 def _overlay_samples(
-    raw_cell: Mapping[str, Any], *, context: str, expected_count: int
+    raw_cell: Mapping[str, Any], *, context: str, expected_count: int | Sequence[int]
 ) -> tuple[float, list[float]]:
+    if isinstance(expected_count, int) and not isinstance(expected_count, bool):
+        expected_counts = {expected_count}
+    elif isinstance(expected_count, Sequence) and not isinstance(expected_count, str):
+        expected_counts = {
+            value
+            for value in expected_count
+            if isinstance(value, int) and not isinstance(value, bool)
+        }
+    else:
+        expected_counts = set()
+    if not expected_counts:
+        raise CompositeError(f"{context} has no valid expected warm sample count")
     warm = _positive_number(
         raw_cell.get("warm_seconds_per_point"),
         context=f"{context}.warm_seconds_per_point",
@@ -523,9 +537,10 @@ def _overlay_samples(
         _positive_number(value, context=f"{context}.warm_samples_seconds")
         for value in raw_samples
     ]
-    if len(samples) != expected_count:
+    if len(samples) not in expected_counts:
+        expected = " or ".join(str(value) for value in sorted(expected_counts))
         raise CompositeError(
-            f"{context}.warm_samples_seconds must contain {expected_count} samples"
+            f"{context}.warm_samples_seconds must contain {expected} samples"
         )
     if not math.isclose(statistics.median(samples), warm, rel_tol=1e-12):
         raise CompositeError(f"{context} warm value is not the sample median")
@@ -805,6 +820,60 @@ def _helicity_workload_from_policy(
     return next(iter(markers), legacy_default)
 
 
+def _madgraph_family_measured_limits(
+    policy: Mapping[str, Any] | None,
+) -> dict[str, int]:
+    if policy is None:
+        return {
+            family: MADGRAPH_MAX_MEASURED_MULTIPLICITY for family in FAMILY_MODES
+        }
+    raw_limits = policy.get("family_maximum_measured_multiplicity")
+    if raw_limits is None:
+        return {
+            family: MADGRAPH_MAX_MEASURED_MULTIPLICITY for family in FAMILY_MODES
+        }
+    if not isinstance(raw_limits, Mapping):
+        raise CompositeError(
+            "runtime series overlay has invalid family multiplicity limits"
+        )
+    limits: dict[str, int] = {}
+    for family in FAMILY_MODES:
+        value = raw_limits.get(family)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 2
+            or value > MADGRAPH_MAX_MEASURED_MULTIPLICITY
+        ):
+            raise CompositeError(
+                "runtime series overlay has invalid family multiplicity limits"
+            )
+        limits[family] = int(value)
+    if set(raw_limits) != set(FAMILY_MODES):
+        raise CompositeError(
+            "runtime series overlay has invalid family multiplicity limits"
+        )
+    return limits
+
+
+def _madgraph_protocol_scope_categories(family: str, n: int, limit: int) -> set[str]:
+    categories = {f"protocol-scope-n>{limit}"}
+    if family == "gg" and n == 6:
+        categories.add("protocol-scope-pure-gluon-n6")
+    return categories
+
+
+def _madgraph_warm_sample_count(policy: Mapping[str, Any] | None) -> int:
+    if policy is None:
+        return LEGACY_MADGRAPH_WARM_SAMPLE_COUNT
+    raw_count = policy.get("warm_sample_count")
+    if raw_count is None:
+        return LEGACY_MADGRAPH_WARM_SAMPLE_COUNT
+    if isinstance(raw_count, bool) or not isinstance(raw_count, int) or raw_count < 1:
+        raise CompositeError("runtime series overlay has invalid warm_sample_count")
+    return raw_count
+
+
 def _apply_runtime_series_overlay(
     report: dict[str, Any], overlay: SourceReport
 ) -> None:
@@ -836,6 +905,7 @@ def _apply_runtime_series_overlay(
         raise CompositeError("report has invalid final-state multiplicities")
     multiplicities = tuple(int(value) for value in raw_multiplicities)
     raw_overlay_policy = overlay.payload.get("policy")
+    overlay_policy: Mapping[str, Any] | None = None
     if raw_overlay_policy is None and not sparse_progress:
         # Historical terminal overlays predate their explicit policy block and
         # cover the report's complete multiplicity set by contract.
@@ -850,6 +920,8 @@ def _apply_runtime_series_overlay(
             raise CompositeError(
                 "runtime series overlay helicity workload differs from the report"
             )
+    family_limits = _madgraph_family_measured_limits(overlay_policy)
+    expected_warm_samples = _madgraph_warm_sample_count(overlay_policy)
     if (
         not isinstance(raw_overlay_multiplicities, Sequence)
         or isinstance(raw_overlay_multiplicities, str)
@@ -895,7 +967,7 @@ def _apply_runtime_series_overlay(
                     f"runtime-series-overlay.{family}.{mode} must describe exactly "
                     f"n={list(overlay_multiplicities)}"
                 )
-            seen_failure = False
+            frontier_seen = False
             copied_cells: dict[str, Any] = {}
             for n in (
                 value for value in overlay_multiplicities if str(value) in mode_cells
@@ -910,26 +982,34 @@ def _apply_runtime_series_overlay(
                     "not-applicable",
                 }:
                     raise CompositeError(f"{context}.status is unsupported")
-                if n > MADGRAPH_MAX_MEASURED_MULTIPLICITY:
+                measured_limit = family_limits[family]
+                if n > measured_limit:
                     if status != "not-applicable":
                         raise CompositeError(
                             f"{context} must be protocol-scoped not-applicable"
                         )
                 elif status == "not-applicable":
                     raise CompositeError(
-                        f"{context} cannot be not-applicable at n<=6"
+                        f"{context} cannot be not-applicable at n<={measured_limit}"
                     )
-                if status == "measured" and seen_failure:
+                if status == "measured" and frontier_seen:
                     raise CompositeError(
                         f"{context} resumes measurement after the series frontier"
                     )
-                if status == "failed":
-                    if seen_failure:
+                if (
+                    status == "failed"
+                    and cell.get("censors_higher_multiplicities") is True
+                ):
+                    if frontier_seen:
                         raise CompositeError(
                             f"{context} repeats the series failure frontier"
                         )
-                    seen_failure = True
-                if status == "skipped" and not seen_failure:
+                    frontier_seen = True
+                if (
+                    status == "skipped"
+                    and cell.get("censors_higher_multiplicities") is True
+                    and not frontier_seen
+                ):
                     raise CompositeError(
                         f"{context} skips before a recorded failure frontier"
                     )
@@ -951,17 +1031,27 @@ def _apply_runtime_series_overlay(
                         context=f"{context}.protocol_scope",
                     )
                     if (
-                        cell.get("failure_category") != "protocol-scope-n>6"
+                        cell.get("failure_category")
+                        not in _madgraph_protocol_scope_categories(
+                            family, n, measured_limit
+                        )
                         or cell.get("censors_higher_multiplicities") is not False
                         or scope.get("maximum_measured_multiplicity")
-                        != MADGRAPH_MAX_MEASURED_MULTIPLICITY
+                        != measured_limit
                         or scope.get("disposition") != "not-applicable"
                     ):
                         raise CompositeError(
                             f"{context} has incompatible protocol-scope metadata"
                         )
                 if status == "measured":
-                    _overlay_samples(cell, context=context, expected_count=10)
+                    _overlay_samples(
+                        cell,
+                        context=context,
+                        expected_count=(
+                            expected_warm_samples,
+                            LEGACY_MADGRAPH_WARM_SAMPLE_COUNT,
+                        ),
+                    )
                     metrics = _mapping(
                         cell.get("metrics"), context=f"{context}.metrics"
                     )

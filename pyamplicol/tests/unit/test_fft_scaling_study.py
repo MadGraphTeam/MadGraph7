@@ -100,6 +100,70 @@ def test_summed_amplicol_probe_overlay_restores_clean_pinned_source(
     assert captured["original_sha256"] != captured["patched_sha256"]
 
 
+def test_summed_amplicol_campaign_skips_racy_preflight_checkout_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    study_root = tmp_path / "study"
+    repository = tmp_path / "amplicol"
+    repository.mkdir()
+    monkeypatch.setattr(scaling, "STUDY_ROOT", study_root)
+    monkeypatch.setattr(scaling, "_study_environment", lambda _python: {})
+    monkeypatch.setattr(
+        scaling,
+        "_acquire_campaign_lock",
+        lambda: (tmp_path / "campaign.lock").open("a+", encoding="utf-8"),
+    )
+    monkeypatch.setattr(
+        scaling.legacy_amplicol,
+        "validate_checkout",
+        lambda _repository: pytest.fail(
+            "summed AmpliCol validation belongs inside the source overlay lock"
+        ),
+    )
+
+    def fake_inputs(
+        _report: object, _run_root: Path, family: str, final_multiplicity: int
+    ) -> tuple[tuple[Path, ...], tuple[int, ...]]:
+        assert family == "ddbar"
+        return (Path("event"),), scaling.fixed_ddbar_helicity(final_multiplicity)
+
+    def fake_amplicol_cell(**kwargs: object) -> dict[str, object]:
+        assert kwargs["arguments"].compare_helicity_sums is True
+        family = str(kwargs["family"])
+        final_multiplicity = int(kwargs["final_multiplicity"])
+        return scaling._cell_base(
+            family,
+            scaling.MODE_BY_KEY["amplicol"],
+            final_multiplicity,
+            sum_helicities=True,
+        ) | {"status": "measured"}
+
+    monkeypatch.setattr(scaling, "_inputs", fake_inputs)
+    monkeypatch.setattr(scaling, "_amplicol_cell", fake_amplicol_cell)
+    arguments = scaling._parser().parse_args(
+        (
+            "--run-id",
+            "summed-amplicol",
+            "--min-n",
+            "2",
+            "--max-n",
+            "2",
+            "--family",
+            "ddbar",
+            "--mode",
+            "amplicol",
+            "--amplicol-repository",
+            str(repository),
+            "--compare-helicity-sums",
+        )
+    )
+    scaling._validate_arguments(arguments)
+
+    report = scaling._campaign(arguments)
+
+    assert report["cells"]["ddbar"]["amplicol"]["2"]["status"] == "measured"
+
+
 def _amplicol_timing_output(points: int, total_seconds: float) -> str:
     return (
         "AmpliCol colour probe\n"
@@ -109,15 +173,12 @@ def _amplicol_timing_output(points: int, total_seconds: float) -> str:
     )
 
 
-def test_amplicol_warm_sampling_grows_and_restarts_one_fixed_repetition_set() -> None:
+def test_amplicol_warm_sampling_grows_and_restarts_one_fixed_aggregate() -> None:
     calls: list[tuple[int, int, int]] = []
 
     def run_sample(sample_set: int, sample: int, repetitions: int) -> str:
         calls.append((sample_set, sample, repetitions))
-        if sample_set == 1:
-            total = 0.30 if sample == 1 else 0.20
-        else:
-            total = 0.36 + sample * 0.001
+        total = 0.20 if sample_set == 1 else 0.36 + sample * 0.001
         return _amplicol_timing_output(repetitions, total)
 
     measured = scaling._collect_amplicol_warm_samples(
@@ -127,13 +188,12 @@ def test_amplicol_warm_sampling_grows_and_restarts_one_fixed_repetition_set() ->
         run_sample=run_sample,
     )
 
-    assert calls[:2] == [(1, 1, 27), (1, 2, 27)]
-    assert calls[2:] == [(2, sample, 36) for sample in range(1, 11)]
+    assert calls == [(1, 1, 27), (2, 1, 36)]
     assert measured.repetitions == 36
     assert measured.sample_set_attempts == 2
-    assert len(measured.samples_seconds) == 10
+    assert len(measured.samples_seconds) == 1
     assert min(measured.sample_totals_seconds) >= 0.25
-    assert statistics.median(measured.samples_seconds) == pytest.approx(0.3655 / 36)
+    assert statistics.median(measured.samples_seconds) == pytest.approx(0.361 / 36)
 
 
 def test_amplicol_timing_parser_retains_the_aggregate_duration() -> None:
@@ -220,7 +280,7 @@ def test_amplicol_cell_uses_fresh_fixed_samples_and_program_rss(
         elif "warm-sample-set-01" in log_path.name:
             sample = int(log_path.stem.rsplit("-", 1)[1])
             points = 27
-            total = 0.30 if sample == 1 else 0.20
+            total = 0.20
             child_rss = 1_200 + 100 * sample
         else:
             sample = int(log_path.stem.rsplit("-", 1)[1])
@@ -255,6 +315,8 @@ def test_amplicol_cell_uses_fresh_fixed_samples_and_program_rss(
             "amplicol",
             "--batch-size",
             "1",
+            "--target-seconds",
+            "0.25",
             "--python",
             sys.executable,
             "--amplicol-repository",
@@ -278,8 +340,8 @@ def test_amplicol_cell_uses_fresh_fixed_samples_and_program_rss(
         for call in calls
         if Path(call["log_path"]).name != "process-generation.json"
     ]
-    assert len(calls) == 14
-    assert len(probe_calls) == 13
+    assert len(calls) == 4
+    assert len(probe_calls) == 3
     assert len({Path(call["log_path"]) for call in calls}) == len(calls)
     assert len({Path(call["watchdog_report"]) for call in calls}) == len(calls)
     assert probe_calls[0]["environment"] == {
@@ -289,15 +351,15 @@ def test_amplicol_cell_uses_fresh_fixed_samples_and_program_rss(
         "AMPICOL_COLOR_PROBE_TARGET_RUNTIME_S" not in call["environment"]
         for call in probe_calls[1:]
     )
-    assert cell["warm_repetitions"] == [36] * 10
+    assert cell["warm_repetitions"] == [36]
     assert cell["warm_sample_set_attempts"] == 2
     assert min(cell["warm_sample_totals_seconds"]) >= 0.25
-    assert cell["metrics"]["warm_seconds_per_point"] == pytest.approx(0.3655 / 36)
-    assert cell["metrics"]["max_rss_kib"] == 2_500
+    assert cell["metrics"]["warm_seconds_per_point"] == pytest.approx(0.361 / 36)
+    assert cell["metrics"]["max_rss_kib"] == 1_600
     assert cell["resource_peaks_kib"] == {
         "generation": 1_500,
         "generation_guard": 9_000,
-        "runtime_self": 2_500,
+        "runtime_self": 1_600,
         "runtime_watchdog": 8_000,
         "runtime_guard": 10_000,
         "runtime_watchdog_included_in_plotted_rss": False,
@@ -311,8 +373,9 @@ def test_publication_defaults_use_strict_one_hour_and_30_gib_frontiers() -> None
     assert arguments.generation_timeout == 3600.0
     assert arguments.runtime_timeout == 3600.0
     assert arguments.memory_limit_gib == 30.0
+    assert arguments.target_seconds == 180.0
     assert (
-        "median of 10 independent process-CPU aggregates"
+        "median of 1 independent process-CPU aggregate"
         in plan["measurement"]["warm_timing_metric"]["amplicol"]
     )
     assert (
@@ -321,6 +384,58 @@ def test_publication_defaults_use_strict_one_hour_and_30_gib_frontiers() -> None
     assert scaling._require_bounded_rss(30 * 1024**2 - 1, 30.0) > 0
     with pytest.raises(scaling.StudyError, match=r"strict <30 GiB"):
         scaling._require_bounded_rss(30 * 1024**2, 30.0)
+
+
+def test_resume_accepts_sampling_and_resource_policy_updates(tmp_path: Path) -> None:
+    study_root = tmp_path / "study"
+    arguments = scaling._parser().parse_args(
+        (
+            "--study-root",
+            str(study_root),
+            "--run-id",
+            "campaign",
+            "--multiplicity",
+            "5",
+            "--family",
+            "gg",
+            "--mode",
+            "reference-fft",
+            "--resume",
+        )
+    )
+    report = scaling._empty_report(arguments)
+    stale_policy = deepcopy(report["policy"])
+    measurement = stale_policy["measurement"]
+    measurement["calibration_target_seconds"] = 0.25
+    measurement["candidate_profile_target_runtime_seconds"] = 0.25
+    measurement["candidate_profile_warmup_runs"] = 2
+    measurement["candidate_profile_minimum_samples"] = 10
+    measurement["warm_samples"] = 10
+    measurement["warm_sample_count"] = 10
+    measurement["warm_timing_metric"] = {"pyamplicol": "old short sampling"}
+    measurement["generation_timeout_seconds"] = 60.0
+    measurement["runtime_timeout_seconds"] = 60.0
+    measurement["requested_memory_ceiling_gib"] = 10.0
+    measurement["memory_watchdog_gib"] = 10.0
+    measurement["cell_admission_limits"] = {}
+    stale_policy["run_root"] = "/old/shard/layout"
+    report["policy"] = stale_policy
+    path = study_root / "runs" / "campaign" / "report.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    loaded = scaling._load_report(path, arguments)
+
+    assert loaded["policy"] == scaling.dry_run_plan(arguments)
+
+    stale_policy["measurement"]["alpha_s"] = 0.2
+    report["policy"] = stale_policy
+    path.write_text(json.dumps(report), encoding="utf-8")
+    with pytest.raises(
+        scaling.StudyError,
+        match="resume arguments differ from the stored study policy",
+    ):
+        scaling._load_report(path, arguments)
 
 
 def test_publication_generation_uses_normal_optimized_defaults() -> None:
@@ -534,6 +649,25 @@ def test_fixed_helicity_otf_frontier_matches_summed_n6_limit() -> None:
     assert fixed_n7 is not None
     assert fixed_n7["failed_at_n"] == 7
     assert "n<=6" in fixed_n7["failure_reason"]
+
+    assert (
+        scaling.otf_protocol_scope_cell(
+            family="gg",
+            mode=mode,
+            final_multiplicity=7,
+            maximum_multiplicity=8,
+        )
+        is None
+    )
+    extended_n9 = scaling.otf_protocol_scope_cell(
+        family="gg",
+        mode=mode,
+        final_multiplicity=9,
+        maximum_multiplicity=8,
+    )
+    assert extended_n9 is not None
+    assert extended_n9["failed_at_n"] == 9
+    assert "n<=8" in extended_n9["failure_reason"]
 
 
 def test_publication_artifact_requires_complete_reusable_helicities(
@@ -1233,8 +1367,8 @@ def test_candidate_public_cli_commands_and_profile_json_are_authoritative(
     assert "--helicity" not in summed_profile
     assert fixed_profile[fixed_profile.index("--target-runtime") + 1] == "0.25"
     assert fixed_profile[fixed_profile.index("--batch-size") + 1] == "128"
-    assert fixed_profile[fixed_profile.index("--warmup-runs") + 1] == "2"
-    assert fixed_profile[fixed_profile.index("--minimum-samples") + 1] == "10"
+    assert fixed_profile[fixed_profile.index("--warmup-runs") + 1] == "0"
+    assert fixed_profile[fixed_profile.index("--minimum-samples") + 1] == "1"
     assert all("fft_gluon_candidate_probe" not in token for token in fixed_profile)
 
     values = scaling._parse_candidate_evaluate_json(
@@ -1246,16 +1380,16 @@ def test_candidate_public_cli_commands_and_profile_json_are_authoritative(
         "batch_size": 128,
         "color_flow_ids": [],
         "helicity_ids": [],
-        "minimum_samples": 10,
+        "minimum_samples": 1,
         "precision": 16,
         "target_runtime": 0.25,
-        "warmup_runs": 2,
+        "warmup_runs": 0,
     }
     wall = 0.0005343891273355439
     payload = {
         "requested_config": config,
         "effective_config": config,
-        "sample_count": 10,
+        "sample_count": 1,
         "repetitions_per_sample": 1,
         "wall_time_per_point": wall,
         "interrupted": False,
@@ -1269,8 +1403,8 @@ def test_candidate_public_cli_commands_and_profile_json_are_authoritative(
             "precision": 16,
             "selected_color_ids": [],
             "selected_helicity_ids": [],
-            "completed_sample_count": 10,
-            "measured_point_count": 1280,
+            "completed_sample_count": 1,
+            "measured_point_count": 128,
             "interrupted": False,
         },
         "retained_full_cli_provenance": {"sentinel": True},
@@ -1460,16 +1594,16 @@ def test_candidate_resume_reuses_only_a_successful_generation_phase(
                 "batch_size": 1,
                 "color_flow_ids": [],
                 "helicity_ids": ["h:" + ",".join(["+1"] * 10)],
-                "minimum_samples": 10,
+                "minimum_samples": 1,
                 "precision": 16,
-                "target_runtime": 0.25,
-                "warmup_runs": 2,
+                "target_runtime": scaling.DEFAULT_PROFILE_TARGET_SECONDS,
+                "warmup_runs": 0,
             }
             output = json.dumps(
                 {
                     "requested_config": config,
                     "effective_config": config,
-                    "sample_count": 10,
+                    "sample_count": 1,
                     "repetitions_per_sample": 1,
                     "wall_time_per_point": 0.001,
                     "interrupted": False,
@@ -1483,8 +1617,8 @@ def test_candidate_resume_reuses_only_a_successful_generation_phase(
                         "precision": 16,
                         "selected_color_ids": [],
                         "selected_helicity_ids": config["helicity_ids"],
-                        "completed_sample_count": 10,
-                        "measured_point_count": 10,
+                        "completed_sample_count": 1,
+                        "measured_point_count": 1,
                         "interrupted": False,
                     },
                 }

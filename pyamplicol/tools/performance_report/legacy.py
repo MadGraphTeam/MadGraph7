@@ -111,10 +111,8 @@ class LegacySettings:
             raise ValueError("minimum_points must be positive")
         if self.maximum_points < self.minimum_points:
             raise ValueError("maximum_points must not be below minimum_points")
-        if self.minimum_profile_chunks < DEFAULT_MIN_PROFILE_CHUNKS:
-            raise ValueError(
-                f"minimum_profile_chunks must be at least {DEFAULT_MIN_PROFILE_CHUNKS}"
-            )
+        if self.minimum_profile_chunks < 1:
+            raise ValueError("minimum_profile_chunks must be positive")
         if self.maximum_profile_chunks < self.minimum_profile_chunks:
             raise ValueError(
                 "maximum_profile_chunks must not be below minimum_profile_chunks"
@@ -2380,10 +2378,13 @@ class LegacyMeasurementAdapter:
             target_complete = measured_seconds >= settings.target_runtime_seconds
             standard_error, relative_standard_error = _profile_rate_uncertainty(chunks)
             uncertainty_complete = (
-                math.isfinite(standard_error)
-                and standard_error > 0.0
-                and math.isfinite(relative_standard_error)
-                and relative_standard_error > 0.0
+                settings.minimum_profile_chunks == 1
+                or (
+                    math.isfinite(standard_error)
+                    and standard_error > 0.0
+                    and math.isfinite(relative_standard_error)
+                    and relative_standard_error > 0.0
+                )
             )
             if minimum_complete and target_complete and uncertainty_complete:
                 break

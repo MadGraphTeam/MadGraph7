@@ -56,6 +56,9 @@ FAMILY_MODES = {
         "otf-fft",
     ),
 }
+MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY = (
+    madgraph.protocol_measured_multiplicity_limits()
+)
 SOURCE_MODE = {"gg": "reference-fft", "ddbar": "recurrence-fft"}
 SUM_SOURCE_MODE = {"gg": "recurrence-fft", "ddbar": "recurrence-fft"}
 CANDIDATE_MODE_CONTRACT = {
@@ -79,7 +82,7 @@ MAX_RUNTIME_SECONDS = 3600.0
 MAX_RSS_GIB = 30.0
 MAX_RSS_KIB = MAX_RSS_GIB * 1024**2
 POINT_COUNT = 10
-WARM_SAMPLE_COUNT = 10
+WARM_SAMPLE_COUNT = madgraph.WARM_SAMPLE_COUNT
 
 
 class PublicationMergeError(RuntimeError):
@@ -601,6 +604,9 @@ def _validate_madgraph_policy(
         "generation_helicity_coverage": "all",
         "warm_fixed_helicity": helicity_workload == "fixed",
         "maximum_measured_multiplicity": MADGRAPH_MAX_MEASURED_MULTIPLICITY,
+        "family_maximum_measured_multiplicity": (
+            MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY
+        ),
         "higher_multiplicity_policy": "not-applicable-protocol-scope",
     }
     for key, value in expected.items():
@@ -627,6 +633,13 @@ def _validate_madgraph_policy(
         raise PublicationMergeError(
             "MadGraph metric scope must define all three metrics"
         )
+
+
+def _madgraph_protocol_scope_categories(family: str, n: int, limit: int) -> set[str]:
+    categories = {f"protocol-scope-n>{limit}"}
+    if family == "gg" and n == 6:
+        categories.add("protocol-scope-pure-gluon-n6")
+    return categories
 
 
 def _resolve_recorded_path(raw: object, *, context: str) -> Path:
@@ -778,6 +791,7 @@ def _validate_madgraph_provenance(
     measured_count_by_family: Counter[str] = Counter()
     status_counts: Counter[str] = Counter()
     for family in FAMILY_MODES:
+        measured_limit = MADGRAPH_FAMILY_MAX_MEASURED_MULTIPLICITY[family]
         family_series = _mapping(
             raw_series.get(family), context=f"MadGraph runtime_series.{family}"
         )
@@ -796,7 +810,7 @@ def _validate_madgraph_provenance(
                 "not-applicable",
             }:
                 raise PublicationMergeError(f"{context}.status is unsupported")
-            if n > MADGRAPH_MAX_MEASURED_MULTIPLICITY:
+            if n > measured_limit:
                 if status != "not-applicable":
                     raise PublicationMergeError(
                         f"{context} must be protocol-scoped not-applicable"
@@ -806,10 +820,13 @@ def _validate_madgraph_provenance(
                     context=f"{context}.protocol_scope",
                 )
                 if (
-                    cell.get("failure_category") != "protocol-scope-n>6"
+                    cell.get("failure_category")
+                    not in _madgraph_protocol_scope_categories(
+                        family, n, measured_limit
+                    )
                     or cell.get("censors_higher_multiplicities") is not False
                     or scope.get("maximum_measured_multiplicity")
-                    != MADGRAPH_MAX_MEASURED_MULTIPLICITY
+                    != measured_limit
                     or scope.get("disposition") != "not-applicable"
                     or not isinstance(cell.get("failure_reason"), str)
                     or not cell["failure_reason"].strip()
@@ -819,7 +836,7 @@ def _validate_madgraph_provenance(
                     )
             elif status == "not-applicable":
                 raise PublicationMergeError(
-                    f"{context} cannot be not-applicable at n<=6"
+                    f"{context} cannot be not-applicable at n<={measured_limit}"
                 )
             status_counts[status] += 1
             if status != "measured":

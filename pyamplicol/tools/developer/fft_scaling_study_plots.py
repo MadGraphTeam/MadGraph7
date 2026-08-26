@@ -44,6 +44,21 @@ class Metric:
     scale: float = 1.0
 
 
+@dataclass(frozen=True, slots=True)
+class AxisOptions:
+    main_y_range: tuple[float, float] | None = None
+    ratio_y_range: tuple[float, float] | None = None
+    ratio_y_scale: str = "log"
+
+
+@dataclass(frozen=True, slots=True)
+class LineFilterOptions:
+    main_include_lines: tuple[str, ...] | None = None
+    main_veto_lines: tuple[str, ...] = ()
+    ratio_include_lines: tuple[str, ...] | None = None
+    ratio_veto_lines: tuple[str, ...] = ()
+
+
 METRICS = (
     Metric(
         "generation_seconds",
@@ -65,6 +80,12 @@ FAMILY_TITLES = {
     "ddbar": r"$d \bar{d} \;\to\; d \bar{d} + (n-2)g$",
 }
 FAMILY_BASELINES = {"gg": "reference-fft", "ddbar": "amplicol"}
+RECOLA_MODE = "recola"
+RECOLA_LABEL = "Recola"
+RECOLA_FAMILY_MAP = {
+    "all_gluon": "gg",
+    "down_quark_qcd": "ddbar",
+}
 MODE_LABELS = {
     "reference-fft": "Reference FFT",
     "amplicol": "AmpliCol",
@@ -75,6 +96,7 @@ MODE_LABELS = {
     "compiled-direct": "pyAmpliCol - Compiled",
     "compiled-fft": "pyAmpliCol - Compiled - FFT",
     "madgraph-standalone": "MadGraph standalone (fixed h)",
+    RECOLA_MODE: RECOLA_LABEL,
 }
 MODE_STYLES = {
     "reference-fft": ("#000000", "o", "-"),
@@ -86,7 +108,24 @@ MODE_STYLES = {
     "compiled-direct": ("#D55E00", "P", "--"),
     "compiled-fft": ("#7A3E9D", "X", "-"),
     "madgraph-standalone": ("#CC3311", "*", "-"),
+    RECOLA_MODE: ("#AA4499", "h", "-"),
 }
+PLOT_LINE_SELECTOR_MODES = {
+    "reference-fft": ("reference-fft",),
+    "amplicol": ("amplicol",),
+    "pyamplicol-recurrence": ("recurrence-direct", "recurrence-fft"),
+    "pyamplicol-otf": ("otf-direct", "otf-fft"),
+    "madgraph": ("madgraph-standalone",),
+    "recurrence-direct": ("recurrence-direct",),
+    "recurrence-fft": ("recurrence-fft",),
+    "otf-direct": ("otf-direct",),
+    "otf-fft": ("otf-fft",),
+    "madgraph-standalone": ("madgraph-standalone",),
+    "recola": (RECOLA_MODE,),
+    "compiled-direct": ("compiled-direct",),
+    "compiled-fft": ("compiled-fft",),
+}
+PLOT_LINE_CHOICES = tuple(PLOT_LINE_SELECTOR_MODES)
 LEGEND_MODE_ORDER = {
     # Matplotlib fills a multi-column legend down each column.  Keep each
     # Direct/FFT strategy pair together, with FFT (solid) above Direct
@@ -99,6 +138,7 @@ LEGEND_MODE_ORDER = {
         "otf-fft",
         "otf-direct",
         "madgraph-standalone",
+        RECOLA_MODE,
     ),
     "ddbar": (
         "amplicol",
@@ -107,6 +147,7 @@ LEGEND_MODE_ORDER = {
         "recurrence-direct",
         "otf-fft",
         "otf-direct",
+        RECOLA_MODE,
     ),
 }
 STATUS_ORDER = {"failed": 0, "not-applicable": 1, "skipped": 2}
@@ -123,10 +164,19 @@ PLOT_FILENAMES = tuple(
     for family in FAMILIES
     for metric in METRICS
 )
+DEFAULT_AXIS_OPTIONS = AxisOptions()
+DEFAULT_LINE_FILTER_OPTIONS = LineFilterOptions()
 
 
 class PlotError(RuntimeError):
     """The report cannot be rendered without guessing its meaning."""
+
+
+def _finite_float(raw: str) -> float:
+    value = float(raw)
+    if not math.isfinite(value):
+        raise argparse.ArgumentTypeError("must be finite")
+    return value
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -139,7 +189,145 @@ def _parser() -> argparse.ArgumentParser:
         default=160,
         help="PNG resolution in dots per inch (default: 160)",
     )
+    parser.add_argument(
+        "--recola-results",
+        type=Path,
+        help="overlay a Recola profiling JSON as an external Recola series",
+    )
+    parser.add_argument(
+        "--main-y-range",
+        type=_finite_float,
+        nargs=2,
+        metavar=("MIN", "MAX"),
+        help="force the main-panel log y-range for every plot",
+    )
+    parser.add_argument(
+        "--ratio-y-range",
+        type=_finite_float,
+        nargs=2,
+        metavar=("MIN", "MAX"),
+        help="force the ratio-panel y-range for every plot",
+    )
+    parser.add_argument(
+        "--ratio-y-scale",
+        choices=("log", "linear"),
+        default="log",
+        help="ratio-panel y-axis scale (default: log)",
+    )
+    parser.add_argument(
+        "--main-include-lines",
+        nargs="+",
+        choices=PLOT_LINE_CHOICES,
+        metavar="LINE",
+        help="main-panel line ids to include; overrides --main-veto-lines",
+    )
+    parser.add_argument(
+        "--main-veto-lines",
+        nargs="+",
+        choices=PLOT_LINE_CHOICES,
+        metavar="LINE",
+        help="main-panel line ids to hide when --main-include-lines is absent",
+    )
+    parser.add_argument(
+        "--ratio-include-lines",
+        nargs="+",
+        choices=PLOT_LINE_CHOICES,
+        metavar="LINE",
+        help="ratio-panel line ids to include; overrides --ratio-veto-lines",
+    )
+    parser.add_argument(
+        "--ratio-veto-lines",
+        nargs="+",
+        choices=PLOT_LINE_CHOICES,
+        metavar="LINE",
+        help="ratio-panel line ids to hide when --ratio-include-lines is absent",
+    )
     return parser
+
+
+def _validate_y_range(
+    values: Sequence[float] | None,
+    *,
+    option: str,
+    positive: bool,
+) -> tuple[float, float] | None:
+    if values is None:
+        return None
+    if len(values) != 2:
+        raise PlotError(f"{option} requires exactly two values")
+    low, high = (float(values[0]), float(values[1]))
+    if not math.isfinite(low) or not math.isfinite(high):
+        raise PlotError(f"{option} values must be finite")
+    if high <= low:
+        raise PlotError(f"{option} requires MIN < MAX")
+    if positive and low <= 0.0:
+        raise PlotError(f"{option} must be positive for a logarithmic y-axis")
+    return low, high
+
+
+def _axis_options_from_arguments(arguments: argparse.Namespace) -> AxisOptions:
+    ratio_y_scale = str(arguments.ratio_y_scale)
+    if ratio_y_scale not in {"log", "linear"}:
+        raise PlotError("--ratio-y-scale must be 'log' or 'linear'")
+    return AxisOptions(
+        main_y_range=_validate_y_range(
+            arguments.main_y_range,
+            option="--main-y-range",
+            positive=True,
+        ),
+        ratio_y_range=_validate_y_range(
+            arguments.ratio_y_range,
+            option="--ratio-y-range",
+            positive=ratio_y_scale == "log",
+        ),
+        ratio_y_scale=ratio_y_scale,
+    )
+
+
+def _validated_line_names(
+    values: Sequence[str] | None,
+    *,
+    option: str,
+    default: tuple[str, ...] | None,
+) -> tuple[str, ...] | None:
+    if values is None:
+        return default
+    selected = tuple(str(value) for value in values)
+    if len(set(selected)) != len(selected):
+        raise PlotError(f"{option} must not contain duplicates")
+    invalid = sorted(set(selected) - set(PLOT_LINE_CHOICES))
+    if invalid:
+        raise PlotError(f"{option} has unknown line id(s): {', '.join(invalid)}")
+    return selected
+
+
+def _line_filter_options_from_arguments(
+    arguments: argparse.Namespace,
+) -> LineFilterOptions:
+    return LineFilterOptions(
+        main_include_lines=_validated_line_names(
+            arguments.main_include_lines,
+            option="--main-include-lines",
+            default=None,
+        ),
+        main_veto_lines=_validated_line_names(
+            arguments.main_veto_lines,
+            option="--main-veto-lines",
+            default=(),
+        )
+        or (),
+        ratio_include_lines=_validated_line_names(
+            arguments.ratio_include_lines,
+            option="--ratio-include-lines",
+            default=None,
+        ),
+        ratio_veto_lines=_validated_line_names(
+            arguments.ratio_veto_lines,
+            option="--ratio-veto-lines",
+            default=(),
+        )
+        or (),
+    )
 
 
 def _load_report_snapshot(path: Path) -> tuple[dict[str, Any], str]:
@@ -222,11 +410,13 @@ def _source_boundary(
     return raw_boundary + 0.5, label
 
 
-def _protocol_summary(report: Mapping[str, Any]) -> str:
+def _protocol_summary(
+    report: Mapping[str, Any], *, ratio_y_scale: str = "log"
+) -> str:
     policy = _mapping(report.get("policy"))
     measurement = _mapping(policy.get("measurement"))
     if policy.get("fft_enabled") is not True:
-        return "Main and ratio panels: logarithmic Y scale"
+        return f"main Y log; ratio Y {ratio_y_scale}"
     details = ["Campaign --fft enabled"]
     if measurement.get("generation_helicity_coverage") == "all":
         details.append("artifacts: all runtime helicities")
@@ -247,18 +437,21 @@ def _protocol_summary(report: Mapping[str, Any]) -> str:
     details.append("Reference/AmpliCol: scalar aggregates normalized per point")
     if measurement.get("compiled_fft_enabled") is False:
         details.append("compiled FFT disabled")
-    details.append("log-scale Y axes")
+    details.append(f"main Y log; ratio Y {ratio_y_scale}")
     return " | ".join(details)
 
 
 def _protocol_summary_lines(
-    report: Mapping[str, Any], *, max_line_length: int = 110
+    report: Mapping[str, Any],
+    *,
+    max_line_length: int = 110,
+    ratio_y_scale: str = "log",
 ) -> tuple[str, ...]:
     """Wrap the protocol at semantic separators for a stable plot header."""
 
     if max_line_length < 1:
         raise ValueError("max_line_length must be positive")
-    sections = _protocol_summary(report).split(" | ")
+    sections = _protocol_summary(report, ratio_y_scale=ratio_y_scale).split(" | ")
     lines: list[str] = []
     current = ""
     for section in sections:
@@ -357,6 +550,197 @@ def _positive_number(value: object) -> float | None:
     if not math.isfinite(result) or result <= 0.0:
         return None
     return result
+
+
+def _load_recola_results(path: Path) -> tuple[Mapping[str, Any], str]:
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise PlotError(f"cannot read Recola results {path}: {error}") from error
+    if not isinstance(payload, Mapping):
+        raise PlotError("Recola results must be a JSON object")
+    return payload, hashlib.sha256(raw).hexdigest()
+
+
+def _recola_cell_workload(
+    cell: Mapping[str, Any],
+    config: Mapping[str, Any],
+    *,
+    context: str,
+) -> str:
+    polarized = cell.get("polarized")
+    if not isinstance(polarized, bool):
+        polarized = config.get("polarized")
+    if not isinstance(polarized, bool):
+        raise PlotError(f"{context} lacks a boolean Recola polarized marker")
+    return "fixed" if polarized else "sum"
+
+
+def _recola_metrics(cell: Mapping[str, Any]) -> dict[str, float]:
+    metrics: dict[str, float] = {}
+    generation_seconds = _positive_number(cell.get("gen_time_s"))
+    if generation_seconds is not None:
+        metrics["generation_seconds"] = generation_seconds
+    warm_seconds = _positive_number(cell.get("run_time_s"))
+    if warm_seconds is not None:
+        metrics["warm_seconds_per_point"] = warm_seconds
+    rss_values = [
+        value
+        for field in (
+            "peak_generation_rss_mib",
+            "ram_after_generation_mib",
+            "ram_after_profile_mib",
+        )
+        if (value := _positive_number(cell.get(field))) is not None
+    ]
+    if rss_values:
+        metrics["max_rss_kib"] = max(rss_values) * 1024.0
+    return metrics
+
+
+def _recola_failure_category(reason: str) -> str:
+    if "RSS" in reason or "MAX_RSS" in reason:
+        return "memory-limit"
+    if "generation time" in reason or "MAX_GEN_T" in reason:
+        return "generation-time-limit"
+    return "generation-timeout"
+
+
+def _recola_source_metadata(
+    path: Path,
+    digest: str,
+    cells_by_family: Mapping[str, Sequence[int]],
+) -> dict[str, Any]:
+    return {
+        "kind": "recola-profile-results",
+        "path": str(path.expanduser().resolve(strict=False)),
+        "sha256": digest,
+        "mode": RECOLA_MODE,
+        "label": RECOLA_LABEL,
+        "family_map": dict(RECOLA_FAMILY_MAP),
+        "metrics": {
+            "generation_seconds": "gen_time_s",
+            "warm_seconds_per_point": "run_time_s",
+            "max_rss_kib": (
+                "max(peak_generation_rss_mib, ram_after_generation_mib, "
+                "ram_after_profile_mib) * 1024"
+            ),
+        },
+        "multiplicities": {
+            family: list(multiplicities)
+            for family, multiplicities in cells_by_family.items()
+        },
+    }
+
+
+def _attach_recola_results(report: dict[str, Any], path: Path) -> dict[str, Any]:
+    payload, digest = _load_recola_results(path)
+    results = payload.get("results")
+    if not isinstance(results, Mapping):
+        raise PlotError("Recola results must contain a results object")
+    config = _mapping(payload.get("config"))
+    expected_workload = _helicity_workload(report)
+    config_polarized = config.get("polarized")
+    if isinstance(config_polarized, bool):
+        config_workload = "fixed" if config_polarized else "sum"
+        if config_workload != expected_workload:
+            raise PlotError(
+                f"Recola results are {config_workload} workload but the campaign "
+                f"report is {expected_workload}"
+            )
+    series: dict[str, dict[str, dict[str, Any]]] = {}
+    multiplicities_by_family: dict[str, list[int]] = {family: [] for family in FAMILIES}
+    measured_count = 0
+
+    for raw_family, raw_family_results in results.items():
+        if not isinstance(raw_family_results, Mapping):
+            raise PlotError(f"Recola results family {raw_family!r} must be an object")
+        for raw_n, raw_cell in raw_family_results.items():
+            if raw_cell is None:
+                continue
+            if not isinstance(raw_cell, Mapping):
+                raise PlotError(f"Recola {raw_family}/n={raw_n} must be an object")
+            try:
+                multiplicity = int(raw_n)
+            except (TypeError, ValueError) as error:
+                raise PlotError(
+                    f"Recola multiplicity {raw_family}/n={raw_n!r} is not an integer"
+                ) from error
+            source_family = str(raw_cell.get("family") or raw_family)
+            target_family = RECOLA_FAMILY_MAP.get(source_family)
+            if target_family is None:
+                continue
+            context = f"Recola {source_family}/n={multiplicity}"
+            status = raw_cell.get("status")
+            if status == "limit_reached":
+                reason = raw_cell.get("error")
+                reason_text = (
+                    reason
+                    if isinstance(reason, str) and reason.strip()
+                    else "Recola generation limit reached"
+                )
+                cell_payload = {
+                    "status": "failed",
+                    "label": RECOLA_LABEL,
+                    "failure_category": _recola_failure_category(reason_text),
+                    "failure_reason": reason_text,
+                }
+            else:
+                metrics = _recola_metrics(raw_cell)
+                if not metrics:
+                    continue
+                observed_workload = _recola_cell_workload(
+                    raw_cell,
+                    config,
+                    context=context,
+                )
+                if observed_workload != expected_workload:
+                    raise PlotError(
+                        f"{context} is {observed_workload} workload but the "
+                        f"campaign report is {expected_workload}"
+                    )
+                cell_payload = {
+                    "status": "measured",
+                    "label": RECOLA_LABEL,
+                    "metrics": metrics,
+                    "helicity_workload": observed_workload,
+                    "warm_fixed_helicity": observed_workload == "fixed",
+                    "warm_helicity_sum": observed_workload == "sum",
+                    "process": raw_cell.get("process"),
+                    "helicity": raw_cell.get("helicity"),
+                    "profiled_call": raw_cell.get("profiled_call"),
+                }
+                measured_count += 1
+            series.setdefault(target_family, {})[str(multiplicity)] = cell_payload
+            multiplicities_by_family[target_family].append(multiplicity)
+
+    if measured_count == 0:
+        raise PlotError("Recola results contain no measured cells")
+
+    runtime_series = report.setdefault("runtime_series", {})
+    if not isinstance(runtime_series, dict):
+        raise PlotError("report runtime_series must be an object when present")
+    for family, cells in series.items():
+        family_runtime = runtime_series.setdefault(family, {})
+        if not isinstance(family_runtime, dict):
+            raise PlotError(f"report runtime_series.{family} must be an object")
+        family_cells = _mapping(_mapping(report.get("cells")).get(family))
+        if RECOLA_MODE in family_runtime or RECOLA_MODE in family_cells:
+            raise PlotError(f"external series duplicates {family}/{RECOLA_MODE}")
+        family_runtime[RECOLA_MODE] = {
+            raw_n: cells[raw_n] for raw_n in sorted(cells, key=int)
+        }
+
+    return _recola_source_metadata(
+        path,
+        digest,
+        {
+            family: sorted(set(multiplicities))
+            for family, multiplicities in multiplicities_by_family.items()
+            if multiplicities
+        },
+    )
 
 
 def _series(
@@ -480,7 +864,10 @@ def _plot_policy_notes(
     family: str,
     metric: Metric,
     original_family_cells: Mapping[str, Any],
+    *,
+    visible_modes: Sequence[str] | None = None,
 ) -> list[str]:
+    visible_mode_set = set(visible_modes) if visible_modes is not None else None
     plot = _mapping(_mapping(report.get("policy")).get("plot"))
     notes: list[str] = []
     raw_notes = plot.get("notes")
@@ -493,6 +880,8 @@ def _plot_policy_notes(
 
     grouped: dict[str, list[str]] = {}
     for mode, raw_reason in _metric_series_exclusions(report, family, metric).items():
+        if visible_mode_set is not None and mode not in visible_mode_set:
+            continue
         reason = (
             raw_reason.strip()
             if isinstance(raw_reason, str) and raw_reason.strip()
@@ -504,6 +893,7 @@ def _plot_policy_notes(
     archived_modes = [
         mode
         for mode, maximum in MODE_PUBLICATION_MAX_MULTIPLICITY.items()
+        if visible_mode_set is None or mode in visible_mode_set
         if any(
             int(raw_n) > maximum and _mapping(raw_cell).get("status") == "measured"
             for raw_n, raw_cell in _mapping(original_family_cells.get(mode)).items()
@@ -533,6 +923,69 @@ def _consecutive_runs(
         yield run
 
 
+def _line_selector_modes(lines: Sequence[str]) -> set[str]:
+    modes: set[str] = set()
+    for line in lines:
+        modes.update(PLOT_LINE_SELECTOR_MODES[line])
+    return modes
+
+
+def _filtered_modes(
+    modes: Sequence[str],
+    *,
+    include_lines: Sequence[str] | None,
+    veto_lines: Sequence[str],
+) -> tuple[str, ...]:
+    if include_lines is not None:
+        selected = _line_selector_modes(include_lines)
+        return tuple(mode for mode in modes if mode in selected)
+    vetoed = _line_selector_modes(veto_lines)
+    return tuple(mode for mode in modes if mode not in vetoed)
+
+
+def _visible_modes(
+    modes: Sequence[str],
+    *,
+    line_filters: LineFilterOptions,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    main_modes = _filtered_modes(
+        modes,
+        include_lines=line_filters.main_include_lines,
+        veto_lines=line_filters.main_veto_lines,
+    )
+    ratio_modes = _filtered_modes(
+        modes,
+        include_lines=line_filters.ratio_include_lines,
+        veto_lines=line_filters.ratio_veto_lines,
+    )
+    visible = tuple(
+        mode for mode in modes if mode in set(main_modes) or mode in set(ratio_modes)
+    )
+    return main_modes, ratio_modes, visible
+
+
+def _line_filter_payload(line_filters: LineFilterOptions) -> dict[str, Any]:
+    return {
+        "main": {
+            "include_lines": (
+                None
+                if line_filters.main_include_lines is None
+                else list(line_filters.main_include_lines)
+            ),
+            "veto_lines": list(line_filters.main_veto_lines),
+        },
+        "ratio": {
+            "include_lines": (
+                None
+                if line_filters.ratio_include_lines is None
+                else list(line_filters.ratio_include_lines)
+            ),
+            "veto_lines": list(line_filters.ratio_veto_lines),
+        },
+        "precedence": "include-lines override veto-lines per panel",
+    }
+
+
 def _log_limits(values: Sequence[float]) -> tuple[float, float]:
     low = min(values)
     high = max(values)
@@ -541,6 +994,45 @@ def _log_limits(values: Sequence[float]) -> tuple[float, float]:
     span = math.log10(high) - math.log10(low)
     padding = max(0.10, span * 0.06)
     return 10 ** (math.log10(low) - padding), 10 ** (math.log10(high) + padding)
+
+
+def _linear_limits(values: Sequence[float]) -> tuple[float, float]:
+    low = min(values)
+    high = max(values)
+    if low == high:
+        padding = max(abs(low) * 0.5, 0.5)
+    else:
+        padding = max((high - low) * 0.08, 0.05)
+    return low - padding, high + padding
+
+
+def _main_y_limits(
+    values: Sequence[float], axis_options: AxisOptions
+) -> tuple[float, float]:
+    if axis_options.main_y_range is not None:
+        return axis_options.main_y_range
+    if values:
+        return _log_limits(values)
+    return 0.5, 2.0
+
+
+def _ratio_y_limits(
+    values: Sequence[float], axis_options: AxisOptions
+) -> tuple[float, float]:
+    if axis_options.ratio_y_range is not None:
+        return axis_options.ratio_y_range
+    scale_values = [*values, 1.0]
+    if axis_options.ratio_y_scale == "linear":
+        return _linear_limits(scale_values)
+    return _log_limits(scale_values)
+
+
+def _axis_payload(
+    *,
+    scale: str,
+    limits: tuple[float, float],
+) -> dict[str, Any]:
+    return {"scale": scale, "range": [limits[0], limits[1]]}
 
 
 def _format_n(values: Sequence[int]) -> str:
@@ -705,9 +1197,15 @@ def _plot_metric(
     output_path: Path,
     *,
     dpi: int,
+    axis_options: AxisOptions = DEFAULT_AXIS_OPTIONS,
+    line_filters: LineFilterOptions = DEFAULT_LINE_FILTER_OPTIONS,
 ) -> None:
     original_family_cells = _mapping(_mapping(report.get("cells")).get(family))
     family_cells, modes = _family_cells_for_metric(report, family, metric)
+    main_modes, ratio_modes, visible_modes = _visible_modes(
+        modes,
+        line_filters=line_filters,
+    )
     multiplicities = _multiplicities(report)
     baseline = FAMILY_BASELINES[family]
     report_status = report.get("status")
@@ -720,8 +1218,11 @@ def _plot_metric(
         )
 
     series = {mode: _series(family_cells, mode, metric) for mode in modes}
-    main_values = [value for values in series.values() for _, value in values]
-    if not main_values and not allow_empty:
+    all_main_values = [value for values in series.values() for _, value in values]
+    main_values = [
+        value for mode in main_modes for _, value in series.get(mode, ())
+    ]
+    if not all_main_values and not allow_empty:
         raise PlotError(f"no measured positive {metric.key} values for {family}")
     baseline_values = dict(series.get(baseline, ()))
     ratios: dict[str, list[tuple[int, float]]] = {}
@@ -731,14 +1232,23 @@ def _plot_metric(
             for n, value in values
             if n in baseline_values and baseline_values[n] > 0.0
         ]
-    ratio_values = [value for values in ratios.values() for _, value in values]
-    if not ratio_values and not allow_empty:
+    all_ratio_values = [value for values in ratios.values() for _, value in values]
+    ratio_values = [
+        value for mode in ratio_modes for _, value in ratios.get(mode, ())
+    ]
+    if not all_ratio_values and not allow_empty:
         raise PlotError(f"no ratios can be formed for {family} {metric.key}")
 
     notes = _wrapped_notes(
         [
-            *_status_notes(report, family, modes, family_cells=family_cells),
-            *_plot_policy_notes(report, family, metric, original_family_cells),
+            *_status_notes(report, family, visible_modes, family_cells=family_cells),
+            *_plot_policy_notes(
+                report,
+                family,
+                metric,
+                original_family_cells,
+                visible_modes=visible_modes,
+            ),
         ]
     )
     # Reserve enough space below the ratio axes for its tick labels and x-axis
@@ -764,7 +1274,7 @@ def _plot_metric(
     legend_entries: dict[str, tuple[Line2D, str]] = {}
     for mode in modes:
         color, marker, linestyle = MODE_STYLES.get(mode, ("#59636E", "o", "-"))
-        if series[mode]:
+        if mode in visible_modes and (series[mode] or ratios[mode]):
             legend_entries[mode] = (
                 Line2D(
                     [0],
@@ -778,28 +1288,28 @@ def _plot_metric(
                 ),
                 _label(family_cells, mode),
             )
-        for run in _consecutive_runs(series[mode]):
-            _draw_run(
-                main_axis,
-                run,
-                color=color,
-                marker=marker,
-                linestyle=linestyle,
-            )
-        for run in _consecutive_runs(ratios[mode]):
-            _draw_run(
-                ratio_axis,
-                run,
-                color=color,
-                marker=marker,
-                linestyle=linestyle,
-            )
+        if mode in main_modes:
+            for run in _consecutive_runs(series[mode]):
+                _draw_run(
+                    main_axis,
+                    run,
+                    color=color,
+                    marker=marker,
+                    linestyle=linestyle,
+                )
+        if mode in ratio_modes:
+            for run in _consecutive_runs(ratios[mode]):
+                _draw_run(
+                    ratio_axis,
+                    run,
+                    color=color,
+                    marker=marker,
+                    linestyle=linestyle,
+                )
 
     main_axis.set_yscale("log")
-    if main_values:
-        main_axis.set_ylim(*_log_limits(main_values))
-    else:
-        main_axis.set_ylim(0.5, 2.0)
+    main_axis.set_ylim(*_main_y_limits(main_values, axis_options))
+    if not main_values:
         main_axis.set_yticks([])
         main_axis.text(
             0.5,
@@ -814,9 +1324,9 @@ def _plot_metric(
         )
     main_axis.set_ylabel(_metric_axis_label(report, metric), fontsize=10)
     main_axis.tick_params(axis="x", labelbottom=False)
-    ratio_axis.set_yscale("log")
+    ratio_axis.set_yscale(axis_options.ratio_y_scale)
     ratio_axis.axhline(1.0, color="#59636E", linewidth=0.9, linestyle=":", zorder=1)
-    ratio_axis.set_ylim(*_log_limits([*ratio_values, 1.0]))
+    ratio_axis.set_ylim(*_ratio_y_limits(ratio_values, axis_options))
     ratio_axis.set_ylabel(
         f"Ratio to\n{_label(original_family_cells, baseline)}", fontsize=9
     )
@@ -873,7 +1383,10 @@ def _plot_metric(
         fontsize=15,
         fontweight="semibold",
     )
-    protocol_lines = _protocol_summary_lines(report)
+    protocol_lines = _protocol_summary_lines(
+        report,
+        ratio_y_scale=axis_options.ratio_y_scale,
+    )
     figure.text(
         0.54,
         0.945,
@@ -899,7 +1412,7 @@ def _plot_metric(
             labels,
             loc="upper center",
             bbox_to_anchor=(0.54, 0.91 - 0.011 * len(protocol_lines)),
-            ncol=4 if family == "gg" else 3,
+            ncol=4 if family == "gg" or len(labels) > 6 else 3,
             frameon=False,
             fontsize=8.8,
             handlelength=2.5,
@@ -958,24 +1471,49 @@ def _source_boundary_payload(
 
 
 def _metric_data_payload(
-    report: Mapping[str, Any], family: str, metric: Metric
+    report: Mapping[str, Any],
+    family: str,
+    metric: Metric,
+    *,
+    axis_options: AxisOptions = DEFAULT_AXIS_OPTIONS,
+    line_filters: LineFilterOptions = DEFAULT_LINE_FILTER_OPTIONS,
 ) -> dict[str, Any]:
     family_cells, modes = _family_cells_for_metric(report, family, metric)
+    main_modes, ratio_modes, visible_modes = _visible_modes(
+        modes,
+        line_filters=line_filters,
+    )
     series = {mode: _series(family_cells, mode, metric) for mode in modes}
+    main_values = [
+        value for mode in main_modes for _, value in series.get(mode, ())
+    ]
     baseline = FAMILY_BASELINES[family]
     baseline_values = dict(series.get(baseline, ()))
     mode_payloads: dict[str, Any] = {}
-    for mode in modes:
+    ratio_values: list[float] = []
+    for mode in visible_modes:
         values = series[mode]
         ratios = [
             (n, value / baseline_values[n])
             for n, value in values
             if n in baseline_values and baseline_values[n] > 0.0
         ]
+        if mode in ratio_modes:
+            ratio_values.extend(value for _, value in ratios)
         mode_payloads[mode] = {
             "label": _label(family_cells, mode),
-            "series": [_point_payload(point) for point in values],
-            "ratio_to_baseline": [_point_payload(point) for point in ratios],
+            "visible_in_main": mode in main_modes,
+            "visible_in_ratio": mode in ratio_modes,
+            "series": (
+                [_point_payload(point) for point in values]
+                if mode in main_modes
+                else []
+            ),
+            "ratio_to_baseline": (
+                [_point_payload(point) for point in ratios]
+                if mode in ratio_modes
+                else []
+            ),
         }
     return {
         "source_metric_key": metric.key,
@@ -985,41 +1523,74 @@ def _metric_data_payload(
         "scale_from_report": metric.scale,
         "source_boundary": _source_boundary_payload(report, metric),
         "baseline_mode": baseline,
+        "main_axis": _axis_payload(
+            scale="log",
+            limits=_main_y_limits(main_values, axis_options),
+        ),
+        "ratio_axis": _axis_payload(
+            scale=axis_options.ratio_y_scale,
+            limits=_ratio_y_limits(ratio_values, axis_options),
+        ),
         "modes": mode_payloads,
     }
 
 
 def _plot_data_payload(
-    report_sha256: str, report: Mapping[str, Any]
+    report_sha256: str,
+    report: Mapping[str, Any],
+    *,
+    axis_options: AxisOptions = DEFAULT_AXIS_OPTIONS,
+    line_filters: LineFilterOptions = DEFAULT_LINE_FILTER_OPTIONS,
+    external_sources: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "kind": "pyamplicol-fft-scaling-plot-data",
         "schema_version": 1,
         "report_sha256": report_sha256,
         "helicity_workload": _helicity_workload(report),
+        "line_filters": _line_filter_payload(line_filters),
         "families": {
             family: {
                 "title": FAMILY_TITLES[family],
                 "metrics": {
-                    metric.slug: _metric_data_payload(report, family, metric)
+                    metric.slug: _metric_data_payload(
+                        report,
+                        family,
+                        metric,
+                        axis_options=axis_options,
+                        line_filters=line_filters,
+                    )
                     for metric in METRICS
                 },
             }
             for family in FAMILIES
         },
     }
+    if external_sources:
+        payload["external_sources"] = dict(external_sources)
+    return payload
 
 
 def _write_plot_data(
     report_sha256: str,
     report: Mapping[str, Any],
     output_directory: Path,
+    *,
+    axis_options: AxisOptions = DEFAULT_AXIS_OPTIONS,
+    line_filters: LineFilterOptions = DEFAULT_LINE_FILTER_OPTIONS,
+    external_sources: Mapping[str, Any] | None = None,
 ) -> Path:
     data_path = output_directory / PLOT_DATA_NAME
     temporary_path = data_path.with_suffix(data_path.suffix + ".tmp")
     temporary_path.write_text(
         json.dumps(
-            _plot_data_payload(report_sha256, report),
+            _plot_data_payload(
+                report_sha256,
+                report,
+                axis_options=axis_options,
+                line_filters=line_filters,
+                external_sources=external_sources,
+            ),
             indent=2,
             sort_keys=True,
             allow_nan=False,
@@ -1044,7 +1615,14 @@ def _configure_matplotlib() -> None:
     )
 
 
-def _render(report: Mapping[str, Any], output_directory: Path, *, dpi: int) -> None:
+def _render(
+    report: Mapping[str, Any],
+    output_directory: Path,
+    *,
+    dpi: int,
+    axis_options: AxisOptions = DEFAULT_AXIS_OPTIONS,
+    line_filters: LineFilterOptions = DEFAULT_LINE_FILTER_OPTIONS,
+) -> None:
     if dpi < 72 or dpi > 600:
         raise PlotError("--dpi must be between 72 and 600")
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -1052,7 +1630,15 @@ def _render(report: Mapping[str, Any], output_directory: Path, *, dpi: int) -> N
     for family in FAMILIES:
         for metric in METRICS:
             output_path = output_directory / f"fullcolor-{family}-{metric.slug}.png"
-            _plot_metric(report, family, metric, output_path, dpi=dpi)
+            _plot_metric(
+                report,
+                family,
+                metric,
+                output_path,
+                dpi=dpi,
+                axis_options=axis_options,
+                line_filters=line_filters,
+            )
             print(output_path)
 
 
@@ -1068,6 +1654,8 @@ def _write_plot_manifest(
     report_sha256: str,
     report: Mapping[str, Any],
     output_directory: Path,
+    *,
+    external_sources: Mapping[str, Any] | None = None,
 ) -> Path:
     """Bind a rendered plot set to its exact source report and workload."""
 
@@ -1084,6 +1672,8 @@ def _write_plot_manifest(
         "helicity_workload": _helicity_workload(report),
         "plots": plot_hashes,
     }
+    if external_sources:
+        manifest["external_sources"] = dict(external_sources)
     manifest_path = output_directory / PLOT_MANIFEST_NAME
     temporary_path = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
     temporary_path.write_text(
@@ -1098,17 +1688,35 @@ def _write_plot_manifest(
 def main() -> int:
     arguments = _parser().parse_args()
     try:
+        axis_options = _axis_options_from_arguments(arguments)
+        line_filters = _line_filter_options_from_arguments(arguments)
         report, report_sha256 = _load_report_snapshot(arguments.report)
-        _render(report, arguments.output_directory, dpi=arguments.dpi)
+        external_sources: dict[str, Any] = {}
+        if arguments.recola_results is not None:
+            external_sources["recola_results"] = _attach_recola_results(
+                report,
+                arguments.recola_results,
+            )
+        _render(
+            report,
+            arguments.output_directory,
+            dpi=arguments.dpi,
+            axis_options=axis_options,
+            line_filters=line_filters,
+        )
         _write_plot_manifest(
             report_sha256,
             report,
             arguments.output_directory,
+            external_sources=external_sources,
         )
         _write_plot_data(
             report_sha256,
             report,
             arguments.output_directory,
+            axis_options=axis_options,
+            line_filters=line_filters,
+            external_sources=external_sources,
         )
     except PlotError as error:
         print(f"error: {error}", file=sys.stderr)
