@@ -3459,6 +3459,12 @@ class RunCard(ConfigFile):
         else:
             return value
 
+    def mod_inc_iseed(self, value):
+        """A negative iseed in the run_card is preserved across runs (so the
+        same seed can be reused), but the Fortran code expects a non-negative
+        seed, so export the absolute value to the include file."""
+        return abs(value)
+
     def edit_dummy_fct_from_file(self, filelist, outdir):
         """
         filelist is a list of input files (given by the user)
@@ -4355,6 +4361,10 @@ class RunCardLO(RunCard):
         self.add_param("time_of_flight", -1.0, include=False)
         self.add_param("nevents", 10000)        
         self.add_param("allow_overshoot_events", False, hidden=True, include=False, comment="allow to write more events than requested instead of trashing the last ones.")
+        self.add_param("nb_unweight_output", 1, hidden=True, include=False,
+                       comment="number of files the final unweighting writes the events to. 1 (default) writes the single unweighted_events.lhe; a larger value spreads the events (round-robin) over unweighted_events_0.lhe, unweighted_events_1.lhe, ... which lets that many consumers read them in parallel without each having to scan the full file.")
+        self.add_param("zip_unweighted_events", True, hidden=True, include=False,
+                       comment="gzip the final unweighted event file(s). Set to False when the events are consumed immediately (compressing them is then a pure waste of time).")
         self.add_param("iseed", 0)
         self.add_param("bypass_check", [], typelist=str, include=False, hidden=True,
                        allowed=['partonshower'], comment="list of check that can be bypassed manually.")
@@ -4448,7 +4458,7 @@ class RunCardLO(RunCard):
         self.add_param("bwcutoff", 15.0)
         self.add_param("cut_decays", False, cut='d')
         self.add_param('dsqrt_shat',0., cut=True)
-        self.add_param('dsqrt_shatmax', -1, cut=True) 
+        self.add_param('dsqrt_shatmax', -1.0, cut=True) 
         self.add_param("nhel", 0, include=False)
         self.add_param("limhel", 1e-8, hidden=True, comment="threshold to determine if an helicity contributes when not MC over helicity.")
         #pt cut
@@ -4991,7 +5001,7 @@ class RunCardLO(RunCard):
                 # UPC for p p collision
                 elif beam_id == [[22],[22]]:
                     self['lpp1'] = 2
-                    self['lpp1'] = 2
+                    self['lpp2'] = 2
                     self['ebeam1'] = '6500'
                     self['ebeam2'] = '6500'
                     self['pdlabel'] = 'edff'

@@ -1255,10 +1255,13 @@ class CheckValidForCmd(cmd.CheckCmd):
 #                raise self.InvalidCmd('Polarization restriction can not be used for generic NLO computations')
 
             def check(p):
-                if p.get('color') != 1:
-                    raise self.InvalidCmd('Polarization restriction can not be used for color charged particles')
-                elif p.get('mass') != 'ZERO':
-                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles') 
+                # Polarisation restriction can now be used for color charged
+                # particles, so there is no longer a color check here. The mass
+                # restriction is independent of the color one and must stay
+                # outside it -- keeping it in an "elif" would have silently
+                # exempted massive color-charged particles.
+                if p.get('mass') != 'ZERO':
+                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles')
  
 
 
@@ -2826,7 +2829,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 return self.list_completion(text, ['f77','g77','gfortran','default'])
             elif args[1] == 'cpp_compiler':
                 return self.list_completion(text, ['g++', 'c++', 'clang', 'default'])
-            elif args[1] == 'nb_core':
+            elif args[1] in ['nb_core', 'nb_core_pythia8', 'nb_core_delphes']:
                 return self.list_completion(text, [str(i) for i in range(100)] + ['default'] )
             elif args[1] == 'run_mode':
                 return self.list_completion(text, [str(i) for i in range(3)] + ['default'])
@@ -3252,6 +3255,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     options_madevent = {'automatic_html_opening':True,
                          'run_mode':2,
                          'nb_core': None,
+                         'nb_core_pythia8': None,
+                         'nb_core_delphes': None,
                          'notification_center': True
                          }
 
@@ -7507,13 +7512,13 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         if mode == 'mg5_start':
             timeout = 2
             default = 'n'
-            update_delay = self.options['auto_update'] * 24 * 3600
+            update_delay = float(self.options['auto_update']) * 24 * 3600
             if update_delay == 0:
                 return
         elif mode == 'mg5_end':
             timeout = 5
             default = 'n'
-            update_delay = self.options['auto_update'] * 24 * 3600
+            update_delay = float(self.options['auto_update']) * 24 * 3600
             if update_delay == 0:
                 return
             options.remove('on_exit')
@@ -9301,6 +9306,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             self.options['nb_core'] = int(args[0])
        
     
+    def set2_nb_core_pythia8(self, args, log=True):
+        """Set the number of cores/jobs used by the Pythia8 step only.
+        Falls back to the global nb_core option when left to None.
+        Example: set nb_core_pythia8 8
+        """
+        return self.set_default('nb_core_pythia8', args, log=log)
+
+    def set2_nb_core_delphes(self, args, log=True):
+        """Set the number of cores/jobs used by the Delphes step only.
+        Falls back to the global nb_core option when left to None.
+        Example: set nb_core_delphes 8
+        """
+        return self.set_default('nb_core_delphes', args, log=log)
+
     def set2_cluster_type(self, args, log=True):
         """Set the cluster type to be used for cluster jobs submission.
         Example: set cluster_type condor

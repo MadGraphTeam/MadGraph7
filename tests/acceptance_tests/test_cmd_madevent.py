@@ -2218,8 +2218,21 @@ C
         self.cmd_line.exec_cmd('decay_events run_01 -f')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
-        target = 440.779
-        self.assertTrue(misc.equal(target, val1, 4*err1))          
+        # Not the production 440.779 any more. BR(t -> w+ b) is 1 to seven
+        # digits, so the decayed cross-section used to be the production one --
+        # but MadSpin draws the top's virtuality only inside +- BW_cut widths of
+        # the pole and now says so: the reported sigma carries the fraction of
+        # the Breit-Wigner that window keeps. One top is decayed here (t~ is not
+        # in the card and MadSpin does not auto-conjugate), so the factor is a
+        # single bw_retained_fraction(173.0, 1.491257, 15) = 0.9786983 and
+        # 440.779 -> 431.39, i.e. -2.13%.
+        #
+        # The 4*err1 band is +-4.3% on a 100-event run, so the old number still
+        # fitted inside it. That is exactly why it is updated rather than left:
+        # a tolerance wide enough to hide a systematic shift is not a check that
+        # the shift is right.
+        target = 431.39
+        self.assertTrue(misc.equal(target, val1, 4*err1))
              
         
         
@@ -3538,6 +3551,131 @@ set draw_rivet_plots True
         cmd.run_cmd('launch -f')
         
         self.check_parton_output(cross=15.73, error=0.04)
+
+    def _get_delphes_path(self):
+        """Return the configured delphes_path from the MG5 configuration, or
+        None when Delphes is not configured (used to skip the parallel-Delphes
+        acceptance test on setups without Delphes/ROOT)."""
+        config = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
+        if not os.path.exists(config):
+            return None
+        for line in open(config):
+            line = line.split('#', 1)[0]
+            if '=' in line:
+                key, value = line.split('=', 1)
+                if key.strip() == 'delphes_path':
+                    value = value.strip()
+                    if value and value.lower() != 'none':
+                        return value
+        return None
+
+    def test_pythia8_delphes_parallel(self):
+        """Fused parallel-Delphes path: a multicore Pythia8 + Delphes run should
+        run Delphes on the individual Pythia8 splits and combine the ROOT files
+        with hadd, keeping every showered event exactly once (normalization)."""
+
+        delphes_path = self._get_delphes_path()
+        if not (delphes_path and os.environ.get('ROOTSYS') and
+                os.path.exists(pjoin(delphes_path, 'DelphesHepMC2'))):
+            raise unittest.SkipTest('Delphes/ROOT not available')
+
+        try:
+            shutil.rmtree('/tmp/MGPROCESS/')
+        except Exception:
+            pass
+
+        # nb_core 2 with 400 events forces exactly 2 Pythia8 splits (the
+        # min_n_events_per_job=100 security clamp keeps 400//100=4 capped to 2);
+        # run_mode defaults to 2 (multicore). Setting nb_core_delphes activates
+        # the fused parallel-Delphes path (Delphes runs on each split, then the
+        # ROOT files are combined with hadd).
+        nevents = 400
+        cmd = """import model sm
+        set automatic_html_opening False --no_save
+        set notification_center False --no_save
+        set nb_core 2
+        set nb_core_delphes 2
+        generate p p > e+ e-
+        output madevent %s -f
+        launch
+        shower=pythia8
+        detector=Delphes
+        analysis=off
+        set mpi off
+        set use_syst False
+        set event_norm average
+        set nevents %d
+        set HEPMCoutput:file hepmc.gz
+        launch -i
+        delphes run_01 --tag=single
+        """ % (self.run_dir, nevents)
+        open(pjoin(self.path, 'mg5_cmd'), 'w').write(cmd)
+
+        if logging.getLogger('madgraph').level <= 20:
+            stdout = None
+            stderr = None
+        else:
+            devnull = open(os.devnull, 'w')
+            stdout = devnull
+            stderr = devnull
+        ret = subprocess.call([pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'),
+                               pjoin(self.path, 'mg5_cmd')],
+                              stdout=stdout, stderr=stderr)
+        # Without this a failed run only shows up further down as
+        # "TypeError: 'NoneType' object is not subscriptable" out of
+        # load_result, because HTML/results.pkl was never written.
+        self.assertEqual(ret, 0, 'mg5_aMC run failed (rc=%s)' % ret)
+
+        # Parton level (the same lhe drives every split) and Pythia8 output.
+        self.check_parton_output(target_event=nevents)
+        self.check_pythia_output()
+
+        # Two Delphes outputs of the *same* showered events:
+        #   - tag_1_delphes_events.root : fused (Delphes per split -> hadd),
+        #   - single_delphes_events.root: standard single Delphes pass on the
+        #     merged HepMC (the 'delphes run_01 --tag=single' command above).
+        # They must be equivalent: same number of events and same total weight
+        # (this is the real normalization check for the fused path).
+        eventdir = pjoin(self.run_dir, 'Events', 'run_01')
+        fused_root = pjoin(eventdir, 'tag_1_delphes_events.root')
+        single_root = pjoin(eventdir, 'single_delphes_events.root')
+        self.assertTrue(os.path.exists(fused_root), 'no fused Delphes ROOT produced')
+        self.assertTrue(os.path.exists(single_root), 'no single-core Delphes ROOT produced')
+        self.assertGreater(os.path.getsize(fused_root), 0)
+
+        # PyROOT is bundled with ROOT but its bindings may not import under the
+        # test interpreter; when available, compare the two samples directly.
+        try:
+            import ROOT
+        except ImportError:
+            ROOT = None
+        if ROOT is not None:
+            ROOT.gErrorIgnoreLevel = ROOT.kError
+
+            def read(path):
+                tfile = ROOT.TFile.Open(path)
+                tree = tfile.Get('Delphes')
+                self.assertIsNotNone(tree)
+                n = int(tree.GetEntries())
+                total = 0.0
+                try:
+                    for event in tree:
+                        total += event.Event.At(0).Weight
+                except Exception:
+                    total = None  # branch layout differs; fall back to counts
+                tfile.Close()
+                return n, total
+
+            n_fused, w_fused = read(fused_root)
+            n_single, w_single = read(single_root)
+            # Same events processed either way: no loss or duplication from hadd.
+            self.assertGreater(n_fused, 0)
+            self.assertEqual(n_fused, n_single)
+            # Same absolute normalization: the per-split HepMC weights are the
+            # ones the single pass sees on the merged file, so the totals match.
+            if w_fused is not None and w_single is not None:
+                self.assertAlmostEqual(w_fused, w_single,
+                                       delta=1e-6 * abs(w_single) + 1e-30)
 
 
 #===============================================================================
