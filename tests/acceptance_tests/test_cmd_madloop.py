@@ -14,6 +14,7 @@
 ################################################################################
 from __future__ import division
 from __future__ import absolute_import
+import glob
 import subprocess
 import unittest
 import os
@@ -33,6 +34,7 @@ import madgraph.interface.master_interface as MGCmd
 import madgraph.interface.amcatnlo_run_interface as NLOCmd
 import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.various.misc as misc
+import madgraph.core.color_amp as color_amp
 import tests.IOTests as IOTests
 import madgraph.various.lhe_parser as lhe_parser
 
@@ -269,6 +271,33 @@ class TestCmdLoop(unittest.TestCase):
         self.assertIn('not allowed in the output path', str(ctx.exception))
         self.assertNotIn('No processes generated', str(ctx.exception))
         self.assertTrue(self.interface._curr_amps)
+
+    def test_loop_nc_memo_not_poisoned_across_generations(self):
+        """Two loop generations in one process. The first one runs with
+        compute_loop_nc=False; it must not pin loop_Nc_power in the
+        process-wide color memo for the loop-induced generation that follows,
+        which needs the real value to write coloramps.inc.
+
+        Value-level discrimination lives in the unit test
+        (test_color_amp.LoopNcMemoTest); this one guards the reported crash."""
+
+        # The poisoning generation must be the one that fills the memo: if a
+        # good value lands first the poisoning is inert and this test would
+        # pass on a broken tree.
+        color_amp.ColorBasis._canonical_dict.clear()
+
+        self.do('import model loop_sm')
+        self.do('generate g g > h [sqrvirt=QCD]')
+        self.do('output standalone_fortran %s -f' % pjoin(self.tmpdir, 'sqrvirt'))
+
+        self.do('generate g g > h [noborn=QCD]')
+        self.do('output madevent %s -f' % pjoin(self.tmpdir, 'noborn'))
+
+        coloramps = glob.glob(pjoin(self.tmpdir, 'noborn', 'SubProcesses',
+                                    'P*', 'coloramps.inc'))
+        self.assertTrue(coloramps)
+        for f in coloramps:
+            self.assertIn('ICOLAMP', open(f).read())
 
     def test_ML_check_full_epem_ttx(self):
         """ Test that check full e+ e- > t t~ works fine """
