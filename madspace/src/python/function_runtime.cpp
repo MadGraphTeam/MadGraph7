@@ -16,12 +16,20 @@ struct ManagerContext {
     std::vector<int64_t> stride;
     std::vector<int64_t> batch_sizes;
     Tensor tensor;
+    std::uintptr_t stream = 0;
 };
 
-void deleter(struct DLManagedTensor* self) {
-    delete static_cast<ManagerContext*>(self->manager_ctx);
+void deleter(struct DLManagedTensor* self) noexcept {
+    ManagerContext* context = static_cast<ManagerContext*>(self->manager_ctx);
+    context->tensor.reset_on_stream(context->stream);
+    delete context;
     delete self;
 };
+
+std::uintptr_t consumer_stream(std::optional<std::int64_t> stream) {
+    // no stream, 1 (legacy default) and -1 (unsynchronized) all mean the null stream
+    return !stream || *stream <= 1 ? 0 : static_cast<std::uintptr_t>(*stream);
+}
 
 Runtime* get_runtime(FunctionRuntime& func_runtime, DevicePtr expected_device) {
     Runtime* runtime;
@@ -105,7 +113,6 @@ py::object madspace_py::tensor_to_dlpack(
     std::optional<std::tuple<int, int>> dl_device,
     std::optional<bool> copy
 ) {
-    // TODO: honor the stream argument
     if (!tensor) {
         return py::none();
     }
@@ -152,7 +159,8 @@ py::object madspace_py::tensor_to_dlpack(
             {tensor.shape().begin(), tensor.shape().end()},
             {tensor.stride().begin(), tensor.stride().end()},
             {},
-            tensor
+            tensor,
+            consumer_stream(stream)
         };
         auto [device_type, device_id] = dlpack_device(tensor);
         dl_tensor = new DLManagedTensor{

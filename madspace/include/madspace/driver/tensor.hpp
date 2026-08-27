@@ -203,6 +203,7 @@ public:
     virtual std::pair<void*, Tensor>
     allocate(std::size_t size, AllocHint hint) const = 0;
     virtual void free(void* ptr) const = 0;
+    virtual void free_on_stream(void* ptr, std::uintptr_t stream) const { free(ptr); }
     virtual void memcpy(void* to, void* from, std::size_t size) const = 0;
     virtual void tensor_copy(const Tensor& source, Tensor& target) const = 0;
     virtual void tensor_zero(Tensor& tensor) const = 0;
@@ -499,13 +500,7 @@ public:
 
     std::size_t byte_size() const { return dtype_size() * shape().product(); }
 
-    void reset() {
-        if (impl == nullptr) {
-            return;
-        }
-        impl->reset(*impl->device);
-        impl = nullptr;
-    }
+    void reset() { reset_on_stream(0); }
 
     template <typename D>
     void reset(const D& device) {
@@ -513,6 +508,14 @@ public:
             return;
         }
         impl->reset(device);
+        impl = nullptr;
+    }
+
+    void reset_on_stream(std::uintptr_t stream) {
+        if (impl == nullptr) {
+            return;
+        }
+        impl->reset_on_stream(stream);
         impl = nullptr;
     }
 
@@ -634,6 +637,7 @@ private:
         Sizes stride;
         std::size_t contiguous_dims;
         SizeVec batch_sizes;
+        bool stream_ordered = false;
 
         template <typename D>
         void reset(const D& device) {
@@ -645,6 +649,25 @@ private:
                 --Tensor::tensor_count;
             } else if (data_owner != nullptr) {
                 data_owner->reset(device);
+            } else if (external_reset) {
+                (*external_reset)();
+            }
+            delete this;
+        }
+
+        void reset_on_stream(std::uintptr_t stream) {
+            if (ref_count.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+                return;
+            }
+            if (owns_data && data != nullptr) {
+                if (stream_ordered) {
+                    device->free_on_stream(data, stream);
+                } else {
+                    device->free(data);
+                }
+                --Tensor::tensor_count;
+            } else if (data_owner != nullptr) {
+                data_owner->reset_on_stream(stream);
             } else if (external_reset) {
                 (*external_reset)();
             }
@@ -677,6 +700,9 @@ private:
             impl->data_owner = parent.impl;
         } else if (data != nullptr) {
             ++tensor_count;
+            if constexpr (requires { D::stream_ordered_alloc; }) {
+                impl->stream_ordered = D::stream_ordered_alloc;
+            }
         }
     }
 

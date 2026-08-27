@@ -21,6 +21,11 @@ void GpuDevice::free(void* ptr) const {
     check_error(gpuFree(ptr));
 }
 
+void GpuDevice::free_on_stream(void* ptr, std::uintptr_t stream) const {
+    activate();
+    check_error(gpuFreeAsync(ptr, reinterpret_cast<gpuStream_t>(stream)));
+}
+
 void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
     activate();
     check_error(gpuMemcpy(to, from, size, gpuMemcpyDefault));
@@ -123,7 +128,7 @@ MemPool::~MemPool() {
             for (auto& [size, item] : stream_free_pointers) {
                 auto& [ptr, parent] = item;
                 if (!parent) {
-                    check_error(gpuFree(ptr));
+                    _device.free_on_stream(ptr, 0);
                 }
             }
         }
