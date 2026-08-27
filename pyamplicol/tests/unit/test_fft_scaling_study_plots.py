@@ -638,7 +638,7 @@ def test_final_series_palette_line_styles_and_legend_grouping() -> None:
     )
 
 
-def test_final_publication_caps_otf_curves_at_n6() -> None:
+def test_renderer_includes_measured_otf_cells_beyond_default_frontier() -> None:
     family_cells = {
         mode: {
             str(n): {
@@ -656,20 +656,23 @@ def test_final_publication_caps_otf_curves_at_n6() -> None:
     }
 
     assert plots._series(family_cells, "otf-direct", plots.METRICS[1]) == [
-        (6, 6.0)
+        (6, 6.0),
+        (7, 7.0),
     ]
-    assert plots._series(family_cells, "otf-fft", plots.METRICS[1]) == [(6, 6.0)]
+    assert plots._series(family_cells, "otf-fft", plots.METRICS[1]) == [
+        (6, 6.0),
+        (7, 7.0),
+    ]
     assert plots._series(family_cells, "recurrence-fft", plots.METRICS[1]) == [
         (6, 6.0),
         (7, 7.0),
     ]
-    assert plots._plot_policy_notes(
-        _report(None), "ddbar", plots.METRICS[1], family_cells
-    ) == [
-        "pyAmpliCol - OTF, pyAmpliCol - OTF - FFT: final publication shown "
-        "through n=6; higher-n source measurements remain archived and are "
-        "omitted."
-    ]
+    assert (
+        plots._plot_policy_notes(
+            _report(None), "ddbar", plots.METRICS[1], family_cells
+        )
+        == []
+    )
 
 
 def test_madgraph_external_series_is_added_to_all_three_metrics() -> None:

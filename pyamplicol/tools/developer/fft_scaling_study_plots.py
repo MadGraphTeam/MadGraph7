@@ -152,10 +152,6 @@ LEGEND_MODE_ORDER = {
 }
 STATUS_ORDER = {"failed": 0, "not-applicable": 1, "skipped": 2}
 PROVISIONAL_WARM_STATUS = "excluded-provisional-warm-quality"
-MODE_PUBLICATION_MAX_MULTIPLICITY = {
-    "otf-direct": 6,
-    "otf-fft": 6,
-}
 EXIT_STATUS = re.compile(r"command failed with status\s+(-?\d+)")
 PLOT_MANIFEST_NAME = "plot-manifest.json"
 PLOT_DATA_NAME = "plot-data.json"
@@ -749,9 +745,6 @@ def _series(
     values: list[tuple[int, float]] = []
     for raw_n, raw_cell in _mapping(family_cells.get(mode)).items():
         multiplicity = int(raw_n)
-        maximum = MODE_PUBLICATION_MAX_MULTIPLICITY.get(mode)
-        if maximum is not None and multiplicity > maximum:
-            continue
         cell = _mapping(raw_cell)
         if cell.get("status") != "measured":
             continue
@@ -890,23 +883,6 @@ def _plot_policy_notes(
         grouped.setdefault(reason, []).append(_label(original_family_cells, mode))
     for reason, labels in grouped.items():
         notes.append(f"{', '.join(labels)}: {metric.title.lower()} omitted ({reason}).")
-    archived_modes = [
-        mode
-        for mode, maximum in MODE_PUBLICATION_MAX_MULTIPLICITY.items()
-        if visible_mode_set is None or mode in visible_mode_set
-        if any(
-            int(raw_n) > maximum and _mapping(raw_cell).get("status") == "measured"
-            for raw_n, raw_cell in _mapping(original_family_cells.get(mode)).items()
-        )
-    ]
-    if archived_modes:
-        labels = ", ".join(
-            _label(original_family_cells, mode) for mode in archived_modes
-        )
-        notes.append(
-            f"{labels}: final publication shown through n=6; higher-n source "
-            "measurements remain archived and are omitted."
-        )
     return notes
 
 
@@ -1101,9 +1077,6 @@ def _status_notes(
         grouped: dict[tuple[str, str], list[int]] = {}
         for raw_n, raw_cell in _mapping(family_cells.get(mode)).items():
             multiplicity = int(raw_n)
-            maximum = MODE_PUBLICATION_MAX_MULTIPLICITY.get(mode)
-            if maximum is not None and multiplicity > maximum:
-                continue
             cell = _mapping(raw_cell)
             status = cell.get("status")
             if status not in STATUS_ORDER:
