@@ -17,13 +17,13 @@ std::pair<void*, Tensor> GpuDevice::allocate(std::size_t size, AllocHint hint) c
 }
 
 void GpuDevice::free(void* ptr) const {
-    activate();
-    check_error(gpuFree(ptr));
+    ignore_error(gpuSetDevice(_index));
+    ignore_error(gpuFree(ptr));
 }
 
 void GpuDevice::free_on_stream(void* ptr, std::uintptr_t stream) const {
-    activate();
-    check_error(gpuFreeAsync(ptr, reinterpret_cast<gpuStream_t>(stream)));
+    ignore_error(gpuSetDevice(_index));
+    ignore_error(gpuFreeAsync(ptr, reinterpret_cast<gpuStream_t>(stream)));
 }
 
 void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {

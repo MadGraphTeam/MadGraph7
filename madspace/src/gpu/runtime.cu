@@ -1516,7 +1516,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
             check_error(gpublasCreate(&handle));
             return handle;
         },
-        [](gpublasHandle_t handle) { check_error(gpublasDestroy(handle)); }
+        [](gpublasHandle_t handle) { ignore_error(gpublasDestroy(handle)); }
     ),
     _gpurand_generator(
         context->thread_pool(),
@@ -1527,7 +1527,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
             check_error(gpurandSetPseudoRandomGeneratorSeed(handle, rand_dev()));
             return handle;
         },
-        [](gpurandGenerator_t handle) { check_error(gpurandDestroyGenerator(handle)); }
+        [](gpurandGenerator_t handle) { ignore_error(gpurandDestroyGenerator(handle)); }
     ),
     _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
     _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }) {
@@ -1790,7 +1790,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         },
         [](auto& streams) {
             for (auto item : streams) {
-                check_error(gpuStreamDestroy(item));
+                ignore_error(gpuStreamDestroy(item));
             }
         }
     );
@@ -1806,7 +1806,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         },
         [](auto& events) {
             for (auto item : events) {
-                check_error(gpuEventDestroy(item));
+                ignore_error(gpuEventDestroy(item));
             }
         }
     );

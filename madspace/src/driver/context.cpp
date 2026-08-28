@@ -99,8 +99,11 @@ MatrixElementApi::MatrixElementApi(
         void* instance;
         check_umami_status(_initialize(&instance, param_card.c_str()));
         return InstanceType(instance, [this, device](void* proc) {
-            device->activate();
-            _free(proc);
+            try {
+                device->activate();
+                _free(proc);
+            } catch (...) {
+            }
         });
     });
 }
@@ -349,7 +352,7 @@ ContextPtr madspace::default_hip_context(std::size_t index) {
 }
 
 ContextPtr madspace::default_device_context(DevicePtr device) {
-    static std::unordered_map<DevicePtr, ContextPtr> default_contexts;
+    static auto& default_contexts = *new std::unordered_map<DevicePtr, ContextPtr>;
     if (auto search = default_contexts.find(device); search != default_contexts.end()) {
         return search->second;
     } else {
