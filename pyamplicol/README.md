@@ -228,7 +228,10 @@ unfinished cells, and skips completed cells;
 `--resume` is an explicit alias for that default. `--cores` is the total
 scheduler budget, while `--candidate-cores` is one candidate child's core
 claim and evaluator setting. The memory and time limits are strict per-child
-cutoffs. Use `--output PATH` for an independent run directory. `--refresh`
+cutoffs. `--retry` reruns only failed/skipped cells in the active selection.
+`--overwrite` reruns every selected cell and replaces each old result only when
+that cell's worker is about to launch; queued or blocked cells retain their old
+results. Use `--output PATH` for an independent run directory. `--refresh`
 removes only that exact recognized output directory and restarts it, so a
 custom output also scopes the refresh; a path that does not exist simply starts
 cleanly. Without `--output`, fixed and summed

@@ -147,6 +147,9 @@ class RenderSelection:
     overlay: Path | None
 
 
+CellIdentity = tuple[str, str, int]
+
+
 SHARDS = (
     Shard("gg-reference", "gg", ("reference-fft",), ("reference-fft",), None, 1, False),
     Shard("ddbar-amplicol", "ddbar", ("amplicol",), ("amplicol",), None, 1, False),
@@ -315,12 +318,21 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explicit alias for the default automatic resume behavior",
     )
-    parser.add_argument(
+    rerun = parser.add_mutually_exclusive_group()
+    rerun.add_argument(
         "--retry",
         action="store_true",
         help=(
             "rerun failed/skipped cells in the current --families/--lines/"
             "--multiplicities selection without refreshing the whole output"
+        ),
+    )
+    rerun.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "rerun every cell in the current --families/--lines/--multiplicities "
+            "selection, replacing each old result only when its worker starts"
         ),
     )
     parser.add_argument(
@@ -697,7 +709,7 @@ def _shard_modes(
 def _counted_owned_modes(
     arguments: argparse.Namespace, run_directory: Path, shard: Shard
 ) -> tuple[str, ...]:
-    if arguments.retry:
+    if arguments.retry or arguments.overwrite:
         return _line_selected_owned_modes(arguments, run_directory, shard)
     return _shard_owned_modes(arguments, run_directory, shard)
 
@@ -705,7 +717,7 @@ def _counted_owned_modes(
 def _scheduled_shards(
     arguments: argparse.Namespace, run_directory: Path
 ) -> tuple[Shard, ...]:
-    if not arguments.retry:
+    if not (arguments.retry or arguments.overwrite):
         return _requested_shards(arguments, run_directory)
     return tuple(
         shard
@@ -728,6 +740,10 @@ def _work_run_id(work: ShardWork) -> str:
     if not _work_split_path(work):
         return _shard_run_id(work.shard, work.final_multiplicity)
     return f"{work.shard.name}-{work.owned_mode}-n{work.final_multiplicity}"
+
+
+def _work_identity(work: ShardWork) -> CellIdentity:
+    return (work.shard.family, work.owned_mode, work.final_multiplicity)
 
 
 def _shard_cell_root(
@@ -1154,10 +1170,15 @@ def _validate_arguments(arguments: argparse.Namespace) -> None:
     _normalize_executables(arguments)
     if arguments.refresh:
         _reject_refresh_symlinks(_configured_run_path(arguments))
-    if arguments.retry and arguments.refresh:
-        raise ProfilingError("--retry is a targeted alternative to --refresh")
-    if arguments.retry and (arguments.render or arguments.status):
-        raise ProfilingError("--retry is valid only for profiling runs")
+    targeted_rerun = arguments.retry or arguments.overwrite
+    if targeted_rerun and arguments.refresh:
+        raise ProfilingError(
+            "--retry/--overwrite are targeted alternatives to --refresh"
+        )
+    if targeted_rerun and (arguments.render or arguments.status):
+        raise ProfilingError(
+            "--retry/--overwrite are valid only for profiling runs"
+        )
     if arguments.candidate_cores > arguments.cores:
         raise ProfilingError("--candidate-cores cannot exceed --cores")
     if arguments.dpi < 72 or arguments.dpi > 600:
@@ -2062,13 +2083,13 @@ def _report_modes_for_shard(report: Mapping[str, Any], shard: Shard) -> tuple[st
     return tuple(mode for mode in shard.modes if mode in family_cells)
 
 
-def _remove_retry_cells_from_report(
-    arguments: argparse.Namespace,
-    run_directory: Path,
+def _remove_selected_cells_from_report(
     shard: Shard,
     report: dict[str, Any],
     *,
+    modes: Sequence[str],
     multiplicities: Sequence[int],
+    statuses: frozenset[str] | None,
 ) -> set[tuple[str, str, int]]:
     removed: set[tuple[str, str, int]] = set()
     cells = report.get("cells")
@@ -2077,7 +2098,7 @@ def _remove_retry_cells_from_report(
     family_cells = cells.get(shard.family)
     if not isinstance(family_cells, Mapping):
         return removed
-    for mode in _counted_owned_modes(arguments, run_directory, shard):
+    for mode in modes:
         curve = family_cells.get(mode)
         if not isinstance(curve, dict):
             continue
@@ -2086,10 +2107,63 @@ def _remove_retry_cells_from_report(
             cell = curve.get(raw_n)
             if (
                 isinstance(cell, Mapping)
-                and cell.get("status") in RETRYABLE_CELL_STATUSES
+                and (statuses is None or cell.get("status") in statuses)
             ):
                 del curve[raw_n]
                 removed.add((shard.family, mode, final_multiplicity))
+    return removed
+
+
+def _rewrite_selected_report(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    shard: Shard,
+    path: Path,
+    *,
+    final_multiplicity: int | None,
+    modes: Sequence[str],
+    multiplicities: Sequence[int],
+    statuses: frozenset[str] | None,
+    context: str,
+) -> set[tuple[str, str, int]]:
+    if not path.is_file():
+        return set()
+    report = _load_json(path, context=context)
+    report_modes = _report_modes_for_shard(report, shard)
+    selected_modes = tuple(mode for mode in modes if mode in report_modes)
+    if not selected_modes:
+        return set()
+    _validate_shard_report(
+        arguments,
+        run_directory,
+        shard,
+        report,
+        context=context,
+        final_multiplicity=final_multiplicity,
+        modes=report_modes,
+        allow_partial_modes=True,
+    )
+    study.normalize_loaded_failure_cells(report, path.parent)
+    removed = _remove_selected_cells_from_report(
+        shard,
+        report,
+        modes=selected_modes,
+        multiplicities=multiplicities,
+        statuses=statuses,
+    )
+    if not removed:
+        return set()
+    rewritten = study.compose_report(
+        _shard_arguments(
+            arguments,
+            run_directory,
+            shard,
+            final_multiplicity,
+            modes=report_modes,
+        ),
+        report["cells"],
+    )
+    _write_json_atomic(path, rewritten)
     return removed
 
 
@@ -2102,44 +2176,17 @@ def _rewrite_retry_report(
     final_multiplicity: int | None,
     multiplicities: Sequence[int],
 ) -> set[tuple[str, str, int]]:
-    if not path.is_file():
-        return set()
-    report = _load_json(path, context=f"{shard.name} retry report")
-    modes = _report_modes_for_shard(report, shard)
-    if not modes:
-        return set()
-    _validate_shard_report(
+    return _rewrite_selected_report(
         arguments,
         run_directory,
         shard,
-        report,
-        context=f"{shard.name} retry report",
+        path,
         final_multiplicity=final_multiplicity,
-        modes=modes,
-        allow_partial_modes=True,
-    )
-    study.normalize_loaded_failure_cells(report, path.parent)
-    removed = _remove_retry_cells_from_report(
-        arguments,
-        run_directory,
-        shard,
-        report,
+        modes=_counted_owned_modes(arguments, run_directory, shard),
         multiplicities=multiplicities,
+        statuses=RETRYABLE_CELL_STATUSES,
+        context=f"{shard.name} retry report",
     )
-    if not removed:
-        return set()
-    rewritten = study.compose_report(
-        _shard_arguments(
-            arguments,
-            run_directory,
-            shard,
-            final_multiplicity,
-            modes=modes,
-        ),
-        report["cells"],
-    )
-    _write_json_atomic(path, rewritten)
-    return removed
 
 
 def _apply_retry_invalidation(
@@ -2185,6 +2232,75 @@ def _apply_retry_invalidation(
                         multiplicities=(final_multiplicity,),
                     )
                 )
+    return len(removed)
+
+
+def _reject_overwrite_symlinks(path: Path) -> None:
+    absolute = Path(os.path.abspath(path.expanduser()))
+    for candidate in (absolute, *absolute.parents):
+        if candidate.is_symlink():
+            raise ProfilingError(
+                f"refusing --overwrite through symlinked path component: {candidate}"
+            )
+
+
+def _prepare_overwrite_work(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    work: ShardWork,
+) -> int:
+    """Invalidate one selected cell immediately before launching its worker."""
+
+    if not arguments.overwrite:
+        return 0
+    cell_root = _work_cell_root(run_directory, work)
+    _reject_overwrite_symlinks(cell_root)
+    backup: Path | None = None
+    if cell_root.exists():
+        backup = cell_root.with_name(
+            f".{cell_root.name}.overwrite-{uuid.uuid4().hex}"
+        )
+        cell_root.replace(backup)
+
+    removed: set[tuple[str, str, int]] = set()
+    try:
+        report_paths: dict[Path, int | None] = {
+            _shard_report_path(run_directory, work.shard): None
+        }
+        shard_root = run_directory / "shards" / work.shard.name
+        for pattern in (
+            f"cells/n{work.final_multiplicity}/study/runs/*/report.json",
+            f"mode-cells/*/n{work.final_multiplicity}/study/runs/*/report.json",
+        ):
+            report_paths.update(
+                (path, work.final_multiplicity) for path in shard_root.glob(pattern)
+            )
+        for path, final_multiplicity in sorted(
+            report_paths.items(), key=lambda item: str(item[0])
+        ):
+            removed.update(
+                _rewrite_selected_report(
+                    arguments,
+                    run_directory,
+                    work.shard,
+                    path,
+                    final_multiplicity=final_multiplicity,
+                    modes=(work.owned_mode,),
+                    multiplicities=(work.final_multiplicity,),
+                    statuses=None,
+                    context=(
+                        f"{work.shard.name} overwrite report for "
+                        f"{work.shard.family}/{work.owned_mode}/"
+                        f"n{work.final_multiplicity}"
+                    ),
+                )
+            )
+    except BaseException:
+        if backup is not None and not cell_root.exists():
+            backup.replace(cell_root)
+        raise
+    if backup is not None:
+        shutil.rmtree(backup)
     return len(removed)
 
 
@@ -2611,6 +2727,27 @@ def _empty_cell_report(
     return study.compose_report(_work_arguments(arguments, run_directory, work), {})
 
 
+def _project_work_report(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    work: ShardWork,
+    report: Mapping[str, Any],
+) -> dict[str, Any]:
+    cells = report.get("cells")
+    family_cells = cells.get(work.shard.family) if isinstance(cells, Mapping) else None
+    projected = {
+        work.shard.family: {
+            mode: copy.deepcopy(dict(curve))
+            for mode in _work_modes(arguments, run_directory, work)
+            if isinstance(family_cells, Mapping)
+            and isinstance((curve := family_cells.get(mode)), Mapping)
+        }
+    }
+    return study.compose_report(
+        _work_arguments(arguments, run_directory, work), projected
+    )
+
+
 def _load_cell_report(
     arguments: argparse.Namespace, run_directory: Path, work: ShardWork
 ) -> dict[str, Any]:
@@ -2620,22 +2757,32 @@ def _load_cell_report(
             run_directory, work.shard, work.final_multiplicity
         )
         if legacy_path.is_file() and legacy_path != path:
-            return _load_single_shard_report(
+            return _project_work_report(
                 arguments,
                 run_directory,
-                work.shard,
-                legacy_path,
-                final_multiplicity=work.final_multiplicity,
-                modes=_work_modes(arguments, run_directory, work),
+                work,
+                _load_single_shard_report(
+                    arguments,
+                    run_directory,
+                    work.shard,
+                    legacy_path,
+                    final_multiplicity=work.final_multiplicity,
+                    modes=_work_modes(arguments, run_directory, work),
+                ),
             )
         return _empty_cell_report(arguments, run_directory, work)
-    return _load_single_shard_report(
+    return _project_work_report(
         arguments,
         run_directory,
-        work.shard,
-        path,
-        final_multiplicity=work.final_multiplicity,
-        modes=_work_modes(arguments, run_directory, work),
+        work,
+        _load_single_shard_report(
+            arguments,
+            run_directory,
+            work.shard,
+            path,
+            final_multiplicity=work.final_multiplicity,
+            modes=_work_modes(arguments, run_directory, work),
+        ),
     )
 
 
@@ -2847,26 +2994,47 @@ def _completed_cells(report: Mapping[str, Any]) -> int:
     )
 
 
+def _selected_cell_identities(
+    arguments: argparse.Namespace,
+    *,
+    multiplicities: Sequence[int] | None = None,
+) -> tuple[CellIdentity, ...]:
+    run_directory = _run_directory(arguments)
+    requested = (
+        _selection(arguments) if multiplicities is None else tuple(multiplicities)
+    )
+    return tuple(
+        (shard.family, mode, final_multiplicity)
+        for shard in _scheduled_shards(arguments, run_directory)
+        for mode in _counted_owned_modes(arguments, run_directory, shard)
+        for final_multiplicity in requested
+    )
+
+
+def _cell_identity_terminal(
+    report: Mapping[str, Any], identity: CellIdentity
+) -> bool:
+    family, mode, final_multiplicity = identity
+    return _selected_cells_terminal_for_orchestrator(
+        report,
+        family=family,
+        modes=(mode,),
+        multiplicities=(final_multiplicity,),
+    )
+
+
 def _selected_completed_cells(
     arguments: argparse.Namespace,
     report: Mapping[str, Any],
     *,
     multiplicities: Sequence[int] | None = None,
+    ignored_cells: set[CellIdentity] | frozenset[CellIdentity] = frozenset(),
 ) -> int:
-    run_directory = _run_directory(arguments)
-    requested = (
-        _selection(arguments) if multiplicities is None else tuple(multiplicities)
-    )
     return sum(
-        _selected_cells_terminal_for_orchestrator(
-            report,
-            family=shard.family,
-            modes=(mode,),
-            multiplicities=(final_multiplicity,),
+        identity not in ignored_cells and _cell_identity_terminal(report, identity)
+        for identity in _selected_cell_identities(
+            arguments, multiplicities=multiplicities
         )
-        for shard in _scheduled_shards(arguments, run_directory)
-        for mode in _counted_owned_modes(arguments, run_directory, shard)
-        for final_multiplicity in requested
     )
 
 
@@ -2875,20 +3043,13 @@ def _selected_master_complete(
     report: Mapping[str, Any],
     *,
     multiplicities: Sequence[int] | None = None,
+    ignored_cells: set[CellIdentity] | frozenset[CellIdentity] = frozenset(),
 ) -> bool:
-    run_directory = _run_directory(arguments)
     return not str(report.get("status", "")).startswith("stopped") and all(
-        _selected_cells_terminal_for_orchestrator(
-            report,
-            family=shard.family,
-            modes=_counted_owned_modes(arguments, run_directory, shard),
-            multiplicities=(
-                _selection(arguments)
-                if multiplicities is None
-                else tuple(multiplicities)
-            ),
+        identity not in ignored_cells and _cell_identity_terminal(report, identity)
+        for identity in _selected_cell_identities(
+            arguments, multiplicities=multiplicities
         )
-        for shard in _scheduled_shards(arguments, run_directory)
     )
 
 
@@ -2897,21 +3058,13 @@ def _selected_pending_cells(
     report: Mapping[str, Any],
     *,
     multiplicities: Sequence[int] | None = None,
+    ignored_cells: set[CellIdentity] | frozenset[CellIdentity] = frozenset(),
 ) -> int:
-    run_directory = _run_directory(arguments)
-    requested = (
-        _selection(arguments) if multiplicities is None else tuple(multiplicities)
-    )
     return sum(
-        not _selected_cells_terminal_for_orchestrator(
-            report,
-            family=shard.family,
-            modes=(mode,),
-            multiplicities=(final_multiplicity,),
+        identity in ignored_cells or not _cell_identity_terminal(report, identity)
+        for identity in _selected_cell_identities(
+            arguments, multiplicities=multiplicities
         )
-        for shard in _scheduled_shards(arguments, run_directory)
-        for mode in _counted_owned_modes(arguments, run_directory, shard)
-        for final_multiplicity in requested
     )
 
 
@@ -4382,12 +4535,64 @@ def _prepare_phase_shard_state(
     return report
 
 
+def _overwrite_work_blocker(
+    arguments: argparse.Namespace,
+    run_directory: Path,
+    work: ShardWork,
+    report: Mapping[str, Any] | None,
+) -> str | None:
+    if report is not None:
+        cells = report.get("cells")
+        family_cells = (
+            cells.get(work.shard.family) if isinstance(cells, Mapping) else None
+        )
+        curve = (
+            family_cells.get(work.owned_mode)
+            if isinstance(family_cells, Mapping)
+            else None
+        )
+        if isinstance(curve, Mapping):
+            frontier = _mode_resource_frontier(curve, work.final_multiplicity)
+            if frontier is not None:
+                return f"resource limit at n={frontier}"
+
+    if work.shard.dependency is None:
+        return None
+    dependency_name, dependency_mode = work.shard.dependency
+    dependency_shard = SHARD_BY_NAME[dependency_name]
+    dependency = _load_shard_report(arguments, run_directory, dependency_shard)
+    if dependency is None:
+        return None
+    cells = dependency.get("cells")
+    family_cells = cells.get(work.shard.family) if isinstance(cells, Mapping) else None
+    curve = (
+        family_cells.get(dependency_mode)
+        if isinstance(family_cells, Mapping)
+        else None
+    )
+    cell = (
+        curve.get(str(work.final_multiplicity))
+        if isinstance(curve, Mapping)
+        else None
+    )
+    if (
+        isinstance(cell, Mapping)
+        and _cell_terminal_for_orchestrator(cell)
+        and cell.get("status") != "measured"
+    ):
+        return f"dependency {dependency_name} is {cell.get('status')}"
+    return None
+
+
 def _refresh_phase_pending(
     arguments: argparse.Namespace,
     run_directory: Path,
     pending: Sequence[ShardWork],
     active: Sequence[ActiveJob],
+    *,
+    overwrite_pending: set[CellIdentity] | None = None,
 ) -> list[ShardWork]:
+    forced = overwrite_pending if overwrite_pending is not None else set()
     reports: dict[str, dict[str, Any] | None] = {}
     for shard in {work.shard for work in pending}:
         reports[shard.name] = _prepare_phase_shard_state(
@@ -4398,18 +4603,40 @@ def _refresh_phase_pending(
         for job in active
         if job.final_multiplicity is not None
     }
+    blocked: set[CellIdentity] = set()
+    for work in pending:
+        identity = _work_identity(work)
+        if identity not in forced:
+            continue
+        blocker = _overwrite_work_blocker(
+            arguments, run_directory, work, reports.get(work.shard.name)
+        )
+        if blocker is None:
+            continue
+        blocked.add(identity)
+        forced.remove(identity)
+        _diagnostic(
+            f"Retaining existing {work.shard.family}/{work.owned_mode}/"
+            f"n{work.final_multiplicity}; overwrite was not attempted because "
+            f"of {blocker}.",
+            colorama.Fore.YELLOW,
+        )
     return [
         work
         for work in pending
+        if _work_identity(work) not in blocked
         if (work.shard.name, work.final_multiplicity, work.owned_mode)
         not in active_keys
-        and not _selected_work_complete(
-            arguments,
-            run_directory,
-            work,
-            reports.get(work.shard.name)
-            if work.shard.name in reports
-            else _load_shard_report(arguments, run_directory, work.shard),
+        and (
+            _work_identity(work) in forced
+            or not _selected_work_complete(
+                arguments,
+                run_directory,
+                work,
+                reports.get(work.shard.name)
+                if work.shard.name in reports
+                else _load_shard_report(arguments, run_directory, work.shard),
+            )
         )
     ]
 
@@ -4435,6 +4662,7 @@ def _phase(
     *,
     background: list[ActiveJob] | None = None,
     madgraph_overlay_ready: bool = False,
+    overwrite_pending: set[CellIdentity] | None = None,
 ) -> bool:
     pending = list(_phase_work_items(arguments, run_directory, phase_number))
     active: list[ActiveJob] = []
@@ -4445,7 +4673,13 @@ def _phase(
             failure = _poll_madgraph_jobs(arguments, run_directory, background_jobs)
             if failure is not None:
                 break
-            pending = _refresh_phase_pending(arguments, run_directory, pending, active)
+            pending = _refresh_phase_pending(
+                arguments,
+                run_directory,
+                pending,
+                active,
+                overwrite_pending=overwrite_pending,
+            )
             used = sum(job.claimed_cores for job in active + background_jobs)
             launched = True
             while launched:
@@ -4458,6 +4692,13 @@ def _phase(
                         continue
                     if _work_launch_conflicts(arguments, work, active):
                         continue
+                    identity = _work_identity(work)
+                    if (
+                        overwrite_pending is not None
+                        and identity in overwrite_pending
+                    ):
+                        _prepare_overwrite_work(arguments, run_directory, work)
+                        overwrite_pending.remove(identity)
                     _seed_cell_inputs(arguments, run_directory, work)
                     report = _publish_shard_report(arguments, run_directory, work.shard)
                     if _selected_work_complete(arguments, run_directory, work, report):
@@ -4493,7 +4734,15 @@ def _phase(
                     arguments, run_directory, background_jobs
                 )
             dashboard.update(
-                _selected_completed_cells(arguments, master)
+                _selected_completed_cells(
+                    arguments,
+                    master,
+                    ignored_cells=(
+                        overwrite_pending
+                        if overwrite_pending is not None
+                        else frozenset()
+                    ),
+                )
                 + _madgraph_completed(arguments, run_directory),
                 phase=f"phase {phase_number}",
                 active=tuple(background_jobs) + tuple(active),
@@ -4755,14 +5004,42 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                     f"{'' if retried == 1 else 's'}.",
                     colorama.Fore.CYAN,
                 )
+            overwrite_pending = (
+                {
+                    _work_identity(work)
+                    for phase_number in _scheduled_phase_numbers(
+                        arguments, run_directory
+                    )
+                    for work in _phase_work_items(
+                        arguments, run_directory, phase_number
+                    )
+                }
+                if arguments.overwrite
+                else set()
+            )
+            if overwrite_pending:
+                _diagnostic(
+                    f"Overwriting {len(overwrite_pending)} selected profiling cell"
+                    f"{'' if len(overwrite_pending) == 1 else 's'} as each worker "
+                    "starts.",
+                    colorama.Fore.CYAN,
+                )
             initial = _publish_master(arguments, run_directory)
             requested = _requested_multiplicities(arguments, run_directory)
             completed = _selected_completed_cells(
-                arguments, initial, multiplicities=requested
+                arguments,
+                initial,
+                multiplicities=requested,
+                ignored_cells=overwrite_pending,
             )
             total = (
                 completed
-                + _selected_pending_cells(arguments, initial, multiplicities=requested)
+                + _selected_pending_cells(
+                    arguments,
+                    initial,
+                    multiplicities=requested,
+                    ignored_cells=overwrite_pending,
+                )
                 + (
                     len(_family_selection(arguments)) * len(requested)
                     if _madgraph_requested(arguments, run_directory)
@@ -4785,6 +5062,7 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                     dashboard,
                     background=madgraph_jobs,
                     madgraph_overlay_ready=madgraph_overlay_ready,
+                    overwrite_pending=overwrite_pending,
                 ) or madgraph_overlay_ready
                 if not madgraph_overlay_ready:
                     madgraph_overlay_ready = _maybe_start_madgraph_overlay(
@@ -4793,7 +5071,10 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                 _render_phase_boundary(arguments, run_directory)
             terminal = _publish_master(arguments, run_directory)
             if not _selected_master_complete(
-                arguments, terminal, multiplicities=requested
+                arguments,
+                terminal,
+                multiplicities=requested,
+                ignored_cells=overwrite_pending,
             ):
                 raise ProfilingError(
                     "pyAmpliCol master did not complete the requested fill"
@@ -4815,7 +5096,10 @@ def run_campaign(arguments: argparse.Namespace) -> Path:
                         colorama.Fore.CYAN,
                     )
             final_count = _selected_completed_cells(
-                arguments, terminal, multiplicities=requested
+                arguments,
+                terminal,
+                multiplicities=requested,
+                ignored_cells=overwrite_pending,
             ) + _madgraph_completed(arguments, run_directory)
             dashboard.update(final_count, phase="rendering", active=())
             pdf = render_snapshot(arguments, renderer_preflight=False)

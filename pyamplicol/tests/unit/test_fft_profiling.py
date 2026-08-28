@@ -701,6 +701,58 @@ def test_phase_refresh_does_not_queue_higher_work_after_lower_resource_failure(
     assert profiling._shard_report_path(output, shard).is_file()
 
 
+def test_overwrite_retains_queued_higher_result_after_lower_resource_failure(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "overwrite-frontier"
+    arguments = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "2",
+        "3",
+        "--lines",
+        "reference-fft",
+        "--overwrite",
+    )
+    profiling._create_or_resume_manifest(arguments, output)
+    shard = profiling.SHARD_BY_NAME["gg-reference"]
+    failed = study._cell_base("gg", study.MODE_BY_KEY["reference-fft"], 2) | {
+        "status": "failed",
+        "failure_category": "runtime-time-limit",
+        "failure_reason": "runtime cap",
+        "censors_higher_multiplicities": True,
+    }
+    measured = study._cell_base("gg", study.MODE_BY_KEY["reference-fft"], 3) | {
+        "status": "measured",
+        "generation_seconds": 2.0,
+        "warm_seconds_per_point": 2.0e-6,
+        "max_rss_kib": 2048,
+    }
+    report = study.compose_report(
+        profiling._shard_arguments(arguments, output, shard),
+        {"gg": {"reference-fft": {"2": failed, "3": measured}}},
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, shard), report
+    )
+    works = profiling._phase_work_items(arguments, output, 1)
+    overwrite_pending = {profiling._work_identity(work) for work in works}
+
+    pending = profiling._refresh_phase_pending(
+        arguments,
+        output,
+        works,
+        active=(),
+        overwrite_pending=overwrite_pending,
+    )
+
+    assert [work.final_multiplicity for work in pending] == [2]
+    assert overwrite_pending == {("gg", "reference-fft", 2)}
+    retained = profiling._load_shard_report(arguments, output, shard, required=True)
+    assert retained["cells"]["gg"]["reference-fft"]["3"] == measured
+
+
 def test_phase_launches_independent_multiplicity_workers_when_cores_allow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1391,6 +1443,288 @@ def test_retry_invalidates_failed_selected_cell_without_dependency_count(
     assert plan["shards"]["gg-reference"]["scheduled"] is False
     assert plan["shards"]["gg-reference"]["jobs"] == []
     assert [job["n"] for job in plan["shards"]["gg-recurrence"]["jobs"]] == [7]
+
+
+def test_overwrite_group_replaces_each_mode_only_when_its_worker_launches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "overwrite"
+    initial = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "6",
+        "--families",
+        "ddbar",
+        "--lines",
+        "pyamplicol-recurrence",
+    )
+    overwrite = _arguments(
+        "--output",
+        str(output),
+        "--multiplicities",
+        "6",
+        "--families",
+        "ddbar",
+        "--lines",
+        "pyamplicol-recurrence",
+        "--cores",
+        "2",
+        "--poll-seconds",
+        "0.001",
+        "--overwrite",
+    )
+    profiling._create_or_resume_manifest(initial, output)
+    profiling._create_or_resume_manifest(overwrite, output)
+    dependency = profiling.SHARD_BY_NAME["ddbar-amplicol"]
+    recurrence = profiling.SHARD_BY_NAME["ddbar-recurrence"]
+
+    def measured(mode: str, generation_seconds: float) -> dict[str, object]:
+        return study._cell_base("ddbar", study.MODE_BY_KEY[mode], 6) | {
+            "status": "measured",
+            "generation_seconds": generation_seconds,
+            "warm_seconds_per_point": generation_seconds / 1000.0,
+            "max_rss_kib": 1024,
+        }
+
+    amplicol = measured("amplicol", 1.0)
+    old = {
+        "recurrence-direct": measured("recurrence-direct", 11.0),
+        "recurrence-fft": measured("recurrence-fft", 12.0),
+    }
+    dependency_report = study.compose_report(
+        profiling._shard_arguments(initial, output, dependency),
+        {"ddbar": {"amplicol": {"6": amplicol}}},
+    )
+    aggregate = study.compose_report(
+        profiling._shard_arguments(initial, output, recurrence),
+        {
+            "ddbar": {
+                "amplicol": {"6": amplicol},
+                **{mode: {"6": cell} for mode, cell in old.items()},
+            }
+        },
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, dependency), dependency_report
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, recurrence), aggregate
+    )
+    legacy = study.compose_report(
+        profiling._shard_arguments(initial, output, recurrence, 6),
+        {
+            "ddbar": {
+                "amplicol": {"6": amplicol},
+                **{mode: {"6": cell} for mode, cell in old.items()},
+            }
+        },
+    )
+    profiling._write_json_atomic(
+        profiling._shard_report_path(output, recurrence, 6), legacy
+    )
+    works = profiling._phase_work_items(overwrite, output, 2)
+    assert [work.owned_mode for work in works] == [
+        "recurrence-direct",
+        "recurrence-fft",
+    ]
+    for work in works:
+        per_mode = study.compose_report(
+            profiling._work_arguments(initial, output, work),
+            {
+                "ddbar": {
+                    "amplicol": {"6": amplicol},
+                    work.owned_mode: {"6": old[work.owned_mode]},
+                }
+            },
+        )
+        profiling._write_json_atomic(
+            profiling._work_report_path(output, work), per_mode
+        )
+
+    overwrite_pending = {profiling._work_identity(work) for work in works}
+    initial_master = profiling._publish_master(overwrite, output)
+    assert (
+        profiling._selected_completed_cells(
+            overwrite,
+            initial_master,
+            multiplicities=(6,),
+            ignored_cells=overwrite_pending,
+        )
+        == 0
+    )
+    assert (
+        profiling._selected_pending_cells(
+            overwrite,
+            initial_master,
+            multiplicities=(6,),
+            ignored_cells=overwrite_pending,
+        )
+        == 2
+    )
+    assert all(profiling._work_report_path(output, work).is_file() for work in works)
+
+    launched: list[str] = []
+
+    class FakeProcess:
+        def __init__(self, work: profiling.ShardWork) -> None:
+            self.pid = 23456 + len(launched)
+            self.returncode: int | None = None
+            self.work = work
+
+        def poll(self) -> int | None:
+            if self.returncode is None:
+                replacement = measured(
+                    self.work.owned_mode,
+                    101.0 if self.work.owned_mode == "recurrence-direct" else 102.0,
+                )
+                report = study.compose_report(
+                    profiling._work_arguments(overwrite, output, self.work),
+                    {
+                        "ddbar": {
+                            "amplicol": {"6": amplicol},
+                            self.work.owned_mode: {"6": replacement},
+                        }
+                    },
+                )
+                profiling._write_json_atomic(
+                    profiling._work_report_path(output, self.work), report
+                )
+                self.returncode = 0
+            return self.returncode
+
+    class FakeDashboard:
+        def update(self, _completed, *, phase, active) -> None:
+            assert phase == "phase 2"
+
+    def launch(_arguments, _output, work: profiling.ShardWork):
+        seeded = json.loads(
+            profiling._work_report_path(output, work).read_text(encoding="utf-8")
+        )
+        assert "6" not in seeded["cells"]["ddbar"][work.owned_mode]
+        if work.owned_mode == "recurrence-direct":
+            fft_work = next(
+                candidate
+                for candidate in works
+                if candidate.owned_mode == "recurrence-fft"
+            )
+            fft_report = json.loads(
+                profiling._work_report_path(output, fft_work).read_text(
+                    encoding="utf-8"
+                )
+            )
+            assert (
+                fft_report["cells"]["ddbar"]["recurrence-fft"]["6"][
+                    "generation_seconds"
+                ]
+                == 12.0
+            )
+            legacy_report = json.loads(
+                profiling._shard_report_path(output, recurrence, 6).read_text(
+                    encoding="utf-8"
+                )
+            )
+            assert "6" not in legacy_report["cells"]["ddbar"]["recurrence-direct"]
+            assert (
+                legacy_report["cells"]["ddbar"]["recurrence-fft"]["6"][
+                    "generation_seconds"
+                ]
+                == 12.0
+            )
+        launched.append(work.owned_mode)
+        return profiling.ActiveJob(
+            shard=work.shard,
+            final_multiplicity=work.final_multiplicity,
+            owned_mode=work.owned_mode,
+            command=(),
+            process=FakeProcess(work),
+            stdout=io.BytesIO(),
+            stderr=io.BytesIO(),
+            sampler=object(),
+            claimed_cores=profiling._claimed_cores(overwrite, work),
+            detail="",
+        )
+
+    original_prepare = profiling._prepare_overwrite_work
+    original_seed = profiling._seed_cell_inputs
+
+    def prepare(_arguments, _output, work: profiling.ShardWork):
+        removed = original_prepare(_arguments, _output, work)
+        aggregate_report = json.loads(
+            profiling._shard_report_path(output, recurrence).read_text(
+                encoding="utf-8"
+            )
+        )
+        assert "6" not in aggregate_report["cells"]["ddbar"][work.owned_mode]
+        legacy_report = json.loads(
+            profiling._shard_report_path(output, recurrence, 6).read_text(
+                encoding="utf-8"
+            )
+        )
+        assert "6" not in legacy_report["cells"]["ddbar"][work.owned_mode]
+        assert not profiling._work_cell_root(output, work).exists()
+        stale_sources = []
+        for path in (output / "shards" / recurrence.name).rglob("report.json"):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            cell = payload.get("cells", {}).get("ddbar", {}).get(
+                work.owned_mode, {}
+            ).get("6")
+            if cell is not None:
+                stale_sources.append((str(path), cell.get("generation_seconds")))
+        assert stale_sources == []
+        merged_report = profiling._load_shard_report(
+            overwrite, output, recurrence, required=True
+        )
+        merged_cell = merged_report["cells"]["ddbar"][work.owned_mode].get("6")
+        assert merged_cell is None, (
+            merged_cell.get("status"),
+            merged_cell.get("generation_seconds"),
+            merged_cell.get("failure_reason"),
+        )
+        return removed
+
+    def seed(_arguments, _output, work: profiling.ShardWork):
+        original_seed(_arguments, _output, work)
+        seeded = json.loads(
+            profiling._work_report_path(output, work).read_text(encoding="utf-8")
+        )
+        assert "6" not in seeded["cells"]["ddbar"][work.owned_mode]
+
+    monkeypatch.setattr(profiling, "_prepare_overwrite_work", prepare)
+    monkeypatch.setattr(profiling, "_seed_cell_inputs", seed)
+    monkeypatch.setattr(profiling, "_launch_shard", launch)
+
+    profiling._phase(
+        overwrite,
+        output,
+        2,
+        FakeDashboard(),
+        overwrite_pending=overwrite_pending,
+    )
+
+    assert launched == ["recurrence-direct", "recurrence-fft"]
+    assert overwrite_pending == set()
+    merged = profiling._load_shard_report(
+        overwrite, output, recurrence, required=True
+    )
+    assert (
+        merged["cells"]["ddbar"]["recurrence-direct"]["6"][
+            "generation_seconds"
+        ]
+        == 101.0
+    )
+    assert (
+        merged["cells"]["ddbar"]["recurrence-fft"]["6"][
+            "generation_seconds"
+        ]
+        == 102.0
+    )
+
+
+def test_overwrite_and_retry_are_mutually_exclusive() -> None:
+    with pytest.raises(SystemExit):
+        _arguments("--overwrite", "--retry")
 
 
 def test_narrow_line_selector_reuses_existing_broader_shard_report(
