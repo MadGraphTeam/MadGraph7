@@ -58,6 +58,25 @@ ifneq ($(words $(filter $(HRDCOD), $(SUPPORTED_HRDCODS))),1)
   $(error Invalid hrdcod HRDCOD='$(HRDCOD)': supported hrdcods are $(foreach hrdcod,$(SUPPORTED_HRDCODS),'$(hrdcod)'))
 endif
 
+# SIMDIMPL for the std::simd C++26
+#   ext = GCC/Clang - DEFAULT 
+#   std =  <simd>/<experimental/simd> 
+ifeq ($(SIMDIMPL),)
+  override SIMDIMPL = ext
+endif
+override SUPPORTED_SIMDIMPLS = ext std
+ifneq ($(words $(filter $(SIMDIMPL), $(SUPPORTED_SIMDIMPLS))),1)
+  $(error Invalid simdimpl SIMDIMPL='$(SIMDIMPL)': supported simdimpls are $(foreach simdimpl,$(SUPPORTED_SIMDIMPLS),'$(simdimpl)'))
+endif
+# Suffix that keeps std::simd object dirs and libraries distinct from the vector-extension baseline
+ifeq ($(SIMDIMPL),std)
+  override SIMDIMPLSFX = _stdsimd
+else
+  override SIMDIMPLSFX =
+endif
+export SIMDIMPL
+export SIMDIMPLSFX
+
 # Stop immediately if BACKEND=cuda but nvcc is missing
 ifeq ($(BACKEND),cuda)
   ifeq ($(shell which nvcc 2>/dev/null),)
@@ -80,7 +99,7 @@ override DIRTAG := $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(H
 # Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after potential cppauto resolution
 ifeq ($(USEBUILDDIR),1)
-  override MADMATRIX_BUILDDIR = build.$(BACKEND)
+  override MADMATRIX_BUILDDIR = build.$(BACKEND)$(SIMDIMPLSFX)
 else
   override MADMATRIX_BUILDDIR = .
 endif
@@ -153,6 +172,9 @@ ifeq ($(BACKEND),cppauto)
 else
   $(info BACKEND='$(BACKEND)')
 endif
+ifeq ($(SIMDIMPL),std)
+  $(info SIMDIMPL='std' (CPU SIMD via backend/stdsimd, standard data-parallel types))
+endif
 
 # Create file with the resolved backend in case user chooses 'cppauto'
 BACKEND_LOG ?= .resolved-backend
@@ -179,6 +201,14 @@ endif
 # Add -mmacosx-version-min=11.3 to avoid "ld: warning: object file was built for newer macOS version than being linked"
 ifneq ($(shell $(CXX) --version | egrep '^Apple clang'),)
   CXXFLAGS += -mmacosx-version-min=11.3
+endif
+
+# quick ckeck for availability and EXPERIMENTAL workaround
+ifeq ($(SIMDIMPL),std)
+  CXXFLAGS += -D_LIBCPP_ENABLE_EXPERIMENTAL
+  ifeq ($(shell echo 'auto s = std::experimental::native_simd<double>{}; int main(){ return (int)s.size(); }' | $(CXX) $(CXXFLAGS) -x c++ -include experimental/simd -fsyntax-only - 2>/dev/null && echo ok),)
+    $(error SIMDIMPL=std: '$(CXX)' cannot use std::experimental::simd (need libstdc++ e.g. CXX=g++-16, or a libc++ with experimental/simd))
+  endif
 endif
 
 # Export CXXFLAGS (so that there is no need to check/define it again in src/Makefile)
@@ -394,10 +424,19 @@ ifneq ($(GPUCC),)
   override BACKENDDIR = gpu
 else ifeq ($(BACKEND),cppnone)
   override BACKENDDIR = cpu
+else ifeq ($(SIMDIMPL),std)
+  override BACKENDDIR = stdsimd
 else
   override BACKENDDIR = simd
 endif
 export BACKENDDIR
+
+# SIMDIMPL=std only applies to the C++ vector backends (cppsse4/cppavx2/cpp512y/cpp512z)
+ifeq ($(SIMDIMPL),std)
+  ifneq ($(BACKENDDIR),stdsimd)
+    $(error SIMDIMPL=std requires a C++ SIMD backend (cppsse4/cppavx2/cpp512y/cpp512z), not BACKEND='$(BACKEND)')
+  endif
+endif
 
 #-------------------------------------------------------------------------------
 
@@ -440,7 +479,7 @@ endif
 
 # Dependency on src directory
 # The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
-MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
+MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)$(SIMDIMPLSFX)
 LIBFLAGS = -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
 INCFLAGS += -I$(SRC) -I$(SRC)/rambo
 
@@ -724,7 +763,7 @@ override RUNTIME =
 processid_short=$(shell basename $(CURDIR))
 ###$(info processid_short=$(processid_short))
 
-MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)
+MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)$(SIMDIMPLSFX)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
 
 # Backend-owned sources
@@ -793,7 +832,7 @@ endif
 commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
 
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(SRC)/*.h $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
-	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) SIMDIMPL=$(SIMDIMPL) LIBDIR=$(LIBDIR)
 
 #-------------------------------------------------------------------------------
 
@@ -877,7 +916,7 @@ else
 	rm -f $(BUILDDIR)/.build.* $(BUILDDIR)/*.o
 	rm -f $(LIBDIR)/lib$(MADMATRIX_LIB).so
 	rm -f $(BACKEND_LOG)
-	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) SIMDIMPL=$(SIMDIMPL) LIBDIR=$(LIBDIR)
 endif
  
 # cleanall: remove objects and libraries for ALL backends.

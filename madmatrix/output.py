@@ -111,7 +111,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # Backend split (step 1, not yet wired into the build): mirror
     # template_files/madmatrix/backend/{cpu,simd,gpu}/ as a top-level
     # backend/<variant>/ dir, sibling of SubProcesses/src/lib.
-    backend_variants = ('cpu', 'simd', 'gpu')
+    backend_variants = ('cpu', 'simd', 'stdsimd', 'gpu')
     backend_template_dir = pjoin(madmatrix_templates, 'backend')
     for _backend_variant in backend_variants:  # plain loop: comprehension wouldn't see the locals above
         from_template[pjoin('backend', _backend_variant)] = relative_path_list(
@@ -139,6 +139,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                       'backend',
                       'backend/cpu',
                       'backend/simd',
+                      'backend/stdsimd',
                       'backend/gpu']
 
     # AV - use a custom UFOModelConverter (model/aloha exporter)

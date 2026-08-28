@@ -67,7 +67,8 @@ endif
 #===============================================================================
 
 # The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
-MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
+# SIMDIMPLSFX (exported from the subprocess Makefile) is '_stdsimd' for SIMDIMPL=std, empty otherwise.
+MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)$(SIMDIMPLSFX)
 
 # Explicitly define the default goal (this is not necessary as it is the first target, which is implicitly the default goal)
 .DEFAULT_GOAL := all.$(TAG)
