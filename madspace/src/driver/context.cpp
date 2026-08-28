@@ -12,6 +12,7 @@ using json = nlohmann::json;
 
 namespace {
 UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+thread_local std::optional<std::uintptr_t> current_caller_stream;
 } // namespace
 
 MatrixElementApi::MatrixElementApi(
@@ -360,4 +361,12 @@ ContextPtr madspace::default_device_context(DevicePtr device) {
         default_contexts[device] = context;
         return context;
     }
+}
+
+std::optional<std::uintptr_t> madspace::caller_stream() {
+    return current_caller_stream;
+}
+
+void madspace::set_caller_stream(std::optional<std::uintptr_t> stream) {
+    current_caller_stream = stream;
 }

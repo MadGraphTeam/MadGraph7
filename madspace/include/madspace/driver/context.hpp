@@ -1,6 +1,7 @@
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
+#include <optional>
 #include <unordered_map>
 
 #include "madspace/compgraphs.hpp"
@@ -199,6 +200,13 @@ ContextPtr default_context();
 ContextPtr default_cuda_context(std::size_t index = 0);
 ContextPtr default_hip_context(std::size_t index = 0);
 ContextPtr default_device_context(DevicePtr device);
+
+// stream the caller expects madspace to use. an empty optional means that madspace
+// uses its own streams and synchronizes before returning, 0 is the legacy default
+// stream and a valid choice. thread-local, so it has to be set on every thread that
+// calls into madspace, torch autograd workers included
+std::optional<std::uintptr_t> caller_stream();
+void set_caller_stream(std::optional<std::uintptr_t> stream);
 
 inline std::string prefixed_name(const std::string& prefix, const std::string& name) {
     return prefix == "" ? name : std::format("{}.{}", prefix, name);

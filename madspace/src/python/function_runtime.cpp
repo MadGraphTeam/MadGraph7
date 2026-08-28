@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "dlpack.h"
+#include "madspace/driver/context.hpp"
 
 using namespace madspace_py;
 using namespace pybind11::literals;
@@ -208,17 +209,44 @@ Tensor madspace_py::dlpack_to_tensor(
     py::object dlpack_func = tensor.attr("__dlpack__");
     py::object capsule_obj;
 
+    // numpy rejects every stream and torch rejects every stream but None and -1 for a
+    // host tensor, neither of them with a TypeError, so ask for the device first.
+    // dlpack spells the default stream 1 on cuda and 0 on rocm, our handle for it is 0
+    py::dict stream_arg;
+    if (auto stream = madspace::caller_stream()) {
+        std::tuple<int, int> dl_device;
+        try {
+            dl_device = tensor.attr("__dlpack_device__")().cast<std::tuple<int, int>>();
+        } catch (const py::cast_error&) {
+            throw std::invalid_argument(
+                std::format(
+                    "Argument {}: __dlpack_device__ must return a pair of ints",
+                    arg_index + 1
+                )
+            );
+        }
+        auto [device_type, device_id] = dl_device;
+        if (device_id == 0) {
+            if (device_type == kDLCUDA) {
+                stream_arg["stream"] = *stream == 0 ? 1 : *stream;
+            } else if (device_type == kDLROCM) {
+                stream_arg["stream"] = *stream;
+            }
+        }
+    }
+
     // catching exceptions is extremely expensive so we cache whether to use the new or
     // old version of the dlpack protocol
     if (dlpack_version_cache == nullptr || !*dlpack_version_cache) {
         try {
             capsule_obj = dlpack_func(
                 "max_version"_a =
-                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION)
+                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION),
+                **stream_arg
             );
         } catch (py::error_already_set& e) {
             if (e.matches(PyExc_TypeError)) {
-                capsule_obj = dlpack_func();
+                capsule_obj = dlpack_func(**stream_arg);
                 if (dlpack_version_cache != nullptr) {
                     *dlpack_version_cache = true;
                 }
@@ -228,11 +256,12 @@ Tensor madspace_py::dlpack_to_tensor(
         }
     } else {
         try {
-            capsule_obj = dlpack_func();
+            capsule_obj = dlpack_func(**stream_arg);
         } catch (py::error_already_set& e) {
             capsule_obj = dlpack_func(
                 "max_version"_a =
-                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION)
+                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION),
+                **stream_arg
             );
             *dlpack_version_cache = false;
         }
