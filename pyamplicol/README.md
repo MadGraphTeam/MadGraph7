@@ -214,7 +214,8 @@ just dev-install --with-legacy-amplicol --with-reference-fft
   --memory-limit-gib 30 --time-limit-seconds 3600 \
   --amplicol-root /path/to/AmpliCol \
   --reference-fft-root /path/to/AllGluonsMultipletFFT \
-  --madgraph-root /path/to/MG5_aMC
+  --madgraph-root /path/to/MG5_aMC \
+  --build-amplicol
 ```
 
 `--multiplicities` adds the selected values to the persistent fill history and
@@ -299,11 +300,13 @@ python tools/fft_profiling/fft_profiling.py --render --compare-helicity-sums
 python tools/fft_profiling/fft_profiling.py --render --output /path/to/run
 ```
 
-For a custom helicity-sum output, repeat `--compare-helicity-sums` on the
-render command. Default outputs also refresh the corresponding canonical PDF;
-custom outputs keep their PDF inside the selected run directory. During a
-scan, the progress display reports the active cell, total live RSS, and
-occupied core slots.
+For a custom output, the saved manifest determines whether the workload is
+fixed-helicity or helicity-summed, so a render does not need to repeat
+`--compare-helicity-sums`. Default outputs still use that flag to select the
+helicity-sum workspace. Default outputs also refresh the corresponding
+canonical PDF; custom outputs keep their PDF inside the selected run directory.
+During a scan, the progress display reports the active cell, total live RSS,
+and occupied core slots.
 
 An older local MadGraph overlay that predates the node-fingerprint field may
 appear only in a nonterminal anytime render, only when its system, machine, and

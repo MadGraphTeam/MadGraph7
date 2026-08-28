@@ -56,6 +56,19 @@ print(result.output)
 process artifact. `generate()` returns an immutable `GenerationResult` with the
 absolute output, stored process set, schema version, and file inventory.
 
+The packaged scalar HEFT model uses the same public selector:
+
+```python
+from pyamplicol import Generator, ModelSource
+
+heft = ModelSource.built_in_sm_heft()
+Generator().plan("g g > H g g", model=heft)
+```
+
+Use an explicit `HIG = 1` coupling-order limit in a resolved run configuration
+when generating the process; see [Models and Processes](models-and-processes.md#built-in-scalar-heft-model)
+and the packaged `builtin_sm_heft.toml` card.
+
 ## Generate a named process set
 
 ```python

@@ -7,15 +7,19 @@ has_children: true
 
 # Profiling and Benchmarking
 
-pyAmpliCol has two intentionally separate performance tools:
+pyAmpliCol has three intentionally separate performance tools:
 
 - `pyamplicol profile` measures one generated artifact through the same
   optimized total path as `Runtime.evaluate()`;
 - a copied [profiling campaign](profiling-campaigns.md) coordinates many model,
-  process, color, and execution-mode cells and renders comparison PDFs.
+  process, color, and execution-mode cells and renders comparison PDFs;
+- the source-checkout [FullColor FFT profiler](fullcolor-fft-profiling.md)
+  schedules resumable direct/FFT, reference, AmpliCol, and MadGraph comparison
+  cells under explicit per-child resource limits.
 
-Use the direct profiler for a focused runtime question. Use a campaign only
-when you need a reproducible matrix of results.
+Use the direct profiler for a focused runtime question. Use a copied campaign
+for a reproducible general matrix. Use the FullColor FFT driver for the
+dedicated exact-colour scaling comparison.
 
 ## First profile
 
@@ -315,4 +319,5 @@ campaign workspaces remain local.
 - [Generation Modes and Evaluators](generation-modes-and-evaluators.md)
 - [LC workloads and execution modes](lc-workloads-and-execution-modes.md)
 - [Profiling Campaigns](profiling-campaigns.md)
+- [FullColor FFT Profiling](fullcolor-fft-profiling.md)
 - [Examples Gallery](examples-gallery.md)

@@ -139,6 +139,9 @@ pyamplicol generate "g g > g g g" artifacts/ggg_fft \
   --color-contraction symmetric-group-fft --execution-mode recurrence
 ```
 
+For the dedicated direct/FFT/reference scaling scan, see
+[FullColor FFT Profiling](fullcolor-fft-profiling.md).
+
 `--dry-run` performs the operation exposed as `Generator.plan()`. It creates no
 artifact, output directory, or model-cache entry. A raw UFO or JSON source must
 already have a reusable compiled-model cache entry, or be compiled explicitly,

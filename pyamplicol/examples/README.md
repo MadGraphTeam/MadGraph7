@@ -61,10 +61,27 @@ These three showcase cards print colorized terminal tables by default. Add
 | `builtin_sm_lc.toml` | Built-in compatibility SM, default recurrence JIT O2, `u u~ > g g`, LC |
 | `builtin_sm_nlc.toml` | Built-in compatibility SM, default recurrence JIT O2, contracted NLC |
 | `builtin_sm_full.toml` | Built-in compatibility SM, explicit compiled C++, contracted full color |
+| `builtin_sm_heft.toml` | Packaged scalar HEFT `g g > H g g`, recurrence JIT O2, contracted full color |
 | `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O2 pack |
 | `builtin_sm_on_the_fly.toml` | Built-in SM LC generation as a compact on-the-fly seed using the same prepared JIT O2 pack |
 | `otf_pp_zjj.toml` | Generate compact OTF LC `p p > Z j j`, then profile one flow with a helicity sum |
 | `all_options.toml` | Every current schema field, active and commented |
+
+## Generate Scalar HEFT Higgs Plus Two Jets
+
+The scalar HEFT card uses the packaged `built-in-sm-heft` model, so it does not
+need an external UFO checkout:
+
+```console
+pyamplicol generate --card builtin_sm_heft.toml
+pyamplicol inspect artifacts/builtin_sm_heft
+```
+
+The explicit `HIG = 1` limit retains one effective Higgs-gluon insertion.
+The generated artifact uses full-colour recurrence over the wheel-owned
+prepared JIT O2 kernels. See the website's
+[Models and Processes](https://mg5amcnlo.github.io/pyamplicol/user/models-and-processes/)
+guide for execution-mode and trusted-UFO details.
 
 ## Run `q q~ > Z + 6g` With Recurrence, Compiled, And Eager
 

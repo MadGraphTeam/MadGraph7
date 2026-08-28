@@ -48,6 +48,17 @@ arbitrary external model does not automatically inherit.
 Select `built-in-sm-heft` for an independent model containing the packaged
 Standard Model plus the scalar Hgg, Hggg, and Hgggg effective interactions:
 
+```console
+pyamplicol model inspect built-in-sm-heft
+pyamplicol generate 'g g > H g g' artifacts/gg_hgg \
+  --model built-in-sm-heft \
+  --coupling-order-policy explicit --max-coupling-order HIG=1 \
+  --color-accuracy full --execution-mode recurrence
+pyamplicol inspect artifacts/gg_hgg
+```
+
+The equivalent packaged run card is `builtin_sm_heft.toml`:
+
 ```toml
 [model]
 source = "built-in-sm-heft"
@@ -62,11 +73,46 @@ The model inherits the packaged SM parameter defaults, including `MH = 125`
 GeV, and has no runtime dependency on a UFO checkout. The effective coupling
 `GH` depends on model parameters (`G`, `vev`, `MH`, and `MT`), not event
 momenta; the momentum factors in the Hgg and Hggg Lorentz tensors are retained.
+Update those external inputs through a runtime parameter card rather than
+treating the derived `GH` as an independent input. The built-in selector uses
+its canonical default restriction and simplification policy.
+
 The wheel-owned portable JIT O2 pack makes `eager`, `recurrence`, and
 `on-the-fly` execution available directly from this selector. Compiled mode
 supports the `jit`, `asm`, and `cpp` evaluator backends. Explicitly prepared
 HEFT bundles can likewise use any of those backends. `builtin_sm_heft`,
 `sm-heft`, and `sm_heft` are accepted as configuration aliases.
+
+The canonical selector is also available through the typed API:
+
+```python
+from pyamplicol import Generator, ModelSource
+
+model = ModelSource.built_in_sm_heft()
+plan = Generator().plan("g g > H g g", model=model)
+print(plan.concrete_processes)
+```
+
+### Trusted external HEFT UFOs
+
+A trusted scalar-HEFT UFO directory can be supplied through the ordinary UFO
+path described below. Inspect it before starting process generation:
+
+```console
+pyamplicol model inspect /path/to/trusted/ScalarHEFT_UFO
+pyamplicol generate 'g g > H g g' artifacts/ufo_heft_hgg \
+  --model /path/to/trusted/ScalarHEFT_UFO \
+  --coupling-order-policy explicit --max-coupling-order HIG=1 \
+  --color-accuracy full --execution-mode compiled --backend jit
+```
+
+UFO modules execute Python while loading. pyAmpliCol recognizes the supported
+scalar one-/two-structure-constant contact families and rejects unsupported
+Lorentz, colour, or form-factor structures during model preflight; arbitrary
+HEFT UFOs are therefore not assumed compatible.
+The separately downloaded FeynRules HEFT UFO used by developer acceptance is
+not packaged, redistributed, or required at runtime. For portable user
+workflows, prefer `built-in-sm-heft`.
 
 ## Serialized JSON model
 

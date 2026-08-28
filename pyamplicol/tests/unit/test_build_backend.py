@@ -1174,6 +1174,7 @@ def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
         assert not packaged.exists()
         backend._stage_packaged_examples(overlay)
         assert (packaged / "all_options.toml").is_file()
+        assert (packaged / "builtin_sm_heft.toml").is_file()
         assert (packaged / "qq_z6g_recurrence_jit_o2.toml").is_file()
         assert (packaged / "qq_z6g_compiled_jit_o3.toml").is_file()
         assert (packaged / "qq_z6g_eager_jit_o2.toml").is_file()

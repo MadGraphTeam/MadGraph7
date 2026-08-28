@@ -101,6 +101,15 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert eager.evaluator.backend.value == "jit"
     assert eager.evaluator.jit.optimization_level == 2
 
+    heft = resolve_config(EXAMPLES / "builtin_sm_heft.toml").effective
+    assert heft.model.source == "built-in-sm-heft"
+    assert heft.process.entries == (ProcessEntry("g g > H g g", "gg_hgg"),)
+    assert heft.process.coupling_order_policy.value == "explicit"
+    assert heft.process.max_coupling_orders == {"HIG": 1}
+    assert heft.color.accuracy.value == "full"
+    assert heft.evaluator.execution_mode.value == "recurrence"
+    assert heft.evaluator.backend.value == "jit"
+
     on_the_fly = resolve_config(EXAMPLES / "builtin_sm_on_the_fly.toml").effective
     assert on_the_fly.model.source == "built-in-sm"
     assert on_the_fly.color.accuracy.value == "lc"

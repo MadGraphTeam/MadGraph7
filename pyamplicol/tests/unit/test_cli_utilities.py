@@ -29,6 +29,9 @@ def test_examples_list_is_checkout_independent_and_descriptive() -> None:
     assert run_cli(("examples", "list", "--json"), stdout=stdout) == 0
     entries = json.loads(stdout.getvalue())
     assert any(entry["name"] == "builtin_sm_lc" for entry in entries)
+    heft = next(entry for entry in entries if entry["name"] == "builtin_sm_heft")
+    assert "scalar HEFT" in heft["description"]
+    assert "g g > H g g" in heft["description"]
     assert all("SPDX" not in entry["description"] for entry in entries)
     otf = next(entry for entry in entries if entry["name"] == "otf_pp_zjj")
     assert "first explicit warm_up or evaluation" in otf["description"]
@@ -107,6 +110,7 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     destination = tmp_path / "examples"
     assert run_cli(("examples", "copy", str(destination))) == 0
     assert (destination / "builtin_sm_lc.toml").is_file()
+    assert (destination / "builtin_sm_heft.toml").is_file()
     assert (destination / "benchmark_z6g_single_flow_helicity_sum.toml").is_file()
     assert (destination / "benchmark_z6g_all_flows_single_helicity.toml").is_file()
     assert (destination / "otf_pp_zjj.toml").is_file()

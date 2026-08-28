@@ -88,6 +88,7 @@ machine-readable stdout.
 | `builtin_sm_lc.toml` | Built-in SM recurrence JIT O2, LC | Small generation example |
 | `builtin_sm_nlc.toml` | Built-in SM recurrence JIT O2, contracted NLC | Small generation example |
 | `builtin_sm_full.toml` | Built-in SM compiled C++, contracted full color | Requires a C++ toolchain during generation |
+| `builtin_sm_heft.toml` | Packaged scalar HEFT `g g > H g g`, recurrence JIT O2, contracted full color | Small HEFT workflow; no external UFO required |
 | `builtin_sm_eager.toml` | Built-in SM eager execution with wheel-owned prepared kernels | Small eager example |
 | `builtin_sm_on_the_fly.toml` | Built-in SM compact OTF LC artifact | Small generation example; first selected family is built at runtime |
 | `otf_pp_zjj.toml` | `p p > Z j j` OTF generation, one-point warm-up, and profiling | Short guided OTF workflow |
@@ -105,6 +106,21 @@ machine-readable stdout.
 | `all_options.toml` | Exhaustive commented schema reference | Reference only; not runnable via `examples run` |
 
 Use the primary Z+jet sequence, not a six-gluon card, as an installation smoke.
+
+## Packaged scalar HEFT
+
+Generate a full-colour Higgs-plus-two-gluon artifact without an external UFO:
+
+```console
+pyamplicol generate --card builtin_sm_heft.toml
+pyamplicol inspect artifacts/builtin_sm_heft
+```
+
+The card selects the packaged `built-in-sm-heft` model and explicitly limits
+the effective coupling order to `HIG = 1`. Recurrence uses the wheel-owned JIT
+O2 prepared kernels. See
+[Models and Processes](models-and-processes.md#built-in-scalar-heft-model) for
+the compiled, eager, on-the-fly, Python API, and trusted-UFO variants.
 
 ## Three materialized execution modes on one process
 

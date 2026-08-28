@@ -6,6 +6,11 @@ parent: "Profiling and Benchmarking"
 <!-- SPDX-License-Identifier: 0BSD -->
 # Performance Reports
 
+See [FullColor FFT Profiling](../user/fullcolor-fft-profiling.md) for the
+source-checkout driver, cluster resource limits, incremental top-ups,
+targeted overwrite, and render-at-any-time workflow that produces the FFT
+snapshots below.
+
 The repository publishes four selected rendered snapshots from manual
 measurement campaigns:
 

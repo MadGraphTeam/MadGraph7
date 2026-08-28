@@ -1,6 +1,6 @@
 ---
 title: "Release and Support"
-nav_order: 4
+nav_order: 5
 parent: "Profiling and Benchmarking"
 ---
 <!-- SPDX-License-Identifier: 0BSD -->
@@ -45,6 +45,8 @@ Version `0.2.0` adds exact symmetric-group FFT full-colour contraction,
 helicity-parametric recurrence and on-the-fly scheduling, built-in SM+HEFT and
 trusted UFO HEFT support, and the resumable fixed-helicity/helicity-sum FFT
 profiling workflow with its final comparison reports.
+See the runnable [scalar HEFT workflow](models-and-processes.md#built-in-scalar-heft-model)
+and the [FullColor FFT profiling guide](fullcolor-fft-profiling.md).
 
 ## 0.1.4 release
 

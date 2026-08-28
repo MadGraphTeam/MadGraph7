@@ -196,6 +196,13 @@ permutation orbits and retaining all other terms as direct residuals. It is
 available for `recurrence` and `on-the-fly`; compiled/eager execution and LC
 flows deliberately reject it.
 
+This is an exact contraction algorithm, not an approximation. Its speedup is
+process-dependent: a small certified symmetry subgroup or a residual-dominated
+contraction can make the FFT and direct curves scale similarly. Keep the
+direct result as the baseline when characterizing a new process family. See
+[FullColor FFT Profiling](fullcolor-fft-profiling.md) for the resumable
+comparison driver and published snapshots.
+
 ```toml
 [color]
 accuracy = "full"

@@ -29,10 +29,10 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 | follow a physicist-friendly, MadGraph-style walkthrough | [Get started: a gentle walkthrough](user/gentle-walkthrough.md) |
 | install pyAmpliCol and verify it | [Installation](user/installation.md) |
 | generate and evaluate my first process | [Quick Start](user/quick-start.md) |
-| choose a model, process, color approximation, or evaluator | [Configuration](user/configuration.md) and [Models and Processes](user/models-and-processes.md) |
+| choose a model, process, color approximation, or evaluator | [Configuration](user/configuration.md) and [Models and Processes](user/models-and-processes.md), including the packaged scalar HEFT workflow |
 | call pyAmpliCol from Python | [Python API](user/python-api.md) |
 | use C, C++, Fortran, Rust, or generated Python drivers | [Native APIs](user/native-apis.md) |
-| benchmark, reproduce, or view performance reports | [Profiling and Benchmarking](user/profiling-and-benchmarking.md), [Profiling Campaigns](user/profiling-campaigns.md), and [published performance reports](performance_reports/README.md) |
+| benchmark, reproduce, or view performance reports | [Profiling and Benchmarking](user/profiling-and-benchmarking.md), [FullColor FFT Profiling](user/fullcolor-fft-profiling.md), and [published performance reports](performance_reports/README.md) |
 | diagnose an error | [Troubleshooting](user/troubleshooting.md) |
 
 ## Install and try it
@@ -107,8 +107,8 @@ flows, and resolved metadata; particles never cross the `>` boundary. See
 ## Explore the documentation
 
 - **Using pyAmpliCol:** [Examples Gallery](user/examples-gallery.md), [Command-Line Interface](user/command-line-interface.md), [Runtime and Selectors](user/runtime-and-selectors.md)
-- **Generation:** [Models and Processes](user/models-and-processes.md), [Generation Modes and Evaluators](user/generation-modes-and-evaluators.md)
-- **Guided workflows:** [LC workloads and execution modes](user/lc-workloads-and-execution-modes.md), [Profiling campaign: from measurements to the PDF](user/profiling-campaign-walkthrough.md)
+- **Generation:** [Models and Processes](user/models-and-processes.md), including scalar HEFT, and [Generation Modes and Evaluators](user/generation-modes-and-evaluators.md)
+- **Guided workflows:** [LC workloads and execution modes](user/lc-workloads-and-execution-modes.md), [Profiling campaign: from measurements to the PDF](user/profiling-campaign-walkthrough.md), [FullColor FFT Profiling](user/fullcolor-fft-profiling.md)
 - **Deployment:** [Artifacts and Portability](user/artifacts-and-portability.md), [Release and Platform Support](user/release-and-support.md)
 - **Background:** [Architecture Overview](user/architecture-overview.md), [Symbolica and Licensing](user/symbolica-and-licensing.md)
 

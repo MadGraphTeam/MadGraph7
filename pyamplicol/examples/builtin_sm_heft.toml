@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: 0BSD
+# Packaged scalar HEFT generation for g g > H g g at full colour.
+# Uses the wheel-owned prepared JIT O2 kernel bundle and recurrence schedule.
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "built-in-sm-heft"
+
+[process]
+entries = [{ expression = "g g > H g g", name = "gg_hgg" }]
+coupling_order_policy = "explicit"
+max_coupling_orders = { HIG = 1 }
+
+[color]
+accuracy = "full"
+
+[generation]
+output = "artifacts/builtin_sm_heft"
+mode = "error"
+emit_api_bundle = true
+
+[evaluator]
+execution_mode = "recurrence"
+backend = "jit"
+
+[output]
+progress = "auto"
+log_level = "info"
