@@ -129,6 +129,7 @@ private:
     std::vector<PoolItem> _pools;
     std::unordered_map<void*, AllocItem> _allocs;
     const GpuDevice& _device;
+    gpuStream_t _stream;
 };
 
 class AsyncGpuDevice {

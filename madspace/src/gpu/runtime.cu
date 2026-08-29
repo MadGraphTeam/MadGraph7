@@ -1504,6 +1504,19 @@ private:
     std::vector<bool> _sync_matrix;
 };
 
+struct StreamGuard {
+    const std::vector<gpuStream_t>& streams;
+    bool dismissed = false;
+
+    ~StreamGuard() {
+        if (!dismissed) {
+            for (auto stream : streams) {
+                ignore_error(gpuStreamSynchronize(stream));
+            }
+        }
+    }
+};
+
 } // namespace
 
 GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
@@ -1851,7 +1864,9 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     auto locals = _locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
     gpuStream_t main_stream = streams.at(0);
+    TensorVec outputs;
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
+    StreamGuard stream_guard{streams};
     fork_streams(main_stream, streams, events);
 
     for (auto& instr : _instructions) {
@@ -1873,11 +1888,14 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     join_streams(main_stream, streams, events);
     update_pool_size_cache(mem_pool.total_sizes(), false);
     //update_cached_tensors(mem_pool.reset(main_stream), false);
-    TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
     }
+    for (auto& local : locals) {
+        local.reset_on_stream(reinterpret_cast<std::uintptr_t>(main_stream));
+    }
     check_error(gpuStreamSynchronize(main_stream));
+    stream_guard.dismissed = true;
     return outputs;
 }
 
@@ -1897,7 +1915,9 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         input_requires_grad.begin(), input_requires_grad.end(), requires_grad.begin()
     );
     gpuStream_t main_stream = streams.at(0);
+    TensorVec outputs;
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
+    StreamGuard stream_guard{streams};
     fork_streams(main_stream, streams, events);
 
     for (auto [instr, instr_eval_grad] : zip(_instructions, eval_grad)) {
@@ -1941,11 +1961,11 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     join_streams(main_stream, streams, events);
     update_pool_size_cache(mem_pool.total_sizes(), false);
     //update_cached_tensors(mem_pool.reset(main_stream), false);
-    TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
     }
     check_error(gpuStreamSynchronize(main_stream));
+    stream_guard.dismissed = true;
     return {outputs, locals, eval_grad};
 }
 

@@ -91,7 +91,7 @@ MemPool::MemPool(
         cached_sizes_and_tensors,
     gpuStream_t stream
 ) :
-    _device(device) {
+    _device(device), _stream(stream) {
     std::size_t pool_count = 0;
     for (auto& [pool_index, size, parent_tensor, zero_init] :
          cached_sizes_and_tensors) {
@@ -128,7 +128,9 @@ MemPool::~MemPool() {
             for (auto& [size, item] : stream_free_pointers) {
                 auto& [ptr, parent] = item;
                 if (!parent) {
-                    _device.free_on_stream(ptr, 0);
+                    _device.free_on_stream(
+                        ptr, reinterpret_cast<std::uintptr_t>(_stream)
+                    );
                 }
             }
         }
