@@ -1776,7 +1776,6 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
 
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
-        update_sync(out.local_index, 0, _wait_events);
     }
 
     _streams = ThreadResource<std::vector<gpuStream_t>>(
@@ -1795,6 +1794,12 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         }
     );
     std::size_t max_event_count = std::max(event_count, backward_event_count);
+    if (stream_count > 1) {
+        _fork_event = max_event_count++;
+        for (std::size_t stream = 1; stream < stream_count; ++stream) {
+            _join_events.push_back(max_event_count++);
+        }
+    }
     _events = ThreadResource<std::vector<gpuEvent_t>>(
         context->thread_pool(),
         [max_event_count]() {
@@ -1812,6 +1817,32 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     );
 }
 
+void GpuRuntime::fork_streams(
+    gpuStream_t main_stream,
+    const std::vector<gpuStream_t>& streams,
+    const std::vector<gpuEvent_t>& events
+) const {
+    if (!_fork_event) {
+        return;
+    }
+    check_error(gpuEventRecord(events.at(*_fork_event), main_stream));
+    for (std::size_t stream = 1; stream < streams.size(); ++stream) {
+        check_error(gpuStreamWaitEvent(streams.at(stream), events.at(*_fork_event)));
+    }
+}
+
+void GpuRuntime::join_streams(
+    gpuStream_t main_stream,
+    const std::vector<gpuStream_t>& streams,
+    const std::vector<gpuEvent_t>& events
+) const {
+    for (std::size_t stream = 1; stream < streams.size(); ++stream) {
+        gpuEvent_t event = events.at(_join_events.at(stream - 1));
+        check_error(gpuEventRecord(event, streams.at(stream)));
+        check_error(gpuStreamWaitEvent(main_stream, event));
+    }
+}
+
 TensorVec GpuRuntime::run(const TensorVec& inputs) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
     auto& streams = _streams.get();
@@ -1821,6 +1852,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     std::copy(inputs.begin(), inputs.end(), locals.begin());
     gpuStream_t main_stream = streams.at(0);
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
+    fork_streams(main_stream, streams, events);
 
     for (auto& instr : _instructions) {
         gpuStream_t stream = streams.at(instr.stream);
@@ -1838,9 +1870,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
             check_error(gpuEventRecord(events.at(instr.record_event), stream));
         }
     }
-    for (auto event : _wait_events) {
-        check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
-    }
+    join_streams(main_stream, streams, events);
     update_pool_size_cache(mem_pool.total_sizes(), false);
     //update_cached_tensors(mem_pool.reset(main_stream), false);
     TensorVec outputs;
@@ -1868,6 +1898,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     );
     gpuStream_t main_stream = streams.at(0);
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
+    fork_streams(main_stream, streams, events);
 
     for (auto [instr, instr_eval_grad] : zip(_instructions, eval_grad)) {
         gpuStream_t stream = streams.at(instr.stream);
@@ -1907,9 +1938,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
             check_error(gpuEventRecord(events.at(instr.record_event), stream));
         }
     }
-    for (auto event : _wait_events) {
-        check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
-    }
+    join_streams(main_stream, streams, events);
     update_pool_size_cache(mem_pool.total_sizes(), false);
     //update_cached_tensors(mem_pool.reset(main_stream), false);
     TensorVec outputs;

@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <map>
+#include <optional>
 
 namespace madspace {
 namespace gpu {
@@ -56,6 +57,16 @@ private:
     void update_cached_tensors(
         const std::vector<std::pair<std::size_t, Tensor>>& tensors, bool backward
     );
+    void fork_streams(
+        gpuStream_t main_stream,
+        const std::vector<gpuStream_t>& streams,
+        const std::vector<gpuEvent_t>& events
+    ) const;
+    void join_streams(
+        gpuStream_t main_stream,
+        const std::vector<gpuStream_t>& streams,
+        const std::vector<gpuEvent_t>& events
+    ) const;
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
     std::size_t _input_count;
@@ -67,7 +78,8 @@ private:
     ContextPtr _context;
     ThreadResource<std::vector<gpuStream_t>> _streams;
     ThreadResource<std::vector<gpuEvent_t>> _events;
-    std::vector<std::size_t> _wait_events;
+    std::optional<std::size_t> _fork_event;
+    std::vector<std::size_t> _join_events;
     std::vector<std::size_t> _backward_wait_events;
     ThreadResource<gpublasHandle_t> _gpublas_handle;
     ThreadResource<gpurandGenerator_t> _gpurand_generator;
