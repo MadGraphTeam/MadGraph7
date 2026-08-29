@@ -37,6 +37,12 @@
 #include <iostream>
 #endif
 
+#if (defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__))
+#define _constmem __constant__
+#else
+#define _constmem
+#endif
+
 class alignas(128) mixmax_engine
 {
 static const int N = 17;
@@ -82,6 +88,51 @@ using result_type = uint64_t;                                 // should it be do
     _dev inline uint64_t operator()()
     {
         return get_next();
+    }
+
+    // --- substream seeding building blocks, used by the GPU seeder ---
+    static constexpr int state_size = N;
+    static constexpr uint64_t mod_prime = M61;
+    // Y <- (sum_j coef[j] A^j) Y, i.e. apply the polynomial-in-A `coef` (state_size terms).
+    _dev static inline void apply_poly(uint64_t* Y, const uint64_t* coef);
+    // Y <- P_r(A) Y: apply the skip operator for seed bit r (row r of the skip matrix).
+    // The operators for different r commute, so bits may be applied in any order/grouping.
+    _dev static inline void apply_skip_bit(uint64_t* Y, int r);
+    // field ops mod mod_prime: acc + a*b, a + b, and Y <- A*Y (returns new sum(Y))
+    _dev static inline uint64_t mod_mul_add(uint64_t acc, uint64_t a, uint64_t b) {
+        return fmodmulM61(acc, a, b);
+    }
+    _dev static inline uint64_t mod_add(uint64_t a, uint64_t b) { return modadd(a, b); }
+    _dev static inline uint64_t advance_state(uint64_t* Y, uint64_t sum) {
+        return iterate_raw_vec(Y, sum);
+    }
+    // raw N-vector access, for in-place skipping
+    _dev uint64_t* state_data() { return V; }
+    _dev const uint64_t* state_data() const { return V; }
+    // recompute sumtot from V and arm the engine (counter = 1), as seed_uniquestream does
+    _dev void finalize_skipped_state() {
+        uint64_t s = 0;
+        for (int i = 0; i < N; i++) { s = modadd(s, V[i]); }
+        sumtot = s;
+        counter = 1;
+    }
+    // vielbein with the two high seed words applied: `high0` at effective bit positions
+    // [64,96), `high1` at [96,128). This part of the seed is the global run seed and does
+    // not change within a run, so callers cache the result.
+    _dev static void run_seed_prefix(uint64_t* out, uint32_t high0, uint32_t high1) {
+        for (int i = 0; i < N; i++) { out[i] = 0; }
+        out[0] = 1;
+        for (int b = 0; b < 32; b++) { if ((high0 >> b) & 1u) { apply_skip_bit(out, 64 + b); } }
+        for (int b = 0; b < 32; b++) { if ((high1 >> b) & 1u) { apply_skip_bit(out, 96 + b); } }
+    }
+    // seed from `prefix` (a state with some seed bits pre-applied), then apply the low
+    // seed words: `low0` at effective bit positions [0,32), `low1` at [32,64). Equivalent
+    // to seed_uniquestream when prefix carries exactly the bits [64,128).
+    _dev void seed_from_state(const uint64_t* prefix, uint32_t low0, uint32_t low1) {
+        for (int i = 0; i < N; i++) { V[i] = prefix[i]; }
+        for (int b = 0; b < 32; b++) { if ((low0 >> b) & 1u) { apply_skip_bit(V, b); } }
+        for (int b = 0; b < 32; b++) { if ((low1 >> b) & 1u) { apply_skip_bit(V, 32 + b); } }
+        finalize_skipped_state();
     }
 
 private:
@@ -183,6 +234,13 @@ public:
 };
 
 
+namespace mixmax_detail {
+_constmem static const uint64_t skipMat17[128][17] =
+#include "mixmax_skip_N17.c"
+;
+}
+
+
 _dev mixmax_engine  ::mixmax_engine()
 // constructor, with no params, fast and seeds with a unit vector
 {
@@ -278,40 +336,42 @@ _dev uint64_t mixmax_engine  ::apply_bigskip( uint32_t clusterID, uint32_t machi
      */
 
 
-    const   uint64_t skipMat17[128][17] =
-#include "mixmax_skip_N17.c"
-    ;
-
-    const uint64_t* skipMat[128];
-    for (int i=0; i<128; i++) { skipMat[i] = skipMat17[i];}
-
     uint32_t IDvec[4] = {streamID, runID, machineID, clusterID};
-    uint64_t Y[N], cum[N];
-    uint64_t insumtot=0;
+    uint64_t Y[N];
 
-    for (int i=0; i<N; i++) { Y[i] = V[i]; insumtot = modadd( insumtot, V[i]); } ;
+    for (int i=0; i<N; i++) { Y[i] = V[i]; }
     for (int IDindex=0; IDindex<4; IDindex++) { // go from lower order to higher order ID
         uint32_t id=IDvec[IDindex];
-        uint32_t r = IDindex*8*sizeof(uint32_t);
+        int r = IDindex*32;
         while (id){
-            if (id & 1) {
-                for (int i=0; i<N; i++){ cum[i] = 0; }
-                for (int j=0; j<N; j++){              // j is lag, enumerates terms of the poly
-                    // for zero lag Y is already given
-                    for (int i =0; i<N; i++){
-                        cum[i] =  fmodmulM61( cum[i], skipMat[r][j] ,  Y[i] ) ;
-                    }
-                    insumtot = iterate_raw_vec(Y, insumtot);
-                }
-                insumtot=0;
-                for (int i=0; i<N; i++){ Y[i] = cum[i]; insumtot = modadd( insumtot, cum[i]); } ;
-            }
+            if (id & 1) { apply_skip_bit(Y, r); }
             id = (id >> 1); r++; // bring up the r-th bit in the ID
         }
     }
-    insumtot=0;
+    uint64_t insumtot=0;
     for (int i=0; i<N; i++){ V[i] = Y[i]; insumtot = modadd( insumtot, Y[i]); } ;  // returns sumtot, and copy the vector over to Vout
     return (insumtot) ;
+}
+
+// Y <- (sum_j coef[j] A^j) Y. Every operator in the algebra generated by A is such a
+// polynomial (Cayley-Hamilton), so this applies both individual skip operators and any
+// product of them, given in the same 17-coefficient basis.
+_dev void mixmax_engine  ::apply_poly(uint64_t* Y, const uint64_t* coef){
+    uint64_t cum[N];
+    uint64_t insumtot=0;
+    for (int i=0; i<N; i++){ cum[i] = 0; insumtot = modadd( insumtot, Y[i]); }
+    for (int j=0; j<N; j++){                  // j is lag, enumerates terms of the poly
+        for (int i=0; i<N; i++){
+            cum[i] = fmodmulM61( cum[i], coef[j], Y[i] );
+        }
+        insumtot = iterate_raw_vec(Y, insumtot);
+    }
+    for (int i=0; i<N; i++){ Y[i] = cum[i]; }
+}
+
+// Y <- P_r(A) Y, the skip operator for seed bit r (row r of the skip matrix).
+_dev void mixmax_engine  ::apply_skip_bit(uint64_t* Y, int r){
+    apply_poly(Y, mixmax_detail::skipMat17[r]);
 }
 
 
