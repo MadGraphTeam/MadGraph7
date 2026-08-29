@@ -282,6 +282,14 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("default_context", &default_context);
     m.def("default_cuda_context", &default_cuda_context, py::arg("index") = 0);
     m.def("default_hip_context", &default_hip_context, py::arg("index") = 0);
+    m.def("get_stream", &caller_stream);
+    m.def("get_input_stream", &caller_input_stream);
+    m.def(
+        "set_stream",
+        &set_caller_stream,
+        py::arg("stream"),
+        py::arg("order_inputs") = true
+    );
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
@@ -980,9 +988,17 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "add_data",
             [](VegasGridOptimizer& opt, py::object values, py::object counts) {
+                auto stream = caller_input_stream();
                 opt.add_data(
-                    dlpack_to_tensor(values, batch_float, 0),
-                    dlpack_to_tensor(counts, batch_float_array(opt.input_dim()), 1)
+                    dlpack_to_tensor(values, batch_float, 0, nullptr, nullptr, stream),
+                    dlpack_to_tensor(
+                        counts,
+                        batch_float_array(opt.input_dim()),
+                        1,
+                        nullptr,
+                        nullptr,
+                        stream
+                    )
                 );
             },
             py::arg("values"),
@@ -1001,10 +1017,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "add_data",
             [](DiscreteOptimizer& opt, std::vector<py::object> values_and_counts) {
                 TensorVec input_tensors;
+                auto stream = caller_input_stream();
                 for (std::size_t i = 1; auto& input : values_and_counts) {
-                    input_tensors.push_back(
-                        dlpack_to_tensor(input, i % 2 == 0 ? batch_int : batch_float, i)
-                    );
+                    input_tensors.push_back(dlpack_to_tensor(
+                        input,
+                        i % 2 == 0 ? batch_int : batch_float,
+                        i,
+                        nullptr,
+                        nullptr,
+                        stream
+                    ));
                     ++i;
                 }
                 opt.add_data(input_tensors);
@@ -1057,11 +1079,12 @@ PYBIND11_MODULE(_madspace_py, m) {
                 TensorVec tensors;
                 tensors.reserve(inputs.size());
                 bool dlpack_version_cache = false;
+                auto stream = caller_input_stream();
                 for (std::size_t i = 0;
                      auto [input, type] : zip(inputs, opt.input_types())) {
-                    tensors.push_back(
-                        dlpack_to_tensor(input, type, i, device, &dlpack_version_cache)
-                    );
+                    tensors.push_back(dlpack_to_tensor(
+                        input, type, i, device, &dlpack_version_cache, stream
+                    ));
                     ++i;
                 }
                 return opt.step(tensors);

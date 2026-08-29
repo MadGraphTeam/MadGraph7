@@ -49,7 +49,7 @@ public:
 
 private:
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
-    load_pool_size_cache(bool backward);
+    load_pool_size_cache(bool backward, std::uintptr_t stream);
     void update_pool_size_cache(
         const std::vector<std::pair<std::size_t, std::size_t>>& total_sizes,
         bool backward
@@ -67,6 +67,7 @@ private:
         const std::vector<gpuStream_t>& streams,
         const std::vector<gpuEvent_t>& events
     ) const;
+    void switch_stream(gpuStream_t main_stream, const std::vector<gpuEvent_t>& events);
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
     std::size_t _input_count;
@@ -78,6 +79,8 @@ private:
     ContextPtr _context;
     ThreadResource<std::vector<gpuStream_t>> _streams;
     ThreadResource<std::vector<gpuEvent_t>> _events;
+    ThreadResource<std::optional<gpuStream_t>> _last_stream;
+    std::size_t _stream_switch_event;
     std::optional<std::size_t> _fork_event;
     std::vector<std::size_t> _join_events;
     std::vector<std::size_t> _backward_wait_events;

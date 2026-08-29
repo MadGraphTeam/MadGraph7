@@ -204,6 +204,7 @@ public:
     allocate(std::size_t size, AllocHint hint) const = 0;
     virtual void free(void* ptr) const = 0;
     virtual void free_on_stream(void* ptr, std::uintptr_t stream) const { free(ptr); }
+    virtual void order_streams(std::uintptr_t from, std::uintptr_t to) const {}
     virtual void memcpy(void* to, void* from, std::size_t size) const = 0;
     virtual void tensor_copy(const Tensor& source, Tensor& target) const = 0;
     virtual void tensor_zero(Tensor& tensor) const = 0;
@@ -475,6 +476,16 @@ public:
         check_impl();
         return impl->device;
     }
+    // stream to order against before touching the storage, empty when there is
+    // nothing left to wait for
+    std::optional<std::uintptr_t> stream() const {
+        return impl == nullptr ? std::nullopt : impl->stream;
+    }
+    void set_stream(std::optional<std::uintptr_t> stream) {
+        if (impl != nullptr) {
+            impl->stream = stream;
+        }
+    }
     std::size_t index_value() const {
         check_impl();
         if (impl->batch_sizes.size() > 0) {
@@ -500,7 +511,7 @@ public:
 
     std::size_t byte_size() const { return dtype_size() * shape().product(); }
 
-    void reset() { reset_on_stream(0); }
+    void reset() { reset_on_stream(stream().value_or(0)); }
 
     template <typename D>
     void reset(const D& device) {
@@ -638,6 +649,7 @@ private:
         std::size_t contiguous_dims;
         SizeVec batch_sizes;
         bool stream_ordered = false;
+        std::optional<std::uintptr_t> stream;
 
         template <typename D>
         void reset(const D& device) {

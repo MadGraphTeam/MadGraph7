@@ -33,7 +33,8 @@ class FunctionModule(nn.Module):
         if torch.is_grad_enabled():
             return AutogradWrapper.apply(self, self.dummy, *args)
         else:
-            outputs = self.runtime.call(args)
+            with me._torch_stream(args):
+                outputs = self.runtime.call(args)
             if len(outputs) == 1:
                 return torch.from_dlpack(outputs[0])
             else:
@@ -48,9 +49,10 @@ class AutogradWrapper(torch.autograd.Function):
         dummy: torch.Tensor,
         *args: torch.Tensor,
     ) -> list[torch.Tensor]:
-        outputs, local_grads, eval_grad = module.runtime.call_with_grad(
-            [arg.detach() for arg in args], [arg.requires_grad for arg in args]
-        )
+        with me._torch_stream(args):
+            outputs, local_grads, eval_grad = module.runtime.call_with_grad(
+                [arg.detach() for arg in args], [arg.requires_grad for arg in args]
+            )
         ctx.module = module
         ctx.eval_grad = eval_grad
         ctx.save_for_backward(
@@ -64,9 +66,10 @@ class AutogradWrapper(torch.autograd.Function):
     @staticmethod
     @once_differentiable
     def backward(ctx: FunctionCtx, *output_grads: torch.Tensor):
-        input_grads, global_grads = ctx.module.runtime.call_backward(
-            output_grads, ctx.saved_tensors, ctx.eval_grad
-        )
+        with me._torch_stream(output_grads):
+            input_grads, global_grads = ctx.module.runtime.call_backward(
+                output_grads, ctx.saved_tensors, ctx.eval_grad
+            )
         for name, grad in global_grads:
             if grad is None:
                 continue

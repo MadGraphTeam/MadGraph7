@@ -26,6 +26,17 @@ void GpuDevice::free_on_stream(void* ptr, std::uintptr_t stream) const {
     ignore_error(gpuFreeAsync(ptr, reinterpret_cast<gpuStream_t>(stream)));
 }
 
+void GpuDevice::order_streams(std::uintptr_t from, std::uintptr_t to) const {
+    activate();
+    static thread_local gpuEvent_t event = [] {
+        gpuEvent_t created;
+        check_error(gpuEventCreate(&created));
+        return created;
+    }();
+    check_error(gpuEventRecord(event, reinterpret_cast<gpuStream_t>(from)));
+    check_error(gpuStreamWaitEvent(reinterpret_cast<gpuStream_t>(to), event));
+}
+
 void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
     activate();
     check_error(gpuMemcpy(to, from, size, gpuMemcpyDefault));

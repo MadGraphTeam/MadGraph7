@@ -13,6 +13,7 @@ using json = nlohmann::json;
 namespace {
 UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
 thread_local std::optional<std::uintptr_t> current_caller_stream;
+thread_local bool current_caller_orders_inputs = true;
 } // namespace
 
 MatrixElementApi::MatrixElementApi(
@@ -309,7 +310,9 @@ void Context::load_globals(const std::string& dir) {
     }
 }
 
-Tensor Context::cached_tensor(std::size_t size) {
+// shared by every runtime on this context, so a block only comes back out on its
+// own stream
+Tensor Context::cached_tensor(std::size_t size, std::uintptr_t stream) {
     auto& tensors = _tensor_cache.get();
     int largest_unused = -1, size_pos = 0;
     for (int i = 0; auto& tensor : tensors) {
@@ -317,7 +320,7 @@ Tensor Context::cached_tensor(std::size_t size) {
         if (size >= byte_size) {
             size_pos = i;
         }
-        if (tensor.is_only_reference()) {
+        if (tensor.is_only_reference() && tensor.stream() == stream) {
             if (byte_size >= size) {
                 return tensor;
             }
@@ -333,6 +336,7 @@ Tensor Context::cached_tensor(std::size_t size) {
     }
     std::size_t word_count = (size + 7) / 8;
     Tensor new_tensor(DataType::dt_float, {word_count}, device());
+    new_tensor.set_stream(stream);
     tensors.insert(tensors.begin() + size_pos, new_tensor);
     return new_tensor;
 }
@@ -367,6 +371,18 @@ std::optional<std::uintptr_t> madspace::caller_stream() {
     return current_caller_stream;
 }
 
-void madspace::set_caller_stream(std::optional<std::uintptr_t> stream) {
-    current_caller_stream = stream;
+std::optional<std::uintptr_t> madspace::caller_input_stream() {
+    return current_caller_orders_inputs ? current_caller_stream : std::nullopt;
+}
+
+void madspace::set_caller_stream(
+    std::optional<std::uintptr_t> stream, bool order_inputs
+) {
+    if (stream && *stream == 2) {
+        throw std::invalid_argument("the per-thread default stream is not supported");
+    }
+    // dlpack spells the legacy stream 1 on cuda, we spell it 0 everywhere
+    current_caller_stream =
+        stream && *stream == 1 ? std::optional<std::uintptr_t>(0) : stream;
+    current_caller_orders_inputs = order_inputs;
 }
