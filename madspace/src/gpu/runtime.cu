@@ -1860,7 +1860,9 @@ void GpuRuntime::join_streams(
     }
 }
 
-// the blas and rand handles are reused across calls with no ordering of their own
+// the blas and rand handles are reused across calls with no ordering of their own, so
+// a call has to wait for the last one that left work queued on a different stream. only
+// run() does; the grad paths synchronize and clear the mark
 void GpuRuntime::switch_stream(
     gpuStream_t main_stream, const std::vector<gpuEvent_t>& events
 ) {
@@ -1995,8 +1997,8 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
     }
-    check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
     check_error(gpuStreamSynchronize(main_stream));
+    _last_stream.get().reset();
     stream_guard.dismissed = true;
     return {outputs, locals, eval_grad};
 }
@@ -2024,19 +2026,16 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     MemPool mem_pool(
         gpu_device, load_pool_size_cache(true, stream_handle), main_stream
     );
-    Tensor all_global_grads;
-    TensorVec global_grads;
-    StreamGuard stream_guard{main_stream, streams};
-
     AsyncGpuDevice init_device(gpu_device, main_stream, 0, &mem_pool);
-    all_global_grads = Tensor(
+    Tensor all_global_grads(
         DataType::dt_float,
         {_grad_global_total_size},
         init_device,
         AllocHint::global_grad
     );
     // all_global_grads.zero(init_device);
-    global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
+    TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
+    StreamGuard stream_guard{main_stream, streams};
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
         local_grads[index] = grad;
     }
@@ -2077,8 +2076,8 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     }*/
     update_pool_size_cache(mem_pool.total_sizes(), true);
     //update_cached_tensors(mem_pool.reset(main_stream), true);
-    check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
     check_error(gpuStreamSynchronize(main_stream));
+    _last_stream.get().reset();
     stream_guard.dismissed = true;
     return {
         {local_grads.begin(), local_grads.begin() + _input_count},
