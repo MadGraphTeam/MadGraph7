@@ -21,11 +21,11 @@ from ._madspace_py import *
 @contextlib.contextmanager
 def stream(handle, order_inputs=True):
     """
-    Run madspace on the given cuda stream instead of its own. Calls without gradients
-    then return without synchronizing, so consume their results on this stream or copy
-    them out before the next call reuses the memory pool, and drop them before the
-    stream is destroyed. Inputs are ordered against it through the dlpack protocol
-    unless order_inputs is false.
+    Run the mapping and function calls on the given cuda stream instead of madspace's
+    own. Calls without gradients then return without synchronizing, so keep the inputs
+    alive, consume the results on this stream and drop everything before the stream is
+    destroyed. Inputs are ordered against it through the dlpack protocol unless
+    order_inputs is false.
     """
     previous, previous_inputs = get_stream(), get_input_stream()
     set_stream(handle, order_inputs)
@@ -33,36 +33,6 @@ def stream(handle, order_inputs=True):
         yield
     finally:
         set_stream(previous, previous_inputs is not None)
-
-
-@contextlib.contextmanager
-def _torch_stream(args):
-    """
-    Run on torch's current stream when every argument is torch's and one is on the gpu.
-    They are already ordered against it, so the producers are not asked for a handshake;
-    a foreign producer gets one, because we cannot know which stream it is on.
-    """
-    on_gpu = False
-    for arg in args:
-        if type(arg).__module__.partition(".")[0] == "torch":
-            on_gpu = on_gpu or getattr(arg, "is_cuda", False)
-        elif hasattr(arg, "__dlpack__"):
-            yield
-            return
-    if not on_gpu or get_stream() is not None:
-        yield
-        return
-    import torch
-
-    handle = torch.cuda.current_stream().cuda_stream
-    if handle == 2:  # per-thread default, which set_stream rejects
-        yield
-        return
-    set_stream(handle, False)
-    try:
-        yield
-    finally:
-        set_stream(None)
 
 
 def _init():
@@ -76,8 +46,7 @@ def _init():
             tensorlib = "numpy"
         else:
             tensorlib = type(args[0]).__module__
-        with _torch_stream(args):
-            outputs = runtime.call(args)
+        outputs = runtime.call(args)
         # Convert outputs, lazy-loading torch or numpy
         if tensorlib == "torch":
             import torch

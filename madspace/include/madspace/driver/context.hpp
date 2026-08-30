@@ -178,7 +178,7 @@ public:
     void load_globals(const std::string& dir);
     DevicePtr device() { return _device; }
     ThreadPool& thread_pool() { return *_thread_pool; }
-    Tensor cached_tensor(std::size_t size, std::uintptr_t stream);
+    Tensor cached_tensor(std::size_t size);
     void reset_cache() {
         _tensor_cache = ThreadResource<TensorVec>(
             thread_pool(), []() { return TensorVec{}; }
@@ -201,14 +201,10 @@ ContextPtr default_cuda_context(std::size_t index = 0);
 ContextPtr default_hip_context(std::size_t index = 0);
 ContextPtr default_device_context(DevicePtr device);
 
-// stream the caller expects madspace to use. an empty optional means that madspace
-// uses its own streams and synchronizes before returning, 0 is the legacy default
-// stream and keeps them too, because putting the main stream on the legacy stream
-// would serialize the lanes. thread-local, so it has to be set on every thread that
-// calls into madspace, torch autograd workers included. only run() returns without
-// synchronizing, since torch's end-of-backward sync does not cover the param.grad
-// assignment in torch.py; its results are then ordered on the caller's stream alone,
-// so consume them there or copy them out before the next call reuses the pool
+// stream that madspace should run on. an empty optional means it uses its own streams
+// and synchronizes before returning, 0 keeps them too because running the main stream
+// on the legacy stream would serialize the lanes. thread-local, so every thread that
+// calls into madspace has to set it. only run() returns without synchronizing
 std::optional<std::uintptr_t> caller_stream();
 std::optional<std::uintptr_t> caller_input_stream();
 void set_caller_stream(std::optional<std::uintptr_t> stream, bool order_inputs = true);

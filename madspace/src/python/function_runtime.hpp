@@ -26,8 +26,7 @@ Tensor dlpack_to_tensor(
     std::optional<Type> expected_type = std::nullopt,
     std::size_t arg_index = 0,
     DevicePtr expected_device = nullptr,
-    bool* dlpack_version_cache = nullptr,
-    std::optional<std::uintptr_t> stream = std::nullopt
+    bool* dlpack_version_cache = nullptr
 );
 
 struct FunctionRuntime {

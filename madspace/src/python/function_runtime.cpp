@@ -22,7 +22,10 @@ struct ManagerContext {
 
 void deleter(struct DLManagedTensor* self) noexcept {
     ManagerContext* context = static_cast<ManagerContext*>(self->manager_ctx);
-    context->tensor.reset_on_stream(context->stream);
+    try {
+        context->tensor.reset_on_stream(context->stream);
+    } catch (...) {
+    }
     delete context;
     delete self;
 };
@@ -78,13 +81,11 @@ std::tuple<std::vector<Tensor>, Runtime*> check_and_convert_args(
     }
     std::vector<Tensor> inputs;
     DevicePtr expected_device = nullptr;
-    auto stream = madspace::caller_input_stream();
     for (int i = 0; i < n_args; ++i) {
         auto& arg = args.at(i);
         auto& input_type = func_runtime._function.inputs().at(i).type;
-        auto tensor = dlpack_to_tensor(
-            arg, input_type, i, expected_device, dlpack_version_cache, stream
-        );
+        auto tensor =
+            dlpack_to_tensor(arg, input_type, i, expected_device, dlpack_version_cache);
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {
             expected_device = tensor.device();
@@ -207,8 +208,7 @@ Tensor madspace_py::dlpack_to_tensor(
     std::optional<Type> expected_type,
     std::size_t arg_index,
     DevicePtr expected_device,
-    bool* dlpack_version_cache,
-    std::optional<std::uintptr_t> stream
+    bool* dlpack_version_cache
 ) {
     if (tensor.is_none()) {
         return {};
@@ -221,7 +221,7 @@ Tensor madspace_py::dlpack_to_tensor(
     // host tensor, neither of them with a TypeError, so ask for the device first.
     // dlpack spells the default stream 1 on cuda and 0 on rocm, our handle for it is 0
     py::dict stream_arg;
-    if (stream) {
+    if (auto stream = madspace::caller_input_stream()) {
         std::tuple<int, int> dl_device;
         try {
             dl_device = tensor.attr("__dlpack_device__")().cast<std::tuple<int, int>>();
@@ -234,12 +234,10 @@ Tensor madspace_py::dlpack_to_tensor(
             );
         }
         auto [device_type, device_id] = dl_device;
-        if (device_id == 0) {
-            if (device_type == kDLCUDA) {
-                stream_arg["stream"] = *stream == 0 ? 1 : *stream;
-            } else if (device_type == kDLROCM) {
-                stream_arg["stream"] = *stream;
-            }
+        if (device_id == 0 && device_type == kDLCUDA) {
+            stream_arg["stream"] = *stream == 0 ? 1 : *stream;
+        } else if (device_id == 0 && device_type == kDLROCM) {
+            stream_arg["stream"] = *stream;
         }
     }
 
@@ -532,15 +530,9 @@ FunctionRuntime::call_backward(
     std::vector<Tensor> arg_out;
     DevicePtr expected_device = nullptr;
     std::size_t arg_index = 0;
-    auto stream = madspace::caller_input_stream();
     for (auto& grad : output_grads) {
         auto tensor = dlpack_to_tensor(
-            grad,
-            std::nullopt,
-            arg_index,
-            expected_device,
-            &_dlpack_version_cache,
-            stream
+            grad, std::nullopt, arg_index, expected_device, &_dlpack_version_cache
         );
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {
@@ -552,12 +544,7 @@ FunctionRuntime::call_backward(
     std::vector<Tensor> arg_locals;
     for (auto& local : stored_locals) {
         auto tensor = dlpack_to_tensor(
-            local,
-            std::nullopt,
-            arg_index,
-            expected_device,
-            &_dlpack_version_cache,
-            stream
+            local, std::nullopt, arg_index, expected_device, &_dlpack_version_cache
         );
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {

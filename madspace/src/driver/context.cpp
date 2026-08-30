@@ -310,9 +310,7 @@ void Context::load_globals(const std::string& dir) {
     }
 }
 
-// shared by every runtime on this context, so a block only comes back out on its
-// own stream
-Tensor Context::cached_tensor(std::size_t size, std::uintptr_t stream) {
+Tensor Context::cached_tensor(std::size_t size) {
     auto& tensors = _tensor_cache.get();
     int largest_unused = -1, size_pos = 0;
     for (int i = 0; auto& tensor : tensors) {
@@ -320,7 +318,7 @@ Tensor Context::cached_tensor(std::size_t size, std::uintptr_t stream) {
         if (size >= byte_size) {
             size_pos = i;
         }
-        if (tensor.is_only_reference() && tensor.stream() == stream) {
+        if (tensor.is_only_reference()) {
             if (byte_size >= size) {
                 return tensor;
             }
@@ -336,7 +334,6 @@ Tensor Context::cached_tensor(std::size_t size, std::uintptr_t stream) {
     }
     std::size_t word_count = (size + 7) / 8;
     Tensor new_tensor(DataType::dt_float, {word_count}, device());
-    new_tensor.set_stream(stream);
     tensors.insert(tensors.begin() + size_pos, new_tensor);
     return new_tensor;
 }
@@ -357,6 +354,8 @@ ContextPtr madspace::default_hip_context(std::size_t index) {
 }
 
 ContextPtr madspace::default_device_context(DevicePtr device) {
+    // leaked on purpose, the contexts hold gpu resources that must not be freed
+    // after the cuda runtime has shut down
     static auto& default_contexts = *new std::unordered_map<DevicePtr, ContextPtr>;
     if (auto search = default_contexts.find(device); search != default_contexts.end()) {
         return search->second;

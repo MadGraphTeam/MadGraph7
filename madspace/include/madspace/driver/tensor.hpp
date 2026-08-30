@@ -388,7 +388,12 @@ public:
         );
     }
 
-    ~Tensor() { reset(); }
+    ~Tensor() {
+        try {
+            reset();
+        } catch (...) {
+        }
+    }
 
     Tensor& operator=(const Tensor& other) {
         reset();
@@ -479,11 +484,15 @@ public:
     // stream to order against before touching the storage, empty when there is
     // nothing left to wait for
     std::optional<std::uintptr_t> stream() const {
-        return impl == nullptr ? std::nullopt : impl->stream;
+        return impl == nullptr ? std::nullopt : storage()->stream;
     }
     void set_stream(std::optional<std::uintptr_t> stream) {
-        if (impl != nullptr) {
-            impl->stream = stream;
+        if (impl == nullptr) {
+            return;
+        }
+        TensorImpl* owner = storage();
+        if (owner->stream_ordered) {
+            owner->stream = stream;
         }
     }
     std::size_t index_value() const {
@@ -688,6 +697,14 @@ private:
 
         void incref() { ref_count.fetch_add(1, std::memory_order_relaxed); }
     };
+
+    TensorImpl* storage() const {
+        TensorImpl* item = impl;
+        while (item->data_owner != nullptr) {
+            item = item->data_owner;
+        }
+        return item;
+    }
 
     Tensor(TensorImpl* _impl) : impl(_impl) {
         if (impl->data_owner != nullptr) {

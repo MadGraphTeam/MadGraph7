@@ -49,7 +49,7 @@ public:
 
 private:
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
-    load_pool_size_cache(bool backward, std::uintptr_t stream);
+    load_pool_size_cache(bool backward, bool synchronizes);
     void update_pool_size_cache(
         const std::vector<std::pair<std::size_t, std::size_t>>& total_sizes,
         bool backward

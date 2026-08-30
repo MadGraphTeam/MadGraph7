@@ -1799,6 +1799,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         [stream_count]() {
             std::vector<gpuStream_t> streams(stream_count);
             for (auto& item : streams) {
+                // blocking, a caller on the legacy default stream relies on it
                 check_error(gpuStreamCreate(&item));
             }
             return streams;
@@ -1886,9 +1887,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     auto stream_handle = reinterpret_cast<std::uintptr_t>(main_stream);
     TensorVec outputs;
     switch_stream(main_stream, events);
-    MemPool mem_pool(
-        gpu_device, load_pool_size_cache(false, stream_handle), main_stream
-    );
+    MemPool mem_pool(gpu_device, load_pool_size_cache(false, !caller), main_stream);
     StreamGuard stream_guard{main_stream, streams};
     fork_streams(main_stream, streams, events);
 
@@ -1918,9 +1917,11 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     for (auto& local : locals) {
         local.reset_on_stream(stream_handle);
     }
-    check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
-    if (!caller) {
+    if (caller) {
+        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+    } else {
         check_error(gpuStreamSynchronize(main_stream));
+        _last_stream.get().reset();
     }
     stream_guard.dismissed = true;
     return outputs;
@@ -1944,12 +1945,9 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     auto caller = caller_stream();
     gpuStream_t main_stream =
         caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
-    auto stream_handle = reinterpret_cast<std::uintptr_t>(main_stream);
     TensorVec outputs;
     switch_stream(main_stream, events);
-    MemPool mem_pool(
-        gpu_device, load_pool_size_cache(false, stream_handle), main_stream
-    );
+    MemPool mem_pool(gpu_device, load_pool_size_cache(false, true), main_stream);
     StreamGuard stream_guard{main_stream, streams};
     fork_streams(main_stream, streams, events);
 
@@ -2021,11 +2019,9 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     auto caller = caller_stream();
     gpuStream_t main_stream =
         caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
-    auto stream_handle = reinterpret_cast<std::uintptr_t>(main_stream);
     switch_stream(main_stream, events);
-    MemPool mem_pool(
-        gpu_device, load_pool_size_cache(true, stream_handle), main_stream
-    );
+    MemPool mem_pool(gpu_device, load_pool_size_cache(true, true), main_stream);
+    StreamGuard stream_guard{main_stream, streams};
     AsyncGpuDevice init_device(gpu_device, main_stream, 0, &mem_pool);
     Tensor all_global_grads(
         DataType::dt_float,
@@ -2035,7 +2031,6 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     );
     // all_global_grads.zero(init_device);
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
-    StreamGuard stream_guard{main_stream, streams};
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
         local_grads[index] = grad;
     }
@@ -2086,14 +2081,15 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
 }
 
 std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
-GpuRuntime::load_pool_size_cache(bool backward, std::uintptr_t stream) {
+// a cached block can only be handed out again if the call that used it synchronized
+GpuRuntime::load_pool_size_cache(bool backward, bool synchronizes) {
     auto cache = backward ? _pool_size_cache_backward.load() : _pool_size_cache.load();
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>> ret;
     if (cache) {
         //auto& thread_prev_caches =
             //backward ? _prev_caches_backward.get() : _prev_caches.get();
         for (auto [pool_index, size] : *cache) {
-            Tensor new_cache = _context->cached_tensor(size, stream);
+            Tensor new_cache = synchronizes ? _context->cached_tensor(size) : Tensor();
             /*if (pool_index < thread_prev_caches.size()) {
                 Tensor& prev_cache = thread_prev_caches.at(pool_index);
                 if (prev_cache && prev_cache.is_only_reference()) {

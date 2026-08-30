@@ -17,22 +17,25 @@ std::pair<void*, Tensor> GpuDevice::allocate(std::size_t size, AllocHint hint) c
 }
 
 void GpuDevice::free(void* ptr) const {
-    ignore_error(gpuSetDevice(_index));
-    ignore_error(gpuFree(ptr));
+    activate();
+    check_error(gpuFree(ptr));
 }
 
 void GpuDevice::free_on_stream(void* ptr, std::uintptr_t stream) const {
-    ignore_error(gpuSetDevice(_index));
-    ignore_error(gpuFreeAsync(ptr, reinterpret_cast<gpuStream_t>(stream)));
+    activate();
+    check_error(gpuFreeAsync(ptr, reinterpret_cast<gpuStream_t>(stream)));
 }
 
 void GpuDevice::order_streams(std::uintptr_t from, std::uintptr_t to) const {
     activate();
-    static thread_local gpuEvent_t event = [] {
-        gpuEvent_t created;
-        check_error(gpuEventCreate(&created));
-        return created;
-    }();
+    static thread_local std::vector<gpuEvent_t> events;
+    if (events.size() <= static_cast<std::size_t>(_index)) {
+        events.resize(_index + 1);
+    }
+    gpuEvent_t& event = events.at(_index);
+    if (!event) {
+        check_error(gpuEventCreate(&event));
+    }
     check_error(gpuEventRecord(event, reinterpret_cast<gpuStream_t>(from)));
     check_error(gpuStreamWaitEvent(reinterpret_cast<gpuStream_t>(to), event));
 }
@@ -122,6 +125,7 @@ MemPool::MemPool(
             pool.capacity = parent_tensor.byte_size();
         } else {
             pool.parent_tensor = Tensor(DataType::dt_float, {word_count}, async_device);
+            pool.parent_tensor.set_stream(reinterpret_cast<std::uintptr_t>(stream));
             pool.capacity = word_count * 8;
         }
         pool.needed_size = word_count * 8;
@@ -139,9 +143,12 @@ MemPool::~MemPool() {
             for (auto& [size, item] : stream_free_pointers) {
                 auto& [ptr, parent] = item;
                 if (!parent) {
-                    _device.free_on_stream(
-                        ptr, reinterpret_cast<std::uintptr_t>(_stream)
-                    );
+                    try {
+                        _device.free_on_stream(
+                            ptr, reinterpret_cast<std::uintptr_t>(_stream)
+                        );
+                    } catch (...) {
+                    }
                 }
             }
         }
