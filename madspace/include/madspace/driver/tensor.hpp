@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 namespace madspace {
@@ -405,7 +406,10 @@ public:
     }
 
     Tensor& operator=(Tensor&& other) noexcept {
-        reset();
+        try {
+            reset();
+        } catch (...) {
+        }
         impl = other.impl;
         other.impl = nullptr;
         return *this;
@@ -527,16 +531,15 @@ public:
         if (impl == nullptr) {
             return;
         }
-        impl->reset(device);
-        impl = nullptr;
+        // the free can throw, and it has taken the reference either way
+        std::exchange(impl, nullptr)->reset(device);
     }
 
     void reset_on_stream(std::uintptr_t stream) {
         if (impl == nullptr) {
             return;
         }
-        impl->reset_on_stream(stream);
-        impl = nullptr;
+        std::exchange(impl, nullptr)->reset_on_stream(stream);
     }
 
     Tensor select(std::size_t axis, std::size_t index) const;
@@ -731,6 +734,7 @@ private:
             ++tensor_count;
             if constexpr (requires { D::stream_ordered_alloc; }) {
                 impl->stream_ordered = D::stream_ordered_alloc;
+                impl->stream = reinterpret_cast<std::uintptr_t>(device.stream());
             }
         }
     }

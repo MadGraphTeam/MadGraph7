@@ -125,7 +125,6 @@ MemPool::MemPool(
             pool.capacity = parent_tensor.byte_size();
         } else {
             pool.parent_tensor = Tensor(DataType::dt_float, {word_count}, async_device);
-            pool.parent_tensor.set_stream(reinterpret_cast<std::uintptr_t>(stream));
             pool.capacity = word_count * 8;
         }
         pool.needed_size = word_count * 8;

@@ -19,20 +19,20 @@ from ._madspace_py import *
 
 
 @contextlib.contextmanager
-def stream(handle, order_inputs=True):
+def stream(handle):
     """
     Run the mapping and function calls on the given cuda stream instead of madspace's
-    own. Calls without gradients then return without synchronizing, so keep the inputs
-    alive, consume the results on this stream and drop everything before the stream is
-    destroyed. Inputs are ordered against it through the dlpack protocol unless
-    order_inputs is false.
+    own. Calls without gradients then return without synchronizing, so consume the
+    results on this stream and drop everything before the stream is destroyed. Inputs
+    are held until the work reading them is done, which every call takes care of, as
+    does release_inputs for the work that has finished by then.
     """
-    previous, previous_inputs = get_stream(), get_input_stream()
-    set_stream(handle, order_inputs)
+    previous = get_stream()
+    set_stream(handle)
     try:
         yield
     finally:
-        set_stream(previous, previous_inputs is not None)
+        set_stream(previous)
 
 
 def _init():
@@ -143,8 +143,16 @@ def _init():
     FunctionRuntime.__call__ = runtime_call
     Function.__call__ = function_call
     FunctionGenerator.__call__ = function_generator_call
+    def release_inputs(self):
+        for name in ("runtime", "forward_runtime", "inverse_runtime"):
+            if hasattr(self, name):
+                getattr(self, name).release_inputs()
+
     Mapping.map_forward = map_forward
     Mapping.map_inverse = map_inverse
+    Function.release_inputs = release_inputs
+    FunctionGenerator.release_inputs = release_inputs
+    Mapping.release_inputs = release_inputs
     Tensor.numpy = tensor_numpy
     Tensor.torch = tensor_torch
     # Logger.set_log_handler(log_handler)

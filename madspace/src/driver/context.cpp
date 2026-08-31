@@ -13,7 +13,6 @@ using json = nlohmann::json;
 namespace {
 UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
 thread_local std::optional<std::uintptr_t> current_caller_stream;
-thread_local bool current_caller_orders_inputs = true;
 } // namespace
 
 MatrixElementApi::MatrixElementApi(
@@ -370,18 +369,11 @@ std::optional<std::uintptr_t> madspace::caller_stream() {
     return current_caller_stream;
 }
 
-std::optional<std::uintptr_t> madspace::caller_input_stream() {
-    return current_caller_orders_inputs ? current_caller_stream : std::nullopt;
-}
-
-void madspace::set_caller_stream(
-    std::optional<std::uintptr_t> stream, bool order_inputs
-) {
+void madspace::set_caller_stream(std::optional<std::uintptr_t> stream) {
     if (stream && *stream == 2) {
         throw std::invalid_argument("the per-thread default stream is not supported");
     }
     // dlpack spells the legacy stream 1 on cuda, we spell it 0 everywhere
     current_caller_stream =
         stream && *stream == 1 ? std::optional<std::uintptr_t>(0) : stream;
-    current_caller_orders_inputs = order_inputs;
 }

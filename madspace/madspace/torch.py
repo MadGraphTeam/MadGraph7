@@ -53,6 +53,9 @@ class AutogradWrapper(torch.autograd.Function):
         )
         ctx.module = module
         ctx.eval_grad = eval_grad
+        # backward runs on autograd's thread, which the thread-local does not reach,
+        # but on the stream of the forward call
+        ctx.stream = me.get_stream()
         ctx.save_for_backward(
             *(None if grad is None else torch.from_dlpack(grad) for grad in local_grads)
         )
@@ -64,9 +67,10 @@ class AutogradWrapper(torch.autograd.Function):
     @staticmethod
     @once_differentiable
     def backward(ctx: FunctionCtx, *output_grads: torch.Tensor):
-        input_grads, global_grads = ctx.module.runtime.call_backward(
-            output_grads, ctx.saved_tensors, ctx.eval_grad
-        )
+        with me.stream(ctx.stream):
+            input_grads, global_grads = ctx.module.runtime.call_backward(
+                output_grads, ctx.saved_tensors, ctx.eval_grad
+            )
         for name, grad in global_grads:
             if grad is None:
                 continue

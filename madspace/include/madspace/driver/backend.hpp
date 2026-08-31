@@ -19,6 +19,9 @@ public:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads = false
     ) = 0;
+    // inputs of a call that returned before the work reading them was done are held
+    // until it is. every call releases what is done, this does it without calling
+    virtual void release_inputs() {}
     friend std::unique_ptr<Runtime>
     build_runtime(const Function& function, ContextPtr context, bool concurrent);
 

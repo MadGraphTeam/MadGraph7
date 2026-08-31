@@ -26,7 +26,8 @@ Tensor dlpack_to_tensor(
     std::optional<Type> expected_type = std::nullopt,
     std::size_t arg_index = 0,
     DevicePtr expected_device = nullptr,
-    bool* dlpack_version_cache = nullptr
+    bool* dlpack_version_cache = nullptr,
+    std::vector<PyTypeObject*>* ordered_producers = nullptr
 );
 
 struct FunctionRuntime {
@@ -50,6 +51,7 @@ struct FunctionRuntime {
         const std::vector<py::object>& stored_locals,
         const std::vector<bool>& eval_grad
     );
+    void release_inputs();
 
     Function _function;
     ContextPtr _context;

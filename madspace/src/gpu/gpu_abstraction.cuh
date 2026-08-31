@@ -1,5 +1,12 @@
 #pragma once
 
+// stream handle 0 has to mean the legacy stream: our lanes are blocking streams, so
+// everything freed on it is ordered against them, which per-thread streams are not
+#if defined(CUDA_API_PER_THREAD_DEFAULT_STREAM) || \
+    defined(__HIP_API_PER_THREAD_DEFAULT_STREAM__)
+#error "madspace does not support per-thread default streams"
+#endif
+
 #ifdef __CUDACC__
 
 #include <cub/cub.cuh>
@@ -32,6 +39,9 @@
 #define gpuEventDestroy cudaEventDestroy
 #define gpuStreamWaitEvent cudaStreamWaitEvent
 #define gpuEventRecord cudaEventRecord
+#define gpuEventQuery cudaEventQuery
+#define gpuEventSynchronize cudaEventSynchronize
+#define gpuErrorNotReady cudaErrorNotReady
 #define gpuDeviceSynchronize cudaDeviceSynchronize
 
 #define gpublasStatus_t cublasStatus_t
@@ -90,6 +100,9 @@
 #define gpuEventDestroy hipEventDestroy
 #define gpuStreamWaitEvent(stream, event) hipStreamWaitEvent(stream, event, 0)
 #define gpuEventRecord hipEventRecord
+#define gpuEventQuery hipEventQuery
+#define gpuEventSynchronize hipEventSynchronize
+#define gpuErrorNotReady hipErrorNotReady
 #define gpuDeviceSynchronize hipDeviceSynchronize
 
 #define gpublasStatus_t rocblas_status

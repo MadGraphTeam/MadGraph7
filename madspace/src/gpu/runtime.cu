@@ -1545,6 +1545,19 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         [](gpurandGenerator_t handle) { ignore_error(gpurandDestroyGenerator(handle)); }
     ),
     _last_stream(context->thread_pool(), []() { return std::optional<gpuStream_t>{}; }),
+    _held_inputs(
+        context->thread_pool(),
+        []() { return HeldInputs{}; },
+        [](HeldInputs& held) {
+            for (auto& [event, tensors] : held.items) {
+                ignore_error(gpuEventSynchronize(event));
+                ignore_error(gpuEventDestroy(event));
+            }
+            for (auto event : held.free_events) {
+                ignore_error(gpuEventDestroy(event));
+            }
+        }
+    ),
     _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
     _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }) {
     if (context->device()->device_type() != GpuDevice::gpu_device_type) {
@@ -1861,9 +1874,43 @@ void GpuRuntime::join_streams(
     }
 }
 
-// the blas and rand handles are reused across calls with no ordering of their own, so
-// a call has to wait for the last one that left work queued on a different stream. only
-// run() does; the grad paths synchronize and clear the mark
+void GpuRuntime::release_inputs() {
+    auto& held = _held_inputs.get();
+    gpuError_t error = gpuSuccess;
+    auto done = std::ranges::remove_if(held.items, [&](auto& item) {
+        auto status = gpuEventQuery(item.first);
+        if (status == gpuErrorNotReady) {
+            return false;
+        }
+        if (status != gpuSuccess) {
+            error = status;
+        }
+        held.free_events.push_back(item.first);
+        return true;
+    });
+    held.items.erase(done.begin(), done.end());
+    check_error(error);
+}
+
+void GpuRuntime::hold_inputs(const TensorVec& inputs, gpuStream_t stream) {
+    // the dlpack capsules keep the producer's memory alive, so they must outlive the
+    // work reading it, which is still queued when a caller stream lets us return early
+    release_inputs();
+    auto& held = _held_inputs.get();
+    gpuEvent_t event;
+    if (held.free_events.empty()) {
+        check_error(gpuEventCreate(&event));
+    } else {
+        event = held.free_events.back();
+        held.free_events.pop_back();
+    }
+    held.items.emplace_back(event, inputs);
+    check_error(gpuEventRecord(event, stream));
+}
+
+// a call that returned early left work queued, and the next one shares its handles, its
+// pool blocks and the async pool with it, so a call on a different stream has to wait
+// for it. only run() leaves the mark; the grad paths synchronize and clear it
 void GpuRuntime::switch_stream(
     gpuStream_t main_stream, const std::vector<gpuEvent_t>& events
 ) {
@@ -1919,9 +1966,11 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     }
     if (caller) {
         check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        hold_inputs(inputs, main_stream);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
         _last_stream.get().reset();
+        release_inputs();
     }
     stream_guard.dismissed = true;
     return outputs;
@@ -1996,7 +2045,12 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         outputs.push_back(locals[index]);
     }
     check_error(gpuStreamSynchronize(main_stream));
+    // everything is done, and a lane handle would not survive the runtime
+    for (auto& local : locals) {
+        local.set_stream(std::nullopt);
+    }
     _last_stream.get().reset();
+    release_inputs();
     stream_guard.dismissed = true;
     return {outputs, locals, eval_grad};
 }
@@ -2072,7 +2126,12 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     update_pool_size_cache(mem_pool.total_sizes(), true);
     //update_cached_tensors(mem_pool.reset(main_stream), true);
     check_error(gpuStreamSynchronize(main_stream));
+    for (auto& grad : local_grads) {
+        grad.set_stream(std::nullopt);
+    }
+    all_global_grads.set_stream(std::nullopt);
     _last_stream.get().reset();
+    release_inputs();
     stream_guard.dismissed = true;
     return {
         {local_grads.begin(), local_grads.begin() + _input_count},

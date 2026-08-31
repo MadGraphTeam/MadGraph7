@@ -204,10 +204,11 @@ ContextPtr default_device_context(DevicePtr device);
 // stream that madspace should run on. an empty optional means it uses its own streams
 // and synchronizes before returning, 0 keeps them too because running the main stream
 // on the legacy stream would serialize the lanes. thread-local, so every thread that
-// calls into madspace has to set it. only run() returns without synchronizing
+// calls into madspace has to set it. only run() returns without synchronizing. inputs
+// are ordered against it through the dlpack protocol either way, with the legacy stream
+// standing in for it when it is empty
 std::optional<std::uintptr_t> caller_stream();
-std::optional<std::uintptr_t> caller_input_stream();
-void set_caller_stream(std::optional<std::uintptr_t> stream, bool order_inputs = true);
+void set_caller_stream(std::optional<std::uintptr_t> stream);
 
 inline std::string prefixed_name(const std::string& prefix, const std::string& name) {
     return prefix == "" ? name : std::format("{}.{}", prefix, name);

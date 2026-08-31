@@ -43,6 +43,7 @@ public:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads
     ) override;
+    void release_inputs() override;
     Context& context() { return *_context; }
     gpublasHandle_t gpublas_handle() { return _gpublas_handle.get(); }
     gpurandGenerator_t gpurand_generator() { return _gpurand_generator.get(); }
@@ -68,6 +69,7 @@ private:
         const std::vector<gpuEvent_t>& events
     ) const;
     void switch_stream(gpuStream_t main_stream, const std::vector<gpuEvent_t>& events);
+    void hold_inputs(const TensorVec& inputs, gpuStream_t stream);
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
     std::size_t _input_count;
@@ -86,6 +88,12 @@ private:
     std::vector<std::size_t> _backward_wait_events;
     ThreadResource<gpublasHandle_t> _gpublas_handle;
     ThreadResource<gpurandGenerator_t> _gpurand_generator;
+    // destroyed before the handles above, because it waits for the work using them
+    struct HeldInputs {
+        std::vector<std::pair<gpuEvent_t, TensorVec>> items;
+        std::vector<gpuEvent_t> free_events;
+    };
+    ThreadResource<HeldInputs> _held_inputs;
     std::atomic<std::shared_ptr<std::unordered_map<std::size_t, std::size_t>>>
         _pool_size_cache;
     std::atomic<std::shared_ptr<std::unordered_map<std::size_t, std::size_t>>>
