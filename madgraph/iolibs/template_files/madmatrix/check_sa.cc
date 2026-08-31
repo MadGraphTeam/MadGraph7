@@ -647,7 +647,7 @@ namespace
     const std::vector<fptype> masses( massesD.begin(), massesD.end() );
 
     std::vector<std::vector<double>> point =
-      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, masses, rambowgt );
+      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 
     // alpha_s from the param card so the couplings match the Fortran/C++
     // 'check' drivers (UMAMI otherwise falls back to a hardcoded g_s).
