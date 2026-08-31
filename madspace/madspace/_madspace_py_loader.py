@@ -21,11 +21,12 @@ from ._madspace_py import *
 @contextlib.contextmanager
 def stream(handle):
     """
-    Run the mapping and function calls on the given cuda stream instead of madspace's
-    own. Calls without gradients then return without synchronizing, so consume the
-    results on this stream and drop everything before the stream is destroyed. Inputs
-    are held until the work reading them is done, which every call takes care of, as
-    does release_inputs for the work that has finished by then.
+    Run the calls on the given cuda stream instead of madspace's own, handle being an
+    integer such as torch.cuda.current_stream().cuda_stream, or None to go back. They
+    then return without synchronizing, so consume the results on this stream and keep it
+    alive until everything madspace handed out has been dropped, as the frees are
+    ordered on it. Inputs from another framework are held until the work reading them is
+    done, which the next call releases, as does release_inputs. Thread-local.
     """
     previous = get_stream()
     set_stream(handle)
@@ -45,7 +46,7 @@ def _init():
         if len(args) == 0:
             tensorlib = "numpy"
         else:
-            tensorlib = type(args[0]).__module__
+            tensorlib = type(args[0]).__module__.partition(".")[0]
         outputs = runtime.call(args)
         # Convert outputs, lazy-loading torch or numpy
         if tensorlib == "torch":
@@ -140,14 +141,14 @@ def _init():
             case Logger.level_error:
                 py_logger.error(message)
 
-    FunctionRuntime.__call__ = runtime_call
-    Function.__call__ = function_call
-    FunctionGenerator.__call__ = function_generator_call
     def release_inputs(self):
         for name in ("runtime", "forward_runtime", "inverse_runtime"):
             if hasattr(self, name):
                 getattr(self, name).release_inputs()
 
+    FunctionRuntime.__call__ = runtime_call
+    Function.__call__ = function_call
+    FunctionGenerator.__call__ = function_generator_call
     Mapping.map_forward = map_forward
     Mapping.map_inverse = map_inverse
     Function.release_inputs = release_inputs

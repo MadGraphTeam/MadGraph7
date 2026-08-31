@@ -1504,6 +1504,7 @@ private:
     std::vector<bool> _sync_matrix;
 };
 
+// a call that throws never held its inputs, so its queued work has to be drained
 struct StreamGuard {
     gpuStream_t main_stream;
     const std::vector<gpuStream_t>& streams;
@@ -1524,6 +1525,7 @@ struct StreamGuard {
 GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     _context(context),
     _input_count(function_arg.inputs().size()),
+    _last_stream(context->thread_pool(), []() { return std::optional<gpuStream_t>{}; }),
     _gpublas_handle(
         context->thread_pool(),
         []() {
@@ -1544,7 +1546,6 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         },
         [](gpurandGenerator_t handle) { ignore_error(gpurandDestroyGenerator(handle)); }
     ),
-    _last_stream(context->thread_pool(), []() { return std::optional<gpuStream_t>{}; }),
     _held_inputs(
         context->thread_pool(),
         []() { return HeldInputs{}; },
@@ -1803,8 +1804,24 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         );
     }
 
+    std::vector<bool> grad_accumulated(function.locals().size());
+    SizeVec output_counts(function.locals().size());
+    for (auto& instr : function.instructions()) {
+        for (auto& in : instr.inputs) {
+            grad_accumulated.at(in.local_index) = true;
+        }
+    }
+    for (auto& out : function.outputs()) {
+        ++output_counts.at(out.local_index);
+    }
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
+        // an output that is read again or returned twice is accumulated into, and that
+        // must not happen in the caller's tensor
+        _copy_output_grads.push_back(
+            grad_accumulated.at(out.local_index) ||
+            output_counts.at(out.local_index) > 1
+        );
     }
 
     _streams = ThreadResource<std::vector<gpuStream_t>>(
@@ -1892,10 +1909,24 @@ void GpuRuntime::release_inputs() {
     check_error(error);
 }
 
-void GpuRuntime::hold_inputs(const TensorVec& inputs, gpuStream_t stream) {
-    // the dlpack capsules keep the producer's memory alive, so they must outlive the
-    // work reading it, which is still queued when a caller stream lets us return early
+void GpuRuntime::hold_inputs(
+    const TensorVec& inputs, gpuStream_t stream, bool own_lane
+) {
+    // the capsules keep the producer's memory alive until the work reading it is done.
+    // memory of our own that this stream frees is already ordered behind that work,
+    // and a free on the legacy stream is ordered behind every blocking lane of ours
     release_inputs();
+    auto handle = reinterpret_cast<std::uintptr_t>(stream);
+    TensorVec kept;
+    for (auto& input : inputs) {
+        auto input_stream = input.stream();
+        if (input && input_stream != handle && !(own_lane && input_stream == 0)) {
+            kept.push_back(input);
+        }
+    }
+    if (kept.empty()) {
+        return;
+    }
     auto& held = _held_inputs.get();
     gpuEvent_t event;
     if (held.free_events.empty()) {
@@ -1904,13 +1935,12 @@ void GpuRuntime::hold_inputs(const TensorVec& inputs, gpuStream_t stream) {
         event = held.free_events.back();
         held.free_events.pop_back();
     }
-    held.items.emplace_back(event, inputs);
+    held.items.emplace_back(event, std::move(kept));
     check_error(gpuEventRecord(event, stream));
 }
 
-// a call that returned early left work queued, and the next one shares its handles, its
-// pool blocks and the async pool with it, so a call on a different stream has to wait
-// for it. only run() leaves the mark; the grad paths synchronize and clear it
+// the next call shares the handles, the pool blocks and the async pool with one that
+// returned early, so on a different stream it has to wait for it
 void GpuRuntime::switch_stream(
     gpuStream_t main_stream, const std::vector<gpuEvent_t>& events
 ) {
@@ -1966,7 +1996,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     }
     if (caller) {
         check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
-        hold_inputs(inputs, main_stream);
+        hold_inputs(inputs, main_stream, *caller == 0);
     } else {
         check_error(gpuStreamSynchronize(main_stream));
         _last_stream.get().reset();
@@ -1996,7 +2026,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
     TensorVec outputs;
     switch_stream(main_stream, events);
-    MemPool mem_pool(gpu_device, load_pool_size_cache(false, true), main_stream);
+    MemPool mem_pool(gpu_device, load_pool_size_cache(false, !caller), main_stream);
     StreamGuard stream_guard{main_stream, streams};
     fork_streams(main_stream, streams, events);
 
@@ -2044,13 +2074,18 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
     }
-    check_error(gpuStreamSynchronize(main_stream));
-    // everything is done, and a lane handle would not survive the runtime
+    // the locals outlive the call, and a lane handle would not survive the runtime
     for (auto& local : locals) {
-        local.set_stream(std::nullopt);
+        local.set_stream(caller);
     }
-    _last_stream.get().reset();
-    release_inputs();
+    if (caller) {
+        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        hold_inputs(inputs, main_stream, *caller == 0);
+    } else {
+        check_error(gpuStreamSynchronize(main_stream));
+        _last_stream.get().reset();
+        release_inputs();
+    }
     stream_guard.dismissed = true;
     return {outputs, locals, eval_grad};
 }
@@ -2067,16 +2102,27 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     gpu_device.activate();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);
-    for (auto [index, grad] : zip(_output_indices, output_grads)) {
-        local_grads[index] = grad;
-    }
     auto caller = caller_stream();
     gpuStream_t main_stream =
         caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
     switch_stream(main_stream, events);
-    MemPool mem_pool(gpu_device, load_pool_size_cache(true, true), main_stream);
+    MemPool mem_pool(gpu_device, load_pool_size_cache(true, !caller), main_stream);
     StreamGuard stream_guard{main_stream, streams};
     AsyncGpuDevice init_device(gpu_device, main_stream, 0, &mem_pool);
+    for (auto [index, grad, copy] :
+         zip(_output_indices, output_grads, _copy_output_grads)) {
+        auto& local_grad = local_grads[index];
+        if (!grad) {
+            continue;
+        }
+        if (local_grad) {
+            local_grad.add(grad, init_device);
+        } else if (copy) {
+            local_grad = grad.copy(init_device, AllocHint::local_grad);
+        } else {
+            local_grad = grad;
+        }
+    }
     Tensor all_global_grads(
         DataType::dt_float,
         {_grad_global_total_size},
@@ -2086,6 +2132,10 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     // all_global_grads.zero(init_device);
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
+        // a global that is also an output was seeded above
+        if (local_grads[index]) {
+            grad.add(local_grads[index], init_device);
+        }
         local_grads[index] = grad;
     }
 
@@ -2125,13 +2175,20 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     }*/
     update_pool_size_cache(mem_pool.total_sizes(), true);
     //update_cached_tensors(mem_pool.reset(main_stream), true);
-    check_error(gpuStreamSynchronize(main_stream));
     for (auto& grad : local_grads) {
-        grad.set_stream(std::nullopt);
+        grad.set_stream(caller);
     }
-    all_global_grads.set_stream(std::nullopt);
-    _last_stream.get().reset();
-    release_inputs();
+    all_global_grads.set_stream(caller);
+    if (caller) {
+        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        TensorVec held(output_grads);
+        held.insert(held.end(), stored_locals.begin(), stored_locals.end());
+        hold_inputs(held, main_stream, *caller == 0);
+    } else {
+        check_error(gpuStreamSynchronize(main_stream));
+        _last_stream.get().reset();
+        release_inputs();
+    }
     stream_guard.dismissed = true;
     return {
         {local_grads.begin(), local_grads.begin() + _input_count},
@@ -2140,7 +2197,6 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
 }
 
 std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
-// a cached block can only be handed out again if the call that used it synchronized
 GpuRuntime::load_pool_size_cache(bool backward, bool synchronizes) {
     auto cache = backward ? _pool_size_cache_backward.load() : _pool_size_cache.load();
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>> ret;

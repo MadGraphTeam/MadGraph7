@@ -201,12 +201,8 @@ ContextPtr default_cuda_context(std::size_t index = 0);
 ContextPtr default_hip_context(std::size_t index = 0);
 ContextPtr default_device_context(DevicePtr device);
 
-// stream that madspace should run on. an empty optional means it uses its own streams
-// and synchronizes before returning, 0 keeps them too because running the main stream
-// on the legacy stream would serialize the lanes. thread-local, so every thread that
-// calls into madspace has to set it. only run() returns without synchronizing. inputs
-// are ordered against it through the dlpack protocol either way, with the legacy stream
-// standing in for it when it is empty
+// thread-local stream to run on, empty to use our own and synchronize. 0 also keeps
+// ours, running the main stream on the legacy stream would serialize the lanes
 std::optional<std::uintptr_t> caller_stream();
 void set_caller_stream(std::optional<std::uintptr_t> stream);
 

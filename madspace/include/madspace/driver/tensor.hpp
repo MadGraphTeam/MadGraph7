@@ -214,6 +214,7 @@ public:
     virtual const Device* device_ptr() const = 0;
     virtual void sync_barrier() const {}
     virtual DeviceType device_type() const = 0;
+    virtual int device_index() const { return 0; }
     virtual void activate() const = 0;
     virtual void adam_step(
         const Tensor& gradient,
@@ -389,6 +390,7 @@ public:
         );
     }
 
+    // the free fails once the cuda runtime has shut down, and this cannot throw
     ~Tensor() {
         try {
             reset();
@@ -485,8 +487,6 @@ public:
         check_impl();
         return impl->device;
     }
-    // stream to order against before touching the storage, empty when there is
-    // nothing left to wait for
     std::optional<std::uintptr_t> stream() const {
         return impl == nullptr ? std::nullopt : storage()->stream;
     }
@@ -531,7 +531,6 @@ public:
         if (impl == nullptr) {
             return;
         }
-        // the free can throw, and it has taken the reference either way
         std::exchange(impl, nullptr)->reset(device);
     }
 

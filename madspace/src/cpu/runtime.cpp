@@ -1172,8 +1172,24 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         );
     }
 
+    std::vector<bool> grad_accumulated(function.locals().size());
+    SizeVec output_counts(function.locals().size());
+    for (auto& instr : function.instructions()) {
+        for (auto& in : instr.inputs) {
+            grad_accumulated.at(in.local_index) = true;
+        }
+    }
+    for (auto& out : function.outputs()) {
+        ++output_counts.at(out.local_index);
+    }
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
+        // an output that is read again or returned twice is accumulated into, and that
+        // must not happen in the caller's tensor
+        _copy_output_grads.push_back(
+            grad_accumulated.at(out.local_index) ||
+            output_counts.at(out.local_index) > 1
+        );
     }
 }
 
@@ -1294,8 +1310,19 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_single(
     auto& device = CpuDevice::instance();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);
-    for (auto [index, grad] : zip(_output_indices, output_grads)) {
-        local_grads[index] = grad;
+    for (auto [index, grad, copy] :
+         zip(_output_indices, output_grads, _copy_output_grads)) {
+        auto& local_grad = local_grads[index];
+        if (!grad) {
+            continue;
+        }
+        if (local_grad) {
+            local_grad.add(grad);
+        } else if (copy) {
+            local_grad = grad.copy(AllocHint::local_grad);
+        } else {
+            local_grad = grad;
+        }
     }
 
     Tensor all_global_grads(
@@ -1304,6 +1331,10 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_single(
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
+        // a global that is also an output was seeded above
+        if (local_grads[index]) {
+            grad.add(local_grads[index]);
+        }
         local_grads[index] = grad;
     }
 
@@ -1474,8 +1505,19 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_concurrent(
     auto& thread_pool = _context->thread_pool();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);
-    for (auto [index, grad] : zip(_output_indices, output_grads)) {
-        local_grads[index] = grad;
+    for (auto [index, grad, copy] :
+         zip(_output_indices, output_grads, _copy_output_grads)) {
+        auto& local_grad = local_grads[index];
+        if (!grad) {
+            continue;
+        }
+        if (local_grad) {
+            local_grad.add(grad);
+        } else if (copy) {
+            local_grad = grad.copy(AllocHint::local_grad);
+        } else {
+            local_grad = grad;
+        }
     }
 
     Tensor all_global_grads(
@@ -1484,6 +1526,10 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_concurrent(
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
+        // a global that is also an output was seeded above
+        if (local_grads[index]) {
+            grad.add(local_grads[index]);
+        }
         local_grads[index] = grad;
     }
 

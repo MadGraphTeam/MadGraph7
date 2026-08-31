@@ -1,6 +1,7 @@
 #include "function_runtime.hpp"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <ranges>
 #include <stdexcept>
@@ -24,14 +25,12 @@ struct ManagerContext {
 void deleter(struct DLManagedTensor* self) noexcept {
     ManagerContext* context = static_cast<ManagerContext*>(self->manager_ctx);
     try {
-        // another export may have moved the storage onto a later stream, so hand our
-        // reads over to it instead of freeing behind its back
-        std::uintptr_t free_stream =
-            context->tensor.stream().value_or(context->stream);
+        // the free below is ordered on our stream, which has to wait for the reads the
+        // consumer queued, so the consumer has to outlive the stream it named
+        std::uintptr_t free_stream = context->tensor.stream().value_or(0);
         if (free_stream != context->stream) {
             context->tensor.device()->order_streams(context->stream, free_stream);
         }
-        context->tensor.reset_on_stream(free_stream);
     } catch (...) {
     }
     delete context;
@@ -39,9 +38,8 @@ void deleter(struct DLManagedTensor* self) noexcept {
 };
 
 std::uintptr_t consumer_stream(std::optional<std::int64_t> stream, int device_type) {
-    // dlpack spells the default stream 1 on cuda and 0 on rocm, ours is 0 everywhere.
-    // 2, and 1 on rocm, name the per-thread default stream, which our blocking lanes
-    // are not ordered against
+    // dlpack spells the default stream 1 on cuda and 0 on rocm, ours is 0 everywhere,
+    // and 2, or 1 on rocm, is the per-thread one our lanes are not ordered against
     if (!stream) {
         return 0;
     }
@@ -51,6 +49,22 @@ std::uintptr_t consumer_stream(std::optional<std::int64_t> stream, int device_ty
         );
     }
     return *stream <= 1 ? 0 : static_cast<std::uintptr_t>(*stream);
+}
+
+// torch orders everything it has queued, not just the tensor it was asked about, so one
+// of its tensors orders a whole call. anyone else is asked for every tensor
+bool orders_whole_stream(PyObject* type) {
+    static std::array<py::handle, 2> torch_types;
+    if (!torch_types[0]) {
+        auto modules = py::module_::import("sys").attr("modules");
+        if (!modules.contains("torch")) {
+            return false;
+        }
+        py::object torch = modules["torch"];
+        torch_types[0] = py::object(torch.attr("Tensor")).release();
+        torch_types[1] = py::object(torch.attr("nn").attr("Parameter")).release();
+    }
+    return type == torch_types[0].ptr() || type == torch_types[1].ptr();
 }
 
 Runtime* get_runtime(FunctionRuntime& func_runtime, DevicePtr expected_device) {
@@ -119,13 +133,14 @@ std::tuple<std::vector<Tensor>, Runtime*> check_and_convert_args(
 } // namespace
 
 std::tuple<int, int> madspace_py::dlpack_device(Tensor tensor) {
+    int index = tensor.device()->device_index();
     switch (tensor.device()->device_type()) {
     case DeviceType::cpu:
         return {kDLCPU, 0};
     case DeviceType::cuda:
-        return {kDLCUDA, 0};
+        return {kDLCUDA, index};
     case DeviceType::hip:
-        return {kDLROCM, 0};
+        return {kDLROCM, index};
     default:
         throw std::logic_error("unreachable");
     }
@@ -184,13 +199,8 @@ py::object madspace_py::tensor_to_dlpack(
         std::uintptr_t consumer = consumer_stream(stream, device_type);
         if (stream && *stream == -1) {
             consumer = tensor.stream().value_or(consumer);
-        } else {
-            if (auto producer = tensor.stream();
-                producer && *producer != consumer) {
-                tensor.device()->order_streams(*producer, consumer);
-            }
-            // every consumer has to be recorded, the last one out does the free
-            tensor.set_stream(consumer);
+        } else if (auto producer = tensor.stream(); producer && *producer != consumer) {
+            tensor.device()->order_streams(*producer, consumer);
         }
         ManagerContext* context = new ManagerContext{
             {tensor.shape().begin(), tensor.shape().end()},
@@ -245,12 +255,9 @@ Tensor madspace_py::dlpack_to_tensor(
     py::object dlpack_func = tensor.attr("__dlpack__");
     py::object capsule_obj;
 
-    // a producer that orders everything it has queued against our stream only has to be
-    // asked once, so the other arguments of its type take the cheap path. ours is not
-    // one of them, it orders a single storage. numpy rejects every stream and torch
-    // rejects every stream but None and -1 for a host tensor, neither of them with a
-    // TypeError, so ask for the device first. dlpack spells the default stream 1 on
-    // cuda and 0 on rocm, our handle for it is 0
+    // ordering a producer against our stream costs ten times the rest of the import,
+    // so a type that orders everything is only asked once. host tensors are rejected
+    // without a TypeError by numpy and torch alike, so ask for the device first
     py::dict stream_arg;
     PyTypeObject* producer = Py_TYPE(tensor.ptr());
     if (!(expected_type && expected_type->dtype == DataType::batch_sizes) &&
@@ -275,7 +282,8 @@ Tensor madspace_py::dlpack_to_tensor(
             stream_arg["stream"] = device_type == kDLCUDA && stream == 0
                                        ? 1
                                        : static_cast<std::int64_t>(stream);
-            if (ordered_producers && !py::isinstance<Tensor>(tensor)) {
+            if (ordered_producers &&
+                orders_whole_stream(reinterpret_cast<PyObject*>(producer))) {
                 ordered_producers->push_back(producer);
             }
         }
@@ -576,34 +584,31 @@ FunctionRuntime::call_backward(
     const std::vector<py::object>& stored_locals,
     const std::vector<bool>& eval_grad
 ) {
-    std::vector<Tensor> arg_out;
     DevicePtr expected_device = nullptr;
     std::vector<PyTypeObject*> ordered_producers;
     std::size_t arg_index = 0;
-    for (auto& grad : output_grads) {
-        auto tensor = dlpack_to_tensor(
-            grad, std::nullopt, arg_index, expected_device, &_dlpack_version_cache,
-            &ordered_producers
-        );
+    auto convert = [&](const py::object& arg) {
+        // one of our own tensors needs neither the protocol nor a hold
+        Tensor tensor = py::isinstance<Tensor>(arg)
+            ? arg.cast<Tensor>()
+            : dlpack_to_tensor(
+                  arg, std::nullopt, arg_index, expected_device,
+                  &_dlpack_version_cache, &ordered_producers
+              );
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {
             expected_device = tensor.device();
         }
-        arg_out.push_back(tensor);
         ++arg_index;
+        return tensor;
+    };
+    std::vector<Tensor> arg_out;
+    for (auto& grad : output_grads) {
+        arg_out.push_back(convert(grad));
     }
     std::vector<Tensor> arg_locals;
     for (auto& local : stored_locals) {
-        auto tensor = dlpack_to_tensor(
-            local, std::nullopt, arg_index, expected_device, &_dlpack_version_cache,
-            &ordered_producers
-        );
-        if (expected_device == nullptr && tensor &&
-            tensor.dtype() != DataType::batch_sizes) {
-            expected_device = tensor.device();
-        }
-        arg_locals.push_back(tensor);
-        ++arg_index;
+        arg_locals.push_back(convert(local));
     }
     // TODO: checks here
     Runtime* runtime = get_runtime(*this, expected_device);

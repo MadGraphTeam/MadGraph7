@@ -29,11 +29,14 @@ class FunctionModule(nn.Module):
             ),
         )
 
+    def release_inputs(self) -> None:
+        self.runtime.release_inputs()
+
     def forward(self, *args: torch.Tensor) -> list[torch.Tensor]:
         if torch.is_grad_enabled():
             return AutogradWrapper.apply(self, self.dummy, *args)
         else:
-            outputs = self.runtime.call(args)
+            outputs = self.runtime.call([arg.detach() for arg in args])
             if len(outputs) == 1:
                 return torch.from_dlpack(outputs[0])
             else:
@@ -53,12 +56,10 @@ class AutogradWrapper(torch.autograd.Function):
         )
         ctx.module = module
         ctx.eval_grad = eval_grad
-        # backward runs on autograd's thread, which the thread-local does not reach,
-        # but on the stream of the forward call
+        # backward runs on autograd's thread, which the thread-local does not reach
         ctx.stream = me.get_stream()
-        ctx.save_for_backward(
-            *(None if grad is None else torch.from_dlpack(grad) for grad in local_grads)
-        )
+        # save_for_backward would hide our own memory from the runtime, which holds it
+        ctx.stored_locals = local_grads
         if len(outputs) == 1:
             return torch.from_dlpack(outputs[0])
         else:
@@ -69,7 +70,7 @@ class AutogradWrapper(torch.autograd.Function):
     def backward(ctx: FunctionCtx, *output_grads: torch.Tensor):
         with me.stream(ctx.stream):
             input_grads, global_grads = ctx.module.runtime.call_backward(
-                output_grads, ctx.saved_tensors, ctx.eval_grad
+                output_grads, ctx.stored_locals, ctx.eval_grad
             )
         for name, grad in global_grads:
             if grad is None:

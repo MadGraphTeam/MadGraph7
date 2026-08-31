@@ -1,10 +1,10 @@
 #pragma once
 
-// stream handle 0 has to mean the legacy stream: our lanes are blocking streams, so
-// everything freed on it is ordered against them, which per-thread streams are not
+// our lanes are blocking streams, ordered against the legacy stream but not against
+// the per-thread one this flag would put at handle 0
 #if defined(CUDA_API_PER_THREAD_DEFAULT_STREAM) || \
     defined(__HIP_API_PER_THREAD_DEFAULT_STREAM__)
-#error "madspace does not support per-thread default streams"
+#error "madspace cannot be built with the per-thread default stream"
 #endif
 
 #ifdef __CUDACC__

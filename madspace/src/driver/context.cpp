@@ -353,8 +353,7 @@ ContextPtr madspace::default_hip_context(std::size_t index) {
 }
 
 ContextPtr madspace::default_device_context(DevicePtr device) {
-    // leaked on purpose, the contexts hold gpu resources that must not be freed
-    // after the cuda runtime has shut down
+    // leaked on purpose, the gpu resources must not be freed at interpreter exit
     static auto& default_contexts = *new std::unordered_map<DevicePtr, ContextPtr>;
     if (auto search = default_contexts.find(device); search != default_contexts.end()) {
         return search->second;
