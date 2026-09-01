@@ -98,6 +98,7 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_gridpack_mg7
         run: |
             cd $GITHUB_WORKSPACE
