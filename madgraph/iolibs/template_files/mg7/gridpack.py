@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 
+import gzip
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -192,9 +194,18 @@ def main() -> None:
         )
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
-        event_generator.combine_to_lhe(
-            os.path.join(run_path, "events.lhe"), lhe_completer
-        )
+        lhe_path = os.path.join(run_path, "events.lhe")
+        event_generator.combine_to_lhe(lhe_path, lhe_completer)
+        # Ship the LHE compressed, as the launcher that produced this gridpack
+        # does: the file is large and very compressible, and the consumers of
+        # an mg7 event file accept either form. The stdlib is used rather than
+        # madgraph.various.misc.gzip because a gridpack is meant to run without
+        # a madgraph installation, and copyfileobj streams the file instead of
+        # holding it in memory.
+        with open(lhe_path, "rb") as fin, \
+                gzip.open(lhe_path + ".gz", "wb") as fout:
+            shutil.copyfileobj(fin, fout)
+        os.remove(lhe_path)
     else:
         raise ValueError("Unknown output format")
 
