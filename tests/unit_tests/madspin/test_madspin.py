@@ -11640,6 +11640,26 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
 
     # ------------------------------------------------------------ the refill
 
+    def test_the_unsplit_pool_is_not_kept_beside_the_slices(self):
+        """The slices between them hold every event of what mg7 wrote, so
+        keeping mg7's own file too doubles the disk a pool costs -- and a refill
+        adds a generation rather than replacing one."""
+        pool, _ = self._stub(4).generate_events_mg7(self.decay_dir,
+                                                    self.NB_EVENT)
+        run_dir = pjoin(self.decay_dir, 'Events', 'run_01')
+        self.assertFalse(os.path.exists(pjoin(run_dir, 'events.lhe')))
+        self.assertTrue(os.path.exists(pjoin(run_dir, 'info.json')))
+        seen = []
+        for path in pool.paths:
+            seen.extend(self._tags(path))
+        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
+
+    def test_a_serial_run_keeps_the_file_it_was_handed(self):
+        """Nothing is split there, so nothing may be removed either."""
+        pool, _ = self._stub(1).generate_events_mg7(self.decay_dir,
+                                                    self.NB_EVENT)
+        self.assertTrue(os.path.exists(pool.name))
+
     def test_a_refill_lands_exactly_on_the_paths_the_waiters_open(self):
         """The payoff of writing under ``Events/<run_name>/``: for a refill,
         run_name is ms_refill_<gen> and those paths ARE _refill_pool_paths, so

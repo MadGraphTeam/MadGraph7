@@ -2807,6 +2807,18 @@ class MadSpinInterface(extended_cmd.Cmd):
             os.makedirs(target_dir)
         with self._phase('decay_mg7_split'):
             self._split_pool_round_robin([events_path], targets)
+        # Between them the slices hold every event of the source -- the split
+        # reads it to the end or raises -- so keeping the source doubles what a
+        # pool costs on disk: another 241 MB per channel on the 100k benchmark,
+        # and a refill adds a generation rather than replacing one. Nothing
+        # reads it after this point (each slice carries its own banner, and the
+        # run directory keeps info.json and the generation log), so drop it once
+        # every slice is actually there.
+        if all(os.path.exists(path) for path in targets):
+            try:
+                os.remove(events_path)
+            except OSError:
+                pass
         return _ChainedEvents(targets), width
 
     # File in which a decay directory records the partial width that was
