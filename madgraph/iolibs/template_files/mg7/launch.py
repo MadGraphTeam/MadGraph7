@@ -1050,8 +1050,27 @@ class MadgraphProcess:
         with open(os.path.join(cards_path, "run_card.toml"), 'w') as _f:
             _f.write(_header + _buf.getvalue())
         # Minimal card containing only the settings used by generate_events.
-        self.run_card.write_gridpack_card(
-            os.path.join(cards_path, "grid_run_card.toml"))
+        # The gridpack ships the libraries that were actually built, and their
+        # names carry the resolved backend, so the card it runs from has to name
+        # that backend as well: a cpu_mode of 'auto' would send the gridpack
+        # looking for a ..._auto.so that was never built. The full run_card.toml
+        # written just above keeps 'auto', since that is what was asked for.
+        device_names = self.run_card["run"]["device"]
+        if not isinstance(device_names, list):
+            device_names = [device_names]
+        resolved_cpu_mode = None
+        for name, backend in zip(device_names, getattr(self, "backends", [])):
+            if name.split(":")[0] == "cpu":
+                resolved_cpu_mode = backend
+                break
+        previous_cpu_mode = self.run_card["run"]["cpu_mode"]
+        if resolved_cpu_mode is not None:
+            self.run_card["run"]["cpu_mode"] = resolved_cpu_mode
+        try:
+            self.run_card.write_gridpack_card(
+                os.path.join(cards_path, "grid_run_card.toml"))
+        finally:
+            self.run_card["run"]["cpu_mode"] = previous_cpu_mode
 
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)
