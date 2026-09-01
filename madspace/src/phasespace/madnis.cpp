@@ -5,12 +5,16 @@ using namespace madspace;
 MadnisLoss::MadnisLoss(
     const std::vector<std::shared_ptr<FunctionGenerator>>& functions,
     const std::optional<ChannelWeightNetwork>& cwnet,
-    double softclip_threshold
+    double softclip_threshold,
+    std::size_t compressed_channel_weight_count
 ) :
     FunctionGenerator(
         "MadnisLoss",
         [&] {
             NamedVector<Type> arg_types;
+            bool use_compressed_channel_weights = cwnet &&
+                cwnet->mlp().output_dim() > 1 &&
+                cwnet->mlp().output_dim() * 8 > compressed_channel_weight_count * 12;
             for (std::size_t index = 0; auto& func : functions) {
                 arg_types.push_back(
                     std::format("chan{}_integrand", index), batch_float
@@ -23,10 +27,21 @@ MadnisLoss::MadnisLoss(
                         std::format("chan{}_cwnet_inputs", index),
                         batch_float_array(cwnet->preprocessing().output_dim())
                     );
-                    arg_types.push_back(
-                        std::format("chan{}_channel_weights", index),
-                        batch_float_array(cwnet->mlp().output_dim())
-                    );
+                    if (use_compressed_channel_weights) {
+                        arg_types.push_back(
+                            std::format("chan{}_channel_weight_values", index),
+                            batch_float_array(compressed_channel_weight_count)
+                        );
+                        arg_types.push_back(
+                            std::format("chan{}_channel_weight_indices", index),
+                            batch_int_array(compressed_channel_weight_count)
+                        );
+                    } else {
+                        arg_types.push_back(
+                            std::format("chan{}_channel_weights", index),
+                            batch_float_array(cwnet->mlp().output_dim())
+                        );
+                    }
                     arg_types.push_back(
                         std::format("chan{}_channel_indices", index), batch_int
                     );
@@ -45,22 +60,34 @@ MadnisLoss::MadnisLoss(
     ),
     _functions(functions),
     _cwnet(cwnet),
-    _softclip_threshold(softclip_threshold) {}
+    _softclip_threshold(softclip_threshold),
+    _compressed_channel_weight_count(compressed_channel_weight_count) {}
 
 NamedVector<Value> MadnisLoss::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     ValueVec integrands, flow_probs, sample_probs, cwnet_inputs, cwnet_priors,
         chan_indices;
-    std::size_t extra_args = _cwnet ? 5 : 2;
+    bool use_compressed_channel_weights = _cwnet && _cwnet->mlp().output_dim() > 1 &&
+        _cwnet->mlp().output_dim() * 8 > _compressed_channel_weight_count * 12;
+    std::size_t extra_args = _cwnet ? (use_compressed_channel_weights ? 6 : 5) : 2;
     for (std::size_t index = 0, arg_index = 0; auto& func : _functions) {
         std::size_t arg_index_end = arg_index + func->arg_types().size() + extra_args;
         integrands.push_back(args.at(arg_index));
         sample_probs.push_back(args.at(arg_index + 1));
         if (_cwnet) {
             cwnet_inputs.push_back(args.at(arg_index + 2));
-            cwnet_priors.push_back(args.at(arg_index + 3));
-            chan_indices.push_back(args.at(arg_index + 4));
+            if (use_compressed_channel_weights) {
+                cwnet_priors.push_back(fb.restore_channel_weights(
+                    args.at(arg_index + 3),
+                    args.at(arg_index + 4),
+                    static_cast<me_int_t>(_cwnet->mlp().output_dim())
+                ));
+                chan_indices.push_back(args.at(arg_index + 5));
+            } else {
+                cwnet_priors.push_back(args.at(arg_index + 3));
+                chan_indices.push_back(args.at(arg_index + 4));
+            }
         }
         ValueVec func_args(
             args.begin() + arg_index + extra_args, args.begin() + arg_index_end

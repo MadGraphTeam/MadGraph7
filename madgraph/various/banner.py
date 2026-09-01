@@ -3459,6 +3459,12 @@ class RunCard(ConfigFile):
         else:
             return value
 
+    def mod_inc_iseed(self, value):
+        """A negative iseed in the run_card is preserved across runs (so the
+        same seed can be reused), but the Fortran code expects a non-negative
+        seed, so export the absolute value to the include file."""
+        return abs(value)
+
     def edit_dummy_fct_from_file(self, filelist, outdir):
         """
         filelist is a list of input files (given by the user)
@@ -4355,6 +4361,10 @@ class RunCardLO(RunCard):
         self.add_param("time_of_flight", -1.0, include=False)
         self.add_param("nevents", 10000)        
         self.add_param("allow_overshoot_events", False, hidden=True, include=False, comment="allow to write more events than requested instead of trashing the last ones.")
+        self.add_param("nb_unweight_output", 1, hidden=True, include=False,
+                       comment="number of files the final unweighting writes the events to. 1 (default) writes the single unweighted_events.lhe; a larger value spreads the events (round-robin) over unweighted_events_0.lhe, unweighted_events_1.lhe, ... which lets that many consumers read them in parallel without each having to scan the full file.")
+        self.add_param("zip_unweighted_events", True, hidden=True, include=False,
+                       comment="gzip the final unweighted event file(s). Set to False when the events are consumed immediately (compressing them is then a pure waste of time).")
         self.add_param("iseed", 0)
         self.add_param("bypass_check", [], typelist=str, include=False, hidden=True,
                        allowed=['partonshower'], comment="list of check that can be bypassed manually.")
@@ -4448,7 +4458,7 @@ class RunCardLO(RunCard):
         self.add_param("bwcutoff", 15.0)
         self.add_param("cut_decays", False, cut='d')
         self.add_param('dsqrt_shat',0., cut=True)
-        self.add_param('dsqrt_shatmax', -1, cut=True) 
+        self.add_param('dsqrt_shatmax', -1.0, cut=True) 
         self.add_param("nhel", 0, include=False)
         self.add_param("limhel", 1e-8, hidden=True, comment="threshold to determine if an helicity contributes when not MC over helicity.")
         #pt cut
@@ -4991,7 +5001,7 @@ class RunCardLO(RunCard):
                 # UPC for p p collision
                 elif beam_id == [[22],[22]]:
                     self['lpp1'] = 2
-                    self['lpp1'] = 2
+                    self['lpp2'] = 2
                     self['ebeam1'] = '6500'
                     self['ebeam2'] = '6500'
                     self['pdlabel'] = 'edff'
@@ -6425,11 +6435,19 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # parameter declaration
     # ------------------------------------------------------------------
-    def add_toml_param(self, section, key, value, gridpack=False, **opts):
+    def add_toml_param(self, section, key, value, gridpack=False, auto=False, **opts):
         """Declare one fixed (typed) TOML parameter belonging to ``section``.
 
         ``gridpack=True`` marks the parameter as relevant during gridpack
-        execution; such params are written to ``grid_run_card.toml``."""
+        execution; such params are written to ``grid_run_card.toml``.
+
+        ``auto=True`` declares a numeric parameter whose default is
+        determined automatically: ``value`` fixes the accepted type (int/
+        float/...) and provides the internal placeholder default, but the
+        card reads/writes it as the string ``"auto"`` until the user sets an
+        explicit value of that type. This reuses the same ``auto_set``
+        machinery as typing ``auto`` for any other numeric parameter, so
+        type-checking for genuine numeric overrides is unaffected."""
         section = section.lower()
         key = key.lower()
         internal = '%s.%s' % (section, key)
@@ -6442,6 +6460,8 @@ class RunCardMG7(RunCard):
             self.toml_sections[section].append(key)
         if gridpack:
             self.gridpack_params.add(internal)
+        if auto:
+            self.auto_set.add(internal)
 
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
@@ -6526,8 +6546,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('vegas', 'max_batch_size', 32000)
 
         # -------------------------- [phasespace] ----------------------
+        self.add_toml_param('phasespace', 'merge_subprocesses', False)
         self.add_toml_param('phasespace', 'mode', "multichannel",
-            allowed=['multichannel', 'flat', 'both'])
+            allowed=['auto', 'multichannel', 'flat', 'both'])
         self.add_toml_param('phasespace', 'sde_strategy', "diagrams",
             allowed=['diagrams', 'denominators'])
         self.add_toml_param('phasespace', 'decays', "all",
@@ -6536,23 +6557,28 @@ class RunCardMG7(RunCard):
             allowed=['propagator', 'rambo', 'chili'])
         self.add_toml_param('phasespace', 'flat_mode', "rambo",
             allowed=['propagator', 'rambo', 'chili'])
-        self.add_toml_param('phasespace', 'simplified_channel_count', 10)
+        self.add_toml_param('phasespace', 'combine_channel_threshold', 0.01)
+        self.add_toml_param('phasespace', 'drop_qcd_s_channel', 20,
+            comment="drop multichannel channels without a QCD s-channel resonance "
+                    "once the channel count would otherwise exceed this many "
+                    "(-1 keeps all channels)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
+        self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------
-        self.add_toml_param('madnis', 'enable', False)
-        self.add_toml_param('madnis', 'flow_hidden_dim', 64)
-        self.add_toml_param('madnis', 'flow_layers', 3)
+        self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True)
+        self.add_toml_param('madnis', 'flow_hidden_dim', 64, auto=True)
+        self.add_toml_param('madnis', 'flow_layers', 3, auto=True)
         self.add_toml_param('madnis', 'flow_spline_bins', 10)
         self.add_toml_param('madnis', 'flow_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
         self.add_toml_param('madnis', 'flow_invert_spline', False)
-        self.add_toml_param('madnis', 'discrete_hidden_dim', 64)
+        self.add_toml_param('madnis', 'discrete_hidden_dim', 64, auto=True)
         self.add_toml_param('madnis', 'discrete_layers', 3)
         self.add_toml_param('madnis', 'discrete_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
-        self.add_toml_param('madnis', 'cwnet_hidden_dim', 64)
+        self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True)
         self.add_toml_param('madnis', 'cwnet_layers', 3)
         self.add_toml_param('madnis', 'cwnet_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
@@ -6561,10 +6587,10 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'train_batches', 1000)
         self.add_toml_param('madnis', 'log_interval', 100)
         self.add_toml_param('madnis', 'batch_size_offset', 512)
-        self.add_toml_param('madnis', 'batch_size_per_channel', 128)
+        self.add_toml_param('madnis', 'batch_size_per_channel', 128, auto=True)
         self.add_toml_param('madnis', 'generator_target_size_factor', 32)
         self.add_toml_param('madnis', 'gpu_generator_batch_granularity', 1000)
-        self.add_toml_param('madnis', 'lr', 1e-3)
+        self.add_toml_param('madnis', 'lr', 3e-4, auto=True)
         self.add_toml_param('madnis', 'lr_decay', 0.01)
         self.add_toml_param('madnis', 'lr_max', 3e-3)
         self.add_toml_param('madnis', 'lr_scheduler', "cosine",
@@ -6572,12 +6598,14 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'adam_beta1', 0.9)
         self.add_toml_param('madnis', 'adam_beta2', 0.999)
         self.add_toml_param('madnis', 'adam_eps', 1e-8)
+        self.add_toml_param('madnis', 'adam_weight_decay', 1e-4)
+        self.add_toml_param('madnis', 'grad_clip_threshold', 0.003)
         self.add_toml_param('madnis', 'train_mcw', True)
-        self.add_toml_param('madnis', 'buffer_capacity', 0)
-        self.add_toml_param('madnis', 'minimum_buffer_size', 50000)
-        self.add_toml_param('madnis', 'buffered_steps', 0)
+        self.add_toml_param('madnis', 'buffer_capacity', 100000)
+        self.add_toml_param('madnis', 'minimum_buffer_size', 10000)
+        self.add_toml_param('madnis', 'buffered_steps', 5)
         self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.99)
-        self.add_toml_param('madnis', 'uniform_channel_ratio', 0.1)
+        self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5)
         self.add_toml_param('madnis', 'integration_history_length', 100)
         self.add_toml_param('madnis', 'max_stored_channel_weights', 100)
         self.add_toml_param('madnis', 'channel_dropping_threshold', 0.01)
@@ -6586,8 +6614,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'batch_size_threshold', 0.5)
         self.add_toml_param('madnis', 'channel_grouping_mode', "uniform",
             allowed=['none', 'uniform', 'learned'])
-        self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33)
+        self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True)
         self.add_toml_param('madnis', 'softclip_threshold', 30.0)
+        self.add_toml_param('madnis', 'compressed_channel_weight_count', 50)
 
         # ----------------- dynamic (free-form) sections ---------------
         self.dynamic_sections['multiparticles'] = collections.OrderedDict([

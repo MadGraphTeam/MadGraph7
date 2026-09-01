@@ -459,10 +459,11 @@ namespace mg5amcGpu
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
     m_pHelJamps.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
-    // ... Create the "many-helicity" super-buffers of nGoodHel numerator and denominator buffers (dynamically allocated)
-    // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelNumerators.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ndiagrams * nevt ) );
-    m_pHelDenominators.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
+    // ... Create the numerator and denominator buffers. These no longer carry a helicity dimension:
+    // ... the numerators are accumulated in place over all good helicities via atomicAdd in calculate_jamps
+    // ... ([nevt][ndiagrams]) and the denominators are derived from them ([nevt]).
+    m_pHelNumerators.reset( new DeviceBufferSimple( CPPProcess::ndiagrams * nevt ) );
+    m_pHelDenominators.reset( new DeviceBufferSimple( nevt ) );
 #ifndef MGONGPU_HAS_NO_BLAS
     // Create the "many-helicity" super-buffers of real/imag ncolor*nevt temporary buffers for cuBLAS/hipBLAS intermediate results in color_sum_blas
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT

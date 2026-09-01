@@ -249,6 +249,10 @@ class TestCmdShell1(unittest.TestCase):
                     'enforce_shared_disk': False,
                     'heptools_install_dir': './HEPTools',
                     'apply_flavor_grouping': True,
+                    'merge_same_topologies': True,
+                    'merge_quartic_vertices': False,
+                    'nb_core_pythia8': None,
+                    'nb_core_delphes': None,
                         }
 
         self.assertEqual(config, expected)
@@ -290,6 +294,22 @@ class TestCmdShell2(unittest.TestCase,
             shutil.rmtree(self.out_dir)
     
     join_path = TestCmdShell1.join_path
+
+    @staticmethod
+    def _dens_value_for_key(dm, key):
+        """Return the complex value of DensityMatrix entry whose helicity label
+        tuple matches ``key``.
+
+        Replaces the old ``dm.matrix[ind][1]`` indexing, which relied on the
+        legacy structured-array storage that was removed when DensityMatrix
+        was refactored to parallel ``helicities`` / ``values`` arrays.
+        """
+        import numpy as np
+        key_arr = np.asarray(key, dtype=np.int32)
+        matches = np.where((dm.helicities == key_arr).all(axis=1))[0]
+        if len(matches) == 0:
+            raise KeyError('helicity key %s not found in DensityMatrix' % (key,))
+        return complex(dm.values[matches[0]])
 
     def do(self, line, force=False):
         """ exec a line in the cmd under test """
@@ -2519,7 +2539,7 @@ class TestCmdShell2(unittest.TestCase,
 
         # madspin_report holds the (pre-IDEN) density values reported by madspin;
         # the standalone prod_dens now carries the 1/IDEN normalisation from
-        # GET_INTER, so we restore iden_prod when comparing.
+        # GET_INTER, so we restore iden_prod (resp. iden_dec) when comparing.
         for key in madspin_report_dict:
             ref_val = self._dens_value_for_key(prod_dens, key)
             self.assertAlmostEqual(madspin_report_dict[key].real/(ref_val.real * iden_prod), 1, places=4)
@@ -4052,7 +4072,14 @@ C
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_pp_wpwm(self):
-        """Test `check p p > w+ w-` runs and gauge check succeeds."""
+        """Test `check p p > w+ w-` runs and gauge check succeeds.
+
+        With apply_flavor_grouping on (the default), the four light-quark
+        subprocesses are carried by the single merged matrix element
+        Q Qx > w+ w-, so the gauge block checks one process, not four.  The
+        per-flavor coverage lives in the flavor-grouping block, which compares
+        the merged matrix element against the unmerged one for every flavor.
+        """
 
         self.do('import model sm')
         with self.assertLogs('madgraph.check_cmd', level='DEBUG') as cm:
@@ -4060,10 +4087,17 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Summary: 4/4 passed, 0/4 failed', log)
+        self.assertIn('Q Qx > w+ w-', log)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+        # the four flavors (both orderings) are still checked, here:
+        self.assertIn('Flavor grouping check results:', log)
+        self.assertIn('Summary: 8/8 passed, 0/8 failed', log)
 
     def test_check_gauge_pp_wpwm(self):
-        """Test `check gauge p p > w+ w-` includes axial and succeeds."""
+        """Test `check gauge p p > w+ w-` includes axial and succeeds.
+
+        See test_check_pp_wpwm for why a single merged process is checked.
+        """
 
         self.do('import model sm')
         with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
@@ -4071,7 +4105,8 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Summary: 4/4 passed, 0/4 failed', log)
+        self.assertIn('Q Qx > w+ w-', log)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""

@@ -243,7 +243,10 @@ class ProcessExporterPython(object):
 
         res_list = []
 
-        for i, coeff_list in enumerate(matrix_element.get_color_amplitudes()):
+        # this writer emits no amplitude sums, so the quartic contributions
+        # have to stay in the JAMPs with their own colour coefficients
+        for i, coeff_list in enumerate(matrix_element.get_color_amplitudes(
+                merge_quartic_amplitudes=False)):
 
             res = "jamp[%d] = " % i
 

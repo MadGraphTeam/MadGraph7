@@ -67,7 +67,8 @@ logger = logging.getLogger('madgraph.various.diagram_symmetry')
 # find_symmetry
 #===============================================================================
 
-def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag):
+def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag,
+                  skip_identical_check=False):
     """Find symmetries between amplitudes by comparing diagram tags
     for all the diagrams in the process. Identical diagram tags
     correspond to different external particle permutations of the same
@@ -123,7 +124,7 @@ def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag):
             symmetry.append(1)
 
     # Check for matrix elements with no identical particles
-    if matrix_element.get("identical_particle_factor") == 1:
+    if not skip_identical_check and matrix_element.get("identical_particle_factor") == 1:
         return symmetry, \
                permutations,\
                [list(range(nexternal))]
@@ -144,7 +145,6 @@ def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag):
             # Only 3-vertices allowed in configs.inc
             continue
         
-        #tag = diagram_generation.DiagramTag(base_diagram)
         tag = tag_type(base_diagram)
         try:
             ind = diagram_tags.index(tag)

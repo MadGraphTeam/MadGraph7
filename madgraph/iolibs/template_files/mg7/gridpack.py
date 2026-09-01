@@ -171,7 +171,7 @@ def main() -> None:
     event_generator = ms.EventGenerator(
         contexts=contexts,
         channels=channel_generators,
-        status_file=os.path.join(run_path, "info.json"),
+        status_file=ms.StatusFile(os.path.join(run_path, "info.json")),
         config=config,
     )
 

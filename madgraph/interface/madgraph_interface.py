@@ -1255,10 +1255,13 @@ class CheckValidForCmd(cmd.CheckCmd):
 #                raise self.InvalidCmd('Polarization restriction can not be used for generic NLO computations')
 
             def check(p):
-                if p.get('color') != 1:
-                    raise self.InvalidCmd('Polarization restriction can not be used for color charged particles')
-                elif p.get('mass') != 'ZERO':
-                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles') 
+                # Polarisation restriction can now be used for color charged
+                # particles, so there is no longer a color check here. The mass
+                # restriction is independent of the color one and must stay
+                # outside it -- keeping it in an "elif" would have silently
+                # exempted massive color-charged particles.
+                if p.get('mass') != 'ZERO':
+                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles')
  
 
 
@@ -1643,7 +1646,8 @@ This will take effect only in a NEW terminal
                                           'loop_optimized_output',\
                                           'loop_color_flows',\
                                           'include_lepton_initiated_processes',\
-                                          'low_mem_multicore_nlo_generation']:
+                                          'low_mem_multicore_nlo_generation',\
+                                          'merge_same_topologies']:
             args.append('True')
 
         if len(args) > 2 and '=' == args[1]:
@@ -2825,7 +2829,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 return self.list_completion(text, ['f77','g77','gfortran','default'])
             elif args[1] == 'cpp_compiler':
                 return self.list_completion(text, ['g++', 'c++', 'clang', 'default'])
-            elif args[1] == 'nb_core':
+            elif args[1] in ['nb_core', 'nb_core_pythia8', 'nb_core_delphes']:
                 return self.list_completion(text, [str(i) for i in range(100)] + ['default'] )
             elif args[1] == 'run_mode':
                 return self.list_completion(text, [str(i) for i in range(3)] + ['default'])
@@ -3158,7 +3162,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'max_t_for_channel',
                     'zerowidth_tchannel',
                     'default_unset_couplings',
-                    'nlo_mixed_expansion'
+                    'nlo_mixed_expansion',
+                    'merge_same_topologies',
+                    'merge_quartic_vertices'
                     ]
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
     _valid_sqso_types = ['==','<=','=','>']
@@ -3241,12 +3247,16 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
                           'nlo_mixed_expansion':True,
-                          'apply_flavor_grouping': True 
+                          'apply_flavor_grouping': True,
+                          'merge_same_topologies': True,
+                          'merge_quartic_vertices': False
                         }
 
     options_madevent = {'automatic_html_opening':True,
                          'run_mode':2,
                          'nb_core': None,
+                         'nb_core_pythia8': None,
+                         'nb_core_delphes': None,
                          'notification_center': True
                          }
 
@@ -3363,7 +3373,18 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         existing amplitudes
         or merge two model
         """
-        
+
+        # The four gluon merging is wanted while the diagrams are generated,
+        # which is below the interface, so it travels on the module. Synced
+        # here rather than only in the setter, since the option can also
+        # arrive from mg5_configuration.txt.
+        madgraph.merge_quartic_vertices = \
+                             self.options.get('merge_quartic_vertices', False)
+        # an added process arrives in the generated order whatever an earlier
+        # output reordered, so the two have to be brought back together --
+        # a value matching neither makes the next output redo all of them
+        self._quartic_order = 'mixed'
+
         args = self.split_arg(line)
 
         
@@ -5009,6 +5030,10 @@ This implies that with decay chains:
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._generate_info = ""
+        # Reset the diagrams kept for an 'auto' merge_quartic_vertices, they
+        # describe the amplitudes just dropped
+        self._quartic_order = None
+        self._quartic_pristine = None
         # Reset polarization-citation marker (a new process definition starts)
         self._uses_polarization = False
         self._uses_density_matrix = False
@@ -7487,13 +7512,13 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         if mode == 'mg5_start':
             timeout = 2
             default = 'n'
-            update_delay = self.options['auto_update'] * 24 * 3600
+            update_delay = float(self.options['auto_update']) * 24 * 3600
             if update_delay == 0:
                 return
         elif mode == 'mg5_end':
             timeout = 5
             default = 'n'
-            update_delay = self.options['auto_update'] * 24 * 3600
+            update_delay = float(self.options['auto_update']) * 24 * 3600
             if update_delay == 0:
                 return
             options.remove('on_exit')
@@ -9148,6 +9173,49 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self.check_set(args)
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
 
+    def help_set2_merge_quartic_vertices(self):
+        logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
+        logger.info(" > (default: False) [pure gluon amplitudes]")
+        logger.info(" > Sum each four gluon contribution into the cubic")
+        logger.info(" >  amplitude carrying the same colour factor.")
+        logger.info(" > False  : off")
+        logger.info(" > speed  : fewest amplitude calls (best on cpu)")
+        logger.info(" > slots  : smallest wavefunction store (for gpu, where")
+        logger.info(" >          that store is per thread); costs the sums")
+        logger.info(" > auto   : below 6 legs only the amplitude merges, which")
+        logger.info(" >          are free; above, slots when the matrix elements")
+        logger.info(" >          go to a gpu backend and speed otherwise")
+
+    def set2_merge_quartic_vertices(self, args, log=True):
+        """Sum the four gluon contributions into the cubic amplitude carrying
+        the same colour factor.
+
+        Read while the diagrams are generated, so it has to be set before
+        'generate' -- 'speed' and 'slots' fix the diagram order there and an
+        output time option would come too late. 'auto' generates in the
+        'speed' order and lets each output reorder, see
+        apply_quartic_diagram_order.
+
+        Example: set merge_quartic_vertices auto
+        """
+        args = ['merge_quartic_vertices'] + args
+        self.check_set(args)
+        value = args[1].lower()
+        if value in ('slots', 'speed', 'auto'):
+            pass
+        elif value in ('false', '0', 'none', 'off'):
+            value = False
+        elif value in ('true', '1', 'on'):
+            value = 'speed'
+        else:
+            raise self.InvalidCmd(
+                "merge_quartic_vertices takes False, speed, slots or auto,"
+                " not '%s'" % args[1])
+        self.options[args[0]] = value
+        madgraph.merge_quartic_vertices = value
+        if log:
+            logger.info('set merge_quartic_vertices to %s' % value)
+
     def set2_store_rwgt_info(self,args, log=True):
         """Set whether the code should generate systematics information in the output LHE file at NLO
         Default is set to False.
@@ -9238,6 +9306,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             self.options['nb_core'] = int(args[0])
        
     
+    def set2_nb_core_pythia8(self, args, log=True):
+        """Set the number of cores/jobs used by the Pythia8 step only.
+        Falls back to the global nb_core option when left to None.
+        Example: set nb_core_pythia8 8
+        """
+        return self.set_default('nb_core_pythia8', args, log=log)
+
+    def set2_nb_core_delphes(self, args, log=True):
+        """Set the number of cores/jobs used by the Delphes step only.
+        Falls back to the global nb_core option when left to None.
+        Example: set nb_core_delphes 8
+        """
+        return self.set_default('nb_core_delphes', args, log=log)
+
     def set2_cluster_type(self, args, log=True):
         """Set the cluster type to be used for cluster jobs submission.
         Example: set cluster_type condor
@@ -9354,8 +9436,15 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
     def set2_apply_flavor_grouping(self, args, log=True):
         """Set whether the code should apply flavor grouping in the generation of LO processes.
         Default: True
-        """    
+        """
         self.options['apply_flavor_grouping'] = banner_module.ConfigFile.format_variable(args[0], bool, 'apply_flavor_grouping')
+
+    def set2_merge_same_topologies(self, args, log=True):
+        """Set whether the mg7 output should merge diagrams sharing the same topology
+        (ignoring spin, color and charge) into a single integration channel.
+        Default: True
+        """
+        self.options['merge_same_topologies'] = banner_module.ConfigFile.format_variable(args[0], bool, 'merge_same_topologies')
 
 
 
@@ -9547,6 +9636,67 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
         launch_ext.open_file(file_path)
 
+    # Output formats whose matrix elements can run on a gpu, where the
+    # wavefunction store is per thread. See set2_merge_quartic_vertices.
+    _gpu_me_formats = ['mg7', 'mg7_v5', 'standalone_mg7']
+    # Diagram order currently materialised in _curr_amps, and the diagrams as
+    # they came out of the generation. Both only used for 'auto'.
+    _quartic_order = None
+    _quartic_pristine = None
+
+    def apply_quartic_diagram_order(self, options):
+        """Resolve an 'auto' merge_quartic_vertices against the backend which
+        is about to be handed the matrix elements.
+
+        What the two modes disagree on is the diagram order, and that is fixed
+        while the diagrams are generated. 'auto' generates in the 'speed'
+        order and reorders here instead, which is only possible because
+        'slots' is that same order reversed.
+
+        The reordering has to start from the diagrams as generated, not from
+        the ones in hand: an export mutates what it is given, and reversing
+        mutated diagrams gives an equivalent but differently numbered result.
+        """
+
+        if self.options.get('merge_quartic_vertices') != 'auto':
+            return
+
+        target = options['me_exporter'].get('name', self._export_format)
+        gpu = target in self._gpu_me_formats or \
+            options['me_exporter'].get('exporter', options['exporter']) == 'gpu'
+        wanted = 'slots' if gpu else 'speed'
+        madgraph.merge_quartic_vertices = wanted
+
+        # Keep the diagrams of the amplitudes the seed rule applied to -- the
+        # order of any other one is not ours to touch. Both have to be read
+        # before the first export: it is the last moment the diagrams are the
+        # generated ones, and it also drops the marks saying they came from a
+        # seed. Amplitudes added later are picked up on the way past.
+        if self._quartic_pristine is None:
+            self._quartic_pristine = []
+        for amp in self._curr_amps[len(self._quartic_pristine):]:
+            self._quartic_pristine.append(
+                copy.deepcopy(amp.get('diagrams'))
+                if (getattr(amp, 'seed_forbidden_cubic_ids', None) and
+                    getattr(amp, 'quartic_unroll_tags', None)) else None)
+        if all(pristine is None for pristine in self._quartic_pristine):
+            return
+        logger.info("merge_quartic_vertices: '%s' for the %s matrix elements"
+                    % (wanted, target))
+        # the generation leaves them in the 'speed' order
+        if wanted == (self._quartic_order or 'speed'):
+            return
+        for amp, pristine in zip(self._curr_amps, self._quartic_pristine):
+            if pristine is None:
+                continue
+            diagrams = copy.deepcopy(pristine)
+            if wanted == 'slots':
+                diagrams.reverse()
+            amp.set('diagrams', base_objects.DiagramList(diagrams))
+        self._quartic_order = wanted
+        # anything cached was built in the other order
+        self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+
     def do_output(self, line):
         """Main commands: Initialize a new Template or reinitialize one"""
 
@@ -9670,7 +9820,11 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             options['me_exporter']['name'] = me_exporter
         else:
             options['me_exporter'] = {}
-            
+
+        # now that the backend getting the matrix elements is known, an 'auto'
+        # merge_quartic_vertices can be resolved -- before anything is built
+        self.apply_quartic_diagram_order(options)
+
         # check
         if os.path.realpath(self._export_dir) == os.getcwd():
             if len(args) == 0:

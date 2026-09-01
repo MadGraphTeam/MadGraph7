@@ -1059,6 +1059,106 @@ class TestMECmdShell(unittest.TestCase):
                 'e+ e- > e+ e-: beams are different particles, flavor %s must '
                 'not be mirrored (that doubles the cross-section)' % (flavor,))
 
+    def test_color_flow_consistency_mg7(self):
+        """LHECompleter (madspace/src/driver/lhe_output.cpp) must build
+        without error for p p > j j j: it walks each diagram's vertices,
+        cancelling color/anti-color indices (compute_decay_color), and raises
+        if a color flow doesn't close. Exercises the real C++ code directly
+        against every (channel, diagram, active color) in subprocesses.json."""
+        import json
+        # Prefer the locally-built module (madspace/install) over whatever
+        # madspace happens to be on the system path, since this test exercises
+        # local C++ source changes (diagram_propagator_pdgs).
+        local_install = pjoin(MG5DIR, 'madspace', 'install')
+        if os.path.isdir(local_install):
+            if local_install not in sys.path:
+                sys.path.insert(0, local_install)
+            for mod_name in [m for m in sys.modules if m.startswith('madspace')]:
+                mod_file = getattr(sys.modules[mod_name], '__file__', '') or ''
+                if not mod_file.startswith(local_install):
+                    del sys.modules[mod_name]
+        try:
+            import madspace as ms
+            has_mg7 = hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs')
+        except ImportError:
+            has_mg7 = False
+        if not has_mg7:
+            self.skipTest('mg7 runtime stack (madspace) unavailable')
+
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        for c in ['set automatic_html_opening False --no_save',
+                  'import model sm',
+                  'define p = g u c d s u~ c~ d~ s~',
+                  'define j = g u c d s u~ c~ d~ s~',
+                  'generate p p > j j j']:
+            mg.exec_cmd(c)
+        out_dir = pjoin(self.path, 'MG7_color_flow_consistency')
+        mg.exec_cmd('output mg7 %s' % out_dir)
+        meta_list = json.load(open(pjoin(out_dir, 'SubProcesses',
+                                          'subprocesses.json')))
+
+        checked = 0
+        for subproc_index, meta in enumerate(meta_list):
+            n_particles = len(meta['incoming']) + len(meta['outgoing'])
+            incoming_masses = [0.0] * len(meta['incoming'])
+            outgoing_masses = [0.0] * len(meta['outgoing'])
+            topologies, permutations = [], []
+            diagram_indices, diagram_color_indices = [], []
+            diagram_propagator_pdgs = []
+            for channel in meta['channels']:
+                # mass/width don't affect color computation, only whether a
+                # propagator counts as resonant -- use 0.0 throughout so every
+                # propagator's color still gets validated.
+                propagators = [
+                    ms.Propagator(mass=0.0, width=0.0, integration_order=0,
+                                  e_min=0.0, e_max=0.0, pdg_id=pid)
+                    for pid in channel['propagators']
+                ]
+                diagram = ms.Diagram(incoming_masses, outgoing_masses,
+                                      propagators, channel['vertices'])
+                topo = ms.Topology.topologies(diagram)[0]
+                diagrams = channel['diagrams']
+                topologies.append(topo)
+                permutations.append([d['permutation'] for d in diagrams])
+                diagram_indices.append([d['diagram'] for d in diagrams])
+                diagram_color_indices.append(
+                    [d['active_colors'] for d in diagrams]
+                )
+                diagram_propagator_pdgs.append(
+                    [d['propagator_pdgs'] for d in diagrams]
+                )
+                checked += sum(len(d['active_colors']) for d in diagrams)
+
+            subproc_args = ms.SubprocArgs(
+                process_id=subproc_index,
+                topologies=topologies,
+                permutations=permutations,
+                diagram_indices=diagram_indices,
+                diagram_color_indices=diagram_color_indices,
+                diagram_propagator_pdgs=diagram_propagator_pdgs,
+                color_flows=meta['color_flows'],
+                pdg_color_types={
+                    int(k): v for k, v in meta['pdg_color_types'].items()
+                },
+                helicities=[[0] * n_particles],
+                pdg_ids=[flavor['options'] for flavor in meta['flavors']],
+            )
+            try:
+                ms.LHECompleter([subproc_args], bw_cutoff=15.0)
+            except Exception as err:
+                self.fail(
+                    'LHECompleter rejected subprocess %s (incoming=%s '
+                    'outgoing=%s): %s'
+                    % (subproc_index, meta['incoming'], meta['outgoing'], err)
+                )
+
+        self.assertGreater(
+            checked, 0,
+            'no (subprocess, channel, diagram, color) combination was found '
+            'to check -- p p > j j j should generate plenty'
+        )
+
     def test_single_qcd_order_mg7(self):
         """The mg7 output records the single alpha_s power (single_qcd_order in
         SubProcesses/proc_characteristics) whenever the QCD power of |M|^2 is the
@@ -2118,8 +2218,21 @@ C
         self.cmd_line.exec_cmd('decay_events run_01 -f')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
-        target = 440.779
-        self.assertTrue(misc.equal(target, val1, 4*err1))          
+        # Not the production 440.779 any more. BR(t -> w+ b) is 1 to seven
+        # digits, so the decayed cross-section used to be the production one --
+        # but MadSpin draws the top's virtuality only inside +- BW_cut widths of
+        # the pole and now says so: the reported sigma carries the fraction of
+        # the Breit-Wigner that window keeps. One top is decayed here (t~ is not
+        # in the card and MadSpin does not auto-conjugate), so the factor is a
+        # single bw_retained_fraction(173.0, 1.491257, 15) = 0.9786983 and
+        # 440.779 -> 431.39, i.e. -2.13%.
+        #
+        # The 4*err1 band is +-4.3% on a 100-event run, so the old number still
+        # fitted inside it. That is exactly why it is updated rather than left:
+        # a tolerance wide enough to hide a systematic shift is not a check that
+        # the shift is right.
+        target = 431.39
+        self.assertTrue(misc.equal(target, val1, 4*err1))
              
         
         
@@ -3438,6 +3551,131 @@ set draw_rivet_plots True
         cmd.run_cmd('launch -f')
         
         self.check_parton_output(cross=15.73, error=0.04)
+
+    def _get_delphes_path(self):
+        """Return the configured delphes_path from the MG5 configuration, or
+        None when Delphes is not configured (used to skip the parallel-Delphes
+        acceptance test on setups without Delphes/ROOT)."""
+        config = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
+        if not os.path.exists(config):
+            return None
+        for line in open(config):
+            line = line.split('#', 1)[0]
+            if '=' in line:
+                key, value = line.split('=', 1)
+                if key.strip() == 'delphes_path':
+                    value = value.strip()
+                    if value and value.lower() != 'none':
+                        return value
+        return None
+
+    def test_pythia8_delphes_parallel(self):
+        """Fused parallel-Delphes path: a multicore Pythia8 + Delphes run should
+        run Delphes on the individual Pythia8 splits and combine the ROOT files
+        with hadd, keeping every showered event exactly once (normalization)."""
+
+        delphes_path = self._get_delphes_path()
+        if not (delphes_path and os.environ.get('ROOTSYS') and
+                os.path.exists(pjoin(delphes_path, 'DelphesHepMC2'))):
+            raise unittest.SkipTest('Delphes/ROOT not available')
+
+        try:
+            shutil.rmtree('/tmp/MGPROCESS/')
+        except Exception:
+            pass
+
+        # nb_core 2 with 400 events forces exactly 2 Pythia8 splits (the
+        # min_n_events_per_job=100 security clamp keeps 400//100=4 capped to 2);
+        # run_mode defaults to 2 (multicore). Setting nb_core_delphes activates
+        # the fused parallel-Delphes path (Delphes runs on each split, then the
+        # ROOT files are combined with hadd).
+        nevents = 400
+        cmd = """import model sm
+        set automatic_html_opening False --no_save
+        set notification_center False --no_save
+        set nb_core 2
+        set nb_core_delphes 2
+        generate p p > e+ e-
+        output madevent %s -f
+        launch
+        shower=pythia8
+        detector=Delphes
+        analysis=off
+        set mpi off
+        set use_syst False
+        set event_norm average
+        set nevents %d
+        set HEPMCoutput:file hepmc.gz
+        launch -i
+        delphes run_01 --tag=single
+        """ % (self.run_dir, nevents)
+        open(pjoin(self.path, 'mg5_cmd'), 'w').write(cmd)
+
+        if logging.getLogger('madgraph').level <= 20:
+            stdout = None
+            stderr = None
+        else:
+            devnull = open(os.devnull, 'w')
+            stdout = devnull
+            stderr = devnull
+        ret = subprocess.call([pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'),
+                               pjoin(self.path, 'mg5_cmd')],
+                              stdout=stdout, stderr=stderr)
+        # Without this a failed run only shows up further down as
+        # "TypeError: 'NoneType' object is not subscriptable" out of
+        # load_result, because HTML/results.pkl was never written.
+        self.assertEqual(ret, 0, 'mg5_aMC run failed (rc=%s)' % ret)
+
+        # Parton level (the same lhe drives every split) and Pythia8 output.
+        self.check_parton_output(target_event=nevents)
+        self.check_pythia_output()
+
+        # Two Delphes outputs of the *same* showered events:
+        #   - tag_1_delphes_events.root : fused (Delphes per split -> hadd),
+        #   - single_delphes_events.root: standard single Delphes pass on the
+        #     merged HepMC (the 'delphes run_01 --tag=single' command above).
+        # They must be equivalent: same number of events and same total weight
+        # (this is the real normalization check for the fused path).
+        eventdir = pjoin(self.run_dir, 'Events', 'run_01')
+        fused_root = pjoin(eventdir, 'tag_1_delphes_events.root')
+        single_root = pjoin(eventdir, 'single_delphes_events.root')
+        self.assertTrue(os.path.exists(fused_root), 'no fused Delphes ROOT produced')
+        self.assertTrue(os.path.exists(single_root), 'no single-core Delphes ROOT produced')
+        self.assertGreater(os.path.getsize(fused_root), 0)
+
+        # PyROOT is bundled with ROOT but its bindings may not import under the
+        # test interpreter; when available, compare the two samples directly.
+        try:
+            import ROOT
+        except ImportError:
+            ROOT = None
+        if ROOT is not None:
+            ROOT.gErrorIgnoreLevel = ROOT.kError
+
+            def read(path):
+                tfile = ROOT.TFile.Open(path)
+                tree = tfile.Get('Delphes')
+                self.assertIsNotNone(tree)
+                n = int(tree.GetEntries())
+                total = 0.0
+                try:
+                    for event in tree:
+                        total += event.Event.At(0).Weight
+                except Exception:
+                    total = None  # branch layout differs; fall back to counts
+                tfile.Close()
+                return n, total
+
+            n_fused, w_fused = read(fused_root)
+            n_single, w_single = read(single_root)
+            # Same events processed either way: no loss or duplication from hadd.
+            self.assertGreater(n_fused, 0)
+            self.assertEqual(n_fused, n_single)
+            # Same absolute normalization: the per-split HepMC weights are the
+            # ones the single pass sees on the merged file, so the totals match.
+            if w_fused is not None and w_single is not None:
+                self.assertAlmostEqual(w_fused, w_single,
+                                       delta=1e-6 * abs(w_single) + 1e-30)
 
 
 #===============================================================================

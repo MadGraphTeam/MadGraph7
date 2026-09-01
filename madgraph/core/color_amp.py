@@ -197,7 +197,7 @@ class ColorBasis(dict):
         new_res_dict = {}
         for i, col_str in \
                 enumerate(inter_color):
-            
+
             # Ignore color string if it doesn't correspond to any coupling
             if i not in inter_indices:
                 continue
