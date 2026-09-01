@@ -2698,6 +2698,40 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.mg5cmd._curr_model = self.model
         self.mg5cmd.process_model()
 
+    # Whether the mg7 backend can run here at all. Memoised on the class: it
+    # answers a question about the installation, which does not change during a
+    # run, and generate_events asks it once per decay channel.
+    _mg7_backend_available = None
+
+    @classmethod
+    def _mg7_available(cls):
+        """Whether the mg7 decay generator can actually run in this MadGraph.
+
+        mg7 integrates through madspace, a compiled C++/pybind extension that
+        MadGraph builds on demand rather than shipping built. When it is not
+        built, the launcher tries to build it from inside the run: minutes of
+        cmake when that works, and a hard failure when it does not -- raised
+        from generate_events_mg7, i.e. after MadSpin has already generated its
+        own matrix elements and has nothing to show for them. Ask first and fall
+        back to madevent, which needs no more than the Fortran toolchain
+        MadGraph already requires.
+
+        Looks for the built extension rather than the directory: a failed build
+        can leave madspace/install/madspace behind, empty.
+        """
+        if cls._mg7_backend_available is None:
+            try:
+                import madgraph as _mg
+                root = os.path.dirname(os.path.dirname(
+                    os.path.abspath(_mg.__file__)))
+                install = pjoin(root, 'madspace', 'install', 'madspace')
+                cls._mg7_backend_available = bool(
+                    misc.glob('_madspace_py*.so', install) or
+                    misc.glob('_madspace_py*.pyd', install))
+            except Exception:
+                cls._mg7_backend_available = False
+        return cls._mg7_backend_available
+
     def generate_events_mg7(self, decay_dir, nb_event, run_name='run_01'):
         """Run the mg7 (madmatrix/madspace) generator in ``decay_dir``.
 
@@ -3140,20 +3174,32 @@ class MadSpinInterface(extended_cmd.Cmd):
                 output_format = self.options['decay_generator']
             except KeyError:
                 output_format = 'madevent'
-            if output_format == 'mg7' and use_gridpack:
-                # The one path that still needs the Fortran madevent output:
-                # gridpack (ms_dir) drives the decay directory through run.sh,
-                # and the mg7 output provides no run.sh.
-                #
-                # There used to be a second one -- the parallel unweighting was
-                # demoted to madevent for nb_core > 1, i.e. on any multicore
-                # box, because the refill path splits and reopens a pool as LHE
-                # files and mg7 was writing numpy. mg7 writes LHE now (see
+            if output_format == 'mg7':
+                # Two things still send the decay generation back to Fortran
+                # madevent. Neither is the parallel unweighting: that used to
+                # demote mg7 whenever nb_core > 1, i.e. on any multicore box,
+                # because the refill path splits and reopens a pool as LHE files
+                # and mg7 was writing numpy. mg7 writes LHE now (see
                 # generate_events_mg7), in the per-worker layout, so there is
-                # nothing left to conflict with and the demotion is gone.
-                logger.info('gridpack mode: generating decay events with '
-                            'madevent rather than mg7')
-                output_format = 'madevent'
+                # nothing left to conflict with and that demotion is gone.
+                if use_gridpack:
+                    # gridpack (ms_dir) drives the decay directory through
+                    # run.sh, and the mg7 output provides no run.sh.
+                    logger.info('gridpack mode: generating decay events with '
+                                'madevent rather than mg7')
+                    output_format = 'madevent'
+                elif not self._mg7_available():
+                    # WARNING, not info: mg7 is the default, so this says the
+                    # run is not getting the backend it asked for, and says what
+                    # to do about it.
+                    logger.warning(
+                        'MadSpin: decay_generator = mg7 needs the madspace '
+                        'extension, which is not built in this MadGraph. '
+                        'Generating the decay events with madevent instead. '
+                        'Build it once with "python madspace/install.py" to '
+                        'get the mg7 generator, or "set decay_generator '
+                        'madevent" in the madspin card to stop asking.')
+                    output_format = 'madevent'
             if not os.path.exists(decay_dir):
                 # Amplitude generation and code writing, paid once per decay
                 # directory (a pool refill reuses it).

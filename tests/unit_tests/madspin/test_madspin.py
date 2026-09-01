@@ -11414,9 +11414,13 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
     through run.sh, which the mg7 output does not provide.
     """
 
-    def _decision(self, spinmode, nb_core, ms_dir=''):
+    def _decision(self, spinmode, nb_core, ms_dir='', madspace=True):
         """Which output format generate_events settles on, without running any
-        generation: replay it over a stub and catch the `output` command."""
+        generation: replay it over a stub and catch the `output` command.
+
+        ``madspace`` stands in for whether the compiled extension mg7 needs is
+        built; pinned rather than probed so the test says the same thing on a
+        machine that happens to have built it and one that has not."""
         seen = []
         interface = interface_madspin.MadSpinInterface
 
@@ -11429,6 +11433,9 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
 
             def _resolve_nb_core(self):
                 return nb_core
+
+            def _mg7_available(self):
+                return madspace
 
         stub = Stub()
         stub.options = {'decay_generator': 'mg7', 'ms_dir': ms_dir,
@@ -11473,6 +11480,47 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
     def test_gridpack_still_forces_madevent(self):
         self.assertEqual(self._decision('madspin', 18, ms_dir='/some/ms_dir'),
                          'madevent')
+
+    def test_madevent_when_madspace_is_not_built(self):
+        """mg7 integrates through a compiled extension MadGraph builds on
+        demand. Where it is not built, the launcher would try to build it mid
+        run and fail the whole run after MadSpin had already generated its
+        matrix elements. Fall back instead -- loudly."""
+        self.assertEqual(self._decision('madspin', 18, madspace=False),
+                         'madevent')
+        self.assertEqual(self._decision('madspin', 1, madspace=False),
+                         'madevent')
+
+    def test_the_probe_looks_for_the_built_extension(self):
+        """Not for the directory: a failed build leaves
+        madspace/install/madspace behind, empty."""
+        import tempfile
+        interface = interface_madspin.MadSpinInterface
+        tmp = tempfile.mkdtemp()
+        try:
+            os.makedirs(pjoin(tmp, 'madgraph'))
+            open(pjoin(tmp, 'madgraph', '__init__.py'), 'w').close()
+            install = pjoin(tmp, 'madspace', 'install', 'madspace')
+            os.makedirs(install)
+
+            class _FakeMG(object):
+                __file__ = pjoin(tmp, 'madgraph', '__init__.py')
+
+            import sys as _sys
+            real = _sys.modules['madgraph']
+            _sys.modules['madgraph'] = _FakeMG
+            try:
+                interface._mg7_backend_available = None
+                self.assertFalse(interface._mg7_available())
+                open(pjoin(install, '_madspace_py.cpython-314-darwin.so'),
+                     'w').close()
+                interface._mg7_backend_available = None
+                self.assertTrue(interface._mg7_available())
+            finally:
+                _sys.modules['madgraph'] = real
+        finally:
+            interface._mg7_backend_available = None
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
