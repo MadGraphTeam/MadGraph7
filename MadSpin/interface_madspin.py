@@ -2698,20 +2698,36 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.mg5cmd._curr_model = self.model
         self.mg5cmd.process_model()
 
-    def generate_events_mg7(self, decay_dir, nb_event):
+    def generate_events_mg7(self, decay_dir, nb_event, run_name='run_01'):
         """Run the mg7 (madmatrix/madspace) generator in ``decay_dir``.
 
         Returns ``(event_file, partial_width)``. The partial width is read back
         from the LHE <init> block, which for a 1 -> n process carries a width in
         GeV rather than a cross section in pb.
+
+        The pool is left in the layout the parallel unweighting expects of any
+        backend -- one LHE file per worker, under ``Events/<run_name>/`` -- so
+        that mg7 goes down exactly the same paths madevent does. See below for
+        why LHE rather than the (faster to read) numpy event file.
         """
         run_card_path = pjoin(decay_dir, 'Cards', 'run_card.toml')
         run_card = banner.RunCardMG7(run_card_path)
         run_card['generation']['events'] = int(nb_event)
-        # The pool is read straight back into MadSpin, so write it as the numpy
-        # event file rather than LHE text: same fields, no parser. Nothing here
-        # is showered or analysed, so no tool needs the LHE.
-        run_card['run']['output_format'] = 'lhe_npy'
+        # LHE, not mg7's numpy event file, even though the numpy one is ~4 us an
+        # event cheaper to read (~5% of a run; measured 1.05x end to end).
+        #
+        # A decay pool has to survive being handed to another process BY PATH
+        # ALONE: once across the per-particle generation fork (_reader_paths /
+        # _reader_from_paths), and again from a channel's refill owner to every
+        # waiter, which opens its slice by path and has no other channel back to
+        # the generator. What travels with the path has to include the channel's
+        # partial width -- it is what picks a channel among a pdg's and what
+        # sets the branching ratio. An LHE file carries it in its <init> block,
+        # so it is self-describing and any reader can be rebuilt from the path.
+        # A .npy has no banner: the width would have to become a sidecar file in
+        # the owner->waiter publish contract, i.e. an extension of the one
+        # protocol surface where a publish/open race can live. Not worth 5%.
+        run_card['run']['output_format'] = 'lhe'
         run_card.write(run_card_path)
         with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
             fsock.write(self.banner['slha'])
@@ -2740,36 +2756,58 @@ class MadSpinInterface(extended_cmd.Cmd):
                 'the mg7 decay generator produced no run directory in %s' % events_dir)
         run_dir = new_runs[-1]
 
-        events_path = pjoin(run_dir, 'events.npy')
-        if not os.path.exists(events_path):
+        for name in ('events.lhe', 'events.lhe.gz'):
+            events_path = pjoin(run_dir, name)
+            if os.path.exists(events_path):
+                break
+        else:
             raise self.InvalidCmd(
-                'the mg7 decay generator produced no events.npy in %s' % run_dir)
+                'the mg7 decay generator produced no LHE file in %s' % run_dir)
 
-        # The numpy event file carries no <init> block, so the partial width and
-        # the timing breakdown both come from the run's info.json. The launcher
-        # reports how long the integration itself took; the rest of the
-        # subprocess wall time is interpreter start-up plus the one-off
-        # matrix-element compile, which is what dominates a decay directory.
-        info_path = pjoin(run_dir, 'info.json')
+        # Timing breakdown, best effort: the launcher reports how long the
+        # integration itself took, and the rest of the subprocess wall time is
+        # interpreter start-up plus the one-off matrix-element compile, which is
+        # what dominates a decay directory. Unlike the width -- which now comes
+        # out of the LHE banner -- this is only for the benchmark report, so a
+        # missing or malformed info.json must not fail the run.
         try:
-            with open(info_path) as fsock:
-                info = json.load(fsock)
-        except (OSError, ValueError) as error:
-            raise self.InvalidCmd(
-                'could not read the mg7 result from %s: %s' % (info_path, error))
-        try:
-            width = float(info['process']['mean'])
-        except (KeyError, TypeError, ValueError) as error:
-            raise self.InvalidCmd(
-                'no partial width in %s: %s' % (info_path, error))
-        run_times = info.get('run_times', {})
+            with open(pjoin(run_dir, 'info.json')) as fsock:
+                run_times = json.load(fsock).get('run_times', {})
+        except (OSError, ValueError, AttributeError):
+            run_times = {}
         if isinstance(run_times, dict):
             self._add_phase('decay_mg7_integrate',
                             sum(stage.get('wall_time_sec', 0.)
                                 for stage in run_times.values()
                                 if isinstance(stage, dict)))
 
-        return NpyDecayPool(events_path, width), width
+        pool = lhe_parser.EventFile(events_path)
+        # <init> of a 1 -> n process carries a width in GeV, not a cross section
+        width = pool.cross
+
+        # Deal the pool out into one file per unweighting worker, at the paths
+        # the rest of MadSpin already expects any backend to use -- the same
+        # ones madevent reaches through the run_card's ``nb_unweight_output``.
+        # Two things fall out of writing them THERE rather than anywhere else:
+        # a worker opens its own file instead of striding the whole pool (which
+        # costs it a full parse of every other worker's events), and on a refill
+        # these paths *are* _refill_pool_paths, so _generate_refill_pool finds
+        # sources == targets and does no further work. Left uncompressed: they
+        # are read back immediately and gzip is pure overhead here.
+        nb_split = self._decay_pool_split()
+        if nb_split <= 1:
+            pool.seek(0)
+            return pool, width
+        pool.close()
+        targets = lhe_parser.EventFile.unweight_output_paths(
+            pjoin(decay_dir, 'Events', run_name, 'unweighted_events.lhe'),
+            nb_split)
+        target_dir = os.path.dirname(targets[0])
+        if not os.path.isdir(target_dir):
+            os.makedirs(target_dir)
+        with self._phase('decay_mg7_split'):
+            self._split_pool_round_robin([events_path], targets)
+        return _ChainedEvents(targets), width
 
     # File in which a decay directory records the partial width that was
     # measured when it was built. Only the gridpack (ms_dir) path needs it: the
@@ -3090,48 +3128,20 @@ class MadSpinInterface(extended_cmd.Cmd):
                 output_format = self.options['decay_generator']
             except KeyError:
                 output_format = 'madevent'
-            if output_format == 'mg7':
-                # Two paths still need the Fortran madevent output:
-                #  - gridpack (ms_dir), which drives the decay directory through
-                #    run.sh, and mg7 provides no run.sh;
-                #  - the parallel unweighting (nb_core > 1), whose refill
-                #    machinery splits and reopens a pool as LHE files
-                #    (_ChainedEvents / _StridedEvents / _split_pool), which the
-                #    numpy pool NpyDecayPool is not.
-                resolve = getattr(self, '_resolve_nb_core', None)
-                nb_core = getattr(self, '_shard_nb_core', None) or \
-                    (resolve() if resolve is not None else 1)
-                # ... but only where a worker is actually forked. 'none' and
-                # 'madspin_v1' consume their pools serially (run_bridge /
-                # decay_all_events) and never reach the refill machinery, so
-                # nb_core says nothing about them and demoting them buys
-                # nothing. Every other spinmode -- 'madspin' and 'full' (which
-                # is rewritten to 'madspin') included, i.e. the DEFAULT -- goes
-                # through run_onshell, which does fork, so the guard has to stay
-                # on for them.
-                try:
-                    spinmode = self.options['spinmode']
-                except (KeyError, TypeError):
-                    spinmode = None
-                may_fork = spinmode not in ('none', 'madspin_v1')
-                if use_gridpack:
-                    logger.info('gridpack mode: generating decay events with '
-                                'madevent rather than mg7')
-                    output_format = 'madevent'
-                elif may_fork and nb_core and int(nb_core) > 1:
-                    # WARNING, not info: 'nb_core' defaults to the machine's
-                    # core count (MG5 set2_nb_core), so this is the *usual*
-                    # case on a multicore box and it silently changes what
-                    # 'decay_generator = mg7' does. Say so, and say how to get
-                    # the mg7 generator back.
-                    logger.warning(
-                        'MadSpin: the parallel unweighting (nb_core = %s) '
-                        'cannot read the numpy decay pools the mg7 generator '
-                        'writes -- its refill path splits and reopens a pool '
-                        'as LHE files. Generating the decay events with '
-                        'madevent instead. Use "set nb_core 1" in the madspin '
-                        'card to keep the mg7 generator.', nb_core)
-                    output_format = 'madevent'
+            if output_format == 'mg7' and use_gridpack:
+                # The one path that still needs the Fortran madevent output:
+                # gridpack (ms_dir) drives the decay directory through run.sh,
+                # and the mg7 output provides no run.sh.
+                #
+                # There used to be a second one -- the parallel unweighting was
+                # demoted to madevent for nb_core > 1, i.e. on any multicore
+                # box, because the refill path splits and reopens a pool as LHE
+                # files and mg7 was writing numpy. mg7 writes LHE now (see
+                # generate_events_mg7), in the per-worker layout, so there is
+                # nothing left to conflict with and the demotion is gone.
+                logger.info('gridpack mode: generating decay events with '
+                            'madevent rather than mg7')
+                output_format = 'madevent'
             if not os.path.exists(decay_dir):
                 # Amplitude generation and code writing, paid once per decay
                 # directory (a pool refill reuses it).
@@ -3213,7 +3223,8 @@ class MadSpinInterface(extended_cmd.Cmd):
             if output_format == 'mg7':
                 # mg7 delivers exactly the requested number of events, so ask
                 # for what is needed rather than madevent's 0.8x undershoot.
-                out[i], pwidth = self.generate_events_mg7(decay_dir, nb_event)
+                out[i], pwidth = self.generate_events_mg7(decay_dir, nb_event,
+                                                          run_name=run_name)
                 if output_width:
                     channel_widths[i] = pwidth
                     width = width + pwidth if cumul else width * pwidth
