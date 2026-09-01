@@ -359,6 +359,8 @@ class MadSpinOptions(banner.ConfigFile):
                        "auto: sequential under PA/onshell, where it was the fastest scheme at every decay multiplicity measured; offshell joint up to two decaying particles and sequential from three, since offshell every mass set costs a production reshuffle and a production density and below three decays there are not enough of them to save to pay for it; but sequential at every multiplicity when the production process carries a polarisation brace, since restricting the convolution to a polarisation subspace peaks the joint weight far below the single bound the joint test has -- measured on `p p > t t~` with both tops decayed, 112 trials per accepted event under joint for `t{+}t~{+}` and 162 for `t{+}t~{-}` against 9.1 and 8.4 under sequential, where unpolarised joint takes 3.3 (and at 50000 events, where the max-weight bound is looser still, the polarised joint columns were 204-213 and 5800-6300). An explicit 'set unweighting joint' is still honoured.")
         self.add_param('sequential_spin_order', '2 3 1', comment='spin order (MG5 2S+1 convention) deciding which particle is accept/rejected first in the sequential unweighting modes: default fermions, then vectors, then scalars (which can never be rejected).')
         self.add_param('sequential_debug', False, comment='the up-front-mass unweighting schemes (sequential, sequential_global_retry): on every accepted chain, recompute the joint weight for the same production event, virtualities and decays and check that the product of the stage weights reproduces it (times the number of helicity states). Deterministic check of the decomposition itself -- the tabulated factor cancels out of it -- at roughly the cost of a joint trial per event. Debugging only.')
+        self.add_param('decay_generator', 'mg7', allowed=['mg7', 'madevent'],
+                       comment='which backend generates the decay-event pools: mg7 (madmatrix/madspace) or the legacy Fortran madevent')
 
     def __setitem__(self, name, value, change_userdefine=False, raiseerror=False):
         """Let an old card keep an unweighting scheme we no longer advertise.
@@ -388,8 +390,6 @@ class MadSpinOptions(banner.ConfigFile):
                     self.allowed_value['unweighting'] = allowed
         return super(MadSpinOptions, self).__setitem__(
             name, value, change_userdefine, raiseerror)
-        self.add_param('decay_generator', 'mg7', allowed=['mg7', 'madevent'],
-                       comment='which backend generates the decay-event pools: mg7 (madmatrix/madspace) or the legacy Fortran madevent')
 
     ############################################################################
     ##  Special post-processing of the options                                ##

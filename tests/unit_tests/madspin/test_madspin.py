@@ -11480,3 +11480,35 @@ class TestMg7IsNotDemotedWhereNothingForks(unittest.TestCase):
     def test_a_single_core_keeps_mg7_everywhere(self):
         for spinmode in ('none', 'madspin', 'PA', 'onshell'):
             self.assertEqual(self._decision(spinmode, 1), 'mg7')
+
+
+class TestDecayGeneratorIsAnOptionAtAll(unittest.TestCase):
+    """`decay_generator` was declared by an add_param that a merge left AFTER
+    the `return` of MadSpinOptions.__setitem__, i.e. as unreachable code.
+
+    That is not a cosmetic misplacement. The option then does not exist:
+    `set decay_generator mg7` in a madspin card is rejected by check_set as an
+    unknown option, and generate_events' `self.options['decay_generator']`
+    raises KeyError, which it catches and turns into 'madevent'. So the whole
+    mg7 decay generator was off, unconditionally and silently, for every run --
+    including the nb_core > 1 demotion that was supposed to be the only thing
+    turning it off.
+    """
+
+    def test_it_is_declared(self):
+        options = interface_madspin.MadSpinOptions()
+        self.assertIn('decay_generator', options)
+        self.assertEqual(options['decay_generator'], 'mg7')
+
+    def test_a_card_can_set_it(self):
+        """check_set accepts what is in self.options; an undeclared parameter
+        raises InvalidCmd and stops the card being read at all."""
+        cmd = interface_madspin.MadSpinInterface()
+        for value in ('madevent', 'mg7'):
+            cmd.do_set('decay_generator %s' % value)
+            self.assertEqual(cmd.options['decay_generator'], value)
+
+    def test_it_is_still_restricted_to_the_two_backends(self):
+        options = interface_madspin.MadSpinOptions()
+        self.assertEqual(sorted(options.allowed_value['decay_generator']),
+                         ['madevent', 'mg7'])
