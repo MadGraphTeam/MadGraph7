@@ -56,9 +56,7 @@ class AutogradWrapper(torch.autograd.Function):
         )
         ctx.module = module
         ctx.eval_grad = eval_grad
-        # backward runs on autograd's thread, which the thread-local does not reach
         ctx.stream = me.get_stream()
-        # save_for_backward would hide our own memory from the runtime, which holds it
         ctx.stored_locals = local_grads
         if len(outputs) == 1:
             return torch.from_dlpack(outputs[0])

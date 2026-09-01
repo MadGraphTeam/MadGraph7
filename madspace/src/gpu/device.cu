@@ -1,5 +1,6 @@
 #include "../kernels/kernels.hpp"
 #include "device.hpp"
+#include "madspace/driver/context.hpp"
 #include "tensor.cuh"
 
 using namespace madspace;
@@ -7,10 +8,12 @@ using namespace madspace::gpu;
 using namespace madspace::kernels;
 
 namespace {
-// the operations below run on the per-thread default stream, which is not ordered
-// against the stream these tensors were left on
 template <typename... T>
 void wait_for(const T&... tensors) {
+    auto caller = caller_stream();
+    if (caller && *caller != 0) {
+        check_error(gpuStreamSynchronize(reinterpret_cast<gpuStream_t>(*caller)));
+    }
     for (const Tensor* tensor : {&tensors...}) {
         if (auto stream = tensor->stream()) {
             check_error(gpuStreamSynchronize(reinterpret_cast<gpuStream_t>(*stream)));
@@ -34,12 +37,12 @@ void GpuDevice::free(void* ptr) const {
     check_error(gpuFree(ptr));
 }
 
-void GpuDevice::free_on_stream(void* ptr, std::uintptr_t stream) const {
+void GpuDevice::free_on_stream(void* ptr, void* stream) const {
     activate();
-    check_error(gpuFreeAsync(ptr, reinterpret_cast<gpuStream_t>(stream)));
+    check_error(gpuFreeAsync(ptr, static_cast<gpuStream_t>(stream)));
 }
 
-void GpuDevice::order_streams(std::uintptr_t from, std::uintptr_t to) const {
+void GpuDevice::order_streams(void* from, void* to) const {
     activate();
     static thread_local std::vector<gpuEvent_t> events;
     if (events.size() <= static_cast<std::size_t>(_index)) {
@@ -49,8 +52,8 @@ void GpuDevice::order_streams(std::uintptr_t from, std::uintptr_t to) const {
     if (!event) {
         check_error(gpuEventCreate(&event));
     }
-    check_error(gpuEventRecord(event, reinterpret_cast<gpuStream_t>(from)));
-    check_error(gpuStreamWaitEvent(reinterpret_cast<gpuStream_t>(to), event));
+    check_error(gpuEventRecord(event, static_cast<gpuStream_t>(from)));
+    check_error(gpuStreamWaitEvent(static_cast<gpuStream_t>(to), event));
 }
 
 void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
@@ -161,9 +164,7 @@ MemPool::~MemPool() {
                 auto& [ptr, parent] = item;
                 if (!parent) {
                     try {
-                        _device.free_on_stream(
-                            ptr, reinterpret_cast<std::uintptr_t>(_stream)
-                        );
+                        _device.free_on_stream(ptr, _stream);
                     } catch (...) {
                     }
                 }

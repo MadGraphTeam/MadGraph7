@@ -46,8 +46,8 @@ public:
     virtual std::pair<void*, Tensor>
     allocate(std::size_t size, AllocHint hint) const override;
     void free(void* ptr) const override;
-    void free_on_stream(void* ptr, std::uintptr_t stream) const override;
-    void order_streams(std::uintptr_t from, std::uintptr_t to) const override;
+    void free_on_stream(void* ptr, void* stream) const override;
+    void order_streams(void* from, void* to) const override;
     void memcpy(void* to, void* from, std::size_t size) const override;
 
     void tensor_copy(const Tensor& source, Tensor& target) const override;
@@ -57,7 +57,6 @@ public:
     DevicePtr device_ptr() const override { return this; }
     DeviceType device_type() const override { return gpu_device_type; }
     void activate() const override { check_error(gpuSetDevice(_index)); }
-    int device_index() const override { return _index; }
     void adam_step(
         const Tensor& gradient,
         Tensor& parameter,

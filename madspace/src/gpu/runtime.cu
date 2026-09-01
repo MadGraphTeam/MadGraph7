@@ -1504,7 +1504,6 @@ private:
     std::vector<bool> _sync_matrix;
 };
 
-// a call that throws never held its inputs, so its queued work has to be drained
 struct StreamGuard {
     gpuStream_t main_stream;
     const std::vector<gpuStream_t>& streams;
@@ -1546,6 +1545,8 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         },
         [](gpurandGenerator_t handle) { ignore_error(gpurandDestroyGenerator(handle)); }
     ),
+    _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
+    _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }),
     _held_inputs(
         context->thread_pool(),
         []() { return HeldInputs{}; },
@@ -1558,9 +1559,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
                 ignore_error(gpuEventDestroy(event));
             }
         }
-    ),
-    _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
-    _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }) {
+    ) {
     if (context->device()->device_type() != GpuDevice::gpu_device_type) {
         throw std::runtime_error("Context has incompatible device");
     }
@@ -1816,8 +1815,6 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     }
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
-        // an output that is read again or returned twice is accumulated into, and that
-        // must not happen in the caller's tensor
         _copy_output_grads.push_back(
             grad_accumulated.at(out.local_index) ||
             output_counts.at(out.local_index) > 1
@@ -1894,33 +1891,36 @@ void GpuRuntime::join_streams(
 void GpuRuntime::release_inputs() {
     auto& held = _held_inputs.get();
     gpuError_t error = gpuSuccess;
-    auto done = std::ranges::remove_if(held.items, [&](auto& item) {
-        auto status = gpuEventQuery(item.first);
-        if (status == gpuErrorNotReady) {
-            return false;
-        }
-        if (status != gpuSuccess) {
-            error = status;
-        }
-        held.free_events.push_back(item.first);
-        return true;
-    });
-    held.items.erase(done.begin(), done.end());
+    held.items.erase(
+        std::remove_if(
+            held.items.begin(),
+            held.items.end(),
+            [&](auto& item) {
+                auto status = gpuEventQuery(item.first);
+                if (status != gpuSuccess) {
+                    if (status != gpuErrorNotReady) {
+                        error = status;
+                    }
+                    return false;
+                }
+                held.free_events.push_back(item.first);
+                return true;
+            }
+        ),
+        held.items.end()
+    );
     check_error(error);
 }
 
 void GpuRuntime::hold_inputs(
-    const TensorVec& inputs, gpuStream_t stream, bool own_lane
+    const TensorVec& inputs, gpuStream_t stream, bool legacy_caller
 ) {
-    // the capsules keep the producer's memory alive until the work reading it is done.
-    // memory of our own that this stream frees is already ordered behind that work,
-    // and a free on the legacy stream is ordered behind every blocking lane of ours
     release_inputs();
     auto handle = reinterpret_cast<std::uintptr_t>(stream);
     TensorVec kept;
     for (auto& input : inputs) {
         auto input_stream = input.stream();
-        if (input && input_stream != handle && !(own_lane && input_stream == 0)) {
+        if (input && input_stream != handle && !(legacy_caller && input_stream == 0)) {
             kept.push_back(input);
         }
     }
@@ -1935,12 +1935,11 @@ void GpuRuntime::hold_inputs(
         event = held.free_events.back();
         held.free_events.pop_back();
     }
-    held.items.emplace_back(event, std::move(kept));
     check_error(gpuEventRecord(event, stream));
+    held.items.emplace_back(event, std::move(kept));
 }
 
-// the next call shares the handles, the pool blocks and the async pool with one that
-// returned early, so on a different stream it has to wait for it
+// the cublas and curand handles are shared, so a new stream waits for the last one
 void GpuRuntime::switch_stream(
     gpuStream_t main_stream, const std::vector<gpuEvent_t>& events
 ) {
@@ -2074,9 +2073,8 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
     }
-    // the locals outlive the call, and a lane handle would not survive the runtime
-    for (auto& local : locals) {
-        local.set_stream(caller);
+    for (std::size_t i = _input_count; i < locals.size(); ++i) {
+        locals[i].set_stream(caller);
     }
     if (caller) {
         check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
@@ -2132,7 +2130,6 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     // all_global_grads.zero(init_device);
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
-        // a global that is also an output was seeded above
         if (local_grads[index]) {
             grad.add(local_grads[index], init_device);
         }

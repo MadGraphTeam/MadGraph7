@@ -21,12 +21,8 @@ from ._madspace_py import *
 @contextlib.contextmanager
 def stream(handle):
     """
-    Run the calls on the given cuda stream instead of madspace's own, handle being an
-    integer such as torch.cuda.current_stream().cuda_stream, or None to go back. They
-    then return without synchronizing, so consume the results on this stream and keep it
-    alive until everything madspace handed out has been dropped, as the frees are
-    ordered on it. Inputs from another framework are held until the work reading them is
-    done, which the next call releases, as does release_inputs. Thread-local.
+    Run the calls on the given cuda stream instead of madspace's own, without
+    synchronizing. Keep it alive until everything madspace handed out has been dropped.
     """
     previous = get_stream()
     set_stream(handle)

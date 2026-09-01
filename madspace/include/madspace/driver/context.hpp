@@ -201,8 +201,7 @@ ContextPtr default_cuda_context(std::size_t index = 0);
 ContextPtr default_hip_context(std::size_t index = 0);
 ContextPtr default_device_context(DevicePtr device);
 
-// thread-local stream to run on, empty to use our own and synchronize. 0 also keeps
-// ours, running the main stream on the legacy stream would serialize the lanes
+// thread-local stream to run on, empty to use our own and synchronize. 0 keeps ours
 std::optional<std::uintptr_t> caller_stream();
 void set_caller_stream(std::optional<std::uintptr_t> stream);
 

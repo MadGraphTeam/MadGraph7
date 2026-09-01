@@ -1184,8 +1184,6 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
     }
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
-        // an output that is read again or returned twice is accumulated into, and that
-        // must not happen in the caller's tensor
         _copy_output_grads.push_back(
             grad_accumulated.at(out.local_index) ||
             output_counts.at(out.local_index) > 1
@@ -1331,7 +1329,6 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_single(
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
-        // a global that is also an output was seeded above
         if (local_grads[index]) {
             grad.add(local_grads[index]);
         }
@@ -1526,7 +1523,6 @@ std::pair<TensorVec, TensorVec> CpuRuntime::run_backward_concurrent(
     // all_global_grads.zero();
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
-        // a global that is also an output was seeded above
         if (local_grads[index]) {
             grad.add(local_grads[index]);
         }

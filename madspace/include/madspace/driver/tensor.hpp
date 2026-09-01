@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
-#include <utility>
+#include <optional>
 #include <vector>
 
 namespace madspace {
@@ -200,12 +200,14 @@ inline bool needs_zero_init(AllocHint hint) {
 
 class Device {
 public:
+    static constexpr bool stream_ordered_alloc = false;
+
     virtual ~Device() = default;
     virtual std::pair<void*, Tensor>
     allocate(std::size_t size, AllocHint hint) const = 0;
     virtual void free(void* ptr) const = 0;
-    virtual void free_on_stream(void* ptr, std::uintptr_t stream) const { free(ptr); }
-    virtual void order_streams(std::uintptr_t from, std::uintptr_t to) const {}
+    virtual void free_on_stream(void* ptr, void* stream) const { free(ptr); }
+    virtual void order_streams(void* from, void* to) const {}
     virtual void memcpy(void* to, void* from, std::size_t size) const = 0;
     virtual void tensor_copy(const Tensor& source, Tensor& target) const = 0;
     virtual void tensor_zero(Tensor& tensor) const = 0;
@@ -214,7 +216,6 @@ public:
     virtual const Device* device_ptr() const = 0;
     virtual void sync_barrier() const {}
     virtual DeviceType device_type() const = 0;
-    virtual int device_index() const { return 0; }
     virtual void activate() const = 0;
     virtual void adam_step(
         const Tensor& gradient,
@@ -390,7 +391,6 @@ public:
         );
     }
 
-    // the free fails once the cuda runtime has shut down, and this cannot throw
     ~Tensor() {
         try {
             reset();
@@ -531,14 +531,19 @@ public:
         if (impl == nullptr) {
             return;
         }
-        std::exchange(impl, nullptr)->reset(device);
+        // released before the free, which can throw
+        TensorImpl* owner = impl;
+        impl = nullptr;
+        owner->reset(device);
     }
 
     void reset_on_stream(std::uintptr_t stream) {
         if (impl == nullptr) {
             return;
         }
-        std::exchange(impl, nullptr)->reset_on_stream(stream);
+        TensorImpl* owner = impl;
+        impl = nullptr;
+        owner->reset_on_stream(stream);
     }
 
     Tensor select(std::size_t axis, std::size_t index) const;
@@ -684,7 +689,7 @@ private:
             }
             if (owns_data && data != nullptr) {
                 if (stream_ordered) {
-                    device->free_on_stream(data, stream);
+                    device->free_on_stream(data, reinterpret_cast<void*>(stream));
                 } else {
                     device->free(data);
                 }
@@ -731,8 +736,8 @@ private:
             impl->data_owner = parent.impl;
         } else if (data != nullptr) {
             ++tensor_count;
-            if constexpr (requires { D::stream_ordered_alloc; }) {
-                impl->stream_ordered = D::stream_ordered_alloc;
+            if constexpr (D::stream_ordered_alloc) {
+                impl->stream_ordered = true;
                 impl->stream = reinterpret_cast<std::uintptr_t>(device.stream());
             }
         }

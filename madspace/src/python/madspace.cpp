@@ -1007,8 +1007,12 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<PyTypeObject*> ordered_producers;
                 for (std::size_t i = 1; auto& input : values_and_counts) {
                     input_tensors.push_back(dlpack_to_tensor(
-                        input, i % 2 == 0 ? batch_int : batch_float, i, nullptr,
-                        nullptr, &ordered_producers
+                        input,
+                        i % 2 == 0 ? batch_int : batch_float,
+                        i,
+                        nullptr,
+                        nullptr,
+                        &ordered_producers
                     ));
                     ++i;
                 }
@@ -1066,7 +1070,11 @@ PYBIND11_MODULE(_madspace_py, m) {
                 for (std::size_t i = 0;
                      auto [input, type] : zip(inputs, opt.input_types())) {
                     tensors.push_back(dlpack_to_tensor(
-                        input, type, i, device, &dlpack_version_cache,
+                        input,
+                        type,
+                        i,
+                        device,
+                        &dlpack_version_cache,
                         &ordered_producers
                     ));
                     ++i;

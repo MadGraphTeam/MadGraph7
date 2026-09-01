@@ -49,6 +49,11 @@ public:
     gpurandGenerator_t gpurand_generator() { return _gpurand_generator.get(); }
 
 private:
+    struct HeldInputs {
+        std::vector<std::pair<gpuEvent_t, TensorVec>> items;
+        std::vector<gpuEvent_t> free_events;
+    };
+
     // a cached block can only be handed out again if the call that used it synchronized
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
     load_pool_size_cache(bool backward, bool synchronizes);
@@ -70,7 +75,7 @@ private:
         const std::vector<gpuEvent_t>& events
     ) const;
     void switch_stream(gpuStream_t main_stream, const std::vector<gpuEvent_t>& events);
-    void hold_inputs(const TensorVec& inputs, gpuStream_t stream, bool own_lane);
+    void hold_inputs(const TensorVec& inputs, gpuStream_t stream, bool legacy_caller);
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
     std::vector<bool> _copy_output_grads;
@@ -90,18 +95,14 @@ private:
     std::vector<std::size_t> _backward_wait_events;
     ThreadResource<gpublasHandle_t> _gpublas_handle;
     ThreadResource<gpurandGenerator_t> _gpurand_generator;
-    struct HeldInputs {
-        std::vector<std::pair<gpuEvent_t, TensorVec>> items;
-        std::vector<gpuEvent_t> free_events;
-    };
-    // last, so it is destroyed first: it waits for the work using the handles above
-    ThreadResource<HeldInputs> _held_inputs;
     std::atomic<std::shared_ptr<std::unordered_map<std::size_t, std::size_t>>>
         _pool_size_cache;
     std::atomic<std::shared_ptr<std::unordered_map<std::size_t, std::size_t>>>
         _pool_size_cache_backward;
     ThreadResource<TensorVec> _prev_caches;
     ThreadResource<TensorVec> _prev_caches_backward;
+    // last, so it is destroyed first: it waits for the work using the members above
+    ThreadResource<HeldInputs> _held_inputs;
 };
 
 extern "C" Runtime*

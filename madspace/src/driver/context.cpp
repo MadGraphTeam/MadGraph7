@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <stdexcept>
 #include <unordered_map>
 
 #include "madspace/driver/io.hpp"
@@ -353,7 +354,6 @@ ContextPtr madspace::default_hip_context(std::size_t index) {
 }
 
 ContextPtr madspace::default_device_context(DevicePtr device) {
-    // leaked on purpose, the gpu resources must not be freed at interpreter exit
     static auto& default_contexts = *new std::unordered_map<DevicePtr, ContextPtr>;
     if (auto search = default_contexts.find(device); search != default_contexts.end()) {
         return search->second;
@@ -372,7 +372,7 @@ void madspace::set_caller_stream(std::optional<std::uintptr_t> stream) {
     if (stream && *stream == 2) {
         throw std::invalid_argument("the per-thread default stream is not supported");
     }
-    // dlpack spells the legacy stream 1 on cuda, we spell it 0 everywhere
+    // cuda spells the legacy stream 1 and the per-thread one 2, we spell ours 0
     current_caller_stream =
         stream && *stream == 1 ? std::optional<std::uintptr_t>(0) : stream;
 }

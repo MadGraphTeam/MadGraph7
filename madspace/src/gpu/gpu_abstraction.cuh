@@ -1,8 +1,7 @@
 #pragma once
 
-// our lanes are blocking streams, ordered against the legacy stream but not against
-// the per-thread one this flag would put at handle 0
-#if defined(CUDA_API_PER_THREAD_DEFAULT_STREAM) || \
+// our lanes are blocking streams, ordered against the legacy stream but not this one
+#if defined(CUDA_API_PER_THREAD_DEFAULT_STREAM) ||                                     \
     defined(__HIP_API_PER_THREAD_DEFAULT_STREAM__)
 #error "madspace cannot be built with the per-thread default stream"
 #endif
