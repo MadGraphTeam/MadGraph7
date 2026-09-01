@@ -89,6 +89,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_output_mg7_directory -pA -t0 -l INFO
 
+  acceptancetest_mg7_gridpack:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test one of the test test_gridpack_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_gridpack_mg7 -pA -t0 -l INFO
+
   acceptancetest_mg7_ungroup_decay:
     needs: build_madspace
     runs-on: ubuntu-24.04

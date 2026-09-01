@@ -1367,6 +1367,93 @@ class TestMECmdShell(unittest.TestCase):
         # Spread over 7 runs at events=2000: 3675-3775, mean 3731.
         self.assertAlmostEqual(cross, 3730.0, delta=max(30.0, 5 * error))
 
+    def test_gridpack_mg7(self):
+        """An mg7 gridpack has to run with the libraries it ships.
+
+        save_gridpack copies the matrix-element libraries that were built, and
+        their file names carry the resolved backend, while the card the gridpack
+        runs from carried the backend as requested. cpu_mode defaults to 'auto',
+        so the gridpack asked for a ..._auto.so nobody had built and died in
+        dlopen -- not when the gridpack was made, but the first time it was run,
+        possibly on another machine.
+
+        Both halves are checked: that the backend named in grid_run_card.toml is
+        one the gridpack carries a library for, and that running it produces
+        events.
+        """
+        import glob, re as _re
+        try:
+            import madspace
+            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
+        except ImportError:
+            has_mg7 = False
+        if not has_mg7:
+            self.skipTest('mg7 runtime stack (madspace) unavailable')
+        # e+ e- > mu+ mu- is leptonic and runs at a fixed factorisation scale,
+        # so no PDF grid is read; systematics, the one step that would want
+        # LHAPDF, is switched off below. Only madspace is required.
+        datadir = os.environ.get('LHAPDF_DATA_PATH')
+        if not datadir:
+            try:
+                datadir = subprocess.check_output(
+                    ['lhapdf-config', '--datadir']).decode().strip()
+            except Exception:
+                datadir = None
+
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        mg.exec_cmd('generate e+ e- > mu+ mu-')
+        mg.exec_cmd('output mg7 %s' % self.run_dir)
+
+        toml = pjoin(self.run_dir, 'Cards', 'run_card.toml')
+        t = open(toml).read()
+        t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
+        t = _re.sub(r'(?m)^save_gridpack = .*', 'save_gridpack = true', t)
+        t = _re.sub(r'(?m)^systematics = true$', 'systematics = false', t)
+        open(toml, 'w').write(t)
+
+        env = dict(os.environ)
+        if datadir:
+            env['LHAPDF_DATA_PATH'] = datadir
+        log = pjoin(self.run_dir, 'mg7_gridpack_gen.log')
+        ret = subprocess.call(
+            [sys.executable, pjoin(self.run_dir, 'bin', 'generate_events'), '-f'],
+            cwd=self.run_dir, env=env,
+            stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+        self.assertEqual(ret, 0, 'mg7 generate_events failed (see %s)' % log)
+
+        gridpacks = glob.glob(pjoin(self.run_dir, 'Events', '*', 'gridpack'))
+        self.assertTrue(gridpacks, 'no gridpack produced under %s' % self.run_dir)
+        gridpack = gridpacks[0]
+
+        # The card the gridpack runs from must name a backend it actually
+        # carries a library for: 'auto' is not one, nothing is built under it.
+        card = open(pjoin(gridpack, 'Cards', 'grid_run_card.toml')).read()
+        mode = _re.search(r'(?m)^cpu_mode\s*=\s*"([^"]+)"', card)
+        self.assertTrue(mode, 'no cpu_mode in the gridpack card')
+        backend = mode.group(1)
+        libdir = pjoin(gridpack, 'lib')
+        self.assertNotEqual(
+            backend, 'auto',
+            'the gridpack card names the unresolved backend, but its libraries '
+            'are named after the resolved one: %s' % os.listdir(libdir))
+        self.assertTrue(
+            glob.glob(pjoin(libdir, '*%s*' % backend)),
+            'gridpack names backend %r but ships no matching library: %s'
+            % (backend, os.listdir(libdir)))
+
+        # and it has to run
+        gplog = pjoin(self.run_dir, 'mg7_gridpack_run.log')
+        ret = subprocess.call(
+            [sys.executable, pjoin(gridpack, 'bin', 'generate_events'),
+             '--events', '2000'],
+            cwd=gridpack, env=env,
+            stdout=open(gplog, 'w'), stderr=subprocess.STDOUT)
+        self.assertEqual(ret, 0, 'mg7 gridpack run failed (see %s)' % gplog)
+        self.assertTrue(
+            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
+            'gridpack run produced no events (see %s)' % gplog)
+
     def test_flavor_grouping_consistency(self):
         """Check that the four combinations of 'apply_flavor_grouping' and
         'group_subprocesses' return compatible cross-sections for the
