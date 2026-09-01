@@ -3101,11 +3101,24 @@ class MadSpinInterface(extended_cmd.Cmd):
                 resolve = getattr(self, '_resolve_nb_core', None)
                 nb_core = getattr(self, '_shard_nb_core', None) or \
                     (resolve() if resolve is not None else 1)
+                # ... but only where a worker is actually forked. 'none' and
+                # 'madspin_v1' consume their pools serially (run_bridge /
+                # decay_all_events) and never reach the refill machinery, so
+                # nb_core says nothing about them and demoting them buys
+                # nothing. Every other spinmode -- 'madspin' and 'full' (which
+                # is rewritten to 'madspin') included, i.e. the DEFAULT -- goes
+                # through run_onshell, which does fork, so the guard has to stay
+                # on for them.
+                try:
+                    spinmode = self.options['spinmode']
+                except (KeyError, TypeError):
+                    spinmode = None
+                may_fork = spinmode not in ('none', 'madspin_v1')
                 if use_gridpack:
                     logger.info('gridpack mode: generating decay events with '
                                 'madevent rather than mg7')
                     output_format = 'madevent'
-                elif nb_core and int(nb_core) > 1:
+                elif may_fork and nb_core and int(nb_core) > 1:
                     # WARNING, not info: 'nb_core' defaults to the machine's
                     # core count (MG5 set2_nb_core), so this is the *usual*
                     # case on a multicore box and it silently changes what
@@ -4382,8 +4395,35 @@ class MadSpinInterface(extended_cmd.Cmd):
         return list(getattr(reader, 'paths', None) or [reader.name])
 
     @staticmethod
-    def _reader_from_paths(paths):
-        """Rebuild a decay-pool reader from the paths marshalled across a fork."""
+    def _reader_from_paths(paths, cross=None):
+        """Rebuild a decay-pool reader from the paths marshalled across a fork.
+
+        The format is read off the path, because the two backends do not write
+        the same one: madevent writes LHE, mg7 writes a numpy event file. An LHE
+        pool is self-describing -- its cross section (here the channel's partial
+        width) comes out of the <init> block -- so ``cross`` is ignored for it. A
+        numpy pool carries no banner, so its width has to be marshalled
+        alongside the paths and handed back in here; without it the reader would
+        come back with ``cross = None`` and silently break the cross-section
+        weighted channel choice.
+
+        Rebuilding an mg7 pool as an ``EventFile`` used to raise
+        ``UnicodeDecodeError: byte 0x93`` -- the first byte of the ``\\x93NUMPY``
+        magic read as utf-8 -- which is what ``set nb_core 1``, the documented
+        way to keep ``decay_generator = mg7``, walked straight into as soon as
+        there was more than one decaying particle (see _generate_decays: it
+        forks, and so marshals, whatever nb_core says).
+        """
+        if paths and paths[0].endswith('.npy'):
+            if len(paths) > 1:
+                raise Exception(
+                    "MadSpin: a numpy decay pool is a single file; cannot "
+                    "rebuild a reader from %s." % ', '.join(paths))
+            if cross is None:
+                raise Exception(
+                    "MadSpin: the numpy decay pool %s carries no banner, and no "
+                    "cross section was marshalled with it." % paths[0])
+            return NpyDecayPool(paths[0], cross)
         if len(paths) > 1:
             return _ChainedEvents(paths)
         return lhe_parser.EventFile(paths[0])
@@ -4484,11 +4524,15 @@ class MadSpinInterface(extended_cmd.Cmd):
             if 'error' in data:
                 raise Exception("MadSpin: the decay generation of pdg %s failed:\n%s"
                                 % (pdg, data.get('tb', data['error'])))
-            out[pdg] = (dict((int(k), self._reader_from_paths(v))
+            channel_widths = dict((int(k), v) for k, v
+                                  in data.get('channel_widths', {}).items())
+            # The per-channel width goes back in with the paths: an mg7 pool has
+            # no banner to read it from on the other side of the fork.
+            out[pdg] = (dict((int(k), self._reader_from_paths(
+                                 v, channel_widths.get(int(k))))
                              for k, v in data['files'].items()),
                         data['width'],
-                        dict((int(k), v) for k, v
-                             in data.get('channel_widths', {}).items()))
+                        channel_widths)
         return out
 
     @staticmethod

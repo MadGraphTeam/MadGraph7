@@ -11250,3 +11250,233 @@ class TestReusedMsDirParameters(unittest.TestCase):
         self._build(ms_dir=self.tmpdir)
         self.assertTrue(os.path.exists(pjoin(self.tmpdir,
                                              'ms_param_card.dat')))
+
+
+class TestMg7NumpyPoolCrossesTheGenerationFork(unittest.TestCase):
+    """`set nb_core 1` is what the code tells a user to do to keep
+    ``decay_generator = mg7`` on a multicore box. It did not work.
+
+    ``_generate_decays`` forks one process per *decaying particle* -- that is
+    what nb_core does NOT control -- and the readers it produces cannot come
+    back across the fork, so it marshals them as paths and rebuilds them in the
+    parent with ``_reader_from_paths``. That rebuilt every pool as an LHE
+    ``EventFile``, so on mg7's numpy pool it died reading ``\x93NUMPY`` as
+    utf-8:
+
+        UnicodeDecodeError: 'utf-8' codec can't decode byte 0x93 in position 0
+
+    Two decaying particles is ``p p > t t~`` with both tops decayed, i.e. the
+    flagship configuration, so the documented escape hatch walked straight into
+    a hard crash. A numpy pool also has no banner, so its cross section (the
+    channel's partial width) has to travel with the paths rather than be read
+    back off the file.
+    """
+
+    NB_EVENT = 12
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_npyfork_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    # ------------------------------------------------------------- fixtures
+
+    def _write_npy(self, name, nb_event=None, nb_part=3):
+        """A file with the dtype mg7's ``lhe_npy`` output_format writes, i.e.
+        the one ``NpyDecayPool`` is built to read."""
+        import numpy
+        nb_event = self.NB_EVENT if nb_event is None else nb_event
+        dtype = [('weight', 'f8'), ('scale', 'f8'),
+                 ('alpha_qed', 'f8'), ('alpha_qcd', 'f8')]
+        integral = ('pdg_id', 'status_code', 'mother1', 'mother2',
+                    'color', 'anti_color')
+        for i in range(1, nb_part + 1):
+            for field in interface_madspin._NPY_PARTICLE_FIELDS:
+                dtype.append(('part%d_%s' % (i, field),
+                              'i4' if field in integral else 'f8'))
+        records = numpy.zeros(nb_event, dtype=dtype)
+        records['weight'] = 1.0
+        # 1 -> 2: a decaying parent (status -1) and two decay products
+        records['part1_pdg_id'] = 6
+        records['part1_status_code'] = -1
+        records['part1_energy'] = 173.0
+        records['part1_mass'] = 173.0
+        for i, pdg in ((2, 5), (3, 24)):
+            records['part%d_pdg_id' % i] = pdg
+            records['part%d_status_code' % i] = 1
+            records['part%d_mother1' % i] = 1
+            records['part%d_mother2' % i] = 1
+            records['part%d_energy' % i] = 86.5
+        path = pjoin(self.tmpdir, name)
+        numpy.save(path, records)
+        return path + '.npy' if not path.endswith('.npy') else path
+
+    def _stub(self, widths):
+        """A MadSpin carrying the real ``_generate_decays`` machinery, over a
+        generator that behaves like ``generate_events_mg7``: it returns an
+        ``NpyDecayPool``, and its width comes back beside it rather than out of
+        a banner."""
+        test = self
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _generate_decays = interface._generate_decays
+            _generate_decay_entry = interface._generate_decay_entry
+            _reader_paths = staticmethod(interface._reader_paths)
+            _reader_from_paths = staticmethod(interface._reader_from_paths)
+
+            def _resolve_nb_core(self):
+                # the documented escape hatch
+                return 1
+
+            def generate_events(self, pdg, nb_gen, mg5, cumul=False,
+                                output_width=False, **opts):
+                width = widths[pdg]
+                path = test._write_npy('pool_%s' % str(pdg).replace('-', 'x'))
+                pool = interface_madspin.NpyDecayPool(path, width)
+                return {0: pool}, width, {0: width}
+
+        stub = Stub()
+        stub.path_me = self.tmpdir
+        stub.options = {'seed': 7}
+        stub.seed = 7
+        stub.mg5cmd = None
+        stub.me_int = {}
+        return stub
+
+    def _jobs(self, pdgs):
+        return dict((pdg, {'nb_gen': self.NB_EVENT, 'cumul': False})
+                    for pdg in pdgs)
+
+    # -------------------------------------------------------- the regression
+
+    def test_two_decaying_particles_with_nb_core_1_do_not_crash(self):
+        """The regression proper: p p > t t~, both tops decayed, nb_core = 1,
+        mg7 pools. This raised UnicodeDecodeError."""
+        widths = {6: 1.45, -6: 1.46}
+        out = self._stub(widths)._generate_decays(self._jobs([6, -6]), None)
+        self.assertEqual(sorted(out), sorted(widths))
+        for pdg in widths:
+            readers, width, channel_widths = out[pdg]
+            self.assertEqual(width, widths[pdg])
+            self.assertIsInstance(readers[0], interface_madspin.NpyDecayPool)
+
+    def test_the_partial_width_survives_the_fork(self):
+        """A numpy pool has no <init> block, so the width cannot be re-read on
+        the parent side: it has to be marshalled with the paths. Getting this
+        wrong leaves cross = None, which silently breaks the cross-section
+        weighted choice between a pdg's channels rather than raising."""
+        widths = {6: 1.45, -6: 1.46}
+        out = self._stub(widths)._generate_decays(self._jobs([6, -6]), None)
+        for pdg in widths:
+            self.assertEqual(out[pdg][0][0].cross, widths[pdg])
+            self.assertEqual(out[pdg][2][0], widths[pdg])
+
+    def test_the_pool_still_reads_its_events_in_the_parent(self):
+        """Rebuilt, not merely constructed: the events come back out."""
+        out = self._stub({6: 1.45, -6: 1.46})._generate_decays(
+            self._jobs([6, -6]), None)
+        events = list(out[6][0][0])
+        self.assertEqual(len(events), self.NB_EVENT)
+        self.assertEqual([p.pid for p in events[0]], [6, 5, 24])
+
+    # ------------------------------------------- the unit under the regression
+
+    def test_reader_from_paths_dispatches_on_the_file_format(self):
+        """LHE keeps reading its own cross section; numpy takes the one it is
+        given."""
+        npy = self._write_npy('lone')
+        reader = interface_madspin.MadSpinInterface._reader_from_paths([npy], 2.5)
+        self.assertIsInstance(reader, interface_madspin.NpyDecayPool)
+        self.assertEqual(reader.cross, 2.5)
+        self.assertEqual(len(reader), self.NB_EVENT)
+
+    def test_a_numpy_pool_without_its_width_is_refused_loudly(self):
+        """cross = None would not raise until the channel choice divided by it,
+        far from here and with no hint of why. Refuse at the boundary."""
+        npy = self._write_npy('widthless')
+        self.assertRaises(
+            Exception,
+            interface_madspin.MadSpinInterface._reader_from_paths, [npy])
+
+
+class TestMg7IsNotDemotedWhereNothingForks(unittest.TestCase):
+    """The backend guard moves ``decay_generator = mg7`` to madevent whenever
+    nb_core > 1, because the parallel unweighting's refill path cannot read a
+    numpy pool. But nb_core > 1 only means something for the spinmodes that
+    reach ``run_onshell``, which is where every worker fork lives. ``none`` and
+    ``madspin_v1`` consume their pools serially and never touch the refill
+    machinery, so demoting them buys nothing.
+
+    Note which side of that line the default is on: ``madspin`` (and ``full``,
+    which run_madspin rewrites to ``madspin``) dispatches to ``run_onshell``
+    exactly like ``PA`` and ``onshell``, so it forks and must stay guarded.
+    """
+
+    def _decision(self, spinmode, nb_core):
+        """Which output format the guard in generate_events settles on, without
+        running any generation: replay it over a stub."""
+        seen = []
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _split_group_tag = interface._split_group_tag
+            _DECAY_GROUP_TAG = interface._DECAY_GROUP_TAG
+
+            def _resolve_nb_core(self):
+                return nb_core
+
+        stub = Stub()
+        stub.options = {'decay_generator': 'mg7', 'ms_dir': '',
+                        'spinmode': spinmode}
+        stub.path_me = '/nonexistent'
+        stub.list_branches = {'t': ['t > b w+']}
+
+        class _P(object):
+            def get_name(self):
+                return 't'
+
+        class _M(object):
+            def get_particle(self, pdg):
+                return _P()
+
+        stub.model = _M()
+
+        class _MG5(object):
+            def exec_cmd(self, cmd):
+                if cmd.startswith('output '):
+                    seen.append(cmd.split()[1])
+                    raise _Stop()
+
+        class _Stop(Exception):
+            pass
+
+        with misc.TMP_variable(interface_madspin.logger, 'warning',
+                               lambda *a, **k: None):
+            with misc.TMP_variable(interface_madspin.logger, 'info',
+                                   lambda *a, **k: None):
+                try:
+                    interface.generate_events(stub, 6, 10, _MG5())
+                except _Stop:
+                    pass
+                except Exception:
+                    pass
+        return seen[0] if seen else None
+
+    def test_serial_spinmodes_keep_mg7_on_a_multicore_box(self):
+        for spinmode in ('none', 'madspin_v1'):
+            self.assertEqual(self._decision(spinmode, 16), 'mg7',
+                             'spinmode %s never forks a worker' % spinmode)
+
+    def test_the_forking_spinmodes_are_still_demoted(self):
+        # 'madspin' is the DEFAULT and goes through run_onshell, so it forks.
+        for spinmode in ('madspin', 'full', 'PA', 'onshell', 'onshell_v1'):
+            self.assertEqual(self._decision(spinmode, 16), 'madevent',
+                             'spinmode %s reaches the parallel unweighting'
+                             % spinmode)
+
+    def test_a_single_core_keeps_mg7_everywhere(self):
+        for spinmode in ('none', 'madspin', 'PA', 'onshell'):
+            self.assertEqual(self._decision(spinmode, 1), 'mg7')
