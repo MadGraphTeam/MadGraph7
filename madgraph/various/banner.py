@@ -6473,8 +6473,12 @@ class RunCardMG7(RunCard):
 
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
-        self.add_toml_param('run', 'devices', ["cpu"], typelist=str, gridpack=True,
-            comment="options: cpu (auto-detected SIMD width), cpu_scalar, cpu_128b, cpu_256b, cpu_512b_y, cpu_512b, cuda, hip")
+        self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
+            allowed=['cpu', 'cuda', 'hip', '*'],
+            comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
+        self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
+            allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
+            comment="SIMD width used by the 'cpu' devices; 'auto' detects the widest one supported by the host")
         self.add_toml_param('run', 'simd_vector_size', -1,
             comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
@@ -6662,6 +6666,24 @@ class RunCardMG7(RunCard):
         return super(RunCardMG7, self).__getitem__(name)
 
     get = __getitem__
+
+    def __setitem__(self, name, value, *args, **opts):
+        """Refuse an unsupported cpu_mode instead of silently falling back.
+
+        The generic ConfigFile machinery reacts to a value outside an 'allowed'
+        list by logging a warning and keeping the previous value. For cpu_mode
+        that would mean building and running with a SIMD width the user never
+        asked for, so make it a hard error here. This matters in particular for
+        run cards written before the backend renaming, which still carry a
+        removed value such as 'cpu_128b'.
+        """
+        if isinstance(name, str) and name.strip().lower() in ('cpu_mode', 'run.cpu_mode'):
+            allowed = self.allowed_value.get('run.cpu_mode', [])
+            if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
+                raise InvalidRunCard(
+                    "Invalid cpu_mode='%s': supported values are [ '%s' ]"
+                    % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+        return super(RunCardMG7, self).__setitem__(name, value, *args, **opts)
 
     # ------------------------------------------------------------------
     # legacy run_card compatibility
@@ -7012,10 +7034,31 @@ class RunCardMG7(RunCard):
         self.set('beam.fact_scale2', val, user=True)
         return val
 
+    # The device types accepted by the 'device' entry of [run]. Each entry may
+    # carry an optional device index, e.g. "cuda:1".
+    allowed_device_types = ['cpu', 'cuda', 'hip']
+
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
             raise InvalidRunCard("survey_min_iters can not be larger than survey_max_iters")
+
+        # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
+        # generic 'allowed' machinery cannot check it on its own.
+        devices = self['run']['device']
+        if not devices:
+            raise InvalidRunCard("device can not be an empty list")
+        for entry in devices:
+            device_type, _, index = str(entry).partition(':')
+            if device_type not in self.allowed_device_types:
+                raise InvalidRunCard(
+                    "Invalid device '%s': each entry of 'device' must be one of %s, "
+                    "optionally followed by a device index (e.g. \"cuda:1\")"
+                    % (entry, ', '.join(self.allowed_device_types)))
+            if index and not index.isdigit():
+                raise InvalidRunCard(
+                    "Invalid device '%s': the device index must be a non-negative integer"
+                    % entry)
 
     # ------------------------------------------------------------------
     # writing TOML

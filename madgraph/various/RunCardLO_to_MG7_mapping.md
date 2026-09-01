@@ -112,7 +112,7 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
   `disable_multichannel`, `hel_recycling/filtering/splitamp/zeroamp`,
   `gridrun`, `gseed`, `issgridfile`, `d`, `xmtcentral`, `mc_grouped_subproc`,
   `fixed_couplings`, `global_flag`, `aloha_flag`, `small_width_treatment`.
-  → MG7 has its **own** engine knobs (`[vegas]`, `[generation]`, `run.devices`,
+  → MG7 has its **own** engine knobs (`[vegas]`, `[generation]`, `run.device`,
   thread pools, `phasespace.mode/t_channel/flat_mode/…`). A few have loose
   analogues (`disable_multichannel`↔`phasespace.mode`, survey settings↔
   `generation.survey_*`/`[vegas]`), but most are **[x] engine-specific** and
@@ -123,7 +123,7 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
 
 ## 9. MG7-only (no LO source, keep default) — [mg7-only]
 
-`run.devices`, `run.simd_vector_size`, `run.{cpu,gpu,combine}_thread_pool_size`,
+`run.device`, `run.cpu_mode`, `run.simd_vector_size`, `run.{cpu,gpu,combine}_thread_pool_size`,
 `run.output_format`, `run.verbosity`, `run.dummy_matrix_element`,
 `gridpack.{include_source,include_madspace,include_madspace_source}`,
 `generation.{cpu,gpu}_batch_size`,

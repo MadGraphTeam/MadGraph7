@@ -114,9 +114,10 @@ def main() -> None:
             run_index += 1
 
     # initialize context
-    device_names = args.device if args.device else run_args["devices"]
+    device_names = args.device if args.device else run_args["device"]
+    cpu_mode = run_args["cpu_mode"]
     contexts = []
-    device_types = []
+    backends = []
     for device_name in device_names:
         if ":" in device_name:
             device_type, device_index_str = device_name.split(":")
@@ -124,7 +125,9 @@ def main() -> None:
         else:
             device_type = device_name
             device_index = 0
-        device_types.append(device_type)
+        # cpu_mode names the SIMD width of the CPU code, so it applies to the
+        # 'cpu' devices only: cuda/hip build the backend named after the device.
+        backends.append(cpu_mode if device_type == "cpu" else device_type)
         if device_type == "cuda":
             device = ms.cuda_device(device_index)
             pool_size = args.gpu_thread_pool_size
@@ -150,11 +153,11 @@ def main() -> None:
 
     # set up contexts
     global_dir = os.path.join("data", "globals")
-    for context, device_type in zip(contexts, device_types):
+    for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=device_type), param_card_path
+                me_path.format(device=backend), param_card_path
             )
 
     # set up generators

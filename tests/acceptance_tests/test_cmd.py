@@ -450,7 +450,7 @@ class TestCmdShell2(unittest.TestCase,
         (madmatrix/cudacpp) directory for e+ e- > e+ e- -- the top-level layout
         (src/, SubProcesses/, lib/, Cards/, bin/), the mg7 cards and launcher,
         and that the generated subprocess compiles into the expected shared
-        libraries (cpu_scalar backend).
+        libraries (scalar backend).
         """
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
@@ -1709,12 +1709,12 @@ class TestCmdShell2(unittest.TestCase,
         try:
             self.do('generate u u~ > w+ w-')
             standalone = get_values('standalone_fortran', './check', build_source=True)
-            # cpu_scalar is the scalar code path, cpu_128b the vector one (it maps
+            # scalar is the scalar code path, simd_128 the vector one (it maps
             # to NEON on arm)
             mg7 = dict((backend,
                         get_values('standalone', './check_sa.exe',
                                    backend=backend))
-                       for backend in ('cpu_scalar', 'cpu_128b'))
+                       for backend in ('scalar', 'simd_128'))
         finally:
             self.do('set gauge unitary')
 
@@ -1786,13 +1786,13 @@ class TestCmdShell2(unittest.TestCase,
 
         for d in dirs:
             proc_dir = pjoin(proc_root, d)
-            # cpu_scalar is the scalar code path, cpu_128b the vector one (it maps
+            # scalar is the scalar code path, simd_128 the vector one (it maps
             # to NEON on arm)
-            scalar = mean_me(proc_dir, 'cpu_scalar')
+            scalar = mean_me(proc_dir, 'scalar')
             self.assertTrue(scalar, 'standalone did not build in %s' % proc_dir)
             self.assertGreater(scalar, 0.,
                                'null mean matrix element in %s' % proc_dir)
-            vector = mean_me(proc_dir, 'cpu_128b')
+            vector = mean_me(proc_dir, 'simd_128')
             if vector is None:
                 continue  # no vectorised backend here: nothing to compare
             self.assertLessEqual(abs(vector - scalar), 1e-5 * scalar,
@@ -3663,7 +3663,7 @@ set boost_choice [6, -6] pt [0, 0]
         header: the same FFV* helicity-amplitude functions are emitted as inline
         ``ALOHAOBJ`` C++ routines. This mirrors test_madevent_ufo_aloha but for
         the mg7 backend: it checks the routines are generated, the parameters /
-        process sources are present, and that the subprocess compiles (cpu_scalar
+        process sources are present, and that the subprocess compiles (scalar
         backend) into the expected shared libraries.
         """
 

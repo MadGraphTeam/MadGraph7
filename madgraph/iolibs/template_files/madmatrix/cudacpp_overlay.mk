@@ -211,12 +211,12 @@ madevent_hip_link:
 	ln -s $(CUDACPP_BUILDDIR)/$(PROG)_hip $(PROG)
 
 madevent_cpp_link:
-	$(MAKE) USEGTEST=0 BACKEND=cpu $(CUDACPP_BUILDDIR)/$(PROG)_cpp
+	$(MAKE) USEGTEST=0 BACKEND=auto $(CUDACPP_BUILDDIR)/$(PROG)_cpp
 	rm -f $(PROG)
 	ln -s $(CUDACPP_BUILDDIR)/$(PROG)_cpp $(PROG)
 
 # Variant AVX builds for cpp backend
-override SUPPORTED_AVXS := cpu_scalar cpu_128b cpu_256b cpu_512b_y cpu_512b cpu
+override SUPPORTED_AVXS := scalar simd_128 simd_256 avx512y simd_512 auto
 madevent_%_link:
 	@if [ '$(words $(filter $*, $(SUPPORTED_AVXS)))' != '1' ]; then \
 	  echo "ERROR! Invalid target '$@' (supported: $(foreach avx,$(SUPPORTED_AVXS),madevent_$(avx)_link))"; exit 1; fi
@@ -257,23 +257,23 @@ bldhip: $(PROG)_fortran $(DSIG_cudacpp)
 
 bldnone: $(PROG)_fortran $(DSIG_cudacpp)
 	@echo
-	$(MAKE) USEBUILDDIR=1 BACKEND=cpu_scalar
+	$(MAKE) USEBUILDDIR=1 BACKEND=scalar
 
 bldsse4: $(PROG)_fortran $(DSIG_cudacpp)
 	@echo
-	$(MAKE) USEBUILDDIR=1 BACKEND=cpu_128b
+	$(MAKE) USEBUILDDIR=1 BACKEND=simd_128
 
 bldavx2: $(PROG)_fortran $(DSIG_cudacpp)
 	@echo
-	$(MAKE) USEBUILDDIR=1 BACKEND=cpu_256b
+	$(MAKE) USEBUILDDIR=1 BACKEND=simd_256
 
 bld512y: $(PROG)_fortran $(DSIG_cudacpp)
 	@echo
-	$(MAKE) USEBUILDDIR=1 BACKEND=cpu_512b_y
+	$(MAKE) USEBUILDDIR=1 BACKEND=avx512y
 
 bld512z: $(PROG)_fortran $(DSIG_cudacpp)
 	@echo
-	$(MAKE) USEBUILDDIR=1 BACKEND=cpu_512b
+	$(MAKE) USEBUILDDIR=1 BACKEND=simd_512
 
 # Clean (NB: 'make clean' in Source calls 'make clean' in all P*)
 clean: # Clean builds: fortran in this Pn; cudacpp executables for one AVX in this Pn

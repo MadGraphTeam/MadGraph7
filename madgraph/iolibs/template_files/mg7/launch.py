@@ -115,14 +115,31 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
-def resolve_cpu_backend(build_path: str) -> str:
-    """Ask the matrix-element Makefile to resolve ``cpu``.
+def device_type_of(device_name: str) -> str:
+    """The device type of one 'device' run_card entry (the optional ':<index>'
+    suffix is stripped)."""
+    return device_name.split(":")[0]
+
+
+def backend_of(device_name: str, cpu_mode: str) -> str:
+    """The build BACKEND that serves one 'device' run_card entry.
+
+    ``cpu_mode`` describes the SIMD width of the CPU code and is therefore
+    meaningless for the cuda/hip devices: those build the backend named after
+    the device itself.
+    """
+    device_type = device_type_of(device_name)
+    return cpu_mode if device_type == "cpu" else device_type
+
+
+def resolve_auto_backend(build_path: str) -> str:
+    """Ask the matrix-element Makefile to resolve the ``auto`` cpu_mode.
 
     Given the produced shared library will have its name taken from the resolved
     backend name, we need to make sure the detection is taking place correctly
     and catch any possible error.
     """
-    command = ["make", "-n", "BACKEND=cpu", "detect-backend"]
+    command = ["make", "-n", "BACKEND=auto", "detect-backend"]
     try:
         result = subprocess.run(
             command,
@@ -133,7 +150,7 @@ def resolve_cpu_backend(build_path: str) -> str:
         )
     except OSError as exc:
         raise RuntimeError(
-            f"Could not run make to resolve cpu in '{build_path}': {exc}"
+            f"Could not run make to resolve cpu_mode='auto' in '{build_path}': {exc}"
         ) from exc
     except subprocess.CalledProcessError as exc:
         output = "\n".join(
@@ -141,20 +158,20 @@ def resolve_cpu_backend(build_path: str) -> str:
         )
         detail = f"\nmake output:\n{output}" if output else ""
         raise RuntimeError(
-            f"Could not resolve cpu in '{build_path}': "
+            f"Could not resolve cpu_mode='auto' in '{build_path}': "
             f"Exit status {exc.returncode}.{detail}"
         ) from exc
 
     match = re.search(
-        r"^BACKEND=(\S+) \(was cpu\)$", result.stdout, re.MULTILINE
+        r"^BACKEND=(\S+) \(was auto\)$", result.stdout, re.MULTILINE
     )
-    if match is None or match.group(1) == "cpu":
+    if match is None or match.group(1) == "auto":
         output = "\n".join(
             part.strip() for part in (result.stdout, result.stderr) if part.strip()
         )
         detail = f"\nmake output:\n{output}" if output else ""
         raise RuntimeError(
-            f"Could not resolve cpu in '{build_path}': "
+            f"Could not resolve cpu_mode='auto' in '{build_path}': "
             f"make failed to report a backend.{detail}"
         )
     return match.group(1)
@@ -264,7 +281,7 @@ class MadgraphProcess:
         self.status_file = ms.StatusFile(os.path.join(self.run_path, "info.json"))
 
     def init_context(self) -> None:
-        device_names = self.run_card["run"]["devices"]
+        device_names = self.run_card["run"]["device"]
         self.contexts = []
         self.device_types = []
         self.devices = []
@@ -468,31 +485,37 @@ class MadgraphProcess:
 
     def compile_matrix_elements(self) -> list[str]:
         """Build the matrix-element library of every subprocess, and return the
-        list of requested devices with 'cpu' replaced by the backend it
-        resolves to on this machine.
+        build backend of each requested device (in the same order).
+
+        A 'cpu' device builds the backend named by the 'cpu_mode' entry; the
+        cuda/hip devices ignore cpu_mode and build their own backend. A
+        cpu_mode of 'auto' is resolved to the actual SIMD backend chosen on
+        this machine.
 
         SubProcesses/makefile is a dispatcher over the P* directories, so a
         single 'make -j N' there builds all the subprocesses at once with one
         shared pool of N jobs: no subprocess is built with N jobs while the
         others wait, and none is limited to N/#subprocesses jobs either.
         """
-        backends = self.run_card["run"]["devices"]
-        if not isinstance(backends, list):
-            backends = [backends]
+        device_names = self.run_card["run"]["device"]
+        if not isinstance(device_names, list):
+            device_names = [device_names]
+        cpu_mode = self.run_card["run"]["cpu_mode"]
+        backends = [backend_of(name, cpu_mode) for name in device_names]
         if not self.subprocess_data:
             return backends
 
         first_proc_path = self.subprocess_data[0]["path"]
         subproc_path = os.path.dirname(first_proc_path)
 
-        # Resolve 'cpu' once (the build rules pick the best SIMD backend
-        # available here), so that all subprocesses agree on the library names.
-        cpu_backend = None
-        if "cpu" in backends:
-            cpu_backend = resolve_cpu_backend(first_proc_path)
-            logger.info("Device 'cpu' resolved as '%s'", cpu_backend)
+        # Resolve cpu_mode='auto' once (the build rules pick the best SIMD
+        # backend available here), so all subprocesses agree on the library names.
+        auto_backend = None
+        if "auto" in backends:
+            auto_backend = resolve_auto_backend(first_proc_path)
+            logger.info("cpu_mode 'auto' resolved as '%s'", auto_backend)
         resolved = [
-            cpu_backend if backend == "cpu" else backend
+            auto_backend if backend == "auto" else backend
             for backend in backends
         ]
 

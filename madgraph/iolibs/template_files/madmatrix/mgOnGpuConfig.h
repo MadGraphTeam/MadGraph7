@@ -202,7 +202,7 @@ namespace mgOnGpu
 using mgOnGpu::fptype;
 using mgOnGpu::fptype2;
 
-// Undefine ARM_NEON (hack for cpu_scalar on Apple silicon ARM)
+// Undefine ARM_NEON (hack for the 'scalar' backend on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
 #undef __ARM_NEON
 #endif
