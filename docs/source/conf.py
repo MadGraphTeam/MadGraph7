@@ -84,6 +84,34 @@ def generate_doxygen_xml(app):
     except OSError as e:
         sys.stderr.write(f"doxygen execution failed: {e}\n")
 
+    _reparent_included_members(os.path.join(app.confdir, "..", "build", "doxygenxml"))
+
+
+def _reparent_included_members(xml_dir):
+    """Point members that came from a #included ``*_mixin.inc`` file back at the
+    header that includes them (their ``bodyfile``). Breathe only renders the
+    description of a member whose ``location`` file matches the class header, so
+    without this the generated FunctionBuilder instruction methods would show up
+    as bare signatures.
+    """
+    import glob
+    import xml.etree.ElementTree as ET
+
+    for path in glob.glob(os.path.join(xml_dir, "*.xml")):
+        try:
+            tree = ET.parse(path)
+        except ET.ParseError:
+            continue
+        changed = False
+        for loc in tree.getroot().iter("location"):
+            f = loc.get("file", "")
+            body = loc.get("bodyfile", "")
+            if f.endswith("_mixin.inc") and body and body != f:
+                loc.set("file", body)
+                changed = True
+        if changed:
+            tree.write(path, encoding="utf-8", xml_declaration=True)
+
 
 def generate_class_pages(app):
     # docs/ holds generate_api_pages.py; confdir is docs/source
