@@ -6490,6 +6490,8 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True)
         self.add_toml_param('run', 'output_format', "lhe", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'])
+        self.add_toml_param('run', 'nb_output_files', 1, gridpack=True,
+            comment="split the events over this many LHE files (round-robin, each a complete file with its own <init>); mirrors madevent's nb_unweight_output. Only for output_format = 'lhe'")
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'])
         self.add_toml_param('run', 'dummy_matrix_element', False)

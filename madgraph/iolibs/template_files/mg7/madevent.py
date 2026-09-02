@@ -968,13 +968,61 @@ class MadgraphProcess:
             )
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
-            self.event_generator.combine_to_lhe(
-                os.path.join(self.run_path, "events.lhe"), self.lhe_completer,
-                self.build_lhe_meta(),
-            )
+            self.combine_to_lhe_files(self.lhe_output_files())
         else:
             raise ValueError("Unknown output format")
         self.save_gridpack()
+
+    def lhe_output_files(self) -> list:
+        """Where combine_to_lhe should write, as a list of paths.
+
+        One ``<run_path>/events.lhe`` normally; with [run] nb_output_files = N,
+        ``<run_path>/events_0.lhe`` ... ``events_{N-1}.lhe``, into which
+        madspace deals the events round-robin as it formats them. Every one of
+        them is a complete LHE file, with its own <init> block, so a reader can
+        open any of them by path alone.
+
+        This exists for a consumer that reads the events back in parallel: with
+        N files each of its workers parses only its own share, instead of
+        reading the whole stream and skipping the (N-1)/N of it that belongs to
+        somebody else. It is the mg7 counterpart of madevent's
+        ``nb_unweight_output``, and MadSpin's decay pools are what asked for it.
+        """
+        count = int(self.run_card["run"]["nb_output_files"])
+        if count <= 1:
+            return [os.path.join(self.run_path, "events.lhe")]
+        return [os.path.join(self.run_path, "events_%d.lhe" % i)
+                for i in range(count)]
+
+    def combine_to_lhe_files(self, files) -> None:
+        """Write the combined events into ``files``, using madspace's
+        multi-file combine_to_lhe, which fans them out as it formats them and
+        so never materialises the whole stream in one file.
+
+        madspace is not upgraded in lockstep with this template -- it can be an
+        older binary wheel -- and one built before that overload exists only
+        accepts a single path. Rather than reimplement the fan-out here, fall
+        back to the single ``events.lhe`` such a build can write and say so: a
+        caller that asked for several files is a caller that already knows how
+        to split one, and it can see from what is on disk which it got.
+        """
+        meta = self.build_lhe_meta()
+        single = os.path.join(self.run_path, "events.lhe")
+        if len(files) == 1:
+            # the str overload, so an older madspace is fine here too
+            self.event_generator.combine_to_lhe(files[0], self.lhe_completer, meta)
+            return
+        # LHEMultiFileWriter is the class the list overload is built on, so its
+        # presence is exactly the question "can this madspace write several
+        # files itself?".
+        if hasattr(ms, "LHEMultiFileWriter"):
+            self.event_generator.combine_to_lhe(files, self.lhe_completer, meta)
+            return
+        logging.getLogger("madevent").warning(
+            "nb_output_files = %d, but this madspace build can only write one "
+            "LHE file; writing %s instead", len(files), single
+        )
+        self.event_generator.combine_to_lhe(single, self.lhe_completer, meta)
 
     @staticmethod
     def _histogram_mean(hist):

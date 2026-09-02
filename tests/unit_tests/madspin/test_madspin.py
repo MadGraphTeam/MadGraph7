@@ -11524,8 +11524,8 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
 
 
 class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
-    """mg7 emits LHE, and MadSpin deals it out into one file per unweighting
-    worker at the canonical ``Events/<run_name>/unweighted_events_<i>.lhe``.
+    """mg7 emits LHE, one file per unweighting worker, and MadSpin puts those
+    files at the canonical ``Events/<run_name>/unweighted_events_<i>.lhe``.
 
     Both halves matter. LHE because a pool has to be reconstructible from a
     path alone -- across the generation fork and, on a refill, from the channel
@@ -11534,9 +11534,14 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
     handed a single file has to STRIDE it (_StridedEvents calls next() on every
     other worker's events too), i.e. parse the whole pool to read 1/N of it.
 
-    And writing them at those particular paths is what makes a refill free:
-    ``_refill_pool_paths`` is the same layout under the same ``run_name``, so
-    ``_generate_refill_pool`` finds sources == targets and does no further
+    mg7 does the splitting itself: MadSpin asks for it with the run_card's
+    ``nb_output_files``, and madspace deals the events out as it formats them,
+    so the pool is never written as one file and read back. mg7 names its own
+    Events/run_NN directory, so what is left on this side is N renames.
+
+    And the files ending up at those particular paths is what makes a refill
+    free: ``_refill_pool_paths`` is the same layout under the same ``run_name``,
+    so ``_generate_refill_pool`` finds sources == targets and does no further
     work -- the same branch madevent lands in.
     """
 
@@ -11557,15 +11562,25 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
 
     WIDTH = 1.4586029
 
-    def _write_launcher(self):
+    def _write_launcher(self, single_only=False):
         """A stand-in for ``bin/generate_events``: makes its own run directory
-        (mg7 names it, MadSpin does not) and writes an LHE pool there, with the
-        partial width in the <init> block exactly as combine_to_lhe does."""
+        (mg7 names it, MadSpin does not) and writes the pool there, with the
+        partial width in the <init> block exactly as combine_to_lhe does.
+
+        Honours the run_card's ``nb_output_files`` the way madevent.py does:
+        one ``events.lhe`` for 1, else ``events_<i>.lhe`` with the events dealt
+        round-robin and a full banner on each. ``single_only=True`` makes it
+        behave like a madspace too old to know the multi-file overload, which
+        writes ``events.lhe`` whatever was asked for."""
         lines = [
             '#!/usr/bin/env python3',
-            'import os',
+            'import os, re',
             'WIDTH = @WIDTH@',
             'NB = @NB@',
+            'SINGLE_ONLY = @SINGLE@',
+            'card = open(os.path.join("Cards", "run_card.toml")).read()',
+            'm = re.search(r"^nb_output_files\\s*=\\s*(\\d+)", card, re.M)',
+            'nb = int(m.group(1)) if m else 1',
             'run = None',
             'for i in range(1, 100):',
             '    cand = os.path.join("Events", "run_%02d" % i)',
@@ -11573,27 +11588,35 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
             '        run = cand',
             '        break',
             'os.makedirs(run)',
-            'f = open(os.path.join(run, "events.lhe"), "w")',
-            'f.write(\'<LesHouchesEvents version="3.0">\\n<header></header>\\n<init>\\n\')',
-            'f.write(" 2212 2212 6.5e+03 6.5e+03 0 0 247000 247000 -4 1\\n")',
-            'f.write(" %.7e 1.2908000e-03 %.7e 1\\n" % (WIDTH, WIDTH))',
-            'f.write("</init>\\n")',
+            'if nb <= 1 or SINGLE_ONLY:',
+            '    names = ["events.lhe"]',
+            'else:',
+            '    names = ["events_%d.lhe" % i for i in range(nb)]',
+            'fs = [open(os.path.join(run, n), "w") for n in names]',
+            'for f in fs:',
+            '    f.write(\'<LesHouchesEvents version="3.0">\\n<header></header>\\n<init>\\n\')',
+            '    f.write(" 2212 2212 6.5e+03 6.5e+03 0 0 247000 247000 -4 1\\n")',
+            '    f.write(" %.7e 1.2908000e-03 %.7e 1\\n" % (WIDTH, WIDTH))',
+            '    f.write("</init>\\n")',
             'for i in range(NB):',
+            '    f = fs[i % len(fs)]',
             '    f.write("<event>\\n")',
             '    f.write(" 3 1 +1.0e+00 1.73e+02 7.5467711e-03 1.178e-01\\n")',
             '    f.write("  6 -1 0 0 501 0 0. 0. 0. 1.73e+02 1.73e+02 0. 9.\\n")',
             '    f.write("  5 1 1 1 501 0 0. 0. %d. 8.65e+01 8.65e+01 0. 9.\\n" % i)',
             '    f.write(" 24 1 1 1 0 0 0. 0. 0. 8.65e+01 8.65e+01 0. 9.\\n")',
             '    f.write("</event>\\n")',
-            'f.write("</LesHouchesEvents>\\n")',
-            'f.close()',
+            'for f in fs:',
+            '    f.write("</LesHouchesEvents>\\n")',
+            '    f.close()',
             'info = open(os.path.join(run, "info.json"), "w")',
             'info.write(\'{"run_times": {"integrate": {"wall_time_sec": 2.5}}}\')',
             'info.close()',
         ]
         script = '\n'.join(lines) \
             .replace('@WIDTH@', repr(self.WIDTH)) \
-            .replace('@NB@', str(self.NB_EVENT))
+            .replace('@NB@', str(self.NB_EVENT)) \
+            .replace('@SINGLE@', 'True' if single_only else 'False')
         path = pjoin(self.decay_dir, 'bin', 'generate_events')
         with open(path, 'w') as fsock:
             fsock.write(script + '\n')
@@ -11636,6 +11659,19 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
         self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT)
         card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
         self.assertEqual(card['run']['output_format'], 'lhe')
+
+    def test_the_run_card_asks_mg7_for_one_file_per_worker(self):
+        """The whole handshake: MadSpin knows nb_core at generation time, so it
+        tells mg7 how many files to write rather than writing one and splitting
+        it afterwards."""
+        self._stub(4).generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
+        self.assertEqual(card['run']['nb_output_files'], 4)
+
+    def test_a_serial_run_asks_for_a_single_file(self):
+        self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
+        self.assertEqual(card['run']['nb_output_files'], 1)
 
     def test_the_partial_width_comes_out_of_the_init_block(self):
         """The whole reason for LHE: the width travels with the file, so any
@@ -11707,6 +11743,39 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
         pool, _ = self._stub(1).generate_events_mg7(self.decay_dir,
                                                     self.NB_EVENT)
         self.assertTrue(os.path.exists(pool.name))
+
+    def test_the_pool_is_never_materialised_as_one_file(self):
+        """What the mg7-side split buys: at no point is there a single file
+        holding the whole pool, so nothing is written and read back to split it.
+        mg7 wrote the slices; MadSpin only moved them out of mg7's own run
+        directory into the canonical one."""
+        pool, _ = self._stub(4).generate_events_mg7(self.decay_dir,
+                                                    self.NB_EVENT)
+        run_dir = pjoin(self.decay_dir, 'Events', 'run_01')
+        self.assertFalse(os.path.exists(pjoin(run_dir, 'events.lhe')))
+        leftovers = [name for name in os.listdir(run_dir)
+                     if name.startswith('events')]
+        self.assertEqual(leftovers, [])
+        self.assertEqual(len(pool.paths), 4)
+
+    def test_an_older_madspace_falls_back_to_the_python_split(self):
+        """madspace is not upgraded in lockstep with MadSpin -- it can be an
+        older binary wheel that only knows how to write one file. It says so and
+        writes events.lhe; MadSpin then splits it exactly as it did before
+        nb_output_files existed, so the caller sees no difference at all."""
+        self._write_launcher(single_only=True)
+        pool, width = self._stub(4).generate_events_mg7(self.decay_dir,
+                                                        self.NB_EVENT)
+        self.assertEqual(len(pool.paths), 4)
+        self.assertAlmostEqual(width, self.WIDTH, places=6)
+        seen = []
+        for i, path in enumerate(pool.paths):
+            tags = self._tags(path)
+            self.assertEqual(tags, list(range(i, self.NB_EVENT, 4)))
+            seen.extend(tags)
+        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
+        run_dir = pjoin(self.decay_dir, 'Events', 'run_01')
+        self.assertFalse(os.path.exists(pjoin(run_dir, 'events.lhe')))
 
     def test_a_refill_lands_exactly_on_the_paths_the_waiters_open(self):
         """The payoff of writing under ``Events/<run_name>/``: for a refill,

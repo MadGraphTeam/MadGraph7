@@ -2741,8 +2741,9 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         The pool is left in the layout the parallel unweighting expects of any
         backend -- one LHE file per worker, under ``Events/<run_name>/`` -- so
-        that mg7 goes down exactly the same paths madevent does. See below for
-        why LHE rather than the (faster to read) numpy event file.
+        that mg7 goes down exactly the same paths madevent does. mg7 writes the
+        per-worker files itself (see below); see further below for why LHE
+        rather than the (faster to read) numpy event file.
         """
         run_card_path = pjoin(decay_dir, 'Cards', 'run_card.toml')
         run_card = banner.RunCardMG7(run_card_path)
@@ -2762,6 +2763,24 @@ class MadSpinInterface(extended_cmd.Cmd):
         # the owner->waiter publish contract, i.e. an extension of the one
         # protocol surface where a publish/open race can live. Not worth 5%.
         run_card['run']['output_format'] = 'lhe'
+
+        # One file per unweighting worker. mg7 writes them itself -- madspace's
+        # combine_to_lhe deals the events out round-robin as it formats them --
+        # so the pool is never materialised as one file and then split. That is
+        # what ``nb_output_files`` asks for; it is mg7's ``nb_unweight_output``.
+        #
+        # mg7 still names its own Events/run_NN directory, so the files land
+        # there and have to be moved to the paths the rest of MadSpin expects of
+        # any backend (below). The move is N renames within one filesystem, and
+        # it buys back the atomicity the refill protocol wants: the canonical
+        # directory never contains a half-written pool, which is the same reason
+        # _materialise_refill_pool builds in a .part directory.
+        #
+        # Each file gets its own <init> block with the channel's partial width,
+        # so it is still self-describing (see below). Left uncompressed: they
+        # are read back immediately and gzip is pure overhead here.
+        nb_split = self._decay_pool_split()
+        run_card['run']['nb_output_files'] = max(1, int(nb_split))
         run_card.write(run_card_path)
         with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
             fsock.write(self.banner['slha'])
@@ -2784,19 +2803,68 @@ class MadSpinInterface(extended_cmd.Cmd):
                 'the mg7 decay generator failed in %s (exit %s); see %s'
                 % (decay_dir, returncode, log_path))
         after = set(misc.glob('*', events_dir)) if os.path.isdir(events_dir) else set()
-        new_runs = sorted(after - before)
+        # mg7 names its own run directory (Events/run_NN) and drops info.json in
+        # it, which is what identifies it among anything else that may have
+        # appeared under Events/ while the launcher ran.
+        new_runs = sorted(path for path in after - before
+                          if os.path.exists(pjoin(path, 'info.json')))
         if not new_runs:
             raise self.InvalidCmd(
                 'the mg7 decay generator produced no run directory in %s' % events_dir)
         run_dir = new_runs[-1]
 
-        for name in ('events.lhe', 'events.lhe.gz'):
-            events_path = pjoin(run_dir, name)
-            if os.path.exists(events_path):
-                break
+        targets = []
+        if nb_split > 1:
+            # Where the rest of MadSpin expects any backend's pool to be: the
+            # same paths madevent reaches through ``nb_unweight_output``. Two
+            # things fall out of the pool being THERE rather than anywhere else:
+            # a worker opens its own file instead of striding the whole pool
+            # (which costs it a full parse of every other worker's events), and
+            # on a refill these paths *are* _refill_pool_paths, so
+            # _generate_refill_pool finds sources == targets and does no further
+            # work.
+            targets = lhe_parser.EventFile.unweight_output_paths(
+                pjoin(decay_dir, 'Events', run_name, 'unweighted_events.lhe'),
+                nb_split)
+            sources = [pjoin(run_dir, 'events_%d.lhe' % i)
+                       for i in range(nb_split)]
+            single = pjoin(run_dir, 'events.lhe')
+            target_dir = os.path.dirname(targets[0])
+            if not os.path.isdir(target_dir):
+                os.makedirs(target_dir)
+            if all(os.path.exists(path) for path in sources):
+                # The whole point of nb_output_files: mg7 already wrote one
+                # file per worker, so there is nothing to split -- only N
+                # renames within the same filesystem, which also keep the
+                # canonical directory from ever holding a half-written pool.
+                for source, target in zip(sources, targets):
+                    os.replace(source, target)
+            elif os.path.exists(single):
+                # A madspace too old to write several files wrote one instead
+                # (it says so in the log). Deal it out here, which is what
+                # MadSpin did for every mg7 run before nb_output_files existed.
+                logger.info('mg7 wrote a single pool; splitting it in python. '
+                            'Rebuild madspace to have mg7 write the per-worker '
+                            'files directly.')
+                with self._phase('decay_mg7_split'):
+                    self._split_pool_round_robin([single], targets)
+                try:
+                    os.remove(single)
+                except OSError:
+                    pass
+            else:
+                raise self.InvalidCmd(
+                    'the mg7 decay generator wrote neither %s nor %s (see %s)'
+                    % (sources[0], single, log_path))
+            banner_path = targets[0]
         else:
-            raise self.InvalidCmd(
-                'the mg7 decay generator produced no LHE file in %s' % run_dir)
+            for name in ('events.lhe', 'events.lhe.gz'):
+                banner_path = pjoin(run_dir, name)
+                if os.path.exists(banner_path):
+                    break
+            else:
+                raise self.InvalidCmd(
+                    'the mg7 decay generator produced no LHE file in %s' % run_dir)
 
         # Timing breakdown, best effort: the launcher reports how long the
         # integration itself took, and the rest of the subprocess wall time is
@@ -2815,44 +2883,15 @@ class MadSpinInterface(extended_cmd.Cmd):
                                 for stage in run_times.values()
                                 if isinstance(stage, dict)))
 
-        pool = lhe_parser.EventFile(events_path)
-        # <init> of a 1 -> n process carries a width in GeV, not a cross section
+        pool = lhe_parser.EventFile(banner_path)
+        # <init> of a 1 -> n process carries a width in GeV, not a cross
+        # section. Every slice carries the same banner, so slice 0 answers for
+        # the pool -- which is also what makes a slice openable by path alone.
         width = pool.cross
-
-        # Deal the pool out into one file per unweighting worker, at the paths
-        # the rest of MadSpin already expects any backend to use -- the same
-        # ones madevent reaches through the run_card's ``nb_unweight_output``.
-        # Two things fall out of writing them THERE rather than anywhere else:
-        # a worker opens its own file instead of striding the whole pool (which
-        # costs it a full parse of every other worker's events), and on a refill
-        # these paths *are* _refill_pool_paths, so _generate_refill_pool finds
-        # sources == targets and does no further work. Left uncompressed: they
-        # are read back immediately and gzip is pure overhead here.
-        nb_split = self._decay_pool_split()
-        if nb_split <= 1:
+        if not targets:
             pool.seek(0)
             return pool, width
         pool.close()
-        targets = lhe_parser.EventFile.unweight_output_paths(
-            pjoin(decay_dir, 'Events', run_name, 'unweighted_events.lhe'),
-            nb_split)
-        target_dir = os.path.dirname(targets[0])
-        if not os.path.isdir(target_dir):
-            os.makedirs(target_dir)
-        with self._phase('decay_mg7_split'):
-            self._split_pool_round_robin([events_path], targets)
-        # Between them the slices hold every event of the source -- the split
-        # reads it to the end or raises -- so keeping the source doubles what a
-        # pool costs on disk: another 241 MB per channel on the 100k benchmark,
-        # and a refill adds a generation rather than replacing one. Nothing
-        # reads it after this point (each slice carries its own banner, and the
-        # run directory keeps info.json and the generation log), so drop it once
-        # every slice is actually there.
-        if all(os.path.exists(path) for path in targets):
-            try:
-                os.remove(events_path)
-            except OSError:
-                pass
         return _ChainedEvents(targets), width
 
     # File in which a decay directory records the partial width that was
