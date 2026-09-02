@@ -161,6 +161,66 @@ def momentum(particle):
     return np.array([particle.energy, particle.px, particle.py, particle.pz])
 
 
+def test_event_attributes_are_bound_to_their_own_members():
+    """Every LHEEvent attribute must read back the value it was given.
+
+    Guards against copy-paste slips in the pybind11 binding block: a
+    def_readwrite pointing at the wrong struct member silently shadows another
+    field (alpha_qcd used to be bound to LHEEvent::process_id).
+    """
+    values = dict(
+        process_id=7,
+        weight=1.5,
+        scale=91.1876,
+        alpha_qed=0.0078125,
+        alpha_qcd=0.118,
+    )
+    event = ms.LHEEvent(**values)
+    for name, value in values.items():
+        assert getattr(event, name) == approx(value), name
+
+    # ... and each attribute must be independently writable, without any two of
+    # them aliasing the same member.
+    event = ms.LHEEvent()
+    for name, value in values.items():
+        setattr(event, name, value)
+    for name, value in values.items():
+        assert getattr(event, name) == approx(value), name
+
+
+def test_event_header_line_written_to_lhe():
+    """The event header line of the written LHE file carries the values set
+    from Python, in the order defined by arXiv:0109068 (NUP IDPRUP XWGTUP
+    SCALUP AQEDUP AQCDUP).
+
+    The attributes are set one by one rather than passed to the constructor, so
+    that this also covers the setter side of the def_readwrite bindings.
+    """
+    event = ms.LHEEvent()
+    event.process_id = 7
+    event.weight = 1.5
+    event.scale = 91.1876
+    event.alpha_qed = 0.0078125
+    event.alpha_qcd = 0.118
+    event.particles = [ms.LHEParticle(pdg_id=21), ms.LHEParticle(pdg_id=21)]
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = os.path.join(tmp_dir, "events.lhe")
+        writer = ms.LHEFileWriter(path, ms.LHEMeta())
+        writer.write(event)
+        del writer  # the destructor flushes and closes the file
+
+        with open(path) as in_file:
+            lines = in_file.read().split("\n")
+        header = lines[lines.index("<event>") + 1].split()
+
+    assert int(header[0]) == 2  # NUP
+    assert int(header[1]) == 7  # IDPRUP
+    assert float(header[2]) == approx(1.5)  # XWGTUP
+    assert float(header[3]) == approx(91.1876)  # SCALUP
+    assert float(header[4]) == approx(0.0078125)  # AQEDUP
+    assert float(header[5]) == approx(0.118)  # AQCDUP
+
+
 def test_particle_count_includes_all_resonances(events):
     # On-shell mapping guarantees t, tbar, W+ and W- are always identified.
     for event in events:
