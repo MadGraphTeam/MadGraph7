@@ -486,10 +486,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("DoubleT::DoubleT")
         );
 
-    py::classh<ThreeBodyDecay, Mapping>(m, "ThreeBodyDecay")
-        .def(py::init<bool>(), py::arg("com"));
+    py::classh<ThreeBodyDecay, Mapping>(
+        m, "ThreeBodyDecay", pydoc::doc("ThreeBodyDecay")
+    )
+        .def(
+            py::init<bool>(),
+            py::arg("com"),
+            pydoc::doc("ThreeBodyDecay::ThreeBodyDecay")
+        )
+        .def(
+            "random_dim",
+            &ThreeBodyDecay::random_dim,
+            pydoc::doc("ThreeBodyDecay::random_dim")
+        );
 
-    py::classh<TwoToThreeParticleScattering, Mapping>(m, "TwoToThreeParticleScattering")
+    py::classh<TwoToThreeParticleScattering, Mapping>(
+        m, "TwoToThreeParticleScattering", pydoc::doc("TwoToThreeParticleScattering")
+    )
         .def(
             py::init<double, double, double, double, double, double, bool>(),
             py::arg("t_invariant_power") = 0.,
@@ -498,7 +511,13 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("s_invariant_power") = 0.,
             py::arg("s_mass") = 0.,
             py::arg("s_width") = 0.,
-            py::arg("has_cut") = false
+            py::arg("has_cut") = false,
+            pydoc::doc("TwoToThreeParticleScattering::TwoToThreeParticleScattering")
+        )
+        .def(
+            "discrete_dim",
+            &TwoToThreeParticleScattering::discrete_dim,
+            pydoc::doc("TwoToThreeParticleScattering::discrete_dim")
         );
 
     py::classh<Propagator>(m, "Propagator", pydoc::doc("Propagator"))

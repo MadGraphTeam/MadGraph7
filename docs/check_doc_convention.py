@@ -107,7 +107,9 @@ def main() -> int:
             for m in re.finditer(r"`\s+-\s+`", detailed):
                 gaps.append("hyphen instead of en-dash in a bullet")
                 break
-            brit = BRITISH.search(detailed)
+            # Scan prose only: quoted publication titles keep their own spelling.
+            prose = detailed.split("References", 1)[0]
+            brit = BRITISH.search(prose)
             if brit:
                 gaps.append(f"British spelling: {brit.group(0)!r}")
 
