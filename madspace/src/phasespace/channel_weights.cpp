@@ -1,6 +1,6 @@
-#include "madspace/phasespace/channel_weights.h"
+#include "madspace/phasespace/channel_weights.hpp"
 
-#include "madspace/util.h"
+#include "madspace/util.hpp"
 
 using namespace madspace;
 
@@ -11,14 +11,15 @@ PropagatorChannelWeights::PropagatorChannelWeights(
 ) :
     FunctionGenerator(
         "PropagatorChannelWeights",
-        {batch_four_vec_array(topologies.at(0).outgoing_masses().size() + 2)},
-        {batch_float_array([&]() {
-            std::size_t channel_count = 0;
-            for (auto& perm : permutations) {
-                channel_count += perm.size();
-            }
-            return channel_count;
-        }())}
+        {{"momenta",
+          batch_four_vec_array(topologies.at(0).outgoing_masses().size() + 2)}},
+        {{"channel_weights", batch_float_array([&]() {
+              std::size_t channel_count = 0;
+              for (auto& perm : permutations) {
+                  channel_count += perm.size();
+              }
+              return channel_count;
+          }())}}
     ) {
     std::size_t channel_count = return_types().at(0).shape.at(0);
     _invariant_indices.resize(channel_count);
@@ -70,14 +71,13 @@ PropagatorChannelWeights::PropagatorChannelWeights(
     }
 }
 
-ValueVec PropagatorChannelWeights::build_function_impl(
-    FunctionBuilder& fb, const ValueVec& args
+NamedVector<Value> PropagatorChannelWeights::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    auto p_ext = args.at(0);
-    auto invariants = fb.invariants_from_momenta(p_ext, _momentum_factors);
+    auto invariants = fb.invariants_from_momenta(args["momenta"], _momentum_factors);
     auto channel_weights =
         fb.sde2_channel_weights(invariants, _masses, _widths, _invariant_indices);
-    return {channel_weights};
+    return {{"channel_weights", channel_weights}};
 }
 
 SubchannelWeights::SubchannelWeights(
@@ -87,21 +87,22 @@ SubchannelWeights::SubchannelWeights(
 ) :
     FunctionGenerator(
         "SubchannelWeights",
-        {batch_four_vec_array(topologies.at(0).at(0).outgoing_masses().size() + 2),
-         batch_float_array([&]() {
-             std::size_t channel_count = 0;
-             for (auto& perm : permutations) {
-                 channel_count += perm.size();
-             }
-             return channel_count;
-         }())},
-        {batch_float_array([&]() {
-            std::size_t channel_count = 0;
-            for (auto [perm, topos] : zip(permutations, topologies)) {
-                channel_count += perm.size() * topos.size();
-            }
-            return channel_count;
-        }())}
+        {{"momenta",
+          batch_four_vec_array(topologies.at(0).at(0).outgoing_masses().size() + 2)},
+         {"channel_weights_in", batch_float_array([&]() {
+              std::size_t channel_count = 0;
+              for (auto& perm : permutations) {
+                  channel_count += perm.size();
+              }
+              return channel_count;
+          }())}},
+        {{"channel_weights_out", batch_float_array([&]() {
+              std::size_t channel_count = 0;
+              for (auto [perm, topos] : zip(permutations, topologies)) {
+                  channel_count += perm.size() * topos.size();
+              }
+              return channel_count;
+          }())}}
     ) {
     std::map<std::vector<me_int_t>, std::size_t> found_factors;
     std::size_t max_propagator_count = 0;
@@ -197,17 +198,16 @@ SubchannelWeights::SubchannelWeights(
     }
 }
 
-ValueVec SubchannelWeights::build_function_impl(
-    FunctionBuilder& fb, const ValueVec& args
+NamedVector<Value> SubchannelWeights::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    auto p_ext = args.at(0);
     auto channel_weights_in = args.at(1);
-    auto invariants = fb.invariants_from_momenta(p_ext, _momentum_factors);
+    auto invariants = fb.invariants_from_momenta(args["momenta"], _momentum_factors);
     auto subchan_weights = fb.subchannel_weights(
         invariants, _masses, _widths, _invariant_indices, _on_shell, _group_sizes
     );
     auto channel_weights_out = fb.apply_subchannel_weights(
         channel_weights_in, subchan_weights, _channel_indices, _subchannel_indices
     );
-    return {channel_weights_out};
+    return {{"channel_weights_out", channel_weights_out}};
 }

@@ -10,7 +10,7 @@ from madspace.torch import FunctionModule
 torch.set_default_dtype(torch.float64)
 torch.manual_seed(3210)
 
-"""
+
 @pytest.mark.parametrize("inverse", [False, True], ids=["forward", "inverse"])
 def test_block_gradient(inverse):
     n_bins = 10
@@ -19,7 +19,10 @@ def test_block_gradient(inverse):
     cond_type = ms.batch_float_array(n_cond)
     io_type = ms.batch_float_array(n_dims)
 
-    fb = ms.FunctionBuilder([io_type, cond_type], [io_type, ms.batch_float])
+    fb = ms.FunctionBuilder(
+        ms.NamedTypes([("in", io_type), ("cond", cond_type)]),
+        ms.NamedTypes([("out", io_type), ("jac", ms.batch_float)]),
+    )
     widths_unnorm, heights_unnorm, derivatives = fb.rqs_reshape(
         fb.input(1), ms.Value(n_bins)
     )
@@ -33,8 +36,8 @@ def test_block_gradient(inverse):
     )
     out, det = (
         fb.rqs_inverse(fb.input(0), rqs_condition)
-        if inverse else
-        fb.rqs_forward(fb.input(0), rqs_condition)
+        if inverse
+        else fb.rqs_forward(fb.input(0), rqs_condition)
     )
     fb.output(0, out)
     fb.output(1, fb.reduce_product(det))
@@ -45,4 +48,3 @@ def test_block_gradient(inverse):
     r_in = torch.rand((n_points, n_dims), requires_grad=True)
     r_cond = torch.randn((n_points, n_cond), requires_grad=True)
     torch.autograd.gradcheck(module, [r_in, r_cond], raise_exception=True, rtol=1e-4)
-"""

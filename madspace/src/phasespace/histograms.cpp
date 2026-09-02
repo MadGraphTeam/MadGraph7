@@ -1,24 +1,31 @@
-#include "madspace/phasespace/histograms.h"
+#include "madspace/phasespace/histograms.hpp"
 
 using namespace madspace;
 
 ObservableHistograms::ObservableHistograms(const std::vector<HistItem>& observables) :
     FunctionGenerator(
         "ObservablesHistogram",
-        {batch_float, observables.at(0).observable.arg_types().at(0)},
+        {{"weight", batch_float},
+         {"momenta", observables.at(0).observable.arg_types().at(0)}},
         [&]() {
-            TypeVec ret_types;
-            for (auto& obs : observables) {
-                ret_types.push_back(single_float_array(obs.bin_count + 2));
-                ret_types.push_back(single_float_array(obs.bin_count + 2));
+            NamedVector<Type> ret_types;
+            for (std::size_t i = 0; auto& obs : observables) {
+                ret_types.push_back(
+                    std::format("values{}", i), single_float_array(obs.bin_count + 2)
+                );
+                ret_types.push_back(
+                    std::format("square_values{}", i),
+                    single_float_array(obs.bin_count + 2)
+                );
+                ++i;
             }
             return ret_types;
         }()
     ),
     _observables(observables) {}
 
-ValueVec ObservableHistograms::build_function_impl(
-    FunctionBuilder& fb, const ValueVec& args
+NamedVector<Value> ObservableHistograms::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     Value weight = args.at(0), momenta = args.at(1);
     ValueVec histograms;
@@ -30,5 +37,5 @@ ValueVec ObservableHistograms::build_function_impl(
         histograms.push_back(values);
         histograms.push_back(square_values);
     }
-    return histograms;
+    return {return_types().keys(), histograms};
 }

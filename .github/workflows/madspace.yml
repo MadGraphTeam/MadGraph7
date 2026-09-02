@@ -1,4 +1,4 @@
-name: Build
+name: MadSpace
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
               yum -y install openblas-devel yum-utils &&
               yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&
               yum-config-manager --add-repo /project/.github/workflows/rocm.repo &&
-              yum -y install cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-thrust-12-8 libcublas-devel-12-8 libcurand-devel-12-8 rocm-hip-runtime-devel rocblas-devel rocrand-devel rocthrust-devel
+              yum -y install cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-thrust-12-8 libcublas-devel-12-8 libcurand-devel-12-8 rocm-hip-runtime-devel rocblas-devel rocrand-devel rocthrust-devel hipcub-devel
             CIBW_REPAIR_WHEEL_COMMAND: >
               auditwheel repair
               --exclude libmadspace.so
@@ -39,7 +39,7 @@ jobs:
                 PATH=$PATH:/usr/local/cuda/bin
                 CMAKE_PREFIX_PATH=/opt/rocm
                 HIPFLAGS=--gcc-toolchain=$(dirname $(which g++))/../..
-                SKBUILD_CMAKE_ARGS="-DUSE_SIMD=1"
+                SKBUILD_CMAKE_ARGS="-DENABLE_CUDA=ON;-DENABLE_HIP=ON;-DENABLE_SIMD=ON;-DENABLE_OPENBLAS=OFF"
 
           - os: macos-14
             build_small: cp312-macosx_arm64
@@ -66,6 +66,7 @@ jobs:
             CIBW_TEST_REQUIRES: >
               pytest
               numpy
+              scipy
               --extra-index-url https://download.pytorch.org/whl/cpu
               torch
             CIBW_TEST_COMMAND: pytest {project}/madspace/tests

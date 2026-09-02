@@ -3,6 +3,10 @@
 from __future__ import division
 from __future__ import absolute_import
 from madgraph.interface import reweight_interface
+try:
+    import numpy as np
+except ImportError:
+    np = None
 import pickle
 
 ################################################################################
@@ -68,19 +72,80 @@ from madgraph import MG5DIR, MadGraph5Error
 import madgraph.various.misc as misc
 #import time
 
+MAX_COMPAT_FLAVS = 500
+
 
 class MadSpinError(MadGraph5Error):
     pass
+
+
+def bw_retained_fraction(pole, width, bw_cut):
+    """The fraction of a resonance's Breit-Wigner that a ``+- bw_cut * width``
+    mass window keeps.
+
+    MadSpin samples a virtuality only inside that window but normalises the
+    sample with the *full* width -- ``sigma_prod * BR`` on the density side, the
+    param-card BR of the whole chain on the v1 side. The events it writes
+    therefore hold only the part of the Breit-Wigner that fits inside the
+    window, while the number it reports is the whole rate; without this factor
+    ``sigma`` comes out identical for every value of ``BW_cut``, which is wrong
+    and measurable (see ``MadSpin/validation/mtt_threshold/RESULTS.md``).
+
+    This is *the sampler's own normalisation*, not an approximation of it. Both
+    generators draw m^2 flat in ``R = atan((m^2 - M^2)/(M.Gamma))``, whose full
+    range is pi -- ``MadSpinInterface._mass_window`` returns exactly this
+    quantity as its ``gap/pi`` jacobian, and ``generate_inv_mass_sch`` in
+    ``src/driver.f`` computes it as ``bwdelf``. Integrating the sampled density
+    over the sampled window is therefore closed-form and exact, so there is no
+    reason to fall back on the linearised ``2/pi * atan(2N)`` that the
+    ``m^2 - M^2 ~ 2M(m-M)`` substitution gives (0.97879 against the 0.97869 here,
+    for a top at ``N = 15``): the difference is the m -> m^2 mapping at the
+    window edges, and this form tracks it.
+
+    What no self-consistent calculation can supply is the *numerator*. The rate
+    integrand is BW(m^2) times the decay matrix element and its phase space, and
+    the retained fraction of the product needs the numerator's integral over the
+    part of the Breit-Wigner that was never sampled. ``m.Gamma(m)/(m_t.Gamma_t)``
+    alone runs 0.52 to 1.71 across a +-15 Gamma window for a top, and putting it
+    in moves the t t~ pair factor from the 0.95785 this returns to 0.96249. (The
+    validation study evaluated the same integral four ways; this form reproduces
+    its fixed-width-relativistic row to the digit, which is the one that matches
+    what the samplers draw.) So this correction
+    carries a residual of a few tenths of a percent -- measured against a truth
+    sample, +0.4 % to +1.0 % for a t t~ pair at ``BW_cut = 15``
+    (``RESULTS.md`` section 1a). It is the propagator part, which is the
+    dominant and the ``BW_cut``-dependent part.
+
+    A stable particle (``width == 0``) has no window and no truncation, so the
+    fraction is 1; ``bw_cut <= 0`` means the caller is not cutting at all.
+    """
+    if not width or width <= 0 or pole <= 0 or bw_cut <= 0:
+        return 1.0
+    # the window is linear in m in both samplers, floored at 0 (a resonance
+    # broad enough that M - N.Gamma goes negative is cut only from above)
+    min_mass = max(pole - bw_cut * width, 0.0)
+    max_mass = pole + bw_cut * width
+    gap = math.atan((pole ** 2 - min_mass ** 2) / pole / width)
+    gap += math.atan((max_mass ** 2 - pole ** 2) / pole / width)
+    return gap / math.pi
+
 
 class Event:
     """ class to read an event, record the information, write down the event in the lhe format.
             This class is used both for production and decayed events"""
 
-    def __init__(self, inputfile=None, banner=None):
+    _pdg_to_merged = None  # cache for get_tag() to remap actual PDG codes to merged-particle IDs
+    def __init__(self, inputfile=None, banner=None, model=None):
         """Store the name of the event file """
         self.inputfile=inputfile
         self.particle={}
         self.banner = banner
+        # Optional model reference used by get_tag() to remap actual PDG codes
+        # to merged-particle IDs so that all_ME key lookups succeed.
+        self.model = model
+        # Lazy-built reverse map: actual_pdg -> merged_particle_pdg
+        if model:
+            self._get_pdg_to_merged(model)
 
     def give_momenta(self, map_event=None):
         """ return the set of external momenta of the event, 
@@ -138,8 +203,40 @@ class Event:
         line.append('')
         return "\n".join(line)
     
+    @classmethod
+    def _get_pdg_to_merged(cls, model):
+        """Build (and cache) a reverse map from real PDG code to merged-particle PDG.
+
+        For example, if merged_particles = {81: [1, 2, 3, 4], 82: [11, 13]},
+        the map contains {1: 81, 2: 81, 3: 81, 4: 81, -1: -81, -2: -81, ...}.
+        Particle 21 (gluon, self-antipart) would map both 21 -> 81 and -21 -> -81
+        only if 21 is a member of the group.
+        """
+        if cls._pdg_to_merged:
+            return cls._pdg_to_merged
+        cls._pdg_to_merged = {}
+        if model is None:
+            return cls._pdg_to_merged
+        merged = model.get('merged_particles')
+        if not merged:
+            return cls._pdg_to_merged
+
+        for merged_pdg, members in merged.items():
+            for pid in members:
+                cls._pdg_to_merged[pid] = merged_pdg
+                cls._pdg_to_merged[-pid] = -merged_pdg
+        return cls._pdg_to_merged
+
     def get_tag(self):
-        
+        """Return the production tag and particle ordering for this event.
+
+        The tag is a pair of sorted tuples (initial_pdgs, final_pdgs) where
+        particle PDG codes that belong to a merged-particle group are replaced
+        by the corresponding merged-particle ID.  This ensures that the tag
+        matches the keys stored in AllMatrixElement (which are built from the
+        process legs and therefore use merged-particle IDs).
+        """
+        pdg_to_merged = self._get_pdg_to_merged(self.model)
         initial = []
         final = []
         order = [[],[]]
@@ -147,18 +244,95 @@ class Event:
             pid = part['pid']
             mother1 = part['mothup1']
             mother2 = part['mothup2']
+            # Remap actual PDG code to merged-particle ID if applicable.
+            # Both the tag tuples and the order lists use merged IDs so that
+            # they are consistent with P_order (from tag2order, which is built
+            # from process legs and therefore always uses merged IDs).
+            tag_pid = pdg_to_merged.get(pid, pid)
             if 0 == mother1 == mother2:
-                initial.append(pid)
-                order[0].append(pid)
+                initial.append(tag_pid)
+                order[0].append(tag_pid)
             else:
-                final.append(pid)
-                order[1].append(pid)
+                final.append(tag_pid)
+                order[1].append(tag_pid)
         initial.sort()
         final.sort()
 
         return (tuple(initial), tuple(final)), order
- 
-        
+
+    def get_flavor_index(self, flavor_groups, event_map):
+        """Determine the 1-based flavor_index for this event.
+
+        flavor_groups is a list of lists of PDG-code tuples (as returned by
+        get_flavor_data_from_me and stored in all_ME/all_decay as
+        'flavor_groups_prod', 'flavor_groups_full', or 'flavor_groups_decay').
+        Each outer list corresponds to one flavor_index; the inner list contains
+        all PDG-code tuples that share the same coupling structure for that index.
+
+        event_map maps ME particle position (0-based) to event particle position
+        (0-based, same convention as used by loadfortran / give_momenta).
+
+        The matching rule: for ME position j, the event pid (absolute value) is
+        compared to the unsigned group member stored in the flavor tuple at
+        position j.  This works because merged-particle groups are identified by
+        their absolute PDG code; the sign (particle vs anti-particle) is already
+        captured by the process definition and therefore the same within every
+        member of a flavor_groups entry.
+
+        Returns the 1-based flavor_index, or 1 if no match is found (safe
+        fallback for processes without merged particles).
+        """
+        if not self._pdg_to_merged:
+            self._get_pdg_to_merged(self.model)
+        if not flavor_groups:
+            return 1
+
+        # helper for creating unittest
+        if False:        
+            misc.sprint(event_map)
+            misc.sprint(flavor_groups)
+            id = {}
+            n_parts = len(flavor_groups[0][0])  # number of particles in the process (length of each flavor tuple)
+            event_flav = []
+            for me_pos in range(n_parts):
+                pid = self.particle[event_map[me_pos] + 1]['pid']   # particle dict is 1-indexed
+                id[me_pos] = {'pid': pid}
+            misc.sprint(id)
+
+        n_parts = len(flavor_groups[0][0])  # number of particles in the process (length of each flavor tuple)
+        event_flav = []
+        for me_pos in range(n_parts):
+            evt_pos = event_map.get(me_pos)
+            if evt_pos is None:
+                return 1
+            pid = self.particle[evt_pos + 1]['pid']   # particle dict is 1-indexed
+
+            if pid not in self._pdg_to_merged:
+                flav = 1
+            else:
+                flav = self.model.get('merged_particles')[abs(self._pdg_to_merged[pid])].index(abs(pid)) + 1
+            event_flav.append(flav)
+
+        # note that that flavor group can have more than one tuple (not sure when this happens)
+        # so not using a simple index search here. (or one should change flavor_groups to be a dict of tuple:flavor_index)
+        for group_idx, groupflav_tuples in enumerate(flavor_groups):
+            for flav_tuple in groupflav_tuples:
+                if tuple(flav_tuple) == tuple(event_flav):
+                    return group_idx + 1  # 1-based
+        raise Exception('No matching flavor index found for event with PIDs %s and flavor groups %s' %                         (event_flav, flavor_groups))
+
+    @staticmethod
+    def get_selected_flavor_tuple(flavor_data, flavor_index):
+        """Return the concrete PDG tuple selected by a 1-based flavor index."""
+        if not flavor_data or flavor_index is None:
+            return None
+        try:
+            _, flavor_combos, _ = flavor_data
+        except (TypeError, ValueError):
+            return None
+        if not flavor_combos or flavor_index < 1 or flavor_index > len(flavor_combos):
+            return None
+        return flavor_combos[flavor_index - 1]
     
 
     def string_event(self):
@@ -285,7 +459,7 @@ class Event:
         for line in self.inputfile:
             origline = line
             line = line.lower()
-            if line=="":
+            if line.strip()=="":
                 continue 
             # Find special tag in the line
             if line[0]=="#":
@@ -464,6 +638,29 @@ class dc_branch_from_me(dict):
         
         # launch the recursive loop
         add_decay(process)
+
+    def get_leaf_pids(self):
+        """Return a list of the leaf (final-state) PDG codes for this decay branch.
+
+        Traverses the decay tree starting at the root (-1) and collects the
+        'label' of every daughter node whose 'index' is positive (i.e. it is an
+        external final-state particle, not an intermediate resonance).  The list
+        is returned in depth-first tree order, which matches the ordering used
+        when building the full-ME external-particle array.
+        """
+        leaves = []
+
+        def collect(res_id):
+            tree_node = self['tree'][res_id]
+            for key in sorted(k for k in tree_node if k.startswith('d')):
+                daughter = tree_node[key]
+                if daughter['index'] > 0:   # external / leaf
+                    leaves.append(daughter['label'])
+                else:                         # intermediate resonance – recurse
+                    collect(daughter['index'])
+
+        collect(-1)
+        return leaves
 
     def generate_momenta(self,mom_init,ran, pid2width,pid2mass,BW_cut,E_collider, sol_nb=None):
         """Generate the momenta in each decay branch 
@@ -899,30 +1096,64 @@ class AllMatrixElement(dict):
     def get_br(self, proc):
         # get the branching ratio associated to a process
        
+        def branching_ratio_for_pdg(pid, lhaid, proc):
+            if any(abs(fid) in proc.get('model').get('merged_particles') for fid in lhaid):
+                pids = [l.get('id') for l in proc.get('legs')]
+                for i,fid in enumerate(pids):
+                    if abs(fid) in proc.get('model').get('merged_particles'):
+                        l = proc.get('legs')[i]
+                        if l.get('flavor'):
+                            pids[i] = l.get('flavor')
+                        elif fid in proc.get('model').get('merged_particles'):
+                            pids[i] = proc.get('model').get('merged_particles')[abs(fid)] 
+                        else:
+                            pids[i] = [-x for x in proc.get('model').get('merged_particles')[abs(fid)]]
+                    else:
+                        pids[i] = [fid]
+
+                all_combinations = list(itertools.product(*pids))
+                br = 0
+                for lhaid in itertools.product(*pids[1:]):
+                    lhaid = tuple([len(lhaid)] + sorted(lhaid))
+                    if pid in self.banner.param_card['decay'].decay_table:
+                        try:
+                            br += self.banner.param_card['decay'].decay_table[pid].get(lhaid).value
+                        except (KeyError, TypeError):
+                            pass
+                    elif -pid in self.banner.param_card['decay'].decay_table:
+                        lhaid=[x if self.model.get_particle(x)['self_antipart'] else -x for x in lhaid[1:]]
+                        lhaid.sort()
+                        lhaid = tuple([len(lhaid)] + lhaid)
+                        try:
+                            br += self.banner.param_card['decay'].decay_table[-pid].get(lhaid).value
+                        except (KeyError, TypeError):
+                            pass
+                if not br:
+                    misc.sprint('no valid decay for %s > %s' % (pid, lhaid[1:]))
+                    misc.sprint(self.banner.param_card['decay'].decay_table[pid])
+                return br
+
+            elif pid in self.banner.param_card['decay'].decay_table:
+                return self.banner.param_card['decay'].decay_table[pid].get(lhaid).value
+            elif -pid in self.banner.param_card['decay'].decay_table:
+                pid = -pid
+                lhaid=[x if self.model.get_particle(x)['self_antipart'] else -x
+                       for x in lhaid[1:]]
+                lhaid.sort()
+                lhaid = tuple([len(lhaid)] + lhaid)
+                return self.banner.param_card['decay'].decay_table[pid].get(lhaid).value
+            else:
+                return 0
         br = 1
         ids = collections.defaultdict(list) #check for identical decay
         for decay in proc.get('decay_chains'):
             init, final = decay.get_initial_final_ids()
             lhaid = tuple([len(final)] + [x for x in final])
             ids[init[0]].append(decay)
-            if init[0] in self.banner.param_card['decay'].decay_table:
-                br *= self.banner.param_card['decay'].decay_table[init[0]].get(lhaid).value
-                br *= self.get_br(decay)
-            elif -init[0] in self.banner.param_card['decay'].decay_table:
-                init = -init[0]
-                lhaid=[x if self.model.get_particle(x)['self_antipart'] else -x
-                       for x in final]
-                lhaid.sort()
-                lhaid = tuple([len(final)] + lhaid)
-                br *= self.banner.param_card['decay'].decay_table[init].get(lhaid).value
-                br *= self.get_br(decay)
-            elif init[0] not in self.decay_ids and -init[0] not in self.decay_ids:
-                logger.warning("No Branching ratio applied for %s. Please check if this is expected" % init[0])
-                br *= self.get_br(decay)
-            else:
+            br *= branching_ratio_for_pdg(init[0], lhaid, decay)
+            if br == 0:
                 raise MadGraph5Error("No valid decay for %s. No 2 body decay for that particle. (three body are not supported by MadSpin)" % init[0])
-
-                
+            br *= self.get_br(decay)
 
         for decays in ids.values():
             if len(decays) == 1:
@@ -1050,7 +1281,15 @@ class AllMatrixElement(dict):
             pid =  leg.get('id')
             nb = leg.get('number')
             if pid in to_decay and leg.get('state'):
-                i, proc = to_decay[pid].pop()
+                # FIFO: pair the n-th leg of a given pid with the n-th decay
+                # branch written for that pid. pop() (LIFO) reverses that
+                # pairing whenever two or more final-state particles share a
+                # pid and carry *different* branches (p p > z z with
+                # 'decay z > e+ e-' / 'decay z > u u~'), so the branch used to
+                # build the spin-correlated weight is not the one whose decay
+                # products get attached to that leg. Single-branch pids (t/t~,
+                # w+/w-) are unaffected: the list holds one entry either way.
+                i, proc = to_decay[pid].pop(0)
                 decay_struct[nb] = dc_branch_from_me(proc)
                 identical = [me.get('decay_chains')[i] for me in me_list[1:]]
                 decay_struct[nb].add_decay_ids(identical)
@@ -1341,6 +1580,7 @@ class width_estimate(object):
                 to_decay += [self.pid2label[id] for id in mgcmd._multiparticles[part]]
                 to_decay.remove(part)
         to_decay = list(set([p for p in to_decay if not p in self.br]))
+        print('to_decay=',to_decay)
         
         if to_decay:
             logger.info('We need to recalculate the branching fractions for %s' % ','.join(to_decay))
@@ -1524,7 +1764,10 @@ class width_estimate(object):
             for index in range(1,len(particle_set)):
                 commandline+="add process %s > all all \n" % particle_set[index]
 
-        commandline += "output %s/width_calculator -f \n" % path_me
+        # Force the madevent structure regardless of MG5's default output mode
+        # (now 'mg7', whose launcher requires lhapdf and does not give the
+        # standard madevent layout this width computation drives).
+        commandline += "output madevent %s/width_calculator -f \n" % path_me
 
 
         aloha.loop_mode = False
@@ -1713,8 +1956,9 @@ class width_estimate(object):
             self.width_value[label]=recalculated_width  
 
         #update the banner:
-        self.banner['slha'] = param_card.write(None)
         self.banner.param_card = param_card
+        self.banner.check_pid(self.pid2label, self.model.get('merged_particles'))
+        self.banner['slha'] = self.banner.param_card.write(None)
         
         self.extract_br_for_antiparticle()
         return self.br
@@ -1941,7 +2185,17 @@ class decay_misc:
         return mean, sd
 
 class decay_all_events(object):
-    
+
+    # The legacy (madspin_v1) path evaluates matrix elements through a Fortran
+    # helper communicating over a stdin/stdout pipe, so Fortran output has to be
+    # UNbuffered or the ME values never reach the Python side (see __init__).
+    # The density/onshell subclasses evaluate MEs in-process via f2py and do NOT
+    # need this. Forcing GFORTRAN_UNBUFFERED_ALL there turns every LesHouches
+    # event write into an immediate write() syscall; under a many-core decay
+    # event (re)generation that storms the filesystem (APFS write-transaction
+    # contention -> large "system" CPU). So gate it on the mode.
+    _need_unbuffered_fortran_io = True
+
     def __init__(self, ms_interface, banner, inputfile, options):
         """Store all the component and organize special variable"""
     
@@ -1958,16 +2212,20 @@ class decay_all_events(object):
         self.model = ms_interface.model
         self.banner = banner
         self.evtfile = inputfile
-        self.curr_event = Event(self.evtfile, banner) 
+        # Pass model so that Event.get_tag() can remap actual PDG codes to
+        # merged-particle IDs, matching the keys stored in AllMatrixElement.
+        self.curr_event = Event(self.evtfile, banner, model=self.model)
         self.inverted_decay_mapping={}
         self.width_estimator = None
         self.curr_dir = os.getcwd()
         # dictionary to fortan evaluator
         self.calculator = {}
         self.calculator_nbcall = {}
-        # need to unbuffer all I/O in fortran, otherwise
-        # the values of matrix elements are not passed to the Python script
-        os.environ['GFORTRAN_UNBUFFERED_ALL']='y'  
+        # need to unbuffer all I/O in fortran, otherwise the values of matrix
+        # elements are not passed to the Python script (madspin_v1 pipe path).
+        # Only the pipe-based modes need this -- see _need_unbuffered_fortran_io.
+        if self._need_unbuffered_fortran_io:
+            os.environ['GFORTRAN_UNBUFFERED_ALL']='y'
     
         # Remove old stuff from previous runs
         # so that the current run is not confused
@@ -1983,7 +2241,7 @@ class decay_all_events(object):
         # Prepare some dict usefull for optimize model imformation
         # pid -> label and label -> pid
         self.pid2label=pid2label(self.model)
-        self.banner.check_pid(self.pid2label)
+        self.banner.check_pid(self.pid2label, self.model.get('merged_particles'))
         self.pid2label.update(label2pid(self.model))
         self.pid2massvar={}
         self.pid2widthvar={}
@@ -2012,8 +2270,7 @@ class decay_all_events(object):
         seedfile.close()       
  
         # width and mass information will be filled up later
-        self.pid2width = lambda pid: self.banner.get('param_card', 'decay', abs(pid)).value
-        self.pid2mass = lambda pid: self.banner.get('param_card', 'mass', abs(pid)).value
+
         
         if os.path.isfile(pjoin(self.path_me,"param_card.dat")):
             os.remove(pjoin(self.path_me,"param_card.dat"))        
@@ -2061,13 +2318,60 @@ class decay_all_events(object):
                 self.save_to_file(pickle_info,
                                           (self.all_ME,self.all_decay,self.width_estimator))                
         
-        if not self.options["onlyhelicity"] and self.options['spinmode'] != 'onshell':
+        if not self.options["onlyhelicity"] and \
+            self.options['spinmode'] in  ['madspin_v1']:
+            
             resonances = self.width_estimator.resonances
             logger.debug('List of resonances: %s' % resonances)
             self.extract_resonances_mass_width(resonances) 
 
         self.compile()
-    
+
+
+    def resolve_merged_pid_with_flavor(self, pid, flavor_tuple, me_index):
+        """Resolve a merged-particle PDG to the selected concrete flavor."""
+        if not flavor_tuple or me_index is None:
+            return pid
+        merged_particles = self.model.get('merged_particles') if self.model else {}
+        merged_pid = abs(pid)
+        if not self.model or merged_pid not in merged_particles:
+            return pid
+        if me_index < 1 or me_index > len(flavor_tuple):
+            return pid
+        selected = int(flavor_tuple[me_index - 1])
+        members = merged_particles[merged_pid]
+        if abs(selected) in members:
+            resolved_abs = abs(selected)
+        elif 1 <= abs(selected) <= len(members):
+            resolved_abs = abs(members[abs(selected) - 1])
+        else:
+            return pid
+        return resolved_abs if pid > 0 else -resolved_abs
+
+    def pid2width(self, pid):
+        try:
+            return self.banner.get('param_card', 'decay', abs(pid)).value
+        except Exception:
+            if self.model and abs(pid) in self.model['merged_particles']:
+                return self.banner.get('param_card', 'decay', abs(self.model['merged_particles'][abs(pid)][0])).value
+            elif hasattr(self, 'merged_particles') and abs(pid) in self.merged_particles:
+                # this can happens when gridpack mode is used
+                return self.banner.get('param_card', 'decay', abs(self.merged_particles[abs(pid)][0])).value
+            misc.sprint(pid)
+            raise Exception('No width information for particle with pid %s' % pid)
+            
+    def pid2mass(self, pid):
+        try:
+            return self.banner.get('param_card', 'mass', abs(pid)).value
+        except Exception:
+            if self.model and abs(pid) in self.model['merged_particles']:
+                return self.banner.get('param_card', 'mass', abs(self.model['merged_particles'][abs(pid)][0])).value
+            elif hasattr(self, 'merged_particles') and abs(pid) in self.merged_particles:
+                # this can happens when gridpack mode is used
+                return self.banner.get('param_card', 'mass', abs(self.merged_particles[abs(pid)][0])).value
+            misc.sprint(pid)
+            raise Exception('No mass information for particle with pid %s' % pid)
+
     def save_to_file(self, *args):
         return save_load_object.save_to_file(*args)
     
@@ -2134,6 +2438,42 @@ class decay_all_events(object):
     
         self.ending_run()
         
+    # Name of the intermediate LHE file the legacy (madspin_v1) decay writes and
+    # that MadSpinInterface then gzips into <events>_decayed.lhe.gz.
+    DECAYED_EVENTS_NAME = 'decayed_events.lhe'
+
+    @property
+    def decayed_events_path(self):
+        """The one place that decides where the decayed events are written.
+
+        Both ends of the write/read pair must go through this property --
+        ``decaying_events`` opens it, ``MadSpinInterface.do_launch`` and
+        ``run_from_pickle`` gzip it -- because they used to compute it
+        separately and disagreed (see tests/unit_tests/madspin, class
+        TestDecayedEventsPath).
+
+        It is ``curr_dir``, the run's output directory, and deliberately *not*
+        ``path_me``:
+
+        * ``path_me`` means "where the matrix-element directories live"
+          everywhere else it is used (production_me/full_me/decay_me,
+          decay_<pdg>_<i>, ms_wstatus_*, param_card.dat). Under ``ms_dir`` it is
+          a directory that is built once and reused -- and possibly shared --
+          by later runs, so per-run event output has no business there.
+        * without ``ms_dir`` the two coincide (``path_me`` is *defined* as
+          ``realpath(curr_dir)``), which is why the mismatch stayed hidden: it
+          only bites when ``ms_dir`` is set *and* ``curr_dir`` is not the
+          ms_dir, i.e. whenever the event file is imported after ``set ms_dir``
+          (``post_set_ms_dir`` points ``curr_dir`` at the ms_dir, and
+          ``do_import`` points it back at the event file's directory).
+
+        The value is read off the *live* interface rather than ``self.options``
+        on purpose: under ``ms_dir`` this object is restored from
+        ``madspin.pkl``, so its own ``options`` -- pickled with the gridpack --
+        still describe the run that *built* it, ``curr_dir`` included.
+        """
+        return pjoin(self.mscmd.options['curr_dir'], self.DECAYED_EVENTS_NAME)
+
     def ending_run(self):
         """launch the unweighting and deal with final information"""    
         # launch the decay and reweighting
@@ -2173,9 +2513,12 @@ class decay_all_events(object):
         curr_event, self.curr_event = self.curr_event , None
         mgcmd, self.mgcmd = self.mgcmd, None
         mscmd, self.mscmd = self.mscmd , None
-        pid2mass, self.pid2mass = self.pid2mass, None
-        pid2width, self.pid2width = self.pid2width, None
+        #pid2mass, self.pid2mass = self.pid2mass, None
+        #pid2width, self.pid2width = self.pid2width, None
         model=  self.model
+        #
+        if model:
+            self.merged_particles = model['merged_particles']
 
 
         self.switch_all_model_instance(None)
@@ -2204,8 +2547,8 @@ class decay_all_events(object):
         self.curr_event = curr_event
         self.mgcmd = mgcmd
         self.mscmd = mscmd 
-        self.pid2mass = pid2mass
-        self.pid2width = pid2width
+        #self.pid2mass = pid2mass
+        #self.pid2width = pid2width
         
 
         self.all_decay = bkp 
@@ -2228,6 +2571,10 @@ class decay_all_events(object):
         
         self.model = model
         self.all_ME.model = model
+        # Keep curr_event.model in sync so get_tag() uses the right merged_particles.
+        if self.curr_event is not None:
+            self.curr_event.model = model
+            type(self.curr_event)._pdg_to_merged = None  # invalidate cached reverse map
         for proc in self.all_ME:
             if  'decays' in self.all_ME[proc]:
                 for me in self.all_ME[proc]['decays']:
@@ -2268,7 +2615,6 @@ class decay_all_events(object):
 
         for proc in self.all_decay:
             for me in self.all_decay[proc]['processes']:
-                #misc.sprint(type(me), me)
                 me['model'] = model
                 to_clean = list(me['decay_chains'])
                 while to_clean:
@@ -2284,7 +2630,7 @@ class decay_all_events(object):
         
     def decaying_events(self,inverted_decay_mapping):
         """perform the decay of each events"""
-
+        time_dec = time.time()
         decay_tools = decay_misc()
         # tools for checking if max_weight is too often broken.
         report = collections.defaultdict(int,{'over_weight': 0}) 
@@ -2292,10 +2638,18 @@ class decay_all_events(object):
 
         logger.info(' ' )
         logger.info('Decaying the events... ')
-        self.outputfile = open(pjoin(self.path_me,'decayed_events.lhe'), 'w')
+        self.outputfile = open(self.decayed_events_path, 'w')
         self.write_banner_information()
-        
-        
+
+        # Same reasoning as the run_onshell guard (see
+        # MadSpinInterface._check_branching_ratio): this number multiplies every
+        # weight written below, so a zero one would produce a complete LHE file
+        # of +/-0.0 and report success. Skipped in 'onlyhelicity' mode, which
+        # writes the events back without applying any branching ratio.
+        if not self.options['onlyhelicity']:
+            self.mscmd._check_branching_ratio(self.branching_ratio)
+
+
         event_nb, fail_nb = 0, 0
         nb_skip = 0 
         trial_nb_all_events=0
@@ -2344,7 +2698,25 @@ class decay_all_events(object):
             nb_mc_masses=len(indices_for_mc_masses)
 
             p, p_str=self.curr_event.give_momenta(event_map)
-            stdin_text=' %s %s %s %s %s \n' % ('2', self.options['BW_cut'], self.Ecollider, decay_me['max_weight'], self.options['frame_id'])
+            # Compute the two flavor indices for the full ME driver:
+            #   flavor_index_prod: which specific initial-state quarks are in this event
+            #   flavor_index_full: same, but matching against the full-event flavor groups
+            flavor_index_prod = self.curr_event.get_flavor_index(
+                self.all_ME[production_tag].get('flavor_groups_prod', []), event_map)
+            flavor_index_full = self.choose_full_flavor_index(
+                production_tag, decay, decay_me, event_map)
+            full_flavor_tuple = self.curr_event.get_selected_flavor_tuple(
+                decay.get('flavor_combos_full'),
+                flavor_index_full)
+            if full_flavor_tuple is None:
+                full_flavor_tuple = self.curr_event.get_selected_flavor_tuple(
+                    decay_me.get('flavor_combos_full'),
+                    flavor_index_full)
+            # Use the per-flavor maxweight when available; fall back to the
+            # global value for flavors not seen during the maxweight probing.
+            mw_for_event = decay_me.get('max_weight_per_flavor', {}).get(
+                flavor_index_full, decay_me['max_weight'])
+            stdin_text=' %s %s %s %s %s %s %s %s %s\n' % ('2', self.options['BW_cut'], self.Ecollider, mw_for_event, self.options['frame_id'], self.options.beampol_me()[0], self.options.beampol_me()[1], flavor_index_prod, flavor_index_full)
             stdin_text+=p_str
             # here I also need to specify the Monte Carlo Masses
             stdin_text+=" %s \n" % nb_mc_masses
@@ -2373,7 +2745,8 @@ class decay_all_events(object):
             
             #
             decayed_event = self.decay_one_event_new(self.curr_event,decay['decay_struct'],\
-                                                      event_map, momenta_in_decay,use_mc_masses, helicities)
+                                                      event_map, momenta_in_decay,use_mc_masses, helicities,
+                                                      full_flavor_tuple=full_flavor_tuple)
             
             
             # Treat the case we get too many failures for the PS generation.
@@ -2381,14 +2754,42 @@ class decay_all_events(object):
                 logger.debug('Got a production event with %s failures for the phase-space generation generation ' % failed)
 
             # Treat the case that we ge too many overweight.
-            if weight > decay_me['max_weight']:
+            # Use the per-flavor maxweight consistent with what was passed to Fortran.
+            # decay_me is the canonical ME entry used for the Fortran call; it may differ
+            # from decay when inverted_decay_mapping redirects an equivalent channel (e.g.
+            # z > l+ l- mapped to z > q q~).  The threshold must match mw_for_event above.
+            decay_mw_for_event = decay_me.get('max_weight_per_flavor', {}).get(
+                flavor_index_full, decay_me['max_weight'])
+            # ``carry``: the overweight safety net (section 14 of
+            # doc/madspin_sequential_plan.md). The Fortran
+            # accept/reject (MadSpin/src/driver.f, "weight.gt.x*maxweight")
+            # stops on a trial with probability min(1, weight/decay_mw_for_event), so a
+            # weight above the bound is accepted with probability 1 and the
+            # excess used to be dropped. Writing that event with weight
+            # max(1, weight/decay_mw_for_event) restores the sampled density exactly,
+            # since min(1,x)*max(1,x) = x. Left as the literal 1.0 when nothing
+            # overflowed, so the written weights are bit-identical to before.
+            # ``weight`` is the matrix-element weight the Fortran tested, not
+            # the event's LHE weight, so ``carry`` is always > 1 and unsigned: a
+            # negative production weight (an MC@NLO counter-event) keeps its
+            # sign and only grows in magnitude.
+            carry = 1.0
+            if weight > decay_mw_for_event:
+                carry = weight / decay_mw_for_event
                 report['over_weight'] += 1
+                # the accounting is on the WEIGHT, not on a count: a
+                # counter-event whose trial overflowed makes the cross-section
+                # more negative, so its excess subtracts. w_nom is what this
+                # event would have been written with under clipping.
+                w_nom = decayed_event.wgt * self.branching_ratio
+                report['over_weight_dw'] += w_nom * (carry - 1.0)
+                report['over_weight_dabs'] += abs(w_nom) * (carry - 1.0)
                 report['%s_f' % (decay['decay_tag'],)] +=1
                 if __debug__:               
                     misc.sprint('''over_weight: %s %s, occurence: %s%%, occurence_channel: %s%%
                     production_tag:%s [%s], decay:%s [%s], BW_cut: %1g\n
                     ''' %\
-                    (weight/decay['max_weight'], decay['decay_tag'], 
+                    (weight/decay_mw_for_event, decay['decay_tag'], 
                     100 * report['over_weight']/event_nb,
                     100 * report['%s_f' % (decay['decay_tag'],)] / report[decay['decay_tag']],
                     os.path.basename(self.all_ME[production_tag]['path']),
@@ -2397,12 +2798,12 @@ class decay_all_events(object):
                     decay['decay_tag'],BWvalue))
                         
                 
-                if weight > 10.0 * decay['max_weight']:
+                if weight > 10.0 * decay_mw_for_event:
                     error = """Found a weight MUCH larger than the computed max_weight (ratio: %s). 
     This usually means that the Narrow width approximation reaches it's limit on part of the Phase-Space.
     Do not trust too much the tale of the distribution and/or relaunch the code with smaller BW_cut.
     This is for channel %s with current BW_value at : %g'""" \
-                    % (weight/decay['max_weight'], decay['decay_tag'], BWvalue)  
+                    % (weight/decay_mw_for_event, decay['decay_tag'], BWvalue)  
                     logger.error(error)
                 elif report['over_weight'] > max(0.005*event_nb,3):
                     error = """Found too many weight larger than the computed max_weight (%s/%s = %s%%). 
@@ -2410,8 +2811,6 @@ class decay_all_events(object):
     computation of the maximum_weight.
                     """ % (report['over_weight'], event_nb, 100 * report['over_weight']/event_nb )  
                     raise MadSpinError(error)
-                        
-                    error = True
                 elif report['%s_f' % (decay['decay_tag'],)] > max(0.01*report[decay['decay_tag']],3):
                     error = """Found too many weight larger than the computed max_weight (%s/%s = %s%%),
     for channel %s. Please relaunch MS with more events/PS point by event in the
@@ -2423,9 +2822,20 @@ class decay_all_events(object):
                     raise MadSpinError(error)
                     
              
-            decayed_event.change_wgt(factor= self.branching_ratio) 
+            # the carried overweight rides the branching ratio, so it reaches
+            # both the event weight and every <rwgt> entry through the single
+            # multiplication change_wgt already does
+            decayed_event.change_wgt(factor= self.branching_ratio if carry == 1.0
+                                     else self.branching_ratio * carry)
             #decayed_event.wgt = decayed_event.wgt * self.branching_ratio
-                    
+            # the file as clipping would have written it: needed as the
+            # denominator of the overweight report, and as the scale that says
+            # whether that denominator is distinguishable from zero at all
+            w_nom = decayed_event.wgt if carry == 1.0 else decayed_event.wgt / carry
+            report['sum_nom'] += w_nom
+            report['sum_abs_nom'] += abs(w_nom)
+            report['sum_sq_nom'] += w_nom * w_nom
+
             self.outputfile.write(decayed_event.string_event())
                 #print "number of trials: "+str(trial_nb)
             trial_nb_all_events+=trial_nb
@@ -2451,12 +2861,62 @@ class decay_all_events(object):
                 logger.warning(error)  
         
         
-
+        logger.info(f"Time for decay: {time.time() - time_dec:.2f} sec")
         logger.info('Total number of events written: %s/%s ' % (event_nb, event_nb+nb_skip))
         logger.info('Average number of trial points per production event: '\
             +str(float(trial_nb_all_events)/float(event_nb)))
         logger.info('Branching ratio to allowed decays: %g' % self.branching_ratio)
         logger.info('Number of events with weights larger than max_weight: %s' % report['over_weight'])
+        # The overweight safety net's measurement, the same convention as the
+        # density path's _report_overweight: how many events carry a non-unit
+        # weight, and what the carried excess is worth as a fraction of the
+        # sample's cross-section (IDWTUP = -4: sigma is the MEAN of the
+        # weights, and carrying changes no event count, so d(sum w)/sum w is
+        # the relative shift). The excess is summed WEIGHTED, so a
+        # counter-event's overflow subtracts instead of adding; and sum w is
+        # only used as a denominator when it is not itself ~0.
+        if event_nb:
+            if report['over_weight']:
+                d_w = report['over_weight_dw']
+                d_abs = report['over_weight_dabs']
+                sum_w = report['sum_nom']
+                sum_abs = report['sum_abs_nom']
+                delta = math.sqrt(report['sum_sq_nom'])
+                z = (abs(sum_w) / delta) if delta else 0.0
+                # built with % here, not handed to the logger as a format
+                # string: the head already contains literal per-cent signs
+                msg = ("MadSpin overweight safety net: %d/%d written events "
+                       "(%.3g%%) carried a non-unit weight because a trial "
+                       "weight exceeded max_weight. "
+                       % (report['over_weight'], event_nb,
+                          100.0 * report['over_weight'] / event_nb))
+                # sum w is only a denominator when it is distinguishable
+                # from zero -- 5 of its own Monte Carlo errors, the same test
+                # the density path uses (_OVERWEIGHT_MIN_Z)
+                if z >= 5.0:
+                    msg += ("Carrying it added %+.6g to the summed event "
+                            "weight, i.e. %+.3g%% of the sample's "
+                            "cross-section. " % (d_w, 100.0 * d_w / sum_w))
+                else:
+                    msg += ("Carrying it added %+.6g to the summed event "
+                            "weight and %+.6g to the summed |weight|; the "
+                            "summed weight is %+.4g against a Monte Carlo "
+                            "error of %.4g (z = %.2f), i.e. consistent with "
+                            "zero, so it is not a usable denominator and the "
+                            "shift is quoted against sum|w| = %.4g instead: "
+                            "%+.3g%%. "
+                            % (d_w, d_abs, sum_w, delta, z, sum_abs,
+                               100.0 * d_abs / sum_abs if sum_abs
+                               else float('nan')))
+                msg += ("Clipping it -- what MadSpin did before -- would have "
+                        "discarded that silently.")
+                logger.warning(msg)
+            else:
+                logger.info(
+                    "MadSpin overweight safety net: 0/%d written events "
+                    "carried a non-unit weight -- max_weight was never "
+                    "exceeded, so nothing was clipped and nothing is biased "
+                    "by it.", event_nb)
         logger.info('Number of subprocesses '+str(len(self.calculator)))
         logger.info('Number of failures when restoring the Monte Carlo masses: %s ' % nb_fail_mc_mass)
         if fail_nb:
@@ -2476,15 +2936,23 @@ class decay_all_events(object):
             frameid = self.options['frame_id']
         except KeyError:
             frameid = 6
-        stdin_text=' %s %s %s %s %s\n' % ('2', self.options['BW_cut'], self.Ecollider, 1.0, frameid)
-        stdin_text+=p_str
-        # here I also need to specify the Monte Carlo Masses
-        stdin_text+=" %s \n" % nb_mc_masses
-        
+        try:
+            beampol = self.options.beampol_me()
+        except KeyError:
+            beampol = (1.0, 1.0)
         mepath = self.all_ME[production_tag]['path']
         decay = self.all_ME[production_tag]['decays'][0]
         decay_me=self.all_ME.get_decay_from_tag(production_tag, decay['decay_tag'])
         mepath = decay_me['path']
+        # Compute both flavor indices for the two-index header format of driver.f
+        flavor_index_prod = self.curr_event.get_flavor_index(
+            self.all_ME[production_tag].get('flavor_groups_prod', []), event_map)
+        flavor_index_full = self.get_full_flavor_index(
+            production_tag, decay_me, event_map)
+        stdin_text=' %s %s %s %s %s %s %s %s %s\n' % ('2', self.options['BW_cut'], self.Ecollider, 1.0, frameid, beampol[0], beampol[1], flavor_index_prod, flavor_index_full)
+        stdin_text+=p_str
+        # here I also need to specify the Monte Carlo Masses
+        stdin_text+=" %s \n" % nb_mc_masses
                         
         output = self.loadfortran( 'unweighting', mepath, stdin_text)
         if not output:
@@ -2540,7 +3008,16 @@ class decay_all_events(object):
                         try:
                             self.curr_event.particle[part_for_curr_evt]['mass']=self.banner.get('param_card','mass', abs(pid)).value
                         except KeyError:
-                            if self.model.get_particle(abs(pid)).get('mass').lower() == 'zero':
+                            # pid may be a merged-particle ID (e.g. 81) not present in
+                            # param_card; resolve to a real member first, then ask the
+                            # model whether the particle is massless.
+                            actual_pid = abs(pid)
+                            particle = self.model.get_particle(actual_pid)
+                            if particle is None:
+                                merged_map = self.model.get('merged_particles')
+                                if actual_pid in merged_map:
+                                    particle = self.model.get_particle(abs(merged_map[actual_pid][0]))
+                            if particle is not None and particle.get('mass', '').lower() == 'zero':
                                 self.curr_event.particle[part_for_curr_evt]['mass'] = 0
                             else:
                                 raise
@@ -2636,6 +3113,11 @@ class decay_all_events(object):
                 values = {}                
                 for i in range(len(decays)):
                     if any([valid[(i,j)] for j in range(len(decays)) if i !=j]):
+                        # TODO(flavor): pass the actual flavor_index for this
+                        #   decay instead of the default 1. The flavor_index
+                        #   should be obtained from the event (not available
+                        #   here); adapt once Event.get_flavor_index() is
+                        #   wired into this code path.
                         values[i] = self.calculate_matrix_element('decay', 
                                                        decays[i]['path'], p_str)
                     else:
@@ -2777,10 +3259,16 @@ class decay_all_events(object):
         mgcmd = self.mgcmd
         modelpath = self.model.get('modelpath+restriction')
 
+        # NLO contexts (loop_interface) force apply_flavor_grouping=False, which
+        # collapses get_external_flavors() to a single trivial entry and breaks
+        # merged-particle handling in MadSpin.  Re-enable it before reloading
+        # the model so the production MEs share the LO multi-flavor treatment.
+        mgcmd.exec_cmd('set apply_flavor_grouping True')
+
         commandline="import model %s" % modelpath
         if not self.model.mg5_name:
             commandline += ' --modelname'
-            
+
         mgcmd.exec_cmd(commandline)
         # Handle the multiparticle of the banner        
         #for name, definition in self.mscmd.multiparticles:
@@ -2818,6 +3306,16 @@ class decay_all_events(object):
         matrix_elements = mgcmd._curr_matrix_elements.get_matrix_elements()
         
         self.all_ME.adding_me(matrix_elements, pjoin(path_me,'production_me'))
+
+        # Store production ME flavor data in all_ME for use at compile time (point 2)
+        for me in matrix_elements:
+            tag = me.get('processes')[0].get_initial_final_ids()
+            if tag in self.all_ME:
+                nexternal, flavor_combos, pdg_to_group_pos, flavor_groups = \
+                    self.get_flavor_data_from_me(me)
+                self.all_ME[tag]['flavor_combos_prod'] = (
+                    nexternal, flavor_combos, pdg_to_group_pos)
+                self.all_ME[tag]['flavor_groups_prod'] = flavor_groups
         
         # 3b. simplify list_branches -------------------------------------------
         # remove decay which are not present in any production ME.
@@ -2901,6 +3399,16 @@ class decay_all_events(object):
             me_path = pjoin(path_me,'full_me', 'SubProcesses', \
                        "P%s" % matrix_element.get('processes')[0].shell_string())
             self.all_ME.add_decay(matrix_element, me_path)
+            # Store full ME flavor data for this decay path (point 2)
+            nexternal, flavor_combos, pdg_to_group_pos, flavor_groups = \
+                self.get_flavor_data_from_me(matrix_element)
+            tag = matrix_element.get('processes')[0].get_initial_final_ids()
+            for dico in self.all_ME[tag]['decays']:
+                if dico['path'] == me_path and 'flavor_combos_full' not in dico:
+                    dico['flavor_combos_full'] = (nexternal, flavor_combos,
+                                                  pdg_to_group_pos)
+                    dico['flavor_groups_full'] = flavor_groups
+                    break
 
         # 5.b import production matrix elements (+ related info) in the full process directory
         list_prodfiles=['matrix_prod.f','configs_production.inc','props_production.inc','nexternal_prod.inc']
@@ -2950,12 +3458,34 @@ class decay_all_events(object):
             me = matrix_element.get('processes')[0]
             me_string = me.shell_string()
             dirpath = pjoin(path_me,'decay_me', 'SubProcesses', "P%s" % me_string)
-        #    
+            # Store decay ME flavor data for compile time (point 2)
+            nexternal, flavor_combos, pdg_to_group_pos, flavor_groups = \
+                self.get_flavor_data_from_me(matrix_element)
             self.all_decay[me_string] = {'path': dirpath, 
                                          'dc_branch':dc_branch_from_me(me),
                                          'nbody': len(me.get_final_ids_after_decay()),
                                          'processes': matrix_element.get('processes'),
-                                         'tag': me.shell_string(pdg_order=True)}
+                                         'tag': me.shell_string(pdg_order=True),
+                                         'flavor_combos_decay': (nexternal,
+                                                                  flavor_combos,
+                                                                  pdg_to_group_pos),
+                                         'flavor_groups_decay': flavor_groups}
+        # Rebuild full-ME flavor data from the production flavor tuples and the
+        # decay-only flavor tuples.  This preserves the full cross product of
+        # compatible decay channels (e.g. 4 x 4 = 16 entries for WW -> 4j)
+        # instead of the canonical subset returned directly by the grouped full
+        # matrix element.
+        for production_tag, prod_data in self.all_ME.items():
+            for decay_dico in prod_data['decays']:
+                full_fdata = self.build_full_flavor_data(
+                    production_tag, decay_dico['matrix_element'])
+                if full_fdata is None:
+                    continue
+                nexternal, flavor_combos, pdg_to_group_pos, flavor_groups = \
+                    full_fdata
+                decay_dico['flavor_combos_full'] = (nexternal, flavor_combos,
+                                                    pdg_to_group_pos)
+                decay_dico['flavor_groups_full'] = flavor_groups
         #
 #        if __debug__:
 #            #check that all decay matrix element correspond to a decay only
@@ -3056,6 +3586,379 @@ class decay_all_events(object):
         return width    
 
 
+    @staticmethod
+    def write_flavor_ms_inc(path, flavor_data):
+        """Write flavor_ms.inc containing GET_FLAVOR_MS_* subroutines.
+
+        flavor_data is a dict with keys among 'full', 'prod', 'decay', mapping
+        to (nexternal, flavor_combo_list, pdg_to_group_pos) tuples, where
+        flavor_combo_list is a list of PDG-code sequences (one per flavor_index)
+        and pdg_to_group_pos maps PDG code -> position in its merged group.
+
+        For each key, a Fortran subroutine is generated:
+          - GET_FLAVOR_MS_FULL(IFLAV, FLAVOR_OUT)  for key 'full'
+          - GET_FLAVOR_MS_PROD(IFLAV, FLAVOR_OUT)  for key 'prod'
+          - GET_FLAVOR_MS(IFLAV, FLAVOR_OUT)        for key 'decay'
+        When no merged particles exist the single entry is all ones (group pos 1).
+        """
+        name_map = {'full': 'GET_FLAVOR_MS_FULL',
+                    'prod': 'GET_FLAVOR_MS_PROD',
+                    'decay': 'GET_FLAVOR_MS'}
+        lines = []
+        for key, (nexternal, flavor_combos, pdg_to_group_pos) in flavor_data.items():
+            sub_name = name_map[key]
+            # If no flavor data (no merged particles), create a single all-ones entry
+            if not flavor_combos:
+                flavor_combos = [[1] * nexternal]
+            nflavs = len(flavor_combos)
+            lines.append('      SUBROUTINE %s(IFLAV, FLAVOR_OUT)' % sub_name)
+            lines.append('C     Returns the flavor array for flavor index IFLAV')
+            lines.append('C     Generated by MadSpin at output time')
+            lines.append('      IMPLICIT NONE')
+            lines.append('      INTEGER, PARAMETER :: NEXTERNAL_MS = %d' % nexternal)
+            lines.append('      INTEGER, PARAMETER :: NFLAVS_MS = %d' % nflavs)
+            lines.append('      INTEGER  I')
+            lines.append('      INTEGER IFLAV')
+            lines.append('      INTEGER FLAVOR_OUT(NEXTERNAL_MS)')
+            lines.append('      INTEGER FLAVOR_DATA(NEXTERNAL_MS, NFLAVS_MS)')
+            for i, flav in enumerate(flavor_combos):
+                positions = [str(pdg_to_group_pos.get(abs(f), 1)) for f in flav]
+                lines.append('      DATA (FLAVOR_DATA(I, %d), I=1,NEXTERNAL_MS) / %s /'
+                             % (i+1, ', '.join(positions)))
+            lines.append('      FLAVOR_OUT = FLAVOR_DATA(:, IFLAV)')
+            lines.append('      RETURN')
+            lines.append('      END')
+            lines.append('')
+        content = '\n'.join(lines)
+        with open(pjoin(path, 'flavor_ms.inc'), 'w') as f:
+            f.write(content)
+
+    @staticmethod
+    def get_flavor_data_from_me(matrix_element):
+        """Extract flavor data from a HelasMatrixElement.
+
+        Returns a tuple (nexternal, flavor_combos, pdg_to_group_pos, flavor_groups)
+        where:
+          - nexternal: number of external particles
+          - flavor_combos: list of PDG-code tuples, one per flavor_index, written
+            into the Fortran DATA statement for GET_FLAVOR_MS_FULL.
+          - pdg_to_group_pos: dict mapping positive PDG code -> position within its
+            merged-particle group (used to convert PDG codes to group positions).
+          - flavor_groups: list of single-element lists; flavor_groups[i] contains
+            the one PDG-code tuple for flavor_index i+1, enabling Python-side
+            matching of a real event to its flavor_index.
+
+        Each valid external flavor tuple is given its own flavor_index so that
+        distinct decay-product combinations (e.g. W+ -> u d~ vs W+ -> c s~) are
+        accessible as separate Fortran indices. This is what allows
+        get_compatible_flavor_data to return multiple compatible entries (one per
+        decay combination) for a given production-level event.
+        """
+        (nexternal, _) = matrix_element.get_nexternal_ninitial()
+        model = matrix_element.get('processes')[0].get('model')
+        pdg_to_group_pos = {}
+        for members in model.get('merged_particles').values():
+            for pos, pdg in enumerate(members, 1):
+                pdg_to_group_pos[pdg] = pos
+        # get_external_flavors returns one tuple per valid flavor combination.
+        # Using individual tuples (rather than coupling-based groups) ensures
+        # that different decay-product flavor combinations each get a distinct
+        # Fortran flavor index, which is required for correct BR-weighted
+        # maxweight computation across all compatible channels.
+        all_flav_flat = matrix_element.get_external_flavors()
+        # flavor_combos[i]: raw PDG tuple for Fortran flavor index i+1.
+        # The Fortran writer applies pdg_to_group_pos at DATA-statement time.
+        flavor_combos = [list(flv) for flv in all_flav_flat]
+        # flavor_groups[i] is compared against the group-position tuple
+        # produced by Event.get_flavor_index, so it must already be in that
+        # space (1-based position within the merged group, 1 for unmerged
+        # particles).  get_external_flavors returns raw PDGs, so convert.
+        flavor_groups = [[[pdg_to_group_pos.get(abs(f), 1) for f in flv]]
+                         for flv in all_flav_flat]
+        return nexternal, flavor_combos, pdg_to_group_pos, flavor_groups
+
+    @staticmethod
+    def _strip_process_number(shell_string):
+        """Remove the leading process-number prefix from a shell string."""
+        if '_' in shell_string:
+            prefix, suffix = shell_string.split('_', 1)
+            if prefix.isdigit():
+                return suffix
+        return shell_string
+
+    def _get_decay_flavor_entry(self, decay_process):
+        """Return the decay-only flavor-data entry matching ``decay_process``."""
+        shell_string = decay_process.shell_string()
+        shell_string_pdg = decay_process.shell_string(pdg_order=True)
+        stripped_shell = self._strip_process_number(shell_string)
+        stripped_shell_pdg = self._strip_process_number(shell_string_pdg)
+
+        for key, decay_info in self.all_decay.items():
+            stripped_key = self._strip_process_number(key)
+            stripped_tag = self._strip_process_number(decay_info.get('tag', ''))
+            if (stripped_key == stripped_shell or stripped_key == stripped_shell_pdg or
+                    stripped_tag == stripped_shell or stripped_tag == stripped_shell_pdg):
+                return decay_info
+        return None
+
+    def build_full_flavor_data(self, production_tag, decay_process):
+        """Build full-ME flavor data from production and decay flavor blocks.
+
+        The full subprocess generated for a decay-chain process such as
+        ``p p > W+ W-, W+ > j j, W- > j j`` is a *single* matrix element whose
+        external legs still carry merged-particle IDs.  Relying on
+        ``matrix_element.get_external_flavors()`` only returns the canonical
+        flavor assignments kept by the grouped ME, which misses the cross
+        product of all compatible decay-flavor combinations.  For WW -> 4j
+        this collapses the expected 16 full entries down to 4.
+
+        To recover the full list we combine:
+          - the production flavor tuples already stored for ``production_tag``,
+          - the decay-only flavor tuples of each decay chain stored in
+            ``self.all_decay``.
+
+        For each production tuple we replace every decaying production leg by
+        the child flavor positions coming from the matching decay-only tuples,
+        keeping the production leg order used by ``process.get_legs()``.  The
+        resulting full tuples follow the external-leg order of
+        ``process.get_legs_with_decays()``.
+
+        Returns a tuple ``(nexternal, flavor_combos, pdg_to_group_pos,
+        flavor_groups)`` in the same format as :meth:`get_flavor_data_from_me`.
+        """
+        prod_data = self.all_ME[production_tag].get('flavor_combos_prod')
+        if prod_data is None:
+            return None
+
+        proc = decay_process
+        prod_nexternal, prod_combos, pdg_to_group_pos = prod_data
+        if not prod_combos:
+            prod_combos = [[1] * prod_nexternal]
+
+        decay_combo_blocks = []
+        combined_pdg_to_group_pos = dict(pdg_to_group_pos)
+        for dproc in proc.get('decay_chains'):
+            decay_info = self._get_decay_flavor_entry(dproc)
+            if decay_info is None:
+                return None
+            decay_nexternal, decay_combos, decay_pdg_to_group_pos = \
+                decay_info['flavor_combos_decay']
+            if not decay_combos:
+                decay_combos = [[1] * decay_nexternal]
+            decay_combo_blocks.append((dproc, decay_combos))
+            combined_pdg_to_group_pos.update(decay_pdg_to_group_pos)
+
+        if not decay_combo_blocks:
+            flavor_combos = [list(flv) for flv in prod_combos]
+            flavor_groups = [[list(flv)] for flv in flavor_combos]
+            return (prod_nexternal, flavor_combos,
+                    combined_pdg_to_group_pos, flavor_groups)
+
+        full_combos = []
+        for prod_combo in prod_combos:
+            decay_choices = [combos for _, combos in decay_combo_blocks]
+            for selected_decays in itertools.product(*decay_choices):
+                decay_by_pid = collections.defaultdict(list)
+                for (dproc, _), decay_combo in zip(decay_combo_blocks,
+                                                  selected_decays):
+                    decay_by_pid[dproc.get('legs')[0].get('id')].append(decay_combo)
+
+                full_combo = []
+                prod_index = 0
+                for leg in proc.get('legs'):
+                    if leg.get('state') and decay_by_pid[leg.get('id')]:
+                        decay_combo = decay_by_pid[leg.get('id')].pop(0)
+                        full_combo.extend(decay_combo[1:])
+                    else:
+                        full_combo.append(prod_combo[prod_index])
+                    prod_index += 1
+                full_combos.append(full_combo)
+
+        nexternal = len(proc.get_legs_with_decays())
+        flavor_groups = [[list(flv)] for flv in full_combos]
+        return nexternal, full_combos, combined_pdg_to_group_pos, flavor_groups
+
+    def get_full_flavor_index(self, production_tag, decay_me, event_map):
+        """Determine the 1-based flavor_index_full for the full (production+decay) ME.
+
+        The method matches the actual particle PDGs from the production event against
+        the positions in ``decay_me['flavor_groups_full']`` that correspond to
+        production particles (using the ``prod2full`` mapping pre-computed during
+        Fortran output generation).
+
+        For each production particle ``i`` (0-based):
+          - ``prod2full[i] > 0``: the particle is external in the full ME at
+            1-based position ``prod2full[i]``.  We retrieve its actual PID from
+            the event via ``event_map[i]`` and compare (by absolute value) with
+            the corresponding position in each flavor tuple.
+          - ``prod2full[i] <= 0``: the particle decays; its leaf products are not
+            compared here because they are specific particles (no merged group),
+            so they are the same across all flavor tuples.
+
+        Returns the 1-based index of the matching group, or 1 if no match is
+        found (safe fallback for processes without merged particles or when
+        ``flavor_groups_full`` or ``prod2full`` are not stored).
+        """
+        flavor_groups_full = decay_me.get('flavor_groups_full', [])
+        if not flavor_groups_full:
+            return 1
+
+        prod2full = decay_me.get('prod2full', [])
+        if not prod2full:
+            return 1
+
+        # Retrieve the PDG->group-position map stored alongside the full combos.
+        # The flavor tuples store group positions (1-based within each merged
+        # group, defaulting to 1 for unmerged particles like the gluon).  We
+        # must therefore compare *group positions*, not raw PDG codes.
+        flavor_combos_full = decay_me.get('flavor_combos_full')
+        pdg_to_group_pos = flavor_combos_full[2] if flavor_combos_full else {}
+
+        # Build a dict: 0-based full-ME position -> group position of event particle
+        pos_to_gpos = {}
+        for prod_pos, full_pos in enumerate(prod2full):
+            if full_pos > 0:  # external in full ME (not a resonance / decaying particle)
+                evt_pos = event_map.get(prod_pos, prod_pos)  # 0-based event position
+                pid = self.curr_event.particle[evt_pos + 1]['pid']
+                gpos = pdg_to_group_pos.get(abs(pid), 1)
+                pos_to_gpos[full_pos - 1] = gpos  # convert to 0-based index
+
+        if not pos_to_gpos:
+            return 1
+
+        for group_idx, group_tuples in enumerate(flavor_groups_full):
+            for flav_tuple in group_tuples:
+                if all(abs(flav_tuple[pos]) == gpos
+                       for pos, gpos in pos_to_gpos.items()
+                       if pos < len(flav_tuple)):
+                    return group_idx + 1  # 1-based
+
+        # No exact match – fall back to index 1
+        return 1
+
+    def get_compatible_flavor_indices(self, decay_me, event_map,
+                                       production_tag=None):
+        """Return 1-based flavor-group indices compatible with the current event.
+
+        This is the pure *flavor-mapping* step: it checks which entries in
+        ``decay_me['flavor_groups_full']`` match the production-particle PDGs
+        seen in the current event.  No branching-ratio information is touched.
+
+        A flavor group is *compatible* when every production-leg position
+        (those entries in ``prod2full`` that are positive, i.e. that appear
+        as external particles in the full ME) has an absolute PDG code equal
+        to the corresponding particle in the event.
+
+        Design note on full flavor files
+        --------------------------------
+        For a process such as ``p p > W+ W-, W+ > j j, W- > j j`` the full
+        flavor file now contains the full production x decay cross product:
+        4 production entries times 4 compatible decay combinations gives
+        16 full entries.  For a fixed production event (for example u d~)
+        this method therefore returns 4 compatible indices: one per allowed
+        decay-product combination.
+
+        Args:
+            decay_me       : the decay channel dico (keys: 'flavor_groups_full',
+                             'prod2full', ...).
+            event_map      : mapping from 0-based production position to
+                             0-based event particle index.
+            production_tag : optional; used only as fallback when
+                             ``flavor_groups_full`` is absent, forwarded to
+                             ``get_full_flavor_index``.
+
+        Returns:
+            List of 1-based integer flavor-group indices that are compatible
+            with the current event.  Never empty: falls back to [1] when no
+            flavor-group data is available.
+        """
+        flavor_groups_full = decay_me.get('flavor_groups_full', [])
+        if not flavor_groups_full:
+            # No merged-particle flavor data – single group; use legacy helper
+            flavor_index_full = self.get_full_flavor_index(
+                production_tag, decay_me, event_map)
+            return [flavor_index_full]
+
+        prod2full = decay_me.get('prod2full', [])
+
+        # Retrieve the PDG->group-position map.  The flavor tuples store group
+        # positions (1-based within merged groups, 1 for unmerged particles such
+        # as the gluon).  We must compare group positions, not raw PDG codes.
+        flavor_combos_full = decay_me.get('flavor_combos_full')
+        pdg_to_group_pos = flavor_combos_full[2] if flavor_combos_full else {}
+
+        # Build mapping: 0-based full-ME position -> group position from event
+        pos_to_gpos = {}
+        if prod2full:
+            for prod_pos, full_pos in enumerate(prod2full):
+                if full_pos > 0:  # positive entry = external particle
+                    evt_pos = event_map.get(prod_pos, prod_pos)
+                    pid = self.curr_event.particle[evt_pos + 1]['pid']
+                    gpos = pdg_to_group_pos.get(abs(pid), 1)
+                    pos_to_gpos[full_pos - 1] = gpos  # 0-based
+
+        # Find all groups whose production-position PDGs match the event
+        compatible = []
+        for group_idx, group_tuples in enumerate(flavor_groups_full):
+            for flav_tuple in group_tuples:
+                if (not pos_to_gpos or
+                        all(abs(flav_tuple[pos]) == gpos
+                            for pos, gpos in pos_to_gpos.items()
+                            if pos < len(flav_tuple))):
+                    compatible.append(group_idx + 1)  # 1-based
+                    break  # one match per group is sufficient
+
+        if not compatible:
+            # No match – fall back to the legacy single best-match index
+            flavor_index_full = self.get_full_flavor_index(
+                production_tag, decay_me, event_map)
+            return [flavor_index_full]
+
+        return compatible
+
+    def get_compatible_flavor_data(self, production_tag, decay_me, event_map):
+        """Return (compatible_indices, rel_brs) for full-ME flavor groups
+        compatible with the current event's production particles.
+
+        This is a thin wrapper around :meth:`get_compatible_flavor_indices`
+        that attaches the per-channel branching ratio.  The two concerns are
+        kept separate so that the pure flavor-matching logic can be unit-tested
+        independently.
+
+        The BR factor is the already-computed value stored on the decay channel
+        (``decay_me['br']``).  It is *not* normalised within the compatible set
+        so that each maxweight entry can be correctly scaled.
+
+        Returns:
+            compatible_indices : list of 1-based group indices
+            rel_brs            : list of BR factors, one per compatible group
+        """
+        decay_br = decay_me.get('br', 1.0)
+        compatible = self.get_compatible_flavor_indices(
+            decay_me, event_map, production_tag=production_tag)
+        return compatible, [decay_br] * len(compatible)
+
+    def choose_full_flavor_index(self, production_tag, decay, decay_me, event_map):
+        """Choose a compatible full-event flavor index for this selected decay."""
+
+        selected_compatible = self.get_compatible_flavor_indices(
+            decay, event_map, production_tag=production_tag)
+
+        if decay_me is decay:
+            compatible = selected_compatible
+        else:
+            canonical_compatible = self.get_compatible_flavor_indices(
+                decay_me, event_map, production_tag=production_tag)
+            compatible = [idx for idx in selected_compatible
+                          if idx in canonical_compatible]
+            if not compatible:
+                compatible = selected_compatible or canonical_compatible
+
+        if compatible:
+            return random.choice(compatible)
+
+        return self.get_full_flavor_index(production_tag, decay_me, event_map)
+
     def compile(self):
         logger.info('Compiling code')
         self.compile_fortran(self.path_me, mode="full_me")
@@ -3086,18 +3989,47 @@ class decay_all_events(object):
 
 #       get all paths to matix elements
         list_prod=[]
+        # path_to_flavor_data maps me_path -> flavor_data dict for write_flavor_ms_inc
+        path_to_flavor_data = {}
         if mode == 'full_me':
             for tag in self.all_ME:    
-                for dico in self.all_ME[tag]['decays']:
+                prod_tag_data = self.all_ME[tag]
+                for dico in prod_tag_data['decays']:
                     full_path=dico['path']
                     if full_path not in list_prod: list_prod.append(full_path)
+                    # Build flavor_data for this full_me path
+                    if full_path not in path_to_flavor_data:
+                        full_fdata = dico.get('flavor_combos_full', None)
+                        prod_fdata = prod_tag_data.get('flavor_combos_prod', None)
+                        path_to_flavor_data[full_path] = {}
+                        if full_fdata is not None:
+                            path_to_flavor_data[full_path]['full'] = full_fdata
+                        if prod_fdata is not None:
+                            path_to_flavor_data[full_path]['prod'] = prod_fdata
         elif mode == 'production_me':
             for tag in self.all_ME:    
                 prod_path=self.all_ME[tag]['path']
                 if prod_path not in list_prod: list_prod.append(prod_path)
+                if prod_path not in path_to_flavor_data:
+                    prod_fdata = self.all_ME[tag].get('flavor_combos_prod', None)
+                    path_to_flavor_data[prod_path] = {}
+                    if prod_fdata is not None:
+                        path_to_flavor_data[prod_path]['prod'] = prod_fdata
         elif mode == 'decay_me':
                 for dir in os.listdir(base_dir):
-                    if dir[0] == 'P': list_prod.append(pjoin(base_dir, dir))
+                    if dir[0] == 'P':
+                        dpath = pjoin(base_dir, dir)
+                        list_prod.append(dpath)
+                        # look up decay me flavor data by basename
+                        dirname = os.path.basename(dpath)[1:]  # strip leading 'P'
+                        decay_fdata = None
+                        for key, dinfo in self.all_decay.items():
+                            if os.path.basename(dinfo['path'])[1:] == dirname:
+                                decay_fdata = dinfo.get('flavor_combos_decay', None)
+                                break
+                        path_to_flavor_data[dpath] = {}
+                        if decay_fdata is not None:
+                            path_to_flavor_data[dpath]['decay'] = decay_fdata
 
         for i,me_path in enumerate(list_prod):
 #            if direc[0] == "P" and os.path.isdir(pjoin(base_dir, direc)):
@@ -3113,6 +4045,10 @@ class decay_all_events(object):
                 else:
                     file_madspin=pjoin(MG5DIR, 'MadSpin', 'src', 'driver_decay.f')
                     shutil.copyfile(file_madspin, pjoin(new_path,"check_sa.f")) 
+
+                # Generate flavor_ms.inc with GET_FLAVOR_MS_* subroutines
+                flavor_data = path_to_flavor_data.get(new_path, {})
+                self.write_flavor_ms_inc(new_path, flavor_data)
                      
                 
                 if mode=='full_me':
@@ -3249,7 +4185,6 @@ class decay_all_events(object):
         probe_weight = dict( (key,[]) for key in decay_set)
         while ev+1 < len(decay_set) * numberev: 
             production_tag, event_map = self.load_event()
-
             if production_tag == 0 == event_map: #end of file
                 logger.info('Not enough events for at least one production mode.')
                 logger.info('This is ok as long as you don\'t reuse the max weight for other generations.')
@@ -3285,14 +4220,18 @@ class decay_all_events(object):
                 if not tag:
                     continue # No decay for this process
                 atleastonedecay = True
-                weight = self.get_max_weight_from_fortran(decay['path'], event_map,numberps,self.options['BW_cut'])
+                weight_dict = self.get_max_weight_from_fortran(
+                    decay['path'], event_map, numberps, self.options['BW_cut'],
+                    production_tag=production_tag, decay_me=decay)
                     #weight=mg5_me_full*BW_weight_prod*BW_weight_decay/mg5_me_prod
                 if tag in max_decay:
-                    max_decay[tag] = max([max_decay[tag], weight])
+                    for j, w in weight_dict.items():
+                        if j in max_decay[tag]:
+                            max_decay[tag][j] = max(max_decay[tag][j], w)
+                        else:
+                            max_decay[tag][j] = w
                 else:
-                    max_decay[tag] = weight
-                    #print weight, max_decay[name]
-                    #raise Exception 
+                    max_decay[tag] = dict(weight_dict)
                       
             if not atleastonedecay:
                 # NO decay [one possibility is all decay are identical to their particle]
@@ -3321,50 +4260,72 @@ class decay_all_events(object):
                 continue
             #me_linked = [me for me in self.all_ME.values() if me['decaying'] == decaying]
             for decay_tag in probe_weight[decaying][0].keys():
-                weights=[]
-                for ev in range(numberev):
-                    try:
-                        weights.append(probe_weight[decaying][ev][decay_tag])
-                    except:
-                        continue
-                if not weights:
-                    logger.warning( 'no events for %s' % decay_tag)
+                # Collect all flavor indices observed across events
+                all_flavor_j = set()
+                for ev_data in probe_weight[decaying]:
+                    if decay_tag in ev_data:
+                        all_flavor_j.update(ev_data[decay_tag].keys())
+
+                if not all_flavor_j:
+                    logger.warning('no events for %s' % str(decay_tag))
                     continue
-                weights.sort(reverse=True)
-                assert len(weights) == 1 or weights[0] >= weights[1]
-                ave_weight, std_weight = decay_tools.get_mean_sd(weights)
-                base_max_weight = 1.05 * (ave_weight+self.options['nb_sigma']*std_weight)
 
+                # 3.x-style sharing: for a given decay channel, build one common
+                # base maxweight from the per-event envelope across compatible
+                # flavors, then reuse it across production modes.
+                shared_weights = []
+                for ev_data in probe_weight[decaying]:
+                    try:
+                        weights_by_flavor = ev_data[decay_tag]
+                    except Exception:
+                        continue
+                    if not weights_by_flavor:
+                        continue
+                    w = max(weights_by_flavor.values())
+                    if w > 0:
+                        shared_weights.append(w)
+
+                if not shared_weights:
+                    logger.warning('no events for %s' % str(decay_tag))
+                    continue
+
+                shared_weights.sort(reverse=True)
+                ave_weight, std_weight = decay_tools.get_mean_sd(shared_weights)
+                base_max_weight = 1.05 * (ave_weight + self.options['nb_sigma'] * std_weight)
                 for i in [20, 30, 40, 50]:
-                    if len(weights) < i:
+                    if len(shared_weights) < i:
                         break
-                    ave_weight, std_weight = decay_tools.get_mean_sd(weights[:i])
-                    base_max_weight = max(base_max_weight, 1.05 * (ave_weight+self.options['nb_sigma']*std_weight))
-                    
-                if weights[0] > base_max_weight:
-                    base_max_weight = 1.05 * weights[0]
-              
+                    ave_weight, std_weight = decay_tools.get_mean_sd(shared_weights[:i])
+                    base_max_weight = max(base_max_weight,
+                                          1.05 * (ave_weight + self.options['nb_sigma'] * std_weight))
+                if shared_weights[0] > base_max_weight:
+                    base_max_weight = 1.05 * shared_weights[0]
+
                 for associated_decay, ratio in decay_mapping[decay_tag]:
-                    max_weight= ratio * base_max_weight
+                    max_weight = ratio * base_max_weight
                     if ratio != 1:
-                        max_weight *= 1.1 #security
+                        max_weight *= 1.1  # security
+                    # Keep per-flavor lookup compatibility while sharing one
+                    # common value across production/flavor configurations.
+                    mw_per_flavor = dict((j, max_weight) for j in all_flavor_j)
 
-                    br = 0                   
+                    br = 0
                     #assign the value to the associated decays
-                    for k,m in self.all_ME.items():
+                    for k, m in self.all_ME.items():
                         for mi in m['decays']:
-
                             if mi['decay_tag'] == associated_decay:
                                 mi['max_weight'] = max_weight
+                                mi['max_weight_per_flavor'] = dict(mw_per_flavor)
                                 br = mi['br']
                                 nb_finals = len(mi['finals'])
 
-                    if decay_tag == associated_decay:                
+                    if decay_tag == associated_decay:
                         logger.debug('Decay channel %s :Using maximum weight %s [%s] (BR: %s)' % \
-                               (','.join(decay_tag), base_max_weight, max(weights), br/nb_finals))
-                    else:  
+                               (','.join(decay_tag), base_max_weight,
+                                shared_weights[0] if shared_weights else 0, br/nb_finals))
+                    else:
                         logger.debug('Decay channel %s :Using maximum weight %s (BR: %s)' % \
-                                    (','.join(associated_decay), max_weight, br/nb_finals)) 
+                                    (','.join(associated_decay), max_weight, br/nb_finals))
 
 #        if __debug__: 
         # check that all decay have a max_weight and fix it if not the case.
@@ -3413,16 +4374,59 @@ class decay_all_events(object):
         
         return production_tag, event_map
     
-    def get_max_weight_from_fortran(self, path, event_map,nbpoints,BWcut):
-        """return the max. weight associated with me decay['path']"""
+    def get_max_weight_from_fortran(self, path, event_map, nbpoints, BWcut,
+                                    production_tag=None, decay_me=None):
+        """Return per-flavor max weights as dict {flavor_index_full: maxweight}.
 
-        p, p_str=self.curr_event.give_momenta(event_map)
-        std_in=" %s  %s %s %s %s \n" % ("1",BWcut, self.Ecollider, nbpoints, self.options['frame_id'])
-        std_in+=p_str
-        max_weight = self.loadfortran('maxweight',
-                               path, std_in)
+        Passes to Fortran (mode=1) the list of full-ME flavor groups that are
+        compatible with the current production event together with their
+        relative BRs.  Fortran computes:
+            G = max_{j in compatible, PS points} M_full(j)*jac/M_prod / rel_br(j)
+        and returns G.  Python then reconstructs per-flavor maxweights:
+            maxweight_j = G * rel_br(j)
+        ensuring maxweight_j >= max_PS[M_full(j)*jac/M_prod] for every j.
+        """
+        p, p_str = self.curr_event.give_momenta(event_map)
+        if production_tag and decay_me:
+            flavor_index_prod = self.curr_event.get_flavor_index(
+                self.all_ME[production_tag].get('flavor_groups_prod', []), event_map)
+            compatible_indices, rel_brs = self.get_compatible_flavor_data(
+                production_tag, decay_me, event_map)
+            # Use the first compatible index as the header field (Fortran ignores
+            # it in mode=1 when it reads the explicit compatible-flavor list).
+            flavor_index_full = compatible_indices[0]
+        else:
+            flavor_index_prod = 1
+            flavor_index_full = 1
+            compatible_indices = [1]
+            rel_brs = [1.0]
 
-        return max_weight
+        try:
+            beampol = self.options.beampol_me()
+        except KeyError:
+            beampol = (1.0, 1.0)
+        std_in = " %s  %s %s %s %s %s %s %s %s\n" % ("1", BWcut, self.Ecollider, nbpoints,
+                                                 self.options['frame_id'],
+                                                 beampol[0], beampol[1],
+                                                 flavor_index_prod, flavor_index_full)
+        std_in += p_str
+        # Pass the number of compatible flavor groups and their (index, BR-factor) pairs.
+        # Must not exceed MAX_COMPAT_FLAVS defined in driver.f.
+        if len(compatible_indices) > MAX_COMPAT_FLAVS:
+            logger.warning('Number of compatible flavor groups (%d) exceeds the '
+                           'Fortran limit of %d; truncating.'
+                           % (len(compatible_indices), MAX_COMPAT_FLAVS))
+            compatible_indices = compatible_indices[:MAX_COMPAT_FLAVS]
+            rel_brs = rel_brs[:MAX_COMPAT_FLAVS]
+        std_in += "%d\n" % len(compatible_indices)
+        for idx, br in zip(compatible_indices, rel_brs):
+            std_in += "%d %.15e\n" % (idx, br)
+
+        # G = max_{j,PS} M_full(j)*jac/M_prod / br_factor(j)
+        G = self.loadfortran('maxweight', path, std_in)
+
+        # Remap: per-flavor maxweight_j = G * br_factor(j)
+        return {j: G * br for j, br in zip(compatible_indices, rel_brs)}
     
     nb_load = 0
     def loadfortran(self, mode, path, stdin_text, first=True):
@@ -3505,7 +4509,15 @@ class decay_all_events(object):
                 if nb < cut:
                     if key[0]=='full':
                         path=key[1]
-                        end_signal="5 0 0 0 0\n"  # before closing, write down the seed 
+                        # 9 fields to match driver.f's read(*,*) of
+                        # mode, BWcut, Ecollider, temp, frame_id, beampol(1), beampol(2),
+                        # flavor_index_prod, flavor_index_full.
+                        # Sending fewer numbers leaves the Fortran process blocked
+                        # in stdin read while Python blocks in stdout readline below,
+                        # deadlocking any cleanup that fires (only triggered when
+                        # len(self.calculator) > max_running_process, which happens
+                        # on processes with many decay subprocess variants -- ttbar).
+                        end_signal="5 0 0 0 0 0 0 0 0\n"  # before closing, write down the seed
                         external.stdin.write(end_signal.encode())
                         external.stdin.flush()
                         external.stdout.flush()
@@ -3524,8 +4536,20 @@ class decay_all_events(object):
                     
         return output
     
-    def calculate_matrix_element(self, mode, production, stdin_text):
-        """routine to return the matrix element"""
+    def calculate_matrix_element(self, mode, production, stdin_text, flavor_index=1):
+        """routine to return the matrix element
+
+        Uses driver_decay.f (mode='decay') or driver_prod.f (mode='prod'), both
+        of which take a single leading ``flavor_index`` line before the momenta.
+        This is distinct from driver.f (the full-event ME, used via loadfortran)
+        which takes two separate indices (flavor_index_prod, flavor_index_full).
+
+        NOTE(flavor): the flavor_index parameter is left at its default value of
+        1 for all callers in get_process_identical_ratio.  In that context the
+        code computes ratios of equivalent decay channels using random phase-space
+        points (no event PIDs available), so flavor_index=1 is a reasonable
+        fallback for now.
+        """
 
         if mode != "decay":
             raise Exception("This function is only secure in mode decay.")
@@ -3553,8 +4577,9 @@ class decay_all_events(object):
             self.calculator[(mode, production)] = external 
             self.calculator_nbcall[(mode, production)] = 1       
 
-
-        external.stdin.write(stdin_text.encode())
+        # prepend flavor_index before momenta for the decay driver
+        full_stdin = '%s\n%s' % (flavor_index, stdin_text)
+        external.stdin.write(full_stdin.encode())
         if mode == 'prod':
             info = int(external.stdout.readline().decode(errors='ignore'))
             nb_output = abs(info)+1
@@ -3713,7 +4738,8 @@ class decay_all_events(object):
 
         return indices_for_mc_masses,values_for_mc_masses
 
-    def decay_one_event_new(self,curr_event,decay_struct, event_map, momenta_in_decay, use_mc_masses, helicities):
+    def decay_one_event_new(self,curr_event,decay_struct, event_map, momenta_in_decay,
+                            use_mc_masses, helicities, full_flavor_tuple=None):
         """Write down the event 
            momenta is the list of momenta ordered according to the productin ME
         """
@@ -3906,6 +4932,8 @@ class decay_all_events(object):
                         #            ["tree"][res]["d1"]["index"]]["momentum"]
                         pid=decay_struct[part]\
                                     ["tree"][res]["d1"]["label"]
+                        pid=self.resolve_merged_pid_with_flavor(
+                            pid, full_flavor_tuple, index_d1_for_mom)
 
 
                         indexd1=decay_struct[part]["tree"][res]["d1"]["index"]
@@ -3914,7 +4942,8 @@ class decay_all_events(object):
                             istup=1
                             external+=1
                             if not use_mc_masses or abs(pid) not in self.MC_masses:
-                                mass=self.banner.get('param_card','mass', abs(pid)).value
+                                mass = self.pid2mass(abs(pid))
+                                #mass=self.banner.get('param_card','mass', abs(pid)).value
                             else:
                                 mass=self.MC_masses[abs(pid)]
                         else:
@@ -3941,6 +4970,8 @@ class decay_all_events(object):
                         #                   ["index"]]["momentum"]
                         pid=decay_struct[part]["tree"][res]["d2"]\
                                            ["label"]
+                        pid=self.resolve_merged_pid_with_flavor(
+                            pid, full_flavor_tuple, index_d2_for_mom)
 
                         indexd2=decay_struct[part]["tree"][res]["d2"]["index"]
                         if ( indexd2>0):
@@ -3948,7 +4979,7 @@ class decay_all_events(object):
                             istup=1
                             external+=1
                             if not use_mc_masses or abs(pid) not in self.MC_masses:
-                                mass=self.banner.get('param_card','mass', abs(pid)).value
+                                mass = self.pid2mass(abs(pid))
                             else:
                                 mass=self.MC_masses[abs(pid)]
                         else:
@@ -4027,12 +5058,46 @@ class decay_all_events(object):
 
 
 
+    def bw_truncation_factor(self, decay):
+        """The Breit-Wigner truncation of one decay channel of the v1 path.
+
+        Unlike the density path, the v1 driver regenerates the *whole* decay
+        chain's phase space: ``merge_itree`` marks every decay-side s-channel
+        invariant free (``keep_inv(i) = .FALSE.``, only the production ones are
+        frozen) and ``generate_inv_mass_sch`` then draws each of them inside
+        ``+- BW_cut`` widths. So the product runs over every resonance of the
+        chain -- the decaying particle itself *and* every nested one, the W of
+        ``t > w+ b, w+ > l+ vl`` included.
+
+        Correcting all of them is right here and would be double-counting on the
+        density side, because the two paths normalise differently: v1 uses the
+        param-card branching ratio of the full chain (``AllMatrixElement.get_br``,
+        recursive, untruncated), while the density path divides MG5-measured
+        partial widths that already carry the nested resonance's truncation.
+        """
+        bw_cut = self.options['BW_cut']
+        if bw_cut is None or bw_cut < 0:
+            bw_cut = 15
+        factor = 1.0
+        for branch in (decay.get('decay_struct') or {}).values():
+            for res in branch['tree'].values():
+                pdg = abs(res['label'])
+                factor *= bw_retained_fraction(self.pid2mass(pdg),
+                                               self.pid2width(pdg), bw_cut)
+        return factor
+
     def write_banner_information(self, eff=1):
-        
+
         ms_banner = ""
         cross_section = True # tell if possible to write the cross-section in advance
         total_br = []
         self.br_per_id = {}
+        # Breit-Wigner truncation, averaged over the decay channels weighted by
+        # their own branching ratio -- exact whenever the channels share a
+        # resonance content (they normally do: only the final states differ).
+        # The "loose" channels of add_loose_decay are not in the average: they
+        # stand for an event that is dropped, and the drop is already in ``eff``.
+        bw_trunc_num, bw_trunc_den = 0.0, 0.0
         for production in self.all_ME.values():
             one_br = 0
             partial_br = 0
@@ -4042,20 +5107,45 @@ class decay_all_events(object):
                     one_br += decay['br']
                     continue
                 partial_br += decay['br']
+                bw_trunc_num += decay['br'] * self.bw_truncation_factor(decay)
+                bw_trunc_den += decay['br']
                 ms_banner += "# %s\n" % ','.join(decay['decay_tag']).replace('\n',' ')
                 ms_banner += "# BR: %s\n# max_weight: %s\n" % (decay['br'], decay['max_weight'])
                 one_br += decay['br']
-            
+
             if production['Pid'] not in self.br_per_id:
                 self.br_per_id[production['Pid']] = partial_br
             elif self.br_per_id[production['Pid']] != partial_br:
                 self.br_per_id[production['Pid']] = -1
             total_br.append(one_br)
-        
+
         if __debug__:
             for production in self.all_ME.values():
                 assert production['total_br'] - min(total_br) < 1e-4
-        
+
+        # MadSpin samples each virtuality only inside the BW_cut window but
+        # normalises with the full width, so without this the reported cross
+        # section is the same number whatever BW_cut is. Applied to
+        # ``branching_ratio`` and to ``br_per_id``, i.e. to both users of the
+        # rate: the per-subprocess <init> rows below and every event weight
+        # (``change_wgt(factor=self.branching_ratio ...)``), which is what keeps
+        # sigma = mean(w) true under IDWTUP = -4.
+        #
+        # 'onlyhelicity' writes the production events back undecayed -- nothing
+        # is sampled from a truncated window, so nothing is corrected.
+        bw_trunc = 1.0
+        if bw_trunc_den and not self.options['onlyhelicity']:
+            bw_trunc = bw_trunc_num / bw_trunc_den
+        if bw_trunc != 1.0:
+            logger.info(
+                "Breit-Wigner truncation at BW_cut = %g keeps %.5g of the "
+                "cross-section; the reported sigma is scaled by it.",
+                self.options['BW_cut'], bw_trunc)
+            for pid in self.br_per_id:
+                if self.br_per_id[pid] != -1:
+                    self.br_per_id[pid] *= bw_trunc
+            total_br = [br * bw_trunc for br in total_br]
+
         self.branching_ratio = max(total_br) * eff
         #self.banner['madspin'] += ms_banner
         # Update cross-section in the banner
@@ -4140,7 +5230,7 @@ class decay_all_events(object):
                     external.terminate()
                     del external
                 elif mode=='full':
-                    stdin_text="5 0 0 0 0\n".encode()  # before closing, write down the seed 
+                    stdin_text="5 0 0 0 0 0 0 0 0\n".encode()  # before closing, write down the seed
                     external = self.calculator[('full',path)]
                     try:
                         external.stdin.write(stdin_text)
@@ -4161,7 +5251,7 @@ class decay_all_events(object):
                     try:
                         external.stdout.close()
                     except Exception as error:
-                        misc.sprint(error)                   
+                        misc.sprint(error)
                     external.terminate()
                     del external
                 else:
@@ -4172,7 +5262,9 @@ class decay_all_events(object):
             except Exception:
                 pass
             else:
-                stdin_text="5 0 0 0 0"
+                # 9 fields to match driver.f's read(*,*) protocol
+                # (see comment on the analogous end_signal in loadfortran).
+                stdin_text="5 0 0 0 0 0 0 0 0\n"
                 try:
                     external.stdin.write(stdin_text)
                 except Exception:
@@ -4196,8 +5288,17 @@ class decay_all_events(object):
 class decay_all_events_onshell(decay_all_events):
     """special mode for onshell production"""
 
-    #@misc.mute_logger()
+    mode = "onshell"
+    # density/onshell evaluate MEs in-process via f2py, not through the Fortran
+    # stdin/stdout pipe, so they must NOT force unbuffered Fortran I/O (which
+    # would flush every event write and storm the filesystem during the
+    # many-core decay-event generation/refill). Inherited by decay_all_events_density.
+    _need_unbuffered_fortran_io = False
+ 
+    
+    @misc.mute_logger()
     @misc.set_global()
+    
     def generate_all_matrix_element(self):
         """generate the full series of matrix element needed by Madspin.
         i.e. the undecayed and the decay one. And associate those to the 
@@ -4214,81 +5315,46 @@ class decay_all_events_onshell(decay_all_events):
         
         # 0. clean previous run ------------------------------------------------
         path_me = self.path_me
+        # Each MadSpinInterface instance owns its own ME output subdirectory
+        # (so dlopen cannot return a cached library handle across runs in
+        # the same process — see MadSpinInterface._ms_run_counter).
+        ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
+        ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
         try:
-            shutil.rmtree(pjoin(path_me,'madspin_me'))
-        except Exception: 
-            pass       
+            shutil.rmtree(pjoin(path_me, ms_me_subdir))
+        except Exception:
+            pass
+        try:
+            shutil.rmtree(pjoin(path_me, ms_me_decay_subdir))
+        except Exception:
+            pass
         
         # 1. compute the partial width------------------------------------------
         #self.get_branching_ratio()
-        
+        start = time.time()
         # 2. compute the production matrix element -----------------------------
+        self.handle_model()
         processes = [line[9:].strip() for line in self.banner.proc_card
                      if line.startswith('generate')]
         processes += [' '.join(line.split()[2:]) for line in self.banner.proc_card
                       if re.search(r'^\s*add\s+process', line)]
-        
-        mgcmd = self.mgcmd
-        modelpath = self.model.get('modelpath+restriction')
 
-        commandline="import model %s" % modelpath
-        if not self.model.mg5_name:
-            commandline += ' --modelname'
-            
-        mgcmd.exec_cmd(commandline)
-        # Handle the multiparticle of the banner        
-        #for name, definition in self.mscmd.multiparticles:
-        if hasattr(self.mscmd, 'multiparticles_ms'):
-            for name, pdgs in  self.mscmd.multiparticles_ms.items():
-                if name == 'all':
-                    continue
-                #self.banner.get('proc_card').get('multiparticles'):
-                mgcmd.do_define("%s = %s" % (name, ' '.join(repr(i) for i in pdgs)))
-            
-        
-        mgcmd.exec_cmd("set group_subprocesses False")
-        logger.info('generating the production square matrix element for onshell')
-        start = time.time()
-        commandline=''
-        for proc in processes:
-            if '[' in proc:
-                commandline += reweight_interface.ReweightInterface.get_LO_definition_from_NLO(proc, mgcmd._curr_model)
-            else:
-                commandline += 'add process %s ;' % proc               
-            
-#        commandline = commandline.replace('add process', 'generate',1)
-#        logger.info(commandline)
-#        
-#        mgcmd.exec_cmd(commandline, precmd=True)
-#        commandline = 'output standalone_msP %s %s' % \
-#        (pjoin(path_me,'production_me'), ' '.join(self.list_branches.keys()))        
-#        mgcmd.exec_cmd(commandline, precmd=True)        
-#        logger.info('Done %.4g' % (time.time()-start))
 
+        commandline = self.get_production_command(processes)
+        #misc.sprint(commandline)
         # 3. Create all_ME + topology objects ----------------------------------
 #        matrix_elements = mgcmd._curr_matrix_elements.get_matrix_elements()
 #        self.all_ME.adding_me(matrix_elements, pjoin(path_me,'production_me'))
         
+
         # 4. compute the full matrix element -----------------------------------
-        logger.info('generating the full matrix element squared (with decay)')
-#        start = time.time()
-        to_decay = list(self.mscmd.list_branches.keys())
-        decay_text = []
-        for decays in self.mscmd.list_branches.values():
-            for decay in  decays:
-                if '=' not in decay:
-                    decay += ' QCD=99'
-                if ',' in decay:
-                    decay_text.append('(%s)' % decay)
-                else:
-                    decay_text.append(decay)
-        decay_text = ', '.join(decay_text)
-#        commandline = ''
-        
-        for proc in processes:
-            if not proc.strip().startswith(('add','generate')):
-                proc = 'add process %s' % proc
-            commandline += self.get_proc_with_decay(proc, decay_text, mgcmd._curr_model)
+        if self.mode == "onshell" or (self.mode == "density" and self.options['density_debug']):
+            commandline += self.get_full_matrix_command(processes)
+            #misc.sprint(commandline)
+            logger.debug("Full ME calculation") 
+        else:
+            logger.debug("Skipping full ME calculation")        
+
         # 5. add the decay information to the all_topology object --------------                        
 #        for matrix_element in mgcmd._curr_matrix_elements.get_matrix_elements():
 #            me_path = pjoin(path_me,'full_me', 'SubProcesses', \
@@ -4318,52 +5384,228 @@ class decay_all_events_onshell(decay_all_events):
 #            return
 
         # 6. generate decay only part ------------------------------------------
+        def fill_all_me(self, prod_or_decay):
+            # store information about matrix element
+            if prod_or_decay not in ["production", "decay"]:
+                raise ValueError("The input prod_or_decay of fill_all_me only accepts values in 'production' or 'decay'.")
+            for matrix_element in mgcmd._curr_matrix_elements.get_matrix_elements():
+                me_string = matrix_element.get('processes')[0].shell_string()
+                for me in matrix_element.get('processes'):
+                    # get the orignal order:
+                    initial = []
+                    final = [l.get('id') for l in me.get_legs_with_decays()\
+                                if l.get('state') or initial.append(l.get('id'))]
+                    order = (tuple(initial), tuple(final))
+                    initial.sort(), final.sort()
+                    tag = (tuple(initial), tuple(final))
+                    self.all_me[tag] = {'pdir': "P%s" % me_string, 'order': order, 'type': prod_or_decay}
+
+
+        mgcmd = self.mgcmd
+        self.all_me = {}
+
+        # legacy options 'onshell_v1' and 'madspin_v1' store both the production and the decay in a single folder
+        if self.options['spinmode'] in ['onshell_v1', 'madspin_v1']:
+            commandline += self.get_decay_command()
+            commandline = commandline.replace('add process', 'generate',1)
+            mgcmd.exec_cmd(commandline, precmd=True)
+
+            commandline = 'output standalone %s --prefix=int' % pjoin(path_me, ms_me_subdir)
+            logger.info(commandline)
+            mgcmd.exec_cmd(commandline, precmd=True)
+            fill_all_me(self, "production")
+        else:
+            commandline_production = commandline.replace('add process', 'generate',1)
+            commandline_production += 'output standalone %s --prefix=int --density=1' % pjoin(path_me, ms_me_subdir)
+
+            logger.info(commandline_production)
+            mgcmd.exec_cmd(commandline_production, precmd=True)
+
+            # store information about the production matrix elements
+            fill_all_me(self, "production")
+
+            commandline_decay = self.get_decay_command()
+            commandline_decay += 'output standalone %s --prefix=int --density=1 -f' % pjoin(path_me, ms_me_decay_subdir) #we add -f, else it would ask us if we want to clean the folder madspin_decay and madspin_me
+            commandline_decay = commandline_decay.replace('add process', 'generate',1)
+
+            logger.info(commandline_decay)
+            mgcmd.exec_cmd(commandline_decay, precmd=True)
+
+            # store information about the decay matrix elements
+            fill_all_me(self, "decay")
+
+        logger.info('Done %.4g' % (time.time()-start))
+
+        return self.all_me
+
+    @misc.mute_logger()
+    def handle_model(self):
+        mgcmd = self.mgcmd
+        modelpath = self.model.get('modelpath+restriction')
+
+        # NLO contexts (loop_interface) force apply_flavor_grouping=False, which
+        # collapses get_external_flavors() to a single trivial entry and breaks
+        # merged-particle handling in MadSpin.  Re-enable it before reloading
+        # the model so the production MEs share the LO multi-flavor treatment.
+        mgcmd.exec_cmd('set apply_flavor_grouping True')
+
+        commandline="import model %s" % modelpath
+        if not self.model.mg5_name:
+            commandline += ' --modelname'
+
+        mgcmd.exec_cmd(commandline)
+        # Handle the multiparticle of the banner        
+        #for name, definition in self.mscmd.multiparticles:
+        if hasattr(self.mscmd, 'multiparticles_ms'):
+            for name, pdgs in  self.mscmd.multiparticles_ms.items():
+                if name == 'all':
+                    continue
+                #self.banner.get('proc_card').get('multiparticles'):
+                mgcmd.do_define("%s = %s" % (name, ' '.join(repr(i) for i in pdgs)))
+        mgcmd.exec_cmd("set group_subprocesses False")
+
+
+    def get_production_command(self, processes):
+
+            
+        logger.info('generating the production square matrix element for %s' % self.mode)
+        commandline=''
+        for proc in processes:
+            if '[' in proc:
+                new_proc = reweight_interface.ReweightInterface.get_LO_definition_from_NLO(proc, self.mgcmd._curr_model)
+            else:
+                new_proc = 'add process %s ;' % proc               
+            commandline += self.adapt_production(new_proc)
+#        commandline = commandline.replace('add process', 'generate',1)
+#        logger.info(commandline)
+#        
+#        mgcmd.exec_cmd(commandline, precmd=True)
+#        commandline = 'output standalone_msP %s %s' % \
+#        (pjoin(path_me,'production_me'), ' '.join(self.list_branches.keys()))        
+#        mgcmd.exec_cmd(commandline, precmd=True)        
+#        logger.info('Done %.4g' % (time.time()-start))
+
+        return commandline
+
+    def get_full_matrix_command(self, processes):
+        """generate full matrix-element squared with decay"""
+        logger.info('generating the full matrix element squared (with decay)')
+
+        
+#        start = time.time()
+        commandline = ''
+        to_decay = list(self.mscmd.list_branches.keys())
+        decay_text = []
+        for decays in self.mscmd.list_branches.values():
+            for decay in  decays:
+                # MadSpin's own '@' grouping tag, not something MG5 should see
+                decay = self.mscmd._split_group_tag(decay)[0]
+                if '=' not in decay:
+                    decay += ' QCD=99'
+                if ',' in decay:
+                    decay_text.append('(%s)' % decay)
+                else:
+                    decay_text.append(decay)
+        decay_text = ', '.join(decay_text)
+#        commandline = ''
+        
+        for proc in processes:
+            if not proc.strip().startswith(('add','generate')):
+                proc = 'add process %s' % proc
+            commandline += self.get_proc_with_decay(proc, decay_text, self.mgcmd._curr_model)
+
+#        start = time.time()
+        to_decay = list(self.mscmd.list_branches.keys())
+        decay_text = []
+        for decays in self.mscmd.list_branches.values():
+            for decay in  decays:
+                # MadSpin's own '@' grouping tag, not something MG5 should see
+                decay = self.mscmd._split_group_tag(decay)[0]
+                if '=' not in decay:
+                    decay += ' QCD=99'
+                if ',' in decay:
+                    decay_text.append('(%s)' % decay)
+                else:
+                    decay_text.append(decay)
+        decay_text = ', '.join(decay_text)
+#        commandline = ''
+
+        for proc in processes:
+            if not proc.strip().startswith(('add','generate')):
+                proc = 'add process %s' % proc
+            commandline += self.get_proc_with_decay(proc, decay_text, self.mgcmd._curr_model)
+
+        return commandline
+    
+    def get_decay_command(self):
         logger.info('generate matrix element for decay only (1 - > N).')
 #        start = time.time()
-#        commandline = ''
+        commandline = ''
         i=0
         for processes in self.list_branches.values():
             for proc in processes:
-                commandline+="add process %s @%i --no_warning=duplicate --standalone;" % (proc,i)
-                i+=1 
-
-        commandline = commandline.replace('add process', 'generate',1)
-        mgcmd.exec_cmd(commandline, precmd=True)
-        # remove decay with 0 branching ratio.
-        #mgcmd.remove_pointless_decay(self.banner.param_card)
-        #
-        misc.sprint("generating directory *****************************************************************************")
-        commandline = 'output standalone %s --prefix=int' % pjoin(path_me,'madspin_me')
-        logger.info(commandline)
-        mgcmd.exec_cmd(commandline, precmd=True)
-        logger.info('Done %.4g' % (time.time()-start))  
-        self.all_me = {}
-        # store information about matrix element
-        for matrix_element in mgcmd._curr_matrix_elements.get_matrix_elements():
-            me_string = matrix_element.get('processes')[0].shell_string()
-            for me in matrix_element.get('processes'):   
-                dirpath = pjoin(path_me,'madspin_me', 'SubProcesses', "P%s" % me_string)
-                # get the orignal order:
-                initial = []
-                final = [l.get('id') for l in me.get_legs_with_decays()\
-                          if l.get('state') or initial.append(l.get('id'))]
-                order = (tuple(initial), tuple(final))
-                initial.sort(), final.sort()
-                tag = (tuple(initial), tuple(final))
-                self.all_me[tag] = {'pdir': "P%s" % me_string, 'order': order}
-
-        return self.all_me
-    
-
+                # Drop MadSpin's own '@' grouping tag first: this line appends a
+                # process number of its own, MG5 binds that at the top level and
+                # would absorb the user's as the process number of the
+                # *sub-decay*. Nothing would fail -- the amplitude is the same --
+                # but the tag is MadSpin bookkeeping and has no business
+                # reaching MG5. (madspin_v1 strips it the same way, decay.py
+                # get_all_ME step 6.)
+                proc = self.mscmd._split_group_tag(proc)[0]
+                newproc = "add process %s @%i --no_warning=duplicate --standalone;" % (proc,i)
+                commandline += self.adapt_decay(newproc)
+                #commandline+="add process %s @%i --no_warning=duplicate --standalone;" % (proc,i)
+                i+=1
+        return commandline
 
     def compile(self):
         logger.info('Compiling code')
+        ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
+        ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
+        # Per-instance suffix for the f2py-linked shared library: with the
+        # default ``PROCNAME=`` the makefile produces ``liball_2me.{so,dylib}``
+        # regardless of which madspin_me_<N> subdir we are in, and the
+        # dynamic loader on both Linux (SONAME) and macOS (LC_ID_DYLIB)
+        # caches that library by its baked-in name. So a second MadSpin
+        # call in the same process — even loading a wrapper from a fresh
+        # subdir — would still resolve to the first call's already-loaded
+        # library and report ``undefined symbol`` for any newly-added
+        # matrix element. We override PROCNAME at make time for the 2nd+
+        # call so the resulting library gets a unique SONAME /
+        # install_name and the loader keeps both copies live.
+        ms_run_id = getattr(self.mscmd, '_ms_run_id', 1)
+        # The production (madspin_me) and decay (madspin_decay) matrix elements
+        # are compiled into two separate standalone trees but are loaded into
+        # the *same* Python process to build the density matrix. They must NOT
+        # share the f2py extension-module name (all_matrix<MENUM>py) nor the
+        # dependent Fortran shared library name (liball<PROCNAME>_<MENUM>me):
+        # with the empty default PROCNAME both sides otherwise produce
+        # ``all_matrix2py`` + ``@rpath/liball_2me.dylib``, and two identically
+        # named f2py modules (sharing the same Fortran COMMON blocks / global
+        # symbols) co-existing in one process corrupt memory and segfault
+        # during the density evaluation. Build the decay side with a distinct
+        # MENUM so both the module and the dependent library get unique names.
+        # (see MadSpinInterface._load_f2py_matrix_module / create_f2py_module,
+        # which load madspin_me with MENUM=2 and madspin_decay with MENUM=1).
+        prod_args = ['MENUM=2', 'all_matrix2py.so']
+        decay_args = ['MENUM=1', 'all_matrix1py.so']
+        if ms_run_id > 1:
+            prod_args.insert(0, 'PROCNAME=_ms%d' % ms_run_id)
+            decay_args.insert(0, 'PROCNAME=_ms%d' % ms_run_id)
         #my_env = os.environ.copy()
         #os.environ["GFORTRAN_UNBUFFERED_ALL"] = "y"
-        misc.compile(cwd=pjoin(self.path_me,'madspin_me', 'Source'),
-                     nb_core=self.mgcmd.options['nb_core'])        
-        misc.compile(['all_matrix2py.so'],cwd=pjoin(self.path_me,'madspin_me', 'SubProcesses'),
+        misc.compile(cwd=pjoin(self.path_me, ms_me_subdir, 'Source'),
                      nb_core=self.mgcmd.options['nb_core'])
+        misc.compile(prod_args,
+                     cwd=pjoin(self.path_me, ms_me_subdir, 'SubProcesses'),
+                     nb_core=self.mgcmd.options['nb_core'])
+        #Valentin: not sure the decay_folder exists in all cases, so I check
+        if os.path.exists(pjoin(self.path_me, ms_me_decay_subdir)):
+            misc.compile(cwd=pjoin(self.path_me, ms_me_decay_subdir, 'Source'),
+                        nb_core=self.mgcmd.options['nb_core'])
+            misc.compile(decay_args,
+                        cwd=pjoin(self.path_me, ms_me_decay_subdir, 'SubProcesses'),
+                        nb_core=self.mgcmd.options['nb_core'])
 
     def save_to_file(self, *args):
         import sys
@@ -4371,4 +5613,819 @@ class decay_all_events_onshell(decay_all_events):
             return super(decay_all_events_onshell,self).save_to_file(*args) 
 
     
+
+    def adapt_production(self, line):
+        return line
     
+    def adapt_decay(self, line):
+        return line
+   
+    
+class decay_all_events_density(decay_all_events_onshell):    
+    
+    mode = 'density'
+
+    def __init__(self, *args, **opts):
+        self.density_matrix = True
+        return super().__init__(*args, **opts)
+
+
+    #def get_full_matrix_command(self, processes): 
+    #    "No need of full matrix-element in this mode"
+    #    return ""
+    
+    def adapt_production(self, line):
+        """If allowing offshell matrix element add * to the decaying particle.
+
+        Only particles that the user actually asked MadSpin to decay (i.e. keys
+        of ``self.mscmd.list_branches``) get marked off-shell. Spectator final-
+        state particles -- in particular multiparticle aliases like ``j`` --
+        must be left as-is, otherwise MG5 receives an invalid process string
+        of the form ``... > t* j* ;`` and "Skipping full ME calculation"."""
+
+        if self.options['spinmode'] in ['PA', 'onshell']:
+             return line
+
+        to_decay = set()
+        if hasattr(self, 'mscmd') and hasattr(self.mscmd, 'list_branches'):
+            to_decay = set(self.mscmd.list_branches.keys())
+
+        out = []
+        input = line.split(';')
+        for oneline in input:
+            if not oneline.strip():
+                continue
+            if '>' not in oneline:
+                # Non-process command (e.g. the NLO 'define pert_QCD = ...' line):
+                # nothing to mark off-shell, keep it verbatim.
+                out.append("%s;" % oneline.strip())
+                continue
+            init, final = oneline.rsplit('>',maxsplit=1)
+            end = len(final)
+            if "[" in final:
+                end = min(end, final.index('['))
+            if "$" in final:
+                end = min(end, final.index('$'))
+            if "/" in final:
+                end = min(end, final.index('/'))
+            particle, final = final[:end], final[end:]
+            new_particle = []
+            for p in particle.split():
+                # a polarised leg is written "t{L}"; the label MadSpin decays is
+                # the part before the brace, and MG5 parses the off-shell star
+                # after it ("t{L}*"), so strip the brace for the lookup only.
+                name = p.split('{', 1)[0]
+                if name in to_decay:
+                    new_particle.append('%s*' % p)
+                else:
+                    new_particle.append(p)
+            out.append("%s > %s %s;" % (init, ' '.join(new_particle), final))
+        return ' '.join(out)
+
+    
+    def adapt_decay(self, line):
+        '''If allowing offshell matrix element add * to the decaying particle.'''
+        if self.options['spinmode'] in ['PA', 'onshell']:
+             return line
+        
+        out = []
+        input = line.split(';')
+        for oneline in input:
+            if not oneline.strip():
+                continue
+            if '>' not in oneline:
+                # Non-process command (e.g. the NLO 'define pert_QCD = ...' line):
+                # nothing to mark off-shell, keep it verbatim.
+                out.append("%s;" % oneline.strip())
+                continue
+            init, final = oneline.split('>',maxsplit=1)
+            end = len(init)
+            out.append("%s* > %s;" % (init.strip(), final))
+
+        return ' '.join(out)
+
+    def save_to_file(self, *args):
+
+        import sys
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            return super(decay_all_events_onshell,self).save_to_file(*args) 
+
+
+
+class DensityMatrix:
+    """
+    DensityMatrix is a numpy container holding
+      - helicities: int32 array of shape (N, L)
+      - values:     complex64 array of shape (N,)
+    It corresponds to INTER = Sum_colors JAMP(h1)*JAMP(h2)
+    (eq 45 in Quentin's thesis)
+
+    PERFORMANCE NOTES 
+    -----------------
+    - Keep helicity labels, but store them as plain NumPy arrays
+    - Cache the helicity-index map (allowed_hel, n_changing) -> map dict
+    - Avoid Python dict/tuple joins during contractions
+    - cache ONE lexsort permutation per basis_id
+    - Cache diagonal masks per basis_id (trace becomes cheap)
+    - Cache tensor-product helicity tables per tensor-product basis_id, so tensor_product
+       only recomputes VALUES per event (outer product / kron), not helicity labels.
+
+    Invariants
+    ----------
+    - helicities[k] and values[k] always refer to the same matrix element.
+    - for map-built instances, row order is deterministic from get_map_density_matrix().
+    - scalar_multiplication fast-path is valid only when map_density_matrix_ind is
+      the same cached object.
+    """
+
+    # Cache for the helicity-index map.
+    # Key: (tuple(allowed_hel), n_changing)
+    _map_cache = {}
+
+    # Cache for map-built basis templates.
+    # Key: (tuple(allowed_hel), n_changing)
+    # Value: (helicities[int32], source_idx[int64], needs_conjugation[bool])
+    _map_template_cache = {}
+
+    # Cache for sort permutations by basis_id.
+    # basis_id is stable across events for the same helicity basis.
+    _sort_cache = {}
+
+    # Cache diagonal masks by basis_id (depends only on helicities)
+    _diag_cache = {}
+
+    # Cache tensor-product helicity tables by basis_id
+    _tp_hel_cache = {}
+
+    # Cache helicity-restriction row selections.
+    # Key: (basis_id, normalised restriction key)
+    # Value: (mask[bool], rows[int64], diag_rows[int64]) -- see _restriction_rows
+    _restriction_cache = {}
+
+    # Same, but for the sorted-alignment path: the surviving positions *within*
+    # the cached sort permutation. Filled lazily, since the map-built fast path
+    # never needs a sort order at all.
+    # Key: (basis_id, normalised restriction key)
+    # Value: (keep[int64], sorted_rows[int64])
+    _restriction_sort_cache = {}
+
+    def __init__(self, array, nchanging, all_helicity_combinations, dimension):
+        """
+        Parameters
+        ----------
+        array : np.ndarray or array-like
+            Either:
+              - a 1D complex array containing the independent INTER entries in the
+                MadGraph/MadSpin triangular storage convention (as produced by Fortran),
+                OR
+              - a dict-like object {"helicities": <int32 (N,L)>, "values": <complex64 (N,)>}
+                (used internally by from_components / tensor_product).
+        nchanging : int
+            Number of helicities that are changing in the decay chain segment.
+        all_helicity_combinations : list[int] or np.ndarray
+            Flat list of allowed helicities (Fortran-style ordering) used to build the map.
+        dimension : int
+            Dimension used for packed-triangular diagonal indexing.
+        """
+        self.nchanging = int(nchanging)
+        self.all_helicity_combinations = all_helicity_combinations
+        self.dimension = int(dimension)
+
+        # Indices of diagonal elements in the packed upper-triangular storage
+        self.diag_elements = [
+            i * (2 * self.dimension - i + 1) // 2 for i in range(self.dimension)
+        ]
+
+        # Map is cached and reused across instances with same (allowed_hel, n_changing)
+        self.map_density_matrix_ind = DensityMatrix.get_map_density_matrix(
+            all_helicity_combinations, self.nchanging
+        )
+
+        # Basis identifier (stable across events) for caching sort permutations and diag masks.
+        # For "map-built" matrices, this is fully determined by (allowed_hel, n_changing).
+        self._basis_id = ("map", tuple(all_helicity_combinations), self.nchanging)
+
+        # Per-particle helicity restriction (see set_hel_restriction). None = full sum.
+        self.hel_restriction = None
+        # Restriction used by trace()/normalized() when hel_restriction is a
+        # *cross* one (see set_hel_restriction_trace). None = untraced.
+        self.hel_restriction_trace = None
+
+        # Lazy per-instance cache
+        self._sort_order = None
+
+        # If array already comes in as our internal representation (from_components)
+        if isinstance(array, dict) and "helicities" in array and "values" in array:
+            self.helicities = array["helicities"].astype(np.int32, copy=False)
+            self.values = array["values"].astype(np.complex64, copy=False)
+        else:
+            hel_template, src_idx, conj_mask = DensityMatrix.get_map_template(
+                all_helicity_combinations, self.nchanging
+            )
+            values = np.asarray(array)[src_idx]
+            if conj_mask.any():
+                values = values.copy()
+                values[conj_mask] = np.conjugate(values[conj_mask])
+            self.helicities = hel_template
+            self.values = values.astype(np.complex64, copy=False)
+
+        # Diagonal mask is cached per basis_id
+        self._diag_mask = self._get_diag_mask_cached()
+
+    # -------------------------------------------------------------------------
+    # Map caching 
+    # -------------------------------------------------------------------------
+
+    @classmethod
+    def get_map_density_matrix(cls, allowed_hel, n_changing):
+        """Build/cache mapping: helicity label tuple -> (is_direct, inter_index).
+
+        allowed_hel is the flat Fortran ALLOW_HEL buffer of length
+        n_comb*n_changing. Direct entries are filled for I<=J; conjugate labels
+        reuse the same INTER index.
+        """
+        # allowed_hel can be list/np array: make it hashable
+        cache_key = (tuple(allowed_hel), int(n_changing))
+        cached = cls._map_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        map_density = {}
+        #c  FORTRAN CODE
+        #c 576       DO I = 1, N_COMB
+        #c 577         DO N = 1, N_CHANGING
+        #c 578           NHEL(POS(N)) = ALLOW_HEL((I-1)*N_CHANGING+N)
+        #c 579           CALL GET_AMP(P,NHEL,IC,AMP)
+        #c 580           CALL GET_JAMP(AMP,JAMP(1,I))
+        #c 581         ENDDO
+        #c 582       ENDDO
+        #c 584       SOL = 0
+        #c 585       DO I = 1, N_COMB
+        #c 586         DO J= I, N_COMB
+        #c 587           SOL = SOL +1
+        #c 588           CALL GET_INTER(JAMP(1,I), JAMP(1,J), INTER(SOL))
+        #c 589         ENDDO
+        #c 590       ENDDO
+
+        n_comb = len(allowed_hel) // n_changing
+
+        # Direct entries (i <= j)
+        nb_sol = 0
+        for i in range(n_comb):
+            for j in range(i, n_comb):
+                curr_index = []
+                for n in range(n_changing):
+                    curr_index.append(allowed_hel[i * n_changing + n])
+                    curr_index.append(allowed_hel[j * n_changing + n])
+                map_density[tuple(curr_index)] = (True, nb_sol)
+                nb_sol += 1
+
+        # Complex-conjugate entries (swap each (h1,h2) pair)
+        def conjugate_index(orig_index):
+            flip_index = []
+            for k in range(0, len(orig_index), 2):
+                flip_index += [orig_index[k + 1], orig_index[k]]
+            return tuple(flip_index)
+
+        for key in list(map_density.keys()):
+            conj = conjugate_index(key)
+            if conj != key:
+                map_density[conj] = (False, map_density[key][1])
+
+        cls._map_cache[cache_key] = map_density
+        return map_density
+
+    @classmethod
+    def get_map_template(cls, allowed_hel, n_changing):
+        """Return cached (helicities, src_idx, conj_mask) for vectorized reconstruction.
+
+        helicities is shared cached data and should not be mutated in place.
+        src_idx selects packed INTER entries; conj_mask marks entries that need
+        complex conjugation.
+        """
+        cache_key = (tuple(allowed_hel), int(n_changing))
+        cached = cls._map_template_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        map_density = cls.get_map_density_matrix(allowed_hel, n_changing)
+        keys = list(map_density.keys())
+        helicities = np.asarray(keys, dtype=np.int32)
+        src_idx = np.fromiter(
+            (map_density[key][1] for key in keys), dtype=np.int64, count=len(keys)
+        )
+        conj_mask = np.fromiter(
+            (not map_density[key][0] for key in keys), dtype=np.bool_, count=len(keys)
+        )
+        out = (helicities, src_idx, conj_mask)
+        cls._map_template_cache[cache_key] = out
+        return out
+
+    # -------------------------------------------------------------------------
+    # Construction helper for tensor products
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def from_components(helicities, values, nchanging, all_helicity_combinations, dimension, basis_id):
+        """
+        Construct from prebuilt arrays (typically tensor products).
+
+        No map is attached (map_density_matrix_ind=None), so scalar contraction
+        uses the sorted-alignment path.
+        """
+        obj = object.__new__(DensityMatrix)
+        obj.nchanging = int(nchanging)
+        obj.all_helicity_combinations = all_helicity_combinations
+        obj.dimension = int(dimension)
+        obj.diag_elements = [
+            i * (2 * obj.dimension - i + 1) // 2 for i in range(obj.dimension)
+        ]
+
+        # Tensor-product objects typically don't have a useful map
+        obj.map_density_matrix_ind = None
+
+        obj.helicities = helicities.astype(np.int32, copy=False)
+        obj.values = values.astype(np.complex64, copy=False)
+
+        obj._basis_id = basis_id
+        obj.hel_restriction = None
+        obj.hel_restriction_trace = None
+        obj._sort_order = None
+
+        # Diagonal mask is cached per basis_id
+        obj._diag_mask = obj._get_diag_mask_cached()
+        return obj
+
+    # -------------------------------------------------------------------------
+    # Cached diagonal mask
+    # -------------------------------------------------------------------------
+
+    def _get_diag_mask_cached(self):
+        """
+        Diagonal entries satisfy, for label [h1_1,h2_1,h1_2,h2_2,...]:
+            h1_k == h2_k  for all k
+        This is independent of entry ordering and depends only on helicities,
+        so we cache it per basis_id.
+        """
+        cached = DensityMatrix._diag_cache.get(self._basis_id)
+        if cached is not None:
+            return cached
+
+        h = self.helicities
+        mask = np.all(h[:, 0::2] == h[:, 1::2], axis=1)
+        DensityMatrix._diag_cache[self._basis_id] = mask
+        return mask
+
+    # -------------------------------------------------------------------------
+    # Helicity restriction (production polarisation)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _is_cross_restriction(entry):
+        """Whether a *normalised* per-particle entry is a cross (interference)
+        one, i.e. a ``(bra_allowed, ket_allowed)`` pair rather than a flat
+        tuple of helicity values."""
+        return (isinstance(entry, tuple) and len(entry) == 2
+                and isinstance(entry[0], tuple))
+
+    @staticmethod
+    def normalize_hel_restriction(restriction):
+        """Canonical, hashable form of a per-particle helicity restriction.
+
+        ``restriction`` is a sequence with one entry per *changing* helicity
+        (i.e. per decaying particle, in the order the density matrix' helicity
+        columns are laid out). Each entry is either
+
+          - ``None`` (or an empty container): that index is summed over its
+            whole basis -- the historical behaviour,
+
+          - a container of the helicity values that index is allowed to take
+            (the *symmetric* form: both the bra and the ket index of that
+            particle must lie in the set), or
+
+          - a pair ``(bra_allowed, ket_allowed)`` of two such containers (the
+            *cross*, or pure-interference, form: see ``set_hel_restriction``).
+            ``(S, S)`` normalises back to the symmetric ``S``.
+
+        Returns ``None`` when nothing is restricted, so that the unrestricted
+        code paths stay bit-for-bit identical.
+        """
+        if restriction is None:
+            return None
+
+        def _flat(values):
+            return tuple(sorted(set(int(h) for h in values)))
+
+        key = []
+        for allowed in restriction:
+            if allowed is None:
+                key.append(None)
+                continue
+            allowed = list(allowed)
+            if allowed and all(isinstance(x, (list, tuple, set, frozenset))
+                               for x in allowed):
+                if len(allowed) != 2:
+                    raise ValueError(
+                        "A cross helicity restriction must be a "
+                        "(bra_allowed, ket_allowed) pair, got %s" % (allowed,))
+                bra, ket = _flat(allowed[0]), _flat(allowed[1])
+                if not bra or not ket:
+                    # an empty side would kill the whole contraction; treat it
+                    # like the unrestricted historical spelling instead
+                    key.append(None)
+                elif bra == ket:
+                    key.append(bra)
+                else:
+                    key.append((bra, ket))
+                continue
+            allowed = _flat(allowed)
+            key.append(allowed if allowed else None)
+        if all(a is None for a in key):
+            return None
+        return tuple(key)
+
+    def set_hel_restriction(self, restriction):
+        """Attach a per-particle helicity restriction to this matrix.
+
+        The restriction travels with the matrix rather than with the call, so
+        that ``scalar_multiplication`` / ``trace`` pick it up wherever the
+        production density matrix is contracted -- including the sequential
+        accept/reject, which contracts it against partially filled decay
+        tensors. Returns self so it can be chained onto ``get_density``.
+
+        A restricted index is one whose production process carries a
+        polarisation brace: ``{0}``/``{+}``/``{-}`` select a single helicity X
+        and so keep only the diagonal ``rho_prod(X,X) rho_dec(X,X)`` term,
+        ``{T}`` keeps the whole ``-1/+1`` block and drops the ``0`` row and
+        column. The rule is uniform: a matrix element (i,j) of particle k
+        survives iff *both* i and j are allowed for k.
+
+        A per-particle entry may instead be a *cross* pair ``(P, D)``, which
+        keeps the (i,j) entries with ``i in P and j in D`` **together with**
+        their transposes ``i in D and j in P``. With ``P`` and ``D`` disjoint
+        this is the pure-interference block between the two polarisations: it
+        has no diagonal entry, so the restricted ``trace()`` is exactly zero
+        (the interference term carries no cross-section), and it is closed
+        under (i,j) -> (j,i). That closure is what makes the contraction real:
+        rho_prod and rho_dec are both hermitian, so the (j,i) term is the
+        complex conjugate of the (i,j) one and the pair adds up to
+        ``2 Re[rho_prod(i,j) rho_dec(i,j)]``. Summing ``P x D`` *alone* would
+        give a complex number and is not a physical weight -- see
+        doc/madspin_sequential_plan.md section 13.
+        """
+        self.hel_restriction = DensityMatrix.normalize_hel_restriction(restriction)
+        return self
+
+    def set_hel_restriction_trace(self, restriction):
+        """Attach the restriction ``trace()`` / ``normalized()`` must use when
+        ``hel_restriction`` is a *cross* (pure-interference) one.
+
+        For a symmetric restriction the two are the same object and this is
+        never consulted: the polarised cross-section is normalised by the
+        polarised trace, which is exactly the restriction the contraction uses,
+        and that is what keeps the accept/reject weight averaging to 1/n.
+
+        A cross restriction has no diagonal entry, so its restricted trace is
+        identically zero -- it is the statement that the interference term
+        carries no cross-section. Using it to normalise would divide the weight
+        by zero, so the two restrictions have to part company here: the
+        contraction stays on the interference block while the normalisation
+        keeps using the *production* trace, i.e. the symmetric restriction the
+        production process' own braces impose (``None``, the full trace, for the
+        unpolarised production this mode requires). See
+        doc/madspin_sequential_plan.md section 13.4.
+        """
+        self.hel_restriction_trace = \
+            DensityMatrix.normalize_hel_restriction(restriction)
+        return self
+
+    def _trace_restriction(self):
+        """The restriction in force for ``trace()``.
+
+        Symmetric restrictions are returned untouched, so nothing that existed
+        before the interference mode can move; only a cross restriction defers
+        to ``hel_restriction_trace``.
+        """
+        restriction = self.hel_restriction
+        if restriction is None:
+            return None
+        if any(DensityMatrix._is_cross_restriction(entry)
+               for entry in restriction):
+            return self.hel_restriction_trace
+        return restriction
+
+    def _restriction_rows(self, restriction):
+        """(mask, rows, diag_rows) implementing ``restriction`` on this matrix.
+
+        ``mask`` is the boolean row mask, ``rows`` the indices of the surviving
+        rows and ``diag_rows`` the indices surviving *and* diagonal (what the
+        restricted trace sums). All three depend only on the helicity labels, so
+        they are cached per (basis_id, restriction) and never recomputed per
+        event.
+
+        The contractions use ``rows``/``diag_rows`` rather than ``mask``: a
+        restriction typically keeps a handful of rows out of hundreds, and
+        gathering with a short index array is markedly cheaper than boolean
+        indexing, which has to scan (and count) the full-length array. The rows
+        come out in increasing index order, i.e. exactly the order boolean
+        indexing would have produced, so the sums are bit-for-bit identical.
+        """
+        if restriction is None:
+            return None, None, None
+        cache_key = (self._basis_id, restriction)
+        cached = DensityMatrix._restriction_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        h = self.helicities
+        mask = np.ones(h.shape[0], dtype=np.bool_)
+        for k, allowed in enumerate(restriction):
+            if allowed is None:
+                continue
+            # column 2k is the row (bra) helicity of particle k, 2k+1 the column
+            # (ket) one -- see get_map_density_matrix
+            bra, ket = h[:, 2 * k], h[:, 2 * k + 1]
+            if DensityMatrix._is_cross_restriction(allowed):
+                # pure interference: (bra in P and ket in D) or its transpose.
+                # Keeping both orderings is not optional -- it is what makes the
+                # contraction real (see set_hel_restriction).
+                left = np.asarray(allowed[0], dtype=np.int32)
+                right = np.asarray(allowed[1], dtype=np.int32)
+                mask &= ((np.isin(bra, left) & np.isin(ket, right)) |
+                         (np.isin(bra, right) & np.isin(ket, left)))
+                continue
+            allowed = np.asarray(allowed, dtype=np.int32)
+            mask &= np.isin(bra, allowed)
+            mask &= np.isin(ket, allowed)
+
+        out = (mask, np.flatnonzero(mask), np.flatnonzero(self._diag_mask & mask))
+        DensityMatrix._restriction_cache[cache_key] = out
+        return out
+
+    def _restriction_row_mask(self, restriction):
+        """Boolean row mask implementing ``restriction`` on this matrix' labels."""
+        return self._restriction_rows(restriction)[0]
+
+    def _restriction_sorted_rows(self, restriction):
+        """(keep, sorted_rows) for the sorted-alignment path.
+
+        ``keep`` are the positions inside the cached sort permutation whose row
+        survives, and ``sorted_rows`` the rows themselves (``sort_order[keep]``).
+        Contracting ``self.values[sorted_rows]`` against
+        ``other.values[other_sort_order[keep]]`` visits exactly the entries, in
+        exactly the order, that masking the two sorted views would have.
+
+        Requires ``_ensure_sorted_view`` to have run.
+        """
+        cache_key = (self._basis_id, restriction)
+        cached = DensityMatrix._restriction_sort_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        order = self._sort_order
+        keep = np.flatnonzero(self._restriction_rows(restriction)[0][order])
+        out = (keep, order[keep])
+        DensityMatrix._restriction_sort_cache[cache_key] = out
+        return out
+
+    @staticmethod
+    def _combine_restrictions(a, b):
+        """The restriction in force for a contraction between two matrices.
+
+        Only one side ever carries one (the production density matrix knows the
+        polarisation, the decay side does not), so this is really "whichever is
+        set", with a guard against two contradicting ones.
+        """
+        if a is None:
+            return b
+        if b is None or a == b:
+            return a
+        raise ValueError("Contradicting helicity restrictions between the "
+                         "production and decay spin-density matrices")
+
+    # -------------------------------------------------------------------------
+    # Cached permutation for alignment by helicity labels
+    # -------------------------------------------------------------------------
+
+    def _ensure_sorted_view(self):
+        """
+        Cache the permutation that sorts rows by helicity labels for this basis.
+        This is computed ONCE per basis_id and reused across all events, avoiding
+        the repeated sort storm.
+        """
+        if self._sort_order is not None:
+            return
+
+        bid = self._basis_id
+        cached = DensityMatrix._sort_cache.get(bid)
+        if cached is not None:
+            self._sort_order = cached
+            return
+
+        hel = self.helicities
+        # Lexicographic sort by columns: last key is primary -> reverse columns
+        keys = [hel[:, i] for i in range(hel.shape[1] - 1, -1, -1)]
+        order = np.lexsort(keys)
+
+        DensityMatrix._sort_cache[bid] = order
+        self._sort_order = order
+
+    # -------------------------------------------------------------------------
+    # Operations
+    # -------------------------------------------------------------------------
+
+    def scalar_multiplication(self, other, hel_restriction=None):
+        """
+        Scalar contraction between two density matrices.
+
+        Fast path:
+        - If both matrices are built from the same cached map object, the entry
+          order matches by construction -> dot-product of values.
+
+        General path:
+        - Align by cached helicity-sort permutations (one per basis_id), then
+          dot-product on aligned values.
+
+        ``hel_restriction`` (or, when omitted, the one either operand carries --
+        see ``set_hel_restriction``) drops the (i,j) terms the production
+        polarisation forbids before summing.
+        """
+        if len(self.values) != len(other.values):
+            raise TypeError("Non-compatible dimensions of production and decay spin-density matrices")
+
+        restriction = DensityMatrix._combine_restrictions(
+            self.hel_restriction, other.hel_restriction)
+        if hel_restriction is not None:
+            restriction = DensityMatrix._combine_restrictions(
+                restriction, DensityMatrix.normalize_hel_restriction(hel_restriction))
+        # Fastest correct path for map-built matrices
+        if (self.map_density_matrix_ind is not None and
+                self.map_density_matrix_ind is other.map_density_matrix_ind):
+            if restriction is None:
+                return np.sum(self.values * other.values)
+            rows = self._restriction_rows(restriction)[1]
+            return np.sum(self.values[rows] * other.values[rows])
+
+        # Align by cached ordering for each basis
+        self._ensure_sorted_view()
+        other._ensure_sorted_view()
+
+        a = self._sort_order
+        b = other._sort_order
+        if restriction is None:
+            return np.sum(self.values[a] * other.values[b])
+        # the restriction lives on self's rows; the surviving positions inside
+        # the sort permutation are the same on both sides, so one cached gather
+        # does the masking and the alignment at once
+        keep, rows = self._restriction_sorted_rows(restriction)
+        return np.sum(self.values[rows] * other.values[b[keep]])
+
+    def tensor_product(self, other):
+        """
+        Tensor product of two density matrices (vectorized), with cached helicity labels.
+
+        Values:
+          - computed every call (event-dependent)
+
+        Helicities:
+          - cached per tensor-product basis_id (basis-dependent, not event-dependent)
+        """
+        # Cache key is basis-structure dependent and remains bounded per process setup.
+        basis_id = ("tp", self._basis_id, other._basis_id)
+
+        # --- helicities: cache per basis_id ---
+        hel = DensityMatrix._tp_hel_cache.get(basis_id)
+        if hel is None:
+            h1 = self.helicities
+            h2 = other.helicities
+            n1, L1 = h1.shape
+            n2, L2 = h2.shape
+
+            L = L1 + L2
+            hel = np.empty((n1 * n2, L), dtype=np.int32)
+            hel[:, :L1] = np.repeat(h1, n2, axis=0)
+            hel[:, L1:] = np.tile(h2, (n1, 1))
+
+            DensityMatrix._tp_hel_cache[basis_id] = hel
+
+        # --- values: compute every call ---
+        v1 = self.values
+        v2 = other.values
+
+        # Often faster than np.kron
+        vals = (v1[:, None] * v2[None, :]).ravel().astype(np.complex64, copy=False)
+
+        out = DensityMatrix.from_components(
+            hel,
+            vals,
+            self.nchanging + other.nchanging,
+            self.all_helicity_combinations,
+            self.dimension,
+            basis_id=basis_id,
+        )
+        # a restriction is per-index, so the tensor product simply concatenates
+        # the two (the decay side normally carries none, and this stays None)
+        if self.hel_restriction is not None or other.hel_restriction is not None:
+            left = self.hel_restriction or (None,) * self.nchanging
+            right = other.hel_restriction or (None,) * other.nchanging
+            out.set_hel_restriction(tuple(left) + tuple(right))
+            # the trace restriction is per-index too, and concatenates the same
+            # way; it only differs from the above for a cross restriction
+            if (self.hel_restriction_trace is not None
+                    or other.hel_restriction_trace is not None):
+                left = self.hel_restriction_trace or (None,) * self.nchanging
+                right = other.hel_restriction_trace or (None,) * other.nchanging
+                out.set_hel_restriction_trace(tuple(left) + tuple(right))
+        return out
+
+    @classmethod
+    def identity(cls, nchanging, all_helicity_combinations, dimension):
+        """The density matrix a decay averages to over its *full* phase space:
+        delta_{hh'} / n.
+
+        Integrating a decay density matrix over the whole solid angle kills the
+        off-diagonal (interference) entries by rotational invariance in the
+        parent rest frame, and leaves the diagonal flat. So a particle whose
+        decay has not been drawn yet contributes exactly this to the production
+        contraction -- which is what lets the accept/reject be done one particle
+        at a time (see doc/madspin_sequential_plan.md).
+
+        Built through the normal constructor, so it shares the cached helicity
+        map with the real density matrices of the same basis and keeps the
+        scalar_multiplication fast path available.
+        """
+        array = np.zeros(dimension * (dimension + 1) // 2, dtype=np.complex64)
+        # diagonal entries in the packed upper-triangular storage
+        diag = [i * (2 * dimension - i + 1) // 2 for i in range(dimension)]
+        array[diag] = 1.0 / dimension
+        return cls(array, nchanging, all_helicity_combinations, dimension)
+
+    def normalized(self):
+        """Same matrix divided by its trace (Dhat = D / Tr D), i.e. on the same
+        footing as ``identity``. Returns self unchanged if the trace vanishes.
+
+        Cached: a density matrix does not change after construction, and the
+        sequential accept/reject normalises each accepted slot once per later
+        slot -- O(n^2) times for n decaying particles otherwise."""
+        cached = getattr(self, '_normalized_cache', None)
+        if cached is not None:
+            return cached
+        tr = self.trace()
+        if tr == 0:
+            self._normalized_cache = self
+            return self
+        out = DensityMatrix.from_components(
+            self.helicities,
+            self.values / tr,
+            self.nchanging,
+            self.all_helicity_combinations,
+            self.dimension,
+            basis_id=self._basis_id,
+        )
+        out.hel_restriction = self.hel_restriction
+        out.hel_restriction_trace = self.hel_restriction_trace
+        self._normalized_cache = out
+        return out
+
+    def trace(self, hel_restriction=None):
+        """
+        Order-independent trace.
+
+        With a helicity restriction in force (production polarisation) this is
+        the *restricted* trace, sum_{h in allowed} rho(h,h): that is the
+        normalisation the polarised production cross-section actually uses, and
+        keeping it consistent with ``scalar_multiplication`` is what leaves the
+        accept/reject weight averaging to 1/n exactly as in the unrestricted
+        case.
+        """
+        restriction = self._trace_restriction()
+        if hel_restriction is not None:
+            restriction = DensityMatrix._combine_restrictions(
+                restriction, DensityMatrix.normalize_hel_restriction(hel_restriction))
+        if restriction is None:
+            return np.sum(self.values[self._diag_mask])
+        return np.sum(self.values[self._restriction_rows(restriction)[2]])
+
+
+    def print_full_matrix(self, precision=6):
+
+        n = self.dimension
+        M = np.empty((n, n), dtype=np.complex64)
+
+        idx = 0
+        for i in range(n):
+            for j in range(i, n):
+                v = self.values[idx]
+                M[i, j] = v
+                M[j, i] = np.conjugate(v)
+                idx += 1
+
+        fmt = f"{{: .{precision}e}}"
+
+        print("\nFull density matrix:\n")
+        for i in range(n):
+            print(" ".join(
+                f"({fmt.format(M[i,j].real)},{fmt.format(M[i,j].imag)})"
+                for j in range(n)
+            ))
+
+        return M

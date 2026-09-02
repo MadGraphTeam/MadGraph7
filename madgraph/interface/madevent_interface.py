@@ -825,31 +825,34 @@ class AskRun(cmd.ControlSwitch):
 #   MADSPIN handling
 #
     def get_allowed_madspin(self):
-        """ ON|OFF|onshell """
+        """ ON|OFF|onshell|madspin|full|PA|none """
         
         if hasattr(self, 'allowed_madspin'):
             return self.allowed_madspin
         
         self.allowed_madspin = []
         if 'MadSpin'  in self.available_module:
-            self.allowed_madspin = ['OFF',"ON",'onshell',"full"]
+            self.allowed_madspin = ['OFF', 'ON', 'onshell', 'madspin',
+                                    'full', 'PA', 'none',
+                                    'madspin_v1', 'onshell_v1']
         return self.allowed_madspin
     
     def check_value_madspin(self, value):
         """handle alias and valid option not present in get_allowed_madspin"""
         
         if value.upper() in self.get_allowed_madspin():
-            return True
+            if value == value.upper():
+                return True
+            else:
+                return value.upper()
         elif value.lower() in self.get_allowed_madspin():
-            return True
+            if value == value.lower():
+                return True
+            else:
+                return value.lower()
         
         if 'MadSpin' not in self.available_module:
             return False
-             
-        if value.lower() in ['madspin', 'full']:
-            return 'full'
-        elif value.lower() in ['none']:
-            return 'none'
         
     
     def set_default_madspin(self):
@@ -865,16 +868,27 @@ class AskRun(cmd.ControlSwitch):
             
     def get_cardcmd_for_madspin(self, value):
         """set some command to run before allowing the user to modify the cards."""
-        
-        if value == 'onshell':
-            return ["edit madspin_card --replace_line='set spinmode' --before_line='decay' set spinmode onshell"]
-        elif value in ['full', 'madspin']:
-            return ["edit madspin_card --replace_line='set spinmode' --before_line='decay' set spinmode full"]
-        elif value == 'none':
-            return ["edit madspin_card --replace_line='set spinmode' --before_line='decay' set spinmode none"]
+
+        if value in ['onshell', 'madspin', 'full', 'PA', 'none',
+                     'madspin_v1', 'onshell_v1']:
+            return ["edit madspin_card --replace_line='set spinmode' --before_line='decay' set spinmode %s" % value ]
         else:
             return []
-        
+
+    def switch_value_from_card_madspin(self):
+        """re-derive the madspin switch from the spinmode written in
+        madspin_card.dat (called after the user has edited the cards)."""
+
+        path = pjoin(self.me_dir, 'Cards', 'madspin_card.dat')
+        if not os.path.exists(path):
+            return None
+        for line in open(path):
+            line = line.split('#', 1)[0]
+            match = re.match(r'\s*set\s+spinmode\s+(\S+)', line, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return 'ON'  # card present but no explicit spinmode
+
 #
 #   ReWeight handling
 #
@@ -887,7 +901,7 @@ class AskRun(cmd.ControlSwitch):
         if 'reweight' not in self.available_module:
             self.allowed_reweight = []
             return
-        self.allowed_reweight = ['OFF', 'ON']
+        self.allowed_reweight = ['OFF', 'ON', 'density']
         
         # check for plugin mode
         plugin_path = self.mother_interface.plugin_path
@@ -899,11 +913,92 @@ class AskRun(cmd.ControlSwitch):
         
         if 'reweight' in self.available_module:
             if os.path.exists(pjoin(self.me_dir,'Cards','reweight_card.dat')):
-                self.switch['reweight'] = 'ON'
+                reweightcard = open(pjoin(self.me_dir,'Cards','reweight_card.dat'), 'r')
+                content = reweightcard.read()
+                if 'change particle_in_density_matrix' in content:
+                    self.switch['reweight'] = 'density'
+                else:
+                    self.switch['reweight'] = 'ON'
+                reweightcard.close()
             else:
                 self.switch['reweight'] = 'OFF'
         else:
-            self.switch['reweight'] = 'Not Avail.'        
+            self.switch['reweight'] = 'Not Avail.'      
+
+    def get_cardcmd_for_reweight(self, value):
+        """set some command to run before allowing the user to modify the cards."""
+        if value in ['density']:
+            content_rwgt_card = open(pjoin(self.me_dir, "Cards", "reweight_card.dat"), "r")
+            if 'change particle_in_density_matrix' in content_rwgt_card.read():
+                content_rwgt_card.close()
+                return [] #if reweight_card.dat has information for density matrices, we keep it
+            else:
+                content_rwgt_card.close()
+                import shutil
+                shutil.copyfile(pjoin(self.me_dir, "Cards", "density_card_default.dat"), pjoin(self.me_dir, "Cards", "reweight_card.dat"))
+                return []
+        elif value in ['ON']:
+            content_rwgt_card = open(pjoin(self.me_dir, "Cards", "reweight_card.dat"), "r")
+            if 'change particle_in_density_matrix' in content_rwgt_card.read():
+                content_rwgt_card.close()
+                import shutil
+                shutil.copyfile(pjoin(self.me_dir, "Cards", "reweight_card_default.dat"), pjoin(self.me_dir, "Cards", "reweight_card.dat"))
+                return []
+            else:
+                content_rwgt_card.close()
+                return [] #else we keep the current reweight_card.dat
+        elif value in ['OFF']:
+            return [] #if reweight=OFF, we do not create a reweight_card.dat
+        else:
+            return
+
+    def switch_value_from_card_reweight(self):
+        """re-derive the reweight switch (ON vs density) from the content of
+        reweight_card.dat (called after the user has edited the cards)."""
+
+        path = pjoin(self.me_dir, 'Cards', 'reweight_card.dat')
+        if not os.path.exists(path):
+            return None
+        with open(path) as fsock:
+            if 'change particle_in_density_matrix' in fsock.read():
+                return 'density'
+        return 'ON'
+
+
+class AskRunEditCard(common_run.AskforEditCardWithSwitch, AskRun,
+                     common_run.AskforEditCard):
+    """Single question merging the choice of programs to run (shower, detector,
+    analysis, madspin, reweight) with the edition of the associated cards."""
+
+    switch_class = AskRun
+    always_cards = ['param_card.dat', 'run_card.dat']
+    optional_cards = ['MadLoopParams.dat']
+    switch_cards = [
+        {'card': 'pythia8_card.dat', 'key': 'shower',
+         'on': lambda s: s['shower'] == 'Pythia8', 'set': 'Pythia8'},
+        {'card': 'pythia_card.dat', 'key': 'shower',
+         'on': lambda s: s['shower'] == 'Pythia6', 'set': 'Pythia6'},
+        {'card': 'pgs_card.dat', 'key': 'detector',
+         'on': lambda s: s['detector'] in ('PGS', 'DELPHES+PGS'), 'set': 'PGS'},
+        {'card': 'delphes_card.dat', 'key': 'detector',
+         'on': lambda s: s['detector'] in ('Delphes', 'DELPHES+PGS'),
+         'set': 'Delphes'},
+        {'card': 'madspin_card.dat', 'key': 'madspin',
+         'on': lambda s: s['madspin'] not in ('OFF', 'Not Avail.'),
+         'set': 'ON'},
+        {'card': 'reweight_card.dat', 'key': 'reweight',
+         'on': lambda s: s['reweight'] not in ('OFF', 'Not Avail.'),
+         'set': 'ON'},
+        {'card': 'madanalysis5_parton_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'MadAnalysis5', 'set': 'MadAnalysis5'},
+        {'card': 'madanalysis5_hadron_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'MadAnalysis5' and s['shower'] != 'OFF',
+         'set': 'MadAnalysis5'},
+        {'card': 'plot_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'MadAnalysis4', 'set': 'MadAnalysis4'},
+        {'card': 'rivet_card.dat', 'key': 'analysis',
+         'on': lambda s: s['analysis'] == 'Rivet', 'set': 'Rivet'},
+    ]
 
 #===============================================================================
 # CheckValidForCmd
@@ -2398,12 +2493,31 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
                 self.set_run_name(self.find_available_run_name(self.me_dir), None, 'parton')
             else:
                 self.set_run_name(args[0], None, 'parton', True)
-                args.pop(0) 
+                args.pop(0)
 
-        
+        self.setup_citation_tracking()
+        cite = common_run.citation
+        if cite is not None:
+            cite.cite('Alwall:2014hca',
+                'core matrix-element generation (MadGraph5_aMC@NLO)')
+            if self.proc_characteristics['loop_induced']:
+                cite.cite('Hirschi:2015iia', 'loop-induced process generation')
+            try:
+                if int(run_card['ickkw']) == 1:
+                    cite.cite('Alwall:2007fs',
+                        'MLM matrix-element/parton-shower merging')
+            except (KeyError, ValueError, TypeError):
+                pass
+            try:
+                self.run_card.add_citation(cite.cite)
+            except Exception:
+                pass
+
         self.run_generate_events(switch_mode, args)
 
         self.postprocessing()
+
+        self.finalize_citation_tracking()
 
 
     # postprocessing : runs after all the event generation has been done
@@ -2447,6 +2561,10 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
         if postprocess_CONTUR:
 
             self.update_status("Starting postprocess contur", level="rivet")
+
+            if common_run.citation is not None:
+                common_run.citation.cite('CONTUR:2025yis',
+                    'limit setting with Contur')
 
             set_env = "#!{0}\n".format(misc.which('bash' if misc.get_shell_type() in ['bash',None] else 'tcsh'))
             rivet_path = self.options['rivet_path']
@@ -2636,13 +2754,23 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
                         to_use = 'none'
                         
                     if to_use == 'systematics':
-                        if self.run_card['systematics_arguments'] != ['']:
-                            self.exec_cmd('systematics %s %s ' % (self.run_name,
-                                          ' '.join(self.run_card['systematics_arguments'])),                  
-                                          postcmd=False, printcmd=False)
-                        else:
-                            self.exec_cmd('systematics %s --from_card' % self.run_name,
-                                           postcmd=False,printcmd=False)    
+                        # The unweighting may have written one file per
+                        # systematics job (auto_split_unweighted_output), which
+                        # systematics consumes and merges back. It can also fail
+                        # outright -- and it aborts this command when it does, so
+                        # store_events would never run. Merge in a finally: a
+                        # failing systematics must leave exactly the events it
+                        # would have left without the split.
+                        try:
+                            if self.run_card['systematics_arguments'] != ['']:
+                                self.exec_cmd('systematics %s %s ' % (self.run_name,
+                                              ' '.join(self.run_card['systematics_arguments'])),
+                                              postcmd=False, printcmd=False)
+                            else:
+                                self.exec_cmd('systematics %s --from_card' % self.run_name,
+                                               postcmd=False,printcmd=False)
+                        finally:
+                            self.finalize_split_unweighted_output()
                     elif to_use == 'syscalc':
                         self.run_syscalc('parton')
                 
@@ -2653,7 +2781,7 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
                     self.boost_events()
                             
                                        
-                self.exec_cmd('reweight -from_cards', postcmd=False)            
+                self.exec_cmd('reweight --mode=%s -from_cards' %switch_mode['reweight'], postcmd=False)            
                 self.exec_cmd('decay_events -from_cards', postcmd=False)
                 if self.run_card['time_of_flight']>=0:
                     self.exec_cmd("add_time_of_flight --threshold=%s" % self.run_card['time_of_flight'] ,postcmd=False)
@@ -2754,11 +2882,7 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
     def do_launch(self, line, *args, **opt):
         """Main Commands: exec generate_events for 2>N and calculate_width for 1>N"""
                 
-        if self.ninitial == 1:
-            logger.info("Note that since 2.3. The launch for 1>N pass in event generation\n"+
-                           "    To have the previous behavior use the calculate_decay_widths function")
         #    self.do_calculate_decay_widths(line, *args, **opt)
-        #else:
         self.do_generate_events(line, *args, **opt)
             
     def getSysSummaryFromLog(self, kpath=None,knext_name=None):
@@ -2980,13 +3104,42 @@ Beware that MG5aMC now changes your runtime options to a multi-core mode with on
             # ungroup resutls (that we need here). Note that initial particles
             # grouping are not at the same stage as final particle grouping
             nb_output = len(ids) / (len(set([p[0] for p in ids])))
-            results = open(pjoin(P_path, run_name + '_results.dat')).read().split('\n')[0]
-            result = float(results.strip().split(' ')[0])
-            for particles in ids:
+            results_text = open(pjoin(P_path, run_name + '_results.dat')).read()
+            result = float(results_text.split('\n')[0].strip().split(' ')[0])
+
+            # Try to use per-leshouche-row subprocess weights stored in results.dat
+            # by the grouped DSIG function.  These are written as an XML block
+            # <subprocess_weights>w1\nw2\n...</subprocess_weights> and correctly
+            # account for flavor-merged particles (e.g. pdg=81 representing j j).
+            sub_weights = None
+            wgt_match = re.search(
+                r'<subprocess_weights>(.*?)</subprocess_weights>',
+                results_text, re.DOTALL)
+            if wgt_match:
                 try:
-                    particle_dict[particles[0]].append([particles[1:], result/nb_output])
-                except KeyError:
-                    particle_dict[particles[0]] = [[particles[1:], result/nb_output]]
+                    parsed = [float(x) for x in wgt_match.group(1).split()]
+                    if len(parsed) == len(ids):
+                        sub_weights = parsed
+                except Exception:
+                    pass
+
+            if sub_weights is not None:
+                for i, particles in enumerate(ids):
+                    try:
+                        particle_dict[particles[0]].append(
+                            [particles[1:], result * sub_weights[i]])
+                    except KeyError:
+                        particle_dict[particles[0]] = [
+                            [particles[1:], result * sub_weights[i]]]
+            else:
+                # Fallback: divide equally among all subprocesses (legacy behaviour)
+                for particles in ids:
+                    try:
+                        particle_dict[particles[0]].append(
+                            [particles[1:], result / nb_output])
+                    except KeyError:
+                        particle_dict[particles[0]] = [
+                            [particles[1:], result / nb_output]]
     
         if not os.path.exists(pjoin(self.me_dir, 'Events', run_name)):
             os.mkdir(pjoin(self.me_dir, 'Events', run_name))
@@ -3766,7 +3919,58 @@ Beware that this can be dangerous for local multicore runs.""")
             
 
       
-    ############################################################################ 
+    ############################################################################
+    def auto_split_unweighted_output(self):
+        """When systematics runs right after the unweighting, it splits the work
+        over ``nb_core`` jobs which each read their own slice of the (single)
+        event file -- every job therefore has to parse its way to that slice.
+        Writing one file per job instead removes that scan, and zipping them is
+        then a pure waste since systematics reads them back immediately.
+        An explicit choice in the run_card (user_set) is left alone."""
+        if 'nb_unweight_output' not in self.run_card:
+            return
+        if self.run_card.user_set & set(['nb_unweight_output',
+                                         'zip_unweighted_events']):
+            return
+        if self.run_card['systematics_program'] != 'systematics' or \
+                                                not self.run_card['use_syst']:
+            return
+        if self.options['run_mode'] != 2:
+            # only the multicore mode splits systematics over nb_core
+            return
+        try:
+            nb_core = int(self.options['nb_core'])
+        except (TypeError, ValueError):
+            return
+        # mirror do_systematics: it uses that same number of jobs, so the split
+        # matches its job count exactly (one file per job).
+        nb_split = min(nb_core, self.run_card['nevents']//2500)
+        if nb_split <= 1:
+            return
+        self.run_card['nb_unweight_output'] = nb_split
+        self.run_card['zip_unweighted_events'] = False
+        logger.debug("systematics will run on %s core: writing the unweighted "
+                     "events as %s files so that each job reads its own.",
+                     nb_core, nb_split)
+
+    def zip_unweighted_output(self, outputpath, start=None):
+        """gzip the file(s) the final unweighting produced, unless the run_card
+        asks not to (``zip_unweighted_events``) -- compressing them is a pure
+        waste when they are consumed straight away. Handles the split output of
+        ``nb_unweight_output`` transparently."""
+        paths = lhe_parser.EventFile.unweight_output_paths(
+                            outputpath, self.run_card['nb_unweight_output'])
+        if not self.run_card['zip_unweighted_events']:
+            logger.debug("unweight done, skipping the zipping (zip_unweighted_events=False)")
+            return paths
+        if start is not None:
+            logger.debug("unweight done. start zipping after %.1f s", time.time()-start)
+        for path in paths:
+            if os.path.exists(path):
+                misc.gzip(path)
+        return paths
+
+    ############################################################################
     def do_combine_events(self, line):
         """Advanced commands: Launch combine events"""
         start=time.time()
@@ -3780,7 +3984,8 @@ Beware that this can be dangerous for local multicore runs.""")
         if self.run_card['gridpack'] and isinstance(self, GridPackCmd):
             return GridPackCmd.do_combine_events(self, line)
 
-    
+        self.auto_split_unweighted_output()
+
         # Define The Banner
         tag = self.run_card['run_tag']
         # Update the banner with the pythia card
@@ -3810,21 +4015,38 @@ Beware that this can be dangerous for local multicore runs.""")
         Gdirs = self.get_Gdir()
         Gdirs.sort()
         partials_info = []
+        # Use RLIMIT_NOFILE directly to avoid spawning a shell
         try:
-            p = subprocess.Popen(["ulimit", "-n"], stdout=subprocess.PIPE)
-            out, err = p.communicate()
-            max_G = out.decode()
-            if max_G == "unlimited":
-                max_G =2500
+            import resource
+            soft_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+            if soft_limit == resource.RLIM_INFINITY:
+                max_G = 2500
             else:
-                max_G = int(max_G) - 40
-        except Exception as  error:
+                # Keep descriptor headroom for logs/pipes/subprocesses.
+                max_G = max(80, int(soft_limit) - 40)
+        except Exception as error:
             logger.debug(error)
-            max_G = 80 # max(20, len(Gdirs)/self.options['nb_core'])
+            try:
+                out = subprocess.check_output(
+                    ["sh", "-c", "ulimit -n"], stderr=subprocess.STDOUT).decode().strip()
+                if out == "unlimited":
+                    max_G = 2500
+                else:
+                    max_G = max(80, int(out) - 40)
+            except Exception as error:
+                logger.debug(error)
+                max_G = 80 # max(20, len(Gdirs)/self.options['nb_core'])
 
         if not hasattr(self,'proc_characteristic'):
             self.proc_characteristic = self.get_characteristics()
         mycluster = cluster.MultiCore(nb_core=self.options['nb_core'])
+
+        def _safe_nunwgt(result):
+            """Extract an integer unweighted-event count when available."""
+            try:
+                return max(0, int(float(result.get('nunwgt'))))
+            except Exception:
+                return 0
 
         def split(a, n):
             """split a list "a" into n chunk of same size (or nearly same size)"""
@@ -3883,10 +4105,12 @@ Beware that this can be dangerous for local multicore runs.""")
             nb_event = AllEvent.unweight(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"),
                           get_wgt, trunc_error=1e-2, event_target=self.run_card['nevents'],
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
-                          proc_charac=self.proc_characteristic)
-            logger.debug("unweight done. start zipping after %.1f s", time.time()-start)
-            misc.gzip(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"))
-            
+                          proc_charac=self.proc_characteristic,
+                          keep_overshoot=self.run_card['allow_overshoot_events'],
+                          nb_output=self.run_card['nb_unweight_output'])
+            self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
+                                             "unweighted_events.lhe"), start)
+
             #cleaning
             for data in partials_info:
                 path = data[0]
@@ -3910,10 +4134,12 @@ Beware that this can be dangerous for local multicore runs.""")
                         os.remove(pjoin(Gdir, 'events.lhe'))
                         continue
 
+                    # Pass precomputed nunwgt to avoid re-counting from LHE files.
                     AllEvent.add(pjoin(Gdir, 'events.lhe'), 
                                 result.get('xsec'),
                                 result.get('xerru'),
-                                result.get('axsec')
+                                result.get('axsec'),
+                                nb_event=_safe_nunwgt(result)
                                 )
                     
             if len(AllEvent) == 0:
@@ -3922,9 +4148,11 @@ Beware that this can be dangerous for local multicore runs.""")
                 nb_event = AllEvent.unweight(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"),
                                 get_wgt, trunc_error=1e-2, event_target=self.run_card['nevents'],
                                 log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
-                                proc_charac=self.proc_characteristic)
-                logger.debug("unweight done. start zipping after %.1f s", time.time()-start)
-                misc.gzip(pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe"))
+                                proc_charac=self.proc_characteristic,
+                                keep_overshoot=self.run_card['allow_overshoot_events'],
+                                nb_output=self.run_card['nb_unweight_output'])
+                self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
+                                                 "unweighted_events.lhe"), start)
 
         if nb_event < self.run_card['nevents']:
             logger.warning("failed to generate enough events. Please follow one of the following suggestions to fix the issue:")
@@ -3937,6 +4165,7 @@ Beware that this can be dangerous for local multicore runs.""")
 
                    
         self.results.add_detail('nb_event', nb_event)
+        self.banner.add_generation_info(self.results.current['cross'], nb_event)
     
         if self.run_card['bias_module'].lower() not in  ['dummy', 'none'] and nb_event:
             self.correct_bias()
@@ -3964,6 +4193,13 @@ Beware that this can be dangerous for local multicore runs.""")
             self.run_card = banner_mod.RunCard(self.banner['mgruncard'])
         AllEvent.banner = self.banner
 
+        def _safe_nunwgt(result):
+            """Extract an integer unweighted-event count when available."""
+            try:
+                return max(0, int(float(result.get('nunwgt'))))
+            except Exception:
+                return 0
+
         for Gdir in Gdirs:
             if os.path.exists(pjoin(Gdir, 'events.lhe')):
                 result = sum_html.OneResult('')
@@ -3976,10 +4212,12 @@ Beware that this can be dangerous for local multicore runs.""")
                     os.remove(pjoin(Gdir, 'events.lhe'))
                     continue
                 if not preprocess_only:
+                    # Pass precomputed nunwgt to avoid re-counting from LHE files.
                     AllEvent.add(pjoin(Gdir, 'events.lhe'), 
                              result.get('xsec'),
                              result.get('xerru'),
-                             result.get('axsec')
+                             result.get('axsec'),
+                             nb_event=_safe_nunwgt(result)
                     )
  
         if preprocess_only:
@@ -4138,6 +4376,12 @@ Beware that this can be dangerous for local multicore runs.""")
         # 4) Move the Files present in Events directory
         E_path = pjoin(self.me_dir, 'Events')
         O_path = pjoin(self.me_dir, 'Events', run)
+
+        # Backstop for the entry points that do not go through
+        # run_generate_events' systematics block (a bare 'combine_events' then
+        # 'store_events'): the run must never be left as N split files. No-op
+        # when they were already merged.
+        self.finalize_split_unweighted_output()
         
         # The events file
         for name in ['events.lhe', 'unweighted_events.lhe']:
@@ -4469,6 +4713,11 @@ already exists and is not a fifo file."""%fifo_path)
                 logger.info("No user-defined value for Pythia8 parameter "+
             "'JetMatching:nJetMax'. Setting it automatically to %d."%nJetMax)
                 PY8_Card.MadGraphSet('JetMatching:nJetMax',nJetMax, force=True)
+            # cite the shower-kt MLM scheme only when it is actually enabled
+            if common_run.citation is not None and \
+               PY8_Card['JetMatching:doShowerKt'.lower()]:
+                common_run.citation.cite('Alwall:2008qv',
+                    'shower-kt MLM merging scheme')
         # We use the positivity of 'ktdurham' cut as a CKKWl marker.
         elif run_type=='CKKW':
 
@@ -4579,6 +4828,10 @@ already exists and is not a fifo file."""%fifo_path)
     def do_pythia8(self, line):
         """launch pythia8"""
 
+        # Reset the flag tracking whether Delphes was already run on the Pythia8
+        # splits (fused parallel-Delphes path, see run_delphes_on_splits). When
+        # set, the standard post-shower Delphes call at the end is skipped.
+        self._delphes_already_done = False
 
         try:
             import madgraph
@@ -4775,7 +5028,17 @@ You can follow PY8 run with the following command (in a separate terminal):
                     n_cores = max(int(self.options['cluster_size']),1)
                 elif self.options['run_mode']==2:
                     n_cores = max(int(self.cluster.nb_core),1)
-                
+
+                # Allow the user to override the number of parallel Pythia8 jobs
+                # independently of the global nb_core via the nb_core_pythia8
+                # option. It directly fixes the number of split jobs and may
+                # exceed nb_core (the splits are statistically equivalent, so
+                # this stays correct - including for MLM since events are
+                # shuffled across the splits).
+                pythia8_nb_core = self.get_nb_core_override('pythia8')
+                if pythia8_nb_core is not None:
+                    n_cores = pythia8_nb_core
+
                 lhe_file_name = os.path.basename(PY8_Card.subruns[0]['Beams:LHEF'])
                 lhe_file = lhe_parser.EventFile(pjoin(self.me_dir,'Events',
                                                     self.run_name,PY8_Card.subruns[0]['Beams:LHEF']))
@@ -4915,61 +5178,69 @@ tar -czf split_$1.tar.gz split_$1
                 
                 logger.info('Submitting Pythia8 jobs...')
 
-                for i, split_file in enumerate(split_files):
-                    # We must write a PY8Card tailored for each split so as to correct the normalization
-                    # HEPMCoutput:scaling of each weight since the lhe showered will not longer contain the
-                    # same original number of events
-                    split_PY8_Card = banner_mod.PY8Card(pjoin(parallelization_dir,'PY8Card.dat'), setter='user')
-                    assert split_PY8_Card['JetMatching:nJetMax'] ==  PY8_Card['JetMatching:nJetMax']
-
-        
-
-                    # Make sure to sure the number of split_events determined during the splitting.
-                    split_PY8_Card.systemSet('Main:numberOfEvents',partition_for_PY8[i], force=True)
-                    assert split_PY8_Card['Main:numberOfEvents'] == partition_for_PY8[i]
-                    split_PY8_Card.systemSet('HEPMCoutput:scaling',split_PY8_Card['HEPMCoutput:scaling']*
-                                                             (float(partition_for_PY8[i])), force=True)
-                    # Add_missing set to False so as to be sure not to add any additional parameter w.r.t
-                    # the ones in the original PY8 param_card copied.
-                    split_PY8_Card.write(pjoin(parallelization_dir,'PY8Card_%d.dat'%i),
-                                         pjoin(parallelization_dir,'PY8Card.dat'), add_missing=False,
-                                         direct_pythia_input=True,
-                                         use_mg5amc_py8_interface=use_mg5amc_py8_interface)
-                    in_files = [pjoin(parallelization_dir,os.path.basename(pythia_main)),
-                                pjoin(parallelization_dir,'PY8Card_%d.dat'%i), 
-                                pjoin(parallelization_dir,split_file)]
-                    if self.options['cluster_temp_path'] is None:
-                        out_files = []
-                        os.mkdir(pjoin(parallelization_dir,'split_%d'%i))
-                        selected_cwd = pjoin(parallelization_dir,'split_%d'%i)
-                        for in_file in in_files+[pjoin(parallelization_dir,'run_PY8.sh')]:
-                            # Make sure to rename the split_file link from events_<x>.lhe.gz to events.lhe.gz
-                            # and similarly for PY8Card
-                            if os.path.basename(in_file)==split_file:
-                                ln(in_file,selected_cwd,name='events.lhe.gz')
-                            elif os.path.basename(in_file).startswith('PY8Card'):
-                                ln(in_file,selected_cwd,name='PY8Card.dat')                                
-                            else:
-                                ln(in_file,selected_cwd)                                
-                        in_files  = []
-                        wrapper_path = os.path.basename(wrapper_path)
-                    else:
-                        out_files = ['split_%d.tar.gz'%i]
-                        selected_cwd = parallelization_dir
-
-                    self.cluster.submit2(wrapper_path, 
-                            argument=[str(i)], cwd=selected_cwd, 
-                            input_files=in_files,
-                            output_files=out_files,
-                            required_output=out_files)
-                
                 def wait_monitoring(Idle, Running, Done):
                     if Idle+Running+Done == 0:
                         return
                     logger.info('Pythia8 shower jobs: %d Idle, %d Running, %d Done [%s]'\
                                 %(Idle, Running, Done, misc.format_time(time.time() - startPY8timer)))
-                self.cluster.wait(parallelization_dir,wait_monitoring)
-                
+
+                # When a per-step nb_core override is active in multicore mode,
+                # align the scheduler concurrency with the requested number of
+                # Pythia8 jobs (this can be lower or higher than the global
+                # nb_core). The context manager restores the global value once the
+                # jobs are done, even if submission/wait raises.
+                pythia8_concurrency = n_cores if pythia8_nb_core is not None else None
+                with self.multicore_concurrency(pythia8_concurrency):
+                    for i, split_file in enumerate(split_files):
+                        # We must write a PY8Card tailored for each split so as to correct the normalization
+                        # HEPMCoutput:scaling of each weight since the lhe showered will not longer contain the
+                        # same original number of events
+                        split_PY8_Card = banner_mod.PY8Card(pjoin(parallelization_dir,'PY8Card.dat'), setter='user')
+                        assert split_PY8_Card['JetMatching:nJetMax'] ==  PY8_Card['JetMatching:nJetMax']
+
+
+
+                        # Make sure to sure the number of split_events determined during the splitting.
+                        split_PY8_Card.systemSet('Main:numberOfEvents',partition_for_PY8[i], force=True)
+                        assert split_PY8_Card['Main:numberOfEvents'] == partition_for_PY8[i]
+                        split_PY8_Card.systemSet('HEPMCoutput:scaling',split_PY8_Card['HEPMCoutput:scaling']*
+                                                                 (float(partition_for_PY8[i])), force=True)
+                        # Add_missing set to False so as to be sure not to add any additional parameter w.r.t
+                        # the ones in the original PY8 param_card copied.
+                        split_PY8_Card.write(pjoin(parallelization_dir,'PY8Card_%d.dat'%i),
+                                             pjoin(parallelization_dir,'PY8Card.dat'), add_missing=False,
+                                             direct_pythia_input=True,
+                                             use_mg5amc_py8_interface=use_mg5amc_py8_interface)
+                        in_files = [pjoin(parallelization_dir,os.path.basename(pythia_main)),
+                                    pjoin(parallelization_dir,'PY8Card_%d.dat'%i),
+                                    pjoin(parallelization_dir,split_file)]
+                        if self.options['cluster_temp_path'] is None:
+                            out_files = []
+                            os.mkdir(pjoin(parallelization_dir,'split_%d'%i))
+                            selected_cwd = pjoin(parallelization_dir,'split_%d'%i)
+                            for in_file in in_files+[pjoin(parallelization_dir,'run_PY8.sh')]:
+                                # Make sure to rename the split_file link from events_<x>.lhe.gz to events.lhe.gz
+                                # and similarly for PY8Card
+                                if os.path.basename(in_file)==split_file:
+                                    ln(in_file,selected_cwd,name='events.lhe.gz')
+                                elif os.path.basename(in_file).startswith('PY8Card'):
+                                    ln(in_file,selected_cwd,name='PY8Card.dat')
+                                else:
+                                    ln(in_file,selected_cwd)
+                            in_files  = []
+                            wrapper_path = os.path.basename(wrapper_path)
+                        else:
+                            out_files = ['split_%d.tar.gz'%i]
+                            selected_cwd = parallelization_dir
+
+                        self.cluster.submit2(wrapper_path,
+                                argument=[str(i)], cwd=selected_cwd,
+                                input_files=in_files,
+                                output_files=out_files,
+                                required_output=out_files)
+
+                    self.cluster.wait(parallelization_dir,wait_monitoring)
+
                 logger.info('Merging results from the split PY8 runs...')
                 if self.options['cluster_temp_path']:
                     # Decompressing the output
@@ -5068,6 +5339,16 @@ tar -czf split_$1.tar.gz split_$1
                     shutil.move(pjoin(self.me_dir,'Events',self.run_name,'pts.HwU'),
                                 pjoin(self.me_dir,'Events',self.run_name,'%s_pts.dat'%tag))
 
+                # Run Delphes in parallel on the individual split HepMC files
+                # *before* they are merged below (the merge mutates them in
+                # place by stripping the HepMC header/footer). On success the
+                # ROOT files are combined with hadd and the standard
+                # post-shower Delphes call is skipped. See
+                # is_delphes_fusion_active for the opt-in rule.
+                if self.is_delphes_fusion_active():
+                    if self.run_delphes_on_splits(split_dirs, parallelization_dir, tag):
+                        self._delphes_already_done = True
+
                 # HepMC events now.
                 all_hepmc_files = []
                 for split_dir in split_dirs:
@@ -5075,8 +5356,19 @@ tar -czf split_$1.tar.gz split_$1
                     if not os.path.isfile(hepmc_file):
                         continue
                     all_hepmc_files.append(hepmc_file)
-                
-                if len(all_hepmc_files)>0:
+
+                # When Delphes has already consumed the split HepMC files and the
+                # user requested the HepMC output to be auto-removed, there is no
+                # point merging them: skip the (otherwise wasted) merge. Note
+                # 'compressHEPMC'/'moveHEPMC' mean the user wants to keep the
+                # HepMC, so the merge is still performed in those cases.
+                skip_hepmc_merge = self._delphes_already_done and \
+                                                  'removeHEPMC' in self.to_store
+                if skip_hepmc_merge:
+                    logger.info('Skipping HepMC merge (Delphes already ran on the '
+                                'splits and HepMC output is set to autoremove).')
+
+                if len(all_hepmc_files)>0 and not skip_hepmc_merge:
                     hepmc_output = pjoin(self.me_dir,'Events',self.run_name,HepMC_event_output)
                     with misc.TMP_directory() as tmp_dir:
                         # Use system calls to quickly put these together
@@ -5260,10 +5552,137 @@ tar -czf split_$1.tar.gz split_$1
         self.banner.write(banner_path)
 
         self.update_status('Pythia8 shower finished after %s.'%misc.format_time(time.time() - startPY8timer), level='pythia8')
-        if self.options['delphes_path']:
+        if self.options['delphes_path'] and not self._delphes_already_done:
             self.exec_cmd('delphes --no_default', postcmd=False, printcmd=False)
+        elif self._delphes_already_done:
+            # Delphes already ran on the Pythia8 splits (fused path); just record
+            # the delphes level now that the shower is marked finished.
+            self.update_status('delphes done', level='delphes', makehtml=False)
         self.print_results_in_shell(self.results.current)
-    
+
+    def run_delphes_on_splits(self, split_dirs, parallelization_dir, tag):
+        """Run Delphes (HepMC2) in parallel on the individual Pythia8 split
+        files and combine the resulting ROOT files with 'hadd'. This is the
+        fused parallel-Delphes path (see is_delphes_fusion_active).
+
+        The per-split HepMC event weights are already absolute (this path
+        requires event_norm='average'), so concatenating the Delphes event
+        trees with hadd preserves the normalization exactly as the standard
+        single Delphes pass on the merged HepMC file would.
+
+        Returns True when the merged Delphes ROOT file was produced, and False
+        when the fused path could not be used; in that case the caller falls
+        back to the standard single Delphes pass on the merged HepMC file."""
+
+        delphes_dir = self.options['delphes_path']
+        # Only Delphes 3 can read HepMC input (Delphes 2 ships a 'data' folder).
+        if os.path.exists(pjoin(delphes_dir, 'data')):
+            logger.warning('Delphes 2 cannot read HepMC input; running the '
+                           'standard Delphes step instead.')
+            return False
+        delphes_exe = pjoin(delphes_dir, 'DelphesHepMC2')
+        if not os.path.exists(delphes_exe):
+            logger.warning('No DelphesHepMC2 executable found in %s; running '
+                           'the standard Delphes step instead.' % delphes_dir)
+            return False
+
+        # Locate hadd (shipped with ROOT, which Delphes requires).
+        hadd_exe = None
+        if os.environ.get('ROOTSYS'):
+            candidate = pjoin(os.environ['ROOTSYS'], 'bin', 'hadd')
+            if os.path.exists(candidate):
+                hadd_exe = candidate
+        if hadd_exe is None:
+            hadd_exe = misc.which('hadd')
+        if not hadd_exe:
+            logger.warning('Could not find the ROOT hadd utility; running the '
+                           'standard Delphes step instead.')
+            return False
+
+        # Collect the split HepMC files still present.
+        split_hepmc = [(d, pjoin(d, 'events.hepmc')) for d in split_dirs
+                       if os.path.isfile(pjoin(d, 'events.hepmc'))]
+        if not split_hepmc:
+            return False
+
+        card = pjoin(self.me_dir, 'Cards', 'delphes_card.dat')
+        self.update_status('Running Delphes on Pythia8 splits', level=None)
+
+        # Update the banner with the Delphes card, as the standard do_delphes does.
+        if os.path.exists(pjoin(self.me_dir, 'Source', 'banner_header.txt')):
+            self.banner.add(card)
+            self.banner.write(pjoin(self.me_dir, 'Events', self.run_name,
+                                    '%s_%s_banner.txt' % (self.run_name, tag)))
+
+        # Wrapper setting up the ROOT environment before invoking Delphes.
+        # Arguments: $1 = output ROOT file, $2 = input HepMC file, $3 = log file.
+        wrapper_path = pjoin(parallelization_dir, 'run_delphes_split.sh')
+        with open(wrapper_path, 'w') as wrapper:
+            wrapper.write('#!/bin/bash\n')
+            wrapper.write('export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ROOTSYS/lib\n')
+            wrapper.write('"%s" "%s" "$1" "$2" > "$3" 2>&1\n' % (delphes_exe, card))
+        st = os.stat(wrapper_path)
+        os.chmod(wrapper_path, st.st_mode | stat.S_IEXEC)
+
+        logger.info('Submitting Delphes jobs...')
+        split_roots = []
+        startdelphestimer = time.time()
+        def wait_monitoring(Idle, Running, Done):
+            if Idle+Running+Done == 0:
+                return
+            logger.info('Delphes jobs: %d Idle, %d Running, %d Done [%s]'
+                        % (Idle, Running, Done,
+                           misc.format_time(time.time() - startdelphestimer)))
+
+        # Run the Delphes jobs at the requested concurrency (nb_core_delphes); the
+        # number of jobs is fixed by the number of Pythia8 splits. The context
+        # manager restores the global concurrency afterwards, even on error.
+        with self.multicore_concurrency(self.resolve_nb_core('delphes')):
+            for i, (split_dir, hepmc_file) in enumerate(split_hepmc):
+                out_root = pjoin(split_dir, 'delphes_events.root')
+                log = pjoin(split_dir, 'delphes.log')
+                split_roots.append(out_root)
+                self.cluster.submit2(wrapper_path,
+                                     argument=[out_root, hepmc_file, log],
+                                     cwd=split_dir, required_output=[out_root])
+            self.cluster.wait(parallelization_dir, wait_monitoring)
+
+        produced = [r for r in split_roots if os.path.isfile(r)]
+        if len(produced) != len(split_hepmc):
+            # A missing split ROOT would silently drop those events from the
+            # hadd-ed sample (wrong event count and normalization). Never do a
+            # partial merge: fall back to the standard single Delphes pass on the
+            # merged HepMC file (the split HepMC files are still intact here).
+            logger.warning('Delphes produced only %d of %d expected ROOT files on '
+                           'the splits; falling back to the standard Delphes step.'
+                           % (len(produced), len(split_hepmc)))
+            return False
+
+        logger.info('Merging Delphes ROOT files with hadd...')
+        final_root = pjoin(self.me_dir, 'Events', self.run_name,
+                           '%s_delphes_events.root' % tag)
+        hadd_log = pjoin(self.me_dir, 'Events', self.run_name,
+                         '%s_delphes.log' % tag)
+        nb = self.resolve_nb_core('delphes')
+        with open(hadd_log, 'w') as fsock:
+            ret = misc.call([hadd_exe, '-f', '-j', str(nb), final_root] + produced,
+                            stdout=fsock, stderr=subprocess.STDOUT)
+            if ret != 0:
+                # The -j (parallel) option may be unsupported by older ROOT;
+                # retry the merge serially before giving up.
+                fsock.write('\nhadd -j failed, retrying without -j\n')
+                ret = misc.call([hadd_exe, '-f', final_root] + produced,
+                                stdout=fsock, stderr=subprocess.STDOUT)
+        if ret != 0 or not os.path.isfile(final_root):
+            logger.warning('hadd failed to merge the Delphes ROOT files; '
+                           'running the standard Delphes step instead.')
+            return False
+
+        # Note: the 'delphes done' status/level is set by the caller after the
+        # Pythia8 shower is marked finished, to keep the recorded run level in
+        # the natural pythia8 -> delphes order.
+        return True
+
     def parse_PY8_log_file(self, log_file_path):
         """ Parse a log file to extract number of event and cross-section. """
         pythiare = re.compile(r"Les Houches User Process\(es\)\s*\d+\s*\|\s*(?P<tried>\d+)\s*(?P<selected>\d+)\s*(?P<generated>\d+)\s*\|\s*(?P<xsec>[\d\.e\-\+]+)\s*(?P<xsec_error>[\d\.e\-\+]+)")
@@ -5794,7 +6213,12 @@ tar -czf split_$1.tar.gz split_$1
         self.update_status('storing files of previous run', level=None,\
                                                      error=True)
         if 'event' in self.to_store:
-            if not os.path.exists(pjoin(self.me_dir, 'Events',self.run_name, 'unweighted_events.lhe.gz')) and\
+            # zip_unweighted_events=False means the events are consumed straight
+            # away: do not gzip them back here, that would defeat the purpose.
+            zip_events = ('zip_unweighted_events' not in self.run_card or
+                          self.run_card['zip_unweighted_events'])
+            if zip_events and \
+               not os.path.exists(pjoin(self.me_dir, 'Events',self.run_name, 'unweighted_events.lhe.gz')) and\
                os.path.exists(pjoin(self.me_dir, 'Events',self.run_name, 'unweighted_events.lhe')):
                 logger.info("gzipping output file: unweighted_events.lhe")
                 misc.gzip(pjoin(self.me_dir,'Events',self.run_name,"unweighted_events.lhe"))
@@ -5847,11 +6271,17 @@ tar -czf split_$1.tar.gz split_$1
             mode = self.cluster_mode
         
         # ensure that exe is executable
-        if os.path.exists(exe) and not os.access(exe, os.X_OK):
-            os.system('chmod +x %s ' % exe)
-        elif (cwd and os.path.exists(pjoin(cwd, exe))) and not \
-                                            os.access(pjoin(cwd, exe), os.X_OK):
-            os.system('chmod +x %s ' % pjoin(cwd, exe))
+        exe_path = None
+        if os.path.exists(exe):
+            exe_path = exe
+        elif cwd:
+            local_exe = pjoin(cwd, exe)
+            if os.path.exists(local_exe):
+                exe_path = local_exe
+        # Use os.chmod instead of shell chmod to avoid process-launch overhead.
+        if exe_path and not os.access(exe_path, os.X_OK):
+            mode_bits = os.stat(exe_path).st_mode
+            os.chmod(exe_path, mode_bits | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
                     
         if mode == 0:
             self.update_status((remaining, 1, 
@@ -6128,11 +6558,10 @@ tar -czf split_$1.tar.gz split_$1
         
         # set random number
         if self.run_card['iseed'] != 0:
-            self.random = int(self.run_card['iseed'])
-            self.run_card['iseed'] = 0
-            # Reset seed in run_card to 0, to ensure that following runs
-            # will be statistically independent
-            self.run_card.write(pjoin(self.me_dir, 'Cards','run_card.dat'), template=pjoin(self.me_dir, 'Cards','run_card.dat'))
+            # negative iseed: keep it in the run_card across runs and use its
+            # absolute value as the actual seed for the Fortran code
+            self.random = abs(int(self.run_card['iseed']))
+            self.reset_iseed_in_run_card()
             time_mod = max([os.path.getmtime(pjoin(self.me_dir,'Cards','run_card.dat')),
                         os.path.getmtime(pjoin(self.me_dir,'Cards','param_card.dat'))])
             self.configured = time_mod
@@ -6744,32 +7173,58 @@ tar -czf split_$1.tar.gz split_$1
 
 
     action_switcher = AskRun
+    action_editcard = AskRunEditCard
     ############################################################################
     def ask_run_configuration(self, mode=None, args=[]):
-        """Ask the question when launching generate_events/multi_run"""
+        """Ask the question when launching generate_events/multi_run.
+
+        A single (MadDM-style) question lets the user both select which
+        programs to run (shower/detector/analysis/madspin/reweight) and edit
+        the associated cards.  The card-setup commands implied by the switches
+        are applied on the fly (see AskforEditCardWithSwitch.set_switch)."""
 
         passing_cmd = []
         if '-R' in args or '--reweight' in args:
             passing_cmd.append('reweight=ON')
         if '-M' in args or '--madspin' in args:
             passing_cmd.append('madspin=ON')
-        
-        switch, cmd_switch = self.ask('', '0', [], ask_class = self.action_switcher,
+
+        # path_msg is what makes Cmd.check_answer_in_input_file accept a bare
+        # path as an answer (its "elif path:" branch). The question advertises
+        # "enter the path to a valid card or banner", and interactively that
+        # works (AskforEditCard.default -> copy_file), but in a scripted run the
+        # answer is validated by check_answer_in_input_file first: without
+        # path_msg a card path is rejected ("This answer is not valid for
+        # current question") and silently replaced by the default.
+        try:
+            switch = self.ask('', '0', [], path_msg='enter path',
+                              ask_class=self.action_editcard,
                               mode=mode, line_args=args, force=self.force,
-                              first_cmd=passing_cmd, return_instance=True)
+                              first_cmd=passing_cmd)
+        except BaseException:
+            # interrupted (e.g. ctrl-C) before the normal-return pruning
+            # below could run: prune here too, or the tool cards eagerly
+            # materialised for every available program survive and get
+            # misread as "left ON" on the next launch.
+            instance = getattr(self, '_last_ask_instance', None)
+            if instance is not None and hasattr(instance, 'active_cards'):
+                try:
+                    self.keep_cards(instance.active_cards())
+                except Exception as error:
+                    logger.debug('could not prune tool cards after aborted launch question: %s', error)
+            raise
         #
-        self.switch = switch # store the value of the switch for plugin purpose 
+        self.switch = switch # store the value of the switch for plugin purpose
         if 'dynamical' in switch:
             mode = 'auto'
-        
-        # Now that we know in which mode we are check that all the card
-        #exists (copy default if needed)
-    
+
+        # Determine the final set of cards from the chosen switches so that the
+        # cards of the tools that were *not* selected are cleaned away.
         cards = ['param_card.dat', 'run_card.dat']
         if switch['shower'] == 'Pythia6':
             cards.append('pythia_card.dat')
         if switch['shower'] == 'Pythia8':
-            cards.append('pythia8_card.dat')            
+            cards.append('pythia8_card.dat')
         if switch['detector'] in  ['PGS','DELPHES+PGS']:
             cards.append('pgs_card.dat')
         if switch['detector'] in ['Delphes', 'DELPHES+PGS']:
@@ -6792,23 +7247,12 @@ tar -czf split_$1.tar.gz split_$1
             cards.append('rivet_card.dat')
 
         self.keep_cards(cards)
-        
-        first_cmd = cmd_switch.get_cardcmd()
-        
-        if os.path.isfile(pjoin(self.me_dir,'Cards','MadLoopParams.dat')):
-            cards.append('MadLoopParams.dat')
-        
+
         if self.force:
             self.check_param_card(pjoin(self.me_dir,'Cards','param_card.dat' ))
-            return switch
-        
 
-        if 'dynamical' in switch and switch['dynamical']:
-            self.ask_edit_cards(cards, plot=False, mode='auto', first_cmd=first_cmd)
-        else:
-            self.ask_edit_cards(cards, plot=False, first_cmd=first_cmd)
         return switch
-    
+
     ############################################################################
     def ask_pythia_run_configuration(self, mode=None, pythia_version=6, banner=None):
         """Ask the question when launching pythia"""
@@ -7298,7 +7742,8 @@ class GridPackCmd(MadEventCmd):
                     else:
                         nb_event = min(abs(1.01*self.nb_event*sum_axsec/self.results.current.get('axsec')),self.run_card['nevents'], self.nb_event, self.gridpack_cross, sum_axsec)
                     AllEvent.unweight(pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
-                          get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event)
+                          get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event, 
+                          keep_overshoot=self.run_card['allow_overshoot_events'])
                     AllEvent = lhe_parser.MultiEventFile()
                     AllEvent.banner = self.banner
                     partials_info.append((pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
@@ -7319,7 +7764,8 @@ class GridPackCmd(MadEventCmd):
         nb_event = AllEvent.unweight(pjoin(outdir, self.run_name, "unweighted_events.lhe.gz"),
                           get_wgt, trunc_error=1e-2, event_target=self.nb_event,
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
-                          proc_charac=self.proc_characteristic)
+                          proc_charac=self.proc_characteristic,
+                          keep_overshoot=self.run_card['allow_overshoot_events'])
         
         
         if partials:
@@ -7841,5 +8287,3 @@ if '__main__' == __name__:
     
     
     
-
-

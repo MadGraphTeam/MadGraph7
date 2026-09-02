@@ -109,11 +109,14 @@ namespace mg5amcCpu
   // nIPF are the number of SM independent flavor couplings, of type FLV_COUPLING
   constexpr int nMF = FLV_COUPLING::max_flavor;
   constexpr int nIPF = %(nipf)i;
+  // nDPF are the number of dependent (event-by-event, running-alphas) flavor couplings
+  constexpr int nDPF = %(ndpf)i;
   static_assert( nIPC <= nicoup );
   static_assert( nIPD >= 0 ); // Hack to avoid build warnings when nIPD==0 is unused
   static_assert( nIPC >= 0 ); // Hack to avoid build warnings when nIPC==0 is unused
   static_assert( nMF >= 0 );  // Hack to avoid build warnings when nMF ==0 is unused
   static_assert( nIPF >= 0 ); // Hack to avoid build warnings when nIPF==0 is unused
+  static_assert( nDPF >= 0 ); // Hack to avoid build warnings when nDPF==0 is unused
 #ifdef MGONGPU_HARDCODE_PARAM
   %(cipdhrdcod)s
   %(cipchrdcod)s
@@ -129,6 +132,12 @@ namespace mg5amcCpu
   %(cipfstatic)s
 #endif
 #endif
+
+  // Dependent (event-by-event, running-alphas) flavor couplings: partner indices and
+  // the per-flavor idcoup are pure compile-time constants (the complex values are
+  // gathered per event page in calculate_jamps), so they are emitted the same way in
+  // all build modes (no CUDA constant memory copy needed).
+  %(cdpfdecl)s
 
   // AV Jan 2024 (PR #625): this ugly #define was the only way I found to avoid creating arrays[nBsm] in CPPProcess.cc if nBsm is 0
   // The problem is that nBsm is determined when generating Parameters.h, which happens after CPPProcess.cc has already been generated
@@ -167,6 +176,10 @@ namespace mg5amcCpu
 #endif
   static int cNGoodHel;
   static int cGoodHel[ncomb];
+
+  // Host-side flavor table: single source of truth for PDG ids (used by both the
+  // constructor copy into cFlavors and the public CPPProcess::flavorPDG accessor).
+%(all_flavors)s
 
   //--------------------------------------------------------------------------
 
@@ -228,7 +241,6 @@ namespace mg5amcCpu
     // Helicities for the process [NB do keep 'static' for this constexpr array, see issue #283]
     // *** NB There is no automatic check yet that these are in the same order as Fortran! #569 ***
 %(all_helicities)s
-%(all_flavors)s
 #ifdef MGONGPUCPP_GPUIMPL
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
@@ -246,6 +258,15 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   CPPProcess::~CPPProcess() {}
+
+  //--------------------------------------------------------------------------
+
+  // PDG id for the given flavor combination and particle index (host side).
+  int
+  CPPProcess::flavorPDG( int iflavor, int ipar )
+  {
+    return flavorPDGs[iflavor][ipar];
+  }
 
   //--------------------------------------------------------------------------
 
@@ -451,6 +472,18 @@ namespace mg5amcCpu
     fptype hstMEs[maxtry0];
     const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
     //std::cout << "sigmaKin_getGoodHel nevt=" << nevt << " maxtry=" << maxtry << std::endl;
+    // Per-flavor good-helicity union (merged flavors, e.g. PDG=81): sample every
+    // flavor combination on the same momenta and OR the result, so cGoodHel is
+    // the union over all flavors (see the C++ branch below for the rationale).
+    for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
+    (void)iflavorVec; // flavor is forced below to scan every flavor combination
+    unsigned int hstFlavorVec[maxtry0] = {};
+    unsigned int* devFlavorVec = nullptr;
+    gpuMalloc( (void**)&devFlavorVec, maxtry * sizeof( unsigned int ) );
+    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+    {
+    for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
+    gpuMemcpy( devFlavorVec, hstFlavorVec, maxtry * sizeof( unsigned int ), gpuMemcpyHostToDevice );
     for( int ihel = 0; ihel < ncomb; ihel++ )
     {
       const int gpublocks = 1;
@@ -461,8 +494,8 @@ namespace mg5amcCpu
       gpuMemset( allMEs, 0, maxtry * sizeof( fptype ) );
       // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
       constexpr fptype_amp_sv* allJamp2s = nullptr; // no need for color selection during helicity filtering
-      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, allmomenta, allcouplings, iflavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads );
-      gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel );
+      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, allmomenta, allcouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
+      gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel, 0 );
       gpuMemcpy( hstMEs, allMEs, maxtry * sizeof( fptype ), gpuMemcpyDeviceToHost );
       //std::cout << "sigmaKin_getGoodHel ihel=" << ihel << std::endl;
       for( int ievt = 0; ievt < maxtry; ++ievt )
@@ -475,6 +508,8 @@ namespace mg5amcCpu
         }
       }
     }
+    } // end loop over flavor combinations (per-flavor good-helicity union)
+    gpuFree( devFlavorVec );
   }
 #else
   void
@@ -505,6 +540,18 @@ namespace mg5amcCpu
 #else
     const int npagV2 = npagV; // loop on one SIMD page (neppV events) at a time
 #endif /* clang-format on */
+    // Per-flavor good-helicity union (merged flavors, e.g. PDG=81): a helicity
+    // that vanishes for the sampled flavor may be non-zero for another merged
+    // flavor and must not be dropped. Sample every flavor combination on the
+    // same momenta and OR the result, so cGoodHel becomes the union over all
+    // flavors (extra helicities simply contribute 0 for a given flavor at run
+    // time, exactly as in the scalar standalone_cpp per-flavor good-hel filter).
+    for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
+    (void)iflavorVec; // flavor is forced below to scan every flavor combination
+    unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
+    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+    {
+    for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */
@@ -532,7 +579,7 @@ namespace mg5amcCpu
 #else
         cxtype_amp_sv jamp_sv[ncolor] = {};  // all zeros
 #endif
-        calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 ); //maxtry?
+        calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 ); //maxtry?
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         for( int ieppV = 0; ieppV < neppV; ++ieppV )
         {
@@ -554,6 +601,7 @@ namespace mg5amcCpu
         }
       }
     }
+    } // end loop over flavor combinations (per-flavor good-helicity union)
   }
 #endif
 
@@ -587,26 +635,56 @@ namespace mg5amcCpu
   __device__ int
   broken_symmetry_factor( const int iflavor )
   {
-    int old_factor = %(get_old_symmmetry_value)s;
-    %(get_pid)s
-    const int nincoming = %(nincoming)d;
-    const int nexternal = CPPProcess::npar;
-    for (int i = 0; i < (nexternal - nincoming); i++)
+    // Decay-aware identical-particle (broken-)symmetry factor, shared with the
+    // Fortran / standalone_cpp exporters (_get_broken_symmetry_data). Two
+    // entries contribute to the over-counting factor only when they have the
+    // same top-level PID AND the same full decay/flavour block, so e.g. two Z
+    // bosons decaying to different families are correctly distinguished.
+    const int n_components = %(broken_sym_ncomponents)d;
+    const int n_entries = %(broken_sym_nentries)d;
+    const int comp_beg[n_components] = {%(broken_sym_component_starts)s};
+    const int comp_end[n_components] = {%(broken_sym_component_ends)s};
+    const int comp_old[n_components] = {%(broken_sym_component_old_factors)s};
+    const int pid_list[n_entries] = {%(broken_sym_pid_list)s};
+    const int block_start[n_entries] = {%(broken_sym_block_starts)s};
+    const int block_len[n_entries] = {%(broken_sym_block_lengths)s};
+    int pid_work[n_entries];
+    for (int i = 0; i < n_entries; i++)
+        pid_work[i] = pid_list[i];
+
+    int total_factor = 1;
+    for (int icomp = 0; icomp < n_components; icomp++)
     {
-      if(pid[i] == 0)
-        continue;
-      int n_tot = 1;
-      for (int j = i + 1; j < (nexternal - nincoming); j++)
-      {
-        if((pid[i] == pid[j]) && (cFlavors[iflavor][nincoming + i] == cFlavors[iflavor][nincoming + j]))
+        int old_factor = comp_old[icomp];
+        if (comp_old[icomp] > 1)
         {
-          pid[j] = 0;
-          n_tot = n_tot + 1;
-          old_factor = old_factor / n_tot;
+        for (int i = comp_beg[icomp] - 1; i < comp_end[icomp]; i++)
+        {
+            if (pid_work[i] == 0)
+                continue;
+            int n_tot = 1;
+            for (int j = i + 1; j < comp_end[icomp]; j++)
+            {
+                if (pid_work[i] != pid_work[j])
+                    continue;
+                bool same_block = (block_len[i] == block_len[j]);
+                for (int k = 0; same_block && k < block_len[i]; k++)
+                {
+                    if (cFlavors[iflavor][block_start[i] - 1 + k] != cFlavors[iflavor][block_start[j] - 1 + k])
+                        same_block = false;
+                }
+                if (same_block)
+                {
+                    pid_work[j] = 0;
+                    n_tot = n_tot + 1;
+                    old_factor = old_factor / n_tot;
+                }
+            }
         }
-      }
+        }
+        total_factor = total_factor * old_factor;
     }
-    return old_factor;
+    return total_factor;
   }
 
   //--------------------------------------------------------------------------
@@ -615,8 +693,8 @@ namespace mg5amcCpu
   __global__ void
   normalise_output( fptype* allMEs,                    // output: allMEs[nevt], |M|^2 running_sum_over_helicities
                     const unsigned int* iflavorVec,
-                    fptype* ghelAllNumerators,         // input/tmp: allNumerators super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
-                    fptype_denom* ghelAllDenominators,       // input/tmp: allNumerators super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
+                    fptype* allNumerators,             // input: multichannel numerators[nevt][ndiagrams], already summed over helicities (atomicAdd)
+                    fptype* allDenominators,           // output: multichannel denominators[nevt], derived here as the sum of numerators
                     const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
                     bool storeChannelWeights,           // if true, compute final multichannel weights
                     bool mulChannelWeight,             // if true, multiply matrix element by channel weight
@@ -624,26 +702,20 @@ namespace mg5amcCpu
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
     allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor(iflavorVec[ievt]) / globaldenom;
-    const int nevt = gridDim.x * blockDim.x;
     if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
     {
-      fptype* totAllNumerators = ghelAllNumerators;     // reuse "helicity #0" buffer to compute the total over all helicities
-      fptype_denom* totAllDenominators = ghelAllDenominators; // reuse "helicity #0" buffer to compute the total over all helicities
-      for( int ighel = 1; ighel < dcNGoodHel; ighel++ ) // NB: the loop starts at ighel=1
-      {
-        fptype_denom* hAllDenominators = ghelAllDenominators + ighel * nevt;
-        totAllDenominators[ievt] += hAllDenominators[ievt];
-        fptype* hAllNumerators = ghelAllNumerators + ( ievt + ighel * nevt ) * processConfig::ndiagrams;
-        fptype* firstNumerator = ghelAllNumerators + ievt * processConfig::ndiagrams;
-        for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
-        {
-          firstNumerator[idiag] += hAllNumerators[idiag];
-        }
-      }
+      // The numerators have already been accumulated over all good helicities in place (atomicAdd in
+      // calculate_jamps), so there is no helicity dimension to sum here. The denominator is just the
+      // sum of all numerators for this event: derive it once and store it for the downstream consumers.
+      fptype* numerators = allNumerators + ievt * processConfig::ndiagrams;
+      fptype denominator = 0;
+      for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
+        denominator += numerators[idiag];
+      allDenominators[ievt] = denominator;
       if( mulChannelWeight )
       {
         unsigned int channelId = allChannelIds[ievt];
-        allMEs[ievt] *= totAllNumerators[channelId - 1 + ievt * processConfig::ndiagrams] / totAllDenominators[ievt];
+        allMEs[ievt] *= numerators[channelId - 1] / denominator;
       }
     }
     return;
@@ -807,6 +879,7 @@ namespace mg5amcCpu
             fptype_colour* ghelAllBlasTmp,            // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
             gpuBlasHandle_t* pBlasHandle,       // input: cuBLAS/hipBLAS handle
             gpuStream_t* ghelStreams,           // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
+            const bool async,
             const int gpublocks,                // input: cuda gpublocks
             const int gputhreads                // input: cuda gputhreads
 #else

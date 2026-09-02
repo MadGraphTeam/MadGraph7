@@ -1,4 +1,4 @@
-SUBROUTINE SMATRIX%(proc_id)s(P,RHEL, RCOL, channel, proc_id, ANS, hel_selected, icol)
+SUBROUTINE SMATRIX%(proc_id)s(P, iflav, RHEL, RCOL, channel, ivec, ANS, hel_selected, icol)
 C  
 %(info_lines)s
 C 
@@ -14,7 +14,7 @@ C
     IMPLICIT NONE
     double precision RHEL
     double precision RCOL
-    integer channel, proc_id, hel_selected, icol
+    integer iflav, channel, hel_selected, icol, ivec
 C  
 C CONSTANTS
 C  
@@ -71,7 +71,7 @@ C   This stores the different between the full matrix element squared and the su
 
 		real t_before
 
-C       This is just to temporarily store the reference grid for helicity of the DiscreteSampler so as to obtain its number of entries with ref_helicity_grid%%n_tot_entries
+C       This is just to temporarily store the reference grid for helicity of the DiscreteSampler so as to obtain its number of entries with ref_helicity_grid%n_tot_entries
 	    type(SampledDimension) ref_helicity_grid
 
 		REAL*8 , ALLOCATABLE :: ANS_ML(:,:)
@@ -178,6 +178,8 @@ C     This is of course only necessary if the automatic TIR Cache clearing was t
 
 
     ANS = 0D0
+C   IVEC is now received as an argument (the call site passes the vector index,
+C   or 1 for the non-vectorised path); do not overwrite it here.
 
     DO I=1,NCOMB
        TS(I)=0d0
@@ -237,7 +239,7 @@ C Of course this option can also not be used for polarized beams.
 		  hel_jacobian   = 1.0d0
 !         We don't want to re-update the helicity grid if it was already updated by another matrix<i>, so we make sure that the reference grid is empty.
           ref_helicity_grid = DS_get_dimension(ref_grid,'Helicity')
-		  IF((DS_get_dim_status('Helicity').eq.1).and.(ref_helicity_grid%%n_tot_entries.eq.0)) then 
+		  IF((DS_get_dim_status('Helicity').eq.1).and.(ref_helicity_grid%n_tot_entries.eq.0)) then 
 !           If we finished the initialization we can update the grid so as to start sampling over it.
 !           However the grid will now be filled by dsample with different kind of weights (including pdf, flux, etc...) so by setting the grid_mode of the reference grid to 'initialization' we make sure it will be overwritten (as opposed to 'combined') by the running grid at the next update.
             CALL DS_UPDATE_GRID('Helicity')
@@ -333,8 +335,22 @@ c         Set right sign for ANS, based on sign of chosen helicity
     ENDIF
 
 C Amplitude(s) for diagram number %(n_tot_diags)d
-C This last line is a tag do not remove it. 
+C This last line is a tag do not remove it.
 	END
+
+
+      SUBROUTINE GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR_OUT)
+C     Returns the flavor array for a given flavor index IFLAV
+C     (called by the flavor dispatcher in auto_dsig).
+      IMPLICIT NONE
+      include 'nexternal.inc'
+      INTEGER IFLAV, I
+      INTEGER FLAVOR_OUT(NEXTERNAL)
+      INTEGER FLAVOR(NEXTERNAL,%(max_flavor)s)
+      %(get_flavor_matrix)s
+      FLAVOR_OUT(:) = FLAVOR(:, IFLAV)
+      RETURN
+      END
 
 	SUBROUTINE PROCESS_MADLOOP_OUTPUT%(proc_id)s(P,time_before, me_answer, finite, OneEps, TwoEps, prec, return_code)
 c

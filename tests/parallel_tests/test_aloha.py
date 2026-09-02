@@ -38,6 +38,27 @@ set_global = misc.set_global
 
 pjoin = os.path.join
 
+def eval_scope(local_vars):
+    """Return a namespace in which the string form of an aloha expression can
+    be exec'ed/eval'ed.
+
+    Those strings refer to the TMP.../FCT... temporaries that aloha introduces
+    for the common subexpressions (KERNEL.reduced_expr2, exposed per routine as
+    AbstractRoutine.contracted/fct), so a test has to define them first, exactly
+    like the writers emit their definition ahead of the expression itself.
+
+    Defining them with a bare exec() used to work by accident: the assignment
+    landed in the dict returned by locals(), and that dict was cached per frame,
+    so a later eval() -- which also reads locals() -- still saw it. Since PEP 667
+    (python 3.13) locals() hands out an independent snapshot of the function
+    scope, so the assignment is thrown away and the eval() raises NameError.
+    Passing an explicit namespace to both exec() and eval() is version
+    independent.
+    """
+    scope = dict(globals())
+    scope.update(local_vars)
+    return scope
+
 class TestVariable(unittest.TestCase):
 
     def setUp(self):
@@ -1082,19 +1103,20 @@ class testLorentzObject(unittest.TestCase):
     
         analytical2 = (P(-1, t)* P(-1,t)-1) * (Metric(alpha, beta))
         analytical2= analytical2.expand()
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                exec('%s = %s' % (name, cexpr), scope)
             except:
                 pass
-        
+
         for ind in analytical.listindices():
             data1 = analytical.get_rep(ind)
             data2 = analytical2.get_rep(ind)
-            self.assertAlmostEqual(eval(str( data1 )),eval(str(data2)))
-        
-        
-        
+            self.assertAlmostEqual(eval(str( data1 ), scope),eval(str(data2), scope))
+
+
+
     def testTraceofObject(self):
         """Check that we can output the trace of an object"""
         
@@ -1212,14 +1234,15 @@ class testLorentzObject(unittest.TestCase):
         P1_0, P1_1, P1_2, P1_3 = 20,3,4,5
         OM1 = 1/(P1_0 **2 - P1_1 **2 -P1_2 **2 -P1_3 **2)
         M1 = math.sqrt(P1_0 **2 - P1_1 **2 -P1_2 **2 -P1_3 **2)
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                exec('%s = %s' % (name, cexpr), scope)
             except:
                 pass
         for ind in zero.listindices():
             data = zero.get_rep(ind)
-            self.assertEqual(eval(str(data)),0)
+            self.assertEqual(eval(str(data), scope),0)
 
 
     
@@ -1335,16 +1358,17 @@ class testLorentzObject(unittest.TestCase):
 
         P1_0, P1_1, P1_2, P1_3 = 7,2,3,5
         OM1 = 1.0/48#(P1_0 **2 - P1_1 **2 -P1_2 **2 -P1_3 **2)
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))   
+                exec('%s = %s' % (name, cexpr), scope)
             except:
                 pass
-        
+
         for ind in analytical.listindices():
             data1 = aloha.get_rep(ind)
             data2 = analytical.get_rep(ind)
-            self.assertAlmostEqual(eval(str( data1 )),eval(str(data2)))
+            self.assertAlmostEqual(eval(str( data1 ), scope),eval(str(data2), scope))
             
     def test_short_spin2propagator5(self):
         """test the spin2 propagator is correctly contracted --part by part --"""
@@ -2853,11 +2877,12 @@ class test_aloha_creation(IOTests.IOTestManager):
         P1_0,P1_1,P1_2,P1_3 = 10, 11, 12, 19
         P2_0,P2_1,P2_2,P2_3 = 101, 111, 121, 134
         P3_0,P3_1,P3_2,P3_3 = 1001, 1106, 1240, 1320
+        scope = eval_scope(locals())
         for name, cexpr in abstract_ZP.contracted.items():
-            exec('%s = %s' % (name, cexpr))
+            exec('%s = %s' % (name, cexpr), scope)
 
         for ind in expr.listindices():
-            self.assertEqual(eval(str(expr.get_rep(ind))), 178727040j)
+            self.assertEqual(eval(str(expr.get_rep(ind)), scope), 178727040j)
 
     def test_short_regular_expression_propa(self):
 
@@ -2919,15 +2944,14 @@ class test_aloha_creation(IOTests.IOTestManager):
         OM1,OM2,OM3 = 0 , 0, 1.0 / 500**2
         M3 = 500
         
-        #for name, cexpr in one_exp.contracted.items():
-        #    exec('%s = %s' % (name, cexpr))
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
             try:
-                exec('%s = %s' % (name, cexpr))            
+                exec('%s = %s' % (name, cexpr), scope)
             except:
                 pass
         for ind in one_exp.listindices():
-            self.assertAlmostEqual(eval(str(one_exp.get_rep(ind))), eval(str(two_exp.get_rep(ind))))
+            self.assertAlmostEqual(eval(str(one_exp.get_rep(ind)), scope), eval(str(two_exp.get_rep(ind)), scope))
 
 
     @set_global()
@@ -3016,12 +3040,13 @@ class test_aloha_creation(IOTests.IOTestManager):
         OM1,OM2,OM3 = 0 , 0, 1.0 / 500**2
         M3 = 500
         
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
-        
+            exec('%s = %s' % (name, cexpr), scope)
+
         for ind in zero.listindices():
-            self.assertAlmostEqual(eval(str(zero.get_rep(ind))),0)
-             
+            self.assertAlmostEqual(eval(str(zero.get_rep(ind)), scope),0)
+
     def test_short_aloha_get_rank(self):
         """ test the FFV creation of vertex """
         
@@ -3081,18 +3106,19 @@ class test_aloha_creation(IOTests.IOTestManager):
         j = complex(0,1)
         P3_0,P3_1,P3_2,P3_3 = 10, 11, 12, 13
         
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
-        
-        for ind in abstract.expr.listindices():                        
-            self.assertAlmostEqual(eval(str(abstract.expr.get_rep(ind))) -
-                             eval(str(abstract_M.expr.get_rep(ind))) -
-                             eval(str(abstract_P.expr.get_rep(ind)))
+            exec('%s = %s' % (name, cexpr), scope)
+
+        for ind in abstract.expr.listindices():
+            self.assertAlmostEqual(eval(str(abstract.expr.get_rep(ind)), scope) -
+                             eval(str(abstract_M.expr.get_rep(ind)), scope) -
+                             eval(str(abstract_P.expr.get_rep(ind)), scope)
                              ,0)
         zero = abstract_M.expr + abstract_P.expr - abstract.expr
         zero.simplify()
         for ind in abstract.expr.listindices():
-            self.assertEqual(eval(str(zero.get_rep(ind))),0,'fail')
+            self.assertEqual(eval(str(zero.get_rep(ind)), scope),0,'fail')
 
     def test_short_aloha_FFVP1N(self):
         """ Check that the special routine for P1N propagator --no propagator--
@@ -3114,21 +3140,22 @@ class test_aloha_creation(IOTests.IOTestManager):
         j = complex(0,1)
         P3_0,P3_1,P3_2,P3_3 = 20, 21, 22, 23
         
-        #evaluate all contraction 
+        #evaluate all contraction
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr))
-            
+            exec('%s = %s' % (name, cexpr), scope)
+
         # evaluate FFV_0
-        val_V = eval(str(V.expr.get_rep((0,))))
+        val_V = eval(str(V.expr.get_rep((0,))), scope)
 
         # evaluate the FFVP1N_ output -> vector
         vN1 = []
         vN2 = []
         vN3 = []
         for i in range(4):
-            vN1.append(eval(str(N1.expr.get_rep((i,)))))
-            vN2.append(eval(str(N2.expr.get_rep((i,)))))
-            vN3.append(eval(str(N3.expr.get_rep((i,)))))
+            vN1.append(eval(str(N1.expr.get_rep((i,))), scope))
+            vN2.append(eval(str(N2.expr.get_rep((i,))), scope))
+            vN3.append(eval(str(N3.expr.get_rep((i,))), scope))
         
         # contract them to get the value which should be the same as the _0
         val_N1 = F1_1 * vN1[0] + F1_2 * vN1[1] + F1_3 * vN1[2] + F1_4 * vN1[3] 
@@ -3173,13 +3200,14 @@ class test_aloha_creation(IOTests.IOTestManager):
         s3 = -j*((OM3*(P3_2*((F2_1*((F1_3*(-P3_0-P3_3))+(F1_4*(-P3_1-1*j*P3_2))))+(F2_2*((F1_3*(-P3_1+1*j*P3_2))+(F1_4*(-P3_0+P3_3)))))))+(-1*j*(F1_4*F2_1)+1*j*(F1_3*F2_2)))
         s4 = -j*((OM3*(P3_3*((F2_1*((F1_3*(-P3_0-P3_3))+(F1_4*(-P3_1-1*j*P3_2))))+(F2_2*((F1_3*(-P3_1+1*j*P3_2))+(F1_4*(-P3_0+P3_3)))))))+(-(F1_3*F2_1)+(F1_4*F2_2)))
 
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            exec('%s = %s' % (name, cexpr), scope)
 
-        self.assertEqual(s1, eval(str(abstract_M.expr.get_rep([0]))))
-        self.assertEqual(s2, eval(str(abstract_M.expr.get_rep([1]))))    
-        self.assertEqual(s3, eval(str(abstract_M.expr.get_rep([2]))))    
-        self.assertEqual(s4, eval(str(abstract_M.expr.get_rep([3]))))                                   
+        self.assertEqual(s1, eval(str(abstract_M.expr.get_rep([0])), scope))
+        self.assertEqual(s2, eval(str(abstract_M.expr.get_rep([1])), scope))
+        self.assertEqual(s3, eval(str(abstract_M.expr.get_rep([2])), scope))
+        self.assertEqual(s4, eval(str(abstract_M.expr.get_rep([3])), scope))
 
         FFV_6 = self.Lorentz(name = 'FFV_6',
                 spins = [ 2, 2, 3 ],
@@ -3192,11 +3220,12 @@ class test_aloha_creation(IOTests.IOTestManager):
          
         zero = abstract_6.expr - abstract_M.expr - \
                                                     2* abstract_P.expr   
+        scope = eval_scope(locals())
         for name, cexpr in aloha_lib.KERNEL.reduced_expr2.items():
-            exec('%s = %s' % (name, cexpr)) 
+            exec('%s = %s' % (name, cexpr), scope)
         for ind in zero.listindices():
-            self.assertEqual(eval(str(zero.get_rep(ind))),0)
-        
+            self.assertEqual(eval(str(zero.get_rep(ind)), scope),0)
+
     def test_short_aloha_symmetries_and_get_info(self):
         """ test that the symmetries of particles works """
     
@@ -3374,20 +3403,43 @@ COMPLEX*16 COUP2
 TYPE(ALOHA) F1
 TYPE(ALOHA) F2
 TYPE(ALOHA) V3
-COMPLEX*16 TMP
 COMPLEX*16 VERTEX
-CALL FFV1C1_0(F2,F1,V3,COUP1,VERTEX)
-CALL FFV2C1_0(F2,F1,V3,COUP2,TMP)
-VERTEX = VERTEX + TMP
 END"""
-    
+
             data = [ l.strip() for l in fsock.read().split('\n')]
             for line in goal.split('\n'):
                     self.assertIn(line.strip(), data)
+            # the combined routine is a merged expression, not a wrapper
+            # calling the routine of each single Lorentz structure: no call,
+            # and the two couplings enter the same expression. The names of
+            # the temporaries depend on what the kernel computed before, so
+            # they are not part of the comparison.
+            self.assertFalse([l for l in data if l.startswith('CALL ')])
+            self.assertTrue([l for l in data if 'COUP1' in l and 'COUP2' in l])
         
         
         
     
+    def test_short_multiple_lorentz_subset_explicit_combine_mixed_spins(self):
+        """test explicit combined cpp fallback for mixed-spin Lorentz structures"""
+
+        helas_suite = create_aloha.AbstractALOHAModel('sm', explicit_combine=True)
+        helas_suite.add_Lorentz_object([self.Lorentz(name='SVS1',
+                                                     spins=[1, 3, 1],
+                                                     structure='P(2,1) - P(2,3)')])
+        requested_routines = [(('VVS1', 'SSS1', 'VSS1', 'SVS1'), (), 0)]
+
+        helas_suite.compute_subset(requested_routines)
+
+        self.assertIn(('VVS1', 0), helas_suite)
+        self.assertEqual(helas_suite[('VVS1', 0)].combined,
+                         [('SSS1', 'VSS1', 'SVS1')])
+
+        routine_h, routine_c = helas_suite[('VVS1', 0)].write(output_dir=None,
+                                                              language='CPP')
+        self.assertIn('VVS1_SSS1_VSS1_SVS1_0', routine_h)
+        self.assertIn('VVS1_SSS1_VSS1_SVS1_0', routine_c)
+
     def test_short_mssm_subset_creation(self):
         """ test the creation of subpart of ALOHA routines 
         including clash routines """
@@ -3471,13 +3523,17 @@ END"""
         # For V4:
         cImag = complex(0,1)
 
+        # exec/eval need an explicit namespace: since Python 3.13 (PEP 667)
+        # exec() at function scope no longer writes into the function locals,
+        # so the TMP* variables defined here would not be visible to eval().
+        namespace = dict(locals())
         for name, expr in amp.contracted.items():
-            exec('%s = %s' % (name,expr))       
+            exec('%s = %s' % (name,expr), namespace)
 
         #for i in range(100):
         ufo_value = []
         for i in range(4):
-            ufo_value.append(eval(str(amp.expr.get_rep([i]))))   
+            ufo_value.append(eval(str(amp.expr.get_rep([i])), namespace))
             #ufo_value = [eval(str(amp.expr.get_rep([i]))) for i in range(4)]
 
         #computed with 1.4.8.4 // 1.5.3 // 1.5.4
@@ -3516,11 +3572,13 @@ END"""
         # For V4:
         cImag = complex(0,1)
 
+        # explicit namespace for exec/eval (PEP 667, Python 3.13+): see above.
+        namespace = dict(locals())
         for name, expr in amp.contracted.items():
-            exec('%s = %s' % (name,expr))       
+            exec('%s = %s' % (name,expr), namespace)
 
 
-        ufo_value = eval(str(amp.expr.get_rep([0])))
+        ufo_value = eval(str(amp.expr.get_rep([0])), namespace)
         self.assertAlmostEqual(ufo_value, 1080j)
 
 
@@ -3544,11 +3602,13 @@ END"""
         # For V4:
         cImag = complex(0,1)
 
+        # explicit namespace for exec/eval (PEP 667, Python 3.13+): see above.
+        namespace = dict(locals())
         for name, expr in amp.contracted.items():
-            exec('%s = %s' % (name,expr))
-            
-        ufo_value = eval(str(amp.expr.get_rep([0])))
-    
+            exec('%s = %s' % (name,expr), namespace)
+
+        ufo_value = eval(str(amp.expr.get_rep([0])), namespace)
+
         #v4_value = ( (F2_1*F1_3+F2_2*F1_4)*V3_1 \
         #            -(F2_1*F1_4+F2_2*F1_3)*V3_2 \
         #            +(F2_1*F1_4-F2_2*F1_3)*V3_3*cImag \
@@ -3566,10 +3626,12 @@ END"""
         builder = create_aloha.AbstractRoutineBuilder(FFV)
         conjg_builder= builder.define_conjugate_builder()
         amp = conjg_builder.compute_routine(0, factorize=False)
+        # explicit namespace for exec/eval (PEP 667, Python 3.13+): see above.
+        namespace = dict(locals())
         for name, expr in amp.contracted.items():
-            exec('%s = %s' % (name,expr))
-                    
-        ufo_value = eval(str(amp.expr.get_rep([0])))
+            exec('%s = %s' % (name,expr), namespace)
+
+        ufo_value = eval(str(amp.expr.get_rep([0])), namespace)
         self.assertNotEqual(complex(0,1)*ufo_value, v4_value)
         v4_value = (F1_3*F2_1+F1_4*F2_2)*V3_1 \
                           +(F1_3*F2_2+F1_4*F2_1)*V3_2 \

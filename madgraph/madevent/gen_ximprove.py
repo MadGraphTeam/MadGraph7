@@ -85,6 +85,7 @@ class gensym(object):
         
         self.cmd = cmd
         self.run_card = cmd.run_card
+        self.disable_multichannel = self.run_card.get('disable_multichannel')
         self.me_dir = cmd.me_dir
         
         
@@ -530,6 +531,7 @@ class gensym(object):
                    'maxiter': 1,
                    'miniter': 1,
                    'accuracy': self.cmd.opts['accuracy'],
+                   'suppress_amplitude': 0 if self.disable_multichannel else 1,
                    'helicity': run_card['nhel_survey'] if 'nhel_survey' in run_card \
                             else run_card['nhel'],
                    'gridmode': -2,
@@ -904,6 +906,7 @@ For offline investigation, the problematic discarded events are stored in:
                'maxiter': 1,
                'miniter': 1,
                'accuracy': self.cmd.opts['accuracy'],
+               'suppress_amplitude': 0 if self.disable_multichannel else 1,
                'helicity': run_card['nhel_survey'] if 'nhel_survey' in run_card \
                             else run_card['nhel'],
                'gridmode': -2,
@@ -942,7 +945,7 @@ For offline investigation, the problematic discarded events are stored in:
         template ="""         %(event)s         %(maxiter)s           %(miniter)s      !Number of events and max and min iterations
   %(accuracy)s    !Accuracy
   %(gridmode)s       !Grid Adjustment 0=none, 2=adjust
-  1       !Suppress Amplitude 1=yes
+  %(suppress_amplitude)s       !Suppress Amplitude 1=yes
   %(helicity)s        !Helicity Sum/event 0=exact
   %(channel)s      """        
         options['event'] = int(options['event'])
@@ -959,6 +962,7 @@ For offline investigation, the problematic discarded events are stored in:
                    'maxiter': self.cmd.opts['iterations'],
                    'miniter': self.min_iterations,
                    'accuracy': self.cmd.opts['accuracy'],
+                   'suppress_amplitude': 0 if self.disable_multichannel else 1,
                    'helicity': run_card['nhel_survey'] if 'nhel_survey' in run_card \
                                 else run_card['nhel'],
                    'gridmode': 2,
@@ -1040,6 +1044,7 @@ class gen_ximprove(object):
         self.nhel = run_card['nhel']
         if "nhel_refine" in run_card:
             self.nhel = run_card["nhel_refine"]
+        self.disable_multichannel = run_card.get('disable_multichannel')
         
         if self.run_card['refine_evt_by_job'] != -1:
             self.max_request_event = run_card['refine_evt_by_job']
@@ -1073,8 +1078,9 @@ class gen_ximprove(object):
         
         #start the run
         self.handle_seed()
-        self.results = sum_html.collect_result(self.cmd, 
-                                main_dir=pjoin(self.cmd.me_dir,'SubProcesses'))  #main_dir is for gridpack readonly mode
+        self.results = sum_html.collect_result(self.cmd,
+                                main_dir=pjoin(self.cmd.me_dir,'SubProcesses'),
+                                apply_symmetry=not self.disable_multichannel)  #main_dir is for gridpack readonly mode
         if self.gen_events:
             # We run to provide a given number of events
             self.get_job_for_event()
@@ -1140,31 +1146,38 @@ class gen_ximprove(object):
         
 
         run = self.cmd.results.current['run_name']
-        if not os.path.exists(pjoin(self.cmd.me_dir, 'HTML', run)):
+        # A read-only gridpack (concurrent generation) cannot write into me_dir;
+        # the HTML / results.dat output here is only interactive bookkeeping, so
+        # skip those writes when readonly (the post-refinement results already
+        # live in the worker's cwd and are read from there as usual).
+        readonly = getattr(self.cmd, 'readonly', False)
+        if not readonly and not os.path.exists(pjoin(self.cmd.me_dir, 'HTML', run)):
             os.mkdir(pjoin(self.cmd.me_dir, 'HTML', run))
-        
+
         unit = self.cmd.results.unit
-        P_text = "" 
-        if self.results:     
-            Presults = self.results 
-        else:
-            self.results = sum_html.collect_result(self.cmd, None)
+        P_text = ""
+        if self.results:
             Presults = self.results
-                
+        else:
+            self.results = sum_html.collect_result(self.cmd, None,
+                                                   apply_symmetry=not self.disable_multichannel)
+            Presults = self.results
+
         for P_comb in Presults:
-            P_text += P_comb.get_html(run, unit, self.cmd.me_dir) 
-        
-        Presults.write_results_dat(pjoin(self.cmd.me_dir,'SubProcesses', 'results.dat'))   
-        
-        fsock = open(pjoin(self.cmd.me_dir, 'HTML', run, 'results.html'),'w')
-        fsock.write(sum_html.results_header)
-        fsock.write('%s <dl>' % Presults.get_html(run, unit, self.cmd.me_dir))
-        fsock.write('%s </dl></body>' % P_text)         
-        
+            P_text += P_comb.get_html(run, unit, self.cmd.me_dir)
+
+        if not readonly:
+            Presults.write_results_dat(pjoin(self.cmd.me_dir,'SubProcesses', 'results.dat'))
+
+            fsock = open(pjoin(self.cmd.me_dir, 'HTML', run, 'results.html'),'w')
+            fsock.write(sum_html.results_header)
+            fsock.write('%s <dl>' % Presults.get_html(run, unit, self.cmd.me_dir))
+            fsock.write('%s </dl></body>' % P_text)
+
         self.cmd.results.add_detail('cross', Presults.xsec)
-        self.cmd.results.add_detail('error', Presults.xerru) 
-        
-        return Presults.xsec, Presults.xerru   
+        self.cmd.results.add_detail('error', Presults.xerru)
+
+        return Presults.xsec, Presults.xerru
 
     
 class gen_ximprove_v4(gen_ximprove):
@@ -1178,7 +1191,7 @@ class gen_ximprove_v4(gen_ximprove):
     max_splitting = 130       # maximum duplication of a given channel 
     min_iter = 3    
     max_iter = 9
-    keep_grid_for_refine = True        # only apply if needed to split the job
+    keep_grid_for_refine = False        # only apply if needed to split the job
 
 
 
@@ -1190,19 +1203,30 @@ class gen_ximprove_v4(gen_ximprove):
             self.increase_precision(cmd._survey_options['accuracy'][1]/cmd.opts['accuracy'])
 
     def reset_multijob(self):
-
-        for path in misc.glob(pjoin('*', '*','multijob.dat'), pjoin(self.me_dir, 'SubProcesses')):
+        # In a read-only gridpack the jobs run from the worker's cwd (see the
+        # write_dir='.' handling in gen_ximprove_gridpack.get_job_for_event), so
+        # the multijob.dat files live under cwd, not the read-only me_dir.
+        base = '.' if getattr(self, 'readonly', False) else pjoin(self.me_dir, 'SubProcesses')
+        for path in misc.glob(pjoin('*', '*','multijob.dat'), base):
             open(path,'w').write('0\n')
-            
+
     def write_multijob(self, Channel, nb_split):
         """ """
+        base = '.' if getattr(self, 'readonly', False) else pjoin(self.me_dir, 'SubProcesses')
+        path = pjoin(base, Channel.get('name'), 'multijob.dat')
         if nb_split <=1:
             try:
-                os.remove(pjoin(self.me_dir, 'SubProcesses', Channel.get('name'), 'multijob.dat'))
+                os.remove(path)
             except OSError:
                 pass
             return
-        f = open(pjoin(self.me_dir, 'SubProcesses', Channel.get('name'), 'multijob.dat'), 'w')
+        # under readonly, prepare_local_dir only created the local P dirs (with
+        # symfact.dat); make the G subdir before writing into it.
+        if getattr(self, 'readonly', False):
+            gdir = os.path.dirname(path)
+            if not os.path.exists(gdir):
+                os.makedirs(gdir)
+        f = open(path, 'w')
         f.write('%i\n' % nb_split)
         f.close()
     
@@ -1313,6 +1337,7 @@ class gen_ximprove_v4(gen_ximprove):
                     'precision': -goal_lum/nb_split,
                     'nhel': self.run_card['nhel'],
                     'channel': C.name.replace('G',''),
+                    'suppress_amplitude': 0 if self.disable_multichannel else 1,
                     'grid_refinment' : 0,    #no refinment of the grid
                     'base_directory': '',   #should be change in splitted job if want to keep the grid
                     'packet': packet, 
@@ -1470,7 +1495,8 @@ class gen_ximprove_v4(gen_ximprove):
                     'precision': yerr/math.sqrt(nb_split)/(C.get('xsec')+ yerr),
                     'nhel': self.run_card['nhel'],
                     'channel': C.name.replace('G',''),
-                    'base_directory': C.name if self.keep_grid_for_refine else '',  
+                    'suppress_amplitude': 0 if self.disable_multichannel else 1,
+                    'base_directory': C.name if self.keep_grid_for_refine else '',
                     'grid_refinment' : 1
                     }
 
@@ -1489,31 +1515,38 @@ class gen_ximprove_v4(gen_ximprove):
         
 
         run = self.cmd.results.current['run_name']
-        if not os.path.exists(pjoin(self.cmd.me_dir, 'HTML', run)):
+        # A read-only gridpack (concurrent generation) cannot write into me_dir;
+        # the HTML / results.dat output here is only interactive bookkeeping, so
+        # skip those writes when readonly (the post-refinement results already
+        # live in the worker's cwd and are read from there as usual).
+        readonly = getattr(self.cmd, 'readonly', False)
+        if not readonly and not os.path.exists(pjoin(self.cmd.me_dir, 'HTML', run)):
             os.mkdir(pjoin(self.cmd.me_dir, 'HTML', run))
-        
+
         unit = self.cmd.results.unit
-        P_text = "" 
-        if self.results:     
-            Presults = self.results 
-        else:
-            self.results = sum_html.collect_result(self.cmd, None)
+        P_text = ""
+        if self.results:
             Presults = self.results
-                
+        else:
+            self.results = sum_html.collect_result(self.cmd, None,
+                                                   apply_symmetry=not self.disable_multichannel)
+            Presults = self.results
+
         for P_comb in Presults:
-            P_text += P_comb.get_html(run, unit, self.cmd.me_dir) 
-        
-        Presults.write_results_dat(pjoin(self.cmd.me_dir,'SubProcesses', 'results.dat'))   
-        
-        fsock = open(pjoin(self.cmd.me_dir, 'HTML', run, 'results.html'),'w')
-        fsock.write(sum_html.results_header)
-        fsock.write('%s <dl>' % Presults.get_html(run, unit, self.cmd.me_dir))
-        fsock.write('%s </dl></body>' % P_text)         
-        
+            P_text += P_comb.get_html(run, unit, self.cmd.me_dir)
+
+        if not readonly:
+            Presults.write_results_dat(pjoin(self.cmd.me_dir,'SubProcesses', 'results.dat'))
+
+            fsock = open(pjoin(self.cmd.me_dir, 'HTML', run, 'results.html'),'w')
+            fsock.write(sum_html.results_header)
+            fsock.write('%s <dl>' % Presults.get_html(run, unit, self.cmd.me_dir))
+            fsock.write('%s </dl></body>' % P_text)
+
         self.cmd.results.add_detail('cross', Presults.xsec)
-        self.cmd.results.add_detail('error', Presults.xerru) 
-        
-        return Presults.xsec, Presults.xerru          
+        self.cmd.results.add_detail('error', Presults.xerru)
+
+        return Presults.xsec, Presults.xerru       
 
 
 
@@ -1948,6 +1981,7 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
                     'requested_event': needed_event,
                     'nhel': self.run_card['nhel'],
                     'channel': C.name.replace('G',''),
+                    'suppress_amplitude': 0 if self.disable_multichannel else 1,
                     'grid_refinment' : 0,    #no refinment of the grid
                     'base_directory': '',   #should be change in splitted job if want to keep the grid
                     'packet': None, 
@@ -2007,7 +2041,9 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
             nprocs_cluster.wait(self.me_dir, gridpack_wait_monitoring)
 
         if self.readonly:
-            combine_runs.CombineRuns(write_dir)
+            # metadata from the read-only gridpack (me_dir); P/G dirs to combine
+            # are in the worker's cwd
+            combine_runs.CombineRuns(self.me_dir, readonly=True)
         else:
             combine_runs.CombineRuns(self.me_dir)
         self.check_events(goal_lum, to_refine, jobs, write_dir)
@@ -2064,4 +2100,3 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
         
 
         
-

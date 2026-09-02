@@ -2,6 +2,7 @@ import ctypes
 import logging
 import os
 import platform
+from collections import namedtuple
 
 # pre-load libmadspace
 ctypes.CDLL(
@@ -45,35 +46,58 @@ def _init():
         else:
             return outputs
 
-    def function_call(self, *args):
+    def function_call(self, *args, **kwargs):
         if not hasattr(self, "runtime"):
             self.runtime = FunctionRuntime(self)
+            self.ret_tuple = namedtuple("Result", self.outputs.keys())
+            self.arg_keys = self.inputs.keys()
+        if len(args) == 0:
+            args = [kwargs[key] for key in self.arg_keys]
         outputs = call_and_convert(self.runtime, args)
         if len(outputs) == 1:
             return outputs[0]
         else:
-            return outputs
+            return self.ret_tuple(*outputs)
 
-    def function_generator_call(self, *args):
+    def function_generator_call(self, *args, **kwargs):
         if not hasattr(self, "runtime"):
-            self.runtime = FunctionRuntime(self.function())
+            func = self.function()
+            self.runtime = FunctionRuntime(func)
+            self.ret_tuple = namedtuple("Result", func.outputs.keys())
+            self.arg_keys = func.inputs.keys()
+        if len(args) == 0:
+            args = [kwargs[key] for key in self.arg_keys]
         outputs = call_and_convert(self.runtime, args)
         if len(outputs) == 1:
             return outputs[0]
         else:
-            return outputs
+            return self.ret_tuple(*outputs)
 
-    def map_forward(self, inputs, conditions=[]):
+    def map_forward(self, inputs=[], conditions=[], **kwargs):
         if not hasattr(self, "forward_runtime"):
-            self.forward_runtime = FunctionRuntime(self.forward_function())
-        outputs = call_and_convert(self.forward_runtime, [*inputs, *conditions])
-        return outputs[:-1], outputs[-1]
+            func = self.forward_function()
+            self.forward_runtime = FunctionRuntime(func)
+            self.forward_tuple = namedtuple("Result", func.outputs.keys())
+            self.forward_keys = func.inputs.keys()
+        if len(inputs) + len(conditions) == 0:
+            args = [kwargs[key] for key in self.forward_keys]
+        else:
+            args = [*inputs, *conditions]
+        outputs = call_and_convert(self.forward_runtime, args)
+        return self.forward_tuple(*outputs)
 
-    def map_inverse(self, inputs, conditions=[]):
+    def map_inverse(self, inputs=[], conditions=[], **kwargs):
         if not hasattr(self, "inverse_runtime"):
-            self.inverse_runtime = FunctionRuntime(self.inverse_function())
-        outputs = call_and_convert(self.inverse_runtime, [*inputs, *conditions])
-        return outputs[:-1], outputs[-1]
+            func = self.inverse_function()
+            self.inverse_runtime = FunctionRuntime(func)
+            self.inverse_tuple = namedtuple("Result", func.outputs.keys())
+            self.inverse_keys = func.inputs.keys()
+        if len(inputs) + len(conditions) == 0:
+            args = [kwargs[key] for key in self.inverse_keys]
+        else:
+            args = [*inputs, *conditions]
+        outputs = call_and_convert(self.inverse_runtime, args)
+        return self.inverse_tuple(*outputs)
 
     def tensor_numpy(tensor):
         import numpy  # Lazy-load numpy, to make it optional dependency

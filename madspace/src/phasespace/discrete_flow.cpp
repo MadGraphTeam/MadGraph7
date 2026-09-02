@@ -1,7 +1,7 @@
-#include "madspace/phasespace/discrete_flow.h"
+#include "madspace/phasespace/discrete_flow.hpp"
 
-#include "madspace/phasespace/discrete_sampler.h"
-#include "madspace/util.h"
+#include "madspace/phasespace/discrete_sampler.hpp"
+#include "madspace/util.hpp"
 
 using namespace madspace;
 
@@ -16,15 +16,30 @@ DiscreteFlow::DiscreteFlow(
 ) :
     Mapping(
         "DiscreteFlow",
-        TypeVec(option_counts.size(), batch_float),
-        TypeVec(option_counts.size(), batch_int),
         [&] {
-            TypeVec cond_types;
+            NamedVector<Type> in_types;
+            for (std::size_t dim = 0; dim < option_counts.size(); ++dim) {
+                in_types.push_back(std::format("random_{}", dim), batch_float);
+            }
+            return in_types;
+        }(),
+        [&] {
+            NamedVector<Type> out_types;
+            for (std::size_t dim = 0; dim < option_counts.size(); ++dim) {
+                out_types.push_back(std::format("index_{}", dim), batch_int);
+            }
+            return out_types;
+        }(),
+        [&] {
+            NamedVector<Type> cond_types;
             if (condition_dim > 0) {
-                cond_types.push_back(batch_float_array(condition_dim));
+                cond_types.push_back("condition", batch_float_array(condition_dim));
             }
             for (std::size_t dim : dims_with_prior) {
-                cond_types.push_back(batch_float_array(option_counts.at(dim)));
+                cond_types.push_back(
+                    std::format("prior_{}", dim),
+                    batch_float_array(option_counts.at(dim))
+                );
             }
             return cond_types;
         }()
@@ -56,21 +71,25 @@ DiscreteFlow::DiscreteFlow(
 }
 
 Mapping::Result DiscreteFlow::build_forward_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
     return build_transform(fb, inputs, conditions, false);
 }
 
 Mapping::Result DiscreteFlow::build_inverse_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
     return build_transform(fb, inputs, conditions, true);
 }
 
 Mapping::Result DiscreteFlow::build_transform(
     FunctionBuilder& fb,
-    const ValueVec& inputs,
-    const ValueVec& conditions,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions,
     bool inverse
 ) const {
     Value subnet_input;
@@ -106,15 +125,18 @@ Mapping::Result DiscreteFlow::build_transform(
             probs = fb.mul(probs, conditions.at(condition_index));
             ++condition_index;
         }
-        auto [output, det] = inverse ? fb.sample_discrete_probs_inverse(input, probs)
-                                     : fb.sample_discrete_probs(input, probs);
+        auto [output, det] = inverse
+            ? fb.sample_discrete_probs_inverse(input, probs)
+            : fb.sample_discrete_probs(input, probs);
         outputs.push_back(output);
         dets.push_back(det);
         prev_option_count = option_count;
         prev_index = inverse ? input : output;
         ++dim_index;
     }
-    return {outputs, fb.product(dets)};
+    return {
+        {(inverse ? input_types() : output_types()).keys(), outputs}, fb.product(dets)
+    };
 }
 
 void DiscreteFlow::initialize_globals(ContextPtr context) const {

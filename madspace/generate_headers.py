@@ -1,11 +1,24 @@
+import argparse
 import os
+from pathlib import Path
 
 import yaml
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+
 
 def main():
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--out-dir",
+        required=True,
+        type=Path,
+        help="Root directory to write the generated headers into.",
+    )
+    args = parser.parse_args()
+    out_dir = args.out_dir.resolve()
 
+    os.chdir(SCRIPT_DIR)
     with open("instruction_set.yaml") as f:
         data = list(yaml.safe_load_all(f))
 
@@ -19,13 +32,16 @@ def main():
         for sec in data[1:]
     ]
 
-    function_builder_mixin(commands)
-    instruction_set_python(commands)
-    instruction_set_mixin(commands)
-    runtime_mixin(commands, "cpu")
-    runtime_backward_mixin(commands, "cpu")
-    runtime_mixin(commands, "gpu")
-    runtime_backward_mixin(commands, "gpu")
+    for sub_dir in ("compgraphs", "python", "cpu", "gpu"):
+        (out_dir / sub_dir).mkdir(parents=True, exist_ok=True)
+
+    function_builder_mixin(commands, out_dir)
+    instruction_set_python(commands, out_dir)
+    instruction_set_mixin(commands, out_dir)
+    runtime_mixin(commands, "cpu", out_dir)
+    runtime_backward_mixin(commands, "cpu", out_dir)
+    runtime_mixin(commands, "gpu", out_dir)
+    runtime_backward_mixin(commands, "gpu", out_dir)
 
 
 def write_autogen(f):
@@ -35,8 +51,8 @@ def write_autogen(f):
     )
 
 
-def function_builder_mixin(commands):
-    with open("include/madspace/madcode/function_builder_mixin.h", "w") as f:
+def function_builder_mixin(commands, out_dir):
+    with open(out_dir / "compgraphs" / "function_builder_mixin.inc", "w") as f:
         write_autogen(f)
         first = True
         for name, cmd in commands.items():
@@ -76,14 +92,14 @@ def function_builder_mixin(commands):
             f.write(f"{return_type} {name}({parameters}) {{\n{func_body}\n}}\n")
 
 
-def instruction_set_python(commands):
-    with open("src/python/instruction_set.h", "w") as f:
+def instruction_set_python(commands, out_dir):
+    with open(out_dir / "python" / "instruction_set.hpp", "w") as f:
         write_autogen(f)
         f.write(
             "#pragma once\n\n"
             "#include <pybind11/pybind11.h>\n"
             "#include <pybind11/stl.h>\n"
-            '#include "madspace/madcode.h"\n\n'
+            '#include "madspace/compgraphs.hpp"\n\n'
             "namespace py = pybind11;\n"
             "using madspace::FunctionBuilder;\n\n"
             "namespace {\n\n"
@@ -121,10 +137,10 @@ def format_type(data):
     return f"{{{dtype}, {single_str}, {{{shape}}}, false}}"
 
 
-def instruction_set_mixin(commands):
+def instruction_set_mixin(commands, out_dir):
     with (
-        open("src/madcode/instruction_set_mixin.h", "w") as f,
-        open("include/madspace/madcode/opcode_mixin.h", "w") as f_op,
+        open(out_dir / "compgraphs" / "instruction_set_mixin.inc", "w") as f,
+        open(out_dir / "compgraphs" / "opcode_mixin.inc", "w") as f_op,
     ):
         write_autogen(f)
         f.write("using SigType = SimpleInstruction::SigType;\n")
@@ -170,8 +186,8 @@ def instruction_set_mixin(commands):
         f_op.write("\n")
 
 
-def runtime_mixin(commands, device):
-    with open(f"src/{device}/runtime_mixin.h", "w") as f:
+def runtime_mixin(commands, device, out_dir):
+    with open(out_dir / device / "runtime_mixin.inc", "w") as f:
         write_autogen(f)
 
         for name, cmd in commands.items():
@@ -206,8 +222,8 @@ def runtime_mixin(commands, device):
             )
 
 
-def runtime_backward_mixin(commands, device):
-    with open(f"src/{device}/runtime_backward_mixin.h", "w") as f:
+def runtime_backward_mixin(commands, device, out_dir):
+    with open(out_dir / device / "runtime_backward_mixin.inc", "w") as f:
         write_autogen(f)
 
         for name, cmd in commands.items():

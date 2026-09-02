@@ -231,18 +231,128 @@ class HelasCallWriter(base_objects.PhysicsObject):
         me = matrix_element.get('diagrams')
         matrix_element.reuse_outdated_wavefunctions(me)
 
+        # A current sum has to be written out once both currents are there.
+        # Doing it as soon as the later of the two is made keeps them alive:
+        # a slot is only handed on after its last use, and the cubic one is
+        # still needed by the amplitude the sum is for.
+        sums, uses, folded = self.get_quartic_current_sums(matrix_element)
+        slots = matrix_element.get_quartic_sum_me_ids()
+        after = {}
+        for i, (cubic, quartic, coeff) in enumerate(sums):
+            after.setdefault(max(cubic.get('number'), quartic.get('number')),
+                             []).append(i)
+
+        # The AMP array is recycled the same way, where the writer knows how
+        # to. A merge is written as soon as both of its amplitudes are there,
+        # which is what frees the source's entry, see get_amplitude_slots.
+        amp_slots = self.get_amplitude_slots(matrix_element)
+        position = [0]
+
         res = []
+        written = set()
         for diagram in matrix_element.get('diagrams'):
-            
-            
-            res.extend([ self.get_wavefunction_call(wf) for \
-                         wf in diagram.get('wavefunctions') ])
+
+
+            for wf in diagram.get('wavefunctions'):
+                res.append(self.get_wavefunction_call(wf))
+                for i in after.get(wf.get('number'), []):
+                    # a wavefunction number can be listed by more than one
+                    # diagram, and the sum must only be written once
+                    if i in written:
+                        continue
+                    written.add(i)
+                    cubic, quartic, coeff = sums[i]
+                    res.extend(self.get_current_sum_lines(
+                        slots[i], cubic, quartic, coeff))
             res.append("# Amplitude(s) for diagram number %d" % \
                        diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
-                res.append(self.get_amplitude_call(amplitude))
+                if amplitude.get('number') in folded:
+                    # summed into another amplitude through a current sum
+                    continue
+                res.append(self.get_amplitude_call_on_slot(
+                    amplitude, uses.get(amplitude.get('number')), slots,
+                    amp_slots))
+                if amp_slots is not None:
+                    res.extend(self.get_amplitude_merge_lines_at(
+                        amp_slots, position[0]))
+                    position[0] += 1
+
+        if amp_slots is None:
+            res.extend(self.get_amplitude_merge_lines(matrix_element))
 
         return res
+
+    def get_amplitude_slots(self, matrix_element):
+        """The recycled AMP array, or None to leave AMP indexed by amplitude
+        number. Only the Fortran writer has an AMP array to recycle."""
+
+        return None
+
+    def get_amplitude_call_on_slot(self, amplitude, substitution, slots,
+                                   amp_slots):
+        """The amplitude call, written into its recycled AMP entry.
+
+        The slot is swapped onto the amplitude's number and put straight back,
+        the same way get_amplitude_call_on_sums does it for the mothers: the
+        call is formatted from `out`, which is that number."""
+
+        if amp_slots is None:
+            return self.get_amplitude_call_on_sums(amplitude, substitution,
+                                                   slots)
+        number = amplitude.get('number')
+        amplitude.set('number', amp_slots[0][number])
+        try:
+            return self.get_amplitude_call_on_sums(amplitude, substitution,
+                                                   slots)
+        finally:
+            amplitude.set('number', number)
+
+    def get_amplitude_merge_lines_at(self, amp_slots, position):
+        """The merges due just after this amplitude. Fortran only."""
+
+        return []
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums to write out. Only the Fortran writer knows how to
+        emit one, see FortranUFOHelasCallWriter."""
+
+        return [], {}, set()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Lines building one current sum. Fortran only."""
+
+        raise NotImplementedError
+
+    def get_amplitude_call_on_sums(self, amplitude, substitution, slots):
+        """The amplitude call, reading the current sums in place of the cubic
+        currents they were built from.
+
+        The slot is swapped on the mother itself and put back straight away,
+        the same way get_loop_amplitude_helas_calls relabels its externals."""
+
+        if not substitution:
+            return self.get_amplitude_call(amplitude)
+
+        original = []
+        for mother in amplitude.get('mothers'):
+            index = substitution.get(mother.get('number'))
+            if index is None:
+                continue
+            original.append((mother, mother.get('me_id')))
+            mother.set('me_id', slots[index])
+        try:
+            return self.get_amplitude_call(amplitude)
+        finally:
+            for mother, me_id in original:
+                mother.set('me_id', me_id)
+
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Lines summing the quartic contributions into the amplitude which
+        carries the same colour factor. Only the Fortran writer implements
+        this, see FortranUFOHelasCallWriter."""
+
+        return []
 
     def get_wavefunction_calls(self, wavefunctions):
         """Return a list of strings, corresponding to the Helas calls
@@ -380,7 +490,7 @@ class FortranHelasCallWriter(HelasCallWriter):
 
         # Gluon 4-vertex division tensor calls ggT for the FR sm and mssm
 
-        key = ((3, 3, 5, 3,tuple()), ('A',))
+        key = ((3, 3, 5, 3,tuple(),False), ('A',))
         call = lambda wf: \
                "CALL UVVAXX(W(%d),W(%d),%s,zero,zero,zero,W(%d))" % \
                (FortranHelasCallWriter.sorted_mothers(wf)[0].get('me_id'),
@@ -389,7 +499,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                 wf.get('me_id'))
         self.add_wavefunction(key, call)
 
-        key = ((3, 5, 3, 1,tuple()), ('A',))
+        key = ((3, 5, 3, 1,tuple(), False), ('A',))
         call = lambda wf: \
                "CALL JVTAXX(W(%d),W(%d),%s,zero,zero,W(%d))" % \
                (FortranHelasCallWriter.sorted_mothers(wf)[0].get('me_id'),
@@ -410,7 +520,7 @@ class FortranHelasCallWriter(HelasCallWriter):
 
         # SM gluon 4-vertex components
 
-        key = ((3, 3, 3, 3, 1, tuple(), tuple()), ('gggg3',))
+        key = ((3, 3, 3, 3, 1, tuple(), tuple(), False), ('gggg3',))
         call = lambda wf: \
                "CALL JGGGXX(W(%d),W(%d),W(%d),%s,W(%d))" % \
                (FortranHelasCallWriter.sorted_mothers(wf)[1].get('me_id'),
@@ -429,7 +539,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                 amp.get('coupling')[0],
                 amp.get('number'))
         self.add_amplitude(key, call)
-        key = ((3, 3, 3, 3, 1, tuple(), tuple()), ('gggg2',))
+        key = ((3, 3, 3, 3, 1, tuple(), tuple(), False), ('gggg2',))
         call = lambda wf: \
                "CALL JGGGXX(W(%d),W(%d),W(%d),%s,W(%d))" % \
                (FortranHelasCallWriter.sorted_mothers(wf)[0].get('me_id'),
@@ -448,7 +558,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                 amp.get('coupling')[0],
                 amp.get('number'))
         self.add_amplitude(key, call)
-        key = ((3, 3, 3, 3, 1, tuple(), tuple()), ('gggg1',))
+        key = ((3, 3, 3, 3, 1, tuple(), tuple(), False), ('gggg1',))
         call = lambda wf: \
                "CALL JGGGXX(W(%d),W(%d),W(%d),%s,W(%d))" % \
                (FortranHelasCallWriter.sorted_mothers(wf)[2].get('me_id'),
@@ -470,7 +580,7 @@ class FortranHelasCallWriter(HelasCallWriter):
 
         # HEFT VVVS calls
 
-        key = ((1, 3, 3, 3, 3,tuple()), ('',))
+        key = ((1, 3, 3, 3, 3,tuple(), False), ('',))
         call = lambda wf: \
                "CALL JVVSXX(W(%d),W(%d),W(%d),DUM1,%s,%s,%s,W(%d))" % \
                (wf.get('mothers')[0].get('me_id'),
@@ -482,7 +592,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                 wf.get('me_id'))
         self.add_wavefunction(key, call)
 
-        key = ((3, 3, 3, 1, 4,tuple()), ('',))
+        key = ((3, 3, 3, 1, 4,tuple(), False), ('',))
         call = lambda wf: \
                "CALL HVVVXX(W(%d),W(%d),W(%d),DUM1,%s,%s,%s,W(%d))" % \
                (wf.get('mothers')[0].get('me_id'),
@@ -507,7 +617,7 @@ class FortranHelasCallWriter(HelasCallWriter):
 
         # HEFT VVVS calls
 
-        key = ((1, 3, 3, 3, 1,tuple()), ('',))
+        key = ((1, 3, 3, 3, 1,tuple(), False), ('',))
         call = lambda wf: \
                "CALL JVVSXX(W(%d),W(%d),W(%d),DUM1,%s,%s,%s,W(%d))" % \
                (wf.get('mothers')[0].get('me_id'),
@@ -519,7 +629,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                 wf.get('me_id'))
         self.add_wavefunction(key, call)
 
-        key = ((3, 3, 3, 1, 4,tuple()), ('',))
+        key = ((3, 3, 3, 1, 4,tuple(), False), ('',))
         call = lambda wf: \
                "CALL HVVVXX(W(%d),W(%d),W(%d),DUM1,%s,%s,%s,W(%d))" % \
                (wf.get('mothers')[0].get('me_id'),
@@ -554,7 +664,7 @@ class FortranHelasCallWriter(HelasCallWriter):
                 amp.get('number'))
         self.add_amplitude(key, call)
         
-        key = ((-2, 2, 5, 3,tuple()), ('',))
+        key = ((-2, 2, 5, 3,tuple(), False), ('',))
         call = lambda wf: \
                "CALL UIOXXX(W(%d),W(%d),%s,%s,%s,%s,W(%d))" % \
                (wf.get('mothers')[0].get('me_id'),
@@ -732,7 +842,6 @@ class FortranHelasCallWriter(HelasCallWriter):
                 argument.get_spin_state_number()]
 
             mother_letters = FortranHelasCallWriter.sorted_letters(argument)
-
             # If Lorentz structure is given, by default add this
             # to call name
             lor_name = argument.get('lorentz')[0]
@@ -1028,27 +1137,151 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
 
     mp_prefix = check_param_card.ParamCard.mp_prefix
 
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Sum every quartic contribution into the amplitude carrying the
+        same colour factor.
+
+        The two share a colour factor up to a rational coefficient, so adding
+        them here lets the JAMPs run over the cubic diagrams only, which is
+        what the JAMP optimiser then has to work with. The amplitudes summed
+        away are dropped from the colour amplitudes by
+        HelasMatrixElement.get_color_amplitudes."""
+
+        merges = matrix_element.get_quartic_amplitude_merges()
+        if not merges:
+            return []
+        # these were never computed: their current was summed instead
+        folded = self.get_quartic_current_sums(matrix_element)[2]
+
+        res = ['# Sum the quartic contributions into their cubic partner']
+        for source in sorted(merges):
+            if source in folded:
+                continue
+            target, coeff = merges[source]
+            if coeff == 1:
+                res.append('AMP(%d) = AMP(%d) + AMP(%d)' %
+                           (target, target, source))
+            elif coeff == -1:
+                res.append('AMP(%d) = AMP(%d) - AMP(%d)' %
+                           (target, target, source))
+            else:
+                res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
+                           (target, target, float(coeff), source))
+        return res
+
+    def get_amplitude_slots(self, matrix_element):
+        """The recycled AMP array, see
+        HelasMatrixElement.get_amplitude_slots."""
+
+        if not matrix_element.get_quartic_amplitude_merges():
+            return None
+        return matrix_element.get_amplitude_slots()
+
+    def get_amplitude_merge_lines_at(self, amp_slots, position):
+        """The merges whose two amplitudes are both there as of this
+        position, written into the slots they were given."""
+
+        slots, nslots, folds_at = amp_slots
+        res = []
+        for target, source, coeff in folds_at.get(position, []):
+            args = (slots[target], slots[target], slots[source])
+            if coeff == 1:
+                res.append('AMP(%d) = AMP(%d) + AMP(%d)' % args)
+            elif coeff == -1:
+                res.append('AMP(%d) = AMP(%d) - AMP(%d)' % args)
+            else:
+                res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
+                           (slots[target], slots[target], float(coeff),
+                            slots[source]))
+        return res
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums, see HelasMatrixElement.get_quartic_current_sums"""
+
+        return matrix_element.get_quartic_current_sums()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Sum the quartic current into the cubic one carrying the same colour
+        factor, so that the amplitude reading the sum gets both at once.
+
+        Written as a call rather than as two assignments so that everything
+        reading these files -- the helicity recycling in particular, which
+        rebuilds the DAG from the calls alone -- sees an ordinary internal
+        wavefunction taking two mothers. sumw_1 and subw_1 live in
+        aloha_functions.f; the coefficient is always +-1, see
+        HelasMatrixElement.compute_quartic_current_sums."""
+
+        return ['CALL %s(%s,%s,%s)' % (
+            'SUMW_1' if coeff == 1 else 'SUBW_1',
+            self.format_helas_object('W(', '%d') % cubic.get('me_id'),
+            self.format_helas_object('W(', '%d') % quartic.get('me_id'),
+            self.format_helas_object('W(', '%d') % number)]
+
     def __init__(self, argument={}, hel_sum = False, options={}):
         """Allow generating a HelasCallWriter from a Model.The hel_sum argument
         specifies if amplitude and wavefunctions must be stored specifying the
         helicity, i.e. W(i) vs W(i,H).
         """
         self.hel_sum = hel_sum
+        # Flavor-mask emission state. The exporter sets these around its call
+        # to get_matrix_element_calls when the optimization is active. When
+        # use_flavor_mask is True and an object carries a non-trivial
+        # 'flavor_mask' key, the emitted CALL is prefixed with an IAND guard
+        # checking an index bit against CURRENT_{WF,AMP}_MASK selected for the
+        # runtime FLAVOR(NEXTERNAL) entry.
+        self.use_flavor_mask = False
+        self.me_n_flavors = 0
+        self.me_active_flavor_mask = None
         super(FortranUFOHelasCallWriter, self).__init__(argument, options=options)
 
     def format_helas_object(self, prefix, number):
         """ Returns the string for accessing the wavefunction with number in
         argument. Typical output is {prefix}(1,{number}) """
-        
+
         if self.hel_sum:
             return '%s%s,H)'%(prefix, number)
         else:
-            return '%s%s)'%(prefix, number)       
+            return '%s%s)'%(prefix, number)
+
+    def _flavor_mask_prefix(self, obj, kind):
+        """Return an 'IF (IAND(...)) ' prefix for a CALL line, or '' if the
+        guard is not needed (feature disabled, no mask on object, or mask is
+        all-ones for this ME). kind is 'wf' or 'amp'."""
+
+        if not self.use_flavor_mask or self.me_n_flavors <= 0:
+            return ''
+        if 'flavor_mask' not in obj:
+            return ''
+        mask = obj['flavor_mask']
+        all_ones = (1 << self.me_n_flavors) - 1
+        active_mask = getattr(self, 'me_active_flavor_mask', None)
+        if active_mask is None:
+            active_mask = all_ones
+        if mask == active_mask:
+            return ''
+        idx = obj.get('number')
+        array = 'CURRENT_WF_MASK' if kind == 'wf' else 'CURRENT_AMP_MASK'
+        if kind == 'wf' and 'guard_amp_number' in obj:
+            idx = obj.get('guard_amp_number')
+            array = 'CURRENT_AMP_MASK'
+        if not isinstance(idx, int) or idx <= 0:
+            return ''
+        word = (idx - 1) // 64 + 1
+        bit = (idx - 1) % 64
+        return 'IF (IAND(%s(%d), ISHFT(1_8, %d)) .NE. 0) ' % (array, word, bit)
+
+    def get_wavefunction_call(self, wavefunction, **opt):
+        call = super(FortranUFOHelasCallWriter, self).get_wavefunction_call(
+                                                            wavefunction, **opt)
+        if not call:
+            return call
+        prefix = self._flavor_mask_prefix(wavefunction, 'wf')
+        return prefix + call if prefix else call
 
     def get_amplitude_call(self, amplitude,**opts):
-        """ We overwrite this function here because we must call 
+        """ We overwrite this function here because we must call
         set_octet_majorana_coupling_sign for all wavefunction taking part in
-        this loopHelasAmplitude. This is not necessary in the optimized mode"""        
+        this loopHelasAmplitude. This is not necessary in the optimized mode"""
 
         # Special feature: For octet Majorana fermions, need an extra
         # minus sign in the FVI (and FSI?) wavefunction in UFO
@@ -1057,9 +1290,13 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             for lwf in amplitude.get('wavefunctions'):
                 lwf.set_octet_majorana_coupling_sign()
             amplitude.set('coupling',amplitude.get_couplings())
-        
-        return super(FortranUFOHelasCallWriter, self).get_amplitude_call(
-                                                               amplitude,**opts)         
+
+        call = super(FortranUFOHelasCallWriter, self).get_amplitude_call(
+                                                               amplitude,**opts)
+        if not call:
+            return call
+        prefix = self._flavor_mask_prefix(amplitude, 'amp')
+        return prefix + call if prefix else call
         
 
 
@@ -1137,11 +1374,11 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
 
     def generate_external_wavefunction(self,argument):
         """ Generate an external wavefunction """
-        
+
         call="CALL "
         call_function = None
         if argument.get('is_loop'):
-            call=call+"LCUT_%(conjugate)s%(lcutspinletter)s(Q(0),I,WL(1,%(number)d))"
+            call=call+"LCUT_%(conjugate)s%(lcutspinletter)s(Q(0),I,WL(%(number)d))"
         else:
             # String is just IXXXXX, OXXXXX, VXXXXX or SXXXXX
             call = call + HelasCallWriter.mother_dict[\
@@ -1151,12 +1388,15 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             call = call + "(P(0,%(number_external)d),"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
-                call = call + "%(mass)s,NHEL(%(number_external)d),"
+                if argument.get('offshell'):
+                    call = call + "SQRT(P(0,%(number_external)d)**2-P(1,%(number_external)d)**2-P(2,%(number_external)d)**2-P(3,%(number_external)d)**2),"
+                else:
+                    call = call + "%(mass)s,"
+                call = call + "NHEL(%(number_external)d),"
             if argument.get('spin') == 2:
                 call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
             else:
-
                 call = call + "%(state_id)+d,{0})".format(\
                                     self.format_helas_object('W(','%(me_id)d'))
 
@@ -1218,7 +1458,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         # First WaveFunction    
         if isinstance(argument, helas_objects.HelasWavefunction):
             if argument['is_loop']:
-                arg['out'] = 'WL(1,%(out)d)'
+                arg['out'] = 'WL(%(out)d)'
                 if aloha.complex_mass:
                     arg['mass'] = "ML(%(out)d),"
                 else:
@@ -1324,7 +1564,10 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                     if lwf.get('mothers'):
                         last_lwf_number=lwf.get('number')
                         break
-                res.append('BUFF(I)=WL(I+4,%d)'%last_lwf_number)
+                # WL is now a 1-D TYPE(ALOHA) array of loop wavefunctions;
+                # close the loop by reading the Lorentz components of the
+                # last one.
+                res.append('BUFF(I)=WL(%d)%%W(I)'%last_lwf_number)
                 # And re-establish the original numbering
                 indexMothers=0
                 indexWfs=0
@@ -1618,6 +1861,37 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
     Includes the function generate_helas_call, which automatically
     generates the C++ Helas call based on the Lorentz structure of
     the interaction."""
+
+    def __init__(self, argument={}, options={}):
+        self.use_flavor_mask = False
+        self.me_n_flavors = 0
+        self.me_active_flavor_mask = None
+        super(CPPUFOHelasCallWriter, self).__init__(argument, options=options)
+
+    def _flavor_mask_prefix(self, obj, kind):
+        """Return an 'if ((...)) ' prefix for a C++ HELAS call, or ''."""
+
+        if not self.use_flavor_mask or self.me_n_flavors <= 0:
+            return ''
+        if 'flavor_mask' not in obj:
+            return ''
+        mask = obj['flavor_mask']
+        all_ones = (1 << self.me_n_flavors) - 1
+        active_mask = getattr(self, 'me_active_flavor_mask', None)
+        if active_mask is None:
+            active_mask = all_ones
+        if mask == active_mask:
+            return ''
+        idx = obj.get('number')
+        array = 'current_wf_mask' if kind == 'wf' else 'current_amp_mask'
+        if kind == 'wf' and 'guard_amp_number' in obj:
+            idx = obj.get('guard_amp_number')
+            array = 'current_amp_mask'
+        if not isinstance(idx, int) or idx <= 0:
+            return ''
+        word = (idx - 1) // 64
+        bit = (idx - 1) % 64
+        return 'if ((%s[%d] & (1ULL << %d)) != 0ULL) ' % (array, word, bit)
 
     def generate_helas_call(self, argument):
         """Routine for automatic generation of C++ Helas calls
@@ -2046,6 +2320,21 @@ class GPUFOHelasCallWriter(CPPUFOHelasCallWriter):
 
         return res
 
+    def get_wavefunction_call(self, wavefunction, **opt):
+        call = super(CPPUFOHelasCallWriter, self).get_wavefunction_call(
+                                                            wavefunction, **opt)
+        if not call:
+            return call
+        prefix = self._flavor_mask_prefix(wavefunction, 'wf')
+        return prefix + call if prefix else call
+
+    def get_amplitude_call(self, amplitude):
+        call = super(CPPUFOHelasCallWriter, self).get_amplitude_call(amplitude)
+        if not call:
+            return call
+        prefix = self._flavor_mask_prefix(amplitude, 'amp')
+        return prefix + call if prefix else call
+
 
 
 #===============================================================================
@@ -2115,10 +2404,20 @@ class PythonUFOHelasCallWriter(UFOHelasCallWriter):
             # String is just IXXXXX, OXXXXX, VXXXXX or SXXXXX
             call = "w[%d] = "
 
-            call = call + HelasCallWriter.mother_dict[\
+            wf_name = HelasCallWriter.mother_dict[\
                 argument.get_spin_state_number()].lower()
-            # Fill out with X up to 6 positions
-            call = call + 'x' * (14 - len(call))
+            fixed_wf_name = None
+            if aloha.unitary_gauge == 3:
+                if argument.get('spin') == 1:
+                    wf_name = 'sfd'
+                elif argument.get('spin') == 3:
+                    fixed_wf_name = 'vfdxxxx'
+            if fixed_wf_name is None:
+                call = call + wf_name
+                # Fill out with X up to 6 positions
+                call = call + 'x' * (14 - len(call))
+            else:
+                call = call + fixed_wf_name
             call = call + "(p[%d],"
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity

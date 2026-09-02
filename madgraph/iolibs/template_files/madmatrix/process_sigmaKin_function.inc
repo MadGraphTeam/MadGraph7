@@ -17,8 +17,11 @@
     gpuMemset( allMEs, 0, nevt * sizeof( fptype ) );
     gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype_amp ) );
     gpuMemset( colAllJamp2s, 0, ncolor * nevt * sizeof( fptype_amp ) );
-    gpuMemset( ghelAllNumerators, 0, cNGoodHel * processConfig::ndiagrams * nevt * sizeof( fptype ) );
-    gpuMemset( ghelAllDenominators, 0, cNGoodHel * nevt * sizeof( fptype_denom ) );
+    // The numerators buffer has NO helicity dimension: all good helicities accumulate in place via
+    // atomicAdd, so it is zeroed once as [nevt][ndiagrams]. The denominators are derived from the
+    // numerators in normalise_output, so the buffer is just [nevt].
+    gpuMemset( ghelAllNumerators, 0, processConfig::ndiagrams * nevt * sizeof( fptype ) );
+    gpuMemset( ghelAllDenominators, 0, nevt * sizeof( fptype ) );
     gpuMemset( ghelAllMEs, 0, cNGoodHel * nevt * sizeof( fptype ) );
 #else
     // *** PART 0b - C++ ***
@@ -51,23 +54,27 @@
     // Use CUDA/HIP streams to process different helicities in parallel (one good helicity per stream)
     // (1) First, within each helicity stream, compute the QCD partial amplitudes jamp's for each helicity
     // In multichannel mode, also compute the running sums over helicities of numerators, denominators and squared jamp2s
-    for( int ighel = 0; ighel < cNGoodHel; ighel++ )
-    {
-      const int ihel = cGoodHel[ighel];
-      fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
-      fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * processConfig::ndiagrams;
-      fptype_denom* hAllDenominators = ghelAllDenominators + ighel * nevt;
-      bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-      gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt );
+    bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
+    if (async) {
+      gpuLaunchKernel2D( calculate_jamps, gpublocks, cNGoodHel, gputhreads, ghelStreams[0], 0, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, true );
+      color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, true );
+    } else {
+      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+      {
+        const int ihel = cGoodHel[ighel];
+        fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
+        // NB: the numerators buffer has no helicity dimension: every helicity stream accumulates in place
+        // into the same [nevt][ndiagrams] slot via atomicAdd. The denominators are derived later.
+        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, false );
+      }
+      // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
+      color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, false );
+      checkGpu( gpuDeviceSynchronize() ); // do not start helicity/color selection until the loop over helicities has completed
+      // (3) Wait for all helicity streams to complete, then finally compute the ME sum over all helicities and choose one helicity and one color
     }
-    // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
-    color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads );
-    checkGpu( gpuDeviceSynchronize() ); // do not start helicity/color selection until the loop over helicities has completed
-    // (3) Wait for all helicity streams to complete, then finally compute the ME sum over all helicities and choose one helicity and one color
     // Event-by-event random choice of helicity #403 and ME sum over helicities (defer this after the helicity loop to avoid breaking streams parallelism)
     gpuLaunchKernel( add_and_select_hel, gpublocks, gputhreads, allselhel, allrndhel, ghelAllMEs, allMEs, gpublocks * gputhreads );
 
-    bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
     gpuLaunchKernel( normalise_output, gpublocks, gputhreads, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
 
     // Event-by-event random choice of color and diagram #402
@@ -282,20 +289,31 @@
     // [NB 'sum over final spins, average over initial spins', eg see
     // https://www.uzh.ch/cmsssl/physik/dam/jcr:2e24b7b1-f4d7-4160-817e-47b13dbf1d7c/Handout_4_2016-UZH.pdf]
 #ifndef MGONGPUCPP_GPUIMPL
+    const bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
     for( int ipagV = 0; ipagV < npagV; ++ipagV )
     {
       const int ievt0 = ipagV * neppV;
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
       MEs_sv = MEs_sv * broken_symmetry_factor(iflavorVec[ievt0]) / helcolDenominators[0];
-      if( mulChannelWeight && allChannelIds != nullptr ) // fix segfault #892 (not 'channelIds[0] != 0')
+      if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
       {
-        const unsigned int channelId = getChannelId( allChannelIds, ievt0, false );
+        // The numerators have already been accumulated over all good helicities in place (running sum
+        // over the helicity loop), so there is no helicity dimension to sum here. The denominator is
+        // just the sum of all numerators for this event page: derive it once and store it for the
+        // downstream consumers (e.g. the multichannel amp2 output).
         fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
         fptype_denom* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
         fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
         fptype_denom_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
-        MEs_sv *= numerators_sv[channelId - 1] / denominators_sv;
+        denominators_sv = fptype_sv{ 0 };
+        for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
+          denominators_sv += numerators_sv[idiag];
+        if( mulChannelWeight && allChannelIds != nullptr )
+        {
+          const unsigned int channelId = getChannelId( allChannelIds, ievt0, false );
+          MEs_sv *= numerators_sv[channelId - 1] / denominators_sv;
+        }
       }
       //for( int ieppV = 0; ieppV < neppV; ieppV++ )
       //{

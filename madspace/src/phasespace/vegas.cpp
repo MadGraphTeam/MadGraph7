@@ -1,25 +1,41 @@
-#include "madspace/phasespace/vegas.h"
+#include "madspace/phasespace/vegas.hpp"
 
 using namespace madspace;
 
 VegasHistogram::VegasHistogram(std::size_t dimension, std::size_t bin_count) :
     FunctionGenerator(
         "VegasHistogram",
-        {batch_float_array(dimension), batch_float},
-        {single_float_array_2d(dimension, bin_count),
-         single_int_array_2d(dimension, bin_count)}
+        {{"latent", batch_float_array(dimension)}, {"weights", batch_float}},
+        {{"values", single_float_array_2d(dimension, bin_count)},
+         {"counts", single_int_array_2d(dimension, bin_count)}}
     ),
     _bin_count(bin_count) {}
 
-ValueVec
-VegasHistogram::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
+NamedVector<Value> VegasHistogram::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
     auto [values, counts] =
         fb.vegas_histogram(args.at(0), args.at(1), static_cast<me_int_t>(_bin_count));
-    return {values, counts};
+    return {{"values", values}, {"counts", counts}};
 }
 
+VegasMapping::VegasMapping(
+    std::size_t dimension, std::size_t bin_count, const std::string& prefix
+) :
+    Mapping(
+        "VegasMapping",
+        {{"latent", batch_float_array(dimension)}},
+        {{"data", batch_float_array(dimension)}},
+        {}
+    ),
+    _dimension(dimension),
+    _bin_count(bin_count),
+    _grid_name(prefixed_name(prefix, "vegas_grid")) {}
+
 Mapping::Result VegasMapping::build_forward_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
     auto grid = fb.global(
         _grid_name,
@@ -27,11 +43,13 @@ Mapping::Result VegasMapping::build_forward_impl(
         {static_cast<int>(_dimension), static_cast<int>(_bin_count) + 1}
     );
     auto [output, dets] = fb.vegas_forward(inputs.at(0), grid);
-    return {{output}, fb.reduce_product(dets)};
+    return {{{"data", output}}, fb.reduce_product(dets)};
 }
 
 Mapping::Result VegasMapping::build_inverse_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
     auto grid = fb.global(
         _grid_name,
@@ -39,7 +57,7 @@ Mapping::Result VegasMapping::build_inverse_impl(
         {static_cast<int>(_dimension), static_cast<int>(_bin_count) + 1}
     );
     auto [output, dets] = fb.vegas_inverse(inputs.at(0), grid);
-    return {{output}, fb.reduce_product(dets)};
+    return {{{"latent", output}}, fb.reduce_product(dets)};
 }
 
 void VegasMapping::initialize_globals(ContextPtr context) const {

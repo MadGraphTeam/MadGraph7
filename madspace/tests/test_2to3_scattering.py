@@ -40,7 +40,6 @@ def boost(k: np.ndarray, p_boost: np.ndarray, inverse: bool = False) -> np.ndarr
 # Fixtures
 # ----------------------------
 
-# N = 50_000  # keep this moderate for CI speed; bump locally for tighter stats
 N = 10_000  # keep this moderate for CI speed; bump locally for tighter stats
 
 InputPoint = namedtuple(
@@ -95,10 +94,10 @@ def fixed_input_points(rng, request):
     map_22 = ms.TwoToTwoParticleScattering(com=False)
     r1 = rng.random(N)
     r2 = rng.random(N)
-    (p12, p3), det_22 = map_22.map_forward([r1, r2, m12, m3], [pA, pB])
+    p12, p3, det_22 = map_22.map_forward([r1, r2, m12, m3], [pA, pB])
 
-    # Randoms for the 2->3 mapper
-    r_choice = rng.random(N)
+    # Discrete two-solution choice (int 0/1) + continuous randoms for the 2->3
+    r_choice = rng.integers(0, 2, size=N).astype(np.int32)
     r_s23 = rng.random(N)
     r_t1 = rng.random(N)
 
@@ -148,10 +147,10 @@ def input_points(rng, request):
     map_22 = ms.TwoToTwoParticleScattering(com=com)
     r1 = rng.random(N)
     r2 = rng.random(N)
-    (p12, p3), det_22 = map_22.map_forward([r1, r2, m12, m3], [pa, pb])
+    p12, p3, det_22 = map_22.map_forward([r1, r2, m12, m3], [pa, pb])
 
     # Randoms for the 2->3 mapper
-    r_choice = rng.random(N)  # decide branch (emitter choice)
+    r_choice = rng.integers(0, 2, size=N).astype(np.int32)
     r_s23 = rng.random(N)
     r_t1 = rng.random(N)
 
@@ -179,37 +178,38 @@ def test_momentum_conservation(input_points):
     conditions = [input_points.pa, input_points.pb, input_points.p3]
 
     m3 = mass(input_points.p3)
-    (p1, p2), det = mapping.map_forward(inputs, conditions)
+    p1, p2, det = mapping.map_forward(inputs, conditions)
     p_sum = p1 + p2 + input_points.p3
 
     assert p_sum == approx(input_points.p0)
     assert p1 + p2 == approx(input_points.p12)
 
 
-# TODO: Find bug in inverse mapping
-# def test_inverse(input_points):
-#     mapping = ms.TwoToThreeParticleScattering()
+def test_inverse(input_points):
+    mapping = ms.TwoToThreeParticleScattering()
 
-#     inputs = [
-#         input_points.r_choice,
-#         input_points.r_s23,
-#         input_points.r_t1,
-#         input_points.m1,
-#         input_points.m2,
-#     ]
-#     conditions = [input_points.pa, input_points.pb, input_points.p3]
+    inputs = [
+        input_points.r_choice,
+        input_points.r_s23,
+        input_points.r_t1,
+        input_points.m1,
+        input_points.m2,
+    ]
+    conditions = [input_points.pa, input_points.pb, input_points.p3]
 
-#     (p1, p2), det = mapping.map_forward(inputs, conditions)
-#     inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
-#     # r = inv_det * det
-#     # print("r stats:", np.min(r), np.median(r), np.max(r))
-#     # print("abs(r-1) median:", np.median(np.abs(r-1)))
-#     # assert inv_det == approx(1 / det)
-#     for i, (inp, inv_inp) in enumerate(zip(inputs, inv_inputs)):
-#         if i == 0:
-#             assert ((inp < 0.5) == (inv_inp < 0.5)).all()
-#             continue
-#         assert inp == approx(inv_inp), f"mismatch in input index {i}"
+    p1, p2, det = mapping.map_forward(inputs, conditions)
+    *inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
+
+    assert inv_det == approx(1 / det, rel=1e-5)
+
+    for i, (inp, inv_inp) in enumerate(zip(inputs, inv_inputs)):
+        if i == 0:
+            # discrete two-solution choice: recovered exactly as an int
+            assert (
+                np.asarray(inv_inp).astype(np.int64) == np.asarray(inp).astype(np.int64)
+            ).all()
+            continue
+        assert inp == approx(inv_inp), f"mismatch in input index {i}"
 
 
 def test_on_shell_masses(input_points):
@@ -224,7 +224,7 @@ def test_on_shell_masses(input_points):
     ]
     conditions = [input_points.pa, input_points.pb, input_points.p3]
 
-    (p1, p2), det = mapping.map_forward(inputs, conditions)
+    p1, p2, det = mapping.map_forward(inputs, conditions)
 
     # Outgoing masses must match m1, m2; spectator stays whatever it was.
     assert mass(p1 + p2) == approx(input_points.m12)
@@ -254,8 +254,12 @@ def test_phase_space_compare(rng, input_points):
     conditions = [input_points.pa, input_points.pb, input_points.p3]
     conditions22 = [input_points.pa, input_points.pb - input_points.p3]
 
-    (p1, p2), det23 = mapping23.map_forward(inputs, conditions)
-    (p1s, p2s), det22 = mapping22.map_forward(inputs22, conditions22)
+    p1, p2, det23 = mapping23.map_forward(inputs, conditions)
+    p1s, p2s, det22 = mapping22.map_forward(inputs22, conditions22)
+
+    # det23 is now the per-branch Jacobian; the 2-solution multiplicity is owned
+    # externally, so apply it here to compare against the 2->2 phase-space element.
+    det23 = det23 * 2.0
 
     # Outgoing masses must match m1, m2; spectator stays whatever it was.
     std_error_23 = np.std(det23) / np.sqrt(N)
@@ -275,7 +279,9 @@ def test_phase_space_volume(fixed_input_points):
 
     conditions = [fixed_input_points.pa, fixed_input_points.pb, fixed_input_points.p3]
 
-    (p1, p2), det = mapping23.map_forward(inputs, conditions)
+    p1, p2, det = mapping23.map_forward(inputs, conditions)
+    # per-branch Jacobian; apply the 2-solution multiplicity externally
+    det = det * 2.0
 
     s = fixed_input_points.m12**2
     m1_2 = fixed_input_points.m1**2

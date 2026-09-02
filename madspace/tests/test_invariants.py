@@ -55,23 +55,23 @@ def invariant(request):
 
 
 def test_invariant_min(invariant, r_in, s_min, s_max):
-    (s,), det = invariant.map_forward([r_in], [s_min, s_max])
+    s, det = invariant.map_forward([r_in], [s_min, s_max])
     np.testing.assert_array_less(s_min, s)
 
 
 def test_invariant_max(invariant, r_in, s_min, s_max):
-    (s,), det = invariant.map_forward([r_in], [s_min, s_max])
+    s, det = invariant.map_forward([r_in], [s_min, s_max])
     np.testing.assert_array_less(s, s_max)
 
 
 def test_invariant_finite(invariant, r_in, s_min, s_max):
-    (s,), det = invariant.map_forward([r_in], [s_min, s_max])
+    s, det = invariant.map_forward([r_in], [s_min, s_max])
     assert np.all(np.isfinite(s))
     assert np.all(np.isfinite(det))
 
 
 def test_invariant_inverse(invariant, r_in, s_min, s_max):
-    (s,), det = invariant.map_forward([r_in], [s_min, s_max])
-    (r_out,), det_inv = invariant.map_inverse([s], [s_min, s_max])
+    s, det = invariant.map_forward([r_in], [s_min, s_max])
+    r_out, det_inv = invariant.map_inverse([s], [s_min, s_max])
     assert r_out == approx(r_in, abs=1e-4)
     assert det_inv == approx(1 / det)

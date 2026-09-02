@@ -18,7 +18,7 @@ class FunctionModule(nn.Module):
                     context.get_global(name).torch(),
                     context.global_requires_grad(name),
                 )
-                for name in function.globals
+                for name, _ in function.globals
             }
         )
         self.runtime = me.FunctionRuntime(function, context)

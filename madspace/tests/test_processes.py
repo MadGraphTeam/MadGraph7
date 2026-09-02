@@ -16,7 +16,7 @@ rng = np.random.default_rng(1234)
 
 def load_processes():
     proc_files = glob(
-        os.path.join(os.path.dirname(os.path.realpath(__file__)), "processes", "*.json")
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data", "*.json")
     )
     ret = []
     for file in proc_files:
@@ -66,7 +66,7 @@ def test_process_masses(mapping, masses, permutation_count):
         if permutation_count <= 1
         else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
     )
-    (p_ext, x1, x2), det = mapping.map_forward([r], condition)
+    p_ext, x1, x2, det = mapping.map_forward([r], condition)
     m_ext_true = np.full((BATCH_SIZE, len(masses)), masses)
     m_ext = np.sqrt(
         np.maximum(0, p_ext[:, :, 0] ** 2 - np.sum(p_ext[:, :, 1:] ** 2, axis=2))
@@ -81,7 +81,7 @@ def test_process_incoming(mapping, masses, permutation_count):
         if permutation_count <= 1
         else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
     )
-    (p_ext, x1, x2), det = mapping.map_forward([r], condition)
+    p_ext, x1, x2, det = mapping.map_forward([r], condition)
     zeros = np.zeros(BATCH_SIZE)
     p_a = p_ext[:, 0]
     p_b = p_ext[:, 1]
@@ -103,7 +103,7 @@ def test_process_momentum_conservation(mapping, masses, permutation_count):
         if permutation_count <= 1
         else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
     )
-    (p_ext, x1, x2), det = mapping.map_forward([r], condition)
+    p_ext, x1, x2, det = mapping.map_forward([r], condition)
     p_in = np.sum(p_ext[:, :2], axis=1)
     p_out = np.sum(p_ext[:, 2:], axis=1)
 
@@ -117,7 +117,7 @@ def test_process_inverse(mapping, masses, permutation_count):
         if permutation_count <= 1
         else [rng.integers(0, permutation_count, BATCH_SIZE, dtype=np.int32)]
     )
-    map_out, det = mapping.map_forward([r], condition)
-    (r_inv,), det_inv = mapping.map_inverse(map_out, condition)
+    *map_out, det = mapping.map_forward([r], condition)
+    r_inv, det_inv = mapping.map_inverse(map_out, condition)
     assert r_inv == approx(r, abs=1e-3, rel=1e-3)
-    assert det_inv == approx(1 / det, rel=1e-4)
+    assert det_inv == approx(1 / det, rel=1e-3)

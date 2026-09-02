@@ -18,12 +18,16 @@ def rng():
         {"decay": True, "com": True},
         {"decay": False, "com": False},
         {"decay": False, "com": True},
+        {"decay": False, "com": False, "has_cut": True},
+        {"decay": False, "com": True, "has_cut": True},
     ],
     ids=[
         "1->2 decay",
         "1->2 decay, COM",
         "2->2 scattering",
         "2->2 scattering, COM",
+        "2->2 scattering, cut",
+        "2->2 scattering, COM, cut",
     ],
 )
 def mapping_and_args(request):
@@ -47,7 +51,9 @@ def mapping_and_args(request):
                 )
 
     else:
-        mapping = ms.TwoToTwoParticleScattering(com=com)
+        has_cut = request.param.get("has_cut", False)
+        mapping = ms.TwoToTwoParticleScattering(com=com, has_cut=has_cut)
+        cut = [zeros, zeros] if has_cut else []
         if com:
 
             def make_args(point):
@@ -55,14 +61,14 @@ def mapping_and_args(request):
                 p0 = np.stack([point.m0, zeros, zeros, zeros], axis=1)
                 pa = np.stack([e0, zeros, zeros, e0], axis=1)
                 pb = np.stack([e0, zeros, zeros, -e0], axis=1)
-                return [point.r1, point.r2, point.m1, point.m2], [pa, pb], p0
+                return [point.r1, point.r2, point.m1, point.m2], [pa, pb, *cut], p0
 
         else:
 
             def make_args(point):
                 return (
                     [point.r1, point.r2, point.m1, point.m2],
-                    [point.pa, point.pb],
+                    [point.pa, point.pb, *cut],
                     point.p0,
                 )
 
@@ -132,15 +138,15 @@ def input_points(rng):
 def test_momentum_conservation(mapping_and_args, input_points):
     mapping, make_args = mapping_and_args
     inputs, conditions, p0 = make_args(input_points)
-    (p1, p2), det = mapping.map_forward(inputs, conditions)
+    p1, p2, det = mapping.map_forward(inputs, conditions)
     assert p1 + p2 == approx(p0)
 
 
 def test_inverse(mapping_and_args, input_points):
     mapping, make_args = mapping_and_args
     inputs, conditions, p0 = make_args(input_points)
-    (p1, p2), det = mapping.map_forward(inputs, conditions)
-    inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
+    p1, p2, det = mapping.map_forward(inputs, conditions)
+    *inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
     assert inv_det == approx(1 / det)
     for inp, inv_inp in zip(inputs, inv_inputs):
         assert inp == approx(inv_inp)
@@ -149,7 +155,7 @@ def test_inverse(mapping_and_args, input_points):
 def test_outgoing_masses(mapping_and_args, input_points):
     mapping, make_args = mapping_and_args
     inputs, conditions, p0 = make_args(input_points)
-    (p1, p2), det = mapping.map_forward(inputs, conditions)
+    p1, p2, det = mapping.map_forward(inputs, conditions)
     m0 = mass(p1 + p2)
     m1 = mass(p1)
     m2 = mass(p2)
@@ -161,7 +167,7 @@ def test_outgoing_masses(mapping_and_args, input_points):
 def test_phase_space_volume(mapping_and_args, fixed_input_points):
     mapping, make_args = mapping_and_args
     inputs, conditions, p0 = make_args(fixed_input_points)
-    (p1, p2), det = mapping.map_forward(inputs, conditions)
+    p1, p2, det = mapping.map_forward(inputs, conditions)
 
     s = fixed_input_points.m0**2
     m1_2 = fixed_input_points.m1**2

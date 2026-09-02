@@ -1,4 +1,4 @@
-#include "madspace/phasespace/discrete_sampler.h"
+#include "madspace/phasespace/discrete_sampler.hpp"
 
 using namespace madspace;
 
@@ -6,23 +6,31 @@ DiscreteHistogram::DiscreteHistogram(const std::vector<std::size_t>& option_coun
     FunctionGenerator(
         "DiscreteHistogram",
         [&] {
-            TypeVec arg_types(option_counts.size(), batch_int);
-            arg_types.push_back(batch_float);
+            NamedVector<Type> arg_types;
+            for (std::size_t i = 0; i < option_counts.size(); ++i) {
+                arg_types.push_back(std::format("index{}", i), batch_int);
+            }
+            arg_types.push_back("weight", batch_float);
             return arg_types;
         }(),
         [&] {
-            TypeVec ret_types;
-            for (std::size_t option_count : option_counts) {
-                ret_types.push_back(single_float_array(option_count));
-                ret_types.push_back(single_int_array(option_count));
+            NamedVector<Type> ret_types;
+            for (std::size_t i = 0; std::size_t option_count : option_counts) {
+                ret_types.push_back(
+                    std::format("values{}", i), single_float_array(option_count)
+                );
+                ret_types.push_back(
+                    std::format("counts{}", i), single_int_array(option_count)
+                );
+                ++i;
             }
             return ret_types;
         }()
     ),
     _option_counts(option_counts) {}
 
-ValueVec DiscreteHistogram::build_function_impl(
-    FunctionBuilder& fb, const ValueVec& args
+NamedVector<Value> DiscreteHistogram::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     ValueVec results;
     auto weights = args.at(_option_counts.size());
@@ -32,7 +40,7 @@ ValueVec DiscreteHistogram::build_function_impl(
         results.push_back(values);
         results.push_back(counts);
     }
-    return results;
+    return {return_types().keys(), results};
 }
 
 DiscreteSampler::DiscreteSampler(
@@ -42,12 +50,27 @@ DiscreteSampler::DiscreteSampler(
 ) :
     Mapping(
         "DiscreteSampler",
-        TypeVec(option_counts.size(), batch_float),
-        TypeVec(option_counts.size(), batch_int),
         [&] {
-            TypeVec cond_types;
+            NamedVector<Type> in_types;
+            for (std::size_t i = 0; i < option_counts.size(); ++i) {
+                in_types.push_back(std::format("random{}", i), batch_float);
+            }
+            return in_types;
+        }(),
+        [&] {
+            NamedVector<Type> out_types;
+            for (std::size_t i = 0; i < option_counts.size(); ++i) {
+                out_types.push_back(std::format("index{}", i), batch_int);
+            }
+            return out_types;
+        }(),
+        [&] {
+            NamedVector<Type> cond_types;
             for (std::size_t dim : dims_with_prior) {
-                cond_types.push_back(batch_float_array(option_counts.at(dim)));
+                cond_types.push_back(
+                    std::format("prior{}", dim),
+                    batch_float_array(option_counts.at(dim))
+                );
             }
             return cond_types;
         }()
@@ -63,15 +86,19 @@ DiscreteSampler::DiscreteSampler(
 }
 
 Mapping::Result DiscreteSampler::build_forward_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
-    return build_transform(fb, inputs, conditions, false);
+    return build_transform(fb, inputs.values(), conditions.values(), false);
 }
 
 Mapping::Result DiscreteSampler::build_inverse_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
-    return build_transform(fb, inputs, conditions, true);
+    return build_transform(fb, inputs.values(), conditions.values(), true);
 }
 
 Mapping::Result DiscreteSampler::build_transform(
@@ -90,12 +117,16 @@ Mapping::Result DiscreteSampler::build_transform(
             probs = fb.mul(probs, conditions.at(condition_index));
             ++condition_index;
         }
-        auto [output, det] = inverse ? fb.sample_discrete_probs_inverse(input, probs)
-                                     : fb.sample_discrete_probs(input, probs);
+        auto [output, det] = inverse
+            ? fb.sample_discrete_probs_inverse(input, probs)
+            : fb.sample_discrete_probs(input, probs);
         outputs.push_back(output);
         dets.push_back(det);
     }
-    return {outputs, fb.product(dets)};
+    return {
+        {inverse ? input_types().keys() : output_types().keys(), outputs},
+        fb.product(dets)
+    };
 }
 
 void DiscreteSampler::initialize_globals(ContextPtr context) const {
@@ -109,7 +140,7 @@ void madspace::initialize_uniform_probs(
 ) {
     bool is_cpu = context->device() == cpu_device();
     auto prob_global = context->define_global(name, DataType::dt_float, {option_count});
-    auto prob = is_cpu ? prob_global : Tensor(DataType::dt_float, {option_count});
+    auto prob = is_cpu ? prob_global : Tensor(DataType::dt_float, {1, option_count});
     auto prob_view = prob.view<double, 2>()[0];
     auto prob_value = 1. / option_count;
     for (std::size_t i = 0; i < prob_view.size(); ++i) {

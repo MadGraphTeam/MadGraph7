@@ -1,4 +1,4 @@
-#include "madspace/phasespace/mlp.h"
+#include "madspace/phasespace/mlp.hpp"
 
 #include <format>
 #include <random>
@@ -102,7 +102,9 @@ MLP::MLP(
     const std::string& prefix
 ) :
     FunctionGenerator(
-        "MLP", {batch_float_array(input_dim)}, {batch_float_array(output_dim)}
+        "MLP",
+        {{"input", batch_float_array(input_dim)}},
+        {{"output", batch_float_array(output_dim)}}
     ),
     _input_dim(input_dim),
     _output_dim(output_dim),
@@ -118,14 +120,17 @@ MLP::MLP(
     }
 };
 
-ValueVec MLP::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
+NamedVector<Value>
+MLP::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) const {
     std::size_t dim = _input_dim;
     Value x = args.at(0);
     for (std::size_t i = 1; i < _layers; ++i) {
         x = build_layer(fb, x, dim, _hidden_dim, _activation, _prefix, i);
         dim = _hidden_dim;
     }
-    return {build_layer(fb, x, dim, _output_dim, MLP::linear, _prefix, _layers)};
+    return {
+        {"output", build_layer(fb, x, dim, _output_dim, MLP::linear, _prefix, _layers)}
+    };
 }
 
 void MLP::initialize_globals(ContextPtr context) const {
@@ -137,4 +142,14 @@ void MLP::initialize_globals(ContextPtr context) const {
         dim = _hidden_dim;
     }
     initialize_layer(context, dim, _output_dim, _prefix, _layers, rand_gen, true);
+}
+
+std::vector<std::string> MLP::global_names() const {
+    std::vector<std::string> names;
+    names.reserve(2 * _layers);
+    for (std::size_t i = 1; i <= _layers; ++i) {
+        names.push_back(prefixed_name(_prefix, std::format("layer{}.weight", i)));
+        names.push_back(prefixed_name(_prefix, std::format("layer{}.bias", i)));
+    }
+    return names;
 }

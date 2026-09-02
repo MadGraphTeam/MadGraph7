@@ -1,4 +1,4 @@
-#include "function_runtime.h"
+#include "function_runtime.hpp"
 
 #include <format>
 #include <ranges>
@@ -27,27 +27,28 @@ Runtime* get_runtime(FunctionRuntime& func_runtime, DevicePtr expected_device) {
     Runtime* runtime;
     if (!expected_device) {
         expected_device =
-            func_runtime.context ? func_runtime.context->device() : cpu_device();
+            func_runtime._context ? func_runtime._context->device() : cpu_device();
     }
-    if (auto search = func_runtime.runtimes.find(expected_device);
-        search != func_runtime.runtimes.end()) {
+    if (auto search = func_runtime._runtimes.find(expected_device);
+        search != func_runtime._runtimes.end()) {
         runtime = search->second.get();
     } else {
         RuntimePtr rt;
-        if (func_runtime.context) {
-            if (func_runtime.context->device() != expected_device) {
+        if (func_runtime._context) {
+            if (func_runtime._context->device() != expected_device) {
                 throw std::invalid_argument(
                     "Given context does not have compatible device"
                 );
             }
-            rt = build_runtime(func_runtime.function, func_runtime.context);
+            rt = build_runtime(func_runtime._function, func_runtime._context);
         } else {
             rt = build_runtime(
-                func_runtime.function, madspace::default_device_context(expected_device)
+                func_runtime._function,
+                madspace::default_device_context(expected_device)
             );
         }
         runtime = rt.get();
-        func_runtime.runtimes[expected_device] = std::move(rt);
+        func_runtime._runtimes[expected_device] = std::move(rt);
     }
     return runtime;
 }
@@ -58,7 +59,7 @@ std::tuple<std::vector<Tensor>, Runtime*> check_and_convert_args(
     bool* dlpack_version_cache
 ) {
     // TODO: check batch sizes
-    auto n_args = func_runtime.function.inputs().size();
+    auto n_args = func_runtime._function.inputs().size();
     if (args.size() != n_args) {
         throw std::invalid_argument(
             std::format(
@@ -70,7 +71,7 @@ std::tuple<std::vector<Tensor>, Runtime*> check_and_convert_args(
     DevicePtr expected_device = nullptr;
     for (int i = 0; i < n_args; ++i) {
         auto& arg = args.at(i);
-        auto& input_type = func_runtime.function.inputs().at(i).type;
+        auto& input_type = func_runtime._function.inputs().at(i).type;
         auto tensor =
             dlpack_to_tensor(arg, input_type, i, expected_device, dlpack_version_cache);
         if (expected_device == nullptr && tensor &&
@@ -154,7 +155,7 @@ py::object madspace_py::tensor_to_dlpack(
              dtype,
              context->shape.data(),
              context->stride.data(),
-             tensor.offset() * tensor.dtype_size()},
+             0},
             static_cast<void*>(context),
             &deleter
         };
@@ -444,7 +445,8 @@ Tensor madspace_py::dlpack_to_tensor(
 }
 
 std::vector<Tensor> FunctionRuntime::call(std::vector<py::object> args) {
-    auto [inputs, runtime] = check_and_convert_args(args, *this, &dlpack_version_cache);
+    auto [inputs, runtime] =
+        check_and_convert_args(args, *this, &_dlpack_version_cache);
     return runtime->run(inputs);
 }
 
@@ -452,7 +454,8 @@ std::tuple<std::vector<Tensor>, std::vector<std::optional<Tensor>>, std::vector<
 FunctionRuntime::call_with_grad(
     const std::vector<py::object>& args, const std::vector<bool>& input_requires_grad
 ) {
-    auto [inputs, runtime] = check_and_convert_args(args, *this, &dlpack_version_cache);
+    auto [inputs, runtime] =
+        check_and_convert_args(args, *this, &_dlpack_version_cache);
     auto [outputs, loc_grad, eval_grad] =
         runtime->run_with_grad(inputs, input_requires_grad);
     std::vector<std::optional<Tensor>> local_grads;
@@ -479,7 +482,7 @@ FunctionRuntime::call_backward(
     std::size_t arg_index = 0;
     for (auto& grad : output_grads) {
         auto tensor = dlpack_to_tensor(
-            grad, std::nullopt, arg_index, expected_device, &dlpack_version_cache
+            grad, std::nullopt, arg_index, expected_device, &_dlpack_version_cache
         );
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {
@@ -491,7 +494,7 @@ FunctionRuntime::call_backward(
     std::vector<Tensor> arg_locals;
     for (auto& local : stored_locals) {
         auto tensor = dlpack_to_tensor(
-            local, std::nullopt, arg_index, expected_device, &dlpack_version_cache
+            local, std::nullopt, arg_index, expected_device, &_dlpack_version_cache
         );
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {
@@ -513,12 +516,17 @@ FunctionRuntime::call_backward(
         }
     }
     std::vector<std::tuple<std::string, std::optional<Tensor>>> global_grads;
-    for (auto& [name, grad] : ret_glob_grads) {
-        if (grad) {
-            global_grads.push_back({name, grad});
-        } else {
-            global_grads.push_back({name, std::nullopt});
+    for (std::size_t ret_index = 0; auto& glob : _function.globals()) {
+        if (!_context->global_requires_grad(glob.first)) {
+            continue;
         }
+        auto& grad = ret_glob_grads.at(ret_index);
+        if (grad) {
+            global_grads.push_back({glob.first, grad});
+        } else {
+            global_grads.push_back({glob.first, std::nullopt});
+        }
+        ++ret_index;
     }
     return {input_grads, global_grads};
 }

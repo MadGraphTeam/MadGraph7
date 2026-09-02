@@ -22,6 +22,14 @@ unstack:
   custom_op: True
   differentiable: True
 
+stack_sizes:
+  inputs: any
+  outputs:
+    - name: sizes
+  desc:
+  class: StackSizesInstruction
+  custom_op: True
+
 unstack_sizes:
   inputs:
     - name: in1
@@ -130,6 +138,37 @@ unsqueeze:
   custom_op: True
   differentiable: True
 
+accept_norm:
+  inputs:
+    - name: accepted_batch
+      desc:
+    - name: full_batch
+      desc:
+  outputs:
+    - name: norm
+  class: AcceptNormInstruction
+  custom_op: True
+
+batch_split_by_index:
+  inputs:
+    - name: indices
+      type: [int]
+      desc:
+    - name: count
+      type: [int, single]
+      desc:
+  outputs: any
+  class: BatchSplitByIndexInstruction
+  custom_op: True
+
+batch_merge_by_index:
+  inputs: any
+  outputs:
+    - name: output
+      desc:
+  class: BatchMergeByIndexInstruction
+  custom_op: True
+
 ---
 title: Math
 
@@ -146,6 +185,7 @@ add:
       type: [float, ...]
       desc: sum of the two inputs
   desc: Computes the sum of the two inputs.
+  differentiable: True
   dims: 0
 
 add_int:
@@ -176,6 +216,7 @@ sub:
       type: [float, ...]
       desc: difference of the two inputs
   desc: Computes the difference of the two inputs.
+  differentiable: True
   dims: 0
 
 mul:
@@ -191,6 +232,22 @@ mul:
       type: [float, ...]
       desc: product of the two inputs
   desc: Computes the product of the two inputs.
+  differentiable: True
+  dims: 0
+
+div:
+  inputs:
+    - name: in1
+      type: [float, ...]
+      desc: first input to division
+    - name: in2
+      type: [float, ...]
+      desc: second input to division
+  outputs:
+    - name: out
+      type: [float, ...]
+      desc: quotient of the two inputs
+  desc: Computes the quotient of the two inputs.
   differentiable: True
   dims: 0
 
@@ -216,6 +273,42 @@ reduce_sum_vector:
       desc:
   dims: 0
 
+batch_reduce_sum:
+  inputs:
+    - name: in1
+      type: [float]
+      desc:
+  outputs:
+    - name: out
+      type: [float, single]
+      desc:
+  differentiable: True
+  custom_op: True
+
+batch_reduce_mean:
+  inputs:
+    - name: in1
+      type: [float]
+      desc:
+  outputs:
+    - name: out
+      type: [float, single]
+      desc:
+  differentiable: True
+  custom_op: True
+
+batch_reduce_mean_keepdim:
+  inputs:
+    - name: in1
+      type: [float]
+      desc:
+  outputs:
+    - name: out
+      type: [float]
+      desc:
+  differentiable: True
+  custom_op: True
+
 reduce_product:
   inputs:
     - name: in1
@@ -230,22 +323,26 @@ reduce_product:
 sqrt:
   inputs:
     - name: in1
-      type: [float]
+      type: [float, ...]
       desc:
   outputs:
     - name: out
-      type: [float]
+      type: [float, ...]
       desc:
+  differentiable: True
+  dims: 0
 
 square:
   inputs:
     - name: in1
-      type: [float]
+      type: [float, ...]
       desc:
   outputs:
     - name: out
-      type: [float]
+      type: [float, ...]
       desc:
+  differentiable: True
+  dims: 0
 
 min:
   inputs:
@@ -275,6 +372,17 @@ max:
       type: [float, ...]
       desc:
   desc:
+  dims: 0
+
+abs:
+  inputs:
+    - name: input
+      type: [float, ...]
+      desc:
+  outputs:
+    - name: out
+      type: [float, ...]
+      desc:
   dims: 0
 
 ---
@@ -899,6 +1007,59 @@ two_to_three_particle_scattering_inverse:
       type: [float]
       desc:
 
+double_t_scattering:
+  inputs:
+    - name: r_phi
+      type: [float]
+      desc:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: t1_abs
+      type: [float]
+      desc:
+    - name: t2_abs
+      type: [float]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+  outputs:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: p2
+      type: [float, 4]
+      desc:
+    - name: det
+      type: [float]
+      desc:
+
+double_t_scattering_inverse:
+  inputs:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: p2
+      type: [float, 4]
+      desc:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+  outputs:
+    - name: r_phi
+      type: [float]
+      desc:
+    - name: det
+      type: [float]
+      desc:
+
 three_body_decay_com:
   inputs:
     - name: r_e1
@@ -1124,6 +1285,195 @@ t_inv_value_and_min_max:
       type: [float]
       desc:
 
+t_inv_min_max_cut:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: m2
+      type: [float]
+      desc:
+    - name: etmin_1
+      type: [float]
+      desc:
+    - name: etmin_2
+      type: [float]
+      desc:
+  outputs:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t_inv_value_and_min_max_cut:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: p2
+      type: [float, 4]
+      desc:
+    - name: etmin_1
+      type: [float]
+      desc:
+    - name: etmin_2
+      type: [float]
+      desc:
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t1_inv_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+    - name: etmin_i
+      type: [float]
+      desc:
+    - name: etmin_ir
+      type: [float]
+      desc:
+  outputs:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t1_inv_value_and_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+    - name: etmin_i
+      type: [float]
+      desc:
+    - name: etmin_ir
+      type: [float]
+      desc:
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t2_inv_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+    - name: t1_abs
+      type: [float]
+      desc:
+    - name: etmin_i
+      type: [float]
+      desc:
+    - name: etmin_ir
+      type: [float]
+      desc:
+  outputs:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
+t2_inv_value_and_min_max_doublet:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: mir_min
+      type: [float]
+      desc:
+    - name: t1_abs
+      type: [float]
+      desc:
+    - name: etmin_i
+      type: [float]
+      desc:
+    - name: etmin_ir
+      type: [float]
+      desc:
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc:
+    - name: t_min
+      type: [float]
+      desc:
+    - name: t_max
+      type: [float]
+      desc:
+
 s23_min_max:
   inputs:
     - name: pa
@@ -1171,6 +1521,89 @@ s23_value_and_min_max:
       desc:
     - name: p2
       type: [float, 4]
+      desc:
+  outputs:
+    - name: s_23
+      type: [float]
+      desc:
+    - name: s23_min
+      type: [float]
+      desc:
+    - name: s23_max
+      type: [float]
+      desc:
+
+s23_min_max_cut:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: p3
+      type: [float, 4]
+      desc:
+    - name: t1_abs
+      type: [float]
+      desc:
+    - name: m1
+      type: [float]
+      desc:
+    - name: m2
+      type: [float]
+      desc:
+    - name: etmin_1
+      type: [float]
+      desc:
+    - name: etmin_2
+      type: [float]
+      desc:
+    - name: drcut
+      type: [float]
+      desc:
+    - name: s23_min_cut
+      type: [float]
+      desc:
+  outputs:
+    - name: s23_min
+      type: [float]
+      desc:
+    - name: s23_max
+      type: [float]
+      desc:
+
+s23_value_and_min_max_cut:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc:
+    - name: pb
+      type: [float, 4]
+      desc:
+    - name: p3
+      type: [float, 4]
+      desc:
+    - name: t1_abs
+      type: [float]
+      desc:
+    - name: p1
+      type: [float, 4]
+      desc:
+    - name: p2
+      type: [float, 4]
+      desc:
+    - name: etmin_1
+      type: [float]
+      desc:
+    - name: etmin_2
+      type: [float]
+      desc:
+    - name: drcut
+      type: [float]
+      desc:
+    - name: s23_min_cut
+      type: [float]
       desc:
   outputs:
     - name: s_23
@@ -1257,6 +1690,41 @@ apply_subchannel_weights:
   outputs:
     - name: channel_weights_out
       type: [float, d]
+      desc:
+
+compress_channel_weights:
+  inputs:
+    - name: channel_index
+      type: [int]
+      desc:
+    - name: channel_weights
+      type: [float, n]
+      desc:
+    - name: keep_count
+      type: [size, k]
+      desc:
+  outputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+
+restore_channel_weights:
+  inputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+    - name: full_count
+      type: [size, n]
+      desc:
+  outputs:
+    - name: channel_weights
+      type: [float, n]
       desc:
 
 pt_eta_phi_x:
@@ -1806,7 +2274,7 @@ interpolate_pdf:
     - name: x
       type: [float]
       desc:
-    - name: q2
+    - name: q
       type: [float]
       desc:
     - name: pid_indices
@@ -1829,7 +2297,7 @@ interpolate_pdf:
 
 interpolate_alpha_s:
   inputs:
-    - name: q2
+    - name: q
       type: [float]
       desc:
     - name: grid_logq2
@@ -1916,6 +2384,19 @@ gelu:
   differentiable: True
 
 sigmoid:
+  inputs:
+    - name: in1
+      type: [float, ...]
+      desc:
+  outputs:
+    - name: out
+      type: [float, ...]
+      backward_arg: True
+      desc:
+  dims: 0
+  differentiable: True
+
+scaled_tanh:
   inputs:
     - name: in1
       type: [float, ...]
@@ -2051,7 +2532,7 @@ sample_discrete:
       type: [float]
       desc:
     - name: option_count
-      type: [int, single]
+      type: [int]
       desc:
   outputs:
     - name: output
@@ -2151,6 +2632,7 @@ gather:
     - name: index
       type: [int]
       desc:
+      backward_arg: True
     - name: choices
       type: [float, n]
       desc:
@@ -2158,6 +2640,7 @@ gather:
     - name: output
       type: [float]
       desc:
+  differentiable: True
 
 gather_int:
   inputs:
@@ -2171,6 +2654,20 @@ gather_int:
     - name: output
       type: [int]
       desc:
+
+gather_vector:
+  inputs:
+    - name: index
+      type: [int]
+      desc:
+    - name: choices
+      type: [float, n, m]
+      desc:
+  outputs:
+    - name: output
+      type: [float, m]
+      desc:
+  vectorized: False
 
 select_int:
   inputs:
@@ -2225,6 +2722,20 @@ argsort:
       desc:
   vectorized: False
 
+quantile:
+  inputs:
+    - name: input
+      type: [float]
+      desc:
+    - name: q
+      type: [float, single]
+      desc:
+  outputs:
+    - name: output
+      type: [float, single]
+      desc:
+  custom_op: True
+
 one_hot:
   inputs:
     - name: index
@@ -2237,6 +2748,89 @@ one_hot:
     - name: output
       type: [float, n]
       desc:
+
+madnis_abs_weight:
+  inputs:
+    - name: f
+      type: [float]
+      desc:
+    - name: q
+      type: [float]
+      desc:
+  outputs:
+    - name: w
+      type: [float]
+      desc:
+  differentiable: True
+
+madnis_softclip:
+  inputs:
+    - name: f
+      type: [float]
+      desc:
+    - name: q
+      type: [float]
+      desc:
+    - name: norm
+      type: [float]
+      desc:
+    - name: threshold
+      type: [float]
+      desc:
+  outputs:
+    - name: f_clip
+      type: [float]
+      desc:
+  differentiable: True
+
+madnis_variance:
+  inputs:
+    - name: f
+      type: [float]
+      desc:
+    - name: g
+      type: [float]
+      desc:
+    - name: q
+      type: [float]
+      desc:
+    - name: mean
+      type: [float]
+      desc:
+  outputs:
+    - name: w
+      type: [float]
+      desc:
+  differentiable: True
+
+madnis_single_channel_variance:
+  inputs:
+    - name: var
+      type: [float]
+      desc:
+    - name: abs_mean
+      type: [float]
+      desc:
+      backward_arg: True
+  outputs:
+    - name: loss
+      type: [float]
+      desc:
+  differentiable: True
+
+madnis_multi_channel_variance:
+  inputs:
+    - name: vars
+      type: [float, c]
+      desc:
+    - name: abs_means
+      type: [float, c]
+      desc:
+  outputs:
+    - name: loss
+      type: [float]
+      desc:
+  differentiable: True
 
 ---
 title: Indexing
@@ -2290,6 +2884,18 @@ random:
     - name: output
       desc:
   class: RandomInstruction
+  custom_op: True
+
+random_int:
+  inputs:
+    - name: batch_size
+      desc:
+    - name: max
+      desc:
+  outputs:
+    - name: output
+      desc:
+  class: RandomIntInstruction
   custom_op: True
 
 unweight:

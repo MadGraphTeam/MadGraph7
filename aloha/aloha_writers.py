@@ -76,6 +76,13 @@ class WriteALOHA:
         #initialize global helper routine
         self.declaration = Declaration_list()
         self.options = options if options else {}
+        # a writer emitting one term of an assembled multi-structure routine
+        # (see write_combined_parts) works on the wavefunctions under the name
+        # the assembled routine gives them, adds its own coupling and adds up
+        # into the output instead of assigning it.
+        self.wf_rename = {}
+        self.coup_name = None
+        self.combined_part = False
                                    
                                        
     def pass_to_HELAS(self, indices, start=0):
@@ -191,7 +198,24 @@ class WriteALOHA:
     def get_foot_txt(self):
         """Prototype for language specific footer"""
         return ''
-    
+
+    def has_fd_propagator(self):
+        """Does this routine have to apply the FD gauge propagator factor on
+        the wavefunction it builds? (language independent)"""
+
+        if aloha.unitary_gauge != 3 or not self.offshell or 'P1N' in self.tag:
+            return False
+        return self.particles[self.outgoing-1].startswith(('V','S'))
+
+    def rename_wf(self, name):
+        """Name under which a wavefunction is written. It is its own name
+        except in a term of an assembled multi-structure routine, where all the
+        structures share one name per leg: in FD gauge a leg can be a vector in
+        one structure and its Goldstone in the next one, and both are the same
+        argument."""
+
+        return self.wf_rename.get(name, name)
+
     def define_argument_list(self, couplings=None):
         """define a list with the string of object required as incoming argument"""
 
@@ -582,11 +606,30 @@ class ALOHAWriterForFortran(WriteALOHA):
             if type.startswith('list'):
                 type = type[5:]
                 #determine the size of the list
-                if name[0] in ['F', 'V', 'S', 'T', 'R'] and not aloha.loop_mode:
-                    if name[0] not in ['T', 'R']:
-                        out.write(' type(aloha) %s\n' % (name))
+                if name.startswith('FD'):
+                    # FD gauge: 5-momentum and gauge direction of the inlined
+                    # propagator factor (no wavefunction, despite the F)
+                    out.write(' %s %s(0:4)\n' % (self.type2def[type], name))
+                elif name[0] in ['F', 'V', 'S', 'T', 'R']:
+                    # All wavefunctions (inputs and outputs) are now passed and
+                    # built as type(aloha) / type(aloha2d), regardless of
+                    # loop_mode.  This keeps the body code (which uses %W / %P
+                    # accessors) consistent with the declaration.  MP routines
+                    # must use the mp_aloha* variants whose %W / %P fields are
+                    # complex*32 / real*16 — otherwise the storage layout at
+                    # the call site (type(mp_aloha) caller) does not match the
+                    # callee's view, and %P writes land in the middle of %W,
+                    # leaving the momentum at zero.
+                    if 'MP' in self.tag:
+                        if name[0] not in ['T', 'R']:
+                            out.write(' type(mp_aloha) %s\n' % (name))
+                        else:
+                            out.write(' type(mp_aloha2d) %s\n' % (name))
                     else:
-                        out.write(' type(aloha2d) %s\n' % (name))
+                        if name[0] not in ['T', 'R']:
+                            out.write(' type(aloha) %s\n' % (name))
+                        else:
+                            out.write(' type(aloha2d) %s\n' % (name))
                     if name not in argument_var:
                         size=self.get_size(name, -2)
                         #to_end.append("allocate(%s %% W(%s))" % (name,size))
@@ -597,26 +640,6 @@ class ALOHAWriterForFortran(WriteALOHA):
                         size ='*'
                     elif name.startswith('P'):
                         size='0:3'
-                    elif name[0] in ['F','V']:
-                        if aloha.loop_mode:
-                            size = 8
-                        elif aloha.unitary_gauge == 3 and name[0] in 'V':
-                            size = 7
-                        else:
-                            size = 6
-                    elif name[0] == 'S':
-                        if aloha.loop_mode:
-                            size = 5
-                        elif aloha.unitary_gauge == 3: # FD gauge 
-                            # Need to fix since this need to be dependent if S is a goldstone or not
-                            size = 7
-                        else:
-                            size = 3
-                    elif name[0] in ['R','T']: 
-                        if aloha.loop_mode:
-                            size = 20
-                        else:
-                            size = 18
                     else:
                         size = '*'
                     out.write(' %s %s(%s)\n' % (self.type2def[type], name, size))
@@ -671,10 +694,9 @@ class ALOHAWriterForFortran(WriteALOHA):
                 out_size = self.type_to_size[type] 
                 continue
             elif self.offshell:
-                if not aloha.loop_mode:
-                    p.append('{0}{1}{2}%P(:)'.format(signs[i],type,i+1))
-                else:
-                    p.append('{0}{1}{2}(%(i)s)'.format(signs[i],type,i+1,type))    
+                # Always use the type(aloha) %P accessor; wavefunctions are
+                # type(aloha) regardless of loop_mode.
+                p.append('{0}{1}{2}%P(:)'.format(signs[i],type,i+1))
                 
             if self.declaration.is_used('P%s' % (i+1)):
                 self.get_one_momenta_def(i+1, out)
@@ -700,7 +722,7 @@ class ALOHAWriterForFortran(WriteALOHA):
             if self.declaration.is_used('P%s' % self.outgoing):
                 self.get_one_momenta_def(self.outgoing, out)
 
-            if "P1T" in self.tag or "P1L" in self.tag:
+            if any(t in self.tag for t in ("P1T","P1TR","P1TL","P1L")):
                 for i in range(1,4):
                     P = "P%s" % (self.outgoing)
                     value = ["1d-30", "0d0", "1d-15"]
@@ -724,10 +746,10 @@ class ALOHAWriterForFortran(WriteALOHA):
         
         if self.offshell and aloha.unitary_gauge == 3: # FD gauge
             type = self.particles[self.outgoing-1]
-            if type in ["S","V"]: 
-                out.write("      DO I = 3, 7\n")
-                out.write(" %(type)s%(out)s(I) = CZERO \n" % {'type': type, 'out':self.outgoing}) 
-                out.write(" ENDDO\n")      
+            if type in ["S","V"]:
+                out.write(" %(type)s%(out)s %% W(:) = CZERO \n" % {'type': type, 'out':self.outgoing})
+            if self.declaration.is_used('FDQ'):
+                out.write(self.get_fd_gauge_txt())
 
         # Returning result
         return out.getvalue()
@@ -754,7 +776,7 @@ class ALOHAWriterForFortran(WriteALOHA):
 
                 out.write('   flv_index1 = F1 %flv_index\n')
                 out.write('   flv_index2 = F2 %flv_index\n')
-                out.write('   if(flv_index1.ne.flv_index2.or.flv_index1.eq.0d0)then  \n %s\n  return\nendif\n' % fail)
+                out.write('   if(flv_index1.ne.flv_index2.or.flv_index1.eq.0)then  \n %s\n  return\nendif\n' % fail)
             else:
                 incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
                 outgoing = self.outgoing
@@ -762,6 +784,19 @@ class ALOHAWriterForFortran(WriteALOHA):
 
             return out.getvalue()    
         
+        # a merged multiple coupling routine has one matrix coupling per Lorentz
+        # structure (MCOUP1, MCOUP2, ...). They all belong to the same vertex
+        # (same particles) so they share the flavour pairing, but a given
+        # flavour can be missing from some of them (vanishing coupling). The
+        # first coupling defines the flavour mapping of the routine, the others
+        # only contribute when they agree with it.
+        couplings = [name for ftype, name in self.declaration
+                                                       if name.startswith('COUP')]
+        couplings.sort(key=lambda x: int(x[4:]) if x[4:] else 0)
+        if not couplings:
+            couplings = ['COUP']
+        main = couplings[0]
+
         if self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
             if not self.outgoing:
                 fail = "VERTEX = (0d0,0d0)"
@@ -771,32 +806,41 @@ class ALOHAWriterForFortran(WriteALOHA):
             out.write('   flv_index1 = F1 %flv_index\n')
             out.write('   flv_index2 = F2 %flv_index\n')
             out.write('   if(flv_index1.eq.0.or.flv_index2.eq.0)then  \n %s\n  return\nendif\n' % fail)
-            out.write('   if(MCOUP %% PARTNER(flv_index1).ne.flv_index2)then \n %s\n return\n endif\n' %fail)
-        else:
-            incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
-            if incoming %2 == 1:
-                outgoing = self.outgoing
-                out.write('   flv_index%i = F%i %%flv_index\n' % (incoming, incoming))
-                out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   flv_index2 = MCOUP %% PARTNER(FLV_INDEX%i)\n' %(incoming))
-                out.write('   if(flv_index2.eq.0)then\n')
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   F%i %% FLV_INDEX = FLV_INDEX2\n' % outgoing)
-            else:
-                outgoing = self.outgoing
-                out.write('   flv_index%i = F%i %%flv_index\n' % (incoming,incoming))
-                out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   flv_index1 = MCOUP %% PARTNER2(FLV_INDEX%i)\n' %(incoming))
-                out.write('   if(flv_index1.eq.0)then\n')
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   F%i %% FLV_INDEX = FLV_INDEX1\n' % outgoing)                
- 
-        for ftype, name in self.declaration:
-            if name.startswith('COUP'):
+            out.write('   if(%s)then \n %s\n return\n endif\n' %
+                      ('.and.'.join('M%s %% PARTNER(flv_index1).ne.flv_index2' % name
+                                                        for name in couplings), fail))
+            # the flavour of the outgoing particle is fixed by the incoming ones
+            for name in couplings:
+                if name == main:
+                    out.write(' %s = M%s %% VAL(flv_index1) %% p \n' % (name, name))
+                else:
+                    out.write(' %s = (0d0,0d0)\n' % name)
+                    out.write(' if(M%s %% PARTNER(flv_index1).eq.flv_index2) %s = M%s %% VAL(flv_index1) %% p \n'
+                              % (name, name, name))
+            return out.getvalue()
+
+        incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+        outgoing = self.outgoing
+        # PARTNER maps the odd fermion onto the even one, PARTNER2 the opposite
+        partner = 'PARTNER' if incoming % 2 == 1 else 'PARTNER2'
+        # index of the fermion built by this routine
+        out_index = 2 if incoming % 2 == 1 else 1
+        out.write('   flv_index%i = F%i %%flv_index\n' % (incoming, incoming))
+        out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
+        out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+        out.write('   flv_index%i = M%s %% %s(FLV_INDEX%i)\n' % (out_index, main, partner, incoming))
+        out.write('   if(flv_index%i.eq.0)then\n' % out_index)
+        out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+        out.write('   F%i %% FLV_INDEX = FLV_INDEX%i\n' % (outgoing, out_index))
+
+        for name in couplings:
+            if name == main:
                 out.write(' %s = M%s %% VAL(flv_index1) %% p \n' % (name, name))
-        return out.getvalue()     
+            else:
+                out.write(' %s = (0d0,0d0)\n' % name)
+                out.write(' if(M%s %% %s(flv_index%i).eq.flv_index%i) %s = M%s %% VAL(flv_index1) %% p \n'
+                          % (name, partner, incoming, out_index, name, name))
+        return out.getvalue()
 
     def get_one_momenta_def(self, i, strfile):
         
@@ -820,7 +864,15 @@ class ALOHAWriterForFortran(WriteALOHA):
             # a flat integer offset (+momentum_size) into a plain COMPLEX*16
             # array; now all wavefunctions (including those inside loop ALOHA
             # routines) are passed as type(aloha) objects.
-            return '%s %% W(%s)' % (match.group('var'), int(match.group('num')))
+            shift = 0
+            if aloha.unitary_gauge == 3 and match.group('var').startswith('S'):
+                shift += 4 # In FD gauge Scalar indices goes to 5 (not 1)
+                           # to complement the vector 1-4
+            # the slot is fixed by the spin this structure sees on the leg, the
+            # name by the routine the code is written in (rename_wf)
+            return '%s %% W(%s)' % (self.rename_wf(match.group('var')),
+                                    int(match.group('num'))+ shift)
+
               
     def change_var_format(self, name): 
         """Formatting the variable name to Fortran format"""
@@ -837,11 +889,15 @@ class ALOHAWriterForFortran(WriteALOHA):
         if '_' in name:
             vtype = name.type
             decla = name.split('_',1)[0]
-            # P-momentum variables may be cached as complex from a previous loop
-            # computation; override with the type appropriate for the current mode.
+            # In loop_mode the type(aloha)%P field is double complex so
+            # that the OPP loop-momentum samples (which are complex) are
+            # preserved as they propagate through the loop wavefunctions;
+            # the per-routine momentum scratch variables therefore must
+            # also be complex.  Tree-only generation keeps %P real and
+            # the scratch variables stay real for performance.
             if decla.startswith('P'):
                 vtype = 'complex' if aloha.loop_mode else 'double'
-            self.declaration.add(('list_%s' % vtype, decla))
+            self.declaration.add(('list_%s' % vtype, self.rename_wf(decla)))
         else:
             self.declaration.add((name.type, name))
         name = re.sub(r'(?P<var>\w*)_(?P<num>\d+)$', self.shift_indices , name)
@@ -924,20 +980,30 @@ class ALOHAWriterForFortran(WriteALOHA):
 
         numerator = self.routine.expr
 
-        if not 'Coup(1)' in self.routine.infostr:
+        if self.coup_name:
+            # one term of an assembled routine: this structure has its own
+            # coupling among COUP1, COUP2, ...
+            coup_name = self.coup_name
+        elif not 'Coup(1)' in self.routine.infostr:
             coup_name = 'COUP'
         else:
+            # the couplings are already inside the expression (merged routine)
             coup_name = '%s' % self.change_number_format(1)
+        has_coup = coup_name != self.change_number_format(1)
 
         if not self.offshell:
-            if coup_name == 'COUP':
+            if has_coup:
                 formatted = self.write_obj(numerator.get_rep([0]))
-                if formatted.startswith(('+','-')):
-                    out.write(' vertex = COUP*(%s)\n' % formatted)
+                if not formatted.startswith(('+','-')):
+                    formatted = '%s*%s' % (coup_name, formatted)
                 else:
-                    out.write(' vertex = COUP*%s\n' % formatted)
+                    formatted = '%s*(%s)' % (coup_name, formatted)
             else:
-                out.write(' vertex = %s\n' % self.write_obj(numerator.get_rep([0])))
+                formatted = self.write_obj(numerator.get_rep([0]))
+            if self.combined_part:
+                out.write(' vertex = vertex + %s\n' % formatted)
+            else:
+                out.write(' vertex = %s\n' % formatted)
         else:
             OffShellParticle = '%s%d' % (self.particles[self.offshell-1],\
                                                                   self.offshell)
@@ -976,8 +1042,8 @@ class ALOHAWriterForFortran(WriteALOHA):
                 else:
                     coeff = '%(COUP)s*' % {'COUP': coup_name}  
             else:
-                if coup_name == 'COUP':
-                    coeff = 'COUP*'
+                if has_coup:
+                    coeff = '%s*' % coup_name
                 else:
                     coeff = ''
             to_order = {}  
@@ -994,15 +1060,19 @@ class ALOHAWriterForFortran(WriteALOHA):
                 shift = 1
                 if aloha.unitary_gauge == 3 and self.outname[0] == "S":
                     shift = 5
-                if not aloha.loop_mode:
-                    shift -= 2
-                    to_order[self.pass_to_HELAS(ind)] = \
-                        '    %s%%W(%d)= %s%s\n' % (self.outname, self.pass_to_HELAS(ind)+shift, 
-                        coeff, formatted)
-                else:
-                    to_order[self.pass_to_HELAS(ind)] = \
-                        '    %s(%d)= %s%s\n' % (self.outname, self.pass_to_HELAS(ind)+shift, 
-                        coeff, formatted)
+                # Subtract momentum_size: pass_to_HELAS adds it to obtain a
+                # flat-array index, but the output wavefunction is now a
+                # type(aloha) and we write into %W which is 1-indexed for
+                # Lorentz components only.
+                shift -= self.momentum_size
+                # the slot is fixed by the spin of this structure, the name by
+                # the routine the code is written in; a term of an assembled
+                # routine adds up into a slot several structures can feed
+                slot = '%s%%W(%d)' % (self.rename_wf(self.outname),
+                                      self.pass_to_HELAS(ind)+shift)
+                to_order[self.pass_to_HELAS(ind)] = \
+                    '    %s= %s%s%s\n' % (slot, '%s+' % slot if self.combined_part
+                                          else '', coeff, formatted)
             key = list(to_order.keys())
             key.sort()
             for i in key:
@@ -1032,6 +1102,13 @@ class ALOHAWriterForFortran(WriteALOHA):
             # retry when removing the useless part.
             return self.define_expression()
 
+        if self.has_fd_propagator() and not self.combined_part:
+            # the FD gauge propagator factor is part of the wavefunction this
+            # routine builds, not a post-treatment. A term of an assembled
+            # routine gets it once, from the assembler, on the total.
+            self.declare_fd_propagator()
+            txt += self.get_fd_propagator_txt()
+
         return txt
 
     def define_symmetry(self, new_nb, couplings=None):
@@ -1043,27 +1120,210 @@ class ALOHAWriterForFortran(WriteALOHA):
         #    (self.get_header_txt(new_name, couplings), self.name, ','.join(arguments))
 
     def get_foot_txt(self, combine=False):
-        text = ' ' 
-    
-        if not combine and aloha.unitary_gauge == 3: # FD gauge
-            if self.outgoing and 'P1N' not in self.tag:
-                name = self.particles[self.outgoing-1]
-                if name.startswith(('V','S')):
-                    # need to be smarter for Higgs
-                    text += 'CALL MULTIPLY_PROPAGATOR_FACTOR(%(name)s%(i)s,%(mass)s%(i)s, %(name)s%(i)s)\n' %\
-                    {'name':name, 'mass': 'M%s' % name[1:], 'i': self.outgoing }
+        text = ' '
 
-
-        text += 'end\n\n' 
+        text += 'end\n\n'
         return text
 
+    def get_fd_gauge_txt(self):
+        """FD gauge: the part of the propagator factor that only depends on the
+        momentum of the outgoing wavefunction, i.e. the 5-momentum q (the mass
+        sits in its 5th component) and the gauge direction n.
+
+        This is the inlined counterpart of the head of
+        multiply_propagator_factor (aloha_functions_fd.f); it is written with
+        the momenta so that everything it defines stays out of the way of the
+        wavefunction dependent part (see get_fd_propagator_txt)."""
+
+        out = StringIO()
+        outname = self.outname
+        out.write('    FDQ(0:3) = -%s %% P(:)\n' % outname)
+        out.write('    FDQ(4) = -CI*M%s\n' % self.outgoing)
+        out.write('    CALL DEFINE_GAUGE_DIR(FDQ, FDN)\n')
+        out.write('    FDNQ = %s\n' % '-'.join(['FDN(%d)*DBLE(FDQ(%d))' % (i,i)
+                                                          for i in range(4)]))
+        return out.getvalue()
+
+    def get_fd_propagator_txt(self):
+        """FD gauge: the wavefunction dependent part of the propagator factor.
+
+        The 5 components built by the routine are projected on the physical
+        gauge: w -> w - q * js1 - n * js2. Inlining it (instead of calling
+        multiply_propagator_factor) keeps the routine a single expression: the
+        momentum only part is hoisted with the momenta, and what is left here
+        is linear in the wavefunction."""
+
+        out = StringIO()
+        outname = self.outname
+        # number of Lorentz components of the outgoing wavefunction: in FD
+        # gauge a vector and its Goldstone share the same 5 slots
+        size = self.type_to_size[self.particles[self.outgoing-1]] - 2
+        # js1 and js2 contract the wavefunction with n and q (the 5th component
+        # of q carries the mass, hence the conjugation)
+        out.write('    FDJS1 = (%s)/FDNQ\n' % '-'.join(
+            ['FDN(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]))
+        out.write('    FDJS2 = (%s-DCONJG(FDQ(4))*%s%%W(5))/FDNQ\n' % (
+            '-'.join(['FDQ(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]),
+            outname))
+        for i in range(size):
+            out.write('    %(o)s%%W(%(k)d) = %(o)s%%W(%(k)d)-FDQ(%(i)d)*FDJS1'
+                      '-FDN(%(i)d)*FDJS2\n' % {'o': outname, 'k': i+1, 'i': i})
+        return out.getvalue()
+
+    def declare_fd_propagator(self):
+        """Variables of the inlined FD gauge propagator factor. The mass it
+        needs is already an argument of any offshell routine."""
+
+        self.declaration.add(('list_complex', 'FDQ'))
+        self.declaration.add(('list_double', 'FDN'))
+        self.declaration.add(('double', 'FDNQ'))
+        self.declaration.add(('complex', 'FDJS1'))
+        self.declaration.add(('complex', 'FDJS2'))
+
     def write_combined(self, lor_names, mode='self', offshell=None):
-        """Write routine for combine ALOHA call (more than one coupling)"""
-        
+        """Write routine for combine ALOHA call (more than one coupling).
+
+        The routine is a genuine merge of the Lorentz structures: its body is
+        the sum of the structures, each multiplied by its own coupling, and it
+        is written exactly like a single coupling routine (contracted
+        temporaries, single propagator DENOM, one assignment per component).
+        Structures that do not act on the same spins can not share a single
+        expression; they are assembled term by term instead (write_combined_parts).
+        When neither is possible, fall back on a wrapper calling each single
+        structure routine in turn.
+        """
+
+        if offshell is None:
+            offshell = self.offshell
+
+        merged = None
+        if offshell == self.offshell and not os.environ.get('MG_ALOHA_COMBINE_WRAPPER') \
+                               and hasattr(self.routine, 'get_combined_routine'):
+            merged = self.routine.get_combined_routine(lor_names)
+            if merged is None:
+                parts = self.routine.get_combined_routines(lor_names)
+                if parts:
+                    return self.write_combined_parts(parts, lor_names, mode,
+                                                     offshell)
+        if merged is None:
+            return self.write_combined_wrapper(lor_names, mode, offshell)
+
+        name = combine_name(self.routine.name, lor_names, offshell, self.tag)
+        # the merged routine is written by a dedicated writer (fresh
+        # declarations) through the standard path: it is a routine like any
+        # other one, only its name and its file are those of the combination.
+        writer = self.__class__(merged, None, options=self.options)
+        writer.name = name
+        # the caller passes one coupling per Lorentz structure: declare them all
+        # up-front so that the signature does not depend on a structure
+        # surviving the algebra for this outgoing particle.
+        for i in range(len(lor_names) + 1):
+            writer.declaration.add(('complex', 'COUP%s' % (i+1)))
+        text = writer.write(mode=mode)
+
+        if self.out_path:
+            fsock = self.writer(self.out_path, 'a')
+            commentstring = 'This File is Automatically generated by ALOHA \n'
+            commentstring += 'The process calculated in this file is: \n'
+            # indent: the merged expression starts with "Coup(1)" and a line
+            # starting with a 'C' is taken as an already formatted comment
+            commentstring += ' ' + merged.infostr + '\n'
+            fsock.write_comments(commentstring)
+            fsock.writelines(text)
+        return text
+
+    def write_combined_parts(self, routines, lor_names, mode='self', offshell=None):
+        """Write a combined routine whose Lorentz structures do not act on the
+        same spins, by assembling them term by term.
+
+        This is the FD gauge case: a leg is a massive vector in one structure
+        and its Goldstone in the next one, but both are the same wavefunction
+        (components 1-4 and 5 of one object), so no single ALOHA expression can
+        carry them. The routine is still a single one: the momenta, the
+        declarations and the propagator factor are shared, and each structure
+        adds its own coupling times its own expression into the slots it feeds.
+        """
+
+        name = combine_name(self.routine.name, lor_names, offshell, self.tag)
+        writers = [self.__class__(routine, None, options=self.options)
+                                                        for routine in routines]
+        main = writers[0]
+        # one name per leg -- the one the first structure gives it
+        legs = ['%s%d' % (spin, i+1) for i, spin in enumerate(main.particles)]
+
+        bodies = []
+        for i, writer in enumerate(writers):
+            writer.name = name
+            writer.coup_name = 'COUP%s' % (i+1)
+            writer.combined_part = True
+            for j, spin in enumerate(writer.particles):
+                wf = '%s%d' % (spin, j+1)
+                if wf != legs[j]:
+                    writer.wf_rename[wf] = legs[j]
+            bodies.append(writer.define_expression())
+
+        # everything the terms need has to be declared and, for the momenta,
+        # defined once for all of them
+        for writer in writers[1:]:
+            for entry in writer.declaration:
+                main.declaration.add(entry)
+        # one coupling per structure, whatever the algebra kept
+        for i in range(len(lor_names) + 1):
+            main.declaration.add(('complex', 'COUP%s' % (i+1)))
+        if main.has_fd_propagator():
+            main.declare_fd_propagator()
+
+        text = StringIO()
+        text.write(main.get_header_txt(name=name))
+        text.write(main.get_declaration_txt())
+        text.write(main.get_momenta_txt())
+        text.write(main.get_coupling_def())
+        # the terms add up into the output, so it has to start from zero (in FD
+        # gauge the momenta already reset the wavefunction)
+        zero = '(%s,%s)' % (self.change_number_format(0),
+                            self.change_number_format(0))
+        if not offshell:
+            text.write('    vertex = %s\n' % zero)
+        elif not (aloha.unitary_gauge == 3 and
+                  main.particles[main.outgoing-1] in ['S', 'V']):
+            text.write('    %s%%W(:) = %s\n' % (main.outname, zero))
+        # the structures share the contraction cache, so the same TMP/FCT is
+        # often built by several of them: keep the first definition only
+        seen = set()
+        for body in bodies:
+            for line in body.splitlines(True):
+                definition = line.strip()
+                if re.match(r'^(?:TMP|FCT)\d+\s*=', definition):
+                    if definition in seen:
+                        continue
+                    seen.add(definition)
+                text.write(line)
+        if main.has_fd_propagator():
+            text.write(main.get_fd_propagator_txt())
+        text.write(main.get_foot_txt())
+
+        text = text.getvalue()
+        if self.out_path:
+            fsock = self.writer(self.out_path, 'a')
+            commentstring = 'This File is Automatically generated by ALOHA \n'
+            commentstring += 'The process calculated in this file is: \n'
+            commentstring += '\n'.join(' Coup(%s) * (%s)' % (i+1, routine.infostr)
+                                       for i, routine in enumerate(routines))
+            commentstring += '\n'
+            fsock.write_comments(commentstring)
+            fsock.writelines(text)
+        return text
+
+    def write_combined_wrapper(self, lor_names, mode='self', offshell=None):
+        """Write a combine ALOHA routine (more than one coupling) as a wrapper
+        calling the routine of each Lorentz structure and summing the results.
+        Only used when the merged routine can not be built (see write_combined).
+        """
+
         # Set some usefull command
         if offshell is None:
             sym = 1
-            offshell = self.offshell  
+            offshell = self.offshell
         else:
             sym = None
         name = combine_name(self.routine.name, lor_names, offshell, self.tag)
@@ -1534,8 +1794,16 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
                 addon = ''
             else:
                 name = short_name
-    if unknown_tag:
+    if unknown_tag and outgoing:
         addon += '%(propa)s'
+    elif unknown_tag:
+        # For an amplitude (outgoing == 0) the caller fills 'propa' with '' and
+        # puts the FLV_Coupling flag ('M') into 'tags' instead -- see
+        # HelasAmplitude.get_helas_call_dict; a wavefunction gets the flag
+        # through 'propa'. Same convention as the FFV1_2 scheme above, which
+        # has been guarded this way for a while. Without it the call site
+        # emits FFV2_FFS1_0 while ALOHA writes FFV2_FFS1M_0.
+        addon += '%(tags)s'
 
 #    if outgoing is not None:
 #        return '_'.join((name,) + tuple(other_names)) + addon + '_%s' % outgoing
@@ -1617,7 +1885,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         else:
             shift =  -1
             if aloha.unitary_gauge == 3 and match.group('var').startswith('S'):
-                shift += 4 # In FD gauge Scalar indices goes to 4 (not 0)
+                shift += 4 # In FD gauge Scalar indices go after vector ones
                            # to complement the vector 0-3
             return '%s.W[%s]' % (match.group('var'), int(match.group('num')) + shift)
               
@@ -1780,9 +2048,16 @@ class ALOHAWriterForCPP(WriteALOHA):
 
         return out.getvalue()
 
-    def get_foot_txt(self):
+    def get_foot_txt(self, combine=False):
         """Prototype for language specific footer"""
-        return '}\n'
+        text = ''
+        if not combine and aloha.unitary_gauge == 3:
+            if self.outgoing and 'P1N' not in self.tag:
+                name = self.particles[self.outgoing-1]
+                if name.startswith(('V', 'S')):
+                    text += '    multiply_propagator_factor(%(name)s%(i)s, M%(i)s, %(name)s%(i)s);\n' % \
+                            {'name': name, 'i': self.outgoing}
+        return text + '}\n'
 
     def get_momenta_txt(self):
         """Define the Header of the fortran file. This include
@@ -1826,6 +2101,10 @@ class ALOHAWriterForCPP(WriteALOHA):
                                              ''.join(p) % dict_energy))
             if self.declaration.is_used('P%s' % self.outgoing):
                 self.get_one_momenta_def(self.outgoing, out)
+            if aloha.unitary_gauge == 3 and type in ['S', 'V']:
+                for i in range(self.type_to_size[type] - 2):
+                    out.write('    %s%s.W[%s] = std::complex<double>(0.,0.);\n' %
+                              (type, self.outgoing, i))
 
         
         # Returning result
@@ -2060,8 +2339,11 @@ class ALOHAWriterForCPP(WriteALOHA):
                 
             for ind in numerator.listindices():
                 self.momentum_size = 0
+                helas_index = self.pass_to_HELAS(ind)
+                if aloha.unitary_gauge == 3 and self.outname[0] == 'S':
+                    helas_index += 4
                 out.write('    %s.W[%d]= %s*%s;\n' % (self.outname, 
-                                        self.pass_to_HELAS(ind), coeff,
+                                        helas_index, coeff,
                                         self.write_obj(numerator.get_rep(ind))))
         return out.getvalue()
         
@@ -2145,7 +2427,7 @@ class ALOHAWriterForCPP(WriteALOHA):
             elif i==1:
                 if self.offshell:
                     type = self.particles[self.offshell-1]
-                    self.declaration.add(('list_complex','%stmp' % type))
+                    self.declaration.add(('aloha%s' % type,'%stmp' % type))
                 else:
                     type = ''
                     self.declaration.add(('complex','%stmp' % type))
@@ -2173,7 +2455,7 @@ class ALOHAWriterForCPP(WriteALOHA):
         #self.declaration.discard
         text.write(self.get_declaration_txt(add_i=False))
         text.write(routine.getvalue())
-        text.write(self.get_foot_txt())
+        text.write(self.get_foot_txt(combine=True))
 
         text = text.getvalue()
         return text
@@ -2465,7 +2747,10 @@ class ALOHAWriterForPython(WriteALOHA):
             return '%s[%s]' % (match.group('var'), int(match.group('num')) + shift)
         else:
             # Spin components are accessed via the .W view (0-indexed)
-            return '%s.W[%s]' % (match.group('var'), int(match.group('num')) - 1)
+            shift = -1
+            if aloha.unitary_gauge == 3 and match.group('var').startswith('S'):
+                shift += 4
+            return '%s.W[%s]' % (match.group('var'), int(match.group('num')) + shift)
 
     def change_var_format(self, name): 
         """Formatting the variable name to Python format
@@ -2579,11 +2864,14 @@ class ALOHAWriterForPython(WriteALOHA):
                 coeff = 'COUP'
                 
             for ind in numerator.listindices():
-                out.write('    %s.W[%d]= %s*%s\n' % (self.outname, 
-                                        self.pass_to_HELAS(ind) - self.momentum_size, coeff, 
+                shift = -self.momentum_size
+                if aloha.unitary_gauge == 3 and self.outname.startswith('S'):
+                    shift += 4
+                out.write('    %s.W[%d]= %s*%s\n' % (self.outname,
+                                        self.pass_to_HELAS(ind) + shift, coeff,
                                         self.write_obj(numerator.get_rep(ind))))
         return out.getvalue()
-    
+
     def get_coupling_def(self):
         """Generate flavor-checking / coupling-resolution code for Python routines.
 
@@ -2698,9 +2986,14 @@ class ALOHAWriterForPython(WriteALOHA):
                 out.write('    %s = COUP.val[%s]\n' % (name, flv_for_coup))
         return out.getvalue()
 
-    def get_foot_txt(self):
+    def get_foot_txt(self, combine=False):
         if not self.offshell:
             return '    return vertex\n\n'
+        elif not combine and aloha.unitary_gauge == 3 and \
+             self.outname.startswith(('V','S')) and \
+             'P1N' not in self.tag:
+            return '    %(out)s = wavefunctions.multiply_propagator_factor(%(out)s, M%(num)s)\n    return %(out)s\n\n' % \
+                   {'out': self.outname, 'num': self.outgoing}
         else:
             return '    return %s\n\n' % (self.outname)
             
@@ -2755,7 +3048,11 @@ class ALOHAWriterForPython(WriteALOHA):
                 self.get_one_momenta_def(i+1, out)             
              
         # define the resulting momenta
-        if self.offshell:
+        bypass = False
+        if 'P1N' in self.tag and self.offshell and \
+           not self.declaration.is_used('P%s' % (self.outgoing)):
+            bypass = True
+        if self.offshell and not bypass:
             type = self.particles[self.outgoing-1]
             out.write('    %s%s = wavefunctions.WaveFunction(size=%s)\n' % (type, self.outgoing, out_size))
             for i in range(4):
@@ -2764,8 +3061,21 @@ class ALOHAWriterForPython(WriteALOHA):
                                              ''.join(p) % dict_energy))
             
             self.get_one_momenta_def(self.outgoing, out)
+            if any(t in self.tag for t in ("P1T","P1TR","P1TL","P1L")):
+                for i, value in zip(range(1,4), ("1e-30", "0.0", "1e-15")):
+                    out.write("    if abs(P%(P)s[0])*1e-10 > abs(P%(P)s[%(i)s]): P%(P)s[%(i)s] = %(val)s\n"
+                              % {"P": self.outgoing, "i": i, "val": value})
 
-               
+            i = self.outgoing
+            if self.declaration.is_used('Tnorm%s' % i):
+                out.write("    Tnorm{0} = (P{0}[1]*P{0}[1]+P{0}[2]*P{0}[2]+P{0}[3]*P{0}[3])**0.5\n".format(i))
+            if self.declaration.is_used('TnormZ%s' % i):
+                out.write("    TnormZ{0} = Tnorm{0} - P{0}[3]\n".format(i))
+            if self.declaration.is_used('FWP%s' % i):
+                out.write("    FWP{0} = (-P{0}[0] + Tnorm{0})**0.5\n".format(i))
+            if self.declaration.is_used('FWM%s' % i):
+                out.write("    FWM{0} = (-P{0}[0] - Tnorm{0})**0.5\n".format(i))
+
         # Returning result
         return out.getvalue()
 
@@ -2837,7 +3147,7 @@ class ALOHAWriterForPython(WriteALOHA):
                     text.write("    for i in range(%s):\n" % size)
                     text.write("        %(main)s.W[i] += tmp.W[i]\n" % {'main': main})
         
-        text.write(self.get_foot_txt())
+        text.write(self.get_foot_txt(combine=True))
 
         #ADD SYMETRY
         if sym:
@@ -2949,4 +3259,3 @@ class WriterFactory(object):
 #        ff = open(pjoin(output_dir, 'additional_aloha_function.f'), 'a')
 #        ff.write(unknow_fct_template % dico)
 #        ff.close()
-

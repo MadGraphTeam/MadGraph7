@@ -1,4 +1,4 @@
-#include "madspace/phasespace/scale.h"
+#include "madspace/phasespace/scale.hpp"
 
 using namespace madspace;
 
@@ -13,8 +13,10 @@ EnergyScale::EnergyScale(
 ) :
     FunctionGenerator(
         "EnergyScale",
-        {batch_four_vec_array(particle_count)},
-        {batch_float, batch_float, batch_float}
+        {{"momenta", batch_four_vec_array(particle_count)}},
+        {{"ren_scale", batch_float},
+         {"fact_scale1", batch_float},
+         {"fact_scale2", batch_float}}
     ),
     _dynamical_scale_type(dynamical_scale_type),
     _ren_scale_fixed(ren_scale_fixed),
@@ -23,15 +25,16 @@ EnergyScale::EnergyScale(
     _fact_scale1(fact_scale1),
     _fact_scale2(fact_scale2) {}
 
-ValueVec
-EnergyScale::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
+NamedVector<Value> EnergyScale::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
     auto momenta = args.at(0);
     if (_ren_scale_fixed && _fact_scale_fixed) {
         auto batch_size = fb.batch_size({momenta});
         return {
-            fb.full({_ren_scale * _ren_scale, batch_size}),
-            fb.full({_fact_scale1 * _fact_scale1, batch_size}),
-            fb.full({_fact_scale2 * _fact_scale2, batch_size}),
+            {"ren_scale", fb.full({_ren_scale, batch_size})},
+            {"fact_scale1", fb.full({_fact_scale1, batch_size})},
+            {"fact_scale2", fb.full({_fact_scale2, batch_size})},
         };
     }
     Value scale;
@@ -53,8 +56,9 @@ EnergyScale::build_function_impl(FunctionBuilder& fb, const ValueVec& args) cons
     }
     auto batch_size = fb.batch_size({momenta});
     return {
-        _ren_scale_fixed ? fb.full({_ren_scale * _ren_scale, batch_size}) : scale,
-        _fact_scale_fixed ? fb.full({_fact_scale1 * _fact_scale1, batch_size}) : scale,
-        _fact_scale_fixed ? fb.full({_fact_scale2 * _fact_scale2, batch_size}) : scale
+        {"ren_scale", _ren_scale_fixed ? fb.full({_ren_scale, batch_size}) : scale},
+        {"fact_scale1",
+         _fact_scale_fixed ? fb.full({_fact_scale1, batch_size}) : scale},
+        {"fact_scale2", _fact_scale_fixed ? fb.full({_fact_scale2, batch_size}) : scale}
     };
 }

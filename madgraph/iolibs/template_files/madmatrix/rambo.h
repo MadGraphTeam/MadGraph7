@@ -1,175 +1,204 @@
-// Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-// Created by: J. Alwall (Oct 2010) for the MG5aMC CPP backend.
-//==========================================================================
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Modified originally by: S. Roiser (Feb 2020) for the MG5aMC CUDACPP plugin.
-// Further modified by: S. Hageboeck, O. Mattelaer, S. Roiser, J. Teig, A. Valassi (2020-2024).
-// Integrated with the MadGraph7 project in Feb 2026.
+//==========================================================================
+// RAMBO phase-space generator for the standalone_mg7 driver.
+// Ported verbatim from the MG5aMC standalone_cpp output (rambo.cc/rambo.h), so
+// that check_sa generates the SAME phase-space point as the Fortran/C++ 'check'
+// drivers, INCLUDING the particle masses. The only changes are:
+//   - wrapped in namespace rambo and made header-only (inline);
+//   - momenta returned as std::vector<std::vector<double>> (one [E,px,py,pz] per
+//     external particle) instead of std::vector<double*> (no manual new[]/leaks).
 //==========================================================================
 
-#include "mgOnGpuConfig.h"
-
-#include "mgOnGpuFptypes.h"
-
-#include "CPPProcess.h"
+#ifndef RAMBO_H
+#define RAMBO_H 1
 
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
-// Simplified rambo version for 2 to N (with N>=2) processes with massless particles
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace rambo
 {
-  constexpr int np4 = CPPProcess::np4;     // dimensions of 4-momenta (E,px,py,pz)
-  constexpr int npari = CPPProcess::npari; // #particles in the initial state (incoming): e.g. 2 (e+ e-) for e+ e- -> mu+ mu-
-  constexpr int nparf = CPPProcess::nparf; // #particles in the final state (outgoing): e.g. 2 (mu+ mu-) for e+ e- -> mu+ mu-
-  constexpr int npar = CPPProcess::npar;   // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
-
-  //--------------------------------------------------------------------------
-
-  // Fill in the momenta of the initial particles
-  // [NB: the output buffer includes both initial and final momenta, but only initial momenta are filled in]
-  template<class M_ACCESS>
-  __host__ __device__ void
-  ramboGetMomentaInitial( const fptype energy, // input: energy
-                          fptype* momenta )    // output: momenta for one event or for a set of events
+  // Universal (Marsaglia-Zaman) random number generator, FSU-SCRI-87-50.
+  class Random
   {
-    const fptype energy1 = energy / 2;
-    const fptype energy2 = energy / 2;
-    const fptype mom = energy / 2;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 0, 0 ) = energy1;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 1, 0 ) = 0;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 2, 0 ) = 0;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 3, 0 ) = mom;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 0, 1 ) = energy2;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 1, 1 ) = 0;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 2, 1 ) = 0;
-    M_ACCESS::kernelAccessIp4Ipar( momenta, 3, 1 ) = -mom;
+  public:
+    double ranmar(){
+	/*     -----------------
+	 * universal random number generator proposed by marsaglia and zaman
+	 * in report fsu-scri-87-50
+	 * in this version rvec is a double precision variable. */
+	  double uni = ranu[iranmr] - ranu[jranmr];
+	  if(uni < 0) uni = uni + 1;
+	  ranu[iranmr] = uni;
+	  iranmr = iranmr - 1;
+	  jranmr = jranmr - 1;
+	  if(iranmr == 0) iranmr = 97;
+	  if(jranmr == 0) jranmr = 97;
+	  ranc = ranc - rancd;
+	  if(ranc < 0) ranc = ranc + rancm;
+	  uni = uni - ranc;
+	  if(uni < 0) uni = uni + 1;
+	  return uni;
+	}
+
+    void rmarin(int ij, int kl){
+	/*     -----------------
+	 * initializing routine for ranmar, must be called before generating
+	 * any pseudorandom numbers with ranmar. the input values should be in
+	 * the ranges 0<=ij<=31328 ; 0<=kl<=30081 */
+	/* this shows correspondence between the simplified input seeds ij, kl
+	 * and the original marsaglia-zaman seeds i,j,k,l.
+	 * to get the standard values in the marsaglia-zaman paper (i=12,j=34
+	 * k=56,l=78) put ij=1802, kl=9373 */
+	  int i = ij/177 % 177 + 2;
+	  int j = ij % 177 + 2;
+	  int k = (kl/169) % 178 + 1;
+	  int l = kl % 169;
+	  for (int ii = 1; ii < 98; ii++){
+	    double s =  0;
+	    double t = .5;
+	    for (int jj = 1; jj < 25; jj++){
+	      int m = ((i*j % 179)*k) % 179;
+	      i = j;
+	      j = k;
+	      k = m;
+	      l = (53*l+1) % 169;
+	      if((l*m) % 64 >= 32) s = s + t;
+	      t = .5*t;
+	    }
+	    ranu[ii] = s;
+	  }
+	  ranc  =   362436. / 16777216.;
+	  rancd =  7654321. / 16777216.;
+	  rancm = 16777213. / 16777216.;
+	  iranmr = 97;
+	  jranmr = 33;
+	}
+
+  private:
+    double ranu[98];
+    double ranc, rancd, rancm;
+    int iranmr, jranmr;
+  };
+
+  inline double rn( int idummy )
+  {
+    static Random rand;
+    double ran;
+    static int init = 1;
+    if( false ) idummy = idummy; // prevent unused variable warning
+    if( init == 1 )
+    {
+      init = 0;
+      rand.rmarin( 1802, 9373 );
+    }
+    while( true )
+    {
+      ran = rand.ranmar();
+      if( ran > 1e-16 ) break;
+    }
+    return ran;
   }
 
-  //--------------------------------------------------------------------------
-
-  // Fill in the momenta of the final particles using the RAMBO algorithm
-  // [NB: the output buffer includes both initial and final momenta, but only initial momenta are filled in]
-  template<class R_ACCESS, class M_ACCESS, class W_ACCESS>
-  __host__ __device__ void
-  ramboGetMomentaFinal( const fptype energy,  // input: energy
-                        const fptype* rndmom, // input: random numbers in [0,1] for one event or for a set of events
-                        fptype* momenta,      // output: momenta for one event or for a set of events
-                        fptype* wgts )        // output: weights for one event or for a set of events
+  inline std::vector<std::vector<double>> rambo( double et, std::vector<double>& xm, double& wt )
   {
-    /****************************************************************************
-     *                       rambo                                              *
-     *    ra(ndom)  m(omenta)  b(eautifully)  o(rganized)                       *
-     *                                                                          *
-     *    a democratic multi-particle phase space generator                     *
-     *    authors:  s.d. ellis,  r. kleiss,  w.j. stirling                      *
-     *    this is version 1.0 -  written by r. kleiss                           *
-     *    -- adjusted by hans kuijf, weights are logarithmic (1990-08-20)       *
-     *    -- adjusted by madgraph@sheffield_gpu_hackathon team (2020-07-29)     *
-     *                                                                          *
-     ****************************************************************************/
-
-    // output weight
-    fptype& wt = W_ACCESS::kernelAccess( wgts );
-
-    // AV special case nparf==1 (issue #358)
-    if constexpr( nparf == 1 )
-    {
-      static bool first = true;
-      if( first )
-      {
-#ifdef MGONGPUCPP_GPUIMPL
-        if constexpr( M_ACCESS::isOnDevice() ) // avoid
-        {
-          const int ievt0 = 0;
-          const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
-          if( ievt == ievt0 )
-            printf( "WARNING! Rambo called with 1 final particle: random numbers will be ignored\n" );
-        }
-        else
-#endif
-        {
-          printf( "WARNING! Rambo called with 1 final particle: random numbers will be ignored\n" );
-        }
-        first = false;
-      }
-      const int iparf = 0;
-      for( int i4 = 0; i4 < np4; i4++ )
-      {
-        M_ACCESS::kernelAccessIp4Ipar( momenta, i4, iparf + npari ) = 0;
-        for( int ipari = 0; ipari < npari; ipari++ )
-        {
-          M_ACCESS::kernelAccessIp4Ipar( momenta, i4, iparf + npari ) += M_ACCESS::kernelAccessIp4Ipar( momenta, i4, ipari );
-        }
-      }
-      wt = 1;
-      return;
-    }
+	/**********************************************************************
+	 *                       rambo                                         *
+	 *    ra(ndom)  m(omenta)  b(eautifully)  o(rganized)                  *
+	 *                                                                     *
+	 *    a democratic multi-particle phase space generator                *
+	 *    authors:  s.d. ellis,  r. kleiss,  w.j. stirling                 *
+	 *    this is version 1.0 -  written by r. kleiss                      *
+	 *    -- adjusted by hans kuijf, weights are logarithmic (20-08-90)    *
+	 *                                                                     *
+	 *    n  = number of particles                                         *
+	 *    et = total centre-of-mass energy                                 *
+	 *    xm = particle masses ( dim=nexternal-nincoming )                 *
+	 *    p  = particle momenta ( dim=(4,nexternal-nincoming) )            *
+	 *    wt = weight of the event                                         *
+	 ***********************************************************************/
+    int n = xm.size();
+    std::vector<std::vector<double>> q( n, std::vector<double>( 4 ) ), p( n, std::vector<double>( 4 ) );
+    std::vector<double> z( n ), r( 4 ), b( 3 ), p2( n ), xm2( n ), e( n ), v( n );
+    static std::vector<int> iwarn( 5, 0 );
+    static double acc = 1e-14;
+    static int itmax = 6, ibegin = 0;
+    static double twopi = 8. * atan( 1. );
+    static double po2log = log( twopi / 4. );
 
     // initialization step: factorials for the phase space weight
-    const fptype twopi = 8. * atan( 1. );
-    const fptype po2log = log( twopi / 4. );
-    fptype z[nparf];
-    if constexpr( nparf > 1 ) // avoid build warning on clang (related to #358)
+    if( ibegin == 0 )
+    {
+      ibegin = 1;
       z[1] = po2log;
-    for( int kpar = 2; kpar < nparf; kpar++ ) z[kpar] = z[kpar - 1] + po2log - 2. * log( fptype( kpar - 1 ) );
-    for( int kpar = 2; kpar < nparf; kpar++ ) z[kpar] = ( z[kpar] - log( fptype( kpar ) ) );
+      for( int k = 2; k < n; k++ )
+        z[k] = z[k - 1] + po2log - 2. * log( double( k - 1 ) );
+      for( int k = 2; k < n; k++ )
+        z[k] = ( z[k] - log( double( k ) ) );
+    }
+    // check on the number of particles
+    if( n < 1 || n > 101 )
+    {
+      std::cout << "Too few or many particles: " << n << std::endl;
+      exit( -1 );
+    }
+    // check whether total energy is sufficient; count nonzero masses
+    double xmt = 0.;
+    int nm = 0;
+    for( int i = 0; i < n; i++ )
+    {
+      if( xm[i] != 0. ) nm = nm + 1;
+      xmt = xmt + std::abs( xm[i] );
+    }
+    if( xmt > et )
+    {
+      std::cout << "Too low energy: " << et << " needed " << xmt << std::endl;
+      exit( -1 );
+    }
 
     // generate n massless momenta in infinite phase space
-    fptype q[nparf][np4];
-    for( int iparf = 0; iparf < nparf; iparf++ )
+    for( int i = 0; i < n; i++ )
     {
-      const fptype r1 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 0, iparf );
-      const fptype r2 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 1, iparf );
-      const fptype r3 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 2, iparf );
-      const fptype r4 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 3, iparf );
-      const fptype c = 2. * r1 - 1.;
-      const fptype s = sqrt( 1. - c * c );
-      const fptype f = twopi * r2;
-      q[iparf][0] = -log( r3 * r4 );
-      q[iparf][3] = q[iparf][0] * c;
-      q[iparf][2] = q[iparf][0] * s * cos( f );
-      q[iparf][1] = q[iparf][0] * s * sin( f );
+      double r1 = rn( 1 );
+      double c = 2. * r1 - 1.;
+      double s = sqrt( 1. - c * c );
+      double f = twopi * rn( 2 );
+      r1 = rn( 3 );
+      double r2 = rn( 4 );
+      q[i][0] = -log( r1 * r2 );
+      q[i][3] = q[i][0] * c;
+      q[i][2] = q[i][0] * s * cos( f );
+      q[i][1] = q[i][0] * s * sin( f );
     }
-
     // calculate the parameters of the conformal transformation
-    fptype r[np4];
-    fptype b[np4 - 1];
-    for( int i4 = 0; i4 < np4; i4++ ) r[i4] = 0.;
-    for( int iparf = 0; iparf < nparf; iparf++ )
+    for( int i = 0; i < 4; i++ )
+      r[i] = 0.;
+    for( int i = 0; i < n; i++ )
     {
-      for( int i4 = 0; i4 < np4; i4++ ) r[i4] = r[i4] + q[iparf][i4];
+      for( int k = 0; k < 4; k++ )
+        r[k] = r[k] + q[i][k];
     }
-    const fptype rmas = sqrt( pow( r[0], 2 ) - pow( r[3], 2 ) - pow( r[2], 2 ) - pow( r[1], 2 ) );
-    for( int i4 = 1; i4 < np4; i4++ ) b[i4 - 1] = -r[i4] / rmas;
-    const fptype g = r[0] / rmas;
-    const fptype a = 1. / ( 1. + g );
-    const fptype x0 = energy / rmas;
+    double rmas = sqrt( pow( r[0], 2 ) - pow( r[3], 2 ) - pow( r[2], 2 ) - pow( r[1], 2 ) );
+    for( int k = 1; k < 4; k++ )
+      b[k - 1] = -r[k] / rmas;
+    double g = r[0] / rmas;
+    double a = 1. / ( 1. + g );
+    double x = et / rmas;
 
-    // transform the q's conformally into the p's (i.e. the 'momenta')
-    for( int iparf = 0; iparf < nparf; iparf++ )
+    // transform the q's conformally into the p's
+    for( int i = 0; i < n; i++ )
     {
-      fptype bq = b[0] * q[iparf][1] + b[1] * q[iparf][2] + b[2] * q[iparf][3];
-      for( int i4 = 1; i4 < np4; i4++ )
-      {
-        M_ACCESS::kernelAccessIp4Ipar( momenta, i4, iparf + npari ) = x0 * ( q[iparf][i4] + b[i4 - 1] * ( q[iparf][0] + a * bq ) );
-      }
-      M_ACCESS::kernelAccessIp4Ipar( momenta, 0, iparf + npari ) = x0 * ( g * q[iparf][0] + bq );
+      double bq = b[0] * q[i][1] + b[1] * q[i][2] + b[2] * q[i][3];
+      for( int k = 1; k < 4; k++ )
+        p[i][k] = x * ( q[i][k] + b[k - 1] * ( q[i][0] + a * bq ) );
+      p[i][0] = x * ( g * q[i][0] + bq );
     }
 
-    // calculate weight (NB return log of weight)
+    // calculate weight and possible warnings
     wt = po2log;
-    if( nparf != 2 ) wt = ( 2. * nparf - 4. ) * log( energy ) + z[nparf - 1];
-
-#ifndef MGONGPUCPP_GPUIMPL
-    // issue warnings if weight is too small or too large
-    static int iwarn[5] = { 0, 0, 0, 0, 0 };
+    if( n != 2 ) wt = ( 2. * n - 4. ) * log( et ) + z[n - 1];
     if( wt < -180. )
     {
       if( iwarn[0] <= 5 ) std::cout << "Too small wt, risk for underflow: " << wt << std::endl;
@@ -180,13 +209,128 @@ namespace mg5amcCpu
       if( iwarn[1] <= 5 ) std::cout << "Too large wt, risk for overflow: " << wt << std::endl;
       iwarn[1] = iwarn[1] + 1;
     }
-#endif
 
     // return for weighted massless momenta
-    // nothing else to do in this event if all particles are massless (nm==0)
+    if( nm == 0 )
+      return p;
 
-    return;
+    // massive particles: rescale the momenta by a factor x
+    double xmax = sqrt( 1. - pow( xmt / et, 2 ) );
+    for( int i = 0; i < n; i++ )
+    {
+      xm2[i] = pow( xm[i], 2 );
+      p2[i] = pow( p[i][0], 2 );
+    }
+    int iter = 0;
+    x = xmax;
+    double accu = et * acc;
+    while( true )
+    {
+      double f0 = -et;
+      double g0 = 0.;
+      double x2 = x * x;
+      for( int i = 0; i < n; i++ )
+      {
+        e[i] = sqrt( xm2[i] + x2 * p2[i] );
+        f0 = f0 + e[i];
+        g0 = g0 + p2[i] / e[i];
+      }
+      if( std::abs( f0 ) <= accu ) break;
+      iter = iter + 1;
+      if( iter > itmax )
+      {
+        std::cout << "Too many iterations without desired accuracy: " << itmax << std::endl;
+        break;
+      }
+      x = x - f0 / ( x * g0 );
+    }
+    for( int i = 0; i < n; i++ )
+    {
+      v[i] = x * p[i][0];
+      for( int k = 1; k < 4; k++ )
+        p[i][k] = x * p[i][k];
+      p[i][0] = e[i];
+    }
+
+    // calculate the mass-effect weight factor
+    double wt2 = 1.;
+    double wt3 = 0.;
+    for( int i = 0; i < n; i++ )
+    {
+      wt2 = wt2 * v[i] / e[i];
+      wt3 = wt3 + pow( v[i], 2 ) / e[i];
+    }
+    double wtm = ( 2. * n - 3. ) * log( x ) + log( wt2 / wt3 * et );
+
+    // return for weighted massive momenta
+    wt = wt + wtm;
+    if( wt < -180. )
+    {
+      if( iwarn[2] <= 5 ) std::cout << "Too small wt, risk for underflow: " << wt << std::endl;
+      iwarn[2] = iwarn[2] + 1;
+    }
+    if( wt > 174. )
+    {
+      if( iwarn[3] <= 5 ) std::cout << "Too large wt, risk for overflow: " << wt << std::endl;
+      iwarn[3] = iwarn[3] + 1;
+    }
+    return p;
   }
 
-  //--------------------------------------------------------------------------
-}
+  // Build the full external momenta (initial + final), changing convention between
+  // MadGraph5_aMC@NLO and rambo. `masses` has one entry per external particle.
+  inline std::vector<std::vector<double>> get_momenta( int ninitial, double energy,
+                                                       std::vector<double> masses, double& wgt )
+  {
+    int nexternal = masses.size();
+    int nfinal = nexternal - ninitial;
+    double e2 = pow( energy, 2 );
+    double m1 = masses[0];
+
+    if( ninitial == 1 )
+    {
+      // Momenta for the single incoming particle (at rest)
+      std::vector<std::vector<double>> p;
+      p.push_back( { m1, 0., 0., 0. } );
+      std::vector<double> finalmasses( masses.begin() + 1, masses.end() );
+      std::vector<std::vector<double>> p_rambo = rambo( m1, finalmasses, wgt );
+      for( auto& pf : p_rambo ) p.push_back( pf );
+      return p;
+    }
+    else if( ninitial != 2 )
+    {
+      std::cout << "Rambo needs 1 or 2 incoming particles" << std::endl;
+      exit( -1 );
+    }
+
+    if( nfinal == 1 )
+      energy = m1;
+
+    double m2 = masses[1];
+
+    double mom = sqrt( ( pow( e2, 2 ) - 2 * e2 * pow( m1, 2 ) + pow( m1, 4 ) - 2 * e2 * pow( m2, 2 ) -
+                         2 * pow( m1, 2 ) * pow( m2, 2 ) + pow( m2, 4 ) ) /
+                       ( 4 * e2 ) );
+    double energy1 = sqrt( pow( mom, 2 ) + pow( m1, 2 ) );
+    double energy2 = sqrt( pow( mom, 2 ) + pow( m2, 2 ) );
+
+    // Set momenta for the two incoming particles (back-to-back along z)
+    std::vector<std::vector<double>> p;
+    p.push_back( { energy1, 0., 0., mom } );
+    p.push_back( { energy2, 0., 0., -mom } );
+
+    if( nfinal == 1 )
+    {
+      p.push_back( { energy, 0., 0., 0. } );
+      wgt = 1;
+      return p;
+    }
+    std::vector<double> finalmasses( masses.begin() + 2, masses.end() );
+    std::vector<std::vector<double>> p_rambo = rambo( energy, finalmasses, wgt );
+    for( auto& pf : p_rambo ) p.push_back( pf );
+    return p;
+  }
+
+} // namespace rambo
+
+#endif // RAMBO_H

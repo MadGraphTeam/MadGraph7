@@ -1,4 +1,4 @@
-#include "madspace/phasespace/matrix_element.h"
+#include "madspace/phasespace/matrix_element.hpp"
 
 using namespace madspace;
 
@@ -13,28 +13,45 @@ MatrixElement::MatrixElement(
     FunctionGenerator(
         "MatrixElement",
         [&] {
-            TypeVec arg_types;
+            NamedVector<Type> arg_types;
             bool found_momenta = false;
             for (auto input : inputs) {
                 switch (input) {
                 case momenta_in:
-                    arg_types.push_back(batch_four_vec_array(particle_count));
+                    arg_types.push_back(
+                        "momenta", batch_four_vec_array(particle_count)
+                    );
                     found_momenta = true;
                     break;
                 case alpha_s_in:
-                    arg_types.push_back(batch_float);
+                    arg_types.push_back("alpha_s", batch_float);
                     break;
                 case random_color_in:
+                    if (!sample_random_inputs) {
+                        arg_types.push_back("random_color", batch_float);
+                    }
+                    break;
                 case random_helicity_in:
+                    if (!sample_random_inputs) {
+                        arg_types.push_back("random_helicity", batch_float);
+                    }
+                    break;
                 case random_diagram_in:
                     if (!sample_random_inputs) {
-                        arg_types.push_back(batch_float);
+                        arg_types.push_back("random_diagram", batch_float);
                     }
                     break;
                 case flavor_in:
+                    arg_types.push_back("flavor", batch_int);
+                    break;
                 case helicity_in:
+                    arg_types.push_back("helicity", batch_int);
+                    break;
                 case diagram_in:
-                    arg_types.push_back(batch_int);
+                    arg_types.push_back("diagram", batch_int);
+                    break;
+                case channel_in:
+                    arg_types.push_back("channel", batch_int);
                     break;
                 default:
                     throw std::invalid_argument("unknown input type");
@@ -46,19 +63,25 @@ MatrixElement::MatrixElement(
             return arg_types;
         }(),
         [&] {
-            TypeVec ret_types;
+            NamedVector<Type> ret_types;
             for (auto output : outputs) {
                 switch (output) {
                 case matrix_element_out:
-                    ret_types.push_back(batch_float);
+                    ret_types.push_back("matrix_element", batch_float);
                     break;
                 case diagram_amp2_out:
-                    ret_types.push_back(batch_float_array(diagram_count));
+                    ret_types.push_back(
+                        "diagram_amp2", batch_float_array(diagram_count)
+                    );
                     break;
                 case color_index_out:
+                    ret_types.push_back("color_index", batch_int);
+                    break;
                 case helicity_index_out:
+                    ret_types.push_back("helicity_index", batch_int);
+                    break;
                 case diagram_index_out:
-                    ret_types.push_back(batch_int);
+                    ret_types.push_back("diagram_index", batch_int);
                     break;
                 default:
                     throw std::invalid_argument("unknown output type");
@@ -74,8 +97,9 @@ MatrixElement::MatrixElement(
     _diagram_count(diagram_count),
     _sample_random_inputs(sample_random_inputs) {}
 
-ValueVec
-MatrixElement::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
+NamedVector<Value> MatrixElement::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
     ValueVec matrix_args{
         static_cast<me_int_t>(_matrix_element_index),
         static_cast<me_int_t>(_inputs.size()),
@@ -91,7 +115,7 @@ MatrixElement::build_function_impl(FunctionBuilder& fb, const ValueVec& args) co
             }
         }
         random = fb.unstack(
-            fb.random(fb.batch_size(args), static_cast<me_int_t>(random_count))
+            fb.random(fb.batch_size(args.values()), static_cast<me_int_t>(random_count))
         );
     }
     for (std::size_t arg_index = 0, random_index = 0; auto& input : _inputs) {
@@ -120,6 +144,9 @@ MatrixElement::build_function_impl(FunctionBuilder& fb, const ValueVec& args) co
             break;
         case diagram_in:
             input_key = UMAMI_IN_DIAGRAM_INDEX;
+            break;
+        case channel_in:
+            input_key = UMAMI_IN_CHANNEL_INDEX;
             break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));
@@ -158,7 +185,7 @@ MatrixElement::build_function_impl(FunctionBuilder& fb, const ValueVec& args) co
         matrix_args.push_back(static_cast<me_int_t>(output_key));
         matrix_args.push_back(size_arg);
     }
-    return fb.matrix_element(matrix_args);
+    return {return_types().keys(), fb.matrix_element(matrix_args)};
 }
 
 std::vector<MatrixElement::MatrixElementInput> MatrixElement::external_inputs() const {

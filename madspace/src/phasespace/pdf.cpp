@@ -1,4 +1,4 @@
-#include "madspace/phasespace/pdf.h"
+#include "madspace/phasespace/pdf.hpp"
 
 #include <cmath>
 #include <fstream>
@@ -359,9 +359,14 @@ PartonDensity::PartonDensity(
 ) :
     FunctionGenerator(
         "PartonDensity",
-        dynamic_pid ? TypeVec{batch_float, batch_float, batch_int}
-                    : TypeVec{batch_float, batch_float},
-        dynamic_pid ? TypeVec{batch_float} : TypeVec{batch_float_array(pids.size())}
+        [&] {
+            NamedVector<Type> arg_types{{"x", batch_float}, {"q", batch_float}};
+            if (dynamic_pid) {
+                arg_types.push_back("flavor_index", batch_int);
+            }
+            return arg_types;
+        }(),
+        {{"pdf", dynamic_pid ? batch_float : batch_float_array(pids.size())}}
     ),
     _prefix(prefix),
     _dynamic_pid(dynamic_pid),
@@ -379,10 +384,11 @@ PartonDensity::PartonDensity(
     }
 }
 
-ValueVec
-PartonDensity::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
+NamedVector<Value> PartonDensity::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
     auto x = args.at(0);
-    auto q2 = args.at(1);
+    auto q = args.at(1);
     auto grid_logx = fb.global(
         prefixed_name(_prefix, "pdf_logx"),
         DataType::dt_float,
@@ -402,11 +408,12 @@ PartonDensity::build_function_impl(FunctionBuilder& fb, const ValueVec& args) co
         // TODO: stack/unstack always copy. add instructions to avoid that
         auto indices = fb.unsqueeze(fb.gather_int(args.at(2), _pid_indices));
         auto pdf =
-            fb.interpolate_pdf(x, q2, indices, grid_logx, grid_logq2, grid_coeffs);
-        return {fb.squeeze(pdf)};
+            fb.interpolate_pdf(x, q, indices, grid_logx, grid_logq2, grid_coeffs);
+        return {{"pdf", fb.squeeze(pdf)}};
     } else {
         return {
-            fb.interpolate_pdf(x, q2, _pid_indices, grid_logx, grid_logq2, grid_coeffs)
+            {"pdf",
+             fb.interpolate_pdf(x, q, _pid_indices, grid_logx, grid_logq2, grid_coeffs)}
         };
     }
 }
@@ -564,14 +571,17 @@ void AlphaSGrid::initialize_globals(
 }
 
 RunningCoupling::RunningCoupling(const AlphaSGrid& grid, const std::string& prefix) :
-    FunctionGenerator("RunningCoupling", {batch_float}, {batch_float}),
+    FunctionGenerator(
+        "RunningCoupling", {{"q", batch_float}}, {{"alpha_s", batch_float}}
+    ),
     _prefix(prefix),
     _logq2_shape(grid.logq2_shape()),
     _coeffs_shape(grid.coefficients_shape()) {}
 
-ValueVec
-RunningCoupling::build_function_impl(FunctionBuilder& fb, const ValueVec& args) const {
-    auto q2 = args.at(0);
+NamedVector<Value> RunningCoupling::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    auto q = args.at(0);
     auto grid_logq2 = fb.global(
         prefixed_name(_prefix, "alpha_s_logq2"),
         DataType::dt_float,
@@ -582,5 +592,5 @@ RunningCoupling::build_function_impl(FunctionBuilder& fb, const ValueVec& args) 
         DataType::dt_float,
         {_coeffs_shape.begin(), _coeffs_shape.end()}
     );
-    return {fb.interpolate_alpha_s(q2, grid_logq2, grid_coeffs)};
+    return {{"alpha_s", fb.interpolate_alpha_s(q, grid_logq2, grid_coeffs)}};
 }

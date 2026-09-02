@@ -12,3 +12,4 @@ AccessModifierOffset: -4
 BreakTemplateDeclarations: Yes
 InsertBraces: true
 AlignOperands: DontAlign
+PenaltyIndentedWhitespace: 10

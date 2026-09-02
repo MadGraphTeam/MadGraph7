@@ -5,24 +5,41 @@ project (
     LANGUAGES CXX
 )
 
-if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES "75;80;86;87;89;90;100;120")
+option(ENABLE_CUDA "Enable CUDA GPU backend" OFF)
+option(ENABLE_HIP "Enable HIP/ROCm GPU backend" OFF)
+option(ENABLE_SIMD "Enable SIMD CPU acceleration" OFF)
+if(APPLE)
+    option(ENABLE_OPENBLAS "Build OpenBLAS from source (default: OFF on Apple, ON elsewhere)" OFF)
+else()
+    option(ENABLE_OPENBLAS "Build OpenBLAS from source (default: OFF on Apple, ON elsewhere)" ON)
 endif()
 
-if (NOT DEFINED CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx900;gfx906;gfx908;gfx90a;gfx942;gfx1030;gfx1100;gfx1101;gfx1102;gfx1200;gfx1201;gfx1150;gfx1151")
+if(ENABLE_CUDA)
+    if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES "75;80;86;87;89;90;100;120")
+    endif()
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+        enable_language(CUDA)
+        set(COMPILE_CUDA 1)
+    else()
+        message(FATAL_ERROR "ENABLE_CUDA is ON but no CUDA compiler was found")
+    endif()
 endif()
 
-include(CheckLanguage)
-check_language(CUDA)
-if(CMAKE_CUDA_COMPILER)
-    enable_language(CUDA)
-    set(COMPILE_CUDA 1)
-endif()
-check_language(HIP)
-if(CMAKE_HIP_COMPILER)
-    enable_language(HIP)
-    set(COMPILE_HIP 1)
+if(ENABLE_HIP)
+    if (NOT DEFINED CMAKE_HIP_ARCHITECTURES)
+        set(CMAKE_HIP_ARCHITECTURES "gfx900;gfx906;gfx908;gfx90a;gfx942;gfx1030;gfx1100;gfx1101;gfx1102;gfx1200;gfx1201;gfx1150;gfx1151")
+    endif()
+    include(CheckLanguage)
+    check_language(HIP)
+    if(CMAKE_HIP_COMPILER)
+        enable_language(HIP)
+        set(COMPILE_HIP 1)
+    else()
+        message(FATAL_ERROR "ENABLE_HIP is ON but no HIP compiler was found")
+    endif()
 endif()
 
 set(CMAKE_POSITION_INDEPENDENT_CODE 1)
@@ -35,6 +52,8 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
         message(STATUS "Enabling LTO")
     endif()
 endif()
+
+add_compile_options(-fno-omit-frame-pointer)
 
 ########################################################################################
 # Load dependencies                                                                    #
@@ -64,9 +83,10 @@ if(COMPILE_HIP)
     find_package(rocblas REQUIRED)
     find_package(rocrand REQUIRED)
     find_package(rocthrust REQUIRED)
+    find_package(hipcub REQUIRED)
 endif()
 
-if(USE_SIMD)
+if(ENABLE_SIMD)
     set(
         sleef_libname
         ${CMAKE_STATIC_LIBRARY_PREFIX}sleef${CMAKE_STATIC_LIBRARY_SUFFIX}
@@ -95,11 +115,83 @@ if(USE_SIMD)
     #find_package(sleef CONFIG REQUIRED)
 endif()
 
-#find_package(OpenBLAS REQUIRED)
-#set(BLA_VENDOR OpenBLAS)
-set(BLA_STATIC ON)
-set(BLA_SIZEOF_INTEGER 4)
-find_package(BLAS REQUIRED)
+if(ENABLE_OPENBLAS)
+    set(
+        openblas_libname
+        ${CMAKE_STATIC_LIBRARY_PREFIX}openblas${CMAKE_STATIC_LIBRARY_SUFFIX}
+    )
+    ExternalProject_Add(libopenblas
+        GIT_REPOSITORY https://github.com/OpenMathLib/OpenBLAS
+        GIT_TAG v0.3.33
+        UPDATE_DISCONNECTED true
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_INSTALL_LIBDIR=lib
+            -DBUILD_SHARED_LIBS=OFF
+            -DBUILD_WITHOUT_LAPACK=ON
+            -DBUILD_SINGLE=OFF
+            -DBUILD_DOUBLE=ON
+            -DBUILD_COMPLEX=OFF
+            -DBUILD_COMPLEX16=OFF
+            -DBUILD_TESTING=OFF
+            -DBUILD_WITHOUT_CBLAS=ON
+            -DUSE_THREAD=OFF
+            -DUSE_LOCKING=ON
+            -DDYNAMIC_ARCH=ON
+            -DCMAKE_POSITION_INDEPENDENT_CODE=1
+        INSTALL_BYPRODUCTS <INSTALL_DIR>/lib/${openblas_libname}
+    )
+    ExternalProject_Get_Property(libopenblas install_dir)
+    add_library(madspace::blas INTERFACE IMPORTED GLOBAL)
+    add_dependencies(madspace::blas libopenblas)
+    file(MAKE_DIRECTORY ${install_dir}/include)
+    target_include_directories(madspace::blas INTERFACE ${install_dir}/include)
+    target_link_libraries(
+        madspace::blas
+        INTERFACE
+        ${install_dir}/lib/${openblas_libname}
+    )
+else()
+    set(BLA_STATIC ON)
+    set(BLA_SIZEOF_INTEGER 4)
+    find_package(BLAS REQUIRED)
+    add_library(madspace::blas INTERFACE IMPORTED GLOBAL)
+    target_link_libraries(madspace::blas INTERFACE BLAS::BLAS)
+endif()
+
+########################################################################################
+# Code generation                                                                      #
+########################################################################################
+
+# Headers are generated into the build tree (not the source tree), each kind
+# in its own subdirectory added to the relevant targets' include path below.
+set(MADSPACE_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+set(
+    MADSPACE_GENERATED_HEADERS
+    ${MADSPACE_GENERATED_DIR}/compgraphs/function_builder_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/opcode_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/instruction_set_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
+    ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
+)
+
+# Every target below lists one of these files as a source, so CMake reruns
+# this command (and thus regenerates all of them together) before building
+# anything that needs them, but only when instruction_set.yaml or the
+# generator itself changes.
+add_custom_command(
+    OUTPUT ${MADSPACE_GENERATED_HEADERS}
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_headers.py"
+        --out-dir "${MADSPACE_GENERATED_DIR}"
+    DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/instruction_set.yaml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generate_headers.py"
+    COMMENT "Generating madspace instruction-set headers from instruction_set.yaml"
+    VERBATIM
+)
 
 ########################################################################################
 # Main madspace module                                                                 #
@@ -108,36 +200,45 @@ find_package(BLAS REQUIRED)
 add_library(
     madspace
     SHARED
-    src/runtime/format.cpp
-    src/runtime/tensor.cpp
-    src/runtime/context.cpp
-    src/runtime/event_generator.cpp
-    src/runtime/thread_pool.cpp
-    src/runtime/io.cpp
-    src/runtime/vegas_optimizer.cpp
-    src/runtime/discrete_optimizer.cpp
-    src/runtime/runtime_base.cpp
-    src/runtime/lhe_output.cpp
-    src/madcode/type.cpp
-    src/madcode/function.cpp
-    src/madcode/instruction.cpp
-    src/madcode/optimizer.cpp
-    src/madcode/instruction_set_mixin.h
+    src/driver/adam_optimizer.cpp
+    src/driver/format.cpp
+    src/driver/tensor.cpp
+    src/driver/context.cpp
+    src/driver/event_generator.cpp
+    src/driver/channel_generator.cpp
+    src/driver/generator_data.cpp
+    src/driver/status_file.cpp
+    src/driver/thread_pool.cpp
+    src/driver/io.cpp
+    src/driver/vegas_optimizer.cpp
+    src/driver/discrete_optimizer.cpp
+    src/driver/backend.cpp
+    src/driver/lhe_output.cpp
+    src/driver/madnis_training.cpp
+    src/compgraphs/type.cpp
+    src/compgraphs/function.cpp
+    src/compgraphs/instruction.cpp
+    src/compgraphs/optimizer.cpp
+    ${MADSPACE_GENERATED_DIR}/compgraphs/instruction_set_mixin.inc
     src/phasespace/base.cpp
+    src/phasespace/batch_sampler.cpp
     src/phasespace/invariants.cpp
     src/phasespace/two_particle.cpp
     src/phasespace/three_particle.cpp
     src/phasespace/luminosity.cpp
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
+    src/phasespace/color_ordered_mapping.cpp
     src/phasespace/phasespace.cpp
     src/phasespace/multichannel.cpp
+    src/phasespace/madnis.cpp
     src/phasespace/rambo.cpp
     src/phasespace/cuts.cpp
     src/phasespace/observable.cpp
     src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
     src/phasespace/integrand.cpp
+    src/phasespace/unweighter.cpp
     src/phasespace/vegas.cpp
     src/phasespace/mlp.cpp
     src/phasespace/flow.cpp
@@ -149,60 +250,71 @@ add_library(
     src/phasespace/matrix_element.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
-    include/madspace/util.h
-    include/madspace/runtime.h
-    include/madspace/runtime/format.h
-    include/madspace/runtime/tensor.h
-    include/madspace/runtime/context.h
-    include/madspace/runtime/thread_pool.h
-    include/madspace/runtime/event_generator.h
-    include/madspace/runtime/io.h
-    include/madspace/runtime/vegas_optimizer.h
-    include/madspace/runtime/discrete_optimizer.h
-    include/madspace/runtime/runtime_base.h
-    include/madspace/runtime/lhe_output.h
-    include/madspace/runtime/logger.h
-    include/madspace/madcode.h
-    include/madspace/madcode/type.h
-    include/madspace/madcode/function.h
-    include/madspace/madcode/function_builder_mixin.h
-    include/madspace/madcode/opcode_mixin.h
-    include/madspace/madcode/instruction.h
-    include/madspace/madcode/optimizer.h
-    include/madspace/phasespace.h
-    include/madspace/phasespace/base.h
-    include/madspace/phasespace/invariants.h
-    include/madspace/phasespace/two_particle.h
-    include/madspace/phasespace/three_particle.h
-    include/madspace/phasespace/luminosity.h
-    include/madspace/phasespace/topology.h
-    include/madspace/phasespace/t_propagator_mapping.h
-    include/madspace/phasespace/phasespace.h
-    include/madspace/phasespace/multichannel.h
-    include/madspace/phasespace/rambo.h
-    include/madspace/phasespace/cuts.h
-    include/madspace/phasespace/observable.h
-    include/madspace/phasespace/histograms.h
-    include/madspace/phasespace/chili.h
-    include/madspace/phasespace/integrand.h
-    include/madspace/phasespace/vegas.h
-    include/madspace/phasespace/mlp.h
-    include/madspace/phasespace/flow.h
-    include/madspace/phasespace/discrete_flow.h
-    include/madspace/phasespace/discrete_sampler.h
-    include/madspace/phasespace/channel_weights.h
-    include/madspace/phasespace/channel_weight_network.h
-    include/madspace/phasespace/pdf.h
-    include/madspace/phasespace/matrix_element.h
-    include/madspace/phasespace/cross_section.h
-    include/madspace/phasespace/scale.h
+    include/madspace/util.hpp
+    include/madspace/driver.hpp
+    include/madspace/driver/adam_optimizer.hpp
+    include/madspace/driver/format.hpp
+    include/madspace/driver/tensor.hpp
+    include/madspace/driver/context.hpp
+    include/madspace/driver/thread_pool.hpp
+    include/madspace/driver/event_generator.hpp
+    include/madspace/driver/channel_generator.hpp
+    include/madspace/driver/generator_data.hpp
+    include/madspace/driver/io.hpp
+    include/madspace/driver/vegas_optimizer.hpp
+    include/madspace/driver/discrete_optimizer.hpp
+    include/madspace/driver/backend.hpp
+    include/madspace/driver/lhe_output.hpp
+    include/madspace/driver/logger.hpp
+    include/madspace/driver/madnis_training.hpp
+    include/madspace/compgraphs.hpp
+    include/madspace/compgraphs/type.hpp
+    include/madspace/compgraphs/function.hpp
+    ${MADSPACE_GENERATED_DIR}/compgraphs/function_builder_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/opcode_mixin.inc
+    include/madspace/compgraphs/instruction.hpp
+    include/madspace/compgraphs/optimizer.hpp
+    include/madspace/phasespace.hpp
+    include/madspace/phasespace/base.hpp
+    include/madspace/phasespace/batch_sampler.hpp
+    include/madspace/phasespace/invariants.hpp
+    include/madspace/phasespace/two_particle.hpp
+    include/madspace/phasespace/three_particle.hpp
+    include/madspace/phasespace/luminosity.hpp
+    include/madspace/phasespace/topology.hpp
+    include/madspace/phasespace/t_propagator_mapping.hpp
+    include/madspace/phasespace/color_ordered_mapping.hpp
+    include/madspace/phasespace/phasespace.hpp
+    include/madspace/phasespace/multichannel.hpp
+    include/madspace/phasespace/madnis.hpp
+    include/madspace/phasespace/rambo.hpp
+    include/madspace/phasespace/cuts.hpp
+    include/madspace/phasespace/observable.hpp
+    include/madspace/phasespace/histograms.hpp
+    include/madspace/phasespace/chili.hpp
+    include/madspace/phasespace/integrand.hpp
+    include/madspace/phasespace/unweighter.hpp
+    include/madspace/phasespace/vegas.hpp
+    include/madspace/phasespace/mlp.hpp
+    include/madspace/phasespace/flow.hpp
+    include/madspace/phasespace/discrete_flow.hpp
+    include/madspace/phasespace/discrete_sampler.hpp
+    include/madspace/phasespace/channel_weights.hpp
+    include/madspace/phasespace/channel_weight_network.hpp
+    include/madspace/phasespace/pdf.hpp
+    include/madspace/phasespace/matrix_element.hpp
+    include/madspace/phasespace/cross_section.hpp
+    include/madspace/phasespace/scale.hpp
 )
 
 #target_compile_options(madspace PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(madspace PUBLIC include)
+# PUBLIC: function.hpp/instruction.hpp #include these by quoted name, and
+# that lookup also has to succeed for anything linking against madspace.
+target_include_directories(madspace PUBLIC ${MADSPACE_GENERATED_DIR}/compgraphs)
 target_compile_features(madspace PUBLIC cxx_std_20)
 target_link_libraries(madspace PUBLIC nlohmann_json::nlohmann_json)
-if (USE_SIMD)
+if (ENABLE_SIMD)
     target_compile_definitions(madspace PRIVATE SIMD_AVAILABLE=1)
 endif()
 
@@ -210,7 +322,16 @@ install(TARGETS madspace DESTINATION madspace/lib)
 install(
     DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
     DESTINATION "madspace/include"
-    FILES_MATCHING PATTERN "*.h*"
+    FILES_MATCHING PATTERN "*.hpp*"
+)
+# Generated public headers: installed alongside function.hpp/instruction.hpp
+# so a downstream #include "function_builder_mixin.inc" resolves the same
+# way it does in this build (see MADSPACE_GENERATED_DIR above).
+install(
+    FILES
+        ${MADSPACE_GENERATED_DIR}/compgraphs/function_builder_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/compgraphs/opcode_mixin.inc
+    DESTINATION "madspace/include/madspace/compgraphs"
 )
 
 
@@ -220,29 +341,29 @@ install(
 
 set(
     KERNEL_SRC
-    src/kernels/invariants.h
-    src/kernels/kernels.h
-    src/kernels/kinematics.h
-    src/kernels/multichannel.h
-    src/kernels/math.h
-    src/kernels/rambo.h
-    src/kernels/cuts.h
-    src/kernels/chili.h
-    src/kernels/nn.h
-    src/kernels/observables.h
-    src/kernels/discrete.h
-    src/kernels/vegas.h
-    src/kernels/util.h
-    src/kernels/definitions.h
-    src/kernels/twoparticle.h
-    src/kernels/threeparticle.h
-    src/kernels/multichannel.h
-    src/kernels/operations.h
+    src/kernels/invariants.hpp
+    src/kernels/kernels.hpp
+    src/kernels/kinematics.hpp
+    src/kernels/multichannel.hpp
+    src/kernels/math.hpp
+    src/kernels/rambo.hpp
+    src/kernels/cuts.hpp
+    src/kernels/chili.hpp
+    src/kernels/nn.hpp
+    src/kernels/observables.hpp
+    src/kernels/discrete.hpp
+    src/kernels/vegas.hpp
+    src/kernels/util.hpp
+    src/kernels/definitions.hpp
+    src/kernels/twoparticle.hpp
+    src/kernels/threeparticle.hpp
+    src/kernels/multichannel.hpp
+    src/kernels/operations.hpp
 )
 
 
 ########################################################################################
-# GPU runtimes                                                                         #
+# GPU backends                                                                         #
 ########################################################################################
 
 if(COMPILE_CUDA)
@@ -251,14 +372,17 @@ if(COMPILE_CUDA)
         SHARED
         src/gpu/runtime.cu
         src/gpu/device.cu
-        src/gpu/kernel_definitions.h
-        src/gpu/runtime.h
-        src/gpu/tensor.h
-        src/gpu/device.h
-        src/gpu/gpu_abstraction.h
+        src/gpu/kernel_definitions.cuh
+        src/gpu/runtime.hpp
+        src/gpu/tensor.cuh
+        src/gpu/device.hpp
+        src/gpu/gpu_abstraction.cuh
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
         ${KERNEL_SRC}
     )
     target_include_directories(madspace_cuda PUBLIC include)
+    target_include_directories(madspace_cuda PRIVATE ${MADSPACE_GENERATED_DIR}/gpu)
     set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
     target_link_libraries(madspace_cuda PRIVATE madspace)
     target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
@@ -272,14 +396,17 @@ if(COMPILE_HIP)
         SHARED
         src/gpu/runtime.hip
         src/gpu/device.hip
-        src/gpu/kernel_definitions.h
-        src/gpu/runtime.h
-        src/gpu/tensor.h
-        src/gpu/device.h
-        src/gpu/gpu_abstraction.h
+        src/gpu/kernel_definitions.cuh
+        src/gpu/runtime.hpp
+        src/gpu/tensor.cuh
+        src/gpu/device.hpp
+        src/gpu/gpu_abstraction.cuh
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
         ${KERNEL_SRC}
     )
     target_include_directories(madspace_hip PUBLIC include)
+    target_include_directories(madspace_hip PRIVATE ${MADSPACE_GENERATED_DIR}/gpu)
     set_property(TARGET madspace_hip PROPERTY HIP_STANDARD 20)
     set_property(TARGET madspace_hip PROPERTY HIP_EXTENSIONS OFF)
     target_link_libraries(madspace_hip PRIVATE madspace)
@@ -287,15 +414,16 @@ if(COMPILE_HIP)
     target_link_libraries(madspace_hip PRIVATE roc::rocblas)
     target_link_libraries(madspace_hip PRIVATE roc::rocrand)
     target_link_libraries(madspace_hip PRIVATE roc::rocthrust)
+    target_link_libraries(madspace_hip PRIVATE hip::hipcub)
     install(TARGETS madspace_hip DESTINATION madspace/lib)
 endif()
 
 
 ########################################################################################
-# CPU runtime                                                                          #
+# CPU backend                                                                          #
 ########################################################################################
 
-if(NOT USE_SIMD)
+if(NOT ENABLE_SIMD)
     set(CPU_TARGETS madspace_cpu)
     set(SIMD_FLAGS "")
     set(SIMD_DEFINES "")
@@ -305,7 +433,7 @@ elseif(APPLE)
     set(SIMD_DEFINES "" "USE_SIMD_NEON=1")
 else()
     set(CPU_TARGETS madspace_cpu madspace_cpu_avx2 madspace_cpu_avx512)
-    set(SIMD_FLAGS "" "-mavx2" "-mavx512f")
+    set(SIMD_FLAGS "" "-mavx2 -mfma" "-mavx512f")
     set(SIMD_DEFINES "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512=1")
 endif()
 
@@ -316,25 +444,28 @@ foreach(
     add_library(
         ${cpu_target}
         SHARED
-        src/cpu/runtime.h
-        src/cpu/device.h
+        src/cpu/runtime.hpp
+        src/cpu/device.hpp
         src/cpu/runtime.cpp
         src/cpu/device.cpp
-        src/cpu/kernel_definitions.h
-        src/cpu/runtime_mixin.h
-        src/cpu/tensor.h
-        src/cpu/simd.h
-        src/cpu/simd_arm.h
-        src/cpu/simd_x86_256.h
+        src/cpu/kernel_definitions.hpp
+        ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+        src/cpu/tensor.hpp
+        src/cpu/simd.hpp
+        src/cpu/simd_arm.hpp
+        src/cpu/simd_x86_256.hpp
         ${KERNEL_SRC}
     )
     target_include_directories(${cpu_target} PUBLIC include)
+    target_include_directories(${cpu_target} PRIVATE ${MADSPACE_GENERATED_DIR}/cpu)
     target_compile_features(${cpu_target} PUBLIC cxx_std_20)
-    target_link_libraries(${cpu_target} PRIVATE BLAS::BLAS)
+    target_link_libraries(${cpu_target} PRIVATE madspace::blas)
     target_link_libraries(${cpu_target} PRIVATE madspace)
     if(NOT cpu_target STREQUAL "madspace_cpu")
         target_link_libraries(${cpu_target} PRIVATE sleef::sleef)
         target_compile_definitions(${cpu_target} PRIVATE ${simd_define})
+        separate_arguments(simd_flag UNIX_COMMAND ${simd_flag})
         target_compile_options(${cpu_target} PRIVATE ${simd_flag})
         target_compile_definitions(${cpu_target} PRIVATE USE_SIMD=1)
     endif()
@@ -350,11 +481,57 @@ python_add_library(
     _madspace_py
     MODULE
     src/python/madspace.cpp
-    src/python/instruction_set.h
+    ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
     src/python/function_runtime.cpp
-    src/python/function_runtime.h
+    src/python/function_runtime.hpp
     WITH_SOABI
 )
+target_include_directories(_madspace_py PRIVATE ${MADSPACE_GENERATED_DIR}/python)
 target_link_libraries(_madspace_py PRIVATE pybind11::headers)
 target_link_libraries(_madspace_py PUBLIC madspace)
 install(TARGETS _madspace_py DESTINATION madspace)
+
+########################################################################################
+# Python type stubs                                                                    #
+########################################################################################
+
+set(MADSPACE_PYI_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated_pyi)
+
+# Runs whenever _madspace_py is relinked, i.e. whenever madspace.cpp or,
+# transitively (via instruction_set.hpp), instruction_set.yaml change. Imports
+# the freshly built extension from an isolated staging copy of the madspace
+# package (see generate_pyi.py) so pybind11-stubgen can introspect it.
+add_custom_command(
+    TARGET _madspace_py POST_BUILD
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pyi.py"
+        --package-dir "${CMAKE_CURRENT_SOURCE_DIR}/madspace"
+        --module "$<TARGET_FILE:_madspace_py>"
+        --lib "$<TARGET_FILE:madspace>"
+        --stage-dir "${CMAKE_CURRENT_BINARY_DIR}/pyi_stage"
+        --output-dir "${MADSPACE_PYI_DIR}"
+    COMMENT "Generating madspace/_madspace_py.pyi"
+    VERBATIM
+)
+install(FILES "${MADSPACE_PYI_DIR}/madspace/_madspace_py.pyi" DESTINATION madspace)
+
+########################################################################################
+# Source hash                                                                          #
+########################################################################################
+
+# Runs at install time (after everything has been compiled), so the embedded
+# hash always reflects exactly what was just built rather than what was on
+# disk when CMake was configured.
+install(CODE "
+    execute_process(
+        COMMAND \"${Python_EXECUTABLE}\" \"${CMAKE_CURRENT_SOURCE_DIR}/source_hash.py\"
+        OUTPUT_VARIABLE MADSPACE_SOURCE_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE MADSPACE_SOURCE_HASH_RESULT
+    )
+    if(NOT \${MADSPACE_SOURCE_HASH_RESULT} EQUAL 0)
+        message(FATAL_ERROR \"Failed to compute madspace source hash\")
+    endif()
+    file(WRITE \"\${CMAKE_INSTALL_PREFIX}/madspace/_source_hash.py\"
+        \"SOURCE_HASH = \\\"\${MADSPACE_SOURCE_HASH}\\\"\\n\"
+    )
+")

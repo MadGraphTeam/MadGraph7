@@ -116,15 +116,15 @@ def input_points(rng):
 def test_momentum_conservation(mapping_and_args, input_points):
     mapping, make_args, com = mapping_and_args
     inputs, conditions, p0 = make_args(input_points)
-    (p1, p2, p3), det = mapping.map_forward(inputs, conditions)
+    p1, p2, p3, det = mapping.map_forward(inputs, conditions)
     assert p1 + p2 + p3 == approx(p0)
 
 
 def test_inverse(mapping_and_args, input_points):
     mapping, make_args, com = mapping_and_args
     inputs, conditions, p0 = make_args(input_points)
-    (p1, p2, p3), det = mapping.map_forward(inputs, conditions)
-    inv_inputs, inv_det = mapping.map_inverse([p1, p2, p3], conditions)
+    p1, p2, p3, det = mapping.map_forward(inputs, conditions)
+    *inv_inputs, inv_det = mapping.map_inverse([p1, p2, p3], conditions)
     assert inv_det == approx(1 / det)
     for i, (inp, inv_inp) in enumerate(zip(inputs, inv_inputs)):
         assert inp == approx(inv_inp), f"Mismatch at index {i}: {inp} vs {inv_inp}"
@@ -133,7 +133,7 @@ def test_inverse(mapping_and_args, input_points):
 def test_outgoing_masses(mapping_and_args, input_points):
     mapping, make_args, com = mapping_and_args
     inputs, conditions, p0 = make_args(input_points)
-    (p1, p2, p3), det = mapping.map_forward(inputs, conditions)
+    p1, p2, p3, det = mapping.map_forward(inputs, conditions)
     m0 = mass(p1 + p2 + p3)
     m1 = mass(p1)
     m2 = mass(p2)
@@ -166,7 +166,7 @@ def test_phase_space_via_two_2body(mapping_and_args, rng):
     # --- First 2-body: 0 -> Q + 3 ---
     mapping1 = ms.TwoBodyDecay(com=True)
     inputs1 = [r[:, 1], r[:, 2], np.full(N, m0), np.full(N, mQ), np.full(N, m3)]
-    (pQ, p3), det1 = mapping1.map_forward(inputs1, [])
+    pQ, p3, det1 = mapping1.map_forward(inputs1, [])
 
     # Ensure pQ has invariant mass sqrt(s12)
     assert approx(np.sqrt(pQ[:, 0] ** 2 - (pQ[:, 1:] ** 2).sum(1))) == mQ
@@ -174,7 +174,7 @@ def test_phase_space_via_two_2body(mapping_and_args, rng):
     # --- Second 2-body: Q -> 1 + 2 ---
     mapping2 = ms.TwoBodyDecay(com=False)  # use actual pQ (boosted)
     inputs2 = [r[:, 3], r[:, 4], mQ, np.full(N, m1), np.full(N, m2), pQ]
-    (p1, p2), det2 = mapping2.map_forward(inputs2, [])
+    p1, p2, det2 = mapping2.map_forward(inputs2, [])
 
     # Reference Jacobian
     J_ref = det1 * det2 * (smax - smin)
@@ -205,7 +205,7 @@ def test_phase_space_via_two_2body(mapping_and_args, rng):
             np.full(N, m3),
             p0,
         ]
-    (p1a, p2a, p3a), det = mapping_13.map_forward(inputs13, [])
+    p1a, p2a, p3a, det = mapping_13.map_forward(inputs13, [])
 
     # Total volume match (mean Jacobian)
     error1 = np.sqrt(np.var(det) / N)

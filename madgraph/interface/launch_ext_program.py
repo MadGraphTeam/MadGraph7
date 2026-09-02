@@ -16,8 +16,10 @@
 
 from __future__ import absolute_import
 import logging
+import math
 import os
 import pydoc
+import re
 import subprocess
 import time
 start=time.time()
@@ -209,7 +211,16 @@ class MadLoopLauncher(ExtLauncher):
                                                              dir_path=curr_path)
                 # We use mu_r=-1.0 to use the one defined by the user in the
                 # param_card.dat
-                me_cmd.MadLoopInitializer.fix_PSPoint_in_check(sub_path, 
+                # Note: we must target the subprocess directory currently being
+                # run (curr_path) and not the SubProcesses directory (sub_path).
+                # Otherwise fix_PSPoint_in_check edits the first P* directory it
+                # finds instead of this one, leaving curr_path's check_sa.f with
+                # the NPSPOINTS value left over from the initialization. The
+                # phase-space point written would then be the (NPSPOINTS)-th
+                # RAMBO point instead of the first, making the kinematics depend
+                # on the initialization (and hence on the other subprocesses
+                # generated) rather than only on this process.
+                me_cmd.MadLoopInitializer.fix_PSPoint_in_check(curr_path,
                   read_ps = os.path.isfile(os.path.join(curr_path, 'PS.input')),
                   npoints = 1, mu_r=-1.0)
                 
@@ -220,7 +231,21 @@ class MadLoopLauncher(ExtLauncher):
                 bu_helicity_filter_value = MadLoopparam['DoubleCheckHelicityFilter']
                 MadLoopparam.set('DoubleCheckHelicityFilter', False)
                 MadLoopparam.write(os.path.join(self.card_dir, 'MadLoopParams.dat'))
-                
+
+                #This is not optimal at all but I don't think I have access to the command options here. The code only passes here for standalone mode
+                UseDensity = False
+                with open(os.path.join(self.card_dir, 'proc_card_mg5.dat'), 'r') as proc_card:
+                    for line in proc_card:
+                        if '--density' in line:
+                            UseDensity = True
+                            break
+
+                #for the density mode, we use HelicityFilterLevel = 0 because the use of symmetry of HelicityFilterLevel = 2 does not work for JAMP interferences
+                if UseDensity:
+                    MadLoopparam.set('HelicityFilterLevel', 0)
+                    MadLoopparam.write(os.path.join(self.card_dir, 'MadLoopParams.dat'))
+                    logger.warning("WARNING: With the density mode, HelicityFilterLevel must be set to 0. It is currently set to 0.")
+
                 # check
                 t1, t2, ram_usage = me_cmd.MadLoopInitializer.make_and_run(curr_path)
                 
@@ -382,7 +407,24 @@ class MadLoopLauncher(ExtLauncher):
                     str_lines.append('|    Single pole = %s'%\
                                    special_float_format(lso_contrib[1]['1EPS']))
                     str_lines.append('|    Double pole = %s'%\
-                                   special_float_format(lso_contrib[1]['2EPS']))              
+                                   special_float_format(lso_contrib[1]['2EPS']))    
+        if res['RMatrix']:
+            str_lines.append('|')
+            str_lines.append(('|| Density matrix (non-normalised):',main_color))
+
+            n = int((-1 + (1 + 8*len(res['RMatrix']))**.5)/2)
+            if n%1 != 0:
+                    raise ValueError("Problem in the dimension of the density matrix.")
+            rho_square = [[0. for o in range(n)] for _ in range(n)]
+            for i in range(n):
+                    for k in range(n):
+                            if k > i:
+                                    rho_square[i][k] = res['RMatrix'][i*n + k - i*(i + 1)//2].conjugate()
+                            elif k == i:
+                                    rho_square[i][k] = res['RMatrix'][i*n + k - i*(i + 1)//2] #this line is just here because the diagonal elements should not be conjugated (they are real anyway)
+                            else:
+                                    rho_square[i][k] = rho_square[k][i].conjugate()
+                    str_lines.append(('|  ' + str(rho_square[i]), main_color))          
         str_lines.extend([ASCII_bar,'\n'])
 
         return str_lines
@@ -400,14 +442,148 @@ class SALauncher(ExtLauncher):
     def launch_program(self):
         """launch the main program"""
         sub_path = os.path.join(self.running_dir, 'SubProcesses')
-        for path in os.listdir(sub_path):
+        for path in sorted(os.listdir(sub_path)):
             if path.startswith('P') and \
                                    os.path.isdir(os.path.join(sub_path, path)):
                 cur_path =  os.path.join(sub_path, path)
                 # make
                 misc.compile(cwd=cur_path, mode='unknown')
                 # check
-                subprocess.call(['./check'], cwd=cur_path)
+                timings = getattr(self, 'timings', 0)
+                if timings and int(timings) > 0:
+                    nb_run = int(getattr(self, 'nb_run', 1))
+                    if nb_run == 0:
+                        # --nb_run=0: good-helicity check mode. Evaluate each
+                        # flavor `timings` times (so the good-helicity filter is
+                        # exercised) and print ./check's matrix-element values
+                        # instead of a timing table.
+                        self._run_goodhel_check(cur_path, int(timings))
+                    else:
+                        self._run_with_timings(cur_path, int(timings), nb_run)
+                else:
+                    subprocess.call(['./check'], cwd=cur_path)
+
+    def _run_goodhel_check(self, cur_path, nb_try):
+        """Evaluate every flavor nb_try times and print the resulting
+        matrix-element values, with no timing summary.
+
+        Here "every flavor" means every distinct external-flavor assignment the
+        merged matrix element serves: when light quarks/leptons are grouped into
+        merged particles, a single subprocess covers several physical flavor
+        combinations (e.g. u u~ > u u~, d d~ > d d~, ...), enumerated by the
+        flavor index. ./check is invoked with unique_flavor=0 so it loops over
+        all of them, calling SMATRIX nb_try times each (so the good-helicity
+        filter is exercised), and prints the final matrix-element evaluation
+        (with its PDG label) for each. A non-merged process simply has one
+        flavor.
+
+        Parameters
+        ----------
+        cur_path : str
+            Path to the subprocess directory containing the compiled ./check.
+        nb_try : int
+            Number of SMATRIX calls per flavor (the --timings value).
+        """
+        logger.info('Good-helicity check: %d SMATRIX call(s) per flavor '
+                    '(printing matrix-element values, no timing table)' % nb_try)
+        subprocess.call(['./check', '1000', str(nb_try), '0'], cwd=cur_path)
+
+    def _run_with_timings(self, cur_path, nb_try, nb_run):
+        """Run timing analysis for each flavor and print a summary table.
+
+        Parameters
+        ----------
+        cur_path : str
+            Path to the subprocess directory containing the compiled ./check binary.
+        nb_try : int
+            Number of SMATRIX calls per flavor per run (passed as arg2 to ./check).
+        nb_run : int
+            Number of independent timing repetitions used to build statistics.
+        """
+        # Discover the number of flavors and their PDG codes by running once
+        # with nb_try=1 and unique_flavor=0 (all flavors).
+        try:
+            proc = subprocess.Popen(['./check', '1000', '1', '0'],
+                                    cwd=cur_path,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+            stdout, _ = proc.communicate()
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode('utf-8', errors='replace')
+        except OSError:
+            logger.error('Could not run ./check for flavor discovery')
+            return
+
+        # Parse "PDG ..." lines to collect flavor PDG tuples
+        pdg_per_flavor = []
+        for line in stdout.splitlines():
+            stripped = line.strip()
+            if stripped.upper().startswith('PDG'):
+                pdg_per_flavor.append(stripped[3:].strip())
+        nflavors = len(pdg_per_flavor)
+        if nflavors == 0:
+            logger.warning('No flavors detected in ./check output; skipping timing.')
+            return
+
+        logger.info('Timing %d flavor(s), %d SMATRIX calls/run, %d run(s)'
+                    % (nflavors, nb_try, nb_run))
+
+        # Time each flavor individually
+        results = []
+        for flav_idx in range(1, nflavors + 1):
+            run_times = []
+            for _ in range(nb_run):
+                t0 = time.time()
+                subprocess.call(['./check', '1000', str(nb_try), str(flav_idx)],
+                                cwd=cur_path,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+                run_times.append(time.time() - t0)
+            avg = sum(run_times) / len(run_times)
+            if len(run_times) > 1:
+                sigma = math.sqrt(
+                    sum((t - avg) ** 2 for t in run_times) / (len(run_times) - 1))
+            else:
+                sigma = 0.0
+            pdg_label = pdg_per_flavor[flav_idx - 1] if flav_idx - 1 < len(pdg_per_flavor) else ''
+            results.append((flav_idx, pdg_label, avg, sigma))
+
+        # Print summary table
+        n_diagrams = self._read_feynman_diagram_count(cur_path)
+        sep = '=' * 80
+        header_fmt = '%-6s  %-30s  %-18s  %-18s'
+        row_fmt    = '%-6d  %-30s  %-18.6f  %-18.6f'
+        print('\n' + sep)
+        if n_diagrams is not None:
+            print('Timing summary: %d Feynman diagram(s), %d SMATRIX calls/flavor/run, %d run(s)' %
+                  (n_diagrams, nb_try, nb_run))
+        else:
+            print('Timing summary: %d SMATRIX calls/flavor/run, %d run(s)' % (nb_try, nb_run))
+        print('-' * 80)
+        print(header_fmt % ('Flavor', 'PDG codes', 'Avg time (s)', '1-sigma (s)'))
+        print('-' * 80)
+        for flav_idx, pdg_label, avg, sigma in results:
+            print(row_fmt % (flav_idx, pdg_label, avg, sigma))
+        print(sep + '\n')
+
+    def _read_feynman_diagram_count(self, cur_path):
+        """Return number of Feynman diagrams from ngraphs.inc, if available."""
+        ngraphs_path = os.path.join(cur_path, 'ngraphs.inc')
+        try:
+            with open(ngraphs_path, 'r') as ngraphs_file:
+                content = ngraphs_file.read()
+        except (IOError, OSError):
+            return None
+
+        match = re.search(r'n_max_cg\s*=\s*(\d+)', content, re.IGNORECASE)
+        if not match:
+            return None
+
+        try:
+            return int(match.group(1))
+        except (TypeError, ValueError):
+            return None
+
 
 class MWLauncher(ExtLauncher):
     """ A class to launch a simple Standalone test """
@@ -816,4 +992,3 @@ class Pythia8Launcher(ExtLauncher):
 
 # old compatibility shortcut
 open_file = misc.open_file
-

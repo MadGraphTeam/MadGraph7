@@ -1,6 +1,6 @@
 # This is a basic workflow to help you get started with Actions
 
-name: running acceptance test
+name: running acceptance test (rest)
 # Controls when the workflow will run
 #    branches: [ main LTS ]
 on:
@@ -10,11 +10,14 @@ on:
       - 'docs/**'
 #      - '.github/**'
 
+  pull_request:
+    types: [opened, synchronize, reopened]
+
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
     inputs:
       message:
-        description: 'running acceptance test'     
+        description: 'running acceptance test'
         required: true
 
 env:
@@ -27,40 +30,33 @@ concurrency:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
+  readonly_gridpack:
+    # concurrent read-only gridpack generation: build a gridpack, freeze it
+    # (restore_data default + chmod -R 555 madevent) and run it from several
+    # empty directories simultaneously.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
-  acceptancetest_0:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-     
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore_all 
-
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test testIO_AcceptanceProcOutputIOTests
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+      - name: test concurrent read-only gridpack
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py testIO_AcceptanceProcOutputIOTests -pA -t0 -l INFO
-            ./tests/test_manager.py testIO_UnitProcOutputIOTests -pA -t0 -l INFO
-            ./tests/test_manager.py test_hepmc_decay -pA -t0 -l INFO
-            ./tests/test_manager.py test_lhe_none_decay -pA -t0 -l INFO
-            ./tests/test_manager.py test_madspin_spin_only -pA -t0 -l INFO
+            ./tests/test_manager.py test_concurrent_readonly_gridpack -pA -t0 -l INFO
 
 
 
   acceptancetest_5:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
       # Runs a set of commands using the runners shell
@@ -76,31 +72,31 @@ jobs:
 
   acceptancetest_10:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_complex_mass_SA/ DYj has no assymetry
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_complex_mass_SA -pA -t0 -l INFO
-            ./tests/test_manager.py -pA test_DY_onejet -l INFO -t0
-
 
 
   acceptancetest_11:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_custom_propa
@@ -112,12 +108,13 @@ jobs:
 
   acceptancetest_12:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -130,12 +127,13 @@ jobs:
 
   acceptancetest_13:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -148,13 +146,14 @@ jobs:
 
   acceptancetest_14:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -167,13 +166,14 @@ jobs:
 
   acceptancetest_15:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -186,12 +186,13 @@ jobs:
 
   acceptancetest_16:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -202,34 +203,16 @@ jobs:
 
 
 
-  acceptancetest_17:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_leshouche_sextet_diquarks
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_leshouche_sextet_diquarks -pA -t0 -l INFO
-
-
-
   acceptancetest_18:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -240,148 +223,16 @@ jobs:
 
 
 
-  acceptancetest_19:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madevent_decay_chain
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_decay_chain -pA -t0 -l INFO
-
-
-
-  acceptancetest_20:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madevent_subproc_group
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_subproc_group -pA -t0 -l INFO
-
-
-
-  acceptancetest_21:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madevent_subproc_group_decay_chain
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_subproc_group_decay_chain -pA -t0 -l INFO
-
-
-
-  acceptancetest_22:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madevent_subproc_group_symmetry
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_subproc_group_symmetry -pA -t0 -l INFO
-
-
-
-  acceptancetest_23:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madevent_triplet_diquarks
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_triplet_diquarks -pA -t0 -l INFO
-
-
-
-  acceptancetest_24:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madevent_ufo_aloha
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_ufo_aloha -pA -t0 -l INFO
-
-
-
-  acceptancetest_25:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_output_madevent_directory
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_output_madevent_directory -pA -t0 -l INFO
-
-
-
   acceptancetest_26:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -392,53 +243,16 @@ jobs:
 
 
 
-  acceptancetest_27:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_pythia8_output
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_pythia8_output -pA -t0 -l INFO
-
-
-
-  acceptancetest_28:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_read_madgraph4_proc_card
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_read_madgraph4_proc_card -pA -t0 -l INFO
-
-
-
   acceptancetest_29:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -451,13 +265,14 @@ jobs:
 
   acceptancetest_30:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -470,32 +285,39 @@ jobs:
 
   acceptancetest_31:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_standalone_cpp_output
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_standalone_cpp_output -pA -t0 -l INFO
+            ./tests/test_manager.py test_standalone_flavor_mask test_standalone_wwjj test_standalone_cpp_output test_standalone_merged_flavor_uq_zuq -pA -t0 -l INFO
+
+      - name: test test_standalone_goodhel_filter (good-helicity filter is flavor-aware)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_goodhel_filter -pA -t0 -l INFO
 
 
 
   acceptancetest_32:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -503,18 +325,20 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_cpp_output_consistency -pA -t0 -l INFO
+            ./tests/test_manager.py test_standalone_mg7_vs_cpp -pA -t0 -l INFO
 
 
 
   acceptancetest_33:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -524,16 +348,37 @@ jobs:
             ./tests/test_manager.py test_ufo_aloha -pA -t0 -l INFO
 
 
+  acceptancetest_spin2_standalone:
+    # Regression test for spin-2 wavefunction storage in standalone
+    # Fortran output (loop_smgrav: p p > w+ y). Guards against the
+    # TYPE(ALOHA)/TYPE(ALOHA2D) layout mismatch that overruns the
+    # caller's wavefunction slot when TXXXXX writes 16 complex into
+    # a 4-complex aloha element.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: test test_standalone_spin2_loop_smgrav
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_spin2_loop_smgrav -pA -t0 -l INFO
+
+
 
   acceptancetest_34:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -544,52 +389,16 @@ jobs:
 
 
 
-  acceptancetest_35:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_ungroup_decay
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_ungroup_decay -pA -t0 -l INFO
-
-
-
-  acceptancetest_36:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_v4_heft
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_v4_heft -pA -t0 -l INFO
-
 #
 #  installpy8:
 #    # The type of runner that the job will run on
-#    runs-on: ubuntu-22.04
+#    runs-on: ubuntu-24.04
 #
 #    # Steps represent a sequence of tasks that will be executed as part of the job
 #    steps:
 #      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
 #      - uses: actions/checkout@v4
-#      - uses: ./.github/actions/checkout_mg5 
+#      - uses: ./.github/actions/checkout_mg5
 #      - uses: ./.github/actions/restore-pip-cache
 #
 #      # Runs a set of commands using the runners shell
@@ -602,480 +411,16 @@ jobs:
 #
 #      # Runs a set of commands using the runners shell
 
-  acceptancetest_37:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools
-
-      - name: test one of the test test_loop_improved_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py  test_w_production_with_ms_decay  test_add_time_of_flight -pA -t0 -l INFO
-
-
-  acceptancetest_38:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_mass_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_mass_reweighting -pA -t0 -l INFO
-
-
-  test_oneloop_reweighting:
-    # The type of runner that the job will run on
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
-
-      - name: Install Meson and Ninja
-        run: |
-           sudo apt-get update
-           sudo apt-get install -y meson ninja-build
-
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_oneloop_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_oneloop_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_oneloop_reweighting -pA -t0 -l INFO
-
-
-
-  acceptancetest_42:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_scan_reweighting
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_scan_reweighting -pA -t0 -l INFO
-
-
-
-  acceptancetest_43:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_complex_mass_scheme
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_complex_mass_scheme -pA -t0 -l INFO
-
-
-
-  acceptancetest_44:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_creating_matched_plot
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_creating_matched_plot -pA -t0 -l INFO
-
-
-
-  acceptancetest_45:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_customised_madevent_via_run_card
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_customised_madevent_via_run_card -pA -t0 -l INFO
-
-
-
-  acceptancetest_46:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_e_e_collision
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_e_e_collision -pA -t0 -l INFO
-
-
-
-  acceptancetest_47:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_e_p_collision
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_e_p_collision -pA -t0 -l INFO
-
-
-
-  acceptancetest_48:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_eft_running
-        run: |
-            cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "install RunningCoupling" > cmd
-            ./bin/mg5_aMC cmd
-            ./tests/test_manager.py test_eft_running test_eft_running_nlo -pA -t0 -l INFO
-
-
-
-  acceptancetest_49:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_eva_collision
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_eva_collision test_eva_oldrelease_collision test_ieva_collision -pA -t0 -l INFO
-
-
-
-  acceptancetest_50:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_group_subprocess
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_group_subprocess -pA -t0 -l INFO
-
-
-
-  acceptancetest_51:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madevent_ptj_bias
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madevent_ptj_bias -pA -t0 -l INFO
-
-
-
-  acceptancetest_52:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_madspin_gridpack
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madspin_gridpack -pA -t0 -l INFO
-
-
-
-  acceptancetest_53:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_ufomodel
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_width_computation
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_width_computation -pA -t0 -l INFO
-
-
-
-  acceptancetest_54:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_width_nlocomputation
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_width_nlocomputation -pA -t0 -l INFO
-
-
-
-  acceptancetest_55:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_width_scan
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_width_scan -pA -t0 -l INFO
-
-
-
-  acceptancetest_56:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_run_fromP
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_run_fromP -pA -t0 -l INFO
-
-
-  acceptancetest_contur:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools
-
-      - name: run the test
-        run: |
-            #./tests/test_manager.py test_contur_from_file test_rivet_from_file -pA -t0 -l INFO 
-            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10:/home/runner/.cache/HEPTools/rivet/local/lib/python3.10/dist-packages/:/home/runner/.cache/HEPTools/yoda/local/lib/python3.10/dist-packages/ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py  test_rivet_from_file -pA -t0 -l INFO  
-            
-  acceptancetest_contur2:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools
-
-      - name: run the test
-        run: |
-            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py test_rivet_from_file -pA -t0 -l INFO 
-
-
-  acceptancetest_59:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_decay_width_nlo_model
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_decay_width_nlo_model -pA -t0 -l INFO
-
-
-
-  acceptancetest_60:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_generation_from_file_1
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_generation_from_file_1 -pA -t0 -l INFO
-
-
-
-
-  acceptancetest_65:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_tt_semi
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_tt_semi -pA -t0 -l INFO
-
-
-
-  acceptancetest_66:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test test_zh
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_zh -pA -t0 -l INFO
-
-
-
   acceptancetest_67:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -1088,14 +433,15 @@ jobs:
 
   acceptancetest_68:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore_ufomodel 
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_ufomodel
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_sm_equivalence
@@ -1107,14 +453,15 @@ jobs:
 
   acceptancetest_69:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore_ufomodel 
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_ufomodel
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_sm_equivalence
@@ -1126,35 +473,16 @@ jobs:
 
 
 
-  acceptancetest_70:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_all
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test testIO_TIR_output
-        run: |
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
-            ./tests/test_manager.py testIO_TIR_output -pA -t0 -l INFO
-
-
-
   acceptancetest_71:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1162,17 +490,19 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_check_brs_gd_gd -pA -t0 -l INFO
+            ./tests/test_manager.py test_generate_output_semicolon_preserves_loop_process -pA -t0 -l INFO
 
 
 
   acceptancetest_72:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1185,13 +515,14 @@ jobs:
 
   acceptancetest_73:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1204,12 +535,13 @@ jobs:
 
   acceptancetest_74:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1222,13 +554,14 @@ jobs:
 
   acceptancetest_75:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
 
@@ -1242,13 +575,14 @@ jobs:
 
   acceptancetest_76:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1259,34 +593,16 @@ jobs:
 
 
 
-  acceptancetest_77:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
-      - uses: ./.github/actions/restore_all
-
-      # Runs a set of commands using the runners shell
-      - name: test one of the test testIO_MatchBoxOutput
-        run: |
-            cd $GITHUB_WORKSPACE
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib      
-            ./tests/test_manager.py testIO_MatchBoxOutput -pA -t0 -l INFO
-
-
-
   acceptancetest_78:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -1299,13 +615,14 @@ jobs:
 
   acceptancetest_79:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1319,15 +636,16 @@ jobs:
   acceptancetest_80:
     # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-24.04]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1341,13 +659,14 @@ jobs:
 
   acceptancetest_81:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -1360,13 +679,14 @@ jobs:
 
   acceptancetest_82:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1379,49 +699,36 @@ jobs:
 
   acceptancetest_83:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_check_singletop_fastjet
         run: |
             cd $GITHUB_WORKSPACE
+            sudo apt install -y libtirpc-dev
             ./tests/test_manager.py test_check_singletop_fastjet -pA -t0 -l INFO
 
 
-            #  acceptancetest_85:
-            #    # The type of runner that the job will run on
-            #    runs-on: ubuntu-22.04
-            #
-            #    # Steps represent a sequence of tasks that will be executed as part of the job
-            #    steps:
-            #      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-            #      - uses: actions/checkout@v4
-            #      - uses: ./.github/actions/checkout_mg5 
-            #      - uses: ./.github/actions/restore-pip-cache
-            #
-            #      # Runs a set of commands using the runners shell
-            #      - name: test one of the test test_gen_evt_onlygen
-            #        run: |
-            #            cd $GITHUB_WORKSPACE
-            #            ./tests/test_manager.py test_gen_evt_onlygen -pA -t0 -l INFO
-            #
 
 
   acceptancetest_emela:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -1431,13 +738,14 @@ jobs:
 
   acceptancetest_emela2:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -1447,13 +755,14 @@ jobs:
 
   acceptancetest_emela3:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -1462,13 +771,14 @@ jobs:
 
   acceptancetest_emela4:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -1477,13 +787,14 @@ jobs:
 
   acceptancetest_88:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1494,53 +805,20 @@ jobs:
 
 
 
-            #  acceptancetest_91:
-            #    # The type of runner that the job will run on
-            #    runs-on: ubuntu-22.04
-            #
-            #    # Steps represent a sequence of tasks that will be executed as part of the job
-            #    steps:
-            #      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-            #      - uses: actions/checkout@v4
-            #      - uses: ./.github/actions/checkout_mg5 
-            #      - uses: ./.github/actions/restore-pip-cache
-            #
-            #      # Runs a set of commands using the runners shell
-            #      - name: test one of the test test_generate_events_lo_hw6_stdhep
-            #        run: |
-            #            cd $GITHUB_WORKSPACE
-            #            ./tests/test_manager.py test_generate_events_lo_hw6_stdhep -pA -t0 -l INFO
-            #
 
 
-            #  acceptancetest_92:
-            #    # The type of runner that the job will run on
-            #    runs-on: ubuntu-22.04
-            #
-            #    # Steps represent a sequence of tasks that will be executed as part of the job
-            #    steps:
-            #      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-            #      - uses: actions/checkout@v4
-            #      - uses: ./.github/actions/checkout_mg5 
-            #      - uses: ./.github/actions/restore-pip-cache
-            #
-            #      # Runs a set of commands using the runners shell
-            #      - name: test one of the test test_generate_events_lo_py6_stdhep
-            #        run: |
-            #            cd $GITHUB_WORKSPACE
-            #            ./tests/test_manager.py test_generate_events_lo_py6_stdhep -pA -t0 -l INFO
-            #
 
 
   acceptancetest_93:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1553,13 +831,14 @@ jobs:
 
   acceptancetest_94:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1570,33 +849,34 @@ jobs:
 
 
 
-            #  acceptancetest_95:
-            #    # The type of runner that the job will run on
-            #    runs-on: ubuntu-22.04
-            #
-            #    # Steps represent a sequence of tasks that will be executed as part of the job
-            #    steps:
-            #      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-            #      - uses: actions/checkout@v4
-            #      - uses: ./.github/actions/checkout_mg5 
-            #      - uses: ./.github/actions/restore-pip-cache
-            #
-            #      # Runs a set of commands using the runners shell
-            #      - name: test one of the test test_madspin_LOonly
-            #        run: |
-            #            cd $GITHUB_WORKSPACE
-            #            ./tests/test_manager.py test_madspin_LOonly -pA -t0 -l INFO
-            #
-
-
-  acceptancetest_96:
+  acceptancetest_95:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_madspin_LOonly
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madspin_LOonly -pA -t0 -l INFO
+
+
+  acceptancetest_96:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1609,35 +889,34 @@ jobs:
 
   acceptancetest_97:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_raise_invalid_path_hwpp
         run: |
             cd $GITHUB_WORKSPACE
-            echo "install lhapdf6" > cmd
-            ./bin/mg5_aMC cmd
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lhapdf6_py3/lib/
             ./tests/test_manager.py test_raise_invalid_path_hwpp -pA -t0 -l INFO
 
 
 
   acceptancetest_98:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -1650,12 +929,13 @@ jobs:
 
   acceptancetest_99:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -1665,72 +945,48 @@ jobs:
             ./tests/test_manager.py test_split_evt_gen -pA -t0 -l INFO
 
 
-
   acceptancetest_100:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
       - uses: ./.github/actions/restore-pip-cache
-
-      # Runs a set of commands using the runners shell
       - name: test one of the test testIO_gnuplot_histo_output
         run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py testIO_gnuplot_histo_output -pA -t0 -l INFO
-
+          cd $GITHUB_WORKSPACE
+          ./tests/test_manager.py testIO_gnuplot_histo_output -pA -t0 -l INFO
 
   acceptancetest_100_2:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_heptools
-      
-      # Runs a set of commands using the runners shell
       - name: test one of the test test_loop_improved_reweighting
         run: |
             cd $GITHUB_WORKSPACE
             sudo apt install pigz
-            ./tests/test_manager.py  test_loop_improved_reweighting -pA -t0 -l INFO --debug
-
+            ./tests/test_manager.py test_loop_improved_reweighting -pA -t0 -l INFO --debug
+  
   acceptancetest_101:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
       - uses: ./.github/actions/restore_all
-
-      # Runs a set of commands using the runners shell
       - name: test one of the test test_loop_improved_reweighting
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py  test_nlo_output2 -pA -t0 -l INFO
-
+            ./tests/test_manager.py test_nlo_output2 -pA -t0 -l INFO
+  
   acceptancetest_102:
-    # The type of runner that the job will run on
-
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
       - uses: ./.github/actions/restore-pip-cache
@@ -1739,81 +995,434 @@ jobs:
         run: |
            sudo apt-get update
            sudo apt-get install -y meson ninja-build
-
-      # Runs a set of commands using the runners shell
       - name: test one of the test test_loop_improved_reweighting
         run: |
             cd $GITHUB_WORKSPACE
             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
-            ./tests/test_manager.py  test_nlo_reweighting -pA -t0 -l INFO
-
-  acceptancetest_103_polarization:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+            ./tests/test_manager.py test_nlo_reweighting -pA -t0 -l INFO
+  
+  acceptancetest_104:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_all
+      - name: test loop-induced gg>h cross-section
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_loop_induced_ggh -pA -t0 -l INFO
+  
+  acceptancetest_103_polarization:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      # kept previous version (checkout@v2)
       - uses: actions/checkout@v2
-
-      # Runs a set of commands using the runners shell
       - name: test one of the test test_polarization_top_decay
         run: |
             cd $GITHUB_WORKSPACE
             cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
             ./tests/test_manager.py test_polarization_top_decay -pA -t0 -l INFO
-
+  
   acceptancetest_ewsudakov:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_tt_ewsudakov
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            sudo pip install numpy
-            which f2py
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
-            cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
             ./tests/test_manager.py test_ttbar_ewsudakov -pA -t0 -l INFO
 
-  acceptancetest_heft:
+  acceptancetest_uncovered_merged:
+    # Previously uncovered acceptance tests in tests/acceptance_tests/test_cmd.py
+    # related to the merged/ufo_aloha pipelines and decay-chain ordering
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: test cmd uncovered merged/ufo_aloha/standalone tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_complex_mass_SA_merged test_import_model_v4_requires_debug test_standalone_cpp_fd_output_consistency test_ufo_aloha_merged -pA -t0 -l INFO
+
+
+  acceptancetest_uncovered_madloop:
+    # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      - name: test ML gauge invariance acceptance test
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_ML_gauge_invariance_epem_ttx_all_modes -pA -t0 -l INFO
+
+  acceptancetest_check_madevent_me_vs_standalone:
+    # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+
+      - name: test that ME of madevent are consistent with the standalone one
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestStandaloneMadeventMatrixElementConsistency
+
+  acceptancetest_check_mlm_rwgt:
+    # Previously uncovered acceptance test in tests/acceptance_tests/test_MLM_reweight.py
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+
+      - name: test MLM reweight factory cases (TestMLMReweight)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMLMReweight
+
+
+  acceptancetest_density:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_loop_improved_reweighting
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            ./tests/test_manager.py test_generation_heft -pA -t0 -l INFO
+            ./tests/test_manager.py test_standalone_density -pA -t0 -l INFO
+      - name: test test_standalone_density_dd (ZZ density vs analytic decay)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_density_dd -pA -t0 -l INFO
+      - name: test test_standalone_density_uu
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_density_uu -pA -t0 -l INFO
+      # test_standalone_density_f2py is not run: it expects m0_* f2py symbols
+      # while the current wrapper exposes py_m0_* (part of unfinished density work)
 
-  acceptancetest_flavor:
+      - name: test test_standalone_density_dd (ZZ density vs analytic decay)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_density_dd -pA -t0 -l INFO
+
+      - name: test test_standalone_density_uu
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_density_uu -pA -t0 -l INFO
+
+      - name: test test_standalone_density_f2py (f2py density wrapper)
+        run: |
+            cd $GITHUB_WORKSPACE
+            sudo pip install numpy
+            which f2py
+            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
+
+  acceptancetest_density_decay2:
     # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      # Runs a set of commands using the runners shell
+      - name: test one of the test test_density_mode_decay2
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_decay2 -pA -t0 -l INFO
+
+  acceptancetest_density_tttbartbar:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      # Runs a set of commands using the runners shell
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_density_mode_doublettbar
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_doublettbar -pA -t0 -l INFO
+
+
+  acceptancetest_density_LI_standalone1:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      # Runs a set of commands using the runners shell
+      - name: test the loop induced standalone mode of the density matrix code
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone1 -pA -t0 -l INFO
+
+  acceptancetest_density_LI_standalone2:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
 
       # Runs a set of commands using the runners shell
-      - name: test flavor consistency (with and without mlm)
+      - name: test the loop induced standalone mode of the density matrix code
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            ./tests/test_manager.py test_flavor_grouping_consistency_mlm test_flavor_grouping_consistency -pA -t0 -l INFO
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone2 -pA -t0 -l INFO
 
+  acceptancetest_density_LI_standalone3:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      # Runs a set of commands using the runners shell
+      - name: test the loop induced standalone mode of the density matrix code
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone3 -pA -t0 -l INFO
+
+  acceptancetest_density_LI_f2py:
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    strategy:
+      matrix:
+        os: [ubuntu-24.04]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+
+      - name: Install Meson and Ninja
+        run: |
+           sudo apt-get update
+           sudo apt-get install -y meson ninja-build
+
+      # Runs a set of commands using the runners shell
+      - name: test one of the density mode for f2py loop-induced
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_vs_standalone_LI1 -pA -t0 -l INFO
+
+
+
+  acceptancetest_delphes_parallel:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_delphes
+
+      # Runs a set of commands using the runners shell
+      - name: test fused parallel Pythia8 + Delphes
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_pythia8_delphes_parallel -pA -t0 -l INFO
+
+  acceptancetest_check_gauge:
+    # gauge/lorentz check commands that were not listed in any workflow (CI coverage audit)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test the check gauge/full acceptance tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_check_gauge_epem_aa_includes_axial -pA -t0 -l INFO
+            ./tests/test_manager.py test_check_gauge_epem_vevex_wpwm -pA -t0 -l INFO
+            ./tests/test_manager.py test_check_gauge_pp_wpwm -pA -t0 -l INFO
+            ./tests/test_manager.py test_check_pp_wpwm -pA -t0 -l INFO
+
+
+  acceptancetest_decay_chain_outoforder:
+    # decay chain with identical particles out of order (CI coverage audit)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test test_decay_chain_identical_particle_outoforder
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_decay_chain_identical_particle_outoforder -pA -t0 -l INFO
+
+
+  # test_ieva_collision and test_eva_oldrelease_collision are not run: they
+  # assert run_card defaults (evaorder=1, eva_xcut=0) that do not match the
+  # current ones, and test_ieva_collision uses an undefined variable
+  # (err1 = results['error']) after the run
+
+
+  acceptancetest_dy3j_mlm:
+    # DY+3j with MLM matching (CI coverage audit)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test test_madevent_dy3j_mlm
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madevent_dy3j_mlm -pA -t0 -l INFO
+
+
+  acceptancetest_PA_decay:
+    # w production with PA decay modes (CI coverage audit)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test the w production with PA decay tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_w_production_with_PA_decay -pA -t0 -l INFO
+            ./tests/test_manager.py test_w_production_with_PA_decay_inline_then_offline -pA -t0 -l INFO
+
+
+  acceptancetest_wj_ms_decay:
+    # wj production with madspin decay (CI coverage audit)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test test_wj_production_with_ms_decay
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_wj_production_with_ms_decay -pA -t0 -l INFO
+
+
+  acceptancetest_density_LI_convolution:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      # Runs a set of commands using the runners shell
+      - name: test the convolution relation to verify density matrices at loop-induced level
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_LI_validation -pA -t0 -l INFO
+
+
+  acceptancetest_madspin_tree:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      # Runs a set of commands using the runners shell
+      - name: test that the different options of madspin do not crash at tree level
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madspin_tree_level -pA -t0 -l INFO
+
+  acceptancetest_madspin_LI:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      # Runs a set of commands using the runners shell
+      - name: test that the different options of madspin do not crash at loop-induced level
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madspin_loop_induced -pA -t0 -l INFO

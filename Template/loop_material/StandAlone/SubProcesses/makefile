@@ -22,6 +22,7 @@ POLYNOMIAL_OPTIMIZATION = -O3
 POLYNOMIAL_BOUNDS_CHECK =
 
 include $(ROOT)/Source/make_opts
+FFLAGS += -I$(ROOT)/Source/MODEL -I$(ROOT)/Source/DHELAS
 include $(ROOT)/SubProcesses/MadLoop_makefile_definitions
 SHELL = /bin/bash
 
@@ -50,7 +51,8 @@ PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard GOLEM_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard COLLIER_interface.f)) \
- $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f))
+ $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard mg5_citation.f))
 
 OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/polynomial.f)) \
@@ -111,22 +113,31 @@ $(DOTO) : $(DOTF) $(POLYNOMIAL) $(OLP_POLYNOMIAL)
 $(DOTO) : $(DOTF)
 	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
 
-$(OLP): $(OLP_PROCESS) $(LIBS) 
-	$(FC) -shared $(OLP_PROCESS) -o libMadLoop.$(dylibext) $(LINKLIBS)
+$(OLP): $(OLP_PROCESS) $(LIBS) mg5_citation.o
+	$(FC) -shared $(OLP_PROCESS) mg5_citation.o -o libMadLoop.$(dylibext) $(LINKLIBS)
 
 $(OLP)_static: $(OLP_PROCESS)
 	ar rcs libMadLoop.$(libext) $(OLP_PROCESS)
 	mv libMadLoop.$(libext) $(MADLOOP_LIB)
 
 ../$(OLP):
-	rm -f libMadLoop.$(dylibext)
-	ln -s ../libMadLoop.$(dylibext)
+	ln -sf ../libMadLoop.$(dylibext) libMadLoop.$(dylibext)
 	cd $(ROOT)/SubProcesses; make $(OLP)
 
 ../$(OLP)_static:
 	cd $(ROOT)/SubProcesses; make $(OLP)_static
 
+# ROOT is .. only when this makefile runs from SubProcesses itself; from a
+# P<i>_* subdirectory it is ../.. . The ../$(OLP) route symlinks to the
+# SubProcesses-level library and recurses into $(ROOT)/SubProcesses, which
+# from SubProcesses is this very directory: that second make rebuilds the
+# same objects as the local $(OLP) rule, so under -j the two collide (torn
+# .o files, or "ln: File exists"). Build libMadLoop here directly instead.
+ifeq ($(ROOT),..)
+libMadLoop.$(dylibext): $(OLP)
+else
 libMadLoop.$(dylibext): ../$(OLP)
+endif
 
 WRAPPER_SRCS := $(wildcard */f2py_wrapper.f)
 WRAPPER_OBJS := $(patsubst %.f,%.o,$(wildcard */f2py_wrapper.f))
@@ -141,7 +152,7 @@ ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matr
              */loop_num.f \
              */helas_calls*.f */mp_compute_loop_coefs.f */mp_helas_calls*.f */coef_construction_*.f \
              */loop_CT_calls_*.f */mp_coef_construction_*.f */TIR_interface.f */COLLIER_interface.f \
-             MadLoopParamReader.f MadLoopCommons.f */GOLEM_interface.f */compute_color_flows.f \
+             MadLoopParamReader.f MadLoopCommons.f mg5_citation.f */GOLEM_interface.f */compute_color_flows.f \
              */mp_born_amps_and_wfs.f */jamp?_calls_*.f)
 
 # Convert .f to .o
@@ -161,6 +172,9 @@ else
   LD_F2PY=-lgfortran -lquadmath
 endif
 
+ifeq ($(origin MENUM),undefined)
+  MENUM=2
+endif
 
 liball$(ROOTNAME)_$(MENUM)me.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
 	$(CXX) $(DYNLIBFLAG)  $(LIBALLME_DYNFLAG)  $(STDLIB_FLAG)  -o liball$(ROOTNAME)_$(MENUM)me.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(STAT_LIB) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(ALL_DOTO) $(STDLIB) $(LINK_LOOP_LIBS) 
@@ -174,9 +188,6 @@ libcollier.$(dylibext):
 
 shared: liball$(ROOTNAME)_$(MENUM)me.$(dylibext)
 
-ifeq ($(origin MENUM),undefined)
-  MENUM=2
-endif
 
 
 

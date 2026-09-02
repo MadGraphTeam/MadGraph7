@@ -1,8 +1,8 @@
-#include "madspace/phasespace/rambo.h"
+#include "madspace/phasespace/rambo.hpp"
 
 #include <cmath>
 
-#include "madspace/constants.h"
+#include "madspace/constants.hpp"
 
 using namespace madspace;
 
@@ -10,14 +10,31 @@ FastRamboMapping::FastRamboMapping(std::size_t n_particles, bool massless, bool 
     Mapping(
         "FastRamboMapping",
         [&] {
-            TypeVec input_types(3 * n_particles - 4, batch_float);
+            NamedVector<Type> input_types;
+            for (std::size_t i = 0; i < 3 * n_particles - 4; ++i) {
+                input_types.push_back(std::format("random_{}", i), batch_float);
+            }
             if (!com) {
-                input_types.push_back(batch_four_vec);
+                input_types.push_back("com_momentum", batch_four_vec);
             }
             return input_types;
         }(),
-        TypeVec(n_particles, batch_four_vec),
-        TypeVec(massless ? 1 : n_particles + 1, batch_float)
+        [&] {
+            NamedVector<Type> output_types;
+            for (std::size_t i = 0; i < n_particles; ++i) {
+                output_types.push_back(std::format("momentum_{}", i), batch_four_vec);
+            }
+            return output_types;
+        }(),
+        [&] {
+            NamedVector<Type> cond_types{{"com_energy", batch_float}};
+            if (!massless) {
+                for (std::size_t i = 0; i < n_particles; ++i) {
+                    cond_types.push_back(std::format("mass_{}", i), batch_float);
+                }
+            }
+            return cond_types;
+        }()
     ),
     _n_particles(n_particles),
     _massless(massless),
@@ -28,7 +45,9 @@ FastRamboMapping::FastRamboMapping(std::size_t n_particles, bool massless, bool 
 }
 
 Mapping::Result FastRamboMapping::build_forward_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
     Value r = fb.stack(ValueVec(inputs.begin(), inputs.begin() + random_dim()));
     Value e_cm = conditions.at(0);
@@ -51,13 +70,15 @@ Mapping::Result FastRamboMapping::build_forward_impl(
             output = fb.fast_rambo_massive(r, e_cm, fb.stack(masses), p0);
         }
     }
-    return {fb.unstack(output[0]), output[1]};
+    return {{output_types().keys(), fb.unstack(output[0])}, output[1]};
 }
 
 Mapping::Result FastRamboMapping::build_inverse_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
-    Value p_out = fb.stack(inputs);
+    Value p_out = fb.stack(inputs.values());
     Value e_cm = conditions.at(0);
 
     auto [r, p0, det] = _massless
@@ -69,5 +90,5 @@ Mapping::Result FastRamboMapping::build_inverse_impl(
     if (!_com) {
         inv_inputs.push_back(p0);
     }
-    return {inv_inputs, det};
+    return {{input_types().keys(), inv_inputs}, det};
 }

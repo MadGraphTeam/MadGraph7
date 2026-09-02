@@ -1,13 +1,12 @@
-#include "madspace/phasespace/flow.h"
+#include "madspace/phasespace/flow.hpp"
 
-#include "madspace/constants.h"
+#include "madspace/constants.hpp"
 
 #include <algorithm>
 #include <bitset>
 #include <cmath>
 #include <format>
 #include <numeric>
-#include <ranges>
 
 using namespace madspace;
 
@@ -29,8 +28,9 @@ std::tuple<Value, Value> build_block(
     auto rqs_condition = fb.rqs_find_bin(
         input, inverse ? heights : widths, inverse ? widths : heights, derivatives
     );
-    auto [out, det] = inverse ? fb.rqs_inverse(input, rqs_condition)
-                              : fb.rqs_forward(input, rqs_condition);
+    auto [out, det] = inverse
+        ? fb.rqs_inverse(input, rqs_condition)
+        : fb.rqs_forward(input, rqs_condition);
     return {out, fb.reduce_product(det)};
 }
 
@@ -160,9 +160,10 @@ Flow::Flow(
 ) :
     Mapping(
         "Flow",
-        {batch_float_array(input_dim)},
-        {batch_float_array(input_dim)},
-        condition_dim == 0 ? TypeVec{} : TypeVec{batch_float_array(condition_dim)}
+        {{"latent", batch_float_array(input_dim)}},
+        {{"data", batch_float_array(input_dim)}},
+        condition_dim == 0 ? NamedVector<Type>{}
+                           : NamedVector<Type>{{"c", batch_float_array(condition_dim)}}
     ),
     _input_dim(input_dim),
     _condition_dim(condition_dim),
@@ -239,15 +240,19 @@ void Flow::initialize_from_vegas(
 }
 
 Mapping::Result Flow::build_forward_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
-    return build_transform(fb, inputs, conditions, false);
+    return build_transform(fb, inputs.values(), conditions.values(), false);
 }
 
 Mapping::Result Flow::build_inverse_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
-    return build_transform(fb, inputs, conditions, true);
+    return build_transform(fb, inputs.values(), conditions.values(), true);
 }
 
 Mapping::Result Flow::build_transform(
@@ -313,5 +318,7 @@ Mapping::Result Flow::build_transform(
         std::for_each(_coupling_blocks.begin(), _coupling_blocks.end(), loop_body);
     }
 
-    return {{fb.select(x, dim_positions)}, fb.product(dets)};
+    return {
+        {{inverse ? "latent" : "data", fb.select(x, dim_positions)}}, fb.product(dets)
+    };
 }

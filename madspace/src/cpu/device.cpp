@@ -1,6 +1,6 @@
-#include "device.h"
-#include "../kernels/kernels.h"
-#include "tensor.h"
+#include "device.hpp"
+#include "../kernels/kernels.hpp"
+#include "tensor.hpp"
 
 using namespace madspace;
 using namespace madspace::cpu;
@@ -68,6 +68,36 @@ void CpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
     tensor_add_impl(source, target, *this);
 }
 
+void CpuDevice::adam_step(
+    const Tensor& gradient,
+    Tensor& parameter,
+    Tensor& exp_avg,
+    Tensor& exp_avg_sq,
+    double step_size,
+    double beta1,
+    double beta2,
+    double eps,
+    double bias_corr2_sqrt,
+    double weight_decay
+) const {
+    tensor_foreach_dynamic<
+        kernel_adam_step<CpuTypes>,
+        kernel_adam_step<SimdTypes>,
+        1,
+        3>(
+        {&gradient},
+        {&parameter, &exp_avg, &exp_avg_sq},
+        gradient.size(0),
+        *this,
+        step_size,
+        beta1,
+        beta2,
+        eps,
+        bias_corr2_sqrt,
+        weight_decay
+    );
+}
+
 void AsyncCpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
     tensor_copy_impl(source, target, *this);
 }
@@ -80,4 +110,5 @@ void AsyncCpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
     tensor_add_impl(source, target, *this);
 }
 
-extern "C" DevicePtr get_device() { return &CpuDevice::instance(); }
+extern "C" int device_count() { return 1; }
+extern "C" DevicePtr get_device(int index) { return &CpuDevice::instance(); }

@@ -1,6 +1,7 @@
-#include "madspace/phasespace/phasespace.h"
-#include "madspace/constants.h"
-#include "madspace/util.h"
+#include "madspace/phasespace/phasespace.hpp"
+#include "madspace/constants.hpp"
+#include "madspace/util.hpp"
+#include <algorithm>
 
 using namespace madspace;
 
@@ -81,6 +82,42 @@ nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) 
 
 } // namespace
 
+namespace {
+// Chain (color) order for the t-channel ColorOrderedMapping: the externally
+// supplied order if given, else the default single chain [0, 2, ..., n+1, 1].
+std::vector<std::size_t> ps_chain_order(
+    const Topology& topology, const std::optional<std::vector<std::size_t>>& color_order
+) {
+    if (color_order) {
+        return *color_order;
+    }
+    std::size_t n_t_out = topology.decays().at(0).child_indices.size();
+    std::vector<std::size_t> chain;
+    chain.reserve(n_t_out + 2);
+    chain.push_back(0);
+    for (std::size_t i = 0; i < n_t_out; ++i) {
+        chain.push_back(i + 2);
+    }
+    chain.push_back(1);
+    return chain;
+}
+
+// Number of discrete two-solution choices for the t-channel (opt-in r_disc):
+// non-zero only for color_ordered with at least one 2->3 peel.
+std::size_t ps_discrete_dim(
+    const Topology& topology,
+    PhaseSpaceMapping::TChannelMode mode,
+    const std::optional<std::vector<std::size_t>>& color_order
+) {
+    if (mode == PhaseSpaceMapping::color_ordered &&
+        topology.t_propagator_count() >= 1) {
+        ColorOrderedMapping co(ps_chain_order(topology, color_order));
+        return co.discrete_dim();
+    }
+    return 0;
+}
+} // namespace
+
 PhaseSpaceMapping::PhaseSpaceMapping(
     const Topology& topology,
     double cm_energy,
@@ -88,15 +125,35 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double invariant_power,
     TChannelMode t_channel_mode,
     const std::optional<Cuts>& cuts,
-    const std::vector<std::vector<std::size_t>>& permutations
+    const std::vector<std::vector<std::size_t>>& permutations,
+    const std::optional<std::vector<std::size_t>>& color_order
 ) :
     Mapping(
         "PhaseSpaceMapping",
-        {batch_float_array(3 * topology.outgoing_masses().size() - (leptonic ? 4 : 2))},
-        {batch_four_vec_array(topology.outgoing_masses().size() + 2),
-         batch_float,
-         batch_float},
-        permutations.size() > 1 ? TypeVec{batch_int} : TypeVec{}
+        [&] {
+            NamedVector<Type> in{
+                {"random",
+                 batch_float_array(
+                     3 * topology.outgoing_masses().size() - (leptonic ? 4 : 2)
+                 )}
+            };
+            // Opt-in discrete channel: only declared when the t-channel strategy
+            // actually has discrete two-solution choices (color_ordered).
+            std::size_t nd = ps_discrete_dim(topology, t_channel_mode, color_order);
+            if (nd > 0) {
+                in.push_back(
+                    "discrete",
+                    Type{DataType::dt_int, batch_size, {static_cast<int>(nd)}}
+                );
+            }
+            return in;
+        }(),
+        {{"momenta", batch_four_vec_array(topology.outgoing_masses().size() + 2)},
+         {"x1", batch_float},
+         {"x2", batch_float}},
+        permutations.size() > 1
+            ? NamedVector<Type>{{"permutation_index", batch_int}}
+            : NamedVector<Type>{}
     ),
     _topology(topology),
     _cuts(cuts.value_or(Cuts(topology.outgoing_masses().size() + 2))),
@@ -173,25 +230,85 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double s_hat_min =
         std::max(total_mass * total_mass, sqrt_s_hat_min * sqrt_s_hat_min);
     if (has_t_channel) {
+        // Per-child pt_min (and eta_max), ordered to match the mass conditions
+        // handed to the t-channel mapping (leaf children carry their pt cut;
+        // composite children were reset to 0 above).
+        std::vector<double> eta_max, pt_min;
+        for (std::size_t index : topology.decays().at(0).child_indices) {
+            auto& info = decay_info.at(index);
+            eta_max.push_back(info.eta_max);
+            pt_min.push_back(info.pt_min);
+        }
         if (t_channel_mode == PhaseSpaceMapping::chili) {
             // |y| <= |eta|, so we can pass y_max = eta_max
-            std::vector<double> eta_max, pt_min;
-            for (std::size_t index : topology.decays().at(0).child_indices) {
-                auto& info = decay_info.at(index);
-                eta_max.push_back(info.eta_max);
-                pt_min.push_back(info.pt_min);
-            }
             _t_mapping =
                 ChiliMapping(_topology.t_propagator_count() + 1, eta_max, pt_min);
+        } else if (t_channel_mode == PhaseSpaceMapping::color_ordered) {
+            // color_order is optional in general but REQUIRED here: the chain is
+            // built in the externally supplied color order so the t-channel
+            // topology matches the known color structure of the process.
+            if (!color_order) {
+                throw std::invalid_argument(
+                    "PhaseSpaceMapping: color_ordered mode requires a color_order"
+                );
+            }
+            // Reorder the per-pair cut matrices (indexed by raw outgoing index)
+            // into the child order in which masses/pt are handed to the chain,
+            // mirroring the pt_min reordering above. Composite (non-leaf)
+            // children carry no pairwise cut.
+            const auto& out_idx = topology.outgoing_indices();
+            const auto& child_indices = topology.decays().at(0).child_indices;
+            std::vector<std::size_t> child_to_out(
+                child_indices.size(), std::numeric_limits<std::size_t>::max()
+            );
+            for (std::size_t a = 0; a < child_indices.size(); ++a) {
+                auto it =
+                    std::find(out_idx.begin(), out_idx.end(), child_indices.at(a));
+                if (it != out_idx.end()) {
+                    child_to_out.at(a) = std::distance(out_idx.begin(), it);
+                }
+                ++a;
+            }
+            auto m_inv_full = _cuts.m_inv_min();
+            auto dr_full = _cuts.dr_min();
+            std::size_t nc = child_to_out.size();
+            std::vector<std::vector<double>> m_inv_co(nc, std::vector<double>(nc, 0.));
+            std::vector<std::vector<double>> dr_co(nc, std::vector<double>(nc, 0.));
+            for (std::size_t a = 0; a < nc; ++a) {
+                if (child_to_out.at(a) >= m_inv_full.size()) {
+                    continue;
+                }
+                for (std::size_t b = 0; b < nc; ++b) {
+                    if (child_to_out.at(b) >= m_inv_full.size()) {
+                        continue;
+                    }
+                    m_inv_co.at(a).at(b) =
+                        m_inv_full.at(child_to_out.at(a)).at(child_to_out.at(b));
+                    dr_co.at(a).at(b) =
+                        dr_full.at(child_to_out.at(a)).at(child_to_out.at(b));
+                }
+            }
+            _t_mapping = ColorOrderedMapping(
+                ps_chain_order(topology, color_order),
+                invariant_power,
+                invariant_power,
+                pt_min,
+                m_inv_co,
+                dr_co
+            );
         } else if (t_channel_mode == PhaseSpaceMapping::propagator ||
                    topology.t_propagator_count() < 2) {
-            _t_mapping =
-                TPropagatorMapping(_topology.t_integration_order(), invariant_power);
+            _t_mapping = TPropagatorMapping(
+                _topology.t_integration_order(), invariant_power, pt_min
+            );
         } else if (t_channel_mode == PhaseSpaceMapping::rambo) {
             // TODO: add massless special case
             _t_mapping = FastRamboMapping(_topology.t_propagator_count() + 1, false);
         }
     }
+
+    // Random-number budget: identical computation to the declared input shape.
+    _n_discrete = ps_discrete_dim(_topology, t_channel_mode, color_order);
 
     for (auto& perm : permutations) {
         _permutations.emplace_back(perm.begin(), perm.end());
@@ -204,7 +321,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     bool leptonic,
     double invariant_power,
     TChannelMode mode,
-    const std::optional<Cuts>& cuts
+    const std::optional<Cuts>& cuts,
+    const std::optional<std::vector<std::size_t>>& color_order
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -241,15 +359,28 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         leptonic,
         invariant_power,
         mode,
-        cuts
+        cuts,
+        {},
+        color_order
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
     auto random_numbers = fb.unstack(inputs.at(0));
     auto r = random_numbers.begin();
     auto next_random = [&]() { return *(r++); };
+    // Opt-in discrete channel: present as inputs.at(1) only when the t-channel
+    // strategy declared discrete choices (color_ordered). These are passed
+    // through to the t-channel mapping after its continuous randoms.
+    ValueVec discrete_numbers;
+    if (inputs.size() > 1) {
+        discrete_numbers = fb.unstack(inputs.at(1));
+    }
+    auto d = discrete_numbers.begin();
+    auto next_discrete = [&]() { return *(d++); };
 
     ValueVec dets{_pi_factors};
     Value x1 = 1.0, x2 = 1.0;
@@ -280,11 +411,12 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         }
         if (decay_index != 0 || _map_luminosity) {
             auto s_max = fb.square(sqrt_s_max);
-            auto [s_vec, det] = _s_invariants.at(invariant_index++)
-                                    .build_forward(fb, {next_random()}, {s_min, s_max});
-            data.mass2 = s_vec.at(0);
+            auto invariant =
+                _s_invariants.at(invariant_index++)
+                    .build_forward(fb, {next_random()}, {s_min, s_max});
+            data.mass2 = invariant["invariant"];
             data.mass = fb.sqrt(data.mass2.value());
-            dets.push_back(det);
+            dets.push_back(invariant["det"]);
         } else if (decay_index == 0) {
             data.mass2 = _sqrt_s_lab * _sqrt_s_lab;
             data.mass = _sqrt_s_lab;
@@ -311,11 +443,16 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 for (std::size_t i = 0; i < t_mapping.random_dim(); ++i) {
                     args.push_back(next_random());
                 }
+                // Discrete choices follow the continuous randoms, matching the
+                // t-channel mapping's input_types order [random..., discrete...].
+                for (std::size_t j = 0; j < t_mapping.discrete_dim(); ++j) {
+                    args.push_back(next_discrete());
+                }
                 conds.push_back(sqrt_s_hat);
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
                     conds.push_back(decay_data.at(index).mass.value());
                 }
-                auto [t_result, det] = t_mapping.build_forward(fb, args, conds);
+                auto t_result = t_mapping.build_forward(fb, args, conds);
                 std::size_t result_index;
                 using TMapping = std::decay_t<decltype(t_mapping)>;
                 if constexpr (std::is_same_v<TMapping, FastRamboMapping>) {
@@ -330,7 +467,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                     decay_data.at(index).momentum = t_result.at(result_index);
                     ++result_index;
                 }
-                dets.push_back(det);
+                dets.push_back(t_result["det"]);
 
                 if constexpr (std::is_same_v<TMapping, ChiliMapping>) {
                     auto [x1_new, x2_new] = fb.momenta_to_x1x2(
@@ -368,11 +505,11 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 if (data.decay.index != 0) {
                     decay_args.push_back(data.momentum.value());
                 }
-                auto [k_out, det] = decay_map.build_forward(fb, decay_args, {});
+                auto k_out = decay_map.build_forward(fb, decay_args, {});
                 for (auto [child_index, k] : zip(data.decay.child_indices, k_out)) {
                     decay_data.at(child_index).momentum = k;
                 }
-                dets.push_back(det);
+                dets.push_back(k_out["det"]);
             },
             _s_decays.at(--decay_map_index)
         );
@@ -399,11 +536,13 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     auto p_ext_lab = _map_luminosity ? fb.boost_beam(p_ext_stack, x1, x2) : p_ext_stack;
     dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
-    return {{p_ext_lab, x1, x2}, ps_weight};
+    return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
 }
 
 Mapping::Result PhaseSpaceMapping::build_inverse_impl(
-    FunctionBuilder& fb, const ValueVec& inputs, const ValueVec& conditions
+    FunctionBuilder& fb,
+    const NamedVector<Value>& inputs,
+    const NamedVector<Value>& conditions
 ) const {
     Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
     Value p_ext_stack =
@@ -443,6 +582,7 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
 
     // go through decays and recover random numbers from momenta
     ValueVec random_out_reversed;
+    ValueVec discrete_out;
     ValueVec dets{1. / _pi_factors};
     for (std::size_t decay_map_index = 0;
          auto& data : std::views::reverse(decay_data)) {
@@ -459,7 +599,7 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                 for (auto child_index : data.decay.child_indices) {
                     decay_args.push_back(decay_data.at(child_index).momentum.value());
                 }
-                auto [decay_out, det] = decay_map.build_inverse(fb, decay_args, {});
+                auto decay_out = decay_map.build_inverse(fb, decay_args, {});
                 data.computed_mass = decay_out.at(decay_map.random_dim());
                 random_out_reversed.insert(
                     random_out_reversed.end(),
@@ -467,9 +607,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                     decay_out.rend()
                 );
                 if (data.decay.index != 0) {
-                    data.momentum = decay_out.back();
+                    data.momentum = decay_out.at(decay_out.size() - 2);
                 }
-                dets.push_back(det);
+                dets.push_back(decay_out["det"]);
             },
             _s_decays.at(decay_map_index++)
         );
@@ -494,13 +634,18 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
                     args.push_back(decay_data.at(index).momentum.value());
                     conds.push_back(decay_data.at(index).computed_mass.value());
                 }
-                auto [t_result, det] = t_mapping.build_inverse(fb, args, conds);
+                auto t_result = t_mapping.build_inverse(fb, args, conds);
                 random_out_reversed.insert(
                     random_out_reversed.end(),
                     t_result.rend() - t_mapping.random_dim(),
                     t_result.rend()
                 );
-                dets.push_back(det);
+                // Discrete choices sit at forward positions [nc, nc+nd) in
+                // t_result (after the continuous randoms, before "det").
+                for (std::size_t j = 0; j < t_mapping.discrete_dim(); ++j) {
+                    discrete_out.push_back(t_result.at(t_mapping.random_dim() + j));
+                }
+                dets.push_back(t_result["det"]);
             },
             [&](std::monostate) {}
         },
@@ -529,11 +674,11 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
             auto s_max = fb.square(sqrt_s_max);
             data.mass = data.computed_mass.value();
             data.mass2 = fb.square(data.mass.value());
-            auto [r_out, det] =
+            auto invariant =
                 _s_invariants.at(invariant_index++)
                     .build_inverse(fb, {data.mass2.value()}, {s_min, s_max});
-            random_out.push_back(r_out.at(0));
-            dets.push_back(det);
+            random_out.push_back(invariant["random"]);
+            dets.push_back(invariant["det"]);
         } else if (decay_index == 0) {
             data.mass2 = _sqrt_s_lab * _sqrt_s_lab;
             data.mass = _sqrt_s_lab;
@@ -543,5 +688,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     random_out.insert(
         random_out.end(), random_out_reversed.rbegin(), random_out_reversed.rend()
     );
-    return {{fb.stack(random_out)}, fb.product(dets)};
+    NamedVector<Value> result{{"random", fb.stack(random_out)}};
+    if (!discrete_out.empty()) {
+        result.push_back("discrete", fb.stack(discrete_out));
+    }
+    return {result, fb.product(dets)};
 }
