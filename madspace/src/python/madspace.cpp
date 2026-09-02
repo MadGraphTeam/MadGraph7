@@ -1621,7 +1621,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("weight", &LHEEvent::weight)
         .def_readwrite("scale", &LHEEvent::scale)
         .def_readwrite("alpha_qed", &LHEEvent::alpha_qed)
-        .def_readwrite("alpha_qcd", &LHEEvent::process_id)
+        .def_readwrite("alpha_qcd", &LHEEvent::alpha_qcd)
         .def_readwrite("particles", &LHEEvent::particles);
     py::classh<LHECompleter::SubprocArgs>(m, "SubprocArgs")
         .def(
