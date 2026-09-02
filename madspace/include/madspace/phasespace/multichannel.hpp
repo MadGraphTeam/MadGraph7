@@ -73,8 +73,36 @@ private:
     std::vector<std::shared_ptr<Mapping>> _mappings;
 };
 
+/**
+ * Applies one of several channel functions to each slice of the batch.
+ *
+ * The @ref FunctionGenerator counterpart of @ref MultiChannelMapping. The batch
+ * is partitioned by the per-channel counts in the `batch_sizes` argument. Each
+ * slice is passed through its channel function, and the results are
+ * concatenated. All channel functions must share the same argument and return
+ * layout, which this class then exposes (Sec. 2.1.1 of [1]).
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - the arguments of the channel functions, plus
+ * - `batch_sizes` – the number of batch entries routed to each channel.
+ *
+ * **Returns**
+ * - the returns of the channel functions, plus
+ * - `batch_sizes` – echoed back, only when @p return_batch_sizes is true.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 2.1.1)
+ */
 class MultiChannelFunction : public FunctionGenerator {
 public:
+    /**
+     * @param functions           The per-channel functions.
+     * @param return_batch_sizes  If true, the `batch_sizes` argument is also
+     *                            returned.
+     */
     MultiChannelFunction(
         const std::vector<std::shared_ptr<FunctionGenerator>>& functions,
         bool return_batch_sizes = false

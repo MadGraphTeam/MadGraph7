@@ -1049,10 +1049,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("PhaseSpaceMapping::channel_count")
         );
 
-    py::classh<MultiChannelFunction, FunctionGenerator>(m, "MultiChannelFunction")
+    py::classh<MultiChannelFunction, FunctionGenerator>(
+        m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
+    )
         .def(
-            py::init<std::vector<std::shared_ptr<FunctionGenerator>>&>(),
-            py::arg("functions")
+            py::init<std::vector<std::shared_ptr<FunctionGenerator>>&, bool>(),
+            py::arg("functions"),
+            py::arg("return_batch_sizes") = false,
+            pydoc::doc("MultiChannelFunction::MultiChannelFunction")
         );
 
     py::classh<MatrixElement, FunctionGenerator> matrix_element(
@@ -1222,7 +1226,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
 
     py::classh<PropagatorChannelWeights, FunctionGenerator>(
-        m, "PropagatorChannelWeights"
+        m, "PropagatorChannelWeights", pydoc::doc("PropagatorChannelWeights")
     )
         .def(
             py::init<
@@ -1231,10 +1235,13 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>&>(),
             py::arg("topologies"),
             py::arg("permutations"),
-            py::arg("channel_indices")
+            py::arg("channel_indices"),
+            pydoc::doc("PropagatorChannelWeights::PropagatorChannelWeights")
         );
 
-    py::classh<SubchannelWeights, FunctionGenerator>(m, "SubchannelWeights")
+    py::classh<SubchannelWeights, FunctionGenerator>(
+        m, "SubchannelWeights", pydoc::doc("SubchannelWeights")
+    )
         .def(
             py::init<
                 const nested_vector2<Topology>&,
@@ -1242,15 +1249,32 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>>(),
             py::arg("topologies"),
             py::arg("permutations"),
-            py::arg("channel_indices")
+            py::arg("channel_indices"),
+            pydoc::doc("SubchannelWeights::SubchannelWeights")
         )
-        .def("channel_count", &SubchannelWeights::channel_count);
+        .def(
+            "channel_count",
+            &SubchannelWeights::channel_count,
+            pydoc::doc("SubchannelWeights::channel_count")
+        );
 
-    py::classh<MomentumPreprocessing, FunctionGenerator>(m, "MomentumPreprocessing")
-        .def(py::init<std::size_t>(), py::arg("particle_count"))
-        .def("output_dim", &MomentumPreprocessing::output_dim);
+    py::classh<MomentumPreprocessing, FunctionGenerator>(
+        m, "MomentumPreprocessing", pydoc::doc("MomentumPreprocessing")
+    )
+        .def(
+            py::init<std::size_t>(),
+            py::arg("particle_count"),
+            pydoc::doc("MomentumPreprocessing::MomentumPreprocessing")
+        )
+        .def(
+            "output_dim",
+            &MomentumPreprocessing::output_dim,
+            pydoc::doc("MomentumPreprocessing::output_dim")
+        );
 
-    py::classh<ChannelWeightNetwork, FunctionGenerator>(m, "ChannelWeightNetwork")
+    py::classh<ChannelWeightNetwork, FunctionGenerator>(
+        m, "ChannelWeightNetwork", pydoc::doc("ChannelWeightNetwork")
+    )
         .def(
             py::init<
                 std::size_t,
@@ -1266,15 +1290,25 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("layers") = 3,
             py::arg("activation") = MLP::leaky_relu,
             py::arg("prefix") = "",
-            py::arg("include_preprocessing") = true
+            py::arg("include_preprocessing") = true,
+            pydoc::doc("ChannelWeightNetwork::ChannelWeightNetwork")
         )
-        .def("mlp", &ChannelWeightNetwork::mlp)
-        .def("preprocessing", &ChannelWeightNetwork::preprocessing)
-        .def("mask_name", &ChannelWeightNetwork::mask_name)
+        .def("mlp", &ChannelWeightNetwork::mlp, pydoc::doc("ChannelWeightNetwork::mlp"))
+        .def(
+            "preprocessing",
+            &ChannelWeightNetwork::preprocessing,
+            pydoc::doc("ChannelWeightNetwork::preprocessing")
+        )
+        .def(
+            "mask_name",
+            &ChannelWeightNetwork::mask_name,
+            pydoc::doc("ChannelWeightNetwork::mask_name")
+        )
         .def(
             "initialize_globals",
             &ChannelWeightNetwork::initialize_globals,
-            py::arg("context")
+            py::arg("context"),
+            pydoc::doc("ChannelWeightNetwork::initialize_globals")
         );
 
     py::classh<DiscreteHistogram, FunctionGenerator>(
