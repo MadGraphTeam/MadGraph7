@@ -184,16 +184,18 @@ unweighted event.
      scale envelope, PDF uncertainty by `ErrorType` (replicas: std-dev;
      hessian/symmhessian: quadrature; `NumMembers == 1`: none, with a
      warning). Same numbers as `systematics.print_cross_sections`.
-2. Shared PDF evaluation. Move the static helpers `compute_coeffs`,
-   `compute_logx_coeffs`, `ddx` out of [pdf.cpp](../madspace/src/phasespace/pdf.cpp)
-   into a header used by both the runtime coefficient builder and the
-   calculator, and add a scalar `interpolate(const PdfGrid&, pid, x, q)` that
-   computes the 16 Hermite coefficients for the cell on the fly and applies
-   the same 16-term polynomial as `kernel_interpolate_pdf`. This costs a few
-   hundred flops per call, keeps memory at the raw grid (0.6 MB per member,
-   60 MB for 101 replicas) and guarantees the runtime and the calculator
-   agree to round-off. Region boundaries (`region_sizes`, `low_q`/`high_q`)
-   are handled by the shared code.
+2. PDF and alpha_s evaluation through the existing batched functions. The
+   first implementation added a scalar `PdfGrid::interpolate`; review asked
+   for the regular batched API instead (one code path, and the planned
+   UMAMI-based external PDF libraries are batched too). The calculator now
+   registers the nominal grid and every varied member as globals of a CPU
+   context under a private prefix, restricted to the PIDs the events use,
+   and evaluates `PartonDensity` (dynamic PID) and `RunningCoupling`
+   functions through runtimes, one batched call per grid and per
+   (alpha_s grid, mu_R, dynamical scale) combination for a whole combine
+   batch. Memory: the coefficient tensor of a member is 0.66 MB per PID kept
+   (16 x 5151 doubles for a 100 x 50 grid), so 100 replicas cost 66 MB for a
+   single-flavour process and about 0.7 GB for all 11 light partons.
 3. Output plumbing.
    * `io.hpp`: new `EventRecord::f_syst_weights` group with a runtime count
      `K` (fields `rwgt_0 .. rwgt_{K-1}`, `f64`); `DataLayout` learns a
@@ -405,8 +407,7 @@ All four phases are implemented on branch
   `[generation] systematics` kept as a hidden alias, `[postprocessing]
   systematics` now defaults to `false` (legacy path, refused when native weights
   exist). PDF list resolution with downloads in the launcher.
-* Phase 1. `PdfGrid::interpolate` / `AlphaSGrid::interpolate` (scalar,
-  bit-identical to the kernels), [driver/systematics.hpp](../madspace/include/madspace/driver/systematics.hpp)
+* Phase 1. [driver/systematics.hpp](../madspace/include/madspace/driver/systematics.hpp)
   (`SystematicsConfig`, `SubprocessSystArgs`, `SystematicsCalculator`),
   `rwgt_<id>` npy columns, LHE `<rwgt>` + `initrwgt` + optional `<mgrwt>`,
   `combine_to_*(…, systematics, histograms)`, summary in
@@ -432,7 +433,7 @@ interpolation tests also cover NNPDF40MC_lo_as_01180):
 
 | Gate | Result |
 |---|---|
-| V0 | scalar PDF and alpha_s vs runtime kernels: max relative difference 0.0 on 2000 points per set; vs LHAPDF 1e-15 (PDF) and 3e-16 (alpha_s). `madspace/tests/test_systematics.py`: 11 tests (interpolation, LO formula, identities, mixed-order drop, PDF groups and header, dynamical scales, event histograms, JSON round trip); whole madspace suite green |
+| V0 | the batched `PartonDensity` / `RunningCoupling` functions the calculator uses vs LHAPDF: 1e-15 (PDF) and 3e-16 (alpha_s). `madspace/tests/test_systematics.py`: 9 tests (LHAPDF agreement, LO formula, identities, mixed-order drop, PDF groups and header, dynamical scales, event histograms, JSON round trip), reference values from the same batched functions on the default context; whole madspace suite green |
 | V1 | weight by weight vs `systematics.py` + LHAPDF reading the written `<mgrwt>`: `u u > u u` 8 scale + 101 PDF weights 9e-8; `p p > e+ e-` (4 mirrored flavours, 207 of 400 events z-flipped) 2e-8; `u g > u g` 4e-8; `u u > u u` with the 4 dynamical scale choices (37 weights) 1e-7. The (pdg, x) pairs of `<mgrwt>` match the written momenta of mirrored events. Matrix-element reweighting forced on `u u > u u` vs the analytic alpha_s^2 rescaling: 2e-7 over 500 events x 8 weights |
 | V2 | not run |
 | V3 | event histograms: per-variation bin sums equal the per-variation cross sections to 1e-9; the envelope brackets the nominal in every bin; shapes agree with the integration histograms (sqrt_s chi2/ndf 0.5; the integration histograms are not normalised to the cross section and quote smaller errors in sparse bins, so only shapes are comparable) |
@@ -453,14 +454,16 @@ run on the very same file with the same 109 variations):
 
 | Events | Native combine (wall / CPU) | Whole run with systematics | Whole run without | Legacy `systematics.py` (wall / CPU) |
 |---|---|---|---|---|
-| 20 000 | 0.28 s / 3.5 s | 2.1 s | 0.3 s | 21.6 s / 21 s |
-| 100 000 | 1.3 s / 21 s | 2.6 s | 1.0 s | 1025 s / 100 s |
+| 20 000 | 0.24 s / 0.6 s | 2.4 s | 0.3 s | 21.6 s / 21 s |
+| 100 000 | 0.87 s / 2.7 s | 2.2 s | 1.0 s | 1025 s / 100 s |
 
-About 1.0 s of the native overhead is parsing the 100 member grids (10 ms per
-text file), independent of the event count; the per-event cost is 1.9 us CPU
-per weight. The legacy 100k run is I/O bound (500 MB LHE read and rewritten
-by Python); its CPU time scales linearly at about 1 ms per event. Only
-scale variations (8 weights, no members): combine 0.04 s for 20k events.
+(Batched implementation; the earlier scalar path took 0.28 s / 3.5 s and
+1.3 s / 21 s.) About 1 s of the native overhead is parsing the 100 member
+grids (10 ms per text file) and building their coefficient tensors,
+independent of the event count; the per-event cost is 0.25 us CPU per weight.
+The legacy 100k run is I/O bound (500 MB LHE read and rewritten by Python);
+its CPU time scales linearly at about 1 ms per event. Only scale variations
+(8 weights, no members): combine 0.04 s for 20k events.
 
 Build notes: built with the worktree's `madspace/build` (ninja) and installed
 with `cmake --install build --prefix madspace/install`; the `generate_pyi`

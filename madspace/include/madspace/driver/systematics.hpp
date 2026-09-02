@@ -87,20 +87,25 @@ struct PdfGroupInfo {
     std::vector<std::pair<int, std::size_t>> members;
 };
 
+// Computes the variation weights of combined (unweighted) events. The PDFs and
+// alpha_s are evaluated with the regular batched madspace functions
+// (PartonDensity, RunningCoupling) on `context` (a CPU context; one is created
+// when none is given): the grids of the nominal PDF and of every varied member
+// are registered as globals of that context under a private prefix.
 class SystematicsCalculator {
 public:
     // `matrix_elements` (one per subprocess, may be empty/nullopt) enable the
     // exact renormalisation scale variation of subprocesses whose |M|^2 mixes
     // several powers of alpha_s (qcd_power == -1): the matrix element is
-    // re-evaluated at the varied alpha_s on `me_context`. The matrix element
-    // must take (momenta, alpha_s, flavor) and return the matrix element only;
+    // re-evaluated at the varied alpha_s on `context`. The matrix element must
+    // take (momenta, alpha_s, flavor) and return the matrix element only;
     // `me_flavor_remap[subprocess][flavor_index]` is the flavor passed to it.
     SystematicsCalculator(
         const SystematicsConfig& config,
         const std::vector<SubprocessSystArgs>& subproc_args,
         const std::optional<PdfGrid>& nominal_pdf,
         const std::optional<AlphaSGrid>& nominal_alpha_s,
-        ContextPtr me_context = nullptr,
+        ContextPtr context = nullptr,
         const std::vector<std::optional<MatrixElement>>& matrix_elements = {},
         const nested_vector2<me_int_t>& me_flavor_remap = {}
     );
@@ -151,9 +156,12 @@ public:
     static std::string format_number(double value);
 
 private:
-    struct MemberData {
-        PdfGrid grid;
-        std::size_t alpha_s_index;
+    // batched PDF evaluation of one grid (nominal or member): x f(x, q) for the
+    // PIDs used by the events, addressed by their slot in `pids`
+    struct PdfEvaluator {
+        RuntimePtr runtime;
+        std::vector<int> pids;
+        std::size_t alpha_s_index; // alpha_s grid of the set
     };
     struct MatrixElementData {
         RuntimePtr runtime;
@@ -163,17 +171,18 @@ private:
 
     SystematicsConfig _config;
     std::vector<SubprocessSystArgs> _subproc_args;
-    std::optional<PdfGrid> _nominal_pdf;
-    std::vector<AlphaSGrid> _alpha_s_grids; // index 0: nominal set
     std::vector<PdfMemberSpec> _members;
-    std::vector<MemberData> _member_data;
     std::vector<Variation> _variations;
     std::vector<std::string> _warnings;
     bool _mur_supported;
 
-    ContextPtr _me_context;
+    ContextPtr _context;
+    std::string _prefix;
+    std::optional<PdfEvaluator> _nominal_pdf;   // has_pdf only
+    std::vector<PdfEvaluator> _member_pdfs;     // one per member
+    std::vector<RuntimePtr> _alpha_s_runtimes;  // index 0: nominal set
     std::vector<std::optional<MatrixElementData>> _matrix_elements;
-    mutable std::mutex _me_mutex;
+    mutable std::mutex _runtime_mutex;
 
     std::mutex _accumulate_mutex;
     double _nominal_sum = 0.;
@@ -181,9 +190,22 @@ private:
     std::size_t _event_count = 0;
 
     void build_variations();
-    double alpha_s_ratio(
-        std::size_t alpha_s_index, double mur, double ren_scale, int qcd_power
+    PdfEvaluator make_pdf_evaluator(
+        const PdfGrid& grid,
+        const std::vector<int>& pids,
+        const std::string& name,
+        std::size_t alpha_s_index
+    );
+    // batched x f(x, q) of `evaluator` for the given points; `slots` index
+    // evaluator.pids
+    std::vector<double> evaluate_pdf(
+        const PdfEvaluator& evaluator,
+        const std::vector<double>& x,
+        const std::vector<double>& q,
+        const std::vector<me_int_t>& slots
     ) const;
+    std::vector<double>
+    evaluate_alpha_s(std::size_t alpha_s_index, const std::vector<double>& q) const;
     // |M|^2 of the events `indices` of `buffer` (all of subprocess `subproc`) at
     // the given alpha_s values, via the matrix element runtime
     std::vector<double> matrix_elements(

@@ -1092,14 +1092,6 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("logx_shape", &PdfGrid::logx_shape, py::arg("batch_dim") = false)
         .def("logq2_shape", &PdfGrid::logq2_shape, py::arg("batch_dim") = false)
-        .def("pid_index", &PdfGrid::pid_index, py::arg("pid"))
-        .def(
-            "interpolate",
-            &PdfGrid::interpolate,
-            py::arg("pid_index"),
-            py::arg("x"),
-            py::arg("q")
-        )
         .def(
             "initialize_globals",
             &PdfGrid::initialize_globals,
@@ -1133,7 +1125,6 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("batch_dim") = false
         )
         .def("logq2_shape", &AlphaSGrid::logq2_shape, py::arg("batch_dim") = false)
-        .def("interpolate", &AlphaSGrid::interpolate, py::arg("q"))
         .def(
             "initialize_globals",
             &AlphaSGrid::initialize_globals,
@@ -1870,7 +1861,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("subproc_args"),
             py::arg("nominal_pdf") = std::nullopt,
             py::arg("nominal_alpha_s") = std::nullopt,
-            py::arg("me_context") = nullptr,
+            py::arg("context") = nullptr,
             py::arg("matrix_elements") = std::vector<std::optional<MatrixElement>>{},
             py::arg("me_flavor_remap") = nested_vector2<me_int_t>{}
         )

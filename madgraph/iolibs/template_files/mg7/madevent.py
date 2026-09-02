@@ -597,10 +597,15 @@ class MadgraphProcess:
         config.nominal_description = info["SetDesc"]
         config.pdf_members = self.resolve_pdf_variations() if not self.leptonic else []
         args = self.build_systematics_args()
-        me_context, matrix_elements, flavor_remap, me_backend = self.build_systematics_matrix_elements(args)
+        # the PDFs, alpha_s and (for mixed-order subprocesses) the matrix
+        # elements are evaluated with the batched madspace functions on this
+        # CPU context
+        self.systematics_context = ms.Context(device=ms.cpu_device(), thread_count=1)
+        matrix_elements, flavor_remap, me_backend = self.build_systematics_matrix_elements(
+            args, self.systematics_context)
         self.systematics = ms.SystematicsCalculator(
             config, args, self.pdf_grid, self.alphas_grid,
-            me_context, matrix_elements, flavor_remap)
+            self.systematics_context, matrix_elements, flavor_remap)
         for warning in self.systematics.warnings:
             logger.warning("systematics: %s", warning)
         self.systematics_data = {
@@ -656,15 +661,15 @@ class MadgraphProcess:
             codes.append(code)
         return codes
 
-    def build_systematics_matrix_elements(self, args):
+    def build_systematics_matrix_elements(self, args, context):
         """For the subprocesses whose |M|^2 mixes several powers of alpha_s
-        (qcd_power = -1), load the matrix element into a dedicated CPU context so
-        that the renormalisation scale variations can re-evaluate it at the
-        varied alpha_s. Returns (context, [MatrixElement or None per subprocess],
-        flavor remap, backend name); the context is None when nothing is needed
-        or no CPU library exists."""
+        (qcd_power = -1), load the matrix element into the systematics CPU
+        context so that the renormalisation scale variations can re-evaluate it
+        at the varied alpha_s. Returns ([MatrixElement or None per subprocess],
+        flavor remap, backend name); empty when nothing is needed or no CPU
+        library exists."""
         need = [i for i, a in enumerate(args) if a.qcd_power < 0]
-        empty = (None, [], [], None)
+        empty = ([], [], None)
         if not need or self.run_card["run"]["dummy_matrix_element"]:
             return empty
         cpu_backends = [b for b in self.backends if not b.startswith(("cuda", "hip"))]
@@ -674,7 +679,6 @@ class MadgraphProcess:
                            "subprocesses cannot be computed")
             return empty
         backend = cpu_backends[0]
-        context = ms.Context(device=ms.cpu_device(), thread_count=1)
         matrix_elements = []
         flavor_remap = []
         for i, meta in enumerate(self.subprocess_data):
@@ -693,8 +697,7 @@ class MadgraphProcess:
             ))
         logger.info("systematics: re-evaluating the matrix element of %d mixed-order "
                     "subprocess(es) for the renormalisation scale variations", len(need))
-        self.systematics_context = context
-        return context, matrix_elements, flavor_remap, backend
+        return matrix_elements, flavor_remap, backend
 
     def build_event_histograms(self):
         """ms.EventHistograms for the [histograms] observables, filled with the

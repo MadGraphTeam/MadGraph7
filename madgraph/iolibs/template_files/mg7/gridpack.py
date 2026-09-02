@@ -265,13 +265,14 @@ def load_systematics(run_card, device_types=(), param_card_path=None):
     if config.has_pdf:
         nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
     nominal_alpha_s = ms.AlphaSGrid(_locate_pdf_file(data["nominal_info_file"]))
-    me_context, matrix_elements, flavor_remap = None, [], []
+    # PDFs, alpha_s and matrix elements are evaluated on this CPU context
+    context = ms.Context(device=ms.cpu_device(), thread_count=1)
+    matrix_elements, flavor_remap = [], []
     need = [i for i, a in enumerate(subproc_args) if a.qcd_power < 0]
     backend = data.get("me_backend")
     if need and backend and data.get("me_paths"):
         cpu = [d for d in device_types if not str(d).startswith(("cuda", "hip"))]
         backend = cpu[0] if cpu and cpu[0] != "cppauto" else backend
-        me_context = ms.Context(device=ms.cpu_device(), thread_count=1)
         flavor_remap = data.get("flavor_remap", [])
         for i, me_path in enumerate(data["me_paths"]):
             if i not in need:
@@ -281,9 +282,9 @@ def load_systematics(run_card, device_types=(), param_card_path=None):
             if not os.path.exists(lib):
                 print("WARNING systematics: %s not found, mu_R variations of the "
                       "mixed-order subprocesses are dropped" % lib)
-                me_context, matrix_elements, flavor_remap = None, [], []
+                matrix_elements, flavor_remap = [], []
                 break
-            api = me_context.load_matrix_element(lib, param_card_path)
+            api = context.load_matrix_element(lib, param_card_path)
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
@@ -293,7 +294,7 @@ def load_systematics(run_card, device_types=(), param_card_path=None):
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,
-        me_context, matrix_elements, flavor_remap)
+        context, matrix_elements, flavor_remap)
     for warning in systematics.warnings:
         print("WARNING systematics: %s" % warning)
     return systematics

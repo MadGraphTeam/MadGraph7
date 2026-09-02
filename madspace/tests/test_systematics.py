@@ -1,9 +1,10 @@
 """Scale/PDF systematics computed at combine time (SystematicsCalculator).
 
-The PDF-dependent tests need an LHAPDF data directory holding
-NNPDF40MC_lo_as_01180 (LHAPDF_DATA_PATH, or the paths of the lhapdf module);
-the scalar interpolation is checked against the runtime kernels, and against
-LHAPDF itself when the python module is available.
+The tests need an LHAPDF data directory holding NNPDF40MC_lo_as_01180
+(LHAPDF_DATA_PATH, or the paths of the lhapdf module). The calculator evaluates
+PDFs and alpha_s with the regular batched madspace functions; the reference
+values here come from the same functions on the default context, and are
+checked against LHAPDF when the python module is available.
 """
 
 import json
@@ -49,10 +50,39 @@ def grid_files(set_name=PDF_SET, member=0):
     )
 
 
+class PdfRef:
+    """Reference PDF / alpha_s values through the regular batched madspace
+    functions (PartonDensity / RunningCoupling on the default context)."""
+
+    def __init__(self, grid, alpha_s, pids=(21, 2, 1, -1, -2, 3, 4, 5), prefix="ref"):
+        self.grid, self.alpha_s, self.pids = grid, alpha_s, list(pids)
+        ctx = ms.default_context()
+        grid.initialize_globals(ctx, prefix)
+        alpha_s.initialize_globals(ctx, prefix)
+        self._pdf = ms.PartonDensity(grid, self.pids, False, prefix)
+        self._coupling = ms.RunningCoupling(alpha_s, prefix)
+
+    def pdf(self, pid, x, q):
+        """x f(x, q) for arrays (or scalars) x, q."""
+        x, q = np.atleast_1d(np.asarray(x, float)), np.atleast_1d(np.asarray(q, float))
+        values = np.asarray(self._pdf(x, q))[:, self.pids.index(pid)]
+        return values if values.size > 1 else float(values[0])
+
+    def alphas(self, q):
+        q = np.atleast_1d(np.asarray(q, float))
+        values = np.asarray(self._coupling(q))
+        return values if values.size > 1 else float(values[0])
+
+
 @pytest.fixture(scope="module")
 def grids():
     grid_file, info_file = grid_files()
     return ms.PdfGrid(grid_file), ms.AlphaSGrid(info_file)
+
+
+@pytest.fixture(scope="module")
+def ref(grids):
+    return PdfRef(*grids)
 
 
 def sample_points(grid, n, seed=1):
@@ -64,55 +94,23 @@ def sample_points(grid, n, seed=1):
     return x, q
 
 
-def test_scalar_pdf_matches_kernel(grids):
-    """PdfGrid.interpolate reproduces the runtime PartonDensity kernel."""
-    grid, _ = grids
-    ctx = ms.default_context()
-    grid.initialize_globals(ctx, "syst")
-    pids = [-2, -1, 21, 1, 2, 3, 4, 5]
-    pdf = ms.PartonDensity(grid, pids, False, "syst")
-    x, q = sample_points(grid, 500)
-    kernel = np.asarray(pdf(x, q))
-    for j, pid in enumerate(pids):
-        index = grid.pid_index(pid)
-        scalar = np.array([grid.interpolate(index, xi, qi) for xi, qi in zip(x, q)])
-        assert scalar == approx(kernel[:, j], rel=1e-12, abs=1e-14)
-
-
-def test_scalar_alpha_s_matches_kernel(grids):
-    """AlphaSGrid.interpolate reproduces the runtime RunningCoupling kernel."""
-    _, alpha_s = grids
-    ctx = ms.default_context()
-    alpha_s.initialize_globals(ctx, "syst")
-    coupling = ms.RunningCoupling(alpha_s, "syst")
-    rng = np.random.default_rng(2)
-    q = 10 ** rng.uniform(
-        np.log10(alpha_s.q[0]) + 1e-6, np.log10(alpha_s.q[-1]) - 1e-6, 500
-    )
-    kernel = np.asarray(coupling(q))
-    scalar = np.array([alpha_s.interpolate(qi) for qi in q])
-    assert scalar == approx(kernel, rel=1e-12)
-    assert alpha_s.interpolate(91.188) == approx(0.118, rel=1e-3)
-
-
-def test_scalar_matches_lhapdf(grids):
-    """Both interpolations agree with LHAPDF where the python module exists."""
+def test_pdf_matches_lhapdf(grids, ref):
+    """The batched PDF / alpha_s functions the calculator uses agree with LHAPDF
+    where the python module exists."""
     lhapdf = pytest.importorskip("lhapdf")
     lhapdf.setVerbosity(0)
     try:
-        ref = lhapdf.mkPDF(PDF_SET, 0)
+        lha = lhapdf.mkPDF(PDF_SET, 0)
     except RuntimeError:
         pytest.skip("lhapdf cannot load %s" % PDF_SET)
     grid, alpha_s = grids
     x, q = sample_points(grid, 200, seed=3)
     for pid in [21, 2, -1, 5]:
-        index = grid.pid_index(pid)
-        for xi, qi in zip(x, q):
-            assert grid.interpolate(index, xi, qi) == approx(
-                ref.xfxQ(pid, xi, qi), rel=1e-6, abs=1e-9
-            )
-    for qi in q:
-        assert alpha_s.interpolate(qi) == approx(ref.alphasQ(qi), rel=1e-6)
+        values = ref.pdf(pid, x, q)
+        for xi, qi, v in zip(x, q, values):
+            assert v == approx(lha.xfxQ(pid, xi, qi), rel=1e-6, abs=1e-9)
+    for qi, a in zip(q, ref.alphas(q)):
+        assert a == approx(lha.alphasQ(qi), rel=1e-6)
 
 
 def make_config(**kwargs):
@@ -129,7 +127,7 @@ def make_config(**kwargs):
     return config
 
 
-def make_events(grid, alpha_s, n=50, seed=4):
+def make_events(ref, n=50, seed=4):
     """Random u u > u u like events with the columns the combined event buffer
     carries; the PDF product is the nominal one, as the integrand stores it."""
     rng = np.random.default_rng(seed)
@@ -137,10 +135,7 @@ def make_events(grid, alpha_s, n=50, seed=4):
     x2 = 10 ** rng.uniform(-3, -0.3, n)
     scale = 10 ** rng.uniform(1.5, 3, n)
     weight = rng.uniform(0.5, 1.5, n)
-    up = grid.pid_index(2)
-    product = np.array(
-        [grid.interpolate(up, a, s) * grid.interpolate(up, b, s) for a, b, s in zip(x1, x2, scale)]
-    )
+    product = ref.pdf(2, x1, scale) * ref.pdf(2, x2, scale)
     return dict(
         event_weight=list(weight),
         subprocess_index=[0] * n,
@@ -151,10 +146,11 @@ def make_events(grid, alpha_s, n=50, seed=4):
         x2=list(x2),
         fact_scale2=list(scale),
         partial_weight_product=list(product),
+        alpha_qcd=list(ref.alphas(scale)),
     )
 
 
-def test_scale_variations(grids):
+def test_scale_variations(grids, ref):
     """The LO scale reweighting formula, checked against a direct evaluation."""
     grid, alpha_s = grids
     config = make_config()
@@ -167,25 +163,24 @@ def test_scale_variations(grids):
         (1.0, 2.0), (2.0, 0.5), (2.0, 1.0), (2.0, 2.0),
     ]
     assert calc.weight_ids == list(range(1, 9))
-    events = make_events(grid, alpha_s)
+    events = make_events(ref)
     weights = calc.weights(**events)
-    up = grid.pid_index(2)
     for i in range(len(events["event_weight"])):
         w0 = events["event_weight"][i]
         mu = events["ren_scale"][i]
         x1, x2 = events["x1"][i], events["x2"][i]
         for var, w in zip(variations, weights[i]):
-            r_alpha = (alpha_s.interpolate(var.mur * mu) / alpha_s.interpolate(mu)) ** 2
-            r_pdf = (
-                grid.interpolate(up, x1, var.muf * mu) * grid.interpolate(up, x2, var.muf * mu)
-            ) / (grid.interpolate(up, x1, mu) * grid.interpolate(up, x2, mu))
+            r_alpha = (ref.alphas(var.mur * mu) / ref.alphas(mu)) ** 2
+            r_pdf = (ref.pdf(2, x1, var.muf * mu) * ref.pdf(2, x2, var.muf * mu)) / (
+                ref.pdf(2, x1, mu) * ref.pdf(2, x2, mu)
+            )
             assert w == approx(w0 * r_alpha * r_pdf, rel=1e-12)
 
 
-def test_identities(grids):
+def test_identities(grids, ref):
     """Trivial variations give exactly the nominal weight."""
     grid, alpha_s = grids
-    events = make_events(grid, alpha_s, n=20)
+    events = make_events(ref, n=20)
     # no QCD coupling: mu_R variations are the identity
     config = make_config(mur=[0.5, 1.0, 2.0], muf=[1.0])
     calc = ms.SystematicsCalculator(
@@ -211,7 +206,7 @@ def test_non_uniform_qcd_power_drops_mur(grids):
     assert any("renormalisation scale" in w for w in calc.warnings)
 
 
-def test_pdf_member_and_header(grids):
+def test_pdf_member_and_header(grids, ref):
     """A PDF member variation (here the nominal member as a fake second set)
     reweights by the PDF ratio, and the <initrwgt> text follows the
     systematics.py conventions."""
@@ -231,7 +226,7 @@ def test_pdf_member_and_header(grids):
     )
     # nominal-set member requested -> the group starts with the nominal member
     assert [(v.pdf_index) for v in calc.variations] == [-1, 0, 1]
-    events = make_events(grid, alpha_s, n=10)
+    events = make_events(ref, n=10)
     for w0, row in zip(events["event_weight"], calc.weights(**events)):
         # same grid file everywhere: every ratio is exactly one
         assert row == approx([w0, w0, w0], rel=1e-12)
@@ -294,7 +289,7 @@ def random_momenta(n, seed=5):
     return out
 
 
-def test_dynamical_scales(grids):
+def test_dynamical_scales(grids, ref):
     """Dynamical scale variations: the scales from the momenta match their
     definitions, and the weights follow the LO formula with the new scale."""
     grid, alpha_s = grids
@@ -323,22 +318,21 @@ def test_dynamical_scales(grids):
     ]
     header = calc.initrwgt()
     assert 'DYN_SCALE="3" PDF="338500" > dyn_scale_choice=HT/2' in header
-    events = make_events(grid, alpha_s, n=20)
+    events = make_events(ref, n=20)
     events["momenta"] = momenta
     weights = calc.weights(**events)
-    up = grid.pid_index(2)
     for i in range(20):
         w0, mu = events["event_weight"][i], events["ren_scale"][i]
         x1, x2 = events["x1"][i], events["x2"][i]
-        nominal_pdf = grid.interpolate(up, x1, mu) * grid.interpolate(up, x2, mu)
+        nominal_pdf = ref.pdf(2, x1, mu) * ref.pdf(2, x2, mu)
         for var, w in zip(calc.variations, weights[i]):
             mu_dyn = mu if var.dyn == -1 else ms.SystematicsCalculator.dynamical_scale(var.dyn, momenta[i])
-            r_alpha = (alpha_s.interpolate(var.mur * mu_dyn) / alpha_s.interpolate(mu)) ** 2
-            r_pdf = grid.interpolate(up, x1, var.muf * mu_dyn) * grid.interpolate(up, x2, var.muf * mu_dyn) / nominal_pdf
+            r_alpha = (ref.alphas(var.mur * mu_dyn) / ref.alphas(mu)) ** 2
+            r_pdf = ref.pdf(2, x1, var.muf * mu_dyn) * ref.pdf(2, x2, var.muf * mu_dyn) / nominal_pdf
             assert w == approx(w0 * r_alpha * r_pdf, rel=1e-12)
 
 
-def test_event_histograms(grids):
+def test_event_histograms(grids, ref):
     """Event-sample histograms: bin sums equal the mean weight per column,
     the scale envelope brackets the nominal, binomial errors."""
     grid, alpha_s = grids

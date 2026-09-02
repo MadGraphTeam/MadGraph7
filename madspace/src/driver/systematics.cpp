@@ -1,6 +1,7 @@
 #include "madspace/driver/systematics.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <format>
 #include <map>
@@ -118,26 +119,72 @@ double SystematicsCalculator::dynamical_scale(
     }
 }
 
+namespace {
+
+// copy of `grid` restricted to the given PIDs (smaller coefficient tensor)
+PdfGrid reduce_grid(const PdfGrid& grid, const std::vector<int>& pids) {
+    PdfGrid reduced = grid;
+    std::vector<std::size_t> columns;
+    for (int pid : pids) {
+        auto search = std::find(grid.pids.begin(), grid.pids.end(), pid);
+        if (search == grid.pids.end()) {
+            throw std::invalid_argument(
+                std::format("PID {} not found in pdf grid", pid)
+            );
+        }
+        columns.push_back(search - grid.pids.begin());
+    }
+    reduced.pids = pids;
+    for (auto& row : reduced.values) {
+        std::vector<double> new_row;
+        for (std::size_t column : columns) {
+            new_row.push_back(row.at(column));
+        }
+        row = new_row;
+    }
+    return reduced;
+}
+
+std::atomic<std::size_t> calculator_counter{0};
+
+} // namespace
+
+SystematicsCalculator::PdfEvaluator SystematicsCalculator::make_pdf_evaluator(
+    const PdfGrid& grid,
+    const std::vector<int>& pids,
+    const std::string& name,
+    std::size_t alpha_s_index
+) {
+    PdfGrid reduced = reduce_grid(grid, pids);
+    std::string prefix = std::format("{}.{}", _prefix, name);
+    reduced.initialize_globals(_context, prefix);
+    PartonDensity density(reduced, pids, true, prefix);
+    return PdfEvaluator{
+        .runtime = build_runtime(density.function(), _context, false),
+        .pids = pids,
+        .alpha_s_index = alpha_s_index,
+    };
+}
+
 SystematicsCalculator::SystematicsCalculator(
     const SystematicsConfig& config,
     const std::vector<SubprocessSystArgs>& subproc_args,
     const std::optional<PdfGrid>& nominal_pdf,
     const std::optional<AlphaSGrid>& nominal_alpha_s,
-    ContextPtr me_context,
+    ContextPtr context,
     const std::vector<std::optional<MatrixElement>>& matrix_elements,
     const nested_vector2<me_int_t>& me_flavor_remap
 ) :
     _config(config),
     _subproc_args(subproc_args),
-    _nominal_pdf(nominal_pdf),
-    _me_context(me_context) {
+    _context(context ? context : std::make_shared<Context>(cpu_device(), 1)),
+    _prefix(std::format("systematics{}", calculator_counter++)) {
     if (!nominal_alpha_s) {
         throw std::invalid_argument(
             "SystematicsCalculator requires the nominal alpha_s grid"
         );
     }
-    _alpha_s_grids.push_back(nominal_alpha_s.value());
-    if (_config.has_pdf && !_nominal_pdf) {
+    if (_config.has_pdf && !nominal_pdf) {
         throw std::invalid_argument(
             "SystematicsCalculator requires the nominal PDF grid for hadronic beams"
         );
@@ -150,14 +197,36 @@ SystematicsCalculator::SystematicsCalculator(
         }
     }
 
+    // alpha_s of the nominal set: batched RunningCoupling on the context
+    auto add_alpha_s = [&](const AlphaSGrid& grid) {
+        std::size_t index = _alpha_s_runtimes.size();
+        std::string prefix = std::format("{}.alpha_s{}", _prefix, index);
+        grid.initialize_globals(_context, prefix);
+        RunningCoupling coupling(grid, prefix);
+        _alpha_s_runtimes.push_back(build_runtime(coupling.function(), _context, false));
+        return index;
+    };
+    add_alpha_s(nominal_alpha_s.value());
+
+    // the PIDs the events need: both beams of every flavor of every subprocess
+    std::vector<int> pids;
+    for (auto& args : _subproc_args) {
+        for (auto& pdgs : args.beam_pdgs) {
+            for (int pdg : pdgs) {
+                if (std::find(pids.begin(), pids.end(), pdg) == pids.end()) {
+                    pids.push_back(pdg);
+                }
+            }
+        }
+    }
+    std::sort(pids.begin(), pids.end());
+    if (_config.has_pdf) {
+        _nominal_pdf = make_pdf_evaluator(nominal_pdf.value(), pids, "nominal", 0);
+    }
+
     // matrix elements for the subprocesses with mixed alpha_s powers
     _matrix_elements.resize(_subproc_args.size());
     if (!matrix_elements.empty()) {
-        if (!_me_context) {
-            throw std::invalid_argument(
-                "SystematicsCalculator: a context is required to evaluate matrix elements"
-            );
-        }
         if (matrix_elements.size() != _subproc_args.size()) {
             throw std::invalid_argument(
                 "SystematicsCalculator: one matrix element per subprocess expected"
@@ -182,7 +251,7 @@ SystematicsCalculator::SystematicsCalculator(
                 ));
             }
             _matrix_elements.at(i) = MatrixElementData{
-                .runtime = build_runtime(me->function(), _me_context, false),
+                .runtime = build_runtime(me->function(), _context, false),
                 .particle_count = me->particle_count(),
                 .flavor_remap = remap,
             };
@@ -196,7 +265,7 @@ SystematicsCalculator::SystematicsCalculator(
         }
     }
 
-    // load the varied PDF members; the alpha_s grid of a set is shared by its members
+    // the varied PDF members; the alpha_s grid of a set is shared by its members
     std::map<std::string, std::size_t> alpha_s_indices;
     for (auto& spec : _config.pdf_members) {
         if (!_config.has_pdf) {
@@ -225,12 +294,16 @@ SystematicsCalculator::SystematicsCalculator(
                    search != alpha_s_indices.end()) {
             alpha_s_index = search->second;
         } else {
-            alpha_s_index = _alpha_s_grids.size();
-            _alpha_s_grids.push_back(AlphaSGrid(spec.info_file));
+            alpha_s_index = add_alpha_s(AlphaSGrid(spec.info_file));
             alpha_s_indices[spec.info_file] = alpha_s_index;
         }
+        _member_pdfs.push_back(make_pdf_evaluator(
+            PdfGrid(spec.grid_file),
+            pids,
+            std::format("member{}", _members.size()),
+            alpha_s_index
+        ));
         _members.push_back(spec);
-        _member_data.push_back({PdfGrid(spec.grid_file), alpha_s_index});
     }
 
     build_variations();
@@ -414,18 +487,65 @@ std::tuple<double, double, double> SystematicsCalculator::pdf_uncertainty(
     return {central, std::sqrt(sum), std::sqrt(sum)};
 }
 
-double SystematicsCalculator::alpha_s_ratio(
-    std::size_t alpha_s_index, double mur, double ren_scale, int qcd_power
+std::vector<double> SystematicsCalculator::evaluate_pdf(
+    const PdfEvaluator& evaluator,
+    const std::vector<double>& x,
+    const std::vector<double>& q,
+    const std::vector<me_int_t>& slots
 ) const {
-    if (qcd_power == 0 || (mur == 1. && alpha_s_index == 0)) {
-        return 1.;
+    std::size_t count = x.size();
+    std::vector<double> values(count, 0.);
+    if (count == 0) {
+        return values;
     }
-    double alpha_s_nominal = _alpha_s_grids.at(0).interpolate(ren_scale);
-    double alpha_s_varied = _alpha_s_grids.at(alpha_s_index).interpolate(mur * ren_scale);
-    if (alpha_s_nominal == 0.) {
-        return 0.;
+    Tensor x_tensor(DataType::dt_float, {count});
+    Tensor q_tensor(DataType::dt_float, {count});
+    Tensor slot_tensor(DataType::dt_int, {count});
+    auto x_view = x_tensor.view<double, 1>();
+    auto q_view = q_tensor.view<double, 1>();
+    auto slot_view = slot_tensor.view<me_int_t, 1>();
+    for (std::size_t i = 0; i < count; ++i) {
+        x_view[i] = x[i];
+        q_view[i] = q[i];
+        slot_view[i] = slots[i];
     }
-    return std::pow(alpha_s_varied / alpha_s_nominal, qcd_power);
+    TensorVec outputs;
+    {
+        std::lock_guard<std::mutex> lock(_runtime_mutex);
+        outputs = evaluator.runtime->run({x_tensor, q_tensor, slot_tensor});
+    }
+    Tensor result = outputs.at(0).cpu().contiguous();
+    auto result_view = result.view<double, 1>();
+    for (std::size_t i = 0; i < count; ++i) {
+        values[i] = result_view[i];
+    }
+    return values;
+}
+
+std::vector<double> SystematicsCalculator::evaluate_alpha_s(
+    std::size_t alpha_s_index, const std::vector<double>& q
+) const {
+    std::size_t count = q.size();
+    std::vector<double> values(count, 0.);
+    if (count == 0) {
+        return values;
+    }
+    Tensor q_tensor(DataType::dt_float, {count});
+    auto q_view = q_tensor.view<double, 1>();
+    for (std::size_t i = 0; i < count; ++i) {
+        q_view[i] = q[i];
+    }
+    TensorVec outputs;
+    {
+        std::lock_guard<std::mutex> lock(_runtime_mutex);
+        outputs = _alpha_s_runtimes.at(alpha_s_index)->run({q_tensor});
+    }
+    Tensor result = outputs.at(0).cpu().contiguous();
+    auto result_view = result.view<double, 1>();
+    for (std::size_t i = 0; i < count; ++i) {
+        values[i] = result_view[i];
+    }
+    return values;
 }
 
 std::vector<std::array<double, 4>>
@@ -474,7 +594,7 @@ std::vector<double> SystematicsCalculator::matrix_elements(
     }
     TensorVec outputs;
     {
-        std::lock_guard<std::mutex> lock(_me_mutex);
+        std::lock_guard<std::mutex> lock(_runtime_mutex);
         outputs = me_data.runtime->run({momenta, alpha_s_tensor, flavor});
     }
     Tensor result = outputs.at(0).cpu().contiguous();
@@ -517,7 +637,7 @@ void SystematicsCalculator::compute(
     std::size_t count = buffer.event_count();
     std::size_t var_count = _variations.size();
     weights.resize(count * var_count);
-    if (var_count == 0) {
+    if (var_count == 0 || count == 0) {
         return;
     }
     auto& layout = buffer.layout();
@@ -525,160 +645,225 @@ void SystematicsCalculator::compute(
     bool has_beam2 = layout_has(layout, "fact_scale2");
     bool has_partial = layout_has(layout, "partial_weight_product");
     bool has_subproc = layout_has(layout, "subprocess_index");
-    bool use_pdf = _config.has_pdf && (has_beam1 || has_beam2);
+    bool use_pdf = _config.has_pdf && _nominal_pdf && (has_beam1 || has_beam2);
     bool has_dyn = !_config.dyn_scales.empty();
 
-    // The alpha_s dependence of the events of subprocesses with mixed alpha_s
-    // powers comes from re-evaluating the matrix element: collect these events
-    // per subprocess and evaluate them at the nominal and every varied alpha_s.
-    std::vector<AlphaSKey> me_keys;
-    for (auto& var : _variations) {
-        std::size_t alpha_s_index =
-            var.pdf_index >= 0 ? _member_data.at(var.pdf_index).alpha_s_index : 0;
-        if (var.mur != 1. || var.dyn != -1 || alpha_s_index != 0) {
-            AlphaSKey key{alpha_s_index, var.mur, var.dyn};
-            if (std::find_if(me_keys.begin(), me_keys.end(), [&](auto& k) {
-                    return !(k < key) && !(key < k);
-                }) == me_keys.end()) {
-                me_keys.push_back(key);
-            }
-        }
-    }
-    // me_ratios[event][key index] = |M|^2(varied alpha_s) / |M|^2(nominal alpha_s)
-    std::vector<std::vector<double>> me_ratios(count);
-    std::vector<std::vector<double>> dyn_scale_values(count);
-    if (has_dyn) {
-        for (std::size_t i = 0; i < count; ++i) {
-            auto momenta = event_momenta(buffer, i);
-            dyn_scale_values[i].resize(5, 0.);
-            for (int dyn : _config.dyn_scales) {
-                dyn_scale_values[i][dyn] = dynamical_scale(dyn, momenta);
-            }
-        }
-    }
-    auto scale_of = [&](std::size_t i, int dyn, double generated) {
-        return dyn == -1 ? generated : dyn_scale_values[i][dyn];
+    // per-event inputs
+    struct EventInput {
+        double w0, ren_scale, x1, x2, muf1, muf2, alpha_s, nominal_product;
+        int subproc, qcd_power;
+        me_int_t slot1, slot2;
+        bool use_me;
+        std::array<double, 5> dyn_scale;
     };
-    if (!me_keys.empty()) {
-        std::map<int, std::vector<std::size_t>> me_events;
-        for (std::size_t i = 0; i < count; ++i) {
-            auto event = buffer.event(i);
-            int subproc = has_subproc ? event.subprocess_index().value() : 0;
-            if (_subproc_args.at(subproc).qcd_power < 0 && _matrix_elements.at(subproc)) {
-                me_events[subproc].push_back(i);
+    std::vector<EventInput> inputs(count);
+    auto pid_slot = [&](int pdg) -> me_int_t {
+        auto& pids = _nominal_pdf->pids;
+        return std::find(pids.begin(), pids.end(), pdg) - pids.begin();
+    };
+    for (std::size_t i = 0; i < count; ++i) {
+        auto event = buffer.event(i);
+        auto& in = inputs[i];
+        in.w0 = event.weight();
+        in.subproc = has_subproc ? event.subprocess_index().value() : 0;
+        auto& args = _subproc_args.at(in.subproc);
+        in.qcd_power = args.qcd_power;
+        in.use_me = args.qcd_power < 0 && _matrix_elements.at(in.subproc).has_value();
+        in.ren_scale = event.ren_scale();
+        in.alpha_s = event.alpha_qcd();
+        in.x1 = has_beam1 ? event.x1().value() : 0.;
+        in.x2 = has_beam2 ? event.x2().value() : 0.;
+        in.muf1 = has_beam1 ? event.fact_scale1().value() : 0.;
+        in.muf2 = has_beam2 ? event.fact_scale2().value() : 0.;
+        in.slot1 = in.slot2 = 0;
+        in.nominal_product = 1.;
+        if (use_pdf) {
+            auto& pdgs = args.beam_pdgs.at(event.flavor_index());
+            in.slot1 = pid_slot(pdgs.at(0));
+            in.slot2 = pid_slot(pdgs.at(1));
+            if (has_partial) {
+                in.nominal_product = event.partial_weight_product();
             }
+        }
+        in.dyn_scale.fill(0.);
+        if (has_dyn) {
+            auto momenta = event_momenta(buffer, i);
+            for (int dyn : _config.dyn_scales) {
+                in.dyn_scale[dyn] = dynamical_scale(dyn, momenta);
+            }
+        }
+    }
+    auto scale_of = [&](const EventInput& in, int dyn, double generated) {
+        return dyn == -1 ? generated : in.dyn_scale[dyn];
+    };
+
+    // Nominal PDF product when the events do not carry it: one batched call
+    if (use_pdf && !has_partial) {
+        std::vector<double> x, q;
+        std::vector<me_int_t> slots;
+        for (auto& in : inputs) {
+            if (has_beam1) {
+                x.push_back(in.x1), q.push_back(in.muf1), slots.push_back(in.slot1);
+            }
+            if (has_beam2) {
+                x.push_back(in.x2), q.push_back(in.muf2), slots.push_back(in.slot2);
+            }
+        }
+        auto values = evaluate_pdf(_nominal_pdf.value(), x, q, slots);
+        for (std::size_t i = 0, n = 0; i < count; ++i) {
+            double product = 1.;
+            if (has_beam1) {
+                product *= values[n++];
+            }
+            if (has_beam2) {
+                product *= values[n++];
+            }
+            inputs[i].nominal_product = product;
+        }
+    }
+
+    // PDF part: R_pdf[event][variation], one batched call per grid
+    // (nominal grid: every scale variation; member grids: the nominal scales)
+    std::vector<std::vector<double>> r_pdf(count, std::vector<double>(var_count, 1.));
+    if (use_pdf) {
+        auto evaluate_variations = [&](const PdfEvaluator& evaluator,
+                                       const std::vector<std::size_t>& var_indices) {
+            std::vector<double> x, q;
+            std::vector<me_int_t> slots;
+            for (auto& in : inputs) {
+                for (std::size_t k : var_indices) {
+                    auto& var = _variations.at(k);
+                    if (has_beam1) {
+                        x.push_back(in.x1);
+                        q.push_back(var.muf * scale_of(in, var.dyn, in.muf1));
+                        slots.push_back(in.slot1);
+                    }
+                    if (has_beam2) {
+                        x.push_back(in.x2);
+                        q.push_back(var.muf * scale_of(in, var.dyn, in.muf2));
+                        slots.push_back(in.slot2);
+                    }
+                }
+            }
+            auto values = evaluate_pdf(evaluator, x, q, slots);
+            for (std::size_t i = 0, n = 0; i < count; ++i) {
+                for (std::size_t k : var_indices) {
+                    double product = 1.;
+                    if (has_beam1) {
+                        product *= values[n++];
+                    }
+                    if (has_beam2) {
+                        product *= values[n++];
+                    }
+                    r_pdf[i][k] = inputs[i].nominal_product == 0.
+                        ? 0.
+                        : product / inputs[i].nominal_product;
+                }
+            }
+        };
+        std::vector<std::size_t> nominal_grid_vars;
+        std::vector<std::vector<std::size_t>> member_vars(_member_pdfs.size());
+        for (std::size_t k = 0; k < var_count; ++k) {
+            auto& var = _variations.at(k);
+            if (var.is_nominal()) {
+                continue;
+            }
+            if (var.pdf_index == -1) {
+                if (var.muf != 1. || var.dyn != -1) {
+                    nominal_grid_vars.push_back(k);
+                }
+            } else {
+                member_vars.at(var.pdf_index).push_back(k);
+            }
+        }
+        if (!nominal_grid_vars.empty()) {
+            evaluate_variations(_nominal_pdf.value(), nominal_grid_vars);
+        }
+        for (std::size_t m = 0; m < _member_pdfs.size(); ++m) {
+            if (!member_vars[m].empty()) {
+                evaluate_variations(_member_pdfs[m], member_vars[m]);
+            }
+        }
+    }
+
+    // alpha_s part: the distinct (alpha_s grid, mur, dyn) combinations, one
+    // batched alpha_s call each; the matrix element is re-evaluated for the
+    // events of the mixed-order subprocesses
+    std::vector<AlphaSKey> keys;
+    std::vector<std::vector<std::size_t>> key_vars;
+    for (std::size_t k = 0; k < var_count; ++k) {
+        auto& var = _variations.at(k);
+        std::size_t alpha_s_index =
+            var.pdf_index >= 0 ? _member_pdfs.at(var.pdf_index).alpha_s_index : 0;
+        if (var.mur == 1. && var.dyn == -1 && alpha_s_index == 0) {
+            continue;
+        }
+        AlphaSKey key{alpha_s_index, var.mur, var.dyn};
+        std::size_t pos = 0;
+        for (; pos < keys.size(); ++pos) {
+            if (!(keys[pos] < key) && !(key < keys[pos])) {
+                break;
+            }
+        }
+        if (pos == keys.size()) {
+            keys.push_back(key);
+            key_vars.emplace_back();
+        }
+        key_vars[pos].push_back(k);
+    }
+    std::vector<std::vector<double>> r_alpha(count, std::vector<double>(var_count, 1.));
+    std::map<int, std::vector<std::size_t>> me_events;
+    std::map<int, std::vector<double>> me_nominal;
+    for (std::size_t i = 0; i < count; ++i) {
+        if (inputs[i].use_me) {
+            me_events[inputs[i].subproc].push_back(i);
+        }
+    }
+    if (!keys.empty()) {
+        for (auto& [subproc, indices] : me_events) {
+            std::vector<double> alpha_s(indices.size());
+            for (std::size_t n = 0; n < indices.size(); ++n) {
+                alpha_s[n] = inputs[indices[n]].alpha_s;
+            }
+            me_nominal[subproc] = matrix_elements(subproc, buffer, indices, alpha_s);
+        }
+    }
+    for (std::size_t p = 0; p < keys.size(); ++p) {
+        auto& key = keys[p];
+        std::vector<double> q(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            q[i] = key.mur * scale_of(inputs[i], key.dyn, inputs[i].ren_scale);
+        }
+        auto varied = evaluate_alpha_s(key.alpha_s_index, q);
+        std::vector<double> ratio(count, 1.);
+        for (std::size_t i = 0; i < count; ++i) {
+            auto& in = inputs[i];
+            if (in.use_me || in.qcd_power == 0) {
+                continue;
+            }
+            ratio[i] = in.alpha_s == 0. ? 0. : std::pow(varied[i] / in.alpha_s, in.qcd_power);
         }
         for (auto& [subproc, indices] : me_events) {
             std::vector<double> alpha_s(indices.size());
             for (std::size_t n = 0; n < indices.size(); ++n) {
-                alpha_s[n] = buffer.event(indices[n]).alpha_qcd();
+                alpha_s[n] = varied[indices[n]];
             }
-            auto nominal = matrix_elements(subproc, buffer, indices, alpha_s);
+            auto me = matrix_elements(subproc, buffer, indices, alpha_s);
+            auto& nominal = me_nominal.at(subproc);
             for (std::size_t n = 0; n < indices.size(); ++n) {
-                me_ratios[indices[n]].assign(me_keys.size(), 1.);
+                ratio[indices[n]] = nominal[n] == 0. ? 0. : me[n] / nominal[n];
             }
-            for (std::size_t k = 0; k < me_keys.size(); ++k) {
-                auto& key = me_keys[k];
-                for (std::size_t n = 0; n < indices.size(); ++n) {
-                    auto event = buffer.event(indices[n]);
-                    double mu = scale_of(indices[n], key.dyn, event.ren_scale());
-                    alpha_s[n] = _alpha_s_grids.at(key.alpha_s_index).interpolate(key.mur * mu);
-                }
-                auto varied = matrix_elements(subproc, buffer, indices, alpha_s);
-                for (std::size_t n = 0; n < indices.size(); ++n) {
-                    me_ratios[indices[n]][k] =
-                        nominal[n] == 0. ? 0. : varied[n] / nominal[n];
-                }
+        }
+        for (std::size_t k : key_vars[p]) {
+            for (std::size_t i = 0; i < count; ++i) {
+                r_alpha[i][k] = ratio[i];
             }
         }
     }
-    auto me_key_index = [&](std::size_t alpha_s_index, double mur, int dyn) {
-        AlphaSKey key{alpha_s_index, mur, dyn};
-        for (std::size_t k = 0; k < me_keys.size(); ++k) {
-            if (!(me_keys[k] < key) && !(key < me_keys[k])) {
-                return k;
-            }
-        }
-        throw std::logic_error("alpha_s key not found");
-    };
 
     for (std::size_t i = 0; i < count; ++i) {
-        auto event = buffer.event(i);
-        double w0 = event.weight();
-        int subproc = has_subproc ? event.subprocess_index().value() : 0;
-        auto& args = _subproc_args.at(subproc);
-        bool use_me = args.qcd_power < 0 && _matrix_elements.at(subproc);
-        double ren_scale = event.ren_scale();
-        double x1 = has_beam1 ? event.x1().value() : 0.;
-        double x2 = has_beam2 ? event.x2().value() : 0.;
-        double muf1 = has_beam1 ? event.fact_scale1().value() : 0.;
-        double muf2 = has_beam2 ? event.fact_scale2().value() : 0.;
-        int pdg1 = 0, pdg2 = 0;
-        std::size_t pid1 = 0, pid2 = 0;
-        double nominal_product = 1.;
-        if (use_pdf) {
-            auto& pdgs = args.beam_pdgs.at(event.flavor_index());
-            pdg1 = pdgs.at(0);
-            pdg2 = pdgs.at(1);
-            pid1 = has_beam1 ? _nominal_pdf->pid_index(pdg1) : 0;
-            pid2 = has_beam2 ? _nominal_pdf->pid_index(pdg2) : 0;
-            if (has_partial) {
-                nominal_product = event.partial_weight_product();
-            } else {
-                nominal_product =
-                    (has_beam1 ? _nominal_pdf->interpolate(pid1, x1, muf1) : 1.) *
-                    (has_beam2 ? _nominal_pdf->interpolate(pid2, x2, muf2) : 1.);
-            }
-        }
-
         for (std::size_t k = 0; k < var_count; ++k) {
-            auto& var = _variations.at(k);
-            double w = w0;
-            if (var.is_nominal()) {
-                weights[i * var_count + k] = w;
-                continue;
-            }
-            const PdfGrid* grid = _nominal_pdf ? &_nominal_pdf.value() : nullptr;
-            std::size_t alpha_s_index = 0;
-            std::size_t member_pid1 = pid1, member_pid2 = pid2;
-            if (var.pdf_index >= 0) {
-                auto& member = _member_data.at(var.pdf_index);
-                grid = &member.grid;
-                alpha_s_index = member.alpha_s_index;
-                if (use_pdf) {
-                    member_pid1 = has_beam1 ? grid->pid_index(pdg1) : 0;
-                    member_pid2 = has_beam2 ? grid->pid_index(pdg2) : 0;
-                }
-            }
-            // renormalisation scale / alpha_s part
-            if (var.mur != 1. || var.dyn != -1 || alpha_s_index != 0) {
-                if (use_me) {
-                    w *= me_ratios[i].at(me_key_index(alpha_s_index, var.mur, var.dyn));
-                } else {
-                    double mu_r = scale_of(i, var.dyn, ren_scale);
-                    if (var.dyn == -1) {
-                        w *= alpha_s_ratio(alpha_s_index, var.mur, ren_scale, args.qcd_power);
-                    } else if (args.qcd_power != 0) {
-                        double a0 = _alpha_s_grids.at(0).interpolate(ren_scale);
-                        double a1 = _alpha_s_grids.at(alpha_s_index).interpolate(var.mur * mu_r);
-                        w *= a0 == 0. ? 0. : std::pow(a1 / a0, args.qcd_power);
-                    }
-                }
-            }
-            // factorisation scale / PDF part
-            if (use_pdf && w != 0.) {
-                if (nominal_product == 0.) {
-                    w = 0.;
-                } else {
-                    double scale1 = var.muf * scale_of(i, var.dyn, muf1);
-                    double scale2 = var.muf * scale_of(i, var.dyn, muf2);
-                    double varied =
-                        (has_beam1 ? grid->interpolate(member_pid1, x1, scale1) : 1.) *
-                        (has_beam2 ? grid->interpolate(member_pid2, x2, scale2) : 1.);
-                    w *= varied / nominal_product;
-                }
-            }
-            weights[i * var_count + k] = w;
+            weights[i * var_count + k] = inputs[i].w0 * r_alpha[i][k] * r_pdf[i][k];
         }
     }
 }

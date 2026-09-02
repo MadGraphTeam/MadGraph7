@@ -24,14 +24,6 @@ struct PdfGrid {
     std::vector<std::size_t> logx_shape(bool batch_dim = false) const;
     std::vector<std::size_t> logq2_shape(bool batch_dim = false) const;
     void initialize_globals(ContextPtr context, const std::string& prefix = "") const;
-
-    // Index of a PID in the grid; throws if it is not part of the grid.
-    std::size_t pid_index(int pid) const;
-    // Scalar evaluation of x*f(x, q) with the same Hermite interpolation as the
-    // runtime kernel (kernel_interpolate_pdf): the coefficients of the cell
-    // containing (x, q) are computed on the fly instead of read from the
-    // precomputed coefficient tensor. Returns 0 outside the grid, like the kernel.
-    double interpolate(std::size_t pid_index, double x, double q) const;
 };
 
 class PartonDensity : public FunctionGenerator {
@@ -69,10 +61,6 @@ struct AlphaSGrid {
     std::vector<std::size_t> coefficients_shape(bool batch_dim = false) const;
     std::vector<std::size_t> logq2_shape(bool batch_dim = false) const;
     void initialize_globals(ContextPtr context, const std::string& prefix = "") const;
-
-    // Scalar evaluation of alpha_s(q) with the same interpolation as the runtime
-    // kernel (kernel_interpolate_alpha_s). Returns 0 outside the grid.
-    double interpolate(double q) const;
 };
 
 class RunningCoupling : public FunctionGenerator {
