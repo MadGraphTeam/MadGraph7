@@ -490,7 +490,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("has_cut") = false
         );
 
-    py::classh<Propagator>(m, "Propagator")
+    py::classh<Propagator>(m, "Propagator", pydoc::doc("Propagator"))
         .def(
             py::init<double, double, int, double, double, int>(),
             py::arg("mass") = 0.,
@@ -500,12 +500,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("e_max") = 0.,
             py::arg("pdg_id") = 0
         )
-        .def_readonly("mass", &Propagator::mass)
-        .def_readonly("width", &Propagator::width)
-        .def_readonly("integration_order", &Propagator::integration_order)
-        .def_readonly("e_min", &Propagator::e_min)
-        .def_readonly("e_max", &Propagator::e_max)
-        .def_readonly("pdg_id", &Propagator::pdg_id);
+        .def_readonly("mass", &Propagator::mass, pydoc::doc("Propagator::mass"))
+        .def_readonly("width", &Propagator::width, pydoc::doc("Propagator::width"))
+        .def_readonly(
+            "integration_order",
+            &Propagator::integration_order,
+            pydoc::doc("Propagator::integration_order")
+        )
+        .def_readonly("e_min", &Propagator::e_min, pydoc::doc("Propagator::e_min"))
+        .def_readonly("e_max", &Propagator::e_max, pydoc::doc("Propagator::e_max"))
+        .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"));
 
     py::classh<TPropagatorMapping, Mapping>(m, "TPropagatorMapping")
         .def(
@@ -687,11 +691,34 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("observables")
         );
 
-    py::classh<Diagram::LineRef>(m, "LineRef")
-        .def(py::init<std::string>(), py::arg("str"))
+    auto line_ref =
+        py::classh<Diagram::LineRef>(m, "LineRef", pydoc::doc("Diagram::LineRef"));
+    add_enum<Diagram::LineType>(
+        line_ref,
+        "LineType",
+        {
+            {"incoming", Diagram::incoming},
+            {"outgoing", Diagram::outgoing},
+            {"propagator", Diagram::propagator},
+        }
+    );
+    line_ref
+        .def(
+            py::init<Diagram::LineType, std::size_t>(),
+            py::arg("type"),
+            py::arg("index"),
+            pydoc::doc("Diagram::LineRef::LineRef")
+        )
+        .def(
+            py::init<std::string>(),
+            py::arg("str"),
+            pydoc::doc("Diagram::LineRef::LineRef#2")
+        )
+        .def("type", &Diagram::LineRef::type, pydoc::doc("Diagram::LineRef::type"))
+        .def("index", &Diagram::LineRef::index, pydoc::doc("Diagram::LineRef::index"))
         .def("__repr__", &to_string<Diagram::LineRef>);
     py::implicitly_convertible<std::string, Diagram::LineRef>();
-    py::classh<Diagram>(m, "Diagram")
+    py::classh<Diagram>(m, "Diagram", pydoc::doc("Diagram"))
         .def(
             py::init<
                 std::vector<double>&,
@@ -701,48 +728,141 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("incoming_masses"),
             py::arg("outgoing_masses"),
             py::arg("propagators"),
-            py::arg("vertices")
+            py::arg("vertices"),
+            pydoc::doc("Diagram::Diagram")
         )
-        .def_property_readonly("incoming_masses", &Diagram::incoming_masses)
-        .def_property_readonly("outgoing_masses", &Diagram::outgoing_masses)
-        .def_property_readonly("propagators", &Diagram::propagators)
-        .def_property_readonly("vertices", &Diagram::vertices)
-        .def_property_readonly("incoming_vertices", &Diagram::incoming_vertices)
-        .def_property_readonly("outgoing_vertices", &Diagram::outgoing_vertices)
-        .def_property_readonly("propagator_vertices", &Diagram::propagator_vertices);
-    py::classh<Topology::Decay>(m, "Decay")
-        .def_readonly("index", &Topology::Decay::index)
-        .def_readonly("parent_index", &Topology::Decay::parent_index)
-        .def_readonly("child_indices", &Topology::Decay::child_indices)
-        .def_readonly("mass", &Topology::Decay::mass)
-        .def_readonly("width", &Topology::Decay::width)
-        .def_readonly("e_min", &Topology::Decay::e_min)
-        .def_readonly("e_max", &Topology::Decay::e_max)
-        .def_readonly("pdg_id", &Topology::Decay::pdg_id)
-        .def_readonly("on_shell", &Topology::Decay::on_shell)
-        .def_readonly("on_shell_boundary", &Topology::Decay::on_shell_boundary);
+        .def_property_readonly(
+            "incoming_masses",
+            &Diagram::incoming_masses,
+            pydoc::doc("Diagram::incoming_masses")
+        )
+        .def_property_readonly(
+            "outgoing_masses",
+            &Diagram::outgoing_masses,
+            pydoc::doc("Diagram::outgoing_masses")
+        )
+        .def_property_readonly(
+            "propagators", &Diagram::propagators, pydoc::doc("Diagram::propagators")
+        )
+        .def_property_readonly(
+            "vertices", &Diagram::vertices, pydoc::doc("Diagram::vertices")
+        )
+        .def_property_readonly(
+            "incoming_vertices",
+            &Diagram::incoming_vertices,
+            pydoc::doc("Diagram::incoming_vertices")
+        )
+        .def_property_readonly(
+            "outgoing_vertices",
+            &Diagram::outgoing_vertices,
+            pydoc::doc("Diagram::outgoing_vertices")
+        )
+        .def_property_readonly(
+            "propagator_vertices",
+            &Diagram::propagator_vertices,
+            pydoc::doc("Diagram::propagator_vertices")
+        );
+    py::classh<Topology::Decay>(m, "Decay", pydoc::doc("Topology::Decay"))
+        .def_readonly(
+            "index", &Topology::Decay::index, pydoc::doc("Topology::Decay::index")
+        )
+        .def_readonly(
+            "parent_index",
+            &Topology::Decay::parent_index,
+            pydoc::doc("Topology::Decay::parent_index")
+        )
+        .def_readonly(
+            "child_indices",
+            &Topology::Decay::child_indices,
+            pydoc::doc("Topology::Decay::child_indices")
+        )
+        .def_readonly(
+            "mass", &Topology::Decay::mass, pydoc::doc("Topology::Decay::mass")
+        )
+        .def_readonly(
+            "width", &Topology::Decay::width, pydoc::doc("Topology::Decay::width")
+        )
+        .def_readonly(
+            "e_min", &Topology::Decay::e_min, pydoc::doc("Topology::Decay::e_min")
+        )
+        .def_readonly(
+            "e_max", &Topology::Decay::e_max, pydoc::doc("Topology::Decay::e_max")
+        )
+        .def_readonly(
+            "pdg_id", &Topology::Decay::pdg_id, pydoc::doc("Topology::Decay::pdg_id")
+        )
+        .def_readonly(
+            "on_shell",
+            &Topology::Decay::on_shell,
+            pydoc::doc("Topology::Decay::on_shell")
+        )
+        .def_readonly(
+            "on_shell_boundary",
+            &Topology::Decay::on_shell_boundary,
+            pydoc::doc("Topology::Decay::on_shell_boundary")
+        );
     auto& topology =
-        py::classh<Topology>(m, "Topology")
-            .def(py::init<const Diagram&>(), py::arg("diagram"))
-            .def_static("topologies", &Topology::topologies, py::arg("diagram"))
-            .def_property_readonly("t_propagator_count", &Topology::t_propagator_count)
-            .def_property_readonly(
-                "t_integration_order", &Topology::t_integration_order
+        py::classh<Topology>(m, "Topology", pydoc::doc("Topology"))
+            .def(
+                py::init<const Diagram&>(),
+                py::arg("diagram"),
+                pydoc::doc("Topology::Topology")
+            )
+            .def_static(
+                "topologies",
+                &Topology::topologies,
+                py::arg("diagram"),
+                pydoc::doc("Topology::topologies")
             )
             .def_property_readonly(
-                "t_propagator_masses", &Topology::t_propagator_masses
+                "t_propagator_count",
+                &Topology::t_propagator_count,
+                pydoc::doc("Topology::t_propagator_count")
             )
             .def_property_readonly(
-                "t_propagator_widths", &Topology::t_propagator_widths
+                "t_integration_order",
+                &Topology::t_integration_order,
+                pydoc::doc("Topology::t_integration_order")
             )
-            .def_property_readonly("decays", &Topology::decays)
             .def_property_readonly(
-                "decay_integration_order", &Topology::decay_integration_order
+                "t_propagator_masses",
+                &Topology::t_propagator_masses,
+                pydoc::doc("Topology::t_propagator_masses")
             )
-            .def_property_readonly("outgoing_indices", &Topology::outgoing_indices)
-            .def_property_readonly("incoming_masses", &Topology::incoming_masses)
-            .def_property_readonly("outgoing_masses", &Topology::outgoing_masses)
-            .def("propagator_momentum_terms", &Topology::propagator_momentum_terms)
+            .def_property_readonly(
+                "t_propagator_widths",
+                &Topology::t_propagator_widths,
+                pydoc::doc("Topology::t_propagator_widths")
+            )
+            .def_property_readonly(
+                "decays", &Topology::decays, pydoc::doc("Topology::decays")
+            )
+            .def_property_readonly(
+                "decay_integration_order",
+                &Topology::decay_integration_order,
+                pydoc::doc("Topology::decay_integration_order")
+            )
+            .def_property_readonly(
+                "outgoing_indices",
+                &Topology::outgoing_indices,
+                pydoc::doc("Topology::outgoing_indices")
+            )
+            .def_property_readonly(
+                "incoming_masses",
+                &Topology::incoming_masses,
+                pydoc::doc("Topology::incoming_masses")
+            )
+            .def_property_readonly(
+                "outgoing_masses",
+                &Topology::outgoing_masses,
+                pydoc::doc("Topology::outgoing_masses")
+            )
+            .def(
+                "propagator_momentum_terms",
+                &Topology::propagator_momentum_terms,
+                py::arg("only_decays") = false,
+                pydoc::doc("Topology::propagator_momentum_terms")
+            )
             .def("__str__", &Topology::to_string);
     py::classh<PhaseSpaceMapping, Mapping> psmap(m, "PhaseSpaceMapping");
     add_enum<PhaseSpaceMapping::TChannelMode>(
