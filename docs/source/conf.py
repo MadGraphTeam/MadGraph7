@@ -33,11 +33,19 @@ release = "0.2.2"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.mathjax",
-    # "sphinx.ext.napoleon",
+    "sphinx.ext.napoleon",
     # "sphinx.ext.linkcode",
     "sphinx_autodoc_typehints",
     "breathe",
 ]
+
+# The docstrings generated from the Doxygen comments use Google-style "Args:"
+# blocks (see madspace/generate_docstrings.py); napoleon turns them into proper
+# parameter field lists. Keep the numpy parser off to avoid ambiguity.
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_use_param = True
+napoleon_use_rtype = True
 
 templates_path = ["_templates"]
 exclude_patterns = []
