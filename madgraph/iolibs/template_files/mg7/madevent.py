@@ -618,10 +618,6 @@ class MadgraphProcess:
             "me_backend": me_backend,
             "flavor_remap": flavor_remap,
         }
-        logger.info("systematics: %d variation weights per event (%d scale, %d PDF members)",
-                    self.systematics.weight_count,
-                    sum(1 for v in self.systematics.variations if v.is_scale),
-                    len(self.systematics.members))
         return self.systematics
 
     _DYN_SCALE_CODES = {
@@ -735,21 +731,35 @@ class MadgraphProcess:
         xsec = nominal.get("cross_section")
         if not xsec:
             return
-        logger.info("#***************************************************************************")
-        logger.info("#")
-        logger.info("# original cross-section: %s pb", xsec)
+        def format_variation(up, down):
+            # right-justify the signed numbers (not the sign alone) so the %
+            # values line up across rows, with extra spacing between the two
+            return f"{'+%.3g' % up:>6}%   {'-%.3g' % down:>6}%"
+
+        scale_count = sum(1 for v in self.systematics.variations if v.is_scale)
+        member_count = len(self.systematics.members)
+        rows = [("Variations per event:",
+                 f"{self.systematics.weight_count} ({scale_count} scale, {member_count} PDF members)")]
+        for pdf in summary.get("pdf", []):
+            rows.append(("PDF set:", f"{pdf['pdf_set']}, {pdf['error_type']}"))
+        rows.append(("Original cross-section:", f"{xsec} pb"))
         if "scale" in summary:
             lo, hi = summary["scale"]["min"], summary["scale"]["max"]
-            logger.info("#     scale variation: +%.3g%% -%.3g%%",
-                        (hi - xsec) / xsec * 100, (xsec - lo) / xsec * 100)
+            rows.append(("Scale variation:", format_variation(
+                (hi - xsec) / xsec * 100, (xsec - lo) / xsec * 100)))
         for pdf in summary.get("pdf", []):
             if "uncertainty_up" in pdf and pdf.get("central"):
-                logger.info("#     PDF variation (%s, %s): +%.3g%% -%.3g%%",
-                            pdf["pdf_set"], pdf["error_type"],
-                            pdf["uncertainty_up"] / pdf["central"] * 100,
-                            pdf["uncertainty_down"] / pdf["central"] * 100)
-        logger.info("#")
-        logger.info("#***************************************************************************")
+                rows.append(("PDF variation:", format_variation(
+                    pdf["uncertainty_up"] / pdf["central"] * 100,
+                    pdf["uncertainty_down"] / pdf["central"] * 100)))
+        if self.event_generator_config.verbosity == ms.Verbosity.pretty:
+            box = ms.PrettyBox("Systematics", len(rows), [24, 0])
+            box.set_column(0, [label for label, _ in rows])
+            box.set_column(1, [value for _, value in rows])
+            box.print_first()
+        else:
+            for label, value in rows:
+                logger.info("systematics, %s %s", label, value)
 
     def init_generator_config(self) -> None:
         run_args = self.run_card["run"]
