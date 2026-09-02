@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <optional>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -52,6 +53,17 @@ struct LHEParticle {
     double spin;
 };
 
+// LO reweighting inputs of one event, written as <mgrwt> block (the format
+// MadEvent uses, read by lhe_parser.Event.parse_lo_weight)
+struct LOReweightInfo {
+    int qcd_power;
+    double ren_scale;
+    bool has_beam1, has_beam2;
+    int pdg1, pdg2;
+    double x1, x2;
+    double fact_scale1, fact_scale2;
+};
+
 struct LHEEvent {
     // event-level information as defined in arXiv:0109068
     int process_id;
@@ -60,6 +72,11 @@ struct LHEEvent {
     double alpha_qed;
     double alpha_qcd;
     std::vector<LHEParticle> particles;
+    // optional LHEF v3 weights (<rwgt> block); ids and values have the same length
+    std::vector<int> rwgt_ids;
+    std::vector<double> rwgt;
+    // optional <mgrwt> block
+    std::optional<LOReweightInfo> lo_info;
 
     void format_to(std::string& buffer) const;
 };

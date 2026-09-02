@@ -39,3 +39,33 @@ NamedVector<Value> ObservableHistograms::build_function_impl(
     }
     return {return_types().keys(), histograms};
 }
+
+ObservableValues::ObservableValues(const std::vector<Observable>& observables) :
+    FunctionGenerator(
+        "ObservableValues",
+        {{"momenta", observables.at(0).arg_types().at(0)}},
+        [&]() {
+            NamedVector<Type> ret_types;
+            for (std::size_t i = 0; i < observables.size(); ++i) {
+                // same type as the observable itself (event-level observables can
+                // return a vector per event; like the histogram op, the first
+                // component is histogrammed)
+                ret_types.push_back(
+                    std::format("value{}", i), observables.at(i).return_types().at(0)
+                );
+            }
+            return ret_types;
+        }()
+    ),
+    _observables(observables) {}
+
+NamedVector<Value> ObservableValues::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value momenta = args.at(0);
+    ValueVec values;
+    for (auto& obs : _observables) {
+        values.push_back(obs.build_function(fb, {momenta}).at(0));
+    }
+    return {return_types().keys(), values};
+}

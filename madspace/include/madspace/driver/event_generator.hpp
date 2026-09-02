@@ -17,6 +17,8 @@
 #include "madspace/driver/io.hpp"
 #include "madspace/driver/lhe_output.hpp"
 #include "madspace/driver/status_file.hpp"
+#include "madspace/driver/systematics.hpp"
+#include "madspace/driver/event_histograms.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
 #include "madspace/phasespace.hpp"
 
@@ -41,12 +43,27 @@ public:
     EventGenerator& operator=(const EventGenerator&) = delete;
     void survey();
     void generate();
-    void combine_to_compact_npy(const std::string& file_name);
-    void combine_to_lhe_npy(const std::string& file_name, LHECompleter& lhe_completer);
+    // The optional SystematicsCalculator adds the scale/PDF variation weights to
+    // the written events (npy columns rwgt_<id>, LHE <rwgt> blocks); the
+    // optional EventHistograms are filled with the written events and all their
+    // weights (info.json "event_histograms").
+    void combine_to_compact_npy(
+        const std::string& file_name,
+        SystematicsCalculator* systematics = nullptr,
+        EventHistograms* histograms = nullptr
+    );
+    void combine_to_lhe_npy(
+        const std::string& file_name,
+        LHECompleter& lhe_completer,
+        SystematicsCalculator* systematics = nullptr,
+        EventHistograms* histograms = nullptr
+    );
     void combine_to_lhe(
         const std::string& file_name,
         LHECompleter& lhe_completer,
-        const LHEMeta& meta = {}
+        const LHEMeta& meta = {},
+        SystematicsCalculator* systematics = nullptr,
+        EventHistograms* histograms = nullptr
     );
     GeneratorStatus status() const { return _status; }
     std::vector<GeneratorStatus> channel_status() const;
@@ -89,6 +106,8 @@ private:
     PrettyBox _pretty_box_lower;
     std::shared_ptr<StatusFile> _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
+    SystematicsCalculator* _systematics = nullptr;
+    EventHistograms* _event_histograms = nullptr;
 
     bool start_jobs();
     void update_integral();
@@ -109,6 +128,27 @@ private:
         std::size_t event_index,
         std::mt19937& rand_gen
     );
+    // Layout of the combined events as read from the channel files
+    DataLayout combined_layout() const;
+    // Layout of the written events: the reweighting inputs are dropped unless
+    // requested, and the systematic weight columns are appended
+    DataLayout output_layout(int event_flags, std::size_t particle_flags) const;
+    void copy_event_fields(
+        EventBuffer& in_buffer,
+        std::size_t in_index,
+        EventBuffer& out_buffer,
+        std::size_t out_index,
+        const std::vector<double>& syst_weights
+    );
+    void fill_systematics(
+        LHEEvent& lhe_event,
+        EventBuffer& buffer,
+        std::size_t event_index,
+        const std::vector<double>& syst_weights,
+        const std::vector<int>& syst_ids
+    );
+    // systematics weights + event histograms for one combined batch
+    void process_combined_batch(EventBuffer& buffer, std::vector<double>& syst_weights);
 
     void init_status(const std::string& status);
     void write_status(const std::string& status, bool force_write);

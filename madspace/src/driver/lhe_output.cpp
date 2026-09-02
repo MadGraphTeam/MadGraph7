@@ -138,6 +138,31 @@ void LHEEvent::format_to(std::string& buffer) const {
             particle.spin
         );
     }
+    if (lo_info && lo_info->qcd_power >= 0 && lo_info->has_beam1 &&
+        lo_info->has_beam2) {
+        std::format_to(
+            insert_iter,
+            "<mgrwt>\n<rscale> {} {:.8e}</rscale>\n<asrwt>0</asrwt>\n"
+            "<pdfrwt beam=\"1\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
+            "<pdfrwt beam=\"2\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
+            "<totfact> 1.0</totfact>\n</mgrwt>\n",
+            lo_info->qcd_power,
+            lo_info->ren_scale,
+            lo_info->pdg1,
+            lo_info->x1,
+            lo_info->fact_scale1,
+            lo_info->pdg2,
+            lo_info->x2,
+            lo_info->fact_scale2
+        );
+    }
+    if (!rwgt.empty()) {
+        buffer += "<rwgt>\n";
+        for (auto [id, value] : zip(rwgt_ids, rwgt)) {
+            std::format_to(insert_iter, "<wgt id='{}'> {:+13.7e} </wgt>\n", id, value);
+        }
+        buffer += "</rwgt>\n";
+    }
     buffer += "</event>\n";
 }
 

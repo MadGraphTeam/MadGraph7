@@ -175,25 +175,128 @@ def main() -> None:
         config=config,
     )
 
+    # scale/PDF systematics (as configured when the gridpack was made)
+    systematics = load_systematics(run_card, device_types, param_card_path)
+
     # run generation
     event_generator.generate()
     output_format = args.output_format
     if output_format == "compact_npy":
         event_generator.combine_to_compact_npy(
-            os.path.join(run_path, "events.npy")
+            os.path.join(run_path, "events.npy"), systematics
         )
     elif output_format == "lhe_npy":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         event_generator.combine_to_lhe_npy(
-            os.path.join(run_path, "events.npy"), lhe_completer
+            os.path.join(run_path, "events.npy"), lhe_completer, systematics
         )
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         event_generator.combine_to_lhe(
-            os.path.join(run_path, "events.lhe"), lhe_completer
+            os.path.join(run_path, "events.lhe"), lhe_completer, ms.LHEMeta(),
+            systematics
         )
     else:
         raise ValueError("Unknown output format")
+    if systematics is not None:
+        data = json.loads(systematics.summary())
+        data["initrwgt"] = systematics.initrwgt()
+        data["columns"] = ["rwgt_%d" % i for i in systematics.weight_ids]
+        with open(os.path.join(run_path, "events.weights.json"), "w") as f:
+            json.dump(data, f, indent=1)
+
+
+def _pdf_search_paths(stored_path):
+    """Directories in which the LHAPDF grids may live: the LHAPDF_DATA_PATH
+    entries, the paths known to the lhapdf module, then the directory the
+    gridpack was created with."""
+    paths = []
+    env = os.environ.get("LHAPDF_DATA_PATH")
+    if env:
+        paths += env.split(os.pathsep)
+    try:
+        import lhapdf
+        paths += list(lhapdf.paths())
+    except Exception:
+        pass
+    if stored_path:
+        paths.append(stored_path)
+    return paths
+
+
+def _locate_pdf_file(stored_file):
+    """Find a PDF grid/info file: the stored absolute path, else the same
+    <set>/<file> relative to one of the PDF search paths."""
+    if os.path.exists(stored_file):
+        return stored_file
+    set_dir, name = os.path.split(stored_file)
+    set_root, set_name = os.path.split(set_dir)
+    for base in _pdf_search_paths(set_root):
+        candidate = os.path.join(base, set_name, name)
+        if os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError(
+        "PDF file %s not found (set LHAPDF_DATA_PATH to the LHAPDF data directory)"
+        % stored_file)
+
+
+def load_systematics(run_card, device_types=(), param_card_path=None):
+    """Rebuild the ms.SystematicsCalculator saved with the gridpack
+    (data/systematics.json) when [systematics] enable is set; None otherwise.
+    The matrix elements of the mixed-order subprocesses are reloaded into a CPU
+    context (when a CPU library is available) for the mu_R variations."""
+    path = os.path.join("data", "systematics.json")
+    try:
+        enabled = bool(run_card["systematics"]["enable"])
+    except Exception:
+        enabled = False
+    if not enabled or not os.path.exists(path):
+        return None
+    with open(path) as f:
+        data = json.load(f)
+    config = ms.SystematicsConfig.from_json(json.dumps(data["config"]))
+    for spec in config.pdf_members:
+        spec.grid_file = _locate_pdf_file(spec.grid_file)
+        spec.info_file = _locate_pdf_file(spec.info_file)
+    subproc_args = [
+        ms.SubprocessSystArgs.from_json(json.dumps(a)) for a in data["subproc_args"]
+    ]
+    nominal_pdf = None
+    if config.has_pdf:
+        nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
+    nominal_alpha_s = ms.AlphaSGrid(_locate_pdf_file(data["nominal_info_file"]))
+    me_context, matrix_elements, flavor_remap = None, [], []
+    need = [i for i, a in enumerate(subproc_args) if a.qcd_power < 0]
+    backend = data.get("me_backend")
+    if need and backend and data.get("me_paths"):
+        cpu = [d for d in device_types if not str(d).startswith(("cuda", "hip"))]
+        backend = cpu[0] if cpu and cpu[0] != "cppauto" else backend
+        me_context = ms.Context(device=ms.cpu_device(), thread_count=1)
+        flavor_remap = data.get("flavor_remap", [])
+        for i, me_path in enumerate(data["me_paths"]):
+            if i not in need:
+                matrix_elements.append(None)
+                continue
+            lib = me_path.format(device=backend)
+            if not os.path.exists(lib):
+                print("WARNING systematics: %s not found, mu_R variations of the "
+                      "mixed-order subprocesses are dropped" % lib)
+                me_context, matrix_elements, flavor_remap = None, [], []
+                break
+            api = me_context.load_matrix_element(lib, param_card_path)
+            matrix_elements.append(ms.MatrixElement(
+                api,
+                [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                 ms.MatrixElement.flavor_in],
+                [ms.MatrixElement.matrix_element_out],
+                False,
+            ))
+    systematics = ms.SystematicsCalculator(
+        config, subproc_args, nominal_pdf, nominal_alpha_s,
+        me_context, matrix_elements, flavor_remap)
+    for warning in systematics.warnings:
+        print("WARNING systematics: %s" % warning)
+    return systematics
 
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))

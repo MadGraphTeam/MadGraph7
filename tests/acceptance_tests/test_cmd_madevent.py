@@ -16,6 +16,8 @@ from __future__ import division
 from __future__ import absolute_import
 import subprocess
 import unittest
+import json
+import glob
 import os
 import re
 import shutil
@@ -247,12 +249,8 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
                               timeout=timeout)
     # Surface any per-tool *_crash.log written by run_selected_tools when a
     # post-processing tool fails *without* failing generate_events (rc stays 0),
-    # so a silently-swallowed tool failure is visible in CI. The systematics
-    # crash is a known, gracefully-handled mg7 gap (LHE lacks <mgrwt>) and is
-    # filtered out to keep the passing tests quiet.
+    # so a silently-swallowed tool failure is visible in CI.
     for cl in sorted(glob.glob(pjoin(run_dir, '**', '*_crash.log'), recursive=True)):
-        if os.path.basename(cl) == 'systematics_computation_crash.log':
-            continue
         try:
             print('\n----- %s -----\n%s' % (cl, open(cl).read()),
                   file=sys.stderr, flush=True)
@@ -1189,15 +1187,39 @@ class TestMECmdShell(unittest.TestCase):
             ['generate u u~ > d d~', 'add process u u~ > d d~ QED=2'],
             pjoin(self.path, 'MG7_nqcd_mixed')))
 
-    def test_systematics_mg7(self):
-        """Scale/PDF systematics on the mg7 output, end to end (u u > u u).
+    def _check_systematics_weights(self, lhe_path, expected_ids=None):
+        """Every event carries the variation weights of the <initrwgt> header
+        and they differ from the nominal weight (real scale/PDF information
+        entered the computation). Returns the number of events."""
+        banner = banner_mod.Banner(lhe_path)
+        self.assertIn('initrwgt', banner, 'no <initrwgt> header in %s' % lhe_path)
+        ids = re.findall(r'<weight id=["\'](\w+)["\']', banner['initrwgt'])
+        self.assertTrue(ids, 'empty <initrwgt> header')
+        if expected_ids is not None:
+            self.assertEqual(ids, expected_ids)
+        nb_event = 0
+        nb_nontrivial = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            self.assertEqual(sorted(rwgt), sorted(ids),
+                'the event weights do not match the <initrwgt> header')
+            if any(abs(w - evt.wgt) > 1e-6 * abs(evt.wgt) for w in rwgt.values()):
+                nb_nontrivial += 1
+            nb_event += 1
+        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
+        self.assertGreater(nb_nontrivial, 0,
+            'the systematic weights are all equal to the nominal weight')
+        return nb_event
 
-        The mg7 LHE carries no <mgrwt> block, so the LO reweighting info is
-        reconstructed from the single alpha_s power recorded at output time
-        (single_qcd_order in proc_characteristics -> --lo_nqcd -> systematics ->
-        Event.reconstruct_lo_weight). Checks that the systematic-variation
-        weights are added to every event and actually differ from the nominal
-        (i.e. the reconstruction fed real scale/PDF information)."""
+    def test_systematics_mg7(self):
+        """Scale/PDF systematics computed by madspace when the events are
+        written ([systematics] section of the run_card), end to end (u u > u u).
+
+        Checks the LHEF3 output: an <initrwgt> header with the 3x3 scale grid
+        (8 weights, ids 1-8) plus the nominal-set PDF group, a <rwgt> block in
+        every event, non-trivial weights, the events.weights.json sidecar with
+        the same ids and the per-variation cross sections, and the systematics
+        summary in info.json. No LHAPDF python module is needed."""
         datadir = _mg7_datadir_or_skip(self)
         run = _run_mg7_postproc(
             self,
@@ -1205,28 +1227,121 @@ class TestMECmdShell(unittest.TestCase):
              'import model sm',
              'generate u u > u u'],
             pjoin(self.path, 'MG7_syst'), datadir,
+            switch_lines=None,
+            # the nominal set's members (the default "errorset") would add one
+            # weight per replica; keep the run small with a single member
+            toml_edits=[(r'\npdf = \[[^\]]*\]',
+                         '\npdf = ["NNPDF23_lo_as_0130_qed@1"]'),
+                        # one histogram, to get the event-sample histograms
+                        # with their variation bands in info.json
+                        (r'\[histograms\]\n',
+                         '[histograms]\nsqrt_s.min = 0.0\nsqrt_s.max = 2000.0\n'
+                         'sqrt_s.bin_count = 10\n')],
+            events=100)
+
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+        # 8 scale variations, then the PDF group: nominal member + member 1
+        nb_event = self._check_systematics_weights(
+            lhe_path, expected_ids=[str(i) for i in range(1, 11)])
+
+        side_path = pjoin(run, 'events.weights.json')
+        self.assertTrue(os.path.exists(side_path), 'no events.weights.json sidecar')
+        side = json.load(open(side_path))
+        self.assertEqual([v['id'] for v in side['variations']], list(range(1, 11)))
+        self.assertEqual(side['columns'], ['rwgt_%d' % i for i in range(1, 11)])
+        self.assertEqual(side['event_count'], nb_event)
+        xsec = side['nominal']['cross_section']
+        self.assertGreater(xsec, 0)
+        # the scale envelope brackets the nominal cross section
+        self.assertLess(side['scale']['min'], xsec)
+        self.assertGreater(side['scale']['max'], xsec)
+        # the nominal-member weight of the PDF group reproduces the nominal
+        nominal_member = [v for v in side['variations'] if v['id'] == 9][0]
+        self.assertAlmostEqual(nominal_member['cross_section'] / xsec, 1.0, places=10)
+        info = json.load(open(pjoin(run, 'info.json')))
+        self.assertIn('systematics', info)
+        self.assertEqual(len(info['systematics']['variations']), 10)
+        # event-sample histograms: nominal + one column per variation, each
+        # summing to the corresponding cross section, with the scale envelope
+        self.assertIn('event_histograms', info)
+        hist = info['event_histograms'][0]
+        self.assertEqual(hist['name'], 'sqrt_s')
+        self.assertEqual(len(hist['bin_values']), 12)  # 10 bins + under/overflow
+        self.assertAlmostEqual(sum(hist['bin_values']) / xsec, 1.0, places=8)
+        self.assertEqual([w['id'] for w in hist['weights']], list(range(1, 11)))
+        for w, var in zip(hist['weights'], side['variations']):
+            self.assertAlmostEqual(sum(w['bin_values']) / var['cross_section'], 1.0, places=8)
+        env = hist['scale_envelope']
+        for lo, nom, hi in zip(env['low'], hist['bin_values'], env['high']):
+            self.assertLessEqual(lo, nom + 1e-12)
+            self.assertGreaterEqual(hi, nom - 1e-12)
+        # no legacy systematics.py run happened
+        self.assertFalse(glob.glob(pjoin(run, '*systematics*crash.log')))
+
+    def test_systematics_mixed_order_mg7(self):
+        """A process whose |M|^2 mixes several alpha_s powers (u u~ > d d~ with
+        QCD and QED contributions, qcd_power = -1) gets exact renormalisation
+        scale weights by re-evaluating the matrix element at the varied alpha_s,
+        so the full 3x3 scale grid is written and the mu_R weights differ from
+        the nominal."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u~ > d d~',
+             'add process u u~ > d d~ QED=2'],
+            pjoin(self.path, 'MG7_syst_mixed'), datadir,
+            switch_lines=None,
+            toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = ["central"]')],
+            events=100)
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+        side = json.load(open(pjoin(run, 'events.weights.json')))
+        self.assertEqual(side['warnings'], [])
+        self.assertEqual([(v['mur'], v['muf']) for v in side['variations']],
+                         [(0.5, 0.5), (0.5, 1.0), (0.5, 2.0), (1.0, 0.5),
+                          (1.0, 2.0), (2.0, 0.5), (2.0, 1.0), (2.0, 2.0)])
+        self._check_systematics_weights(lhe_path, expected_ids=[str(i) for i in range(1, 9)])
+        # the mu_R-only variations (ids 2 and 7) really move the weights
+        moved = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            if abs(rwgt['2'] - evt.wgt) > 1e-6 * abs(evt.wgt) and \
+               abs(rwgt['7'] - evt.wgt) > 1e-6 * abs(evt.wgt):
+                moved += 1
+        self.assertGreater(moved, 0, 'the mu_R weights equal the nominal weight')
+
+    def test_systematics_mg7_legacy(self):
+        """The legacy path ([postprocessing] systematics = true, systematics.py
+        + the LHAPDF python module) still works when the native computation is
+        switched off, and reads the reweighting inputs from the LHE (the
+        single alpha_s power recorded at output time, single_qcd_order)."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u > u u'],
+            pjoin(self.path, 'MG7_syst_legacy'), datadir,
             switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
-            toml_edits=[(r'systematics_pdf = \[[^\]]*\]',
+            toml_edits=[(r'\nenable = true\nmur', '\nenable = false\nmur'),
+                        (r'\nsystematics = false\n', '\nsystematics = true\n'),
+                        (r'systematics_pdf = \[[^\]]*\]',
                          'systematics_pdf = ["central"]')],
             events=100)
 
         lhe_path = pjoin(run, 'events.lhe')
         if not os.path.exists(lhe_path):
             misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
-
-        nb_event = 0
-        nb_nontrivial = 0
-        for evt in lhe_parser.EventFile(lhe_path):
-            rwgt = evt.parse_reweight()
-            self.assertGreater(len(rwgt), 1,
-                'no systematic weights were added to the mg7 events')
-            if any(abs(w - evt.wgt) > 1e-6 * abs(evt.wgt) for w in rwgt.values()):
-                nb_nontrivial += 1
-            nb_event += 1
-        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
-        self.assertGreater(nb_nontrivial, 0,
-            'the systematic weights are all equal to the nominal weight: the LO '
-            'reweighting info was not reconstructed')
+        crash = glob.glob(pjoin(run, '*systematics*crash.log'))
+        if crash:
+            self.skipTest('legacy systematics.py could not run (LHAPDF python '
+                          'module?): %s' % open(crash[0]).read()[-500:])
+        self._check_systematics_weights(lhe_path)
 
     def test_relaunch_switch_defaults_mg7(self):
         """Re-launching an mg7 output must not turn every tool on.

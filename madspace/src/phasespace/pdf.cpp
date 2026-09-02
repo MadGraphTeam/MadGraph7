@@ -594,3 +594,200 @@ NamedVector<Value> RunningCoupling::build_function_impl(
     );
     return {{"alpha_s", fb.interpolate_alpha_s(q, grid_logq2, grid_coeffs)}};
 }
+
+// ---------------------------------------------------------------------------
+// Scalar evaluation (same interpolation as the runtime kernels)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Same bisection as kernels::binary_search, on the padded knot vector
+// [-max, knots..., +max]. Returns the cell index i with knots[i] <= x <= knots[i+1]
+// and fills the two knot values.
+std::size_t padded_search(
+    double x, const std::vector<double>& knots, double& x_low, double& x_high
+) {
+    int64_t index_low = 0, index_high = static_cast<int64_t>(knots.size()) - 2;
+    while (index_low <= index_high) {
+        std::size_t index = index_low + (index_high - index_low) / 2;
+        x_low = knots.at(index);
+        x_high = knots.at(index + 1);
+        if (x_low <= x && x <= x_high) {
+            return index;
+        }
+        if (x_low < x) {
+            index_low = index + 1;
+        } else {
+            index_high = index - 1;
+        }
+    }
+    x_low = knots.at(0);
+    x_high = knots.at(1);
+    return 0;
+}
+
+std::vector<double> padded_logx(const PdfGrid& grid) {
+    std::vector<double> knots;
+    knots.reserve(grid.logx.size() + 2);
+    knots.push_back(-std::numeric_limits<double>::max());
+    knots.insert(knots.end(), grid.logx.begin(), grid.logx.end());
+    knots.push_back(std::numeric_limits<double>::max());
+    return knots;
+}
+
+std::vector<double> padded_logq2(
+    const std::vector<std::size_t>& region_sizes, const std::vector<double>& logq2
+) {
+    // mirrors init_logq2: the duplicated node at each region boundary is dropped
+    std::vector<double> knots;
+    knots.push_back(-std::numeric_limits<double>::max());
+    std::size_t index_in = 0;
+    for (std::size_t region_size : region_sizes) {
+        for (std::size_t i = index_in == 0 ? 0 : 1; i < region_size + 1;
+             ++i, ++index_in) {
+            knots.push_back(logq2.at(index_in));
+        }
+        ++index_in;
+    }
+    knots.push_back(std::numeric_limits<double>::max());
+    return knots;
+}
+
+// Map the padded q cell index (as returned by padded_search, 1-based for cells
+// inside the grid) to the raw grid q index and the position inside its region,
+// mirroring the loops of initialize_coefficients. Returns false outside the grid.
+bool locate_q_cell(
+    const std::vector<std::size_t>& region_sizes,
+    std::size_t q2_index,
+    std::size_t& q_idx,
+    bool& low_q,
+    bool& high_q
+) {
+    if (q2_index == 0) {
+        return false;
+    }
+    std::size_t cell = q2_index - 1;
+    q_idx = 0;
+    for (std::size_t region_size : region_sizes) {
+        if (cell < region_size) {
+            q_idx += cell;
+            low_q = cell == 0;
+            high_q = cell == region_size - 1;
+            return true;
+        }
+        cell -= region_size;
+        q_idx += region_size + 1;
+    }
+    return false;
+}
+
+} // namespace
+
+std::size_t PdfGrid::pid_index(int pid) const {
+    auto find_pid = std::find(pids.begin(), pids.end(), pid);
+    if (find_pid == pids.end()) {
+        throw std::invalid_argument(std::format("PID {} not found in pdf grid", pid));
+    }
+    return find_pid - pids.begin();
+}
+
+double PdfGrid::interpolate(std::size_t pid_idx, double x_val, double q_val) const {
+    if (pid_idx >= pids.size()) {
+        throw std::invalid_argument("PID index out of range");
+    }
+    auto knots_x = padded_logx(*this);
+    auto knots_q = padded_logq2(region_sizes, logq2);
+    double lx = std::log(x_val), lq2 = std::log(q_val * q_val);
+    double logx_low, logx_high, logq2_low, logq2_high;
+    std::size_t x_index = padded_search(lx, knots_x, logx_low, logx_high);
+    std::size_t q2_index = padded_search(lq2, knots_q, logq2_low, logq2_high);
+    // outside the grid the coefficient tensor is zero-padded
+    if (x_index == 0 || x_index >= x.size()) {
+        return 0.;
+    }
+    std::size_t q_idx;
+    bool low_q, high_q;
+    if (!locate_q_cell(region_sizes, q2_index, q_idx, low_q, high_q)) {
+        return 0.;
+    }
+    auto coeffs = compute_coeffs(*this, q_idx, x_index - 1, pid_idx, low_q, high_q);
+
+    double t_logx = (lx - logx_low) / (logx_high - logx_low);
+    double t_logx_2 = t_logx * t_logx;
+    double t_logx_3 = t_logx_2 * t_logx;
+    double t_logq2 = (lq2 - logq2_low) / (logq2_high - logq2_low);
+    double t_logq2_2 = t_logq2 * t_logq2;
+    double t_logq2_3 = t_logq2_2 * t_logq2;
+    double vl_val = 2 * t_logq2_3 - 3 * t_logq2_2 + 1;
+    double vdl_val = t_logq2_3 - 2 * t_logq2_2 + t_logq2;
+    double vh_val = -2 * t_logq2_3 + 3 * t_logq2_2;
+    double vdh_val = t_logq2_3 - t_logq2_2;
+    double values[16] = {
+        vl_val * t_logx_3,
+        vl_val * t_logx_2,
+        vl_val * t_logx,
+        vl_val,
+        vh_val * t_logx_3,
+        vh_val * t_logx_2,
+        vh_val * t_logx,
+        vh_val,
+        vdl_val * t_logx_3,
+        vdl_val * t_logx_2,
+        vdl_val * t_logx,
+        vdl_val,
+        vdh_val * t_logx_3,
+        vdh_val * t_logx_2,
+        vdh_val * t_logx,
+        vdh_val
+    };
+    double result = 0.;
+    for (std::size_t j = 0; j < 16; ++j) {
+        result = result + values[j] * coeffs[j];
+    }
+    return result;
+}
+
+double AlphaSGrid::interpolate(double q_val) const {
+    auto knots_q = padded_logq2(region_sizes, logq2);
+    double lq2 = std::log(q_val * q_val);
+    double logq2_low, logq2_high;
+    std::size_t q2_index = padded_search(lq2, knots_q, logq2_low, logq2_high);
+    std::size_t q_idx;
+    bool low_q, high_q;
+    if (!locate_q_cell(region_sizes, q2_index, q_idx, low_q, high_q)) {
+        return 0.;
+    }
+    // same coefficients as initialize_coefficients
+    auto diff = [&](std::size_t i) {
+        return (values.at(i + 1) - values.at(i)) / (logq2.at(i + 1) - logq2.at(i));
+    };
+    double diff0, diff1;
+    if (low_q) {
+        diff0 = diff(q_idx);
+        diff1 = 0.5 * (diff(q_idx + 1) + diff(q_idx));
+    } else if (high_q) {
+        diff0 = 0.5 * (diff(q_idx) + diff(q_idx - 1));
+        diff1 = diff(q_idx);
+    } else {
+        diff0 = 0.5 * (diff(q_idx) + diff(q_idx - 1));
+        diff1 = 0.5 * (diff(q_idx + 1) + diff(q_idx));
+    }
+    double dlogq2 = logq2.at(q_idx + 1) - logq2.at(q_idx);
+    double coeffs[4] = {
+        values.at(q_idx), values.at(q_idx + 1), diff0 * dlogq2, diff1 * dlogq2
+    };
+
+    double t_logq2 = (lq2 - logq2_low) / (logq2_high - logq2_low);
+    double t_logq2_2 = t_logq2 * t_logq2;
+    double t_logq2_3 = t_logq2_2 * t_logq2;
+    double vl_val = 2 * t_logq2_3 - 3 * t_logq2_2 + 1;
+    double vdl_val = t_logq2_3 - 2 * t_logq2_2 + t_logq2;
+    double vh_val = -2 * t_logq2_3 + 3 * t_logq2_2;
+    double vdh_val = t_logq2_3 - t_logq2_2;
+    double vals[4] = {vl_val, vh_val, vdl_val, vdh_val};
+    double result = 0.;
+    for (std::size_t j = 0; j < 4; ++j) {
+        result = result + vals[j] * coeffs[j];
+    }
+    return result;
+}

@@ -403,6 +403,20 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             for index, options in self.all_flavors_same_initial
         ]
 
+        # power of alpha_s in |M|^2 (the QCD coupling order of the amplitude),
+        # -1 when it differs between diagrams. The systematics computation uses
+        # it to rescale |M|^2 for renormalisation scale variations; never let
+        # its computation break the output.
+        qcd_orders = set()
+        try:
+            for diagram in self.helas_diagrams:
+                qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+        except Exception as error:
+            logger.debug('could not determine the QCD order: %s', error)
+            qcd_orders.add(None)
+        qcd_power = (qcd_orders.pop()
+                     if len(qcd_orders) == 1 and None not in qcd_orders else -1)
+
         return (
             {
                 "incoming": self.incoming,
@@ -411,6 +425,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "me_path": lib_me_path,
                 "path": proc_dir,
                 "flavors": flavors,
+                "qcd_power": qcd_power,
                 "color_flows": color_flows,
                 "pdg_color_types": pdg_color_types,
                 "diagram_count": len(self.diagrams),
