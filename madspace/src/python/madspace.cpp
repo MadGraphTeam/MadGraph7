@@ -1534,7 +1534,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("RunningCoupling::RunningCoupling")
         );
 
-    py::classh<EnergyScale, FunctionGenerator> scale(m, "EnergyScale");
+    py::classh<EnergyScale, FunctionGenerator> scale(
+        m, "EnergyScale", pydoc::doc("EnergyScale")
+    );
     add_enum<EnergyScale::DynamicalScaleType>(
         scale,
         "DynamicalScaleType",
@@ -1545,16 +1547,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"partonic_energy", EnergyScale::partonic_energy},
         }
     );
-    scale.def(py::init<std::size_t>(), py::arg("particle_count"))
+    scale
+        .def(
+            py::init<std::size_t>(),
+            py::arg("particle_count"),
+            pydoc::doc("EnergyScale::EnergyScale")
+        )
         .def(
             py::init<std::size_t, EnergyScale::DynamicalScaleType>(),
             py::arg("particle_count"),
-            py::arg("type")
+            py::arg("type"),
+            pydoc::doc("EnergyScale::EnergyScale#2")
         )
         .def(
             py::init<std::size_t, double>(),
             py::arg("particle_count"),
-            py::arg("fixed_scale")
+            py::arg("fixed_scale"),
+            pydoc::doc("EnergyScale::EnergyScale#3")
         )
         .def(
             py::init<
@@ -1571,7 +1580,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale_fixed"),
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
-            py::arg("fact_scale2")
+            py::arg("fact_scale2"),
+            pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
     py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());
