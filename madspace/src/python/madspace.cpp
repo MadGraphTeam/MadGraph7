@@ -73,10 +73,11 @@ void add_enum(
     ParentType& parent,
     const char* enum_name,
     std::initializer_list<std::pair<const std::string, EnumType>> values,
-    const std::string& prefix = ""
+    const std::string& prefix = "",
+    const char* doc = ""
 ) {
     std::unordered_map<std::string, EnumType> str_to_enum_map(values);
-    py::enum_<EnumType> enumeration(parent, enum_name);
+    py::enum_<EnumType> enumeration(parent, enum_name, doc);
     for (auto& [key, value] : values) {
         enumeration.value((prefix + key).c_str(), value);
     }
@@ -137,28 +138,37 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"int", DataType::dt_int},
             {"float", DataType::dt_float},
             {"batch_sizes", DataType::batch_sizes},
-        }
+        },
+        "",
+        pydoc::doc("DataType")
     );
 
-    py::classh<BatchSize>(m, "BatchSize")
+    py::classh<BatchSize>(m, "BatchSize", pydoc::doc("BatchSize"))
         .def(py::init<>())
-        .def(py::init<std::string>(), py::arg("name"))
-        .def_readonly_static("one", &BatchSize::one)
+        .def(
+            py::init<std::string>(), py::arg("name"), pydoc::doc("BatchSize::BatchSize")
+        )
+        .def_readonly_static("one", &BatchSize::one, pydoc::doc("BatchSize::one"))
         .def("__str__", &to_string<BatchSize>)
         .def("__repr__", &to_string<BatchSize>);
     m.attr("batch_size") = py::cast(batch_size);
 
-    py::classh<Type>(m, "Type")
+    py::classh<Type>(m, "Type", pydoc::doc("Type"))
         .def(
             py::init<DataType, BatchSize, std::vector<int>>(),
             py::arg("dtype"),
             py::arg("batch_size"),
-            py::arg("shape")
+            py::arg("shape"),
+            pydoc::doc("Type::Type")
         )
-        .def(py::init<std::vector<BatchSize>>(), py::arg("batch_size_list"))
-        .def_readonly("dtype", &Type::dtype)
-        .def_readonly("batch_size", &Type::batch_size)
-        .def_readonly("shape", &Type::shape)
+        .def(
+            py::init<std::vector<BatchSize>>(),
+            py::arg("batch_size_list"),
+            pydoc::doc("Type::Type#2")
+        )
+        .def_readonly("dtype", &Type::dtype, pydoc::doc("Type::dtype"))
+        .def_readonly("batch_size", &Type::batch_size, pydoc::doc("Type::batch_size"))
+        .def_readonly("shape", &Type::shape, pydoc::doc("Type::shape"))
         .def("__str__", &to_string<Type>)
         .def("__repr__", &to_string<Type>);
     m.attr("single_float") = py::cast(single_float);
@@ -175,14 +185,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("name", &InstrCopy::name)
         .def_readonly("opcode", &InstrCopy::opcode);
 
-    py::classh<Value>(m, "Value")
-        .def(py::init<me_int_t>(), py::arg("value"))
-        .def(py::init<double>(), py::arg("value"))
+    py::classh<Value>(m, "Value", pydoc::doc("Value"))
+        .def(py::init<me_int_t>(), py::arg("value"), pydoc::doc("Value::Value#2"))
+        .def(py::init<double>(), py::arg("value"), pydoc::doc("Value::Value#3"))
         .def("__str__", &to_string<Value>)
         .def("__repr__", &to_string<Value>)
-        .def_readonly("type", &Value::type)
-        .def_readonly("literal_value", &Value::literal_value)
-        .def_readonly("local_index", &Value::local_index);
+        .def_readonly("type", &Value::type, pydoc::doc("Value::type"))
+        .def_readonly(
+            "literal_value", &Value::literal_value, pydoc::doc("Value::literal_value")
+        )
+        .def_readonly(
+            "local_index", &Value::local_index, pydoc::doc("Value::local_index")
+        );
     py::implicitly_convertible<me_int_t, Value>();
     py::implicitly_convertible<double, Value>();
 
