@@ -3,6 +3,7 @@
 #include <pybind11/stl.h>
 #include <sstream>
 
+#include "docstrings.hpp"
 #include "function_runtime.hpp"
 #include "instruction_set.hpp"
 #include "madspace/compgraphs.hpp"
@@ -530,9 +531,20 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initialize_globals", &VegasMapping::initialize_globals, py::arg("context")
         );
 
-    py::classh<FastRamboMapping, Mapping>(m, "FastRamboMapping")
+    py::classh<FastRamboMapping, Mapping>(
+        m, "FastRamboMapping", pydoc::doc("FastRamboMapping")
+    )
         .def(
-            py::init<std::size_t, bool>(), py::arg("n_particles"), py::arg("massless")
+            py::init<std::size_t, bool, bool>(),
+            py::arg("n_particles"),
+            py::arg("massless"),
+            py::arg("com") = true,
+            pydoc::doc("FastRamboMapping::FastRamboMapping")
+        )
+        .def(
+            "random_dim",
+            &FastRamboMapping::random_dim,
+            pydoc::doc("FastRamboMapping::random_dim")
         );
 
     py::classh<MultiChannelMapping, Mapping>(m, "MultiChannelMapping")

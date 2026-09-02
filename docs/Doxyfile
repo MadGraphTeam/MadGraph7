@@ -1,4 +1,5 @@
 PROJECT_NAME           = madspace
+JAVADOC_AUTOBRIEF      = YES
 INPUT                  = ../madspace/include/madspace/
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = *mixin*

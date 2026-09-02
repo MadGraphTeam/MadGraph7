@@ -2,6 +2,18 @@ import os
 import subprocess
 import sys
 
+# Import the locally built package (``python madspace/install.py --source``)
+# rather than any system-wide madspace, so the Python API docs track the
+# working tree. Override with MADSPACE_INSTALL if it lives elsewhere.
+_local_install = os.environ.get(
+    "MADSPACE_INSTALL",
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "madspace", "install")
+    ),
+)
+if os.path.isdir(os.path.join(_local_install, "madspace")):
+    sys.path.insert(0, _local_install)
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
