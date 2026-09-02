@@ -587,6 +587,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("ColorOrderedMapping::discrete_dim")
         );
 
+    py::classh<ChiliMapping, Mapping>(m, "ChiliMapping", pydoc::doc("ChiliMapping"))
+        .def(
+            py::init<
+                std::size_t,
+                const std::vector<double>&,
+                const std::vector<double>&>(),
+            py::arg("n_particles"),
+            py::arg("y_max"),
+            py::arg("pt_min"),
+            pydoc::doc("ChiliMapping::ChiliMapping")
+        )
+        .def(
+            "random_dim",
+            &ChiliMapping::random_dim,
+            pydoc::doc("ChiliMapping::random_dim")
+        );
+
     py::classh<VegasHistogram, FunctionGenerator>(m, "VegasHistogram")
         .def(
             py::init<std::size_t, std::size_t>(),
