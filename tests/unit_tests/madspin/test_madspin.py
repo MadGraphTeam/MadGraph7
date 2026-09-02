@@ -11791,6 +11791,107 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
             self.assertTrue(os.path.exists(path), path)
 
 
+class TestTheForkDoesNotSwallowTheDecayGenerationTimings(unittest.TestCase):
+    """When two or more particles decay, ``_generate_decays`` forks one process
+    per particle and the generation runs entirely inside the children. The
+    phase accounting is in-process state, so everything charged there --
+    ``decay_event_generation``, the largest phase of a run, plus
+    ``decay_me_generate``, ``decay_me_output`` and the mg7 launcher phases --
+    used to die with the child and be simply absent from the run's report. That
+    is precisely the case every interesting benchmark is in (p p > t t~ decays
+    both tops), which left only ``total`` usable.
+
+    The child already marshals its results back through a small JSON file, so
+    the timings travel with them.
+
+    They are a sum over particles of work that ran CONCURRENTLY, so they are
+    work done and not wall time, and may exceed the wall time of the fork that
+    contained them. That is why they are charged to their own phases and never
+    folded into a phase measured in the parent.
+    """
+
+    def _stub(self, charge):
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _generate_decays = interface._generate_decays
+            _generate_decay_entry = interface._generate_decay_entry
+            _add_phase = interface._add_phase
+            _add_count = interface._add_count
+            _phase = interface._phase
+            _reader_paths = staticmethod(interface._reader_paths)
+            _reader_from_paths = staticmethod(lambda paths, cross=None: paths)
+
+            def _resolve_nb_core(self):
+                return 2
+
+            def generate_events(self, pdg, nb_gen, mg5, cumul=False,
+                                output_width=False):
+                charge(self, pdg)
+                reader = type('R', (), {'name': 'pool_%s.lhe' % pdg})()
+                return {0: reader}, 1.5, {0: 1.5}
+
+        stub = Stub()
+        stub.path_me = self.tmpdir
+        stub.seed = 42
+        stub.options = {}
+        stub.me_int = {}
+        stub.mg5cmd = None
+        stub._phase_times = collections.defaultdict(float)
+        stub._phase_counts = collections.defaultdict(int)
+        return stub
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_forkphase_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    JOBS = {6: {'nb_gen': 10, 'cumul': False},
+            -6: {'nb_gen': 10, 'cumul': False}}
+
+    def test_the_children_report_what_they_charged(self):
+        def charge(stub, pdg):
+            stub._add_phase('decay_event_generation', 0.25)
+            stub._add_count('decay_event_generation_events_requested', 100)
+
+        stub = self._stub(charge)
+        out = stub._generate_decays(dict(self.JOBS), None)
+
+        self.assertEqual(sorted(out), [-6, 6])
+        # both children charged 0.25 s, and both are in the parent's totals
+        self.assertAlmostEqual(stub._phase_times['decay_event_generation'],
+                               0.5, places=6)
+        self.assertEqual(
+            stub._phase_counts['decay_event_generation_events_requested'], 200)
+
+    def test_nothing_charged_before_the_fork_is_counted_twice(self):
+        """The children inherit the parent's dicts through the fork. What was
+        already in them has been charged in the parent, so a child that sent it
+        back would double it."""
+        def charge(stub, pdg):
+            stub._add_phase('decay_event_generation', 0.25)
+
+        stub = self._stub(charge)
+        stub._add_phase('me_generation', 3.0)
+        stub._generate_decays(dict(self.JOBS), None)
+
+        self.assertAlmostEqual(stub._phase_times['me_generation'], 3.0,
+                               places=6)
+        self.assertAlmostEqual(stub._phase_times['decay_event_generation'],
+                               0.5, places=6)
+
+    def test_a_single_decaying_particle_never_forks_and_is_unaffected(self):
+        def charge(stub, pdg):
+            stub._add_phase('decay_event_generation', 0.25)
+
+        stub = self._stub(charge)
+        stub._generate_decays({6: {'nb_gen': 10, 'cumul': False}}, None)
+        self.assertAlmostEqual(stub._phase_times['decay_event_generation'],
+                               0.25, places=6)
+
+
 class TestDecayGeneratorIsAnOptionAtAll(unittest.TestCase):
     """`decay_generator` was declared by an add_param that a merge left AFTER
     the `return` of MadSpinOptions.__setitem__, i.e. as unreachable code.

@@ -4557,6 +4557,13 @@ class MadSpinInterface(extended_cmd.Cmd):
             # multiplier of its own so a generation child can never land on the
             # stream of an unweighting/max-weight worker (those use 7919).
             random.seed((int(self.seed) if self.seed else 0) + 104729 * seed_offset)
+            # Start the child's accounting from zero. It inherited the parent's
+            # dicts through the fork, and everything already in them has been
+            # charged in the parent too -- reporting it back would double it.
+            times = self.__dict__.get('_phase_times')
+            if times is not None:
+                times.clear()
+                self._phase_counts.clear()
             self._gen_nb_core = nb_core
             self.seed = (int(self.seed) + 1000003 * seed_offset) % (30081 * 30081)
             self.options['seed'] = self.seed
@@ -4572,7 +4579,16 @@ class MadSpinInterface(extended_cmd.Cmd):
                                          for k, v in out.items()),
                            'width': width,
                            'channel_widths': dict((str(k), v) for k, v
-                                                  in channel_widths.items())},
+                                                  in channel_widths.items()),
+                           # The phase timings too, or every phase of the decay
+                           # generation -- decay_event_generation, the largest
+                           # of them all -- dies here with the child and is
+                           # simply missing from the run's report. See
+                           # _generate_decays for how they are added back.
+                           'phase_times': dict(
+                               self.__dict__.get('_phase_times') or {}),
+                           'phase_counts': dict(
+                               self.__dict__.get('_phase_counts') or {})},
                           fp)
         except Exception as exc:
             import traceback
@@ -4632,6 +4648,15 @@ class MadSpinInterface(extended_cmd.Cmd):
             if 'error' in data:
                 raise Exception("MadSpin: the decay generation of pdg %s failed:\n%s"
                                 % (pdg, data.get('tb', data['error'])))
+            # Put the child's phase timings back into this process's accounting.
+            # They are a SUM OVER PARTICLES of work that ran concurrently, so
+            # they are work done, not wall time, and can exceed the wall time of
+            # the fork that contained them -- which is why they are charged to
+            # their own phases and never to a parent phase measured out here.
+            for name, dt in (data.get('phase_times') or {}).items():
+                self._add_phase(name, dt, count=0)
+            for name, count in (data.get('phase_counts') or {}).items():
+                self._add_count(name, count)
             channel_widths = dict((int(k), v) for k, v
                                   in data.get('channel_widths', {}).items())
             # The per-channel width goes back in with the paths: an mg7 pool has
