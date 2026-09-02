@@ -51,8 +51,18 @@ def strip_ns(name: str) -> str:
     return name[len(STRIP_NAMESPACE) :] if name.startswith(STRIP_NAMESPACE) else name
 
 
+# Doxygen inline markup -> reStructuredText, so Sphinx renders the Python
+# docstrings with the same emphasis/monospace as the C++ (Breathe) side.
+_INLINE_WRAP = {
+    "computeroutput": ("``", "``"),
+    "verbatim": ("``", "``"),
+    "emphasis": ("*", "*"),
+    "bold": ("**", "**"),
+}
+
+
 def text_of(node: ET.Element) -> str:
-    """Flatten a Doxygen description subtree into plain text."""
+    """Flatten a Doxygen description subtree into reStructuredText."""
     parts = []
 
     def walk(el, prefix=""):
@@ -76,12 +86,17 @@ def text_of(node: ET.Element) -> str:
         elif tag == "listitem":
             parts.append(prefix + "- ")
 
+        open_m, close_m = _INLINE_WRAP.get(tag, ("", ""))
+        if open_m:
+            parts.append(open_m)
         if el.text:
             parts.append(el.text)
         for child in el:
             walk(child)
             if child.tail:
                 parts.append(child.tail)
+        if close_m:
+            parts.append(close_m)
 
     walk(node)
     raw = "".join(parts)
