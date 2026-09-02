@@ -21,7 +21,7 @@ namespace madspace {
  * topology. The `discrete_i` inputs select, per @f$2 \to 3@f$ peel, which of
  * the two branches to take. See Sec. 2.2.5 of [1], following [2].
  *
- * `batch` is the leading batch dimension; `n_out` is the number of outgoing
+ * `batch` is the leading batch dimension. `n_out` is the number of outgoing
  * particles and `n = n_out + 2` the total.
  *
  * **Inputs**

@@ -25,16 +25,16 @@ namespace madspace {
  *   \frac{y_i^2 + c_k\,y_i(1-y_i)}{1 + (c_k-2)\,y_i(1-y_i)},
  * @f]
  *
- * whose inverse and Jacobian are closed-form, so the mapping stays strictly
- * invertible while being fully analytic and vectorizable. Each @f$c_k@f$ is
- * fitted once to approximate the RAMBO-on-diet step, with @f$c_1 = 2@f$
- * reproducing it exactly; the weight then acquires a small non-uniform factor
- * @f$w_n(r)@f$. Massive final states (@p massless false) are obtained by
- * reweighting a massless point rather than rescaling momenta. See [1],
- * Sec. 2.3, for the derivation.
+ * The inverse and Jacobian of this map are closed-form, so the mapping stays
+ * strictly invertible while being fully analytic and vectorizable. Each
+ * @f$c_k@f$ is fitted once to approximate the RAMBO-on-diet step. For
+ * @f$c_1 = 2@f$ the two agree exactly. The weight then acquires a small
+ * non-uniform factor @f$w_n(r)@f$. Massive final states (@p massless false) are
+ * obtained by reweighting a massless point rather than rescaling momenta. See
+ * [1], Sec. 2.3, for the derivation.
  *
- * Entries marked with an index `i` are repeated for `i = 0 … n - 1`; `batch`
- * is the batch dimension.
+ * Entries marked with an index `i` are repeated for `i = 0 … n - 1`. `batch` is
+ * the batch dimension.
  *
  * **Inputs**
  * - `random_i` – `float`, shape `(batch,)` – the `3 * n_particles - 4` uniform

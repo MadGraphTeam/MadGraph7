@@ -15,13 +15,13 @@ namespace madspace {
  * Builds the @f$\kappa@f$ space-like momentum transfers of a topology and the
  * associated outgoing momenta [1]. Restricting to orderings that grow inward
  * from the two incoming legs reduces the @f$\kappa!@f$ possible orders to
- * @f$2^{\kappa-1}@f$; the mapping first draws @f$\kappa-1@f$ time-like
- * invariants, then walks @f$i = 1 \dots \kappa@f$ emitting one
+ * @f$2^{\kappa-1}@f$. The mapping first draws @f$\kappa-1@f$ time-like
+ * invariants. It then walks @f$i = 1 \dots \kappa@f$, emitting one
  * @ref TwoToTwoParticleScattering block per step and updating the incoming
  * momentum on the chosen side by subtraction (Sec. 2.2.8 of [1], following
  * [2]).
  *
- * `batch` is the leading batch dimension; `kappa` is the number of `t`-channel
+ * `batch` is the leading batch dimension. `kappa` is the number of `t`-channel
  * propagators, `len(integration_order)`.
  *
  * **Inputs**

@@ -30,10 +30,10 @@ namespace madspace {
  * @f]
  *
  * otherwise. When @p mass is zero and `invariant_min` is zero, a small
- * auxiliary negative @f$m^2 = -a@f$ is used inside the mapping only to keep the
- * power-law and logarithmic forms well defined at the boundary; the physical
- * integrand is unchanged. The naive choice @f$\nu = 2@f$ is rarely optimal, so
- * @p power defaults to `0.8`.
+ * auxiliary negative @f$m^2 = -a@f$ is used inside the mapping only. This keeps
+ * the power-law and logarithmic forms well defined at the boundary and leaves
+ * the physical integrand unchanged. The naive choice @f$\nu = 2@f$ is rarely
+ * optimal, so @p power defaults to `0.8`.
  *
  * `batch` is the leading batch dimension.
  *

@@ -76,13 +76,13 @@ private:
 /**
  * Two-particle block in the double-invariant @f$(\tilde s, t)@f$ parametrization.
  *
- * Replaces both angles of the two-particle block by Lorentz invariants: the
- * polar angle by the momentum transfer @f$t_{i-1}@f$ and the azimuth by an
- * extra time-like invariant @f$\tilde s_i@f$ [1]. Because @f$(\tilde s, t)@f$
- * alone does not fix the momenta, a recoil momentum (`momentum3`) supplies the
- * scattering plane, so this block peels one on-shell momentum off a composite
- * cluster and appears inside a recursive chain. The measure carries an inverse
- * square-root Gram determinant,
+ * Replaces both angles of the two-particle block by Lorentz invariants. The
+ * polar angle becomes the momentum transfer @f$t_{i-1}@f$ and the azimuth an
+ * extra time-like invariant @f$\tilde s_i@f$ [1]. The pair @f$(\tilde s, t)@f$
+ * alone does not fix the momenta. A recoil momentum (`momentum3`) supplies the
+ * scattering plane. This block therefore peels one on-shell momentum off a
+ * composite cluster and appears inside a recursive chain. The measure carries
+ * an inverse square-root Gram determinant,
  *
  * @f[
  *   \int \mathrm{d}\Phi_2^{(\tilde s, t)} =

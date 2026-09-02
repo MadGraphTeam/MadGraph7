@@ -10,10 +10,10 @@ namespace madspace {
 /**
  * An internal line of a @ref Diagram.
  *
- * Holds the propagator mass, width and PDG id, the energy window
- * `[e_min, e_max]` its invariant is restricted to, and an integer
- * `integration_order` hint used to order the `s`-channel invariants (a lower
- * value is sampled first; see @ref Topology).
+ * Holds the propagator mass, width and PDG id, and the energy window
+ * `[e_min, e_max]` its invariant is restricted to. The integer
+ * `integration_order` hint orders the `s`-channel invariants, a lower value
+ * being sampled first. See @ref Topology.
  */
 struct Propagator {
     /// Propagator mass.
@@ -34,9 +34,9 @@ struct Propagator {
  * A tree-level Feynman diagram: external masses, internal @ref Propagator lines
  * and the vertices connecting them.
  *
- * Incoming and outgoing lines and propagators are each 0-indexed; the two
+ * Incoming and outgoing lines and propagators are each 0-indexed. The two
  * incoming beams are incoming lines 0 and 1. A `Diagram` is turned into one or
- * more @ref Topology integration channels, which @ref PhaseSpaceMapping walks
+ * more @ref Topology integration channels. @ref PhaseSpaceMapping walks those
  * to build the recursive phase-space decomposition (Sec. 2.2 of [1]).
  *
  * **References**
@@ -118,9 +118,9 @@ std::ostream& operator<<(std::ostream& out, const Diagram::LineRef& value);
  * of propagators) and its `s`-channel @ref Topology::Decay tree, and records
  * the order in which their invariants are sampled. `Topology::topologies()`
  * enumerates the sub-channels of a diagram, one per set of propagators that can
- * be simultaneously on shell (Sec. 2.2.7 of [1]); the constructor builds the
- * single canonical channel. All particle indices are 0-based with the two beams
- * at 0 and 1.
+ * be simultaneously on shell (Sec. 2.2.7 of [1]). The constructor builds the
+ * single canonical channel. All particle indices are 0-based, with the two
+ * beams at 0 and 1.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",

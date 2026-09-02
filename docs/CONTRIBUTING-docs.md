@@ -42,8 +42,11 @@ Constructors get their own `/** */` with one `@param` line per parameter. Every 
 method gets at least a `///` brief (undocumented members render as bare stubs, since
 `:undoc-members:` is on during the rollout).
 
-**American spelling.** Cross-reference other classes with `@ref ClassName` — it renders
-as a link on the C++ side and degrades to plain label text in the Python docstring.
+**American spelling.** **Short sentences.** Prefer several plain sentences over one long
+clause chain joined by semicolons.
+
+Cross-reference other classes with `@ref ClassName` — it renders as a link on the C++
+side and degrades to plain label text in the Python docstring.
 **Never** use `\copydoc` (copies the entire description or the whole `@param` list) or
 `\rst` (the alias only exists in `docs/Doxyfile`, not in the generator's Doxyfile, so it
 produces raw text in the Python docstring).

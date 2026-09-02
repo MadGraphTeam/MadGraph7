@@ -10,9 +10,9 @@ namespace madspace {
  *
  * Trades the parton momentum fractions @f$x_1, x_2@f$ for the partonic
  * invariant @f$\hat s = x_1 x_2 s_\mathrm{lab}@f$ and one angular variable [1].
- * @f$\hat s@f$ is drawn in `[s_hat_min, s_hat_max]` with an @ref Invariant
- * (whose @p invariant_power / @p mass / @p width are forwarded); the momentum
- * fractions then follow from logarithmic sampling
+ * @f$\hat s@f$ is drawn in `[s_hat_min, s_hat_max]` with an @ref Invariant,
+ * which forwards @p invariant_power, @p mass and @p width. The momentum
+ * fractions then follow from logarithmic sampling,
  *
  * @f[
  *   x_1 = \tau^{\,r}, \qquad x_2 = \tau^{\,1-r},
@@ -21,7 +21,7 @@ namespace madspace {
  *
  * which cancels the @f$1/x_1@f$ of the convolution measure. Choosing
  * @p invariant_power @f$\simeq 1@f$ (the default) also absorbs the @f$1/\hat s@f$
- * flux factor; a nonzero @p width instead resolves an s-channel resonance in
+ * flux factor. A nonzero @p width instead resolves an s-channel resonance in
  * @f$\hat s@f$ directly (Sec. 2.2.2 of [1]). This parametrization is specific
  * to hadron collisions.
  *

@@ -16,17 +16,17 @@ namespace madspace {
  * Builds a per-event `mask` (1 for events passing every cut, 0 otherwise) from
  * a list of @ref Cuts::CutItem "cut items" [1]. Each item evaluates one
  * @ref Observable for its particle selection and requires the result to lie in
- * `[min, max]`; when the selection yields several values, @ref CutMode decides
+ * `[min, max]`. When the selection yields several values, @ref CutMode decides
  * whether all or any of them must pass. See Sec. 3.2.4 of [1].
  *
  * The accessors re-expose the active lower bounds in the layout the
- * phase-space mappings consume: `pt_min()` and `eta_max()` are indexed by
- * outgoing particle (index 0 is the first outgoing particle; the two beams are
- * excluded), `m_inv_min()` and `dr_min()` are symmetric `n_out * n_out`
- * matrices indexed by outgoing-particle pair. A bound of `0` (or infinity for
- * `eta_max()`) means the cut is inactive.
+ * phase-space mappings consume. `pt_min()` and `eta_max()` are indexed by
+ * outgoing particle, with index 0 the first outgoing particle and the two
+ * beams excluded. `m_inv_min()` and `dr_min()` are symmetric `n_out * n_out`
+ * matrices indexed by outgoing-particle pair. A bound of `0`, or infinity for
+ * `eta_max()`, means the cut is inactive.
  *
- * `batch` is the leading batch dimension; `n_particles` counts the incoming and
+ * `batch` is the leading batch dimension. `n_particles` counts the incoming and
  * outgoing particles.
  *
  * **Arguments**

@@ -20,8 +20,8 @@ namespace madspace {
  *   \mathrm{d}\phi_i}{4}.
  * @f]
  *
- * The first @f$n-1@f$ momenta are generated explicitly; the transverse
- * components of the last are fixed by recoil and its rapidity sampled
+ * The first @f$n-1@f$ momenta are generated explicitly. The transverse
+ * components of the last are fixed by recoil, and its rapidity is sampled
  * uniformly. Each @f$p_\mathrm{T}^2@f$ is drawn from
  *
  * @f[
@@ -30,7 +30,7 @@ namespace madspace {
  * @f]
  *
  * when a lower cut applies, and from a small-@f$p_\mathrm{T}@f$-regulated map
- * otherwise; azimuths are sampled relative to the running recoil direction,
+ * otherwise. Azimuths are sampled relative to the running recoil direction,
  * @f$\phi = 2\pi r_\phi + \phi_\mathrm{rec}@f$ (Sec. 2.4 of [1], following
  * [2, 3]). Chili does not guarantee physical configurations, so unphysical
  * points are removed by a technical cut.

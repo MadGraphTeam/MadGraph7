@@ -17,33 +17,33 @@ namespace madspace {
  * with @f$f(x)@f$ the fully differential cross section over the phase-space
  * point @f$x@f$ [1]. Monte-Carlo integration draws @f$x@f$ through an invertible
  * map @f$G@f$ from the unit hypercube, @f$r \in [0,1]^d \leftrightarrow x \in
- * \Phi@f$, which induces the normalized sampling density
+ * \Phi@f$. This induces the normalized sampling density
  *
  * @f[
  *   g(x) = \left| \frac{\partial G^{-1}(x)}{\partial x} \right|,
  *   \qquad \int_\Phi g(x)\,\mathrm{d}x = 1,
  * @f]
  *
- * so that @f$I = \int_U \left. f(x)/g(x) \right|_{x = G(r)}\,\mathrm{d}r@f$ and
- * the integration variance shrinks as @f$g@f$ approaches @f$f/I@f$.
+ * so that @f$I = \int_U \left. f(x)/g(x) \right|_{x = G(r)}\,\mathrm{d}r@f$. The
+ * integration variance shrinks as @f$g@f$ approaches @f$f/I@f$.
  *
  * A `Mapping` records one such @f$G@f$ as a pair of compute-graph builders.
  * `build_forward` maps the **inputs** (the unit-hypercube numbers) to the
- * **outputs** (momenta and invariants); `build_inverse` maps the outputs back
+ * **outputs** (momenta and invariants). `build_inverse` maps the outputs back
  * to the inputs. Both also return a `weight`, the Jacobian @f$1/g@f$ of the
  * transformation. **Conditions** are external quantities the mapping needs but
- * does not transform (masses, the collision energy, cut boundaries); they are
- * the same for the forward and inverse direction.
+ * does not transform, such as masses, the collision energy or cut boundaries.
+ * They are the same for the forward and inverse direction.
  *
  * Random-number inputs are named after the variable they generate (`r_phi`,
- * `r_theta`, `r_t`, `r_s`, …); time-like invariants are called `s_i`,
+ * `r_theta`, `r_t`, `r_s`, …). Time-like invariants are called `s_i`,
  * space-like ones `t_i`. Entries marked with an index `i` are repeated per
- * particle; `batch` is the leading batch dimension of every tensor. Concrete
+ * particle. `batch` is the leading batch dimension of every tensor. Concrete
  * subclasses list their `Inputs`, `Conditions` and `Outputs` individually.
  *
- * `build_forward` / `build_inverse` each come in two overloads: a
- * `NamedVector<Value>` form, and a positional `ValueVec` form that attaches the
- * names from `input_types()` / `output_types()` and `condition_types()`.
+ * `build_forward` and `build_inverse` each come in two overloads. One takes a
+ * `NamedVector<Value>`. The other takes a positional `ValueVec` and attaches
+ * the names from `input_types()` / `output_types()` and `condition_types()`.
  * Subclasses may be written in Python by deriving from this class.
  *
  * **References**
@@ -149,8 +149,8 @@ private:
  *
  * A `FunctionGenerator` builds a `Function` from named **Arguments** to named
  * **Returns**. Unlike @ref Mapping it has no inverse and produces no Jacobian
- * weight; it is used for the pieces of the integrand that only need to be
- * evaluated in one direction — cuts, observables, histograms, matrix elements,
+ * weight. It is used for the pieces of the integrand that only need to be
+ * evaluated in one direction: cuts, observables, histograms, matrix elements,
  * PDF and scale evaluation, and the trainable networks. Concrete subclasses
  * list their arguments and returns individually. Subclasses may be written in
  * Python by deriving from this class.

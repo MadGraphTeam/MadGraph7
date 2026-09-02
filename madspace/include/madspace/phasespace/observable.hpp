@@ -11,16 +11,17 @@ namespace madspace {
 /**
  * Kinematic observable evaluated for a selection of outgoing particles.
  *
- * Selects particles by PDG id (@p pids; several types may be combined, e.g. all
- * jet flavours), optionally groups them into tuples (@p select_pids) and sums
- * the momenta of each tuple, then evaluates one @ref ObservableOption for every
- * selection [1]. The available observables are single-momentum functions
- * (`e`, `px`, `py`, `pz`, `mass`, `pt`, `p_mag`, `phi`, `theta`, `y`, `y_abs`,
- * `eta`, `eta_abs`), pair functions (`delta_eta`, `delta_phi`, `delta_r`, and
- * the pair invariant `mass`), and the event-level `sqrt_s`. The same mechanism
- * defines the observables used by @ref Cuts and @ref ObservableHistograms.
+ * Selects particles by PDG id (@p pids), optionally groups them into tuples
+ * (@p select_pids) and sums the momenta of each tuple, then evaluates one
+ * @ref ObservableOption for every selection [1]. Several PDG types may be
+ * combined, for example all jet flavours. The available observables are
+ * single-momentum functions (`e`, `px`, `py`, `pz`, `mass`, `pt`, `p_mag`,
+ * `phi`, `theta`, `y`, `y_abs`, `eta`, `eta_abs`), pair functions
+ * (`delta_eta`, `delta_phi`, `delta_r`, and the pair invariant `mass`), and the
+ * event-level `sqrt_s`. The same mechanism defines the observables used by
+ * @ref Cuts and @ref ObservableHistograms.
  *
- * `batch` is the leading batch dimension; `n` is the number of selected
+ * `batch` is the leading batch dimension. `n` is the number of selected
  * particles and `k` the number of selections.
  *
  * **Arguments**

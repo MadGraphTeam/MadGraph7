@@ -10,19 +10,19 @@ namespace madspace {
  *
  * Splits a parent momentum @f$p_0@f$ into two on-shell momenta
  * @f$p_0 = p_1 + p_2@f$ [1]. Two-body kinematics fix the energies and
- * three-momentum magnitudes from the masses, leaving the polar and azimuthal
- * angles of @f$\vec p_1@f$ in the @f$p_0@f$ rest frame, which are sampled
- * uniformly,
+ * three-momentum magnitudes from the masses. The remaining freedom is the
+ * polar and azimuthal angles of @f$\vec p_1@f$ in the @f$p_0@f$ rest frame,
+ * sampled uniformly,
  *
  * @f[
- *   \phi = 2\pi\,r_\phi, \qquad \cos\theta = 2\,r_{\cos\theta} - 1,
+ *   \phi = 2\pi\,r_\phi, \qquad \cos\theta = 2\,r_{\cos\theta} - 1.
  * @f]
  *
- * and the momenta are boosted back (Sec. 2.2.3 of [1]). The measure is flat in
- * @f$(\phi, \cos\theta)@f$.
+ * The momenta are then boosted back (Sec. 2.2.3 of [1]). The measure is flat
+ * in @f$(\phi, \cos\theta)@f$.
  *
- * `batch` is the leading batch dimension. Masses are inputs here: supplied on
- * the forward call and recovered by the inverse.
+ * `batch` is the leading batch dimension. The masses are inputs here. They are
+ * supplied on the forward call and recovered by the inverse.
  *
  * **Inputs**
  * - `random_phi` – `float`, shape `(batch,)` – azimuthal-angle random number.
@@ -75,16 +75,16 @@ private:
  * Two-particle phase-space block parametrized by the azimuth and the momentum
  * transfer @f$t@f$.
  *
- * Same two-particle phase space as @ref TwoBodyDecay, but the polar angle is
- * traded for the Mandelstam invariant @f$t = (p_\mathrm{in,1} - p_1)^2 < 0@f$,
- * which is linear in @f$\cos\theta@f$ [1]. The azimuth is uniform,
- * @f$\phi = 2\pi\,r_\phi@f$, and @f$|t|@f$ is drawn with an @ref Invariant
- * (from @p invariant_power / @p mass / @p width) so that a t-channel
- * propagator pole is flattened (Sec. 2.2.4 of [1]). Momenta are built in the
- * scattering center-of-mass frame and boosted out.
+ * Same two-particle phase space as @ref TwoBodyDecay. The polar angle is traded
+ * for the Mandelstam invariant @f$t = (p_\mathrm{in,1} - p_1)^2 < 0@f$, which
+ * is linear in @f$\cos\theta@f$ [1]. The azimuth is uniform,
+ * @f$\phi = 2\pi\,r_\phi@f$. @f$|t|@f$ is drawn with an @ref Invariant (from
+ * @p invariant_power / @p mass / @p width) so a t-channel propagator pole is
+ * flattened (Sec. 2.2.4 of [1]). The momenta are built in the scattering
+ * center-of-mass frame and boosted out.
  *
- * `batch` is the leading batch dimension. Masses are inputs here: supplied on
- * the forward call and recovered by the inverse.
+ * `batch` is the leading batch dimension. The masses are inputs here. They are
+ * supplied on the forward call and recovered by the inverse.
  *
  * **Inputs**
  * - `random_phi` – `float`, shape `(batch,)` – azimuthal-angle random number.
