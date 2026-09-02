@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Check that the phasespace/ Doxygen comments follow the documentation convention.
+"""Check that the Doxygen comments follow the documentation convention.
 
 Read-only. Parses ``docs/build/doxygenxml/*.xml`` (run ``doxygen`` from ``docs/``
 first) and reports, per class, what is missing relative to the convention in
 ``docs/CONTRIBUTING-docs.md``:
+
+phasespace/ classes:
 
 * non-empty one-line brief and a detailed description
 * ``Mapping`` subclasses: **Inputs**, **Conditions**, **Outputs**, the weight
@@ -15,6 +17,16 @@ first) and reports, per class, what is missing relative to the convention in
 * en-dash (not hyphen) used as the bullet separator
 * no obvious British spellings
 * every arXiv id cited with a single author/title string
+
+compgraphs/ classes (the small in-scope set only, see ``COMPGRAPHS_CLASSES``):
+
+* non-empty one-line brief and a detailed description (nothing else: these value
+  types have many trivial overloaded constructors)
+
+instruction_set.yaml:
+
+* every instruction has a non-empty ``desc``
+* every named input and output has a non-empty ``desc``
 
 Exits non-zero if any in-scope class has an unmet requirement. Until the whole
 directory is documented this is expected; the printed list is the to-do list.
@@ -29,6 +41,21 @@ import sys
 import xml.etree.ElementTree as ET
 
 XML_DIR = os.path.join(os.path.dirname(__file__), "build", "doxygenxml")
+YAML_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "madspace", "instruction_set.yaml"
+)
+
+# The only compgraphs/ types that carry API docs; every *Instruction subclass and
+# the optimizer internals are deliberately left out.
+COMPGRAPHS_CLASSES = {
+    "BatchSize",
+    "Type",
+    "Value",
+    "InstructionCall",
+    "Function",
+    "FunctionBuilder",
+    "Instruction",
+}
 
 BRITISH = re.compile(
     r"\b(colour|behaviour|normalis\w*|factoris\w*|parametris\w*|centre|"
@@ -53,6 +80,50 @@ def _base_names(cd: ET.Element) -> set[str]:
     return {b.text or "" for b in cd.findall("basecompoundref")}
 
 
+def _check_compgraphs_class(cd: ET.Element, name: str) -> list[str]:
+    """Light check for the in-scope compgraphs/ types: just a one-sentence brief
+    and a detailed paragraph. No Inputs/Outputs/References, and no per-member
+    sweep (these value types have many trivial overloaded constructors)."""
+    gaps: list[str] = []
+    brief = _text(cd.find("briefdescription"))
+    detailed = _text(cd.find("detaileddescription"))
+    if not brief:
+        gaps.append("no brief")
+    elif brief.count(".") == 0:
+        gaps.append("brief is not a sentence")
+    if not detailed:
+        gaps.append("no detailed description")
+    return gaps
+
+
+def _check_instruction_yaml(path: str) -> list[str]:
+    """Every instruction and every named input/output needs a non-empty desc."""
+    try:
+        import yaml
+    except ImportError:
+        return ["PyYAML not installed; cannot check instruction_set.yaml"]
+    if not os.path.isfile(path):
+        return [f"{path} not found"]
+    gaps: list[str] = []
+    with open(path) as fh:
+        for section in yaml.safe_load_all(fh):
+            for key, cmd in (section or {}).items():
+                if key == "title":
+                    continue
+                if not str(cmd.get("desc") or "").strip():
+                    gaps.append(f"{key}: no desc")
+                for role in ("inputs", "outputs"):
+                    entries = cmd.get(role)
+                    if entries in ("any", None):
+                        continue
+                    for entry in entries:
+                        if not str(entry.get("desc") or "").strip():
+                            gaps.append(
+                                f"{key}: {role[:-1]} `{entry.get('name')}` has no desc"
+                            )
+    return gaps
+
+
 def main() -> int:
     files = sorted(glob.glob(os.path.join(XML_DIR, "*.xml")))
     if not files:
@@ -69,9 +140,16 @@ def main() -> int:
                 continue
             loc = cd.find("location")
             f = loc.get("file", "") if loc is not None else ""
+            name = cd.findtext("compoundname", "").removeprefix("madspace::")
+
+            if "/compgraphs/" in f:
+                if name in COMPGRAPHS_CLASSES:
+                    g = _check_compgraphs_class(cd, name)
+                    if g:
+                        problems[name] = g
+                continue
             if "/phasespace/" not in f:
                 continue
-            name = cd.findtext("compoundname", "").removeprefix("madspace::")
             gaps: list[str] = []
 
             brief = _text(cd.find("briefdescription"))
@@ -155,8 +233,23 @@ def main() -> int:
                 f"arXiv:{aid} cited with {len(strings)} different strings"
             )
 
+    yaml_gaps = _check_instruction_yaml(YAML_PATH)
+    if yaml_gaps:
+        problems["instruction_set.yaml"] = yaml_gaps
+
+    seen = {
+        n
+        for f in files
+        for cd in ET.parse(f).getroot().findall("compounddef")
+        if (n := cd.findtext("compoundname", "").removeprefix("madspace::"))
+    }
+    for missing in sorted(COMPGRAPHS_CLASSES - seen):
+        problems.setdefault(missing, []).append(
+            "expected compgraphs/ class not found in XML"
+        )
+
     if not problems:
-        print("check_doc_convention: all phasespace/ classes pass")
+        print("check_doc_convention: all phasespace/ and compgraphs/ classes pass")
         return 0
 
     print(f"check_doc_convention: {len(problems)} class(es) with gaps\n")

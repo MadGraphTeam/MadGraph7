@@ -8,8 +8,11 @@ the API documentation. Doxygen comments there feed two outputs:
   into a `consteval pydoc::doc()` lookup; `src/python/madspace.cpp` attaches those
   strings to the pybind11 classes; Sphinx `autodoc` renders them.
 
-`docs/generate_api_pages.py` writes one page per class automatically (globbed toctree in
-`docs/source/madspace/{cpp,python}-api.rst`) — nothing to register by hand.
+`docs/generate_api_pages.py` writes one page per class automatically and rebuilds the
+grouped `docs/source/madspace/{cpp,python}-api.rst` landing pages (mappings, function
+generators, building blocks, compute graph, driver, utilities) — nothing to register by
+hand. It also drops the excluded `compgraphs/` implementation types (every `*Instruction`
+subclass, `ShapeExpr`, the optimizer internals).
 
 The worked reference example is `madspace/include/madspace/phasespace/rambo.hpp`
 (`FastRamboMapping`).
@@ -165,6 +168,40 @@ Reuse these verbatim wherever the parameter appears.
 - **`std::vector<std::shared_ptr<Base>>` + `return_*` bool** —
   *"The per-channel sub-mappings; `@p return_*` also emits the per-channel batch sizes."*
 
+## `compgraphs/` — the compute graph and the instruction set
+
+The compute-graph API is documented more lightly than `phasespace/`.
+
+**Classes.** Only these carry a `/** */` comment: `DataType`, `BatchSize`, `Type`,
+`Value` (`type.hpp`); `InstructionCall`, `Function`, `FunctionBuilder`
+(`function.hpp`); the base `Instruction` (`instruction.hpp`). A one-sentence brief
+plus a short detail paragraph, `@ref` cross-links, **no** Inputs/Conditions/Outputs
+lists and **no** References. Every concrete `*Instruction` subclass, `ShapeExpr`,
+`opcodes::Opcode` and the `optimizer.hpp` internals are excluded from the API
+pages by `docs/generate_api_pages.py` and are not checked.
+
+**Instructions.** The ~164 `FunctionBuilder` instruction methods
+(`fb.stack(...)`, `fb.two_body_decay_com(...)`, …) are generated from
+`madspace/instruction_set.yaml`. Document them by filling the `desc:` fields in
+that file — the instruction-level `desc:` and the `desc:` on every named input
+and output. `madspace/generate_headers.py` turns those into a Doxygen `/** */`
+block on each generated method (brief from `desc`, one `@param` per input with
+its shape derived from the `type:` notation, the output description as `@return`
+or a "Returns, in order:" list). `docs/source/conf.py` reparents those members
+off the `.inc` file so Breathe renders them on the `FunctionBuilder` page.
+
+Keep instruction descriptions short — one sentence. Trivial math / activation /
+`obs_*` entries get a templated line ("Element-wise square root.",
+"x component of a four-momentum."). An `*_inverse` entry says *"Inverse of
+`<forward>`."*. A physics instruction that is a step of a mapping ends with
+*"Building block of @ref `<Mapping>`."* or *"See @ref `<Mapping>`."*. No
+`**References**` anywhere in this part.
+
+To document a **new** instruction: add its `desc:` fields in
+`instruction_set.yaml`, rebuild (`generate_headers.py` runs as part of the
+build), and `python docs/check_doc_convention.py` will flag any `desc:` you
+missed.
+
 ## Verification
 
 Fast loop, no rebuild:
@@ -196,8 +233,12 @@ check, not a CI job (the wheel-test environment has no doxygen). The CI gate is
 
 **Every class under `phasespace/` is documented** — all `Mapping` and
 `FunctionGenerator` subclasses and the plain helper structs.
-`python docs/check_doc_convention.py` prints
-`check_doc_convention: all phasespace/ classes pass`.
 
-Outside `phasespace/`, the `driver/`, `compgraphs/` and top-level headers are
-still undocumented.
+**`compgraphs/` is documented** — the in-scope value types and the
+`FunctionBuilder` API have class comments, and every one of the 164 instructions
+in `instruction_set.yaml` has `desc:` fields for itself and each input/output.
+
+`python docs/check_doc_convention.py` prints
+`check_doc_convention: all phasespace/ and compgraphs/ classes pass`.
+
+Outside these, the `driver/` and top-level headers are still undocumented.
