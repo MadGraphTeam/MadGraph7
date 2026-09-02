@@ -11,7 +11,7 @@ namespace madspace {
  * A stack of @p layers dense layers of width @p hidden_dim with @p activation
  * between them and a linear output layer. Used as the subnetwork of the
  * @ref Flow and @ref DiscreteFlow adaptive samplers [1]. The weights and biases
- * are compute-graph globals named with @p prefix; call
+ * are compute-graph globals named with @p prefix. Call
  * `initialize_globals(context)` once before use.
  *
  * `batch` is the leading batch dimension.

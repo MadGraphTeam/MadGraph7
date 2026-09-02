@@ -5,8 +5,31 @@
 
 namespace madspace {
 
+/**
+ * Per-bin weight accumulator that adapts a @ref VegasMapping grid.
+ *
+ * During the warm-up run it sums the sample weights falling in each bin of each
+ * dimension. The accumulated `values` and `counts` are then used to refine the
+ * VEGAS grid (Sec. 3.2.2 of [1]).
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `latent` – `float`, shape `(batch, dimension)` – the sampled coordinates.
+ * - `weights` – `float`, shape `(batch,)` – the per-sample weights.
+ *
+ * **Returns**
+ * - `values` – `float`, shape `(dimension, bin_count)` – summed weight per bin.
+ * - `counts` – `int`, shape `(dimension, bin_count)` – sample count per bin.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 3.2.2)
+ */
 class VegasHistogram : public FunctionGenerator {
 public:
+    /// @param dimension  Number of dimensions.
+    /// @param bin_count  Number of grid bins per dimension.
     VegasHistogram(std::size_t dimension, std::size_t bin_count);
 
 private:

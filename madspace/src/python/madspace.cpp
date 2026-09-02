@@ -604,11 +604,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("ChiliMapping::random_dim")
         );
 
-    py::classh<VegasHistogram, FunctionGenerator>(m, "VegasHistogram")
+    py::classh<VegasHistogram, FunctionGenerator>(
+        m, "VegasHistogram", pydoc::doc("VegasHistogram")
+    )
         .def(
             py::init<std::size_t, std::size_t>(),
             py::arg("dimension"),
-            py::arg("bin_count")
+            py::arg("bin_count"),
+            pydoc::doc("VegasHistogram::VegasHistogram")
         );
 
     py::classh<VegasMapping, Mapping>(m, "VegasMapping", pydoc::doc("VegasMapping"))
@@ -1121,7 +1124,13 @@ PYBIND11_MODULE(_madspace_py, m) {
             &MLP::initialize_globals,
             py::arg("context"),
             pydoc::doc("MLP::initialize_globals")
-        );
+        )
+        .def(
+            "last_layer_bias_name",
+            &MLP::last_layer_bias_name,
+            pydoc::doc("MLP::last_layer_bias_name")
+        )
+        .def("global_names", &MLP::global_names, pydoc::doc("MLP::global_names"));
 
     py::classh<Flow, Mapping>(m, "Flow", pydoc::doc("Flow"))
         .def(
@@ -1216,8 +1225,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("context")
         );
 
-    py::classh<DiscreteHistogram, FunctionGenerator>(m, "DiscreteHistogram")
-        .def(py::init<std::vector<std::size_t>>(), py::arg("option_counts"));
+    py::classh<DiscreteHistogram, FunctionGenerator>(
+        m, "DiscreteHistogram", pydoc::doc("DiscreteHistogram")
+    )
+        .def(
+            py::init<std::vector<std::size_t>>(),
+            py::arg("option_counts"),
+            pydoc::doc("DiscreteHistogram::DiscreteHistogram")
+        );
 
     py::classh<DiscreteSampler, Mapping>(
         m, "DiscreteSampler", pydoc::doc("DiscreteSampler")

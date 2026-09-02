@@ -5,8 +5,31 @@
 
 namespace madspace {
 
+/**
+ * Per-category weight accumulator that adapts a @ref DiscreteSampler.
+ *
+ * During the warm-up run it sums the sample weights for each category of each
+ * discrete dimension. The accumulated `values_d` and `counts_d` are then used
+ * to refine the learned categorical distributions (Sec. 3.2.2 of [1]).
+ *
+ * `batch` is the leading batch dimension. `d` indexes the discrete dimensions.
+ *
+ * **Arguments**
+ * - `index_d` – `int`, shape `(batch,)` – the chosen category per dimension.
+ * - `weight` – `float`, shape `(batch,)` – the per-sample weights.
+ *
+ * **Returns**
+ * - `values_d` – `float`, shape `(option_counts[d],)` – summed weight per
+ *   category.
+ * - `counts_d` – `int`, shape `(option_counts[d],)` – sample count per category.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 3.2.2)
+ */
 class DiscreteHistogram : public FunctionGenerator {
 public:
+    /// @param option_counts  Number of categories for each discrete dimension.
     DiscreteHistogram(const std::vector<std::size_t>& option_counts);
 
 private:
