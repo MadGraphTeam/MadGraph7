@@ -73,16 +73,21 @@ def main() -> int:
             detailed_node = cd.find("detaileddescription")
             detailed = _text(detailed_node)
             raw = _raw(detailed_node)
+            bases = _base_names(cd)
+            is_component = bool(
+                bases & {"madspace::Mapping", "madspace::FunctionGenerator"}
+            )
             if not brief:
                 gaps.append("no brief")
             elif brief.count(".") == 0:
                 gaps.append("brief is not a sentence")
-            if not detailed:
+            # Mapping/FunctionGenerator subclasses carry the full comment; plain
+            # helper structs only need a one-line brief.
+            if is_component and not detailed:
                 gaps.append("no detailed description")
+            if not brief and not detailed:
                 problems[name] = gaps
                 continue
-
-            bases = _base_names(cd)
             if "madspace::Mapping" in bases:
                 for kw in ("Inputs", "Conditions", "Outputs"):
                     if kw not in detailed:

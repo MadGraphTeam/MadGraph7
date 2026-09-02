@@ -573,7 +573,9 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<MultiChannelMapping, Mapping>(m, "MultiChannelMapping")
         .def(py::init<std::vector<std::shared_ptr<Mapping>>&>(), py::arg("mappings"));
 
-    auto obs = py::classh<Observable, FunctionGenerator>(m, "Observable");
+    auto obs = py::classh<Observable, FunctionGenerator>(
+        m, "Observable", pydoc::doc("Observable")
+    );
     add_enum<Observable::ObservableOption>(
         obs,
         "ObservableOption",
@@ -617,7 +619,8 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("order_observable") = std::nullopt,
            py::arg("order_indices") = std::vector<int>{},
            py::arg("ignore_incoming") = true,
-           py::arg("name") = ""
+           py::arg("name") = "",
+           pydoc::doc("Observable::Observable")
     )
         .def_readonly_static("jet_pids", &Observable::jet_pids)
         .def_readonly_static("bottom_pids", &Observable::bottom_pids)
@@ -625,7 +628,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly_static("missing_pids", &Observable::missing_pids)
         .def_readonly_static("photon_pids", &Observable::photon_pids);
 
-    auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts");
+    auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts", pydoc::doc("Cuts"));
     add_enum<Cuts::CutMode>(
         cuts,
         "CutMode",
@@ -634,7 +637,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"all", Cuts::all},
         }
     );
-    py::classh<Cuts::CutItem>(m, "CutItem")
+    py::classh<Cuts::CutItem>(m, "CutItem", pydoc::doc("Cuts::CutItem"))
         .def(
             py::init<Observable, double, double, Cuts::CutMode>(),
             py::arg("observable"),
@@ -642,17 +645,29 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("max") = std::numeric_limits<double>::infinity(),
             py::arg("mode") = Cuts::CutMode::all
         )
-        .def_readonly("observable", &Cuts::CutItem::observable)
-        .def_readonly("min", &Cuts::CutItem::min)
-        .def_readonly("max", &Cuts::CutItem::max)
-        .def_readonly("mode", &Cuts::CutItem::mode);
-    cuts.def(py::init<const std::vector<Cuts::CutItem>&>(), py::arg("cut_data"))
-        .def(py::init<std::size_t>(), py::arg("particle_count"))
-        .def("sqrt_s_min", &Cuts::sqrt_s_min)
-        .def("eta_max", &Cuts::eta_max)
-        .def("pt_min", &Cuts::pt_min)
-        .def("m_inv_min", &Cuts::m_inv_min)
-        .def("dr_min", &Cuts::dr_min);
+        .def_readonly(
+            "observable",
+            &Cuts::CutItem::observable,
+            pydoc::doc("Cuts::CutItem::observable")
+        )
+        .def_readonly("min", &Cuts::CutItem::min, pydoc::doc("Cuts::CutItem::min"))
+        .def_readonly("max", &Cuts::CutItem::max, pydoc::doc("Cuts::CutItem::max"))
+        .def_readonly("mode", &Cuts::CutItem::mode, pydoc::doc("Cuts::CutItem::mode"));
+    cuts.def(
+            py::init<const std::vector<Cuts::CutItem>&>(),
+            py::arg("cut_data"),
+            pydoc::doc("Cuts::Cuts")
+    )
+        .def(
+            py::init<std::size_t>(),
+            py::arg("particle_count"),
+            pydoc::doc("Cuts::Cuts#2")
+        )
+        .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
+        .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
+        .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))
+        .def("m_inv_min", &Cuts::m_inv_min, pydoc::doc("Cuts::m_inv_min"))
+        .def("dr_min", &Cuts::dr_min, pydoc::doc("Cuts::dr_min"));
 
     py::classh<ObservableHistograms::HistItem>(m, "HistItem")
         .def(
