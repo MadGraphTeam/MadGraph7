@@ -990,7 +990,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
                 const std::optional<std::vector<std::size_t>>&>(),
-            py::arg("masses"),
+            py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
@@ -1080,7 +1080,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("outputs"),
             py::arg("sample_random_inputs") = false
         )
-        .def("matrix_element_index", &MatrixElement::diagram_count)
+        .def("matrix_element_index", &MatrixElement::matrix_element_index)
         .def("diagram_count", &MatrixElement::diagram_count)
         .def("particle_count", &MatrixElement::particle_count);
 

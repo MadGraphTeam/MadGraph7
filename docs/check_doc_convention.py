@@ -62,6 +62,8 @@ def main() -> int:
         for cd in ET.parse(path).getroot().findall("compounddef"):
             if cd.get("kind") not in ("class", "struct"):
                 continue
+            if cd.get("prot") == "private":  # private nested implementation type
+                continue
             loc = cd.find("location")
             f = loc.get("file", "") if loc is not None else ""
             if "/phasespace/" not in f:
