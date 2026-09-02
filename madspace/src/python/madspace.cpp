@@ -759,7 +759,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("m_inv_min", &Cuts::m_inv_min, pydoc::doc("Cuts::m_inv_min"))
         .def("dr_min", &Cuts::dr_min, pydoc::doc("Cuts::dr_min"));
 
-    py::classh<ObservableHistograms::HistItem>(m, "HistItem")
+    py::classh<ObservableHistograms::HistItem>(
+        m, "HistItem", pydoc::doc("ObservableHistograms::HistItem")
+    )
         .def(
             py::init<Observable, double, double, std::size_t>(),
             py::arg("observable"),
@@ -767,14 +769,38 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("max"),
             py::arg("bin_count")
         )
-        .def_readonly("observable", &ObservableHistograms::HistItem::observable)
-        .def_readonly("min", &ObservableHistograms::HistItem::min)
-        .def_readonly("max", &ObservableHistograms::HistItem::max)
-        .def_readonly("bin_count", &ObservableHistograms::HistItem::bin_count);
-    py::classh<ObservableHistograms, FunctionGenerator>(m, "ObservableHistograms")
+        .def_readonly(
+            "observable",
+            &ObservableHistograms::HistItem::observable,
+            pydoc::doc("ObservableHistograms::HistItem::observable")
+        )
+        .def_readonly(
+            "min",
+            &ObservableHistograms::HistItem::min,
+            pydoc::doc("ObservableHistograms::HistItem::min")
+        )
+        .def_readonly(
+            "max",
+            &ObservableHistograms::HistItem::max,
+            pydoc::doc("ObservableHistograms::HistItem::max")
+        )
+        .def_readonly(
+            "bin_count",
+            &ObservableHistograms::HistItem::bin_count,
+            pydoc::doc("ObservableHistograms::HistItem::bin_count")
+        );
+    py::classh<ObservableHistograms, FunctionGenerator>(
+        m, "ObservableHistograms", pydoc::doc("ObservableHistograms")
+    )
         .def(
             py::init<const std::vector<ObservableHistograms::HistItem>&>(),
-            py::arg("observables")
+            py::arg("observables"),
+            pydoc::doc("ObservableHistograms::ObservableHistograms")
+        )
+        .def(
+            "observables",
+            &ObservableHistograms::observables,
+            pydoc::doc("ObservableHistograms::observables")
         );
 
     auto line_ref =
