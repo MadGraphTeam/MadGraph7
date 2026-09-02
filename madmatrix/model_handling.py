@@ -168,7 +168,6 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             else:
                 type = self.type2def[format] + ' ' + self.type2def['aloha_ref']
                 list_arg = ''
-            misc.sprint(argname,self.tag)
             if argname.startswith('COUP'):
                 type = self.type2def['double'] # AV from cxtype_sv to fptype array (running alphas #373)
                 if 'M' in self.tag:
@@ -2201,8 +2200,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             iconfig_to_diag[iconfig] = config[0] 
             diag_to_iconfig[config[0]] = iconfig
 
-        misc.sprint(iconfig_to_diag)
-        misc.sprint(diag_to_iconfig)
 
         # Note that if the last diagram is/are not mapped to a channel nb_diag 
         # will be smaller than the true number of diagram. This is fine for color

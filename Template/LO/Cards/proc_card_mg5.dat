@@ -17,7 +17,7 @@
 #*                                                          *
 #*               Command File for MadGraph5_aMC@NLO         *
 #*                                                          *
-#*     run as ./bin/mg5_aMC  filename                       *
+#*     run as ./bin/madgraph  filename                      *
 #*                                                          *
 #************************************************************
 import model sm

@@ -1,7 +1,10 @@
 [run]
 run_name = %(run.run_name)s
-# options: cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto
-devices = %(run.devices)s
+# list of devices; options: cpu, cuda, hip (an optional device index can be added, e.g. "cuda:1")
+device = %(run.device)s
+# SIMD width used by the 'cpu' devices (ignored by cuda/hip)
+# options: auto (widest width supported by the host), scalar, simd_128, simd_256, simd_512, avx512y
+cpu_mode = %(run.cpu_mode)s
 # options:
 #   -1 to choose automatically
 #   on x86: 1, 4, 8
