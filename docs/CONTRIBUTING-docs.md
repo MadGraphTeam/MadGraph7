@@ -184,9 +184,17 @@ cd docs && sphinx-build -b html source build/html -n -W --keep-going
 
 ## Status
 
-- Done: `FastRamboMapping`.
-- In progress: the remaining `Mapping` subclasses under `phasespace/` plus the
-  foundations they reference (`base.hpp`, `Invariant`, `Cuts`, `Topology`/`Diagram`/
-  `Propagator`).
-- Not started: the `FunctionGenerator` subclasses under `phasespace/` and the remaining
-  plain helper structs.
+- **Done**: every `Mapping` subclass under `phasespace/` (`Mapping` /
+  `FunctionGenerator` base classes, `Invariant`, `Luminosity`, `TwoBodyDecay`,
+  `TwoToTwoParticleScattering`, `DoubleT`, `ThreeBodyDecay`,
+  `TwoToThreeParticleScattering`, `ChiliMapping`, `FastRamboMapping`,
+  `TPropagatorMapping`, `ColorOrderedMapping`, `PhaseSpaceMapping`,
+  `MultiChannelMapping`, `VegasMapping`, `Flow`, `DiscreteSampler`,
+  `DiscreteFlow`), plus the foundations they reference (`Cuts`, `Observable`,
+  `Topology` / `Diagram` / `Propagator`, and a compact `MLP`).
+- **Not started**: the remaining `FunctionGenerator` subclasses under
+  `phasespace/` (`MatrixElement`, `Integrand` & friends, `cross_section.hpp`,
+  `pdf.hpp`, `scale.hpp`, `histograms.hpp`, `channel_weights.hpp`,
+  `channel_weight_network.hpp`, `unweighter.hpp`, `madnis.hpp`,
+  `MultiChannelFunction`, full `MLP`) and the plain helper structs `PdfGrid` /
+  `AlphaSGrid`. `check_doc_convention.py` still lists these.
