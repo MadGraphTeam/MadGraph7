@@ -17,8 +17,7 @@ namespace madspace {
  * Full @f$2 \to n@f$ phase-space mapping for one diagram topology.
  *
  * Assembles a complete mapping from the elementary building blocks along the
- * recursive decomposition of the tree-level phase space (Sec. 2.2 of [1],
- * following [2, 3, 4]),
+ * recursive decomposition of the tree-level phase space (Sec. 2.2 of [1]),
  *
  * @f[
  *   \int \mathrm{d}\Phi_n =
@@ -61,13 +60,6 @@ namespace madspace {
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
  *   https://arxiv.org/abs/2602.06895 (Sec. 2.2)
- * - [2] J. Alwall et al., "The automated computation of tree-level and
- *   next-to-leading order differential cross sections",
- *   https://arxiv.org/abs/1405.0301
- * - [3] T. Sjöstrand et al., "An introduction to PYTHIA 8.2",
- *   https://arxiv.org/abs/1410.3012
- * - [4] E. Bothmann et al., "Event generation with Sherpa 2.2",
- *   https://arxiv.org/abs/1905.09127
  */
 class PhaseSpaceMapping : public Mapping {
 public:
