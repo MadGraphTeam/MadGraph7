@@ -452,28 +452,38 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Luminosity::Luminosity")
         );
 
-    py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay")
-        .def(py::init<bool>(), py::arg("com"));
+    py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
+        .def(py::init<bool>(), py::arg("com"), pydoc::doc("TwoBodyDecay::TwoBodyDecay"))
+        .def(
+            "random_dim",
+            &TwoBodyDecay::random_dim,
+            pydoc::doc("TwoBodyDecay::random_dim")
+        );
 
-    py::classh<TwoToTwoParticleScattering, Mapping>(m, "TwoToTwoParticleScattering")
+    py::classh<TwoToTwoParticleScattering, Mapping>(
+        m, "TwoToTwoParticleScattering", pydoc::doc("TwoToTwoParticleScattering")
+    )
         .def(
             py::init<bool, double, double, double, bool>(),
             py::arg("com"),
             py::arg("invariant_power") = 0.,
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
-            py::arg("has_cut") = false
+            py::arg("has_cut") = false,
+            pydoc::doc("TwoToTwoParticleScattering::TwoToTwoParticleScattering")
         );
 
-    py::classh<DoubleT, Mapping>(m, "DoubleT")
+    py::classh<DoubleT, Mapping>(m, "DoubleT", pydoc::doc("DoubleT"))
         .def(
-            py::init<double, double, double, double, double, double>(),
+            py::init<double, double, double, double, double, double, bool>(),
             py::arg("t1_invariant_power") = 0.,
             py::arg("t1_mass") = 0.,
             py::arg("t1_width") = 0.,
             py::arg("t2_invariant_power") = 0.,
             py::arg("t2_mass") = 0.,
-            py::arg("t2_width") = 0.
+            py::arg("t2_width") = 0.,
+            py::arg("has_cut") = false,
+            pydoc::doc("DoubleT::DoubleT")
         );
 
     py::classh<ThreeBodyDecay, Mapping>(m, "ThreeBodyDecay")
