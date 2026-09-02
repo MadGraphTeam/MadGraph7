@@ -723,20 +723,19 @@ class MadgraphProcess:
         return self.event_histograms
 
     def log_systematics_summary(self) -> None:
-        """Print the per-variation cross sections and the resulting scale/PDF
-        uncertainties (same information as systematics.py used to print)."""
+        """Print the scale/PDF uncertainties on the total cross section (the
+        per-variation cross sections are in events.weights.json / info.json)."""
         if self.systematics is None or self.systematics.weight_count == 0:
             return
         summary = json.loads(self.systematics.summary())
         nominal = summary.get("nominal", {})
         xsec = nominal.get("cross_section")
-        if xsec is None:
+        if not xsec:
             return
-        logger.info("")
         logger.info("#***************************************************************************")
         logger.info("#")
         logger.info("# original cross-section: %s pb", xsec)
-        if "scale" in summary and xsec:
+        if "scale" in summary:
             lo, hi = summary["scale"]["min"], summary["scale"]["max"]
             logger.info("#     scale variation: +%.3g%% -%.3g%%",
                         (hi - xsec) / xsec * 100, (xsec - lo) / xsec * 100)
@@ -747,11 +746,6 @@ class MadgraphProcess:
                             pdf["uncertainty_up"] / pdf["central"] * 100,
                             pdf["uncertainty_down"] / pdf["central"] * 100)
         logger.info("#")
-        logger.info("# id\tmur\tmuf\tdyn\tpdf\t\tcross-section")
-        for var in summary["variations"]:
-            logger.info("# %s\t%s\t%s\t%s\t%s@%s\t%s", var["id"], var["mur"], var["muf"],
-                        var.get("dyn", -1), var["pdf_lhaid"], var["pdf_member"],
-                        var.get("cross_section"))
         logger.info("#***************************************************************************")
 
     def init_generator_config(self) -> None:
