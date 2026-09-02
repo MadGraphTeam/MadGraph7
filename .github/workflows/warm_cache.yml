@@ -133,7 +133,7 @@ jobs:
          mkdir -p /home/runner/.cache/UFOMODEL
          echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/UFOMODEL" >> $GITHUB_ENV
          echo "import model 2HDM" >> cmd
-         ./bin/mg5_aMC cmd
+         ./bin/madgraph cmd
 
      - name: move UFO model to cache
        if: steps.cache-ufo.outputs.cache-hit != 'true'
@@ -172,7 +172,7 @@ jobs:
                echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install lhapdf6" > cmd
-               ./bin/mg5_aMC cmd
+               ./bin/madgraph cmd
 
        - name: get pdf set for NLO
          if: steps.cache-lhapdf.outputs.cache-hit != 'true'
@@ -183,6 +183,10 @@ jobs:
                wget https://lhapdfsets.web.cern.ch/lhapdfsets/current/cteq6l1.tar.gz
                tar -xzpvf cteq6l1.tar.gz
                # LO set used by the mg7 run_card.toml default (madspace integration)
+               wget https://lhapdfsets.web.cern.ch/current/NNPDF40MC_lo_as_01180.tar.gz
+               tar -xzpvf NNPDF40MC_lo_as_01180.tar.gz
+               # previous mg7 default; still pinned by the mg7 cross-section
+               # reference tests (tests/acceptance_tests/test_check_xsec_processes_mg7.py)
                wget https://lhapdfsets.web.cern.ch/current/NNPDF23_lo_as_0130_qed.tar.gz
                tar -xzpvf NNPDF23_lo_as_0130_qed.tar.gz
                
@@ -227,12 +231,12 @@ jobs:
                echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install pythia8" > cmd
-               ./bin/mg5_aMC cmd
+               ./bin/madgraph cmd
 
        - name: Verify pythia8 landed in the cache
          if: steps.cache-pythia8.outputs.cache-hit != 'true'
          run: |
-               # mg5_aMC exits 0 even when "install pythia8" fails (e.g. a network
+               # madgraph exits 0 even when "install pythia8" fails (e.g. a network
                # timeout while downloading hepmc/pythia8 from the download server),
                # so guard the cache here. Without Pythia.h, MG5 nullifies
                # pythia8_path at startup, leaving the parton shower unavailable and
@@ -277,7 +281,7 @@ jobs:
                echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install eMELA" > cmd
-               ./bin/mg5_aMC cmd
+               ./bin/madgraph cmd
             
 #  delete_lhapdf_cache:
 #     runs-on: ${{ matrix.os }}
@@ -335,7 +339,7 @@ jobs:
                # YODA's python extension build needs Cython (no longer shipped by
                # default on the GitHub runner image); without it rivet aborts at
                # YODA, before FastJet is installed, leaving NLO builds broken.
-               # Install into the same interpreter mg5_aMC/YODA use (no sudo, so
+               # Install into the same interpreter madgraph/YODA use (no sudo, so
                # the system Python is left untouched for other steps).
                python3 -m pip install Cython
                mkdir -p /home/runner/.cache/HEPtools
@@ -344,12 +348,12 @@ jobs:
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install rivet" > cmd
                echo "install contur" >> cmd
-               ./bin/mg5_aMC cmd
+               ./bin/madgraph cmd
 
        - name: Verify rivet/fastjet landed in the cache
          if: steps.cache-contur.outputs.cache-hit != 'true'
          run: |
-               # mg5_aMC exits 0 even when "install rivet" fails, so guard the
+               # madgraph exits 0 even when "install rivet" fails, so guard the
                # cache here: a missing fastjet-config means NLO subprocesses cannot
                # compile (fastjet/ClusterSequence.hh). Fail loudly instead of
                # saving an incomplete heptools cache.
@@ -411,7 +415,7 @@ jobs:
              cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
              echo "install collier " > cmd
              echo "install ninja " >> cmd
-             ./bin/mg5_aMC cmd
+             ./bin/madgraph cmd
 
   heptools_cache:
     if: always() && (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
@@ -606,7 +610,7 @@ jobs:
                cd $GITHUB_WORKSPACE
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install Delphes" > cmd
-               ./bin/mg5_aMC cmd
+               ./bin/madgraph cmd
                # MG installs Delphes into MG5DIR/Delphes; move it next to ROOT so
                # the whole tool set lives in the dedicated cache.
                rm -rf $HOME/.cache/Delphes/Delphes

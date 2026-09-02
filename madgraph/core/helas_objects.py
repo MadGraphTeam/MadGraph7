@@ -1680,7 +1680,6 @@ class HelasWavefunction(base_objects.PhysicsObject):
             return None
         
         pdg_out = self.get('pdg_code')
-        misc.sprint(pdg_out, self[tag_name], [p.get_pdg_code() for p in vertex.get('particles')])
         if abs(pdg_out) in model.get('merged_particles'):
             pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')]             
             index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_vertex) if abs(pdg) in model.get('merged_particles')][0]

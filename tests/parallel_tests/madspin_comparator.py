@@ -426,7 +426,7 @@ class MadSpinFactory(object):
         self._results = {}
 
     # ------------------------------------------------------------------
-    # Production: run mg5_aMC once to generate events.
+    # Production: run madgraph once to generate events.
     # ------------------------------------------------------------------
     def _write_mg5_script(self, script_path):
         lines = ['set automatic_html_opening False --no_save',
@@ -455,7 +455,7 @@ class MadSpinFactory(object):
             fp.write('\n'.join(lines) + '\n')
 
     def produce_events(self):
-        """Run mg5_aMC once; cache the LHE file path."""
+        """Run madgraph once; cache the LHE file path."""
         if self.events_file:
             return self.events_file
 
@@ -467,15 +467,15 @@ class MadSpinFactory(object):
                      self.name, log_path)
         with open(log_path, 'w') as logf:
             ret = subprocess.call(
-                [pjoin(MG5DIR, 'bin', 'mg5_aMC'), '-f', script_path],
+                [pjoin(MG5DIR, 'bin', 'madgraph'), '-f', script_path],
                 stdout=logf, stderr=subprocess.STDOUT,
             )
         if ret != 0:
             raise RuntimeError(
-                'mg5_aMC failed for factory %s (see %s)' % (self.name, log_path)
+                'madgraph failed for factory %s (see %s)' % (self.name, log_path)
             )
 
-        # mg5_aMC -f sometimes returns 0 even when an intermediate command
+        # madgraph -f sometimes returns 0 even when an intermediate command
         # (e.g. ``generate``) aborts -- the wrapper just skips the rest and
         # exits cleanly. Check the log for the unmistakable markers it emits
         # in that case so we surface the failure here instead of further down
@@ -487,7 +487,7 @@ class MadSpinFactory(object):
                        'command not executed: launch'):
             if marker in log_text:
                 raise RuntimeError(
-                    'mg5_aMC aborted mid-script for factory %s '
+                    'madgraph aborted mid-script for factory %s '
                     '(marker %r in %s)' % (self.name, marker, log_path)
                 )
 
