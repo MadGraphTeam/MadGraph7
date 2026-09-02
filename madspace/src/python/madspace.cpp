@@ -203,26 +203,45 @@ PYBIND11_MODULE(_madspace_py, m) {
     named_vector_instance<Value>(m, "NamedValues");
     named_vector_instance<Type>(m, "NamedTypes");
 
-    py::classh<InstructionCall>(m, "InstructionCall")
+    py::classh<InstructionCall>(m, "InstructionCall", pydoc::doc("InstructionCall"))
         .def("__str__", &to_string<InstructionCall>)
         .def("__repr__", &to_string<InstructionCall>)
         .def_property_readonly(
             "instruction",
-            [](const InstructionCall& call) -> InstrCopy { return call.instruction; }
+            [](const InstructionCall& call) -> InstrCopy { return call.instruction; },
+            pydoc::doc("InstructionCall::instruction")
         )
-        .def_readonly("inputs", &InstructionCall::inputs)
-        .def_readonly("outputs", &InstructionCall::outputs);
+        .def_readonly(
+            "inputs", &InstructionCall::inputs, pydoc::doc("InstructionCall::inputs")
+        )
+        .def_readonly(
+            "outputs", &InstructionCall::outputs, pydoc::doc("InstructionCall::outputs")
+        );
 
-    py::classh<Function>(m, "Function", py::dynamic_attr())
+    py::classh<Function>(m, "Function", pydoc::doc("Function"), py::dynamic_attr())
         .def("__str__", &to_string<Function>)
         .def("__repr__", &to_string<Function>)
-        .def("save", &Function::save, py::arg("file"))
-        .def_static("load", &Function::load, py::arg("file"))
-        .def_property_readonly("inputs", &Function::inputs)
-        .def_property_readonly("outputs", &Function::outputs)
-        .def_property_readonly("locals", &Function::locals)
-        .def_property_readonly("globals", &Function::globals)
-        .def_property_readonly("instructions", &Function::instructions);
+        .def("save", &Function::save, py::arg("file"), pydoc::doc("Function::save"))
+        .def_static(
+            "load", &Function::load, py::arg("file"), pydoc::doc("Function::load")
+        )
+        .def_property_readonly(
+            "inputs", &Function::inputs, pydoc::doc("Function::inputs")
+        )
+        .def_property_readonly(
+            "outputs", &Function::outputs, pydoc::doc("Function::outputs")
+        )
+        .def_property_readonly(
+            "locals", &Function::locals, pydoc::doc("Function::locals")
+        )
+        .def_property_readonly(
+            "globals", &Function::globals, pydoc::doc("Function::globals")
+        )
+        .def_property_readonly(
+            "instructions",
+            &Function::instructions,
+            pydoc::doc("Function::instructions")
+        );
 
     py::classh<Device> device(m, "Device");
     m.def("cpu_device", &cpu_device, py::return_value_policy::reference);
@@ -305,39 +324,71 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("call_backward", &FunctionRuntime::call_backward);
 
     auto& fb =
-        py::classh<FunctionBuilder>(m, "FunctionBuilder")
+        py::classh<FunctionBuilder>(m, "FunctionBuilder", pydoc::doc("FunctionBuilder"))
             .def(
                 py::init<const NamedVector<Type>&, const NamedVector<Type>&>(),
                 py::arg("input_types"),
-                py::arg("output_types")
+                py::arg("output_types"),
+                pydoc::doc("FunctionBuilder::FunctionBuilder")
             )
-            .def("input", &FunctionBuilder::input, py::arg("index"))
+            .def(
+                "input",
+                &FunctionBuilder::input,
+                py::arg("index"),
+                pydoc::doc("FunctionBuilder::input")
+            )
             .def(
                 "input_range",
                 &FunctionBuilder::input_range,
                 py::arg("start_index"),
-                py::arg("end_index")
+                py::arg("end_index"),
+                pydoc::doc("FunctionBuilder::input_range")
             )
-            .def("output", &FunctionBuilder::output, py::arg("index"), py::arg("value"))
+            .def(
+                "output",
+                &FunctionBuilder::output,
+                py::arg("index"),
+                py::arg("value"),
+                pydoc::doc("FunctionBuilder::output")
+            )
             .def(
                 "output_range",
                 &FunctionBuilder::output_range,
                 py::arg("start_index"),
-                py::arg("values")
+                py::arg("values"),
+                pydoc::doc("FunctionBuilder::output_range")
             )
             .def(
                 "get_global",
                 &FunctionBuilder::global,
                 py::arg("name"),
                 py::arg("dtype"),
-                py::arg("shape")
+                py::arg("shape"),
+                pydoc::doc("FunctionBuilder::global")
             )
             //.def("instruction", &FunctionBuilder::instruction, py::arg("name"),
             // py::arg("args"))
-            .def("product", &FunctionBuilder::product, py::arg("values"))
-            .def("current_stream", &FunctionBuilder::current_stream)
-            .def("set_current_stream", &FunctionBuilder::set_current_stream)
-            .def("function", &FunctionBuilder::function);
+            .def(
+                "product",
+                &FunctionBuilder::product,
+                py::arg("values"),
+                pydoc::doc("FunctionBuilder::product")
+            )
+            .def(
+                "current_stream",
+                &FunctionBuilder::current_stream,
+                pydoc::doc("FunctionBuilder::current_stream")
+            )
+            .def(
+                "set_current_stream",
+                &FunctionBuilder::set_current_stream,
+                pydoc::doc("FunctionBuilder::set_current_stream")
+            )
+            .def(
+                "function",
+                &FunctionBuilder::function,
+                pydoc::doc("FunctionBuilder::function")
+            );
     add_instructions(fb);
 
     py::classh<Mapping, PyMapping>(
