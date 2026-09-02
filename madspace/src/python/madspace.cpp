@@ -611,16 +611,28 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("bin_count")
         );
 
-    py::classh<VegasMapping, Mapping>(m, "VegasMapping")
+    py::classh<VegasMapping, Mapping>(m, "VegasMapping", pydoc::doc("VegasMapping"))
         .def(
             py::init<std::size_t, std::size_t, const std::string&>(),
             py::arg("dimension"),
             py::arg("bin_count"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("VegasMapping::VegasMapping")
         )
-        .def("grid_name", &VegasMapping::grid_name)
         .def(
-            "initialize_globals", &VegasMapping::initialize_globals, py::arg("context")
+            "grid_name", &VegasMapping::grid_name, pydoc::doc("VegasMapping::grid_name")
+        )
+        .def(
+            "initialize_globals",
+            &VegasMapping::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("VegasMapping::initialize_globals")
+        )
+        .def(
+            "dimension", &VegasMapping::dimension, pydoc::doc("VegasMapping::dimension")
+        )
+        .def(
+            "bin_count", &VegasMapping::bin_count, pydoc::doc("VegasMapping::bin_count")
         );
 
     py::classh<FastRamboMapping, Mapping>(
@@ -1072,7 +1084,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("diagram_count", &MatrixElement::diagram_count)
         .def("particle_count", &MatrixElement::particle_count);
 
-    py::classh<MLP, FunctionGenerator> mlp(m, "MLP");
+    py::classh<MLP, FunctionGenerator> mlp(m, "MLP", pydoc::doc("MLP"));
     add_enum<MLP::Activation>(
         mlp,
         "Activation",
@@ -1099,13 +1111,19 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("hidden_dim") = 32,
            py::arg("layers") = 3,
            py::arg("activation") = MLP::leaky_relu,
-           py::arg("prefix") = ""
+           py::arg("prefix") = "",
+           pydoc::doc("MLP::MLP")
     )
-        .def("input_dim", &MLP::input_dim)
-        .def("output_dim", &MLP::output_dim)
-        .def("initialize_globals", &MLP::initialize_globals, py::arg("context"));
+        .def("input_dim", &MLP::input_dim, pydoc::doc("MLP::input_dim"))
+        .def("output_dim", &MLP::output_dim, pydoc::doc("MLP::output_dim"))
+        .def(
+            "initialize_globals",
+            &MLP::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("MLP::initialize_globals")
+        );
 
-    py::classh<Flow, Mapping>(m, "Flow")
+    py::classh<Flow, Mapping>(m, "Flow", pydoc::doc("Flow"))
         .def(
             py::init<
                 std::size_t,
@@ -1123,16 +1141,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("subnet_hidden_dim") = 32,
             py::arg("subnet_layers") = 3,
             py::arg("subnet_activation") = MLP::leaky_relu,
-            py::arg("invert_spline") = true
+            py::arg("invert_spline") = true,
+            pydoc::doc("Flow::Flow")
         )
-        .def("input_dim", &Flow::input_dim)
-        .def("condition_dim", &Flow::condition_dim)
-        .def("initialize_globals", &Flow::initialize_globals, py::arg("context"))
+        .def("input_dim", &Flow::input_dim, pydoc::doc("Flow::input_dim"))
+        .def("condition_dim", &Flow::condition_dim, pydoc::doc("Flow::condition_dim"))
+        .def(
+            "initialize_globals",
+            &Flow::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("Flow::initialize_globals")
+        )
         .def(
             "initialize_from_vegas",
             &Flow::initialize_from_vegas,
             py::arg("context"),
-            py::arg("grid_name")
+            py::arg("grid_name"),
+            pydoc::doc("Flow::initialize_from_vegas")
         );
 
     py::classh<PropagatorChannelWeights, FunctionGenerator>(
@@ -1194,7 +1219,9 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<DiscreteHistogram, FunctionGenerator>(m, "DiscreteHistogram")
         .def(py::init<std::vector<std::size_t>>(), py::arg("option_counts"));
 
-    py::classh<DiscreteSampler, Mapping>(m, "DiscreteSampler")
+    py::classh<DiscreteSampler, Mapping>(
+        m, "DiscreteSampler", pydoc::doc("DiscreteSampler")
+    )
         .def(
             py::init<
                 const std::vector<std::size_t>&,
@@ -1202,17 +1229,27 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&>(),
             py::arg("option_counts"),
             py::arg("prefix") = "",
-            py::arg("dims_with_prior") = std::vector<std::size_t>{}
+            py::arg("dims_with_prior") = std::vector<std::size_t>{},
+            pydoc::doc("DiscreteSampler::DiscreteSampler")
         )
-        .def("option_counts", &DiscreteSampler::option_counts)
-        .def("prob_names", &DiscreteSampler::prob_names)
+        .def(
+            "option_counts",
+            &DiscreteSampler::option_counts,
+            pydoc::doc("DiscreteSampler::option_counts")
+        )
+        .def(
+            "prob_names",
+            &DiscreteSampler::prob_names,
+            pydoc::doc("DiscreteSampler::prob_names")
+        )
         .def(
             "initialize_globals",
             &DiscreteSampler::initialize_globals,
-            py::arg("context")
+            py::arg("context"),
+            pydoc::doc("DiscreteSampler::initialize_globals")
         );
 
-    py::classh<DiscreteFlow, Mapping>(m, "DiscreteFlow")
+    py::classh<DiscreteFlow, Mapping>(m, "DiscreteFlow", pydoc::doc("DiscreteFlow"))
         .def(
             py::init<
                 const std::vector<std::size_t>&,
@@ -1228,12 +1265,24 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("condition_dim") = 0,
             py::arg("subnet_hidden_dim") = 32,
             py::arg("subnet_layers") = 3,
-            py::arg("subnet_activation") = MLP::leaky_relu
+            py::arg("subnet_activation") = MLP::leaky_relu,
+            pydoc::doc("DiscreteFlow::DiscreteFlow")
         )
-        .def("option_counts", &DiscreteFlow::option_counts)
-        .def("condition_dim", &DiscreteFlow::condition_dim)
         .def(
-            "initialize_globals", &DiscreteFlow::initialize_globals, py::arg("context")
+            "option_counts",
+            &DiscreteFlow::option_counts,
+            pydoc::doc("DiscreteFlow::option_counts")
+        )
+        .def(
+            "condition_dim",
+            &DiscreteFlow::condition_dim,
+            pydoc::doc("DiscreteFlow::condition_dim")
+        )
+        .def(
+            "initialize_globals",
+            &DiscreteFlow::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("DiscreteFlow::initialize_globals")
         );
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")

@@ -17,14 +17,53 @@ private:
     std::size_t _bin_count;
 };
 
+/**
+ * VEGAS adaptive-sampling mapping.
+ *
+ * A separable piecewise-linear reparametrization of the unit hypercube, one
+ * axis-aligned grid of @p bin_count bins per dimension, adapted to the
+ * integrand during a warm-up run [1, 2]. The grid is a compute-graph global
+ * named after @p prefix; call `initialize_globals(context)` once before use.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Inputs**
+ * - `latent` – `float`, shape `(batch, dimension)` – uniform coordinates in
+ *   `[0, 1)`.
+ *
+ * **Conditions**
+ * - None.
+ *
+ * **Outputs**
+ * - `data` – `float`, shape `(batch, dimension)` – the reparametrized
+ *   coordinates.
+ *
+ * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 3.2.2)
+ * - [2] G. P. Lepage, "Adaptive multidimensional integration: VEGAS enhanced",
+ *   https://arxiv.org/abs/2009.05112
+ */
 class VegasMapping : public Mapping {
 public:
+    /**
+     * @param dimension  Number of dimensions.
+     * @param bin_count  Number of grid bins per dimension.
+     * @param prefix     Prefix for the grid global name.
+     */
     VegasMapping(
         std::size_t dimension, std::size_t bin_count, const std::string& prefix = ""
     );
+    /// Global name of the VEGAS grid.
     const std::string& grid_name() const { return _grid_name; }
+    /// Register the grid global on @p context.
     void initialize_globals(ContextPtr context) const;
+    /// Number of dimensions.
     std::size_t dimension() const { return _dimension; }
+    /// Number of grid bins per dimension.
     std::size_t bin_count() const { return _bin_count; }
 
 private:

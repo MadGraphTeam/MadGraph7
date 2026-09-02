@@ -17,15 +17,52 @@ private:
     std::vector<std::size_t> _option_counts;
 };
 
+/**
+ * Adaptive sampler for discrete choices.
+ *
+ * Maps one uniform random number per discrete dimension to a category index,
+ * using a learned categorical distribution per dimension [1]. The
+ * probabilities are compute-graph globals named after @p prefix; call
+ * `initialize_globals(context)` once before use. A dimension listed in
+ * @p dims_with_prior is instead conditioned on a `prior_i` input.
+ *
+ * `batch` is the leading batch dimension. `d` indexes the discrete dimensions.
+ *
+ * **Inputs**
+ * - `random_i` – `float`, shape `(batch,)` – one uniform number per dimension.
+ *
+ * **Conditions**
+ * - `prior_d` – `float`, shape `(batch, option_counts[d])` – prior category
+ *   weights. Present only for the dimensions in @p dims_with_prior.
+ *
+ * **Outputs**
+ * - `index_i` – `int`, shape `(batch,)` – the chosen category per dimension.
+ *
+ * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 3.2.2)
+ */
 class DiscreteSampler : public Mapping {
 public:
+    /**
+     * @param option_counts    Number of categories for each discrete dimension.
+     * @param prefix           Prefix for the probability global names.
+     * @param dims_with_prior  Dimensions conditioned on a `prior_i` input
+     *                         rather than a learned global.
+     */
     DiscreteSampler(
         const std::vector<std::size_t>& option_counts,
         const std::string& prefix = "",
         const std::vector<std::size_t>& dims_with_prior = {}
     );
+    /// Number of categories per discrete dimension.
     const std::vector<std::size_t>& option_counts() const { return _option_counts; }
+    /// Global names of the per-dimension probability vectors.
     const std::vector<std::string>& prob_names() const { return _prob_names; }
+    /// Register the probability globals on @p context.
     void initialize_globals(ContextPtr context) const;
 
 private:
