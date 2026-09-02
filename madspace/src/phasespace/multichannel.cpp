@@ -12,7 +12,7 @@ MultiChannelMapping::MultiChannelMapping(
         [&] {
             auto condition_types = mappings.at(0)->condition_types();
             condition_types.push_back(
-                "return_batch_sizes", multichannel_batch_size(_mappings.size())
+                "return_batch_sizes", multichannel_batch_size(mappings.size())
             );
             return condition_types;
         }()

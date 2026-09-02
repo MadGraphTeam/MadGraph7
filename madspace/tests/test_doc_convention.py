@@ -58,9 +58,9 @@ CASES = {
         m_inv_min=[],
         dr_min=[],
     ),
-    # MultiChannelMapping is omitted: constructing it standalone with plain
-    # sub-mappings currently hangs (its base initializer reads _mappings before
-    # it is set). Its docstring is still checked by check_doc_convention.py.
+    "MultiChannelMapping": dict(
+        mappings=[ms.TwoBodyDecay(com=True), ms.TwoBodyDecay(com=True)]
+    ),
     "VegasMapping": dict(dimension=3, bin_count=64, prefix=""),
     "Flow": dict(
         input_dim=4,
