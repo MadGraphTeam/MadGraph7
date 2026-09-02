@@ -47,6 +47,15 @@ as a link on the C++ side and degrades to plain label text in the Python docstri
 `\rst` (the alias only exists in `docs/Doxyfile`, not in the generator's Doxyfile, so it
 produces raw text in the Python docstring).
 
+Two more traps:
+
+- **No `@f[ ]` display math inside a bullet list.** `text_of()` flattens list nesting,
+  so the `.. math::` block lands back at column 0 and detaches from its bullet. Put the
+  cases in prose paragraphs with the equations between them instead.
+- **No `--` / `---` in prose.** Doxygen's Markdown turns them into dashes and the
+  generator then drops them, so `Breit--Wigner` renders as `BreitWigner`. Write a plain
+  hyphen (`Breit-Wigner`) or a literal en-dash `–`.
+
 ## Inputs / Conditions / Outputs bullets
 
 Derive the actual names, types and shapes by **reading the constructor in

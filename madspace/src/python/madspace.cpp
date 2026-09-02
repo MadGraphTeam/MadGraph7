@@ -431,12 +431,13 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FunctionGenerator::build_function")
         );
 
-    py::classh<Invariant, Mapping>(m, "Invariant")
+    py::classh<Invariant, Mapping>(m, "Invariant", pydoc::doc("Invariant"))
         .def(
             py::init<double, double, double>(),
             py::arg("power") = 0.,
             py::arg("mass") = 0.,
-            py::arg("width") = 0.
+            py::arg("width") = 0.,
+            pydoc::doc("Invariant::Invariant")
         );
 
     py::classh<Luminosity, Mapping>(m, "Luminosity")
