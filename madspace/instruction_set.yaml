@@ -2356,6 +2356,7 @@ matrix_element:
   outputs: any
   class: MatrixElementInstruction
   custom_op: True
+  desc: "Evaluates a loaded matrix element on a batch of momenta. See @ref MatrixElement."
 
 collect_channel_weights:
   inputs:
@@ -2651,307 +2652,327 @@ sample_discrete:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: option_count
       type: [int]
-      desc:
+      desc: "number of choices"
   outputs:
     - name: output
       type: [int]
-      desc:
+      desc: "sampled index"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the sampled index"
+  desc: "Samples a uniform discrete choice from a random number. Building block of @ref DiscreteSampler."
 
 sample_discrete_inverse:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index"
     - name: option_count
       type: [int, single]
-      desc:
+      desc: "number of choices"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the index"
+  desc: "Inverse of `sample_discrete`. Building block of @ref DiscreteSampler."
 
 sample_discrete_probs:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: probs
       type: [float, n]
-      desc:
+      desc: "probability of each choice"
   outputs:
     - name: output
       type: [int]
-      desc:
+      desc: "sampled index"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the sampled index"
+  desc: "Samples a discrete choice from a given probability vector. Building block of @ref DiscreteFlow."
 
 sample_discrete_probs_inverse:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index"
     - name: probs
       type: [float, n]
-      desc:
+      desc: "probability of each choice"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the index"
   differentiable: True
+  desc: "Inverse of `sample_discrete_probs`. Building block of @ref DiscreteFlow."
 
 discrete_histogram:
   inputs:
     - name: input
       type: [int]
-      desc:
+      desc: "discrete value per event"
     - name: weights
       type: [float]
-      desc:
+      desc: "event weight"
     - name: option_count
       type: [size, n]
-      desc:
+      desc: "number of bins"
   outputs:
     - name: values
       type: [float, single, n]
-      desc:
+      desc: "summed weight per bin"
     - name: counts
       type: [int, single, n]
-      desc:
+      desc: "event count per bin"
   custom_op: True
+  desc: "Accumulates a weighted histogram over a discrete variable. Building block of @ref DiscreteHistogram."
 
 permute_momenta:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "input momenta"
     - name: permutations
       type: [int, single, m, n]
-      desc:
+      desc: "table of permutations"
     - name: index
       type: [int]
-      desc:
+      desc: "permutation index per event"
   outputs:
     - name: output
       type: [float, n, 4]
-      desc:
+      desc: "permuted momenta"
+  desc: "Reorders momenta according to a stored permutation selected per event. Building block of @ref MultiChannelMapping."
 
 gather:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index to select"
       backward_arg: True
     - name: choices
       type: [float, n]
-      desc:
+      desc: "vector of choices"
   outputs:
     - name: output
       type: [float]
-      desc:
+      desc: "the selected entry"
   differentiable: True
+  desc: "Selects one entry per event from a vector of float choices."
 
 gather_int:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index to select"
     - name: choices
       type: [int, n]
-      desc:
+      desc: "vector of choices"
   outputs:
     - name: output
       type: [int]
-      desc:
+      desc: "the selected entry"
+  desc: "Selects one entry per event from a vector of integer choices."
 
 gather_vector:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "row index to select"
     - name: choices
       type: [float, n, m]
-      desc:
+      desc: "matrix of choices"
   outputs:
     - name: output
       type: [float, m]
-      desc:
+      desc: "the selected row"
   vectorized: False
+  desc: "Selects one row per event from a matrix of choices."
 
 select_int:
   inputs:
     - name: input
       type: [int, n]
-      desc:
+      desc: "source vector"
     - name: indices
       type: [int, m]
-      desc:
+      desc: "indices to gather"
   outputs:
     - name: output
       type: [int, m]
-      desc:
+      desc: "gathered entries"
+  desc: "Gathers several entries from an integer vector by index."
 
 select:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "source vector"
     - name: indices
       type: [int, m]
-      desc:
+      desc: "indices to gather"
       backward_arg: True
   outputs:
     - name: output
       type: [float, m]
-      desc:
+      desc: "gathered entries"
   differentiable: True
+  desc: "Gathers several entries from a float vector by index."
 
 select_vector:
   inputs:
     - name: input
       type: [float, n, k]
-      desc:
+      desc: "source matrix"
     - name: indices
       type: [int, m]
-      desc:
+      desc: "row indices to gather"
   outputs:
     - name: output
       type: [float, m, k]
-      desc:
+      desc: "gathered rows"
   vectorized: False
+  desc: "Gathers several rows from a matrix by index."
 
 argsort:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "vector to sort"
   outputs:
     - name: indices
       type: [int, n]
-      desc:
+      desc: "permutation that sorts the input"
   vectorized: False
+  desc: "Indices that sort a vector in ascending order."
 
 quantile:
   inputs:
     - name: input
       type: [float]
-      desc:
+      desc: "value per event"
     - name: q
       type: [float, single]
-      desc:
+      desc: "quantile level in [0, 1]"
   outputs:
     - name: output
       type: [float, single]
-      desc:
+      desc: "the estimated quantile"
   custom_op: True
+  desc: "Estimates a quantile of a value over the batch."
 
 one_hot:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index to encode"
     - name: option_count
       type: [size, n]
-      desc:
+      desc: "length of the one-hot vector"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "one-hot vector"
+  desc: "One-hot encoding of a discrete index."
 
 madnis_abs_weight:
   inputs:
     - name: f
       type: [float]
-      desc:
+      desc: "integrand value"
     - name: q
       type: [float]
-      desc:
+      desc: "sampling density"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "absolute weight f / q"
   differentiable: True
+  desc: "Absolute integrand contribution used by the MadNIS loss. Building block of @ref MadnisLoss."
 
 madnis_softclip:
   inputs:
     - name: f
       type: [float]
-      desc:
+      desc: "integrand value"
     - name: q
       type: [float]
-      desc:
+      desc: "sampling density"
     - name: norm
       type: [float]
-      desc:
+      desc: "normalization used for the clip threshold"
     - name: threshold
       type: [float]
-      desc:
+      desc: "relative clipping threshold"
   outputs:
     - name: f_clip
       type: [float]
-      desc:
+      desc: "softly clipped integrand"
   differentiable: True
+  desc: "Softly clips the integrand to limit large weights during training. Building block of @ref MadnisLoss."
 
 madnis_variance:
   inputs:
     - name: f
       type: [float]
-      desc:
+      desc: "integrand value"
     - name: g
       type: [float]
-      desc:
+      desc: "trained sampling density"
     - name: q
       type: [float]
-      desc:
+      desc: "sampling density used to draw the event"
     - name: mean
       type: [float]
-      desc:
+      desc: "running estimate of the integral"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "per-event variance contribution"
   differentiable: True
+  desc: "Per-event contribution to the variance loss. Building block of @ref MadnisLoss."
 
 madnis_single_channel_variance:
   inputs:
     - name: var
       type: [float]
-      desc:
+      desc: "running variance estimate"
     - name: abs_mean
       type: [float]
-      desc:
+      desc: "running mean of the absolute weight"
       backward_arg: True
   outputs:
     - name: loss
       type: [float]
-      desc:
+      desc: "the variance loss"
   differentiable: True
+  desc: "Single-channel variance loss from its running moments. Building block of @ref MadnisLoss."
 
 madnis_multi_channel_variance:
   inputs:
     - name: vars
       type: [float, c]
-      desc:
+      desc: "running variance estimate per channel"
     - name: abs_means
       type: [float, c]
-      desc:
+      desc: "running mean of the absolute weight per channel"
   outputs:
     - name: loss
       type: [float]
-      desc:
+      desc: "the variance loss"
   differentiable: True
+  desc: "Multi-channel variance loss summed over channels. Building block of @ref MadnisLoss."
 
 ---
 title: Indexing
@@ -2959,38 +2980,41 @@ title: Indexing
 nonzero:
   inputs:
     - name: input
-      desc:
+      desc: "mask, nonzero where an event is kept"
   outputs:
     - name: indices
-      desc:
+      desc: "batch indices of the kept events"
   class: NonzeroInstruction
   custom_op: True
+  desc: "Indices of the nonzero entries of a batched mask."
 
 batch_gather:
   inputs:
     - name: indices
-      desc:
+      desc: "batch indices to keep"
     - name: values
-      desc:
+      desc: "values to select from"
   outputs:
     - name: selection
-      desc:
+      desc: "the selected events"
   class: BatchGatherInstruction
   custom_op: True
+  desc: "Selects events from a batch by index."
 
 batch_scatter:
   inputs:
     - name: indices
-      desc:
+      desc: "target batch indices"
     - name: target
-      desc:
+      desc: "batch to write into"
     - name: source
-      desc:
+      desc: "events to write"
   outputs:
     - name: output
-      desc:
+      desc: "the updated batch"
   class: BatchScatterInstruction
   custom_op: True
+  desc: "Writes source events into a target batch at the given indices."
 
 ---
 title: Random numbers
@@ -2998,40 +3022,43 @@ title: Random numbers
 random:
   inputs:
     - name: batch_size
-      desc:
+      desc: "batch size to generate"
     - name: count
-      desc:
+      desc: "random numbers per event"
   outputs:
     - name: output
-      desc:
+      desc: "uniform random numbers in [0, 1]"
   class: RandomInstruction
   custom_op: True
+  desc: "Draws a batch of uniform random numbers."
 
 random_int:
   inputs:
     - name: batch_size
-      desc:
+      desc: "batch size to generate"
     - name: max
-      desc:
+      desc: "exclusive upper bound"
   outputs:
     - name: output
-      desc:
+      desc: "random integers in [0, max)"
   class: RandomIntInstruction
   custom_op: True
+  desc: "Draws a batch of uniform random integers."
 
 unweight:
   inputs:
     - name: weights
-      desc:
+      desc: "event weights"
     - name: max_weight
-      desc:
+      desc: "maximum weight used for the acceptance test"
   outputs:
     - name: indices
-      desc:
+      desc: "batch indices of the accepted events"
     - name: uw_weights
-      desc:
+      desc: "residual weights of the accepted events"
   class: UnweightInstruction
   custom_op: True
+  desc: "Accept/reject unweighting against a maximum weight. See @ref Unweighter."
 
 ---
 title: VEGAS
@@ -3040,78 +3067,82 @@ vegas_forward:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "points in the unit hypercube"
     - name: grid
       type: [float, single, n, b]
-      desc:
+      desc: "VEGAS bin edges per dimension"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "remapped points"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-dimension Jacobian"
   dims: 2
+  desc: "Applies the VEGAS grid mapping in the forward direction. Building block of @ref VegasMapping."
 
 vegas_inverse:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "remapped points"
     - name: grid
       type: [float, single, n, b]
-      desc:
+      desc: "VEGAS bin edges per dimension"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "points in the unit hypercube"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-dimension Jacobian"
   dims: 2
+  desc: "Inverse of `vegas_forward`. Building block of @ref VegasMapping."
 
 vegas_histogram:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "points in the unit hypercube"
     - name: weights
       type: [float]
-      desc:
+      desc: "event weight"
     - name: bin_count
       type: [size, b]
-      desc:
+      desc: "number of grid bins per dimension"
   outputs:
     - name: values
       type: [float, single, n, b]
-      desc:
+      desc: "summed weight per bin and dimension"
     - name: counts
       type: [int, single, n, b]
-      desc:
+      desc: "event count per bin and dimension"
   custom_op: True
+  desc: "Accumulates the weighted histograms VEGAS uses to refine its grid. Building block of @ref VegasHistogram."
 
 histogram:
   inputs:
     - name: input
       type: [float, ...]
-      desc:
+      desc: "value per event"
     - name: weights
       type: [float]
-      desc:
+      desc: "event weight"
     - name: min
       type: [float]
-      desc:
+      desc: "lower edge of the histogram range"
     - name: max
       type: [float]
-      desc:
+      desc: "upper edge of the histogram range"
     - name: bin_count
       type: [size, b]
-      desc:
+      desc: "number of interior bins"
   outputs:
     - name: values
       type: [float, single, b+2]
-      desc:
+      desc: "summed weight per bin, with underflow and overflow"
     - name: square_values
       type: [float, single, b+2]
-      desc:
+      desc: "summed squared weight per bin, for the statistical error"
   custom_op: True
+  desc: "Accumulates a weighted histogram with underflow and overflow bins. See @ref Histogram."
