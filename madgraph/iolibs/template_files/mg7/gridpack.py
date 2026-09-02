@@ -181,7 +181,7 @@ def main() -> None:
     )
 
     # scale/PDF systematics (as configured when the gridpack was made)
-    systematics = load_systematics(run_card, device_types, param_card_path)
+    systematics = load_systematics(run_card, backends, param_card_path)
 
     # run generation
     event_generator.generate()
@@ -255,7 +255,7 @@ def _locate_pdf_file(stored_file):
         % stored_file)
 
 
-def load_systematics(run_card, device_types=(), param_card_path=None):
+def load_systematics(run_card, backends=(), param_card_path=None):
     """Rebuild the ms.SystematicsCalculator saved with the gridpack
     (data/systematics.json) when [systematics] enable is set; None otherwise.
     The matrix elements of the mixed-order subprocesses are reloaded into a CPU
@@ -284,10 +284,14 @@ def load_systematics(run_card, device_types=(), param_card_path=None):
     context = ms.Context(device=ms.cpu_device(), thread_count=1)
     matrix_elements, flavor_remap = [], []
     need = [i for i, a in enumerate(subproc_args) if a.qcd_power < 0]
+    # the CPU backend of this run (cpu_mode, resolved when the gridpack was
+    # saved), else the one the launcher used
     backend = data.get("me_backend")
+    if need and data.get("me_paths"):
+        cpu = [b for b in backends if not str(b).startswith(("cuda", "hip")) and b != "auto"]
+        if cpu:
+            backend = cpu[0]
     if need and backend and data.get("me_paths"):
-        cpu = [d for d in device_types if not str(d).startswith(("cuda", "hip"))]
-        backend = cpu[0] if cpu and cpu[0] != "cppauto" else backend
         flavor_remap = data.get("flavor_remap", [])
         for i, me_path in enumerate(data["me_paths"]):
             if i not in need:

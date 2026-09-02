@@ -1220,11 +1220,18 @@ class TestMECmdShell(unittest.TestCase):
         written ([systematics] section of the run_card), end to end (u u > u u).
 
         Checks the LHEF3 output: an <initrwgt> header with the 3x3 scale grid
-        (8 weights, ids 1-8) plus the nominal-set PDF group, a <rwgt> block in
-        every event, non-trivial weights, the events.weights.json sidecar with
-        the same ids and the per-variation cross sections, and the systematics
-        summary in info.json. No LHAPDF python module is needed."""
+        (8 weights, ids 1-8) plus one PDF member of another set when that set
+        is available (a cross-set variation, with its own alpha_s), a <rwgt>
+        block in every event, non-trivial weights, the events.weights.json
+        sidecar with the same ids and the per-variation cross sections, and the
+        systematics summary in info.json. No LHAPDF python module is needed."""
         datadir = _mg7_datadir_or_skip(self)
+        # the default set (NNPDF40MC_lo_as_01180) has a single member, so the
+        # PDF variation uses a member of another set when it is installed
+        other_set = 'NNPDF23_lo_as_0130_qed'
+        has_other = os.path.isfile(pjoin(datadir, other_set, '%s_0001.dat' % other_set))
+        pdf_entry = '["%s@1"]' % other_set if has_other else '["central"]'
+        nb_pdf = 1 if has_other else 0
         run = _run_mg7_postproc(
             self,
             ['set automatic_html_opening False --no_save',
@@ -1232,10 +1239,7 @@ class TestMECmdShell(unittest.TestCase):
              'generate u u > u u'],
             pjoin(self.path, 'MG7_syst'), datadir,
             switch_lines=None,
-            # the nominal set's members (the default "errorset") would add one
-            # weight per replica; keep the run small with a single member
-            toml_edits=[(r'\npdf = \[[^\]]*\]',
-                         '\npdf = ["NNPDF23_lo_as_0130_qed@1"]'),
+            toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = %s' % pdf_entry),
                         # one histogram, to get the event-sample histograms
                         # with their variation bands in info.json
                         (r'\[histograms\]\n',
@@ -1246,27 +1250,32 @@ class TestMECmdShell(unittest.TestCase):
         lhe_path = pjoin(run, 'events.lhe')
         if not os.path.exists(lhe_path):
             misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
-        # 8 scale variations, then the PDF group: nominal member + member 1
+        # 8 scale variations, then the PDF member
+        nb_ids = 8 + nb_pdf
         nb_event = self._check_systematics_weights(
-            lhe_path, expected_ids=[str(i) for i in range(1, 11)])
+            lhe_path, expected_ids=[str(i) for i in range(1, nb_ids + 1)])
 
         side_path = pjoin(run, 'events.weights.json')
         self.assertTrue(os.path.exists(side_path), 'no events.weights.json sidecar')
         side = json.load(open(side_path))
-        self.assertEqual([v['id'] for v in side['variations']], list(range(1, 11)))
-        self.assertEqual(side['columns'], ['rwgt_%d' % i for i in range(1, 11)])
+        self.assertEqual([v['id'] for v in side['variations']], list(range(1, nb_ids + 1)))
+        self.assertEqual(side['columns'], ['rwgt_%d' % i for i in range(1, nb_ids + 1)])
         self.assertEqual(side['event_count'], nb_event)
+        self.assertEqual([(v['mur'], v['muf']) for v in side['variations'][:8]],
+                         [(0.5, 0.5), (0.5, 1.0), (0.5, 2.0), (1.0, 0.5),
+                          (1.0, 2.0), (2.0, 0.5), (2.0, 1.0), (2.0, 2.0)])
         xsec = side['nominal']['cross_section']
         self.assertGreater(xsec, 0)
         # the scale envelope brackets the nominal cross section
         self.assertLess(side['scale']['min'], xsec)
         self.assertGreater(side['scale']['max'], xsec)
-        # the nominal-member weight of the PDF group reproduces the nominal
-        nominal_member = [v for v in side['variations'] if v['id'] == 9][0]
-        self.assertAlmostEqual(nominal_member['cross_section'] / xsec, 1.0, places=10)
+        if has_other:
+            member = side['variations'][8]
+            self.assertEqual((member['pdf_set'], member['pdf_member']), (other_set, 1))
+            self.assertNotAlmostEqual(member['cross_section'] / xsec, 1.0, places=3)
         info = json.load(open(pjoin(run, 'info.json')))
         self.assertIn('systematics', info)
-        self.assertEqual(len(info['systematics']['variations']), 10)
+        self.assertEqual(len(info['systematics']['variations']), nb_ids)
         # event-sample histograms: nominal + one column per variation, each
         # summing to the corresponding cross section, with the scale envelope
         self.assertIn('event_histograms', info)
@@ -1274,7 +1283,7 @@ class TestMECmdShell(unittest.TestCase):
         self.assertEqual(hist['name'], 'sqrt_s')
         self.assertEqual(len(hist['bin_values']), 12)  # 10 bins + under/overflow
         self.assertAlmostEqual(sum(hist['bin_values']) / xsec, 1.0, places=8)
-        self.assertEqual([w['id'] for w in hist['weights']], list(range(1, 11)))
+        self.assertEqual([w['id'] for w in hist['weights']], list(range(1, nb_ids + 1)))
         for w, var in zip(hist['weights'], side['variations']):
             self.assertAlmostEqual(sum(w['bin_values']) / var['cross_section'], 1.0, places=8)
         env = hist['scale_envelope']

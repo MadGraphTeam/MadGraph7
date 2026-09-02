@@ -244,7 +244,7 @@ def test_pdf_member_and_header(grids, ref):
 
 def test_lhe_event_rwgt_format():
     event = ms.LHEEvent()
-    event.particles = [ms.LHEParticle(pdg_id=21, status_code=-1, energy=1.0, p_z=1.0)]
+    event.particles = [ms.LHEParticle(pdg_id=21, status_code=-1, energy=1.0, pz=1.0)]
     event.rwgt_ids = [1, 2]
     event.rwgt = [1.5e3, -2.0]
     text = event.format()
