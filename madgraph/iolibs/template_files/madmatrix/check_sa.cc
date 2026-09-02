@@ -646,10 +646,10 @@ namespace
       umami_free( umami_handle );
       return 2;
     }
-    const std::vector<fptype> masses( massesD.begin(), massesD.end() );
+    const std::vector<fptype> masses( massesD.begin(), massesD.end() ); // RamboSamplingKernelHost takes vector<fptype>
 
     std::vector<std::vector<double>> point =
-      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, masses, rambowgt );
+      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 
     // alpha_s from the param card so the couplings match the Fortran/C++
     // 'check' drivers (UMAMI otherwise falls back to a hardcoded g_s).

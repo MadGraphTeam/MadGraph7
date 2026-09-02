@@ -697,9 +697,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 else:
                     mydict['declnamedenom'] = denomname # AV
                     self.declaration.add(('complex', denomname))
-                # Need to add the unary operator before the coupling (OM fix for #825)
+                # Need to add the unary operator before the coupling (OM fix for #825).
+                # pre_coup/post_coup wrap %(coup)s, so open the cast in pre_coup and
+                # close it in post_coup (the Ccoeff sign carrier multiplies from outside).
                 if has_coup: # but in case where the coupling is not used (one)
-                    mydict['pre_coup'] = 'static_cast<fptype_denom_sv>(%s) * static_cast<fptype_denom_sv>(%s)' % (ccoeff, mydict['pre_coup'])
+                    mydict['pre_coup'] = 'static_cast<fptype_denom_sv>(%s) * static_cast<cxtype_denom_sv>(%s' % (ccoeff, mydict['pre_coup'])
+                    mydict['post_coup'] = '%s)' % mydict['post_coup']
+                else:
+                    mydict['pre_coup'] = 'static_cast<fptype_denom_sv>(%s' % mydict['pre_coup']
+                    mydict['post_coup'] = '%s)' % mydict['post_coup']
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
@@ -2733,7 +2739,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
 
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
-      for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp>(); }
+      for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
 
       // Numerators for the current event (CUDA) or SIMD event page (C++)
       // (denominators are no longer accumulated here: they are derived as the sum of numerators later)

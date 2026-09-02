@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
 #ifdef MGONGPUCPP_GPUIMPL // cuda
@@ -57,15 +58,14 @@ namespace mg5amcCpu
 
   template<typename FP>
   inline __host__ __device__ FP
-  fpsqrt( const FP& f )
+  fpsqrt( FP f ) 
   {
-#if defined MGONGPU_FPTYPE_FLOAT
-    // See https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__SINGLE.html
-    return sqrtf( f );
-#else
-    // See https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__DOUBLE.html
-    return sqrt( f );
-#endif
+    // https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__SINGLE.html
+    // https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__DOUBLE.html
+    if constexpr( std::is_same_v<std::remove_cv_t<FP>, float> )
+      return sqrtf( f );
+    else
+      return sqrt( f );
   }
 
 #endif // #ifdef MGONGPUCPP_GPUIMPL
@@ -94,7 +94,7 @@ namespace mg5amcCpu
 
   template<typename FP>
   inline FP
-  fpsqrt( const FP& f )
+  fpsqrt( FP f ) 
   {
     return std::sqrt( f );
   }

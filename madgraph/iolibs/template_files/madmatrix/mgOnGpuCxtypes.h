@@ -12,6 +12,7 @@
 #include "mgOnGpuFptypes.h"
 
 #include <iostream>
+#include <type_traits>
 
 //==========================================================================
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) HEADERS
@@ -438,8 +439,7 @@ namespace mg5amcCpu
     return c;
   }
 
-  // Template versions for multi-precision complex types (cxsmpl-based)
-  template<typename FP>
+  template<typename FP, typename = std::enable_if_t<std::is_arithmetic<FP>::value>>
   inline __host__ __device__ cxsmpl<FP>
   cxmake( const FP& r, const FP& i ) { return cxsmpl<FP>( r, i ); }
 
@@ -797,8 +797,7 @@ namespace mg5amcCpu
   }
 #endif
 
-  // Template versions for multi-precision complex types (std::complex-based)
-  template<typename FP>
+  template<typename FP, typename = std::enable_if_t<std::is_arithmetic<FP>::value>>
   inline std::complex<FP>
   cxmake( const FP& r, const FP& i ) { return std::complex<FP>( r, i ); }
 
