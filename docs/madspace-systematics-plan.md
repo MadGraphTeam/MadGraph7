@@ -448,22 +448,23 @@ with HT/2), finite positive weights, no warning; without a CPU library it
 falls back to dropping mu_R with the warning; `e+ e- > mu+ mu-` writes two
 trivial mu_R weights and no mu_F ones.
 
-**Speed** (`u u > u u`, 18-thread Mac, 3 x 3 scales + 101 NNPDF2.3 replicas
-= 109 weights per event, two event histograms, LHE output; `systematics.py`
-run on the very same file with the same 109 variations):
+**Speed** (`u u > u u`, 18-thread Mac, LHE output, runs made one after the
+other with nothing else running; the legacy tool ran on the very same file
+with the same variations). "109 weights" = 3 x 3 scales + 101 NNPDF2.3
+replicas, "8 weights" = the scale grid only.
 
-| Events | Native combine (wall / CPU) | Whole run with systematics | Whole run without | Legacy `systematics.py` (wall / CPU) |
+| Events | Native, 109 weights: whole run / combine step (wall, CPU) | Native, 8 weights: whole run / combine | No systematics: whole run / combine | Legacy `systematics.py`, 109 weights (wall, CPU) |
 |---|---|---|---|---|
-| 20 000 | 0.24 s / 0.6 s | 2.4 s | 0.3 s | 21.6 s / 21 s |
-| 100 000 | 0.87 s / 2.7 s | 2.2 s | 1.0 s | 1025 s / 100 s |
+| 20 000 | 3.1 s / 0.25 s, 0.6 s | 0.3 s / 0.03 s, 0.1 s | 0.3 s / 0.02 s | 21.5 s, 21.0 s |
+| 100 000 | 2.3 s / 0.90 s, 2.8 s | 0.4 s / 0.12 s, 0.5 s | 1.0 s / 0.07 s | 104 s, 103 s |
 
-(Batched implementation; the earlier scalar path took 0.28 s / 3.5 s and
-1.3 s / 21 s.) About 1 s of the native overhead is parsing the 100 member
-grids (10 ms per text file) and building their coefficient tensors,
-independent of the event count; the per-event cost is 0.25 us CPU per weight.
-The legacy 100k run is I/O bound (500 MB LHE read and rewritten by Python);
-its CPU time scales linearly at about 1 ms per event. Only scale variations
-(8 weights, no members): combine 0.04 s for 20k events.
+The fixed cost of the 109-weight runs (about 1 to 2 s) is parsing the 100
+member grids (10 ms per text file) and building their coefficient tensors;
+the per-event cost is 0.25 us CPU per weight (0.9 s wall for 100k events x
+109 weights, 24 threads sharing the batched runtime). The legacy tool costs
+about 1 ms of CPU per event (single-threaded Python over a 500 MB file at
+100k events). An earlier figure of 1025 s for the legacy 100k run was
+measured while other tests were running and is superseded.
 
 Build notes: built with the worktree's `madspace/build` (ninja) and installed
 with `cmake --install build --prefix madspace/install`; the `generate_pyi`
