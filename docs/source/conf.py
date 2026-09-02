@@ -76,5 +76,18 @@ def generate_doxygen_xml(app):
         sys.stderr.write(f"doxygen execution failed: {e}\n")
 
 
+def generate_class_pages(app):
+    # docs/ holds generate_api_pages.py; confdir is docs/source
+    sys.path.insert(0, os.path.abspath(os.path.join(app.confdir, "..")))
+    from generate_api_pages import generate_api_pages
+
+    generate_api_pages(
+        source_dir=app.srcdir,
+        xml_dir=os.path.join(app.confdir, "..", "build", "doxygenxml"),
+    )
+
+
 def setup(app):
+    # Registration order is run order: XML first, then the pages that read it.
     app.connect("builder-inited", generate_doxygen_xml)
+    app.connect("builder-inited", generate_class_pages)
