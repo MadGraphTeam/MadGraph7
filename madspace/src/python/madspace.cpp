@@ -1712,7 +1712,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("types"),
             pydoc::doc("Unweighter::Unweighter")
         );
-    py::classh<Integrand, FunctionGenerator>(m, "Integrand")
+    py::classh<Integrand, FunctionGenerator>(m, "Integrand", pydoc::doc("Integrand"))
         .def(
             py::init<
                 const PhaseSpaceMapping&,
@@ -1770,33 +1770,107 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_diff_xs_indices") = std::vector<std::size_t>{},
             py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
             py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
-            py::arg("compressed_channel_weight_count") = 50
+            py::arg("compressed_channel_weight_count") = 50,
+            pydoc::doc("Integrand::Integrand")
         )
-        .def("particle_count", &Integrand::particle_count)
-        .def("madnis_training", &Integrand::madnis_training)
-        .def("vegas_grid_name", &Integrand::vegas_grid_name)
-        .def("mapping", &Integrand::mapping)
-        .def("diff_xs", &Integrand::diff_xs)
-        .def("adaptive_map", &Integrand::adaptive_map)
-        .def("discrete_sym", &Integrand::discrete_sym)
-        .def("discrete_flavor", &Integrand::discrete_flavor)
-        .def("energy_scale", &Integrand::energy_scale)
-        .def("prop_chan_weights", &Integrand::prop_chan_weights)
-        .def("chan_weight_net", &Integrand::chan_weight_net)
-        .def("random_dim", &Integrand::random_dim)
-        .def("latent_dims", &Integrand::latent_dims)
-        .def_readonly_static("matrix_element_inputs", &Integrand::matrix_element_inputs)
+        .def(
+            "particle_count",
+            &Integrand::particle_count,
+            pydoc::doc("Integrand::particle_count")
+        )
+        .def(
+            "madnis_training",
+            &Integrand::madnis_training,
+            pydoc::doc("Integrand::madnis_training")
+        )
+        .def(
+            "vegas_grid_name",
+            &Integrand::vegas_grid_name,
+            pydoc::doc("Integrand::vegas_grid_name")
+        )
+        .def(
+            "vegas_dimension",
+            &Integrand::vegas_dimension,
+            pydoc::doc("Integrand::vegas_dimension")
+        )
+        .def(
+            "vegas_bin_count",
+            &Integrand::vegas_bin_count,
+            pydoc::doc("Integrand::vegas_bin_count")
+        )
+        .def("mapping", &Integrand::mapping, pydoc::doc("Integrand::mapping"))
+        .def("diff_xs", &Integrand::diff_xs, pydoc::doc("Integrand::diff_xs"))
+        .def(
+            "adaptive_map",
+            &Integrand::adaptive_map,
+            pydoc::doc("Integrand::adaptive_map")
+        )
+        .def(
+            "discrete_sym",
+            &Integrand::discrete_sym,
+            pydoc::doc("Integrand::discrete_sym")
+        )
+        .def(
+            "discrete_flavor",
+            &Integrand::discrete_flavor,
+            pydoc::doc("Integrand::discrete_flavor")
+        )
+        .def(
+            "energy_scale",
+            &Integrand::energy_scale,
+            pydoc::doc("Integrand::energy_scale")
+        )
+        .def(
+            "prop_chan_weights",
+            &Integrand::prop_chan_weights,
+            pydoc::doc("Integrand::prop_chan_weights")
+        )
+        .def(
+            "chan_weight_net",
+            &Integrand::chan_weight_net,
+            pydoc::doc("Integrand::chan_weight_net")
+        )
+        .def("random_dim", &Integrand::random_dim, pydoc::doc("Integrand::random_dim"))
+        .def(
+            "latent_dims", &Integrand::latent_dims, pydoc::doc("Integrand::latent_dims")
+        )
+        .def(
+            "channel_indices",
+            &Integrand::channel_indices,
+            pydoc::doc("Integrand::channel_indices")
+        )
+        .def(
+            "active_flavors",
+            &Integrand::active_flavors,
+            pydoc::doc("Integrand::active_flavors")
+        )
         .def_readonly_static(
-            "matrix_element_outputs", &Integrand::matrix_element_outputs
+            "matrix_element_inputs",
+            &Integrand::matrix_element_inputs,
+            pydoc::doc("Integrand::matrix_element_inputs")
+        )
+        .def_readonly_static(
+            "matrix_element_outputs",
+            &Integrand::matrix_element_outputs,
+            pydoc::doc("Integrand::matrix_element_outputs")
         );
-    py::classh<MultiChannelIntegrand, FunctionGenerator>(m, "MultiChannelIntegrand")
+    py::classh<MultiChannelIntegrand, FunctionGenerator>(
+        m, "MultiChannelIntegrand", pydoc::doc("MultiChannelIntegrand")
+    )
         .def(
             py::init<const std::vector<std::shared_ptr<Integrand>>&, bool>(),
             py::arg("integrands"),
-            py::arg("return_sizes") = false
+            py::arg("return_sizes") = false,
+            pydoc::doc("MultiChannelIntegrand::MultiChannelIntegrand")
         );
-    py::classh<IntegrandProbability, FunctionGenerator>(m, "IntegrandProbability")
-        .def(py::init<const Integrand&>(), py::arg("integrand"));
+    py::classh<IntegrandProbability, FunctionGenerator>(
+        m, "IntegrandProbability", pydoc::doc("IntegrandProbability")
+    )
+        .def(
+            py::init<const Integrand&>(),
+            py::arg("integrand"),
+            pydoc::doc("IntegrandProbability::IntegrandProbability")
+        );
 
     py::classh<MadnisLoss, FunctionGenerator>(m, "MadnisLoss", pydoc::doc("MadnisLoss"))
         .def(

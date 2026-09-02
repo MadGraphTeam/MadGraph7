@@ -35,7 +35,10 @@ BRITISH = re.compile(
     r"optimis\w*|discretis\w*|neighbour\w*|licence)\b",
     re.IGNORECASE,
 )
-ARXIV = re.compile(r"\[(\d+)\]\s+(.*?)https?://arxiv\.org/abs/(\S+)", re.DOTALL)
+# One reference-list entry: "[n] <authors, title> arxiv.org/abs/<id>". The
+# `[^\[]` stops the match before the next "[m]" so inline citations elsewhere in
+# the prose cannot bleed into the capture.
+ARXIV = re.compile(r"\[(\d+)\]\s*([^\[]*?)https?://arxiv\.org/abs/([0-9a-z./-]+)")
 
 
 def _text(node: ET.Element | None) -> str:
@@ -115,7 +118,10 @@ def main() -> int:
             if brit:
                 gaps.append(f"British spelling: {brit.group(0)!r}")
 
-            for n, who, aid in ARXIV.findall(raw):
+            # Only the References list, so inline "[2]" markers are ignored.
+            refs = raw.split("References", 1)[-1] if "References" in raw else ""
+            for n, who, aid in ARXIV.findall(refs):
+                who = re.sub(r"<[^>]+>", "", who)
                 arxiv_strings.setdefault(aid, set()).add(" ".join(who.split())[:80])
 
             # public methods and constructor params
