@@ -557,7 +557,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("TPropagatorMapping::random_dim")
         );
 
-    py::classh<ColorOrderedMapping, Mapping>(m, "ColorOrderedMapping")
+    py::classh<ColorOrderedMapping, Mapping>(
+        m, "ColorOrderedMapping", pydoc::doc("ColorOrderedMapping")
+    )
         .def(
             py::init<
                 std::vector<std::size_t>,
@@ -567,14 +569,23 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>>(),
             py::arg("color_order"),
-            py::arg("t_invariant_power") = 0.,
-            py::arg("s_invariant_power") = 0.,
+            py::arg("t_invariant_power") = 0.8,
+            py::arg("s_invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
-            py::arg("dr_min") = std::vector<std::vector<double>>{}
+            py::arg("dr_min") = std::vector<std::vector<double>>{},
+            pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
-        .def("random_dim", &ColorOrderedMapping::random_dim)
-        .def("discrete_dim", &ColorOrderedMapping::discrete_dim);
+        .def(
+            "random_dim",
+            &ColorOrderedMapping::random_dim,
+            pydoc::doc("ColorOrderedMapping::random_dim")
+        )
+        .def(
+            "discrete_dim",
+            &ColorOrderedMapping::discrete_dim,
+            pydoc::doc("ColorOrderedMapping::discrete_dim")
+        );
 
     py::classh<VegasHistogram, FunctionGenerator>(m, "VegasHistogram")
         .def(
