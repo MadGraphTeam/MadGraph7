@@ -541,14 +541,21 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("e_max", &Propagator::e_max, pydoc::doc("Propagator::e_max"))
         .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"));
 
-    py::classh<TPropagatorMapping, Mapping>(m, "TPropagatorMapping")
+    py::classh<TPropagatorMapping, Mapping>(
+        m, "TPropagatorMapping", pydoc::doc("TPropagatorMapping")
+    )
         .def(
             py::init<std::vector<std::size_t>, double, std::vector<double>>(),
             py::arg("integration_order"),
-            py::arg("invariant_power") = 0.,
-            py::arg("pt_min") = std::vector<double>{}
+            py::arg("invariant_power") = 0.8,
+            py::arg("pt_min") = std::vector<double>{},
+            pydoc::doc("TPropagatorMapping::TPropagatorMapping")
         )
-        .def("random_dim", &TPropagatorMapping::random_dim);
+        .def(
+            "random_dim",
+            &TPropagatorMapping::random_dim,
+            pydoc::doc("TPropagatorMapping::random_dim")
+        );
 
     py::classh<ColorOrderedMapping, Mapping>(m, "ColorOrderedMapping")
         .def(
