@@ -32,6 +32,7 @@ release = "0.2.2"
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.mathjax",
     # "sphinx.ext.napoleon",
     # "sphinx.ext.linkcode",
     "sphinx_autodoc_typehints",

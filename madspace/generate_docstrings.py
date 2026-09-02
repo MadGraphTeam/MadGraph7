@@ -61,6 +61,18 @@ _INLINE_WRAP = {
 }
 
 
+def _formula_rst(tex: str) -> str:
+    """Doxygen <formula> body (\\f$..\\f$ / \\f[..\\f]) -> reStructuredText math."""
+    tex = tex.strip()
+    if tex.startswith("$") and tex.endswith("$") and not tex.startswith("$$"):
+        return f":math:`{tex.strip('$').strip()}`"
+    for pre, suf in (("\\[", "\\]"), ("$$", "$$")):
+        if tex.startswith(pre) and tex.endswith(suf):
+            tex = tex[len(pre) : -len(suf)]
+    body = "\n   ".join(line.strip() for line in tex.strip().splitlines())
+    return f"\n\n.. math::\n\n   {body}\n\n"
+
+
 def text_of(node: ET.Element) -> str:
     """Flatten a Doxygen description subtree into reStructuredText."""
     parts = []
@@ -68,7 +80,9 @@ def text_of(node: ET.Element) -> str:
     def walk(el, prefix=""):
         tag = el.tag
         if tag == "para":
-            parts.append("\n")
+            # Blank line between paragraphs, but not right after a bullet opened.
+            if not (parts and parts[-1].endswith("- ")):
+                parts.append("\n\n")
         elif tag == "parameterlist":
             parts.append(
                 "\n" + ("Args:" if el.get("kind") == "param" else "Returns:") + "\n"
@@ -84,7 +98,10 @@ def text_of(node: ET.Element) -> str:
             kind = el.get("kind", "")
             parts.append("\n" + kind.capitalize() + ": ")
         elif tag == "listitem":
-            parts.append(prefix + "- ")
+            parts.append("\n" + prefix + "- ")
+        elif tag == "formula":
+            parts.append(_formula_rst(el.text or ""))
+            return  # no children, tail handled by caller
 
         open_m, close_m = _INLINE_WRAP.get(tag, ("", ""))
         if open_m:
