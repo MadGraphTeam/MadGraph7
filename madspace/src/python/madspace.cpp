@@ -1644,11 +1644,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
-    py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());
-    py::classh<DifferentialCrossSection::CachedScale>(m, "CachedScale")
+    py::classh<DifferentialCrossSection::CachedPdf>(
+        m, "CachedPdf", pydoc::doc("DifferentialCrossSection::CachedPdf")
+    )
+        .def(py::init<>());
+    py::classh<DifferentialCrossSection::CachedScale>(
+        m, "CachedScale", pydoc::doc("DifferentialCrossSection::CachedScale")
+    )
         .def(py::init<>());
     py::classh<DifferentialCrossSection, FunctionGenerator>(
-        m, "DifferentialCrossSection"
+        m, "DifferentialCrossSection", pydoc::doc("DifferentialCrossSection")
     )
         .def(
             py::init<
@@ -1676,13 +1681,37 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf1") = std::monostate{},
             py::arg("pdf2") = std::monostate{},
-            py::arg("input_momentum_fraction") = true
+            py::arg("input_momentum_fraction") = true,
+            pydoc::doc("DifferentialCrossSection::DifferentialCrossSection")
         )
-        .def("pid_options", &DifferentialCrossSection::pid_options)
-        .def("matrix_element", &DifferentialCrossSection::matrix_element);
+        .def(
+            "pid_options",
+            &DifferentialCrossSection::pid_options,
+            pydoc::doc("DifferentialCrossSection::pid_options")
+        )
+        .def(
+            "has_pdf",
+            &DifferentialCrossSection::has_pdf,
+            py::arg("pdf_index"),
+            pydoc::doc("DifferentialCrossSection::has_pdf")
+        )
+        .def(
+            "matrix_element",
+            &DifferentialCrossSection::matrix_element,
+            pydoc::doc("DifferentialCrossSection::matrix_element")
+        )
+        .def(
+            "running_coupling",
+            &DifferentialCrossSection::running_coupling,
+            pydoc::doc("DifferentialCrossSection::running_coupling")
+        );
 
-    py::classh<Unweighter, FunctionGenerator>(m, "Unweighter")
-        .def(py::init<const NamedVector<Type>&>(), py::arg("types"));
+    py::classh<Unweighter, FunctionGenerator>(m, "Unweighter", pydoc::doc("Unweighter"))
+        .def(
+            py::init<const NamedVector<Type>&>(),
+            py::arg("types"),
+            pydoc::doc("Unweighter::Unweighter")
+        );
     py::classh<Integrand, FunctionGenerator>(m, "Integrand")
         .def(
             py::init<
@@ -1769,7 +1798,7 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<IntegrandProbability, FunctionGenerator>(m, "IntegrandProbability")
         .def(py::init<const Integrand&>(), py::arg("integrand"));
 
-    py::classh<MadnisLoss, FunctionGenerator>(m, "MadnisLoss")
+    py::classh<MadnisLoss, FunctionGenerator>(m, "MadnisLoss", pydoc::doc("MadnisLoss"))
         .def(
             py::init<
                 const std::vector<std::shared_ptr<FunctionGenerator>>&,
@@ -1779,7 +1808,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("functions"),
             py::arg("cwnet"),
             py::arg("softclip_threshold") = 0.0,
-            py::arg("compressed_channel_weight_count") = 50
+            py::arg("compressed_channel_weight_count") = 50,
+            pydoc::doc("MadnisLoss::MadnisLoss")
         );
 
     add_enum<Verbosity>(
