@@ -929,7 +929,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 pydoc::doc("Topology::propagator_momentum_terms")
             )
             .def("__str__", &Topology::to_string);
-    py::classh<PhaseSpaceMapping, Mapping> psmap(m, "PhaseSpaceMapping");
+    py::classh<PhaseSpaceMapping, Mapping> psmap(
+        m, "PhaseSpaceMapping", pydoc::doc("PhaseSpaceMapping")
+    );
     add_enum<PhaseSpaceMapping::TChannelMode>(
         psmap,
         "TChannelMode",
@@ -957,8 +959,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("invariant_power") = 0.8,
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
-            py::arg("permutations") = std::vector<Topology>{},
-            py::arg("color_order") = std::nullopt
+            py::arg("permutations") = nested_vector2<std::size_t>{},
+            py::arg("color_order") = std::nullopt,
+            pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
             py::init<
@@ -975,12 +978,29 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
-        .def("random_dim", &PhaseSpaceMapping::random_dim)
-        .def("discrete_dim", &PhaseSpaceMapping::discrete_dim)
-        .def("particle_count", &PhaseSpaceMapping::particle_count)
-        .def("channel_count", &PhaseSpaceMapping::channel_count);
+        .def(
+            "random_dim",
+            &PhaseSpaceMapping::random_dim,
+            pydoc::doc("PhaseSpaceMapping::random_dim")
+        )
+        .def(
+            "discrete_dim",
+            &PhaseSpaceMapping::discrete_dim,
+            pydoc::doc("PhaseSpaceMapping::discrete_dim")
+        )
+        .def(
+            "particle_count",
+            &PhaseSpaceMapping::particle_count,
+            pydoc::doc("PhaseSpaceMapping::particle_count")
+        )
+        .def(
+            "channel_count",
+            &PhaseSpaceMapping::channel_count,
+            pydoc::doc("PhaseSpaceMapping::channel_count")
+        );
 
     py::classh<MultiChannelFunction, FunctionGenerator>(m, "MultiChannelFunction")
         .def(
