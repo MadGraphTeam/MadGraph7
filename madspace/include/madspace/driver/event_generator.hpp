@@ -48,6 +48,16 @@ public:
         LHECompleter& lhe_completer,
         const LHEMeta& meta = {}
     );
+    // Same, but dealing the combined events round-robin into several LHE files
+    // instead of one. Each file is complete on its own -- same header, same
+    // <init> block with the process cross sections -- so a consumer that wants
+    // to read the events in parallel can give one file to each of its workers
+    // and have every worker parse only its own share. See LHEMultiFileWriter.
+    void combine_to_lhe(
+        const std::vector<std::string>& file_names,
+        LHECompleter& lhe_completer,
+        const LHEMeta& meta = {}
+    );
     GeneratorStatus status() const { return _status; }
     std::vector<GeneratorStatus> channel_status() const;
     std::vector<Histogram> histograms() const;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fstream>
+#include <memory>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -191,6 +192,45 @@ public:
 private:
     std::ofstream _file_stream;
     std::string _buffer;
+};
+
+// Writes one event stream into several LHE files at once, dealing the events
+// out round-robin. Every file is a complete, self-describing LHE file: it gets
+// its own copy of `meta`, so its own <header> and its own <init> block with the
+// process cross sections. A consumer can therefore open any one of them by path
+// alone, with nothing published beside it.
+//
+// The point of the fan-out is a reader that wants to consume the events in
+// parallel: with N files it opens the one that is its own, instead of reading
+// the whole stream and skipping the (N-1)/N of it that belongs to somebody
+// else. Round-robin rather than contiguous blocks because the files are then
+// balanced to within one event whatever the chunking, and because the split
+// cannot correlate with the order the stream happens to arrive in.
+//
+// Chunked, off-thread formatting is supported through reserve()/file_index():
+// reserve() hands out a run of consecutive positions in the stream, file_index()
+// says where each of them belongs, and the formatted text can then be handed
+// over with write_string() whenever it is ready -- in any order.
+class LHEMultiFileWriter {
+public:
+    LHEMultiFileWriter(const std::vector<std::string>& file_names, const LHEMeta& meta);
+
+    std::size_t file_count() const { return _writers.size(); }
+    // Which file the `event_index`-th event of the stream belongs to.
+    std::size_t file_index(std::size_t event_index) const {
+        return event_index % _writers.size();
+    }
+    // Claim `count` consecutive positions in the stream; returns the first.
+    std::size_t reserve(std::size_t count);
+    // Total number of positions claimed so far.
+    std::size_t event_count() const { return _event_count; }
+    void write_string(std::size_t file, const std::string& str);
+    // Convenience for a caller that formats one event at a time.
+    void write(const LHEEvent& event);
+
+private:
+    std::vector<std::unique_ptr<LHEFileWriter>> _writers;
+    std::size_t _event_count = 0;
 };
 
 } // namespace madspace

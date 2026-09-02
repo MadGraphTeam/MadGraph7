@@ -453,6 +453,17 @@ void EventGenerator::combine_to_lhe_npy(
 void EventGenerator::combine_to_lhe(
     const std::string& file_name, LHECompleter& lhe_completer, const LHEMeta& meta
 ) {
+    // One file is the degenerate case of N: LHEMultiFileWriter with a single
+    // writer deals every event to file 0. Kept as one implementation so the two
+    // cannot drift apart.
+    combine_to_lhe(std::vector<std::string>{file_name}, lhe_completer, meta);
+}
+
+void EventGenerator::combine_to_lhe(
+    const std::vector<std::string>& file_names,
+    LHECompleter& lhe_completer,
+    const LHEMeta& meta
+) {
     reset_start_time();
     ThreadPool pool(_config.combine_thread_count);
     ThreadResource<std::mt19937> rand_gens(pool, []() {
@@ -460,7 +471,17 @@ void EventGenerator::combine_to_lhe(
         return std::mt19937(rand_device());
     });
     auto [channel_data, particle_count, norm_factor] = init_combine();
-    std::vector<std::pair<EventBuffer, std::string>> buffers;
+    LHEMultiFileWriter event_file(file_names, meta);
+    std::size_t file_count = event_file.file_count();
+    // One in-flight formatting job: the raw events read for it, the formatted
+    // text destined for each output file, and where in the event stream the
+    // chunk starts (which is what decides, per event, which file it goes to).
+    struct CombineJob {
+        EventBuffer in_buffer;
+        std::vector<std::string> out_buffers;
+        std::size_t first_index;
+    };
+    std::vector<CombineJob> jobs;
     std::vector<std::size_t> idle_buffers;
     DataLayout layout(
         EventRecord::layout(
@@ -472,11 +493,17 @@ void EventGenerator::combine_to_lhe(
             _channels.at(0)->particle_layout_extra_flags()
         )
     );
+    // Filled once and never resized again: the submitted jobs hold references
+    // into it for as long as they run.
+    jobs.reserve(2 * pool.thread_count());
     for (std::size_t i = 0; i < 2 * pool.thread_count(); ++i) {
-        buffers.push_back({{0, particle_count, layout}, {}});
+        jobs.push_back(CombineJob{
+            EventBuffer(0, particle_count, layout),
+            std::vector<std::string>(file_count),
+            0,
+        });
         idle_buffers.push_back(i);
     }
-    LHEFileWriter event_file(file_name, meta);
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     bool done = false;
@@ -485,34 +512,44 @@ void EventGenerator::combine_to_lhe(
         _abort_check_function();
         while (idle_buffers.size() > 0 && !done) {
             std::size_t job_id = idle_buffers.back();
-            auto& [in_buffer, out_buffer] = buffers.at(job_id);
-            read_and_combine(channel_data, in_buffer, norm_factor);
-            if (in_buffer.event_count() == 0) {
+            auto& job = jobs.at(job_id);
+            read_and_combine(channel_data, job.in_buffer, norm_factor);
+            if (job.in_buffer.event_count() == 0) {
                 done = true;
                 break;
             }
             idle_buffers.pop_back();
-            pool.submit(
-                [job_id, this, &in_buffer, &out_buffer, &lhe_completer, &rand_gens] {
-                    LHEEvent lhe_event;
+            // Claimed here, on this thread, so the chunks keep the order they
+            // were read in even though they are formatted and written back out
+            // of order. Only the main thread ever calls reserve().
+            job.first_index = event_file.reserve(job.in_buffer.event_count());
+            pool.submit([job_id, &job, &event_file, this, &lhe_completer, &rand_gens] {
+                LHEEvent lhe_event;
+                for (auto& out_buffer : job.out_buffers) {
                     out_buffer.clear();
-                    for (std::size_t i = 0; i < in_buffer.event_count(); ++i) {
-                        fill_lhe_event(
-                            lhe_completer, lhe_event, in_buffer, i, rand_gens.get()
-                        );
-                        lhe_event.format_to(out_buffer);
-                    }
-                    return job_id;
                 }
-            );
+                for (std::size_t i = 0; i < job.in_buffer.event_count(); ++i) {
+                    fill_lhe_event(
+                        lhe_completer, lhe_event, job.in_buffer, i, rand_gens.get()
+                    );
+                    // file_index() only reads the (fixed) file count, so it is
+                    // safe to ask the writer from a worker thread.
+                    lhe_event.format_to(
+                        job.out_buffers[event_file.file_index(job.first_index + i)]
+                    );
+                }
+                return job_id;
+            });
         }
 
         auto done_jobs = pool.wait_multiple();
         for (std::size_t job_id : done_jobs) {
-            auto& [in_buffer, out_buffer] = buffers.at(job_id);
+            auto& job = jobs.at(job_id);
             idle_buffers.push_back(job_id);
-            event_file.write_string(out_buffer);
-            event_count += in_buffer.event_count();
+            for (std::size_t file = 0; file < file_count; ++file) {
+                event_file.write_string(file, job.out_buffers[file]);
+            }
+            event_count += job.in_buffer.event_count();
             if (event_count - last_update_count > 10000) {
                 print_combine_update(event_count);
                 last_update_count = event_count;

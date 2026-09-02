@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <stdexcept>
 #include <span>
 
 using namespace madspace;
@@ -806,3 +807,31 @@ void LHEFileWriter::write(const LHEEvent& event) {
 void LHEFileWriter::write_string(const std::string& str) { _file_stream << str; }
 
 LHEFileWriter::~LHEFileWriter() { _file_stream << "</LesHouchesEvents>\n"; }
+
+LHEMultiFileWriter::LHEMultiFileWriter(
+    const std::vector<std::string>& file_names, const LHEMeta& meta
+) {
+    if (file_names.empty()) {
+        throw std::invalid_argument(
+            "LHEMultiFileWriter needs at least one output file name"
+        );
+    }
+    _writers.reserve(file_names.size());
+    for (const auto& file_name : file_names) {
+        _writers.push_back(std::make_unique<LHEFileWriter>(file_name, meta));
+    }
+}
+
+std::size_t LHEMultiFileWriter::reserve(std::size_t count) {
+    std::size_t first = _event_count;
+    _event_count += count;
+    return first;
+}
+
+void LHEMultiFileWriter::write_string(std::size_t file, const std::string& str) {
+    _writers.at(file)->write_string(str);
+}
+
+void LHEMultiFileWriter::write(const LHEEvent& event) {
+    _writers.at(file_index(reserve(1)))->write(event);
+}

@@ -1695,6 +1695,23 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("write", &LHEFileWriter::write, py::arg("event"))
         .def("write_string", &LHEFileWriter::write_string, py::arg("str"));
+    py::classh<LHEMultiFileWriter>(m, "LHEMultiFileWriter")
+        .def(
+            py::init<const std::vector<std::string>&, const LHEMeta&>(),
+            py::arg("file_names"),
+            py::arg_v("meta", LHEMeta{}, "LHEMeta()")
+        )
+        .def_property_readonly("file_count", &LHEMultiFileWriter::file_count)
+        .def_property_readonly("event_count", &LHEMultiFileWriter::event_count)
+        .def("file_index", &LHEMultiFileWriter::file_index, py::arg("event_index"))
+        .def("reserve", &LHEMultiFileWriter::reserve, py::arg("count"))
+        .def(
+            "write_string",
+            &LHEMultiFileWriter::write_string,
+            py::arg("file"),
+            py::arg("string")
+        )
+        .def("write", &LHEMultiFileWriter::write, py::arg("event"));
 
     m.def("format_si_prefix", &format_si_prefix, py::arg("value"));
     m.def("format_with_error", &format_with_error, py::arg("value"), py::arg("error"));
@@ -1788,10 +1805,24 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("file_name"),
             py::arg("lhe_completer")
         )
+        // Overloaded: a single path writes one LHE file, a list of paths deals
+        // the same events round-robin into that many complete LHE files.
+        // pybind's list caster rejects str/bytes, so the two never collide.
         .def(
             "combine_to_lhe",
-            &EventGenerator::combine_to_lhe,
+            static_cast<void (EventGenerator::*)(
+                const std::string&, LHECompleter&, const LHEMeta&
+            )>(&EventGenerator::combine_to_lhe),
             py::arg("file_name"),
+            py::arg("lhe_completer"),
+            py::arg_v("meta", LHEMeta{}, "LHEMeta()")
+        )
+        .def(
+            "combine_to_lhe",
+            static_cast<void (EventGenerator::*)(
+                const std::vector<std::string>&, LHECompleter&, const LHEMeta&
+            )>(&EventGenerator::combine_to_lhe),
+            py::arg("file_names"),
             py::arg("lhe_completer"),
             py::arg_v("meta", LHEMeta{}, "LHEMeta()")
         )
