@@ -59,6 +59,41 @@ pjoin = os.path.join
 # Suffixes to employ for the various poles of CTparameters
 pole_dict = {-2:'2EPS',-1:'1EPS',0:'FIN'}
 
+def is_symmetric_lorentz_structure(name):
+    """True when the lorentz structure *name* has commuting arguments.
+
+    The answer belongs to the structure itself: the aloha objects carry an
+    is_symmetric attribute, False on FactoryLorentz and set to True by the
+    structures whose arguments may be written in any order (Metric)."""
+
+    structure = getattr(aloha_object, name, None)
+    return bool(getattr(structure, 'is_symmetric', False))
+
+def canonicalize_lorentz_structure(structure):
+    """Sort the arguments of the symmetric functions appearing in *structure*.
+
+    Renumbering the indices of a vertex can reorder the arguments of a
+    symmetric function, so that Metric(3,2) and Metric(2,3) -- the same object
+    -- come out as different strings. Sorting the arguments of the functions
+    known to be symmetric makes the two spellings compare equal, so that only a
+    real disagreement between two definitions is reported.
+
+    Only calls whose arguments are all plain (possibly negative) integer
+    indices are touched, so a nested expression is never rewritten."""
+
+    if not isinstance(structure, str):
+        return structure
+
+    def sort_args(matchobj):
+        name = matchobj.group(1)
+        if not is_symmetric_lorentz_structure(name):
+            return matchobj.group(0)
+        args = [a.strip() for a in matchobj.group(2).split(',')]
+        return '%s(%s)' % (name, ','.join(sorted(args, key=int)))
+
+    return re.sub(r'\b([A-Za-z_]\w*)\(\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\)',
+                  sort_args, structure)
+
 class UFOImportError(MadGraph5Error):
     """ a error class for wrong import of UFO model""" 
 
@@ -1378,7 +1413,11 @@ class UFOMG5Converter(object):
                 new_lor = self.add_lorentz(new_name, new_spins, new_expr, formfact=new_formfact)
             except AssertionError:
                 prev_def = [l for l in self.model['lorentz'] if l.name==new_name][0]
-                if prev_def.structure != new_expr:
+                # compare canonicalised forms: the index renumbering above can
+                # reorder the arguments of a symmetric function, and that alone
+                # is not a redefinition (see canonicalize_lorentz_structure)
+                if canonicalize_lorentz_structure(prev_def.structure) != \
+                                     canonicalize_lorentz_structure(new_expr):
                     misc.sprint("WARNING, two different definition for one lorentz name", prev_def.structure, new_expr)
                 new_lor = prev_def
         return new_lor

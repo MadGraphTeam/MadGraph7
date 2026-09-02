@@ -5410,13 +5410,13 @@ class decay_all_events_onshell(decay_all_events):
             commandline = commandline.replace('add process', 'generate',1)
             mgcmd.exec_cmd(commandline, precmd=True)
 
-            commandline = 'output standalone %s --prefix=int' % pjoin(path_me, ms_me_subdir)
+            commandline = 'output standalone_fortran %s --prefix=int' % pjoin(path_me, ms_me_subdir)
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
             fill_all_me(self, "production")
         else:
             commandline_production = commandline.replace('add process', 'generate',1)
-            commandline_production += 'output standalone %s --prefix=int --density=1' % pjoin(path_me, ms_me_subdir)
+            commandline_production += 'output standalone_fortran %s --prefix=int --density=1' % pjoin(path_me, ms_me_subdir)
 
             logger.info(commandline_production)
             mgcmd.exec_cmd(commandline_production, precmd=True)
@@ -5425,7 +5425,7 @@ class decay_all_events_onshell(decay_all_events):
             fill_all_me(self, "production")
 
             commandline_decay = self.get_decay_command()
-            commandline_decay += 'output standalone %s --prefix=int --density=1 -f' % pjoin(path_me, ms_me_decay_subdir) #we add -f, else it would ask us if we want to clean the folder madspin_decay and madspin_me
+            commandline_decay += 'output standalone_fortran %s --prefix=int --density=1 -f' % pjoin(path_me, ms_me_decay_subdir) #we add -f, else it would ask us if we want to clean the folder madspin_decay and madspin_me
             commandline_decay = commandline_decay.replace('add process', 'generate',1)
 
             logger.info(commandline_decay)

@@ -2,7 +2,7 @@
 # Licensed under the GNU Lesser General Public License (version 3 or later).
 # Integrated with the MadGraph7 project in Feb 2026.
 #
-# Standalone (standalone_mg7) Makefile.
+# Standalone (`output standalone`, madmatrix) Makefile.
 # Extends the non-standalone (madmatrix) Makefile by including madmatrix.mk and
 # adding a recipe for check_sa.exe (the standalone driver). Running `make` here
 # will build both the process library AND the standalone executable.

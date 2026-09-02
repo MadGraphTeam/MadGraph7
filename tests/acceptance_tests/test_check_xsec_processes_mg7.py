@@ -24,10 +24,12 @@ tests). Each test:
      ``_anti_quark`` merged-flavor particles are used directly from the sm
      model),
   2. ``output mg7``s it,
-  3. edits ``Cards/run_card.toml`` -- fixed scale is already the template
-     default (mu = 91.188 GeV, e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed); here
-     we only set the event count and, for the hadronic tt~ decays, neutralise
-     the jet cuts (see CLAUDE.md),
+  3. edits ``Cards/run_card.toml`` -- it pins the configuration the references
+     were generated with: the fixed scale (mu = 91.188 GeV, e_cm = 13000 GeV),
+     since the template now defaults to the dynamical HT/2 scale, and the PDF
+     set (``NNPDF23_lo_as_0130_qed``), so the references stay valid no matter
+     which set the template defaults to; it also sets the event count and, for
+     the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
   5. asserts the relative difference to the reference stays within a tolerance.
@@ -74,6 +76,13 @@ pjoin = os.path.join
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REFERENCE = pjoin(_HERE, 'check_xsec_processes_reference.json')
 
+# PDF set the reference cross-sections were generated with. The test pins it
+# into every run_card.toml (see _edit_run_card) instead of relying on the
+# template default, so that changing the default PDF of the mg7 run_card does
+# not silently invalidate all ~40 reference values. It is also the set
+# _mg7_datadir_or_skip requires to be installed.
+_REFERENCE_PDF = 'NNPDF23_lo_as_0130_qed'
+
 # Environment-tunable knobs (see module docstring). Kept as module globals so
 # the dynamically generated test methods pick up the CI-provided values.
 _TOLERANCE = float(os.environ.get('MG7_XSEC_TOLERANCE', 0.01))
@@ -104,9 +113,9 @@ def _tail(path, n=60):
 
 
 def _mg7_datadir_or_skip(test):
-    """Return an LHAPDF data dir that contains the NNPDF23_lo_as_0130_qed set,
-    or ``skipTest`` (on *test*) when the mg7 runtime stack (madspace + LHAPDF +
-    the run_card.toml default PDF) is unavailable."""
+    """Return an LHAPDF data dir that contains the ``_REFERENCE_PDF`` set, or
+    ``skipTest`` (on *test*) when the mg7 runtime stack (madspace + LHAPDF +
+    the PDF set the references were generated with) is unavailable."""
     try:
         import madspace
         has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
@@ -126,21 +135,28 @@ def _mg7_datadir_or_skip(test):
     except Exception:
         pass
     for d in candidates:
-        if d and os.path.isdir(d) and glob.glob(pjoin(d, 'NNPDF23_lo_as_0130_qed*')):
+        if d and os.path.isdir(d) and glob.glob(pjoin(d, '%s*' % _REFERENCE_PDF)):
             return d
-    test.skipTest('NNPDF23_lo_as_0130_qed LHAPDF data not found '
-                  '(set $LHAPDF_DATA_PATH)')
+    test.skipTest('%s LHAPDF data not found (set $LHAPDF_DATA_PATH)'
+                  % _REFERENCE_PDF)
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts):
     """Set the event count and (optionally) neutralise the jet cuts.
 
-    Fixed renormalisation/factorisation scales are already the template
-    default; we only force them back on if a template change ever flipped
-    them, to keep the reference configuration honest."""
+    The reference cross-sections were produced with FIXED scales
+    (mu = 91.188 GeV) and with the NNPDF23_lo_as_0130_qed PDF set. The
+    run_card.toml template now defaults to the dynamical HT/2 scale instead,
+    and its default PDF set is free to change, so these replacements are what
+    pins the configuration back to the one the references were generated with.
+    They are load-bearing: drop them and every reference value below goes
+    stale. The PDF pin in particular decouples the references from the
+    template default -- ``_mg7_datadir_or_skip`` already guarantees the pinned
+    set is the one present on disk."""
     t = open(toml_path).read()
     t = t.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     t = t.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
+    t = re.sub(r'(?m)^pdf = ".*"$', 'pdf = "%s"' % _REFERENCE_PDF, t)
     t = re.sub(r'events = \d+', 'events = %d' % events, t)
     if disable_jet_cuts:
         # jet cuts must be disabled for the hadronic tt~ decay processes to

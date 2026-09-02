@@ -102,7 +102,6 @@ class UFOModelConverterCPP(object):
     def __init__(self, model, output_path, wanted_lorentz = [],
                  wanted_couplings = [], replace_dict={}):
         """ initialization of the objects """
-        misc.sprint('Exporting model to C++ standalone format')
         self.model = model
         self.model_name = ProcessExporterCPP.get_model_name(model['name'])
 
@@ -217,7 +216,6 @@ class UFOModelConverterCPP(object):
         # Handle flavor couplings
         # strategy picke one of the actual coupling and check if this is a running one or not
         flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
-        misc.sprint(self.coups_dep)
         deps = [c.name for c in self.coups_dep.values()]
         for one_flv in flavor_couplings:
             one_coupling = one_flv.get_one_coupling()
@@ -349,7 +347,6 @@ class UFOModelConverterCPP(object):
 
         # For each parameter type, write out the definition string
         # type parameters;
-        misc.sprint(type_param_dict)
         res_strings = []
         for key in type_param_dict:
             res_strings.append("%s %s;" % (self.type_dict[key],
@@ -379,7 +376,7 @@ class UFOModelConverterCPP(object):
 
     def _assert_flv_couplings_supported(self, params):
         """Refuse, with a clear and actionable message, the merged-flavor
-        coupling structures the C++ (mg7/standalone_mg7) backend cannot yet
+        coupling structures the C++ (mg7/standalone) backend cannot yet
         generate correctly, instead of crashing or emitting wrong/uncompilable
         code.
 
@@ -396,7 +393,7 @@ class UFOModelConverterCPP(object):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
 
-        The Fortran 'madevent'/'standalone' output supports the remaining cases.
+        The Fortran 'madevent'/'standalone_fortran' output supports the remaining cases.
         See docs/mg7_merged_flavor_mssm_design.md.
         """
         for coupl in params:
@@ -405,10 +402,10 @@ class UFOModelConverterCPP(object):
                 if nb_merged in (1, 2):
                     continue
                 raise InvalidCmd(
-                    "merged-flavor C++ output (mg7/standalone_mg7) does not yet "
+                    "merged-flavor C++ output (mg7/standalone) does not yet "
                     "support this process: flavor coupling %s connects %d "
                     "merged-flavor legs; only one or two are supported. Use "
-                    "'output madevent' or 'output standalone' for this process. "
+                    "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
 
@@ -3187,13 +3184,6 @@ class ProcessExporterMG7(ProcessExporterCPP):
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp'],
                      'Cards': []}
-    #from_template_simd = [
-    #    s+"mg7/api.h",
-    #    s+"mg7/simd/api_simd.cpp",
-    #    s+"mg7/simd/cudacpp.mk",
-    #    s+"mg7/simd/Makefile",
-    #]
-    #to_link_simd = ["api.h", "api_simd.cpp", "cudacpp.mk", "Makefile"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3257,7 +3247,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.madevent import main\n"
+                    "from madgraph.iolibs.template_files.mg7.launch import main\n"
                     "if __name__ == '__main__':\n"
                     "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
                     "    try:\n"
@@ -3565,8 +3555,6 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     
     if cformat == 'pythia8':
         return ProcessExporterPythia8(cmd._export_dir, opt)
-    elif cformat == 'standalone_cpp':
-        return  ProcessExporterCPP(cmd._export_dir, opt)
     elif cformat == 'matchbox_cpp':
         return  ProcessExporterMatchbox(cmd._export_dir, opt)
     elif cformat == 'mg7_v5':
@@ -3574,7 +3562,7 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     elif cformat == 'mg7':
         from madmatrix.output import ProcessExporterMadMatrix
         return ProcessExporterMadMatrix(cmd._export_dir, opt)
-    elif cformat == 'standalone_mg7':
+    elif cformat == 'standalone':
         from madmatrix.output import ProcessExporterMadMatrixStandalone
         return ProcessExporterMadMatrixStandalone(cmd._export_dir, opt)
     else:
