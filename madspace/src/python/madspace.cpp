@@ -440,15 +440,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Invariant::Invariant")
         );
 
-    py::classh<Luminosity, Mapping>(m, "Luminosity")
+    py::classh<Luminosity, Mapping>(m, "Luminosity", pydoc::doc("Luminosity"))
         .def(
             py::init<double, double, double, double, double, double>(),
             py::arg("s_lab"),
             py::arg("s_hat_min"),
             py::arg("s_hat_max") = 0.,
-            py::arg("invariant_power") = 0.,
+            py::arg("invariant_power") = 1.,
             py::arg("mass") = 0.,
-            py::arg("width") = 0.
+            py::arg("width") = 0.,
+            pydoc::doc("Luminosity::Luminosity")
         );
 
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay")

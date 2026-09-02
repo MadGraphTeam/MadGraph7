@@ -30,8 +30,9 @@ In this order:
    *"Entries marked with an index `i` are repeated for `i = 0 … n - 1`; `batch` is the
    batch dimension."*
 5. For a `Mapping` subclass: **`**Inputs**`**, **`**Conditions**`**, **`**Outputs**`**
-   bulleted lists (see below). For a `FunctionGenerator` subclass: **`**Arguments**`**
-   and **`**Returns**`** with the same bullet format.
+   bulleted lists (see below), always all three headings — write a single
+   `- None.` bullet when a list is empty. For a `FunctionGenerator` subclass:
+   **`**Arguments**`** and **`**Returns**`** with the same bullet format.
 6. **Weight note**, verbatim, on every `Mapping` subclass:
    *"In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
    Jacobian of the transformation."*
