@@ -8,8 +8,44 @@
 
 namespace madspace {
 
+/**
+ * Applies one of several channel mappings to each slice of the batch.
+ *
+ * A multi-channel integrand covers the phase space with several mappings
+ * @f$G_i@f$, each flattening a different structure of the integrand [1]. This
+ * class combines them into a single @ref Mapping. The batch is partitioned by
+ * the per-channel counts in the `return_batch_sizes` condition, each slice is
+ * passed through its channel mapping, and the results are concatenated. All
+ * channel mappings must share the same input, output and condition layout,
+ * which this class then exposes. See Sec. 2.1.1 of [1], following [2, 3].
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Inputs**
+ * - the inputs of the channel mappings (identical across channels).
+ *
+ * **Conditions**
+ * - the conditions of the channel mappings, plus
+ * - `return_batch_sizes` – the number of batch entries routed to each channel.
+ *
+ * **Outputs**
+ * - the outputs of the channel mappings (identical across channels).
+ *
+ * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 2.1.1)
+ * - [2] R. Kleiss, R. Pittau, "Weight optimization in multichannel Monte
+ *   Carlo", https://arxiv.org/abs/hep-ph/9405257
+ * - [3] F. Maltoni, T. Stelzer, "MadEvent: automatic event generation with
+ *   MadGraph", https://arxiv.org/abs/hep-ph/0208156
+ */
 class MultiChannelMapping : public Mapping {
 public:
+    /// @param mappings  The channel mappings. All must have the same number of
+    ///                  inputs, outputs and conditions.
     MultiChannelMapping(const std::vector<std::shared_ptr<Mapping>>& mappings);
 
 private:

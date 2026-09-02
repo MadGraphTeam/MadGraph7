@@ -639,8 +639,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FastRamboMapping::random_dim")
         );
 
-    py::classh<MultiChannelMapping, Mapping>(m, "MultiChannelMapping")
-        .def(py::init<std::vector<std::shared_ptr<Mapping>>&>(), py::arg("mappings"));
+    py::classh<MultiChannelMapping, Mapping>(
+        m, "MultiChannelMapping", pydoc::doc("MultiChannelMapping")
+    )
+        .def(
+            py::init<std::vector<std::shared_ptr<Mapping>>&>(),
+            py::arg("mappings"),
+            pydoc::doc("MultiChannelMapping::MultiChannelMapping")
+        );
 
     auto obs = py::classh<Observable, FunctionGenerator>(
         m, "Observable", pydoc::doc("Observable")
