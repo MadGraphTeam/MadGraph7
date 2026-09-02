@@ -1671,3 +1671,51 @@ class TestRestrictModel_Merged(unittest.TestCase):
                 found += 1
         self.assertEqual(found, 1)
 
+
+
+class TestLorentzStructureCanonicalisation(unittest.TestCase):
+    """Sorting the arguments of the symmetric lorentz structures.
+
+    Renumbering the indices of a vertex can reorder the arguments of a
+    symmetric function, so that the same object is written Metric(3,2) in one
+    definition and Metric(2,3) in another. import_ufo compares the two
+    structures when a lorentz name is defined twice and warns when they
+    disagree; without canonicalisation that warning fires on every such
+    renumbering and hides the real disagreements among the noise.
+    """
+
+    def test_symmetry_is_carried_by_the_structure(self):
+        """is_symmetric lives on the aloha object, and defaults to False."""
+        import aloha.aloha_object as aloha_object
+        import aloha.aloha_lib as aloha_lib
+        self.assertFalse(aloha_lib.FactoryLorentz.is_symmetric)
+        self.assertTrue(aloha_object.Metric.is_symmetric)
+        self.assertFalse(aloha_object.Gamma.is_symmetric)
+        self.assertTrue(import_ufo.is_symmetric_lorentz_structure('Metric'))
+        self.assertFalse(import_ufo.is_symmetric_lorentz_structure('Gamma'))
+        # an unknown name must not be taken for a symmetric structure
+        self.assertFalse(import_ufo.is_symmetric_lorentz_structure('NotAThing'))
+
+    def test_argument_order_of_a_symmetric_function_is_ignored(self):
+        """The two spellings of one Metric compare equal."""
+        canon = import_ufo.canonicalize_lorentz_structure
+        # the two cases actually met when importing the sm model
+        self.assertEqual(canon('Metric(3,2)'), canon('Metric(2,3)'))
+        self.assertEqual(canon('Metric(4,2)'), canon('Metric(2,4)'))
+        # summed indices are negative, and must sort numerically (not as text)
+        self.assertEqual(canon('Metric(-1,2)'), canon('Metric(2,-1)'))
+        # and inside a larger expression
+        self.assertEqual(canon('Metric(1,2)*Gamma(3,4,5)'),
+                         canon('Metric(2,1)*Gamma(3,4,5)'))
+
+    def test_real_differences_are_still_reported(self):
+        """Canonicalisation must not silence a genuine redefinition."""
+        canon = import_ufo.canonicalize_lorentz_structure
+        # different indices, not a reordering
+        self.assertNotEqual(canon('Metric(1,2)'), canon('Metric(1,3)'))
+        # Gamma and ProjP are NOT symmetric: reordering them stays a difference
+        self.assertNotEqual(canon('Gamma(1,2,3)'), canon('Gamma(3,2,1)'))
+        self.assertNotEqual(canon('ProjP(1,2)'), canon('ProjP(2,1)'))
+        # a symmetric part that matches does not excuse an asymmetric part
+        self.assertNotEqual(canon('Metric(1,2)*ProjM(3,4)'),
+                            canon('Metric(2,1)*ProjM(4,3)'))

@@ -115,14 +115,31 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
-def resolve_cppauto_backend(build_path: str) -> str:
-    """Ask the matrix-element Makefile to resolve ``cppauto``.
+def device_type_of(device_name: str) -> str:
+    """The device type of one 'device' run_card entry (the optional ':<index>'
+    suffix is stripped)."""
+    return device_name.split(":")[0]
+
+
+def backend_of(device_name: str, cpu_mode: str) -> str:
+    """The build BACKEND that serves one 'device' run_card entry.
+
+    ``cpu_mode`` describes the SIMD width of the CPU code and is therefore
+    meaningless for the cuda/hip devices: those build the backend named after
+    the device itself.
+    """
+    device_type = device_type_of(device_name)
+    return cpu_mode if device_type == "cpu" else device_type
+
+
+def resolve_auto_backend(build_path: str) -> str:
+    """Ask the matrix-element Makefile to resolve the ``auto`` cpu_mode.
 
     Given the produced shared library will have its name taken from the resolved
     backend name, we need to make sure the detection is taking place correctly
     and catch any possible error.
     """
-    command = ["make", "-n", "BACKEND=cppauto", "detect-backend"]
+    command = ["make", "-n", "BACKEND=auto", "detect-backend"]
     try:
         result = subprocess.run(
             command,
@@ -133,7 +150,7 @@ def resolve_cppauto_backend(build_path: str) -> str:
         )
     except OSError as exc:
         raise RuntimeError(
-            f"Could not run make to resolve cppauto in '{build_path}': {exc}"
+            f"Could not run make to resolve cpu_mode='auto' in '{build_path}': {exc}"
         ) from exc
     except subprocess.CalledProcessError as exc:
         output = "\n".join(
@@ -141,20 +158,20 @@ def resolve_cppauto_backend(build_path: str) -> str:
         )
         detail = f"\nmake output:\n{output}" if output else ""
         raise RuntimeError(
-            f"Could not resolve cppauto in '{build_path}': "
+            f"Could not resolve cpu_mode='auto' in '{build_path}': "
             f"Exit status {exc.returncode}.{detail}"
         ) from exc
 
     match = re.search(
-        r"^BACKEND=(\S+) \(was cppauto\)$", result.stdout, re.MULTILINE
+        r"^BACKEND=(\S+) \(was auto\)$", result.stdout, re.MULTILINE
     )
-    if match is None or match.group(1) == "cppauto":
+    if match is None or match.group(1) == "auto":
         output = "\n".join(
             part.strip() for part in (result.stdout, result.stderr) if part.strip()
         )
         detail = f"\nmake output:\n{output}" if output else ""
         raise RuntimeError(
-            f"Could not resolve cppauto in '{build_path}': "
+            f"Could not resolve cpu_mode='auto' in '{build_path}': "
             f"make failed to report a backend.{detail}"
         )
     return match.group(1)
@@ -264,7 +281,7 @@ class MadgraphProcess:
         self.status_file = ms.StatusFile(os.path.join(self.run_path, "info.json"))
 
     def init_context(self) -> None:
-        device_names = self.run_card["run"]["devices"]
+        device_names = self.run_card["run"]["device"]
         self.contexts = []
         self.device_types = []
         self.devices = []
@@ -790,31 +807,37 @@ class MadgraphProcess:
 
     def compile_matrix_elements(self) -> list[str]:
         """Build the matrix-element library of every subprocess, and return the
-        list of requested devices with 'cppauto' replaced by the backend it
-        resolves to on this machine.
+        build backend of each requested device (in the same order).
+
+        A 'cpu' device builds the backend named by the 'cpu_mode' entry; the
+        cuda/hip devices ignore cpu_mode and build their own backend. A
+        cpu_mode of 'auto' is resolved to the actual SIMD backend chosen on
+        this machine.
 
         SubProcesses/makefile is a dispatcher over the P* directories, so a
         single 'make -j N' there builds all the subprocesses at once with one
         shared pool of N jobs: no subprocess is built with N jobs while the
         others wait, and none is limited to N/#subprocesses jobs either.
         """
-        backends = self.run_card["run"]["devices"]
-        if not isinstance(backends, list):
-            backends = [backends]
+        device_names = self.run_card["run"]["device"]
+        if not isinstance(device_names, list):
+            device_names = [device_names]
+        cpu_mode = self.run_card["run"]["cpu_mode"]
+        backends = [backend_of(name, cpu_mode) for name in device_names]
         if not self.subprocess_data:
             return backends
 
         first_proc_path = self.subprocess_data[0]["path"]
         subproc_path = os.path.dirname(first_proc_path)
 
-        # Resolve 'cppauto' once (the build rules pick the best SIMD backend
-        # available here), so that all subprocesses agree on the library names.
-        cppauto_backend = None
-        if "cppauto" in backends:
-            cppauto_backend = resolve_cppauto_backend(first_proc_path)
-            logger.info("Device 'cppauto' resolved as '%s'", cppauto_backend)
+        # Resolve cpu_mode='auto' once (the build rules pick the best SIMD
+        # backend available here), so all subprocesses agree on the library names.
+        auto_backend = None
+        if "auto" in backends:
+            auto_backend = resolve_auto_backend(first_proc_path)
+            logger.info("cpu_mode 'auto' resolved as '%s'", auto_backend)
         resolved = [
-            cppauto_backend if backend == "cppauto" else backend
+            auto_backend if backend == "auto" else backend
             for backend in backends
         ]
 
@@ -1153,10 +1176,18 @@ class MadgraphProcess:
             )
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
+            lhe_path = os.path.join(self.run_path, "events.lhe")
             self.event_generator.combine_to_lhe(
-                os.path.join(self.run_path, "events.lhe"), self.lhe_completer,
+                lhe_path, self.lhe_completer,
                 self.build_lhe_meta(), systematics, histograms
             )
+            # Ship the LHE compressed by default. These files are large and
+            # very compressible, madevent has always stored its events
+            # gzipped, and every consumer here already accepts either form
+            # (see _find_event_file). misc.gzip replaces events.lhe with
+            # events.lhe.gz, and switches to an external multithreaded tool
+            # above 256 MB.
+            misc.gzip(lhe_path)
         else:
             raise ValueError("Unknown output format")
         if systematics is not None:
@@ -1374,8 +1405,27 @@ class MadgraphProcess:
         with open(os.path.join(cards_path, "run_card.toml"), 'w') as _f:
             _f.write(_header + _buf.getvalue())
         # Minimal card containing only the settings used by generate_events.
-        self.run_card.write_gridpack_card(
-            os.path.join(cards_path, "grid_run_card.toml"))
+        # The gridpack ships the libraries that were actually built, and their
+        # names carry the resolved backend, so the card it runs from has to name
+        # that backend as well: a cpu_mode of 'auto' would send the gridpack
+        # looking for a ..._auto.so that was never built. The full run_card.toml
+        # written just above keeps 'auto', since that is what was asked for.
+        device_names = self.run_card["run"]["device"]
+        if not isinstance(device_names, list):
+            device_names = [device_names]
+        resolved_cpu_mode = None
+        for name, backend in zip(device_names, getattr(self, "backends", [])):
+            if name.split(":")[0] == "cpu":
+                resolved_cpu_mode = backend
+                break
+        previous_cpu_mode = self.run_card["run"]["cpu_mode"]
+        if resolved_cpu_mode is not None:
+            self.run_card["run"]["cpu_mode"] = resolved_cpu_mode
+        try:
+            self.run_card.write_gridpack_card(
+                os.path.join(cards_path, "grid_run_card.toml"))
+        finally:
+            self.run_card["run"]["cpu_mode"] = previous_cpu_mode
 
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)
@@ -2369,7 +2419,7 @@ def build_selector_cmd():
 
         def do_compute_widths(self, line):
             # The interactive card editor delegates 'auto' width computation to
-            # the mother interface. Reuse the runtime helper (mg5_aMC subprocess
+            # the mother interface. Reuse the runtime helper (madgraph subprocess
             # + the model stored at output time). ``line`` looks like
             # "<pdgs> --path=<param_card> [--nlo]"; we only need the card path.
             m = re.search(r'--path=(\S+)', line or "")
@@ -2871,7 +2921,7 @@ def run_lhe_postprocessing(process) -> None:
 
 
 def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat")) -> None:
-    """Fill any width set to ``auto`` in the param_card, using mg5_aMC and the
+    """Fill any width set to ``auto`` in the param_card, using madgraph and the
     model stored at output time (``SubProcesses/model.txt``), and write the
     result back into the card. A no-op when the card has no ``auto`` width.
 
@@ -2914,9 +2964,9 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
                 "current model, which may be inconsistent with the matrix "
                 "element.", model)
 
-    mg5 = str(_MG_ROOT / "bin" / "mg5_aMC")
+    mg5 = str(_MG_ROOT / "bin" / "madgraph")
     if not os.path.exists(mg5):
-        logger.warning("Cannot find mg5_aMC at %s; 'auto' widths not computed.", mg5)
+        logger.warning("Cannot find madgraph at %s; 'auto' widths not computed.", mg5)
         return
 
     import tempfile

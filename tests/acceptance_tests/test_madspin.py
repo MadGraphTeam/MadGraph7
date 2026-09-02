@@ -267,7 +267,7 @@ decay z > l+ l-
 
         with open(log_path, 'w') as log_file:
             return_code = subprocess.call(
-                [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'), cmd_path],
+                [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'), cmd_path],
                 cwd=pjoin(_file_path, os.path.pardir),
                 stdout=log_file, stderr=subprocess.STDOUT)
         self.assertEqual(return_code, 0)
@@ -373,7 +373,7 @@ decay z > l+ l-
         with open(log_path, 'w') as log_file:
             try:
                 return_code = subprocess.call(
-                    [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'), cmd_path],
+                    [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'), cmd_path],
                     cwd=pjoin(_file_path, os.path.pardir),
                     stdin=subprocess.DEVNULL,
                     stdout=log_file, stderr=subprocess.STDOUT, timeout=240)
@@ -385,7 +385,7 @@ decay z > l+ l-
         # dir CI does not upload) so the reason is visible in the CI output.
         if return_code != 0 or not re.search(r'MadSpin\s+unweight\s+efficiency', log):
             print('\n===== test_madspin_mixed_flavor_decay_log_summary_mg7: '
-                  'mg5_aMC log tail (rc=%s) =====\n%s'
+                  'madgraph log tail (rc=%s) =====\n%s'
                   % (return_code, '\n'.join(log.splitlines()[-150:])),
                   file=sys.stderr, flush=True)
         self.assertEqual(return_code, 0)
@@ -417,7 +417,7 @@ decay w+ > all all
 
         with open(log_path, 'w') as log_file:
             return_code = subprocess.call(
-                [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'), cmd_path],
+                [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'), cmd_path],
                 cwd=pjoin(_file_path, os.path.pardir),
                 stdout=log_file, stderr=subprocess.STDOUT)
         self.assertEqual(return_code, 0)
@@ -479,7 +479,7 @@ decay w+ > all all
 
         with open(log_path, 'w') as log_file:
             return_code = subprocess.call(
-                [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'), cmd_path],
+                [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'), cmd_path],
                 cwd=pjoin(_file_path, os.path.pardir),
                 stdout=log_file, stderr=subprocess.STDOUT)
         self.assertEqual(return_code, 0)

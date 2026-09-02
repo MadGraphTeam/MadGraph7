@@ -325,7 +325,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_cpp_output_consistency -pA -t0 -l INFO
-            ./tests/test_manager.py test_standalone_mg7_vs_cpp -pA -t0 -l INFO
+            ./tests/test_manager.py test_madmatrix_vs_fortran -pA -t0 -l INFO
 
 
 
@@ -407,7 +407,7 @@ jobs:
 #            cd $GITHUB_WORKSPACE
 #            echo "install lhapdf6" > cmd
 #            echo "install pythia8" >> cmd
-#            ./bin/mg5_aMC cmd
+#            ./bin/madgraph cmd
 #
 #      # Runs a set of commands using the runners shell
 
@@ -653,7 +653,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             echo "set acknowledged_v3.1_syntax True --global" > cmd
-            ./bin/mg5_aMC cmd
+            ./bin/madgraph cmd
             ./tests/test_manager.py test_amcatnlo_from_file -pA -t0 -l INFO
 
 

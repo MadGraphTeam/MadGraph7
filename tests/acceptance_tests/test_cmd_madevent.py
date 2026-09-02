@@ -98,8 +98,8 @@ def _mg7_datadir_or_skip(test):
     misc.sprint(datadir)
     if not has_mg7 or not datadir or not os.path.isdir(datadir):
         test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-        test.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+    if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
+        test.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
     return datadir
 
 
@@ -210,7 +210,7 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     # exec_cmd bypasses the history, so the proc_card would miss the model /
     # generate / output lines and MadSpin (which reads 'generate' from the
     # banner) would abort with "no generate line". This mirrors how a real user
-    # drives the output (bin/mg5_aMC command file / interactive session).
+    # drives the output (bin/madgraph command file / interactive session).
     for c in setup_cmds:
         mg.run_cmd(c)
     mg.run_cmd('output mg7 %s' % run_dir)
@@ -339,7 +339,7 @@ class TestMECmdShell(unittest.TestCase):
 
         #if not os.path.exists(pjoin(MG5DIR, 'MadAnalysis')):
         #    print("install MadAnalysis")
-        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','mg5_aMC')],
+        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','madgraph')],
         #                     stdin=subprocess.PIPE,
         #                     stdout=stdout,stderr=stderr)
         #    out = p.communicate('install MadAnalysis4'.encode())
@@ -720,8 +720,8 @@ class TestMECmdShell(unittest.TestCase):
         Runs the mg7 (madspace) integrator with group_subprocesses on and off
         and checks the two cross-sections agree (grouping consistency). It also
         pins the absolute value to the mg7-native result obtained with the
-        run_card.toml defaults (NNPDF23_lo_as_0130_qed + dynamical HT/2 scale,
-        events=2000) ~ 1.277e+06 pb.
+        run_card.toml defaults (NNPDF40MC_lo_as_01180 + dynamical HT/2 scale,
+        events=2000) ~ 7.76e+05 pb.
 
         NOTE: this is NOT the madevent reference (1.31e6 pb in
         test_group_subprocess); but it would be if true lhapdf were used in madevent
@@ -744,8 +744,8 @@ class TestMECmdShell(unittest.TestCase):
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
         # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-            self.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
+            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -784,9 +784,13 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val1 - val2) / (err1 + err2 + 1e-30), 5,
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
-        # NOT the madevent 1.31e6 value for internal pdf but the one for 
-        # lhapdf NNPDF23_lo_as_0130_qed + dynamical HT/2 scale 
-        target = 1.277e+06
+        # NOT the madevent 1.31e6 value for internal pdf but the one for
+        # lhapdf NNPDF40MC_lo_as_01180 + dynamical HT/2 scale. Was 1.277e+06
+        # with the old default NNPDF23_lo_as_0130_qed; a same-code A/B gives
+        # 1.272e+06 (NNPDF23) vs 7.79e+05, so the -39% is the PDF change alone:
+        # alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
+        # Spread over 6 runs at events=2000: 7.66e5-7.84e5, mean 7.76e5.
+        target = 7.76e+05
         self.assertLess(abs(val2 - target) / target, 0.10,
             'mg7 u u > u u cross-section %s far from mg7 reference %s'
             % (val2, target))
@@ -1365,7 +1369,7 @@ class TestMECmdShell(unittest.TestCase):
         mg.exec_cmd('output mg7 %s' % out_dir)
 
         launcher = importlib.import_module(
-            'madgraph.iolibs.template_files.mg7.madevent')
+            'madgraph.iolibs.template_files.mg7.launch')
         tool_cards = ('pythia8_card.dat', 'madspin_card.dat', 'delphes_card.dat',
                       'reweight_card.dat', 'rivet_card.dat',
                       'madanalysis5_parton_card.dat',
@@ -1407,8 +1411,9 @@ class TestMECmdShell(unittest.TestCase):
 
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,
-        q = u d): the merged-flavor path must reproduce the 4428 pb obtained by
-        running u u > u u and u d > u d as separate single-flavor processes.
+        q = u d): the merged-flavor path must reproduce the cross-section
+        obtained by running u u > u u and u d > u d as separate single-flavor
+        processes.
 
         This used to come out too large because the mg7 exporter mirrored the
         mixed u d initial flavor -- leg 1 is a fixed u, so the beam-swapped
@@ -1434,8 +1439,8 @@ class TestMECmdShell(unittest.TestCase):
                 datadir = None
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-            self.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
+            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -1468,8 +1473,101 @@ class TestMECmdShell(unittest.TestCase):
         info = json.load(open(infos[-1]))['process']
         cross = float(info['mean'])
         error = float(info.get('error') or 0.0)
-        # physical reference (same as the madevent test); mg7 must reproduce it
-        self.assertAlmostEqual(cross, 4428.0, delta=max(30.0, 5 * error))
+        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180. This no
+        # longer equals the 4428 pb of the madevent test above: that one runs on
+        # madevent's internal (nn23lo1) PDF while mg7 convolutes with the LHAPDF
+        # grid named in run_card.toml. QCD=0, so there is no alpha_s here at all
+        # and the -16% shift is purely the smaller NNPDF4.0 valence-quark
+        # luminosity; a same-code A/B gives 4380 pb (NNPDF23) vs 3688 pb.
+        # Spread over 7 runs at events=2000: 3675-3775, mean 3731.
+        self.assertAlmostEqual(cross, 3730.0, delta=max(30.0, 5 * error))
+
+    def test_gridpack_mg7(self):
+        """An mg7 gridpack has to run with the libraries it ships.
+
+        save_gridpack copies the matrix-element libraries that were built, and
+        their file names carry the resolved backend, while the card the gridpack
+        runs from carried the backend as requested. cpu_mode defaults to 'auto',
+        so the gridpack asked for a ..._auto.so nobody had built and died in
+        dlopen -- not when the gridpack was made, but the first time it was run,
+        possibly on another machine.
+
+        Both halves are checked: that the backend named in grid_run_card.toml is
+        one the gridpack carries a library for, and that running it produces
+        events.
+        """
+        import glob, re as _re
+        try:
+            import madspace
+            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
+        except ImportError:
+            has_mg7 = False
+        if not has_mg7:
+            self.skipTest('mg7 runtime stack (madspace) unavailable')
+        # e+ e- > mu+ mu- is leptonic and runs at a fixed factorisation scale,
+        # so no PDF grid is read; systematics, the one step that would want
+        # LHAPDF, is switched off below. Only madspace is required.
+        datadir = os.environ.get('LHAPDF_DATA_PATH')
+        if not datadir:
+            try:
+                datadir = subprocess.check_output(
+                    ['lhapdf-config', '--datadir']).decode().strip()
+            except Exception:
+                datadir = None
+
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        mg.exec_cmd('generate e+ e- > mu+ mu-')
+        mg.exec_cmd('output mg7 %s' % self.run_dir)
+
+        toml = pjoin(self.run_dir, 'Cards', 'run_card.toml')
+        t = open(toml).read()
+        t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
+        t = _re.sub(r'(?m)^save_gridpack = .*', 'save_gridpack = true', t)
+        t = _re.sub(r'(?m)^systematics = true$', 'systematics = false', t)
+        open(toml, 'w').write(t)
+
+        env = dict(os.environ)
+        if datadir:
+            env['LHAPDF_DATA_PATH'] = datadir
+        log = pjoin(self.run_dir, 'mg7_gridpack_gen.log')
+        ret = subprocess.call(
+            [sys.executable, pjoin(self.run_dir, 'bin', 'generate_events'), '-f'],
+            cwd=self.run_dir, env=env,
+            stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+        self.assertEqual(ret, 0, 'mg7 generate_events failed (see %s)' % log)
+
+        gridpacks = glob.glob(pjoin(self.run_dir, 'Events', '*', 'gridpack'))
+        self.assertTrue(gridpacks, 'no gridpack produced under %s' % self.run_dir)
+        gridpack = gridpacks[0]
+
+        # The card the gridpack runs from must name a backend it actually
+        # carries a library for: 'auto' is not one, nothing is built under it.
+        card = open(pjoin(gridpack, 'Cards', 'grid_run_card.toml')).read()
+        mode = _re.search(r'(?m)^cpu_mode\s*=\s*"([^"]+)"', card)
+        self.assertTrue(mode, 'no cpu_mode in the gridpack card')
+        backend = mode.group(1)
+        libdir = pjoin(gridpack, 'lib')
+        self.assertNotEqual(
+            backend, 'auto',
+            'the gridpack card names the unresolved backend, but its libraries '
+            'are named after the resolved one: %s' % os.listdir(libdir))
+        self.assertTrue(
+            glob.glob(pjoin(libdir, '*%s*' % backend)),
+            'gridpack names backend %r but ships no matching library: %s'
+            % (backend, os.listdir(libdir)))
+
+        # and it has to run
+        gplog = pjoin(self.run_dir, 'mg7_gridpack_run.log')
+        ret = subprocess.call(
+            [sys.executable, pjoin(gridpack, 'bin', 'generate_events'),
+             '--events', '2000'],
+            cwd=gridpack, env=env,
+            stdout=open(gplog, 'w'), stderr=subprocess.STDOUT)
+        self.assertEqual(ret, 0, 'mg7 gridpack run failed (see %s)' % gplog)
+        self.assertTrue(
+            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
+            'gridpack run produced no events (see %s)' % gplog)
 
     def test_flavor_grouping_consistency(self):
         """Check that the four combinations of 'apply_flavor_grouping' and
@@ -1853,7 +1951,7 @@ class TestMECmdShell(unittest.TestCase):
         generate_events run. The mg7 (madmatrix/cudacpp) integrator is far too
         slow for a CI cross-section run on this process, so this equivalent
         validates the mg7 *output* path instead: that `output mg7` generates the
-        e- p > e- j subprocess directories and that they compile (scalar cppnone
+        e- p > e- j subprocess directories and that they compile (scalar
         backend) into the expected shared libraries. The cross-section
         comparison against the madevent reference remains a TODO pending a
         faster mg7 integrator.
@@ -2381,7 +2479,7 @@ C
             stdout=devnull
             stderr=devnull
 
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          #cwd=pjoin(self.path),
                         stdout=stdout,stderr=stdout)
@@ -2617,7 +2715,7 @@ class TestMEfromfile(unittest.TestCase):
             devnull =open(os.devnull,'w')
             stdout=devnull
             stderr=devnull
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'mg5_cmd')],
                          #cwd=self.path,
                         stdout=stdout, stderr=stderr)
@@ -2700,7 +2798,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -2781,7 +2879,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2857,7 +2955,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2943,7 +3041,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -3002,7 +3100,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
         
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -3063,7 +3161,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
         
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -3074,22 +3172,23 @@ class TestMEfromfile(unittest.TestCase):
     def test_generation_heft_mg7(self):
         """mg7 equivalent of test_generation_heft for g g > b b~ HIW<=1 (HEFT).
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 runs this HEFT process
-        but its cross-section comes out ~257x below the physical value (~1.6e6 pb
-        vs the madevent 4.117e8 pb) -- a large mg7 normalisation discrepancy for
-        the effective ggH coupling. The test asserts the physical reference and is
-        expected to fail until that is resolved; left undecorated to keep the
-        discrepancy visible. Self-skips where the mg7 runtime stack is unavailable.
+        Pins the mg7-native cross-section obtained with the run_card.toml
+        defaults and the dynamical HT/2 scale that _run_mg7_xsec selects.
+        Self-skips where the mg7 runtime stack is unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
-        cross, error = _run_mg7_xsec(self, 
+        cross, error = _run_mg7_xsec(self,
             ['set automatic_html_opening False --no_save',
              'import model heft',
              'generate g g > b b~ HIW<=1'],
             pjoin(self.path, 'MG7_heft'), datadir)
-        # physical reference (same as test_generation_heft)
-        target = 4.117e8 # HT/2
-        target = 3.754e+08 # fixed scale MZ
+        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180 (NNPDF4.0 LO,
+        # alpha_s(M_Z) = 0.118). The previous 3.754e+08 was the same run with the
+        # old default NNPDF23_lo_as_0130_qed: a same-code A/B on this process
+        # gives 3.708e+08 (NNPDF23) vs 1.820e+08 (NNPDF40MC), i.e. the -51% is
+        # entirely the PDF change -- gg luminosity (-25% at these x) times
+        # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
+        target = 1.820e+08
         self.assertLess(abs(cross - target) / target, 0.10,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
@@ -3145,7 +3244,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -3175,7 +3274,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -3206,7 +3305,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -3236,7 +3335,7 @@ class TestMEfromfile(unittest.TestCase):
         fsock.write(open(pjoin(_file_path, 'input_files','test_mssm_generation')).read() %
                     {'dir_name': self.run_dir, 'mg5_path':pjoin(_file_path, os.path.pardir)})
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'test_mssm_generation')],
                          #cwd=pjoin(self.path),
                         stdout=stdout,stderr=stdout)
@@ -3266,13 +3365,14 @@ class TestMEfromfile(unittest.TestCase):
             event.check()
 
     def test_generation_from_file_1_mg7(self):
-        """mg7 (madspace) cross-section for MSSM p p > go go, pinned to the
-        madevent reference from test_generation_from_file_1.
+        """mg7 (madspace) cross-section for MSSM p p > go go.
 
-        standalone_mg7 reproduces the per-flavor |M|^2 for p p > go go
-        (test_standalone_mg7_mssm_gogo, ~1e-4) and the madspace integrator now
-        lands on the madevent cross-section as well, so this pins the mg7 result
-        to the madevent reference (run_01 of test_generation_from_file_1).
+        the standalone (madmatrix) export reproduces the per-flavor |M|^2 for
+        p p > go go (test_madmatrix_mssm_gogo, ~1e-4) and the madspace integrator
+        lands on the madevent cross-section as well: with NNPDF23_lo_as_0130_qed
+        pinned in the run_card this setup gives 5.0235, against the madevent
+        reference of 5.024 (run_01 of test_generation_from_file_1). The target
+        below is for the default PDF instead -- see the comment on it.
 
         This used to be red at random rather than for a physics reason: the
         assertion is at 1%, but with the old 2000-event target a single run
@@ -3289,10 +3389,17 @@ class TestMEfromfile(unittest.TestCase):
              'import model MSSM_SLHA2',
              'generate p p > go go'],
             pjoin(self.path, 'MG7_mssm_gogo'), datadir)
-        # madevent reference (run_01 in test_generation_from_file_1)
-        target = 5.024 # no cut madevent with lhapdf (not internal pdf) (relative error from madevent: 1e-4)
+        # Reference for the default PDF NNPDF40MC_lo_as_01180, measured over 6
+        # runs: 3.7864 +- 0.0011 (single-run error ~0.003, i.e. ~0.08%), so the
+        # 1% tolerance here is a ~12 sigma check. The value shifts from the old
+        # NNPDF23_lo_as_0130_qed reference of 5.024 (madevent, no cuts, lhapdf)
+        # purely because of the PDF change: p p > go go is forced to large x by
+        # the ~600 GeV gluino pair, where the two sets differ a lot. With
+        # NNPDF23 pinned in the run_card this same setup still gives 5.0235,
+        # matching that madevent reference to 0.01%.
+        target = 3.786
         self.assertLess(abs(cross - target) / target, 0.01,
-            'mg7 p p > go go cross-section %s far from madevent reference %s'
+            'mg7 p p > go go cross-section %s far from reference %s'
             % (cross, target))
 
     def test_contur_from_file(self):
@@ -3314,7 +3421,7 @@ class TestMEfromfile(unittest.TestCase):
             stdout= None
 
 
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(_file_path,  os.path.pardir, 'tests', 'input_files','rivet_contur_test.cmd')],
                          cwd=pjoin(self.path),
                          stdout=stdout,stderr=stdout)
@@ -3372,7 +3479,7 @@ set draw_rivet_plots True
             devnull =open(os.devnull,'w')
             stdout=devnull
             stderr=devnull
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'mg5_cmd')],
                          #cwd=self.path,
                          stdout=stdout, stderr=stderr)
@@ -3388,7 +3495,8 @@ set draw_rivet_plots True
     # tool-selection question -> run_selected_tools -> MG7RunCmd), so that at
     # least one test exercises the command interface + chaining of every tool
     # with the new (default) output. They self-skip when the mg7 runtime stack
-    # (madspace + LHAPDF + NNPDF23) or the external tool is unavailable.
+    # (madspace + LHAPDF + the default PDF set) or the external tool is
+    # unavailable.
     #==========================================================================
     def test_add_time_of_flight_mg7(self):
         """time-of-flight LHE post-processing chained on the mg7 output.
@@ -3733,7 +3841,7 @@ set draw_rivet_plots True
             devnull = open(os.devnull, 'w')
             stdout = devnull
             stderr = devnull
-        ret = subprocess.call([pjoin(_file_path, os.path.pardir, 'bin', 'mg5_aMC'),
+        ret = subprocess.call([pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'),
                                pjoin(self.path, 'mg5_cmd')],
                               stdout=stdout, stderr=stderr)
         # Without this a failed run only shows up further down as

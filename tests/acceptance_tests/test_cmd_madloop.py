@@ -664,7 +664,7 @@ class TestCmdLoop(unittest.TestCase):
                 shutil.rmtree(self.out_dir)
             self.do('import model loop_sm')
             self.do('generate g g > e+ e- g / a [sqrvirt=QCD]') ## Photon is removed to have only the z propagator
-            self.run_cmd(f'output standalone {self.out_dir} -f')
+            self.run_cmd(f'output standalone_fortran {self.out_dir} -f')
 
             path_PS_card = pjoin(self.out_dir, "SubProcesses/P0_gg_epemg_no_a/PS.input")
             with open(path_PS_card, 'w') as psinput:
@@ -685,7 +685,7 @@ class TestCmdLoop(unittest.TestCase):
             command_card.close()
 
             logfile = 'test_madspin_full.log'
-            subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'),
+            subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'),
                             f'{self.out_dir}/mg5_cmd_full.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
             with open(pjoin(self.out_dir, "SubProcesses/P0_gg_epemg_no_a/result.dat"), "r") as result:
@@ -713,7 +713,7 @@ class TestCmdLoop(unittest.TestCase):
                 shutil.rmtree(self.out_dir)
             self.do('import model loop_sm')
             self.do('generate g g > z* g  [sqrvirt=QCD]')
-            self.run_cmd(f'output standalone {self.out_dir} --density=3 -f')
+            self.run_cmd(f'output standalone_fortran {self.out_dir} --density=3 -f')
 
             path_PS_card = pjoin(self.out_dir, "SubProcesses/P0_gg_zg/PS.input")
             with open(path_PS_card, 'w') as psinput:
@@ -733,7 +733,7 @@ class TestCmdLoop(unittest.TestCase):
             command_card.close()
 
             logfile = 'test_madspin_convolution.log'
-            subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'),
+            subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'),
                             f'{self.out_dir}/mg5_cmd_prod.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
 
@@ -761,7 +761,7 @@ class TestCmdLoop(unittest.TestCase):
                 shutil.rmtree(self.out_dir)
 
             self.do('generate z* > e+ e-')
-            self.run_cmd(f'output standalone {self.out_dir} --density=1 -f')
+            self.run_cmd(f'output standalone_fortran {self.out_dir} --density=1 -f')
             path_PS_card = pjoin(self.out_dir, "SubProcesses/P0_z_epem/PS.input")
             with open(path_PS_card, 'w') as psinput:
                 psinput.write(str(momenta_decay[0]).strip("[],") + "\n")
@@ -778,7 +778,7 @@ class TestCmdLoop(unittest.TestCase):
             command_card.close()
 
             logfile = 'test_madspin_convolution.log'
-            subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'),
+            subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'),
                             f'{self.out_dir}/mg5_cmd_decay.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
             density_card_path = pjoin(self.out_dir, "SubProcesses/P0_z_epem/Density_matrix.dat")
@@ -829,7 +829,7 @@ class TestCmdLoop(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate g g > h  [sqrvirt=QCD]')
-        self.run_cmd(f'output standalone {short_path} --density=1,2 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
+        self.run_cmd(f'output standalone_fortran {short_path} --density=1,2 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
         self.run_cmd(f'launch {short_path} -f ')
 
         devnull = open(os.devnull,'w')    
@@ -887,7 +887,7 @@ class TestCmdLoop(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate g g > w+ w-  [sqrvirt=QCD]')
-        self.run_cmd(f'output standalone {short_path} --density=3,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
+        self.run_cmd(f'output standalone_fortran {short_path} --density=3,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
         self.run_cmd(f'launch {short_path} -f ')
 
         devnull = open(os.devnull,'w')    
@@ -952,7 +952,7 @@ class TestCmdLoop(unittest.TestCase):
 
         self.do('import model loop_sm')
         self.do('generate p p > h j  [sqrvirt=QCD]')
-        self.run_cmd(f'output standalone {short_path} --density=2,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
+        self.run_cmd(f'output standalone_fortran {short_path} --density=2,4 -f') # we need run_cmd here, else HelicityFilterLevel is not set to 1.
         self.run_cmd(f'launch {short_path} -f ')
 
         # the result of the run is stored inside the file result.dat
@@ -1106,7 +1106,7 @@ class TestCmdLoop(unittest.TestCase):
         command_card.write(text)
         command_card.close()
 
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                         '/tmp/mg5_cmd.txt'])
         
 
@@ -1127,7 +1127,7 @@ set matrix_normalisation False
         command_card_rwgt.close()
 
         logfile = 'test_density_mode_LIvsSA.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                          '/tmp/mg5_cmd_rwgt.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
         # We read the reweighted event with the density matrix computed with the python interface
@@ -1146,7 +1146,7 @@ set matrix_normalisation False
         
         self.do('import model loop_sm')
         self.do('generate g g > w+ w-  [sqrvirt=QCD]')
-        self.run_cmd(f'output standalone {self.out_dir} --density=3,4 -f')
+        self.run_cmd(f'output standalone_fortran {self.out_dir} --density=3,4 -f')
         
         path_PS_card = pjoin(self.out_dir, "SubProcesses/P0_gg_wpwm/PS.input")
         with open(path_PS_card, 'w') as psinput:
@@ -1166,7 +1166,7 @@ set matrix_normalisation False
         command_card_bis.close()
 
         logfile = 'test_density_vs_LI_standalone.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
                         '/tmp/mg5_cmd_bis.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
         
 
