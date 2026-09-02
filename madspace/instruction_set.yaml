@@ -1860,183 +1860,191 @@ uniform_invariant:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant flat in s. Building block of @ref Invariant."
 
 uniform_invariant_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `uniform_invariant`. Building block of @ref Invariant."
 
 breit_wigner_invariant:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: mass
       type: [float]
-      desc:
+      desc: "resonance mass"
     - name: width
       type: [float]
-      desc:
+      desc: "resonance width"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a Breit-Wigner density around the pole mass. Building block of @ref Invariant."
 
 breit_wigner_invariant_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: mass
       type: [float]
-      desc:
+      desc: "resonance mass"
     - name: width
       type: [float]
-      desc:
+      desc: "resonance width"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `breit_wigner_invariant`. Building block of @ref Invariant."
 
 stable_invariant:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a 1/s power law around a stable pole. Building block of @ref Invariant."
 
 stable_invariant_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `stable_invariant`. Building block of @ref Invariant."
 
 stable_invariant_nu:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: nu
       type: [float]
-      desc:
+      desc: "exponent of the power law"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a tunable 1/s^nu power law. Building block of @ref Invariant."
 
 stable_invariant_nu_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: nu
       type: [float]
-      desc:
+      desc: "exponent of the power law"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `stable_invariant_nu`. Building block of @ref Invariant."
 
 ---
 title: Fast RAMBO on diet
@@ -2045,118 +2053,124 @@ fast_rambo_massless:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massless momenta with a given total momentum. Building block of @ref FastRamboMapping."
 
 fast_rambo_massless_inverse:
   inputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n momenta"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
   outputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `fast_rambo_massless`. Building block of @ref FastRamboMapping."
 
 fast_rambo_massless_com:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massless momenta in the center-of-mass frame. Building block of @ref FastRamboMapping."
 
 fast_rambo_massive:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: masses
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massive momenta with a given total momentum. Building block of @ref FastRamboMapping."
 
 fast_rambo_massive_inverse:
   inputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n momenta"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: masses
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
   outputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `fast_rambo_massive`. Building block of @ref FastRamboMapping."
 
 fast_rambo_massive_com:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: masses
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massive momenta in the center-of-mass frame. Building block of @ref FastRamboMapping."
 
 ---
 title: Cuts
@@ -2165,68 +2179,72 @@ cut_unphysical:
   inputs:
     - name: w_in
       type: [float]
-      desc:
+      desc: "incoming weight"
     - name: p
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
   outputs:
     - name: w_out
       type: [float]
-      desc:
+      desc: "weight, set to zero for unphysical events"
+  desc: "Zeroes the weight of events with unphysical momenta or momentum fractions. See @ref Cuts."
 
 cut_one:
   inputs:
     - name: obs
       type: [float]
-      desc:
+      desc: "observable value"
     - name: min
       type: [float]
-      desc:
+      desc: "lower bound"
     - name: max
       type: [float]
-      desc:
+      desc: "upper bound"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "weight, zero when the observable is outside [min, max]"
+  desc: "Zeroes the weight when a single observable falls outside its window. See @ref Cuts."
 
 cut_all:
   inputs:
     - name: obs
       type: [float, n]
-      desc:
+      desc: "observable values"
     - name: min
       type: [float]
-      desc:
+      desc: "lower bound applied to each observable"
     - name: max
       type: [float]
-      desc:
+      desc: "upper bound applied to each observable"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "weight, zero unless all observables are in [min, max]"
+  desc: "Zeroes the weight unless every observable in the vector is inside its window. See @ref Cuts."
 
 cut_any:
   inputs:
     - name: obs
       type: [float, n]
-      desc:
+      desc: "observable values"
     - name: min
       type: [float]
-      desc:
+      desc: "lower bound applied to each observable"
     - name: max
       type: [float]
-      desc:
+      desc: "upper bound applied to each observable"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "weight, zero unless some observable is in [min, max]"
+  desc: "Zeroes the weight unless at least one observable in the vector is inside its window. See @ref Cuts."
 
 ---
 title: Energy scale
@@ -2235,41 +2253,45 @@ scale_transverse_energy:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to the summed transverse energy of the final state. See @ref EnergyScale."
 
 scale_transverse_mass:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to the summed transverse mass of the final state. See @ref EnergyScale."
 
 scale_half_transverse_mass:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to half the summed transverse mass of the final state. See @ref EnergyScale."
 
 scale_partonic_energy:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to the partonic center-of-mass energy. See @ref EnergyScale."
 
 ---
 title: Chili
@@ -2278,51 +2300,53 @@ chili_forward:
   inputs:
     - name: r
       type: [float, 3n-2]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "hadronic center-of-mass energy"
     - name: m_out
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
     - name: pt_min
       type: [float, n]
-      desc:
+      desc: "minimum transverse momentum per final-state particle"
     - name: y_max
       type: [float, n]
-      desc:
+      desc: "maximum rapidity per final-state particle"
   outputs:
     - name: p_ext
       type: [float, n+2, 4]
-      desc:
+      desc: "external momenta, incoming particles first"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Chili hadron-collider mapping from the unit hypercube to external momenta. Building block of @ref ChiliMapping."
 
 chili_inverse:
   inputs:
     - name: p_ext
       type: [float, n+2, 4]
-      desc:
+      desc: "external momenta, incoming particles first"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "hadronic center-of-mass energy"
     - name: m_out
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
     - name: pt_min
       type: [float, n]
-      desc:
+      desc: "minimum transverse momentum per final-state particle"
     - name: y_max
       type: [float, n]
-      desc:
+      desc: "maximum rapidity per final-state particle"
   outputs:
     - name: r
       type: [float, 3n-2]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `chili_forward`. Building block of @ref ChiliMapping."
 
 ---
 title: Interface to ME and PDF
@@ -2337,60 +2361,63 @@ collect_channel_weights:
   inputs:
     - name: amp2
       type: [float, n]
-      desc:
+      desc: "squared amplitude per diagram"
     - name: channel_indices
       type: [int, single, n]
-      desc:
+      desc: "channel index of each diagram"
     - name: channel_count
       type: [size, c]
-      desc:
+      desc: "number of channels"
   outputs:
     - name: channel_weights
       type: [float, c]
-      desc:
+      desc: "weight per channel"
+  desc: "Sums squared amplitudes into per-channel weights. Building block of @ref PropagatorChannelWeights."
 
 interpolate_pdf:
   inputs:
     - name: x
       type: [float]
-      desc:
+      desc: "momentum fraction"
     - name: q
       type: [float]
-      desc:
+      desc: "factorization scale"
     - name: pid_indices
       type: [int, n]
-      desc:
+      desc: "grid index for each requested parton flavour"
     - name: grid_logx
       type: [float, single, a]
-      desc:
+      desc: "log-x grid nodes"
     - name: grid_logq2
       type: [float, single, b]
-      desc:
+      desc: "log-Q2 grid nodes"
     - name: grid_coeffs
       type: [float, single, 16, c, d]
-      desc:
+      desc: "bicubic interpolation coefficients"
   outputs:
     - name: pdf
       type: [float, n]
-      desc:
+      desc: "PDF value per requested flavour"
   vectorized: False
+  desc: "Evaluates parton densities by bicubic interpolation of a log-x / log-Q2 grid. See @ref PartonDensity."
 
 interpolate_alpha_s:
   inputs:
     - name: q
       type: [float]
-      desc:
+      desc: "renormalization scale"
     - name: grid_logq2
       type: [float, single, b+1]
-      desc:
+      desc: "log-Q2 grid nodes"
     - name: grid_coeffs
       type: [float, single, 4, b]
-      desc:
+      desc: "cubic interpolation coefficients"
   outputs:
     - name: alpha_s
       type: [float]
-      desc:
+      desc: "the strong coupling at q"
   vectorized: False
+  desc: "Evaluates the running coupling by cubic interpolation of a log-Q2 grid. See @ref RunningCoupling."
 
 ---
 title: Normalizing flows and MLPs
@@ -2399,209 +2426,223 @@ matmul:
   inputs:
     - name: x
       type: [float, n]
-      desc:
+      desc: "input vector"
       backward_arg: True
     - name: weight
       type: [float, single, m, n]
-      desc:
+      desc: "weight matrix"
       backward_arg: True
     - name: bias
       type: [float, single, m]
-      desc:
+      desc: "bias vector"
   outputs:
     - name: y
       type: [float, m]
-      desc:
+      desc: "the affine transform of the input"
   custom_op: True
   differentiable: True
+  desc: "Affine layer y = weight x + bias. Building block of @ref MLP."
 
 relu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise ReLU activation. Building block of @ref MLP."
 
 leaky_relu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise leaky ReLU activation. Building block of @ref MLP."
 
 elu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise ELU activation. Building block of @ref MLP."
 
 gelu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise GELU activation. Building block of @ref MLP."
 
 sigmoid:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
       backward_arg: True
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise sigmoid activation. Building block of @ref MLP."
 
 scaled_tanh:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
       backward_arg: True
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise scaled hyperbolic tangent activation. Building block of @ref MLP."
 
 softplus:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise softplus activation. Building block of @ref MLP."
 
 rqs_reshape:
   inputs:
     - name: input
-      desc:
+      desc: "raw spline parameters from the subnetwork"
     - name: bin_count
-      desc:
+      desc: "number of spline bins"
   outputs:
     - name: widths
-      desc:
+      desc: "normalized bin widths"
     - name: heights
-      desc:
+      desc: "normalized bin heights"
     - name: derivatives
-      desc:
+      desc: "knot derivatives"
   class: RqsReshapeInstruction
   differentiable: True
   custom_op: True
+  desc: "Reshapes raw network outputs into rational-quadratic-spline bin widths, heights and derivatives. Building block of @ref Flow."
 
 rqs_find_bin:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "values to be transformed"
     - name: in_sizes
       type: [float, n, b]
-      desc:
+      desc: "cumulative input-side bin sizes"
     - name: out_sizes
       type: [float, n, b]
-      desc:
+      desc: "cumulative output-side bin sizes"
     - name: derivatives
       type: [float, n, b+1]
-      desc:
+      desc: "knot derivatives"
   outputs:
     - name: condition
       type: [float, n, 6]
-      desc:
+      desc: "packed spline parameters for the active bin"
   differentiable: True
   dims: 2
+  desc: "Builds the per-element spline condition by locating the active bin. Building block of @ref Flow."
 
 rqs_forward:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "values to transform"
     - name: condition
       type: [float, n, 6]
-      desc:
+      desc: "packed spline parameters"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "transformed values"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-element Jacobian"
   differentiable: True
   dims: 2
+  desc: "Applies a rational-quadratic spline in the forward direction. Building block of @ref Flow."
 
 rqs_inverse:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "values to transform"
     - name: condition
       type: [float, n, 6]
-      desc:
+      desc: "packed spline parameters"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "transformed values"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-element Jacobian"
   differentiable: True
   dims: 2
+  desc: "Applies a rational-quadratic spline in the inverse direction. Building block of @ref Flow."
 
 softmax:
   inputs:
     - name: input
       type: [float, ...]
-      desc:
+      desc: "logits"
   outputs:
     - name: output
       type: [float, ...]
-      desc:
+      desc: "normalized probabilities"
       backward_arg: True
   differentiable: True
   dims: 0
+  desc: "Softmax over the last dimension. Building block of @ref DiscreteSampler."
 
 softmax_prior:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "logits"
     - name: prior
       type: [float, n]
-      desc:
+      desc: "prior probabilities"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "normalized probabilities"
       backward_arg: True
   differentiable: True
+  desc: "Softmax over the last dimension reweighted by a prior. Building block of @ref DiscreteSampler."
 
 ---
 title: Discrete sampling
