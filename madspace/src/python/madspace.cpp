@@ -326,7 +326,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             .def("function", &FunctionBuilder::function);
     add_instructions(fb);
 
-    py::classh<Mapping, PyMapping>(m, "Mapping", py::dynamic_attr())
+    py::classh<Mapping, PyMapping>(
+        m, "Mapping", pydoc::doc("Mapping"), py::dynamic_attr()
+    )
         .def(
             py::init<
                 const std::string&,
@@ -336,10 +338,19 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("name"),
             py::arg("input_types"),
             py::arg("output_types"),
-            py::arg("condition_types")
+            py::arg("condition_types"),
+            pydoc::doc("Mapping::Mapping")
         )
-        .def("forward_function", &Mapping::forward_function)
-        .def("inverse_function", &Mapping::inverse_function)
+        .def(
+            "forward_function",
+            &Mapping::forward_function,
+            pydoc::doc("Mapping::forward_function")
+        )
+        .def(
+            "inverse_function",
+            &Mapping::inverse_function,
+            pydoc::doc("Mapping::inverse_function")
+        )
         .def(
             "build_forward",
             py::overload_cast<FunctionBuilder&, const ValueVec&, const ValueVec&>(
@@ -347,7 +358,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             ),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_forward")
         )
         .def(
             "build_forward",
@@ -357,7 +369,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const NamedVector<Value>&>(&Mapping::build_forward, py::const_),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_forward")
         )
         .def(
             "build_inverse",
@@ -366,7 +379,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             ),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_inverse")
         )
         .def(
             "build_inverse",
@@ -376,11 +390,12 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const NamedVector<Value>&>(&Mapping::build_inverse, py::const_),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_inverse")
         );
 
     py::classh<FunctionGenerator, PyFunctionGenerator>(
-        m, "FunctionGenerator", py::dynamic_attr()
+        m, "FunctionGenerator", pydoc::doc("FunctionGenerator"), py::dynamic_attr()
     )
         .def(
             py::init<
@@ -389,16 +404,22 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const NamedVector<Type>&>(),
             py::arg("name"),
             py::arg("arg_types"),
-            py::arg("return_types")
+            py::arg("return_types"),
+            pydoc::doc("FunctionGenerator::FunctionGenerator")
         )
-        .def("function", &FunctionGenerator::function)
+        .def(
+            "function",
+            &FunctionGenerator::function,
+            pydoc::doc("FunctionGenerator::function")
+        )
         .def(
             "build_function",
             py::overload_cast<FunctionBuilder&, const ValueVec&>(
                 &FunctionGenerator::build_function, py::const_
             ),
             py::arg("builder"),
-            py::arg("args")
+            py::arg("args"),
+            pydoc::doc("FunctionGenerator::build_function")
         )
         .def(
             "build_function",
@@ -406,7 +427,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 &FunctionGenerator::build_function, py::const_
             ),
             py::arg("builder"),
-            py::arg("args")
+            py::arg("args"),
+            pydoc::doc("FunctionGenerator::build_function")
         );
 
     py::classh<Invariant, Mapping>(m, "Invariant")
