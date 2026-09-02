@@ -180,10 +180,10 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("batch_float_array", &batch_float_array, py::arg("count"));
     m.def("batch_four_vec_array", &batch_four_vec_array, py::arg("count"));
 
-    py::classh<InstrCopy>(m, "Instruction")
+    py::classh<InstrCopy>(m, "Instruction", pydoc::doc("Instruction"))
         .def("__str__", [](const InstrCopy& instr) { return instr.name; })
-        .def_readonly("name", &InstrCopy::name)
-        .def_readonly("opcode", &InstrCopy::opcode);
+        .def_readonly("name", &InstrCopy::name, pydoc::doc("Instruction::name"))
+        .def_readonly("opcode", &InstrCopy::opcode, pydoc::doc("Instruction::opcode"));
 
     py::classh<Value>(m, "Value", pydoc::doc("Value"))
         .def(py::init<me_int_t>(), py::arg("value"), pydoc::doc("Value::Value#2"))
