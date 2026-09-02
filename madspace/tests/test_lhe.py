@@ -129,7 +129,7 @@ def sample_external_momenta(mapping, batch_size, seed):
 def build_event(momenta_row):
     event = ms.LHEEvent()
     event.particles = [
-        ms.LHEParticle(p_x=px, p_y=py, p_z=pz, energy=e)
+        ms.LHEParticle(px=px, py=py, pz=pz, energy=e)
         for e, px, py, pz in momenta_row
     ]
     return event
@@ -447,3 +447,16 @@ def test_invalid_color_index_raises(lhe_completer, mapping):
     event = build_event(p_ext[0])
     with pytest.raises(RuntimeError):
         lhe_completer.complete_event_data(event, 0, 0, 999, 0, 0, ms.RandGen(1))
+
+
+def test_particle_momentum_kwargs_match_attributes():
+    """The constructor kwargs for the momentum components are spelled like the
+    attributes they set: px/py/pz, matching LHEParticle's C++ members and the
+    rest of madspace. The old p_x/p_y/p_z spelling is gone."""
+    particle = ms.LHEParticle(px=1.5, py=-2.5, pz=3.5, energy=4.5)
+    assert (particle.px, particle.py, particle.pz) == (1.5, -2.5, 3.5)
+    assert particle.energy == 4.5
+
+    for name in ("p_x", "p_y", "p_z"):
+        with pytest.raises(TypeError):
+            ms.LHEParticle(**{name: 1.0})
