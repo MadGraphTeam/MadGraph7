@@ -11521,6 +11521,211 @@ class TestTheDecayGenerationPhaseSurvivesTheFork(unittest.TestCase):
         self.assertLess(charged, 2 * self.WORK)
 
 
+class TestTheRefillPhaseSurvivesTheUnweightingFork(unittest.TestCase):
+    """``decay_event_refill`` is charged inside a forked unweighting worker and
+    never reached the parent -- the same lost dict as the decay-generation fork
+    above, at a different call site.
+
+    ``_draw_one_decay`` retargets ``_gen_phase`` to 'decay_event_refill' around a
+    mid-loop pool refill, and ``generate_events`` charges it. On the serial path
+    that happens in the parent and is reported. On the parallel path the refill
+    goes through :meth:`_worker_refill` inside a forked worker: ``ms_phase_add``
+    charges *that process's* copy of the dict, the worker exits, and the phase
+    was gone -- the run's phase table showed no refill at all even when the log
+    showed a worker generating one for 19 seconds.
+
+    Unlike the decay-generation fork there is no parent-side region to wrap: the
+    refill is interior to a worker and concurrent with the other workers' normal
+    unweighting. So the worker records its interval to a file and the parent
+    charges the *union* of those intervals -- overlapping refills of different
+    channels cost one stretch of wall time, not two, and the number stays
+    comparable to the ``decay_loop`` it is nested in.
+    """
+
+    WORK = 0.25            # long enough to be unmistakably non-zero
+    PDG, CHANNEL = 6, 0
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_refillphase_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _stub(self, shard_tag=0, work=None):
+        """A MadSpin carrying the real ``_worker_refill`` and the real refill
+        accounting, over an ``_owner_generate`` that only takes wall time and
+        charges the phase the way ``generate_events`` does -- i.e. onto its own
+        process's dict."""
+        test = self
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _worker_refill = interface._worker_refill
+            _record_refill = interface._record_refill
+            _refill_acct_path = interface._refill_acct_path
+            _clear_refill_accounting = interface._clear_refill_accounting
+            _collect_worker_refill_phase = interface._collect_worker_refill_phase
+            _union_seconds = staticmethod(interface._union_seconds)
+            _decay_dir = staticmethod(interface._decay_dir)
+
+            def _channel_owner(self, pdg, decay_file_nb):
+                return self._shard_tag          # always the owner path
+
+            def _set_status(self, state, target=None):
+                pass
+
+            def _owner_generate(self, pdg, decay_file_nb, target_gen, needed):
+                time.sleep(test.WORK if work is None else work)
+                interface_madspin.ms_phase_add(
+                    self, 'decay_event_refill', test.WORK)
+
+            def _open_refill_slice(self, decay_dir, gen, owner):
+                return 'reader-gen-%d' % gen
+
+        stub = Stub()
+        stub.path_me = self.tmpdir
+        stub._shard_tag = shard_tag
+        stub._shard_nb_core = 2
+        stub._pool_gen = {}
+        stub._phase_times = collections.defaultdict(float)
+        stub._phase_counts = collections.defaultdict(int)
+        return stub
+
+    def _refill_in_a_forked_worker(self, shard_tag=0, work=None):
+        """Run one refill in a real forked child, as the unweighting does, and
+        return the parent's stub. The child's own phase dict dies with it: what
+        the parent ends up with is exactly what crossed the fork."""
+        import multiprocessing as mp
+        test = self
+
+        def entry(tag, w):
+            stub = test._stub(shard_tag=tag, work=w)
+            stub._worker_refill(test.PDG, test.CHANNEL, 5000)
+
+        parent = self._stub()
+        proc = mp.get_context('fork').Process(target=entry,
+                                              args=(shard_tag, work))
+        proc.start()
+        proc.join()
+        self.assertEqual(proc.exitcode, 0)
+        return parent
+
+    # -------------------------------------------------------- the regression
+
+    def test_a_refill_in_a_forked_worker_reaches_the_parent(self):
+        """The regression proper. Before the fix the parent's phase table had no
+        'decay_event_refill' entry at all: every second of it was charged inside
+        a worker that then exited."""
+        parent = self._refill_in_a_forked_worker()
+        parent._collect_worker_refill_phase()
+        self.assertGreaterEqual(parent._phase_times['decay_event_refill'],
+                                self.WORK)
+        self.assertEqual(parent._phase_counts['decay_event_refill'], 1)
+
+    def test_the_worker_takes_its_own_accounting_away_with_it(self):
+        """The mechanism, pinned: the child does charge the phase -- on its own
+        dict -- and that charge is what never crossed the fork. The parent's
+        number comes from the record, not from the child's dict."""
+        # run in this process and the charge lands where it was made ...
+        local = self._stub()
+        local._worker_refill(self.PDG, self.CHANNEL, 5000)
+        self.assertGreaterEqual(local._phase_times['decay_event_refill'],
+                                self.WORK)
+        # ... run in a forked worker and it does not: a parent that does not
+        # collect the records sees nothing, which was the bug.
+        parent = self._refill_in_a_forked_worker()
+        self.assertEqual(parent._phase_times['decay_event_refill'], 0.0)
+
+    def test_the_requested_pool_size_crosses_too(self):
+        """Same counter discipline as the generation phase: a benchmark can tell
+        'slow generator' from 'generated too many'."""
+        parent = self._refill_in_a_forked_worker()
+        parent._collect_worker_refill_phase()
+        self.assertEqual(
+            parent._phase_counts['decay_event_refill_events_requested'], 5000)
+
+    # ------------------------------------------- what the number has to mean
+
+    def test_concurrent_refills_are_not_added_up(self):
+        """Two workers refilling two channels at the same time cost one stretch
+        of wall time. Summing them would put the phase above the ``decay_loop``
+        the benchmark nests it inside, i.e. above the wall time it is a part
+        of."""
+        import multiprocessing as mp
+        test = self
+
+        def entry(tag):
+            stub = test._stub(shard_tag=tag)
+            stub._worker_refill(test.PDG + tag, test.CHANNEL, 5000)
+
+        ctx = mp.get_context('fork')
+        procs = [ctx.Process(target=entry, args=(tag,)) for tag in (0, 1)]
+        for p in procs:
+            p.start()
+        for p in procs:
+            p.join()
+
+        parent = self._stub()
+        parent._collect_worker_refill_phase()
+        charged = parent._phase_times['decay_event_refill']
+        self.assertEqual(parent._phase_counts['decay_event_refill'], 2)
+        self.assertGreaterEqual(charged, self.WORK)
+        # the union, not the sum: comfortably below the 2 * WORK a sum gives
+        self.assertLess(charged, 1.8 * self.WORK)
+
+    def test_the_union_counts_an_overlap_once(self):
+        """The arithmetic itself, without a fork in the way."""
+        union = interface_madspin.MadSpinInterface._union_seconds
+        self.assertAlmostEqual(union([(0., 1.), (0.5, 2.)]), 2.0)
+        self.assertAlmostEqual(union([(0., 1.), (2., 3.)]), 2.0)
+        self.assertAlmostEqual(union([(0., 3.), (1., 2.)]), 3.0)
+        self.assertAlmostEqual(union([]), 0.0)
+
+    def test_the_serial_path_is_not_charged_twice(self):
+        """Outside a forked worker generate_events already charges the phase in
+        the parent. Recording it here as well would bill it a second time, so
+        _record_refill is a no-op when there is no shard tag."""
+        stub = self._stub(shard_tag=None)
+        stub._record_refill('G', time.time(), time.time() + 1.0, 5000)
+        self.assertEqual(misc.glob('ms_refill_acct_*', self.tmpdir), [])
+        stub._collect_worker_refill_phase()
+        self.assertEqual(stub._phase_times['decay_event_refill'], 0.0)
+
+    def test_the_records_of_a_previous_run_are_dropped(self):
+        """A reused ms_dir keeps path_me across runs. _clear_refill_state calls
+        this before anything is forked, so a record collected at the end belongs
+        to the run that is ending."""
+        stub = self._stub()
+        stub._record_refill('G', 0.0, 10.0, 5000)
+        stub._clear_refill_accounting()
+        stub._collect_worker_refill_phase()
+        self.assertEqual(stub._phase_times['decay_event_refill'], 0.0)
+
+    def test_blocked_time_is_kept_apart_from_generation_time(self):
+        """Waiting on another worker's generation is not time spent generating,
+        and it is worker-seconds rather than wall time, so it is reported as its
+        own counter and never folded into the phase."""
+        stub = self._stub()
+        stub._record_refill('W', 100.0, 100.5)
+        stub._record_refill('W', 100.0, 100.25)
+        stub._collect_worker_refill_phase()
+        self.assertEqual(stub._phase_times['decay_event_refill'], 0.0)
+        self.assertEqual(stub._phase_counts['decay_event_refill_waits'], 2)
+        self.assertEqual(
+            stub._phase_counts['decay_event_refill_wait_worker_ms'], 750)
+
+    def test_the_helpers_no_op_on_an_object_without_accounting(self):
+        """``ms_phase_add`` does nothing on an object that keeps no
+        ``_phase_times``, and the collection must inherit that: the unit-test
+        stubs borrow these methods function by function."""
+        stub = self._stub()
+        stub._record_refill('G', 0.0, 10.0, 5000)
+        del stub._phase_times
+        del stub._phase_counts
+        stub._collect_worker_refill_phase()      # must not raise
+
+
 class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
     """``decay_generator = mg7`` used to be silently moved to madevent whenever
     nb_core > 1 -- i.e. on any multicore box, which is the usual one -- because

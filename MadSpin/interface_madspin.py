@@ -3699,6 +3699,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             # 2) Generate every particle's decay events at the same time.
             gen_results = self._generate_decays(gen_jobs, mg5)
             self._clear_refill_state()
+            self._clear_refill_accounting()
 
             # 3) Fold the measured partial widths into the branching ratio.
             channel_widths = {}
@@ -3929,8 +3930,16 @@ class MadSpinInterface(extended_cmd.Cmd):
                                        evt_decayfile, base_out, ctx)
         # The accept/reject loop proper (decay-pool reads, density MEs,
         # reshuffling, event writing), serial or forked. Refills triggered from
-        # inside it were charged separately by generate_events.
+        # inside it were charged separately: by generate_events when the loop ran
+        # serially, and by the line below when it ran in forked workers, whose
+        # own accounting dies with them.
         self._add_phase('decay_loop', time.time() - start)
+        # Both forked phases of this run are joined by now (the max-weight scan
+        # and the unweighting loop), so every worker has finished writing its
+        # refill records. Charging here rather than per phase keeps this to one
+        # site, at the cost of not telling a scan-time refill from a loop-time
+        # one -- which the serial path does not tell apart either.
+        self._collect_worker_refill_phase()
         logger.info(f"Time for decay = {time.time()-start:.2f} sec")
 
     def _resolve_nb_core(self):
@@ -4938,6 +4947,143 @@ class MadSpinInterface(extended_cmd.Cmd):
             for stale in misc.glob("ms_refill_*", pjoin(decay_dir, 'Events')):
                 _force_rmtree(stale)
 
+    # ---- refill accounting across the worker fork ---------------------------
+    # A mid-loop pool refill runs INSIDE a forked worker, and ms_phase_add
+    # charges a plain dict on the instance: the worker charges its own copy and
+    # takes it away when it exits. So 'decay_event_refill' -- which
+    # generate_events does charge, see _draw_one_decay retargeting _gen_phase --
+    # never reached the parent's phase table on the parallel path. (The serial
+    # path is unaffected: there the refill runs in the parent itself.)
+    #
+    # There is no region of a surviving process that isolates it. The refill is
+    # interior to a worker and runs concurrently with the other workers' ordinary
+    # unweighting, so the fork/join wrapping that works for _generate_decays has
+    # nothing to wrap here: the only enclosing parent-side regions are
+    # 'decay_loop' and 'max_weight_scan', which already contain the refill and
+    # cannot separate it from the loop around it. So the worker measures and
+    # reports -- through a file of its own, next to the ms_wstatus_* board -- and
+    # the parent turns the reports into the phase.
+    #
+    # What the parent charges is the UNION of the workers' generation intervals,
+    # not their sum: different channels have different owners and can be
+    # generated at the same time, and a sum would then exceed the wall time of
+    # the phase the benchmark nests it inside. The union is "wall time during
+    # which at least one worker was generating a refill pool" -- the same kind of
+    # quantity as decay_loop, and never larger than it.
+    def _refill_acct_path(self, worker_id):
+        return pjoin(self.path_me, 'ms_refill_acct_%d' % worker_id)
+
+    def _clear_refill_accounting(self):
+        """Drop the refill accounting of an earlier run. Called by the parent
+        from run_onshell, next to _clear_refill_state -- once per run, after the
+        pools are generated and before any worker is forked, so every record
+        collected at the end belongs to this run. (Kept out of
+        _clear_refill_state itself: that method is borrowed on its own by the
+        stubs of the refill-publication tests.)"""
+        for path in misc.glob('ms_refill_acct_*', getattr(self, 'path_me', '') or ''):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    def _record_refill(self, kind, start, end, count=0):
+        """Append one refill interval to this worker's accounting file.
+
+        ``kind`` is 'G' (this worker generated the pool) or 'W' (it was blocked
+        on the owner). One line per interval, appended, so the records of the
+        max-weight scan and of the unweighting loop -- different forks, same
+        shard ids -- accumulate rather than overwrite each other.
+
+        A no-op outside a forked worker: on the serial path generate_events
+        charges 'decay_event_refill' in the parent itself, and recording here
+        too would bill it twice."""
+        if getattr(self, '_shard_tag', None) is None:
+            return
+        try:
+            with open(self._refill_acct_path(self._shard_tag), 'a') as fh:
+                fh.write('%s %.6f %.6f %d\n' % (kind, start, end, count))
+        except (IOError, OSError):
+            pass
+
+    @staticmethod
+    def _union_seconds(intervals):
+        """Length of the union of ``[start, end)`` intervals, in seconds.
+
+        Overlapping intervals are counted once: two workers generating two
+        different channels at the same time cost one stretch of wall time, not
+        two."""
+        total = 0.0
+        reached = None
+        for start, end in sorted(intervals):
+            if reached is None or start > reached:
+                total += end - start
+                reached = end
+            elif end > reached:
+                total += end - reached
+                reached = end
+        return total
+
+    def _collect_worker_refill_phase(self):
+        """Charge what the forked workers spent refilling decay pools to the
+        parent's phase table, and drop the records.
+
+        Charged as wall time (comparable to the phases it sits inside):
+
+        ``decay_event_refill``
+            the union of the intervals a worker spent *generating* a pool. That
+            covers taking the channel's exclusive refill lock, the madevent /
+            mg7 generation itself, splitting the pool into the per-worker files
+            and publishing the generation marker -- everything inside
+            :meth:`_owner_generate`. It does NOT cover the time the other
+            workers spent blocked on it, which is a different quantity.
+            Refills triggered by the max-weight scan land in the same bucket as
+            those triggered by the unweighting loop, exactly as they do on the
+            serial path.
+
+        Recorded as counters -- ``decay_event_refill_events_requested`` (the
+        pool size asked for, which the owner rounds to a multiple of nb_core),
+        ``decay_event_refill_waits`` and ``decay_event_refill_wait_worker_ms``.
+        The last one is summed over the blocked workers, so it is
+        worker-milliseconds and NOT wall time: it is the cost of the owner
+        protocol (17 workers x 19 s on a ttbar run), and it is deliberately kept
+        out of ``seconds`` where it would be read as a share of the run.
+        """
+        gen, wait, requested = [], [], 0
+        for path in misc.glob('ms_refill_acct_*',
+                              getattr(self, 'path_me', '') or ''):
+            try:
+                with open(path) as fh:
+                    records = fh.readlines()
+            except (IOError, OSError):
+                continue
+            for line in records:
+                parts = line.split()
+                if len(parts) != 4:
+                    continue
+                try:
+                    start, end, count = float(parts[1]), float(parts[2]), int(parts[3])
+                except ValueError:
+                    continue
+                if end < start:
+                    continue
+                if parts[0] == 'G':
+                    gen.append((start, end))
+                    requested += count
+                else:
+                    wait.append((start, end))
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        if gen:
+            ms_phase_add(self, 'decay_event_refill',
+                         self._union_seconds(gen), len(gen))
+            ms_phase_count(self, 'decay_event_refill_events_requested', requested)
+        if wait:
+            ms_phase_count(self, 'decay_event_refill_waits', len(wait))
+            ms_phase_count(self, 'decay_event_refill_wait_worker_ms',
+                           int(round(1000 * sum(e - s for s, e in wait))))
+
     def _clear_worker_status(self, nb_core):
         """Remove stale per-worker status files before forking a phase, so a
         'D'(one) left by the previous phase's worker of the same id can't be
@@ -5016,10 +5162,14 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         if self._shard_tag == owner:
             self._set_status('G')
+            # Measured and reported rather than charged here: this is a forked
+            # worker and its phase dict dies with it (_collect_worker_refill_phase).
+            gen_start = time.time()
             try:
                 self._owner_generate(pdg, decay_file_nb, target_gen, needed)
             finally:
                 self._set_status('R')
+                self._record_refill('G', gen_start, time.time(), needed)
             self._pool_gen[key] = target_gen
             return self._open_refill_slice(decay_dir, target_gen, owner)
 
@@ -5035,6 +5185,11 @@ class MadSpinInterface(extended_cmd.Cmd):
         self._set_status('W', owner)
         waited = 0.0
         cycle_hits = 0
+        # Blocked time is NOT the same quantity as generation time, so it is
+        # reported apart (as worker-milliseconds, see
+        # _collect_worker_refill_phase). Set to None once it has been recorded,
+        # so the fail-safe generation below is not billed as waiting too.
+        wait_start = time.time()
         try:
             while self._published_gen(decay_dir) < target_gen:
                 reason = None
@@ -5062,7 +5217,14 @@ class MadSpinInterface(extended_cmd.Cmd):
                         "guaranteed for this refill.", self._shard_tag, reason,
                         target_gen, pdg, decay_file_nb)
                     self._set_status('G')
-                    self._owner_generate(pdg, decay_file_nb, target_gen, needed)
+                    self._record_refill('W', wait_start, time.time())
+                    wait_start = None
+                    gen_start = time.time()
+                    try:
+                        self._owner_generate(pdg, decay_file_nb, target_gen,
+                                             needed)
+                    finally:
+                        self._record_refill('G', gen_start, time.time(), needed)
                     break
                 time.sleep(0.1)
                 waited += 0.1
@@ -5076,6 +5238,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                            decay_file_nb))
         finally:
             self._set_status('R')
+            if wait_start is not None:
+                self._record_refill('W', wait_start, time.time())
         self._pool_gen[key] = target_gen
         return self._open_refill_slice(decay_dir, target_gen, owner)
 
