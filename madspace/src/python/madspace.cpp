@@ -1055,7 +1055,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("functions")
         );
 
-    py::classh<MatrixElement, FunctionGenerator> matrix_element(m, "MatrixElement");
+    py::classh<MatrixElement, FunctionGenerator> matrix_element(
+        m, "MatrixElement", pydoc::doc("MatrixElement")
+    );
     add_enum<MatrixElement::MatrixElementInput>(
         matrix_element,
         "MatrixElementInput",
@@ -1093,10 +1095,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
+            // C++ defaults to {momenta_in} / {matrix_element_out}; kept required
+            // in Python because pybind11-stubgen cannot render an enum-list
+            // default (see the header @param docs).
             py::arg("inputs"),
             py::arg("outputs"),
             py::arg("diagram_count") = 1,
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(
             py::init<
@@ -1107,11 +1113,31 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("matrix_element_api"),
             py::arg("inputs"),
             py::arg("outputs"),
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            pydoc::doc("MatrixElement::MatrixElement#2")
         )
-        .def("matrix_element_index", &MatrixElement::matrix_element_index)
-        .def("diagram_count", &MatrixElement::diagram_count)
-        .def("particle_count", &MatrixElement::particle_count);
+        .def(
+            "matrix_element_index",
+            &MatrixElement::matrix_element_index,
+            pydoc::doc("MatrixElement::matrix_element_index")
+        )
+        .def(
+            "diagram_count",
+            &MatrixElement::diagram_count,
+            pydoc::doc("MatrixElement::diagram_count")
+        )
+        .def(
+            "particle_count",
+            &MatrixElement::particle_count,
+            pydoc::doc("MatrixElement::particle_count")
+        )
+        .def("inputs", &MatrixElement::inputs, pydoc::doc("MatrixElement::inputs"))
+        .def("outputs", &MatrixElement::outputs, pydoc::doc("MatrixElement::outputs"))
+        .def(
+            "external_inputs",
+            &MatrixElement::external_inputs,
+            pydoc::doc("MatrixElement::external_inputs")
+        );
 
     py::classh<MLP, FunctionGenerator> mlp(m, "MLP", pydoc::doc("MLP"));
     add_enum<MLP::Activation>(

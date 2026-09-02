@@ -10,6 +10,10 @@ GENERATE_XML           = YES
 XML_OUTPUT             = build/doxygenxml
 XML_PROGRAMLISTING     = YES
 
+# Keep member initializers out of the XML: Breathe's C++ parser chokes on
+# things like `static const std::vector<Enum> x = {A::b, ...}`.
+MAX_INITIALIZER_LINES  = 0
+
 ALIASES                = "rst=\verbatim embed:rst"
 ALIASES               += "endrst=\endverbatim"
 
