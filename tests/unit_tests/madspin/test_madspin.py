@@ -10273,7 +10273,7 @@ class TestRefillPoolIsCompleteBeforeItIsPublished(unittest.TestCase):
             # are plain functions, and a plain function in a class body would
             # be handed a ``self`` they do not take
             _refill_pool_dir = staticmethod(interface._refill_pool_dir)
-            _count_lhe_events = staticmethod(interface._count_lhe_events)
+            _count_pool_events = staticmethod(interface._count_pool_events)
             _published_gen = staticmethod(interface._published_gen)
             _publish_gen = staticmethod(interface._publish_gen)
             _decay_dir = staticmethod(interface._decay_dir)
@@ -11523,28 +11523,38 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
-    """mg7 emits LHE, and MadSpin deals it out into one file per unweighting
-    worker at the canonical ``Events/<run_name>/unweighted_events_<i>.lhe``.
+class TestMg7WritesANumpyPoolEveryWorkerStrides(unittest.TestCase):
+    """mg7 writes its decay pool as one ``events.npy`` and nothing splits it.
 
-    Both halves matter. LHE because a pool has to be reconstructible from a
-    path alone -- across the generation fork and, on a refill, from the channel
-    owner to every waiter -- and only LHE carries the channel's partial width
-    with it, in its <init> block. The per-worker split because a worker that is
-    handed a single file has to STRIDE it (_StridedEvents calls next() on every
-    other worker's events too), i.e. parse the whole pool to read 1/N of it.
+    The pool is memory-mapped and randomly addressable, so worker i of N reads
+    the rows at positions i, i+N, ... by index arithmetic: no per-worker file to
+    write, no other worker's events to parse past. That is the whole difference
+    from LHE text, where a worker handed a single file has to ``next()`` its way
+    over everybody else's events and the pool therefore has to be dealt out into
+    one file per worker first.
 
-    And writing them at those particular paths is what makes a refill free:
-    ``_refill_pool_paths`` is the same layout under the same ``run_name``, so
-    ``_generate_refill_pool`` finds sources == targets and does no further
-    work -- the same branch madevent lands in.
+    The objection this reverses was that only LHE carries the channel's partial
+    width with it (in its <init> block), so a .npy pool could not survive being
+    handed to another process by path alone. It survives both hops without
+    anything being published beside it: the generation fork already marshals the
+    width explicitly with the paths, and a refill hands on the width the reader
+    it replaces already had -- a channel's width does not change from one
+    generation of its pool to the next. See
+    TestMg7NumpyPoolCrossesTheGenerationFork and
+    TestNumpyRefillPoolCarriesItsWidthWithoutASidecar.
+
+    The pool still lands under ``Events/<run_name>/`` -- mg7 names its own run
+    directory and MadSpin renames it there -- because for a refill that path IS
+    ``_refill_pool_paths``, so ``_generate_refill_pool`` sees the backend has
+    written the canonical layout and does nothing further.
     """
 
     NB_EVENT = 24
+    WIDTH = 1.4586029
 
     def setUp(self):
         import tempfile
-        self.tmpdir = tempfile.mkdtemp(prefix='ms_mg7lhe_')
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_mg7npy_')
         self.decay_dir = pjoin(self.tmpdir, 'decay_6_0')
         os.makedirs(pjoin(self.decay_dir, 'Cards'))
         os.makedirs(pjoin(self.decay_dir, 'bin'))
@@ -11555,17 +11565,20 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    WIDTH = 1.4586029
-
     def _write_launcher(self):
         """A stand-in for ``bin/generate_events``: makes its own run directory
-        (mg7 names it, MadSpin does not) and writes an LHE pool there, with the
-        partial width in the <init> block exactly as combine_to_lhe does."""
+        (mg7 names it, MadSpin does not) and writes a numpy pool plus the
+        info.json that reports the partial width, exactly as
+        combine_to_lhe_npy and the launcher do."""
+        fields = list(interface_madspin._NPY_PARTICLE_FIELDS)
         lines = [
             '#!/usr/bin/env python3',
-            'import os',
+            'import os, json, numpy',
             'WIDTH = @WIDTH@',
             'NB = @NB@',
+            'FIELDS = %r' % (fields,),
+            'INTEGRAL = ("pdg_id", "status_code", "mother1", "mother2",',
+            '            "color", "anti_color")',
             'run = None',
             'for i in range(1, 100):',
             '    cand = os.path.join("Events", "run_%02d" % i)',
@@ -11573,22 +11586,31 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
             '        run = cand',
             '        break',
             'os.makedirs(run)',
-            'f = open(os.path.join(run, "events.lhe"), "w")',
-            'f.write(\'<LesHouchesEvents version="3.0">\\n<header></header>\\n<init>\\n\')',
-            'f.write(" 2212 2212 6.5e+03 6.5e+03 0 0 247000 247000 -4 1\\n")',
-            'f.write(" %.7e 1.2908000e-03 %.7e 1\\n" % (WIDTH, WIDTH))',
-            'f.write("</init>\\n")',
-            'for i in range(NB):',
-            '    f.write("<event>\\n")',
-            '    f.write(" 3 1 +1.0e+00 1.73e+02 7.5467711e-03 1.178e-01\\n")',
-            '    f.write("  6 -1 0 0 501 0 0. 0. 0. 1.73e+02 1.73e+02 0. 9.\\n")',
-            '    f.write("  5 1 1 1 501 0 0. 0. %d. 8.65e+01 8.65e+01 0. 9.\\n" % i)',
-            '    f.write(" 24 1 1 1 0 0 0. 0. 0. 8.65e+01 8.65e+01 0. 9.\\n")',
-            '    f.write("</event>\\n")',
-            'f.write("</LesHouchesEvents>\\n")',
-            'f.close()',
+            'dtype = [("weight", "f8"), ("scale", "f8"),',
+            '         ("alpha_qed", "f8"), ("alpha_qcd", "f8")]',
+            'for i in range(1, 4):',
+            '    for f in FIELDS:',
+            '        dtype.append(("part%d_%s" % (i, f),',
+            '                      "i4" if f in INTEGRAL else "f8"))',
+            'rec = numpy.zeros(NB, dtype=dtype)',
+            'rec["weight"] = 1.0',
+            'rec["part1_pdg_id"] = 6',
+            'rec["part1_status_code"] = -1',
+            'rec["part1_energy"] = 173.0',
+            'rec["part1_mass"] = 173.0',
+            'for i, pdg in ((2, 5), (3, 24)):',
+            '    rec["part%d_pdg_id" % i] = pdg',
+            '    rec["part%d_status_code" % i] = 1',
+            '    rec["part%d_mother1" % i] = 1',
+            '    rec["part%d_mother2" % i] = 1',
+            '    rec["part%d_energy" % i] = 86.5',
+            # a per-event fingerprint, so the stripes can be checked to
+            # partition the pool
+            'rec["part2_pz"] = numpy.arange(NB, dtype="f8")',
+            'numpy.save(os.path.join(run, "events.npy"), rec)',
             'info = open(os.path.join(run, "info.json"), "w")',
-            'info.write(\'{"run_times": {"integrate": {"wall_time_sec": 2.5}}}\')',
+            'json.dump({"process": {"mean": WIDTH},',
+            '           "run_times": {"integrate": {"wall_time_sec": 2.5}}}, info)',
             'info.close()',
         ]
         script = '\n'.join(lines) \
@@ -11599,7 +11621,7 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
             fsock.write(script + '\n')
         os.chmod(path, 0o755)
 
-    def _stub(self, nb_split):
+    def _stub(self, nb_core):
         interface = interface_madspin.MadSpinInterface
 
         class Stub(object):
@@ -11607,119 +11629,325 @@ class TestMg7WritesThePoolWhereTheParallelPathLooksForIt(unittest.TestCase):
             _add_phase = interface._add_phase
             _phase = interface._phase
             InvalidCmd = interface.InvalidCmd
-            _split_pool_round_robin = staticmethod(
-                interface._split_pool_round_robin)
             _refill_pool_dir = staticmethod(interface._refill_pool_dir)
             _refill_pool_paths = interface._refill_pool_paths
+            _reopen_decay_pool = interface._reopen_decay_pool
+            _channel_owner = interface._channel_owner
+            _count_pool_events = staticmethod(interface._count_pool_events)
 
             def _decay_pool_split(self):
-                return nb_split
+                return nb_core
 
         stub = Stub()
         stub.banner = {'slha': '# param card\n'}
-        stub._shard_nb_core = nb_split
+        stub._shard_nb_core = nb_core
+        stub._channel_keys = [(6, 0)]
+        stub._owner_undersize = 0.0
         return stub
 
-    def _tags(self, path):
-        """The pz of the b in every event of a file -- a per-event fingerprint,
-        so the slices can be checked to partition the pool."""
-        out = []
-        reader = lhe_parser.EventFile(path)
-        for event in reader:
-            out.append(int(event[1].pz))
-        reader.close()
-        return out
+    @staticmethod
+    def _tags(reader):
+        """The pz of the b in every event the reader yields."""
+        return [int(event[1].pz) for event in reader]
 
     # ---------------------------------------------------------------- format
 
-    def test_the_run_card_asks_for_lhe(self):
+    def test_the_run_card_asks_for_the_numpy_event_file(self):
         self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT)
         card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
-        self.assertEqual(card['run']['output_format'], 'lhe')
+        self.assertEqual(card['run']['output_format'], 'lhe_npy')
 
-    def test_the_partial_width_comes_out_of_the_init_block(self):
-        """The whole reason for LHE: the width travels with the file, so any
-        reader rebuilt from the path alone still has it."""
+    def test_the_partial_width_comes_out_of_info_json(self):
+        """A .npy has no <init> block, so the width comes from the run result
+        the launcher writes -- and it has to arrive, or the branching ratio of
+        the whole run silently collapses."""
         pool, width = self._stub(1).generate_events_mg7(self.decay_dir,
                                                         self.NB_EVENT)
         self.assertAlmostEqual(width, self.WIDTH, places=6)
         self.assertAlmostEqual(pool.cross, self.WIDTH, places=6)
+        self.assertIsInstance(pool, interface_madspin.NpyDecayPool)
 
-    def test_a_serial_run_gets_the_single_file_unsplit(self):
-        pool, _ = self._stub(1).generate_events_mg7(self.decay_dir,
-                                                    self.NB_EVENT)
-        self.assertEqual(len(self._tags(pool.name)), self.NB_EVENT)
+    def test_a_missing_width_is_refused_rather_than_read_as_zero(self):
+        """Without the <init> block there is no second place to find the width,
+        so a run whose info.json does not report one must fail loudly: a width
+        silently read as zero collapses the branching ratio of the whole run."""
+        with open(pjoin(self.decay_dir, 'bin', 'generate_events'), 'a') as fsock:
+            fsock.write('open(os.path.join(run, "info.json"), "w")'
+                        '.write(\'{"run_times": {}}\')\n')
+        self.assertRaises(Exception, self._stub(1).generate_events_mg7,
+                          self.decay_dir, self.NB_EVENT)
+
+    # ------------------------------------------------------------ the layout
+
+    def test_the_pool_is_one_file_whatever_the_core_count(self):
+        """No split, so no per-worker files and nothing to clean up after."""
+        pool, _ = self._stub(18).generate_events_mg7(self.decay_dir,
+                                                     self.NB_EVENT)
         self.assertFalse(hasattr(pool, 'paths'))
-
-    # ----------------------------------------------------------- the layout
-
-    def test_the_pool_is_split_one_file_per_worker(self):
-        pool, width = self._stub(4).generate_events_mg7(self.decay_dir,
-                                                        self.NB_EVENT)
-        self.assertEqual(len(pool.paths), 4)
-        for i, path in enumerate(pool.paths):
-            self.assertEqual(os.path.basename(path),
-                             'unweighted_events_%d.lhe' % i)
-            self.assertEqual(os.path.dirname(path),
-                             pjoin(self.decay_dir, 'Events', 'run_01'))
-        self.assertAlmostEqual(width, self.WIDTH, places=6)
-
-    def test_the_slices_partition_the_pool_round_robin(self):
-        """No event seen twice, none lost, and worker i gets positions
-        i, i+N, ... -- the stripe it would have strided out for itself."""
-        pool, _ = self._stub(4).generate_events_mg7(self.decay_dir,
-                                                    self.NB_EVENT)
-        seen = []
-        for i, path in enumerate(pool.paths):
-            tags = self._tags(path)
-            self.assertEqual(tags, list(range(i, self.NB_EVENT, 4)))
-            seen.extend(tags)
-        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
-
-    def test_every_slice_carries_the_width(self):
-        """A worker opens one slice by path and reads .cross off it; the banner
-        has to be on each of them, not only the first."""
-        pool, _ = self._stub(4).generate_events_mg7(self.decay_dir,
-                                                    self.NB_EVENT)
-        for path in pool.paths:
-            reader = lhe_parser.EventFile(path)
-            self.assertAlmostEqual(reader.cross, self.WIDTH, places=6)
-            reader.close()
-
-    # ------------------------------------------------------------ the refill
-
-    def test_the_unsplit_pool_is_not_kept_beside_the_slices(self):
-        """The slices between them hold every event of what mg7 wrote, so
-        keeping mg7's own file too doubles the disk a pool costs -- and a refill
-        adds a generation rather than replacing one."""
-        pool, _ = self._stub(4).generate_events_mg7(self.decay_dir,
-                                                    self.NB_EVENT)
         run_dir = pjoin(self.decay_dir, 'Events', 'run_01')
-        self.assertFalse(os.path.exists(pjoin(run_dir, 'events.lhe')))
-        self.assertTrue(os.path.exists(pjoin(run_dir, 'info.json')))
-        seen = []
-        for path in pool.paths:
-            seen.extend(self._tags(path))
-        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
+        self.assertEqual(sorted(os.listdir(run_dir)),
+                         ['events.npy', 'info.json'])
+        self.assertEqual(len(pool), self.NB_EVENT)
 
-    def test_a_serial_run_keeps_the_file_it_was_handed(self):
-        """Nothing is split there, so nothing may be removed either."""
-        pool, _ = self._stub(1).generate_events_mg7(self.decay_dir,
-                                                    self.NB_EVENT)
-        self.assertTrue(os.path.exists(pool.name))
-
-    def test_a_refill_lands_exactly_on_the_paths_the_waiters_open(self):
-        """The payoff of writing under ``Events/<run_name>/``: for a refill,
-        run_name is ms_refill_<gen> and those paths ARE _refill_pool_paths, so
-        _generate_refill_pool sees sources == targets and skips the whole
-        materialise/split step."""
+    def test_the_pool_lands_under_the_run_name_madspin_asked_for(self):
+        """mg7 names its own run directory; MadSpin renames the pool to the one
+        the rest of the code addresses it by."""
         stub = self._stub(4)
         pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT,
                                            run_name='ms_refill_1')
-        self.assertEqual(pool.paths,
+        self.assertEqual(pool.name,
+                         pjoin(self.decay_dir, 'Events', 'ms_refill_1',
+                               'events.npy'))
+        self.assertTrue(os.path.exists(pool.name))
+
+    def test_a_refill_lands_exactly_on_the_path_the_waiters_open(self):
+        """The payoff of the rename: for a refill, run_name is ms_refill_<gen>
+        and that path IS _refill_pool_paths, so _generate_refill_pool sees the
+        backend has written the canonical layout and does no further work."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT,
+                                           run_name='ms_refill_1')
+        self.assertEqual([pool.name],
                          stub._refill_pool_paths(self.decay_dir, 1))
-        for path in pool.paths:
-            self.assertTrue(os.path.exists(path), path)
+
+    # ----------------------------------------------------------- the striding
+
+    def test_every_worker_gets_a_disjoint_stripe_of_the_one_pool(self):
+        """Worker i reads positions i, i+N, ... -- the same partition the
+        round-robin split used to have to write out as files."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        seen = []
+        for shard in range(4):
+            local = stub._reopen_decay_pool({6: {0: pool}}, shard, 4)
+            tags = self._tags(local[6][0])
+            self.assertEqual(tags, list(range(shard, self.NB_EVENT, 4)))
+            seen.extend(tags)
+        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
+
+    def test_every_stripe_carries_the_width(self):
+        """A worker reads .cross off its own reader to weight the channel
+        choice, so the width has to survive being re-sliced."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        for shard in range(4):
+            local = stub._reopen_decay_pool({6: {0: pool}}, shard, 4)
+            self.assertAlmostEqual(local[6][0].cross, self.WIDTH, places=6)
+
+    def test_a_stripe_that_does_not_divide_the_pool_evenly_is_still_exact(self):
+        """26 events over 4 workers: two workers get 7, two get 6, and between
+        them they hold every event once."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        path = pool.name
+        seen = []
+        for shard in range(5):
+            reader = interface_madspin.NpyDecayPool(path, 1.0, offset=shard,
+                                                    stride=5)
+            tags = self._tags(reader)
+            self.assertEqual(len(reader), len(tags))
+            self.assertEqual(tags, list(range(shard, self.NB_EVENT, 5)))
+            seen.extend(tags)
+        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
+
+    def test_a_stripe_past_the_end_of_the_pool_is_simply_empty(self):
+        """More workers than events: the extra ones get nothing, and say so
+        through len() as well as by raising StopIteration at once."""
+        stub = self._stub(1)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        reader = interface_madspin.NpyDecayPool(pool.name, 1.0,
+                                                offset=self.NB_EVENT + 3,
+                                                stride=self.NB_EVENT + 8)
+        self.assertEqual(len(reader), 0)
+        self.assertEqual(list(reader), [])
+
+    def test_the_stripe_crosses_the_chunk_boundary_intact(self):
+        """The chunked conversion has to keep the stride across refills of the
+        chunk, not restart the arithmetic at every boundary."""
+        stub = self._stub(1)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        reader = interface_madspin.NpyDecayPool(pool.name, 1.0, offset=1,
+                                                stride=3)
+        reader.CHUNK = 2
+        self.assertEqual(self._tags(reader), list(range(1, self.NB_EVENT, 3)))
+
+
+class TestTheOwnerUndersizeCanCountANumpyPool(unittest.TestCase):
+    """``_count_pool_events`` sizes the ~10% shortfall that makes a channel's
+    OWNER worker run its slice out -- and so regenerate the pool -- before the
+    workers waiting on it do.
+
+    It counted ``<event`` records by scanning the file as text. A numpy pool
+    contains no such text, so it counted zero, the owner's slice was capped at
+    zero events, and the owner refilled on its very first draw and then again
+    on the next one, forever. Nothing raises: it presents as a refill loop, not
+    as a file-format error, which is why it is worth a test of its own.
+    """
+
+    NB_EVENT = 40
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_count_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @staticmethod
+    def _npy_dtype():
+        """The event-level columns mg7's lhe_npy file always carries."""
+        return [('weight', 'f8'), ('scale', 'f8'),
+                ('alpha_qed', 'f8'), ('alpha_qcd', 'f8')]
+
+    def _npy(self, nb_event=None):
+        import numpy
+        nb_event = self.NB_EVENT if nb_event is None else nb_event
+        path = pjoin(self.tmpdir, 'events.npy')
+        numpy.save(path, numpy.zeros(nb_event, dtype=self._npy_dtype()))
+        return path
+
+    def _lhe(self, nb_event):
+        path = pjoin(self.tmpdir, 'pool.lhe')
+        with open(path, 'w') as fsock:
+            fsock.write('<LesHouchesEvents version="3.0">\n<init>\n</init>\n')
+            for _ in range(nb_event):
+                fsock.write('<event>\n 0 0\n</event>\n')
+            fsock.write('</LesHouchesEvents>\n')
+        return path
+
+    def test_a_numpy_pool_is_counted_not_read_as_zero(self):
+        """The regression proper."""
+        count = interface_madspin.MadSpinInterface._count_pool_events(self._npy())
+        self.assertEqual(count, self.NB_EVENT)
+
+    def test_an_lhe_pool_is_still_counted_by_its_event_records(self):
+        count = interface_madspin.MadSpinInterface._count_pool_events(
+            self._lhe(17))
+        self.assertEqual(count, 17)
+
+    def test_the_owner_slice_of_a_numpy_pool_is_shorter_than_a_waiters(self):
+        """What the silent zero actually broke: the owner has to get ~90% of
+        its stripe, not 0% of it."""
+        interface = interface_madspin.MadSpinInterface
+        path = self._npy()
+
+        class Stub(object):
+            _open_refill_slice = interface._open_refill_slice
+            _refill_pool_path = interface._refill_pool_path
+            _refill_pool_paths = interface._refill_pool_paths
+            _refill_pool_dir = staticmethod(interface._refill_pool_dir)
+            _count_pool_events = staticmethod(interface._count_pool_events)
+
+        decay_dir = pjoin(self.tmpdir, 'decay_6_0')
+        os.makedirs(interface._refill_pool_dir(decay_dir, 1))
+        shutil.move(path, pjoin(interface._refill_pool_dir(decay_dir, 1),
+                                'events.npy'))
+
+        lengths = {}
+        for shard in range(4):
+            stub = Stub()
+            stub._shard_tag = shard
+            stub._shard_nb_core = 4
+            stub._owner_undersize = 0.10
+            reader = stub._open_refill_slice(decay_dir, 1, owner=0, cross=1.5)
+            lengths[shard] = len(list(reader))
+        self.assertEqual(lengths[0], int(math.floor(0.90 * 10)))
+        self.assertEqual(lengths[1], 10)
+        self.assertLess(lengths[0], lengths[1])
+
+
+class TestNumpyRefillPoolCarriesItsWidthWithoutASidecar(unittest.TestCase):
+    """The second hop a decay pool has to survive: a channel's refill OWNER
+    generates a pool and every waiter opens it by path alone.
+
+    The claim that this needed LHE was that ``_open_refill_slice`` builds an
+    ``EventFile``, which reads the channel's partial width out of the <init>
+    block -- and the decay loop does read ``.cross`` back off that reader, to
+    weight the choice between a pdg's channels. So the width is genuinely used
+    here; it simply does not have to be published beside the pool. A channel's
+    partial width is the same for every generation of its pool, so the reader
+    that just ran dry already has it and ``_worker_refill`` passes it on. The
+    owner->waiter contract on disk stays the single ms_refill.gen marker.
+    """
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_npyrefill_')
+        self.decay_dir = pjoin(self.tmpdir, 'decay_6_0')
+        interface = interface_madspin.MadSpinInterface
+        pool_dir = interface._refill_pool_dir(self.decay_dir, 1)
+        os.makedirs(pool_dir)
+        import numpy
+        numpy.save(pjoin(pool_dir, 'events.npy'),
+                   numpy.zeros(8, dtype=[('weight', 'f8'), ('scale', 'f8'),
+                                         ('alpha_qed', 'f8'),
+                                         ('alpha_qcd', 'f8')]))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _worker(self, shard):
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _open_refill_slice = interface._open_refill_slice
+            _refill_pool_path = interface._refill_pool_path
+            _refill_pool_paths = interface._refill_pool_paths
+            _refill_pool_dir = staticmethod(interface._refill_pool_dir)
+            _count_pool_events = staticmethod(interface._count_pool_events)
+
+        stub = Stub()
+        stub._shard_tag = shard
+        stub._shard_nb_core = 4
+        stub._owner_undersize = 0.0
+        return stub
+
+    def test_nothing_is_published_beside_the_pool(self):
+        """The point of the whole exercise: the refill directory holds the pool
+        and nothing else -- no width sidecar, no second marker for a
+        publish/open race to live in."""
+        pool_dir = interface_madspin.MadSpinInterface._refill_pool_dir(
+            self.decay_dir, 1)
+        self.assertEqual(os.listdir(pool_dir), ['events.npy'])
+
+    def test_the_waiter_gets_the_width_it_was_handed(self):
+        reader = self._worker(2)._open_refill_slice(self.decay_dir, 1, owner=0,
+                                                    cross=1.4602897691)
+        self.assertAlmostEqual(reader.cross, 1.4602897691, places=9)
+
+    def test_the_refill_slices_partition_the_pool(self):
+        seen = []
+        for shard in range(4):
+            reader = self._worker(shard)._open_refill_slice(
+                self.decay_dir, 1, owner=None, cross=1.0)
+            seen.append(len(list(reader)))
+        self.assertEqual(seen, [2, 2, 2, 2])
+
+
+class TestANumpyPoolIsNeverHandedToTheLheSplitter(unittest.TestCase):
+    """``_split_pool_round_robin`` is LHE-only. Handed a .npy it used to raise
+    ``UnicodeDecodeError: byte 0x93`` -- the first byte of the \\x93NUMPY magic
+    read as utf-8 -- from three frames inside the LHE parser, which says
+    nothing about what actually went wrong."""
+
+    def test_it_refuses_a_numpy_source_by_name(self):
+        import tempfile
+        import numpy
+        tmpdir = tempfile.mkdtemp(prefix='ms_nosplit_')
+        try:
+            path = pjoin(tmpdir, 'events.npy')
+            numpy.save(path, numpy.zeros(4, dtype=[('weight', 'f8'),
+                                                   ('scale', 'f8')]))
+            interface = interface_madspin.MadSpinInterface
+            try:
+                interface._split_pool_round_robin(
+                    [path], [pjoin(tmpdir, 'a.lhe'), pjoin(tmpdir, 'b.lhe')])
+            except Exception as error:
+                self.assertIn('numpy decay pool', str(error))
+            else:
+                self.fail('a numpy pool was accepted by the LHE splitter')
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class TestDecayGeneratorIsAnOptionAtAll(unittest.TestCase):

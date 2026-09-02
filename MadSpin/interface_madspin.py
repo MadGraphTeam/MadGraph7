@@ -512,6 +512,12 @@ class MadSpinOptions(banner.ConfigFile):
         if value not in ["crash", 'average', 'max', 'first']:
             raise Exception("value %s not supported for this parameter identical_in_prod_and_decay")
 
+# Name mg7's numpy decay pool is left under inside a run/refill directory.
+# Module level rather than a class attribute: several of the methods that use it
+# are borrowed function-by-function by objects that are not MadSpinInterface
+# instances (the unit-test stubs).
+_NPY_POOL_NAME = 'events.npy'
+
 # Per-particle columns of mg7's "lhe_npy" event file, in the order they map
 # onto lhe_parser.Particle's attributes below.
 _NPY_PARTICLE_FIELDS = ('pdg_id', 'status_code', 'mother1', 'mother2',
@@ -533,6 +539,18 @@ class NpyDecayPool(object):
     Exposes the part of lhe_parser.EventFile that the decay loop uses -- being
     iterable, and carrying the channel's cross section -- so it drops into
     evt_decayfile in place of an EventFile.
+
+    ``offset``/``stride`` give one parallel unweighting worker its own disjoint
+    view of a shared pool: worker ``offset`` of ``stride`` reads the rows at
+    positions offset, offset+stride, ... and nothing else. This is the whole
+    reason a numpy pool needs no splitting. The array is memory-mapped and
+    randomly addressable, so skipping the other workers' events costs index
+    arithmetic and nothing more; ``_StridedEvents`` over LHE text has to
+    ``next()`` past them, i.e. parse the entire pool to read 1/N of it, which is
+    what the round-robin split existed to avoid. Here there is nothing to avoid
+    and nothing to split: every worker mmaps the same file and touches only its
+    own rows. ``len()`` is this worker's stripe, so the owner undersize
+    (_LimitedEvents) needs no event count off the disk either.
     """
 
     # Rows converted from numpy to python scalars per batch. Small enough that
@@ -540,14 +558,18 @@ class NpyDecayPool(object):
     # large enough that the per-call overhead disappears.
     CHUNK = 4096
 
-    def __init__(self, path, cross):
+    def __init__(self, path, cross, offset=0, stride=1):
         import numpy
 
         self.name = path
         self.cross = cross
         # Memory-mapped: a pool is tens of MB and is read once, front to back.
         self._records = numpy.load(path, mmap_mode='r')
-        self._count = len(self._records)
+        self._total = len(self._records)
+        self._offset = int(offset)
+        self._stride = max(1, int(stride))
+        # rows of THIS worker's stripe: offset, offset+stride, ... < total
+        self._count = max(0, -(-(self._total - self._offset) // self._stride))
         self._index = 0
         self._chunk = []
         self._chunk_index = 0
@@ -576,8 +598,12 @@ class NpyDecayPool(object):
                 raise StopIteration
             # One vectorised conversion per chunk. Reading numpy scalars one
             # field at a time instead costs more than parsing the LHE text did.
+            # Slicing with the stride skips straight over the other workers'
+            # rows -- the mmap is never even touched for them.
             end = min(self._index + self.CHUNK, self._count)
-            self._chunk = self._records[self._index:end].tolist()
+            first = self._offset + self._index * self._stride
+            last = self._offset + (end - 1) * self._stride + 1
+            self._chunk = self._records[first:last:self._stride].tolist()
             self._chunk_index = 0
             self._index = end
         row = self._chunk[self._chunk_index]
@@ -2735,33 +2761,36 @@ class MadSpinInterface(extended_cmd.Cmd):
     def generate_events_mg7(self, decay_dir, nb_event, run_name='run_01'):
         """Run the mg7 (madmatrix/madspace) generator in ``decay_dir``.
 
-        Returns ``(event_file, partial_width)``. The partial width is read back
-        from the LHE <init> block, which for a 1 -> n process carries a width in
+        Returns ``(event_file, partial_width)``. The partial width comes out of
+        the run's ``info.json``, which for a 1 -> n process reports a width in
         GeV rather than a cross section in pb.
 
-        The pool is left in the layout the parallel unweighting expects of any
-        backend -- one LHE file per worker, under ``Events/<run_name>/`` -- so
-        that mg7 goes down exactly the same paths madevent does. See below for
-        why LHE rather than the (faster to read) numpy event file.
+        The pool is a single ``Events/<run_name>/events.npy``. Every worker of
+        the parallel unweighting mmaps it and reads its own stripe by index
+        (see :class:`NpyDecayPool`), so there is nothing to split and no
+        per-worker file to write.
         """
         run_card_path = pjoin(decay_dir, 'Cards', 'run_card.toml')
         run_card = banner.RunCardMG7(run_card_path)
         run_card['generation']['events'] = int(nb_event)
-        # LHE, not mg7's numpy event file, even though the numpy one is ~4 us an
-        # event cheaper to read (~5% of a run; measured 1.05x end to end).
+        # mg7's numpy event file, not LHE: the pool is read straight back into
+        # MadSpin, so the text round trip is pure overhead (~4 us an event) and
+        # a strided reader over it costs nothing, where a strided reader over
+        # LHE has to parse every other worker's events to get past them.
         #
-        # A decay pool has to survive being handed to another process BY PATH
-        # ALONE: once across the per-particle generation fork (_reader_paths /
-        # _reader_from_paths), and again from a channel's refill owner to every
-        # waiter, which opens its slice by path and has no other channel back to
-        # the generator. What travels with the path has to include the channel's
-        # partial width -- it is what picks a channel among a pdg's and what
-        # sets the branching ratio. An LHE file carries it in its <init> block,
-        # so it is self-describing and any reader can be rebuilt from the path.
-        # A .npy has no banner: the width would have to become a sidecar file in
-        # the owner->waiter publish contract, i.e. an extension of the one
-        # protocol surface where a publish/open race can live. Not worth 5%.
-        run_card['run']['output_format'] = 'lhe'
+        # The objection this reverses was that a decay pool has to survive being
+        # handed to another process BY PATH ALONE -- across the per-particle
+        # generation fork, and from a channel's refill owner to its waiters --
+        # carrying the channel's partial width with it, which an LHE <init>
+        # block does and a .npy does not. It does not need to. The fork already
+        # marshals the width explicitly beside the paths (_generate_decay_entry
+        # writes it into its JSON, _generate_decays hands it back to
+        # _reader_from_paths), and a refill does not need it published at all: a
+        # channel's partial width does not change from one generation of its
+        # pool to the next, so the reader being replaced already has it and
+        # _worker_refill passes it on. Nothing is added to the owner->waiter
+        # publish contract, which stays exactly the one ms_refill.gen marker.
+        run_card['run']['output_format'] = 'lhe_npy'
         run_card.write(run_card_path)
         with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
             fsock.write(self.banner['slha'])
@@ -2790,70 +2819,50 @@ class MadSpinInterface(extended_cmd.Cmd):
                 'the mg7 decay generator produced no run directory in %s' % events_dir)
         run_dir = new_runs[-1]
 
-        for name in ('events.lhe', 'events.lhe.gz'):
-            events_path = pjoin(run_dir, name)
-            if os.path.exists(events_path):
-                break
-        else:
+        events_path = pjoin(run_dir, _NPY_POOL_NAME)
+        if not os.path.exists(events_path):
             raise self.InvalidCmd(
-                'the mg7 decay generator produced no LHE file in %s' % run_dir)
+                'the mg7 decay generator produced no events.npy in %s' % run_dir)
 
-        # Timing breakdown, best effort: the launcher reports how long the
-        # integration itself took, and the rest of the subprocess wall time is
-        # interpreter start-up plus the one-off matrix-element compile, which is
-        # what dominates a decay directory. Unlike the width -- which now comes
-        # out of the LHE banner -- this is only for the benchmark report, so a
-        # missing or malformed info.json must not fail the run.
+        # The numpy event file carries no banner, so the partial width comes
+        # from the run's info.json -- along with the timing breakdown, which is
+        # best effort (the launcher reports how long the integration itself
+        # took; the rest of the subprocess wall time is interpreter start-up
+        # plus the one-off matrix-element compile).
+        info_path = pjoin(run_dir, 'info.json')
         try:
-            with open(pjoin(run_dir, 'info.json')) as fsock:
-                run_times = json.load(fsock).get('run_times', {})
-        except (OSError, ValueError, AttributeError):
-            run_times = {}
+            with open(info_path) as fsock:
+                info = json.load(fsock)
+        except (OSError, ValueError) as error:
+            raise self.InvalidCmd(
+                'could not read the mg7 result from %s: %s' % (info_path, error))
+        try:
+            width = float(info['process']['mean'])
+        except (KeyError, TypeError, ValueError) as error:
+            raise self.InvalidCmd(
+                'no partial width in %s: %s' % (info_path, error))
+        run_times = info.get('run_times', {})
         if isinstance(run_times, dict):
             self._add_phase('decay_mg7_integrate',
                             sum(stage.get('wall_time_sec', 0.)
                                 for stage in run_times.values()
                                 if isinstance(stage, dict)))
 
-        pool = lhe_parser.EventFile(events_path)
-        # <init> of a 1 -> n process carries a width in GeV, not a cross section
-        width = pool.cross
-
-        # Deal the pool out into one file per unweighting worker, at the paths
-        # the rest of MadSpin already expects any backend to use -- the same
-        # ones madevent reaches through the run_card's ``nb_unweight_output``.
-        # Two things fall out of writing them THERE rather than anywhere else:
-        # a worker opens its own file instead of striding the whole pool (which
-        # costs it a full parse of every other worker's events), and on a refill
-        # these paths *are* _refill_pool_paths, so _generate_refill_pool finds
-        # sources == targets and does no further work. Left uncompressed: they
-        # are read back immediately and gzip is pure overhead here.
-        nb_split = self._decay_pool_split()
-        if nb_split <= 1:
-            pool.seek(0)
-            return pool, width
-        pool.close()
-        targets = lhe_parser.EventFile.unweight_output_paths(
-            pjoin(decay_dir, 'Events', run_name, 'unweighted_events.lhe'),
-            nb_split)
-        target_dir = os.path.dirname(targets[0])
-        if not os.path.isdir(target_dir):
-            os.makedirs(target_dir)
-        with self._phase('decay_mg7_split'):
-            self._split_pool_round_robin([events_path], targets)
-        # Between them the slices hold every event of the source -- the split
-        # reads it to the end or raises -- so keeping the source doubles what a
-        # pool costs on disk: another 241 MB per channel on the 100k benchmark,
-        # and a refill adds a generation rather than replacing one. Nothing
-        # reads it after this point (each slice carries its own banner, and the
-        # run directory keeps info.json and the generation log), so drop it once
-        # every slice is actually there.
-        if all(os.path.exists(path) for path in targets):
-            try:
-                os.remove(events_path)
-            except OSError:
-                pass
-        return _ChainedEvents(targets), width
+        # Move the pool to the canonical ``Events/<run_name>/events.npy``. mg7
+        # names its own run directory (run_01, run_02, ...) and MadSpin does not
+        # get to choose it, but every other part of MadSpin addresses a pool by
+        # run_name: for a refill that path IS _refill_pool_paths, so
+        # _generate_refill_pool finds the backend has already written the
+        # canonical layout and does no further work. A rename, not a copy --
+        # same directory tree, so it is atomic and costs nothing whatever the
+        # pool weighs.
+        target_dir = pjoin(decay_dir, 'Events', run_name)
+        target = pjoin(target_dir, _NPY_POOL_NAME)
+        if os.path.realpath(target) != os.path.realpath(events_path):
+            if not os.path.isdir(target_dir):
+                os.makedirs(target_dir)
+            os.replace(events_path, target)
+        return NpyDecayPool(target, width), width
 
     # File in which a decay directory records the partial width that was
     # measured when it was built. Only the gridpack (ms_dir) path needs it: the
@@ -3178,10 +3187,10 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # Two things still send the decay generation back to Fortran
                 # madevent. Neither is the parallel unweighting: that used to
                 # demote mg7 whenever nb_core > 1, i.e. on any multicore box,
-                # because the refill path splits and reopens a pool as LHE files
-                # and mg7 was writing numpy. mg7 writes LHE now (see
-                # generate_events_mg7), in the per-worker layout, so there is
-                # nothing left to conflict with and that demotion is gone.
+                # because the refill path could only split and reopen a pool as
+                # LHE files. It reads mg7's numpy pool directly now -- every
+                # worker strides the one mmap (NpyDecayPool), so there is
+                # nothing to split and that demotion is gone.
                 if use_gridpack:
                     # gridpack (ms_dir) drives the decay directory through
                     # run.sh, and the mg7 output provides no run.sh.
@@ -4610,19 +4619,29 @@ class MadSpinInterface(extended_cmd.Cmd):
         return pjoin(decay_dir, 'Events', 'ms_refill_%d' % gen)
 
     def _refill_pool_paths(self, decay_dir, gen):
-        """Every per-worker slice of the refill pool ``gen``, in worker order.
-        This layout is the contract between the owner (which puts the files
-        there, see :meth:`_generate_refill_pool`) and the waiters (which open
-        their own one and nothing else)."""
-        base = pjoin(self._refill_pool_dir(decay_dir, gen),
-                     'unweighted_events.lhe')
+        """The file(s) of refill pool ``gen``. This layout is the contract
+        between the owner (which puts them there, see
+        :meth:`_generate_refill_pool`) and the waiters.
+
+        Two layouts, told apart by what is on disk rather than by anything
+        published beside it. mg7's numpy pool is ONE file that every worker
+        mmaps and strides by index (:class:`NpyDecayPool`), so there is nothing
+        to split; every other backend writes LHE text, which a worker cannot
+        stride for free, so it gets one file per worker. Probing is race-free:
+        a waiter only ever calls this once ``ms_refill.gen`` says the whole
+        generation is on disk."""
+        pool_dir = self._refill_pool_dir(decay_dir, gen)
+        npy = pjoin(pool_dir, _NPY_POOL_NAME)
+        if os.path.exists(npy):
+            return [npy]
+        base = pjoin(pool_dir, 'unweighted_events.lhe')
         return lhe_parser.EventFile.unweight_output_paths(
             base, self._shard_nb_core)
 
     def _refill_pool_path(self, decay_dir, gen):
-        """This worker's own file of the refill pool ``gen``. The refill hands
-        each worker one file, so a worker never reads (nor even parses) the
-        events that belong to the others."""
+        """The file of refill pool ``gen`` this worker reads. Either its own LHE
+        slice, or -- for a numpy pool -- the single shared file it will stride;
+        either way it never reads (nor even parses) another worker's events."""
         paths = self._refill_pool_paths(decay_dir, gen)
         path = paths[self._shard_tag] if len(paths) > 1 else paths[0]
         if not os.path.exists(path):
@@ -4631,9 +4650,23 @@ class MadSpinInterface(extended_cmd.Cmd):
         return path
 
     @staticmethod
-    def _count_lhe_events(path):
-        """Number of ``<event`` records in an LHE file (plain or gzip). Used to
-        size the owner's ~10% shortfall -- a cheap line scan, no parsing."""
+    def _count_pool_events(path):
+        """Number of events in a decay pool file, whatever format it is in.
+        Used to size the owner's ~10% shortfall.
+
+        Dispatches on the suffix, and that dispatch is the point of the method.
+        The LHE branch is a line scan for ``<event``, and a numpy pool contains
+        no such text: run over one it counted zero, the owner's slice was capped
+        at zero events, and it refilled on its very first draw -- forever. That
+        failure wears the costume of a refill-loop bug, not of a file-format
+        one, which is why it gets a named method with a test rather than an
+        inline scan at each call site."""
+        if path.endswith('.npy'):
+            try:
+                import numpy
+                return len(numpy.load(path, mmap_mode='r'))
+            except (IOError, OSError, ValueError):
+                return 0
         try:
             if path.endswith('.gz'):
                 import gzip
@@ -4664,15 +4697,33 @@ class MadSpinInterface(extended_cmd.Cmd):
             idx = 0
         return idx % max(1, int(self._shard_nb_core))
 
-    def _open_refill_slice(self, decay_dir, gen, owner):
+    def _open_refill_slice(self, decay_dir, gen, owner, cross=None):
         """This worker's reader over refill pool ``gen``; the owner's slice is
-        cut ~10% short (see _LimitedEvents) so the owner runs out first."""
+        cut ~10% short (see _LimitedEvents) so the owner runs out first.
+
+        ``cross`` is the channel's partial width, and only a numpy pool needs it
+        handed in: an LHE slice carries it in its own <init> block, a .npy does
+        not. It is NOT published beside the pool -- a channel's width does not
+        change from one generation to the next, so the caller simply passes on
+        the one the reader it is replacing already had, and the owner->waiter
+        contract on disk stays the single ms_refill.gen marker."""
         path = self._refill_pool_path(decay_dir, gen)
-        reader = lhe_parser.EventFile(path)
+        if path.endswith('.npy'):
+            # one shared, memory-mapped pool: this worker takes its stripe by
+            # index, so no split had to happen and none of the other workers'
+            # events are read
+            reader = NpyDecayPool(path, cross,
+                                  offset=self._shard_tag or 0,
+                                  stride=self._shard_nb_core)
+            n = len(reader)
+        else:
+            reader = lhe_parser.EventFile(path)
+            n = None
         if self._shard_tag == owner:
             frac = float(getattr(self, '_owner_undersize', 0.10) or 0.0)
             if frac > 0:
-                n = self._count_lhe_events(path)
+                if n is None:
+                    n = self._count_pool_events(path)
                 reader = _LimitedEvents(reader,
                                         int(math.floor((1.0 - frac) * n)))
         return reader
@@ -4686,7 +4737,17 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         Worker i therefore ends up with the events at positions i, i+N, ... of
         the pool -- exactly the stripe it would otherwise pick out itself, minus
-        having to parse the other workers' events to get there."""
+        having to parse the other workers' events to get there.
+
+        LHE only, deliberately. A numpy pool needs no split at all (every worker
+        strides the mmap for free, see :class:`NpyDecayPool`), and handing one to
+        the LHE parser raises ``UnicodeDecodeError: byte 0x93`` -- the first byte
+        of the \\x93NUMPY magic -- from three frames down. Say so here instead."""
+        for src in sources:
+            if src.endswith('.npy'):
+                raise Exception(
+                    "MadSpin: %s is a numpy decay pool and must not be split; "
+                    "every worker reads its own stripe of it directly." % src)
         first = lhe_parser.EventFile(sources[0])
         banner = first.banner
         first.close()
@@ -4736,11 +4797,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         COMPLETE at the per-worker paths of :meth:`_refill_pool_paths`. Returns
         those paths. Publishing ``gen`` is only allowed once this has returned.
 
-        Two generation backends land here and they do not agree on where they
+        Three generation backends land here and they do not agree on where they
         write. The plain madevent one honours ``run_name`` and splits the
-        unweighting one file per worker, i.e. it writes the canonical layout
-        itself. The gridpack one (any ``ms_dir`` run) goes through run.sh, which
-        knows nothing of either: it always writes a single
+        unweighting one file per worker; the mg7 one leaves a single
+        ``events.npy`` under the same ``run_name``. Both, that is, write the
+        canonical layout themselves, and are recognised by it -- whatever the
+        backend left inside ``Events/ms_refill_<gen>`` IS the pool, so nothing
+        further happens. The gridpack one (any ``ms_dir`` run) goes through
+        run.sh, which knows nothing of either: it always writes a single
         ``<decay_dir>/events.lhe.gz`` -- straight on top of the pool the other
         workers are still reading. So on that backend, move the pool aside for
         the duration, split what run.sh produced into the per-worker files, and
@@ -4749,7 +4813,6 @@ class MadSpinInterface(extended_cmd.Cmd):
         their inode -- and this whole routine runs under the channel's exclusive
         refill lock."""
         decay_dir = self._decay_dir(self.path_me, pdg, decay_file_nb)
-        targets = self._refill_pool_paths(decay_dir, gen)
         pool = pjoin(decay_dir, 'events.lhe.gz')
         stash = pool + '.mspool'
         # mirrors ``use_gridpack`` in generate_events
@@ -4766,7 +4829,19 @@ class MadSpinInterface(extended_cmd.Cmd):
                 reader.close()
             except Exception:
                 pass
-            if sources != targets:
+            # Did the backend write the canonical layout itself? Ask where the
+            # files it produced actually are, rather than guessing the layout
+            # first and comparing: the two self-writing backends produce
+            # different file sets in that directory (madevent one LHE per
+            # worker, mg7 a single events.npy) and only the generation knows
+            # which. Anything landing anywhere else has to be materialised as
+            # the per-worker LHE slices.
+            final_dir = os.path.realpath(self._refill_pool_dir(decay_dir, gen))
+            if sources and all(os.path.realpath(os.path.dirname(p)) == final_dir
+                               for p in sources):
+                targets = sources
+            else:
+                targets = self._refill_pool_paths(decay_dir, gen)
                 self._materialise_refill_pool(sources, targets, decay_dir, gen)
         finally:
             if protect:
@@ -4965,9 +5040,16 @@ class MadSpinInterface(extended_cmd.Cmd):
             cur = st[1]
         return False
 
-    def _worker_refill(self, pdg, decay_file_nb, needed):
+    def _worker_refill(self, pdg, decay_file_nb, needed, cross=None):
         """Owner-based decay-event refill for the forked workers. Returns the
         reader this worker should continue from.
+
+        ``cross`` is the partial width of the channel being refilled, taken by
+        the caller off the reader that just ran dry. Only a numpy pool needs it
+        (an LHE slice carries its own <init> block), and a channel's width is
+        the same for every generation of its pool, so passing the old reader's
+        on is exact -- and keeps the width off the owner->waiter publish
+        contract, which stays the one ms_refill.gen marker it always was.
 
         Each channel has one deterministic OWNER worker (:meth:`_channel_owner`).
         In normal operation only the owner (re)generates that channel's pool;
@@ -4998,7 +5080,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             finally:
                 self._set_status('R')
             self._pool_gen[key] = target_gen
-            return self._open_refill_slice(decay_dir, target_gen, owner)
+            return self._open_refill_slice(decay_dir, target_gen, owner, cross)
 
         # Not my channel: wait for the owner, advertising who I wait for so the
         # deadlock detection can see me. A cycle back to myself has to persist a
@@ -5054,7 +5136,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         finally:
             self._set_status('R')
         self._pool_gen[key] = target_gen
-        return self._open_refill_slice(decay_dir, target_gen, owner)
+        return self._open_refill_slice(decay_dir, target_gen, owner, cross)
 
     def _unweight_range(self, prod_source, evt_decayfile, output_lhe, ctx):
         """Decay + accept/reject over every production event in ``prod_source``,
@@ -6599,37 +6681,49 @@ class MadSpinInterface(extended_cmd.Cmd):
     def _reopen_decay_pool(self, evt_decayfile, shard_id, nb_core):
         """Return this worker's private view of the decay pools.
 
-        The unweighting already wrote one file per worker
-        (``nb_unweight_output``), so a worker simply opens *its* file: no two
-        workers ever read the same event and none of them has to scan the whole
-        pool. If the pool happens to be a single file (e.g. it was produced
-        before this was in place) fall back to striding it, which is correct but
-        makes every worker parse everything."""
+        Three ways to get one, in decreasing order of how much they cost.
+
+        A numpy pool (mg7) is a single memory-mapped array, so the worker takes
+        its stripe by index: nothing is split, nothing of the other workers'
+        events is read, and the stripe's length is known exactly.
+
+        An LHE pool that the unweighting already wrote one file per worker
+        (``nb_unweight_output``) means the worker simply opens *its* file: again
+        no two workers read the same event and none scans the whole pool.
+
+        A single LHE file (e.g. produced before that was in place) has to be
+        strided, which is correct but makes every worker parse everything."""
         local = {}
         for pdg, channels in evt_decayfile.items():
             local[pdg] = {}
             for file_nb, evtfile in channels.items():
                 paths = getattr(evtfile, 'paths', None)
-                own_file = bool(paths and len(paths) == nb_core)
-                if own_file:
+                if isinstance(evtfile, NpyDecayPool):
+                    reader = NpyDecayPool(evtfile.name, evtfile.cross,
+                                          offset=shard_id, stride=nb_core)
+                    # this worker's own rows, counted without touching the disk
+                    n = len(reader)
+                elif paths and len(paths) == nb_core:
                     reader = lhe_parser.EventFile(paths[shard_id])
+                    n = self._count_pool_events(paths[shard_id])
                 elif paths:
                     # split, but not into exactly nb_core files: stride the WHOLE
                     # chained pool. ``evtfile.name`` is only its first file, so
                     # striding that would strand every other file's events.
                     reader = _StridedEvents(_ChainedEvents(paths), shard_id, nb_core)
+                    n = None
                 else:
                     fresh = lhe_parser.EventFile(evtfile.name)
                     reader = _StridedEvents(fresh, shard_id, nb_core)
+                    n = None
                 # The worker that OWNS this channel reads its slice ~10% short so
                 # it runs out (and, being the sole generator, regenerates) before
                 # the others do -- keeping their wait for the refill minimal.
-                # Only meaningful on the own-file fast path where the count of
-                # this worker's slice is well defined.
-                if own_file and self._channel_owner(pdg, file_nb) == shard_id:
+                # Only meaningful where the count of this worker's own events is
+                # well defined, i.e. not on the strided fallbacks.
+                if n is not None and self._channel_owner(pdg, file_nb) == shard_id:
                     frac = float(getattr(self, '_owner_undersize', 0.10) or 0.0)
                     if frac > 0:
-                        n = self._count_lhe_events(paths[shard_id])
                         reader = _LimitedEvents(reader,
                                                 int(math.floor((1.0 - frac) * n)))
                 local[pdg][file_nb] = reader
@@ -7044,7 +7138,8 @@ class MadSpinInterface(extended_cmd.Cmd):
                         evt_decayfile[particle.pdg][decay_file_nb] = \
                             self._worker_refill(
                                 particle.pdg, decay_file_nb,
-                                needed * self._shard_nb_core)
+                                needed * self._shard_nb_core,
+                                decay_file.cross)
                     else:
                         # serial: _regenerate_events already returns the reader
                         # over the events it produced
