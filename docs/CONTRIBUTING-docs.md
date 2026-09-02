@@ -127,6 +127,9 @@ strings identical across classes by copying from the table below.
 | ALPGEN | M. L. Mangano et al., "ALPGEN, a generator for hard multiparton processes in hadronic collisions", https://arxiv.org/abs/hep-ph/0206293 |
 | VEGAS enhanced | G. P. Lepage, "Adaptive multidimensional integration: VEGAS enhanced", https://arxiv.org/abs/2009.05112 |
 | LHAPDF6 | A. Buckley et al., "LHAPDF6: parton density access in the LHC precision era", https://arxiv.org/abs/1412.7420 |
+| cudacpp | S. Hageböck et al., "Data-parallel leading-order event generation in MadGraph5_aMC@NLO", https://arxiv.org/abs/2507.21039 |
+| Loop-induced / scales | V. Hirschi, O. Mattelaer, "Automated event generation for loop-induced processes", https://arxiv.org/abs/1507.00020 |
+| kT-clustering scale | S. Catani, F. Krauss, R. Kuhn, B. R. Webber, "QCD matrix elements + parton showers", https://arxiv.org/abs/hep-ph/0109231 |
 
 ## Canonical constructor-argument wordings
 
@@ -179,22 +182,22 @@ Once per phase:
 ```
 python madspace/install.py --source --docs -y      # consteval key typo => compile error
 PYTHONPATH=madspace/install python -c "import madspace; print(madspace.<Class>.__doc__)"
-cd docs && sphinx-build -b html source build/html -n -W --keep-going
+cd docs && sphinx-build -q -b html source /tmp/x    # expect 0 `warning:` lines
 ```
+
+(`sphinx-build -n -W` is *not* the gate: nitpicky mode flags ~500 pre-existing
+unresolved cross-references from the `doxygenindex` C++ dump.)
+
+`docs/check_doc_convention.py` needs the Doxygen XML and is a local / pre-PR
+check, not a CI job (the wheel-test environment has no doxygen). The CI gate is
+`madspace/tests/test_doc_convention.py`, which only needs the installed module.
 
 ## Status
 
-- **Done**: every `Mapping` subclass under `phasespace/` (`Mapping` /
-  `FunctionGenerator` base classes, `Invariant`, `Luminosity`, `TwoBodyDecay`,
-  `TwoToTwoParticleScattering`, `DoubleT`, `ThreeBodyDecay`,
-  `TwoToThreeParticleScattering`, `ChiliMapping`, `FastRamboMapping`,
-  `TPropagatorMapping`, `ColorOrderedMapping`, `PhaseSpaceMapping`,
-  `MultiChannelMapping`, `VegasMapping`, `Flow`, `DiscreteSampler`,
-  `DiscreteFlow`), plus the foundations they reference (`Cuts`, `Observable`,
-  `Topology` / `Diagram` / `Propagator`, and a compact `MLP`).
-- **Not started**: the remaining `FunctionGenerator` subclasses under
-  `phasespace/` (`MatrixElement`, `Integrand` & friends, `cross_section.hpp`,
-  `pdf.hpp`, `scale.hpp`, `histograms.hpp`, `channel_weights.hpp`,
-  `channel_weight_network.hpp`, `unweighter.hpp`, `madnis.hpp`,
-  `MultiChannelFunction`, full `MLP`) and the plain helper structs `PdfGrid` /
-  `AlphaSGrid`. `check_doc_convention.py` still lists these.
+**Every class under `phasespace/` is documented** — all `Mapping` and
+`FunctionGenerator` subclasses and the plain helper structs.
+`python docs/check_doc_convention.py` prints
+`check_doc_convention: all phasespace/ classes pass`.
+
+Outside `phasespace/`, the `driver/`, `compgraphs/` and top-level headers are
+still undocumented.

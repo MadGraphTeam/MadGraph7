@@ -90,7 +90,31 @@ CASES = {
         activation=ms.MLP.Activation.leaky_relu,
         prefix="",
     ),
+    # A few cheaply-constructible FunctionGenerator subclasses.
+    "EnergyScale": dict(
+        particle_count=4,
+        type=ms.EnergyScale.DynamicalScaleType.transverse_energy,
+    ),
+    "MomentumPreprocessing": dict(particle_count=4),
+    "ChannelWeightNetwork": dict(
+        channel_count=3,
+        particle_count=4,
+        hidden_dim=32,
+        layers=3,
+        activation=ms.MLP.Activation.leaky_relu,
+        prefix="",
+        include_preprocessing=True,
+    ),
+    "VegasHistogram": dict(dimension=3, bin_count=64),
+    "DiscreteHistogram": dict(option_counts=[3, 4]),
 }
+
+
+@pytest.mark.parametrize("name", ["MultiChannelFunction"])
+def test_multi_channel_function_kwargs(name):
+    ms.MultiChannelFunction(
+        functions=[ms.MLP(2, 2), ms.MLP(2, 2)], return_batch_sizes=False
+    )
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
