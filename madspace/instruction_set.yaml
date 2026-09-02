@@ -15,9 +15,9 @@ stack:
 unstack:
   inputs:
     - name: in1
-      desc:
+      desc: "tensor with shape (batch, n, *)"
   outputs: any
-  desc:
+  desc: "Splits a tensor along the dimension after the batch dimension into a list of tensors."
   class: UnstackInstruction
   custom_op: True
   differentiable: True
@@ -26,16 +26,17 @@ stack_sizes:
   inputs: any
   outputs:
     - name: sizes
-  desc:
+      desc: "combined batch-size list, one entry per input"
+  desc: "Packs the batch sizes of several batch-size-list values into one list."
   class: StackSizesInstruction
   custom_op: True
 
 unstack_sizes:
   inputs:
     - name: in1
-      desc:
+      desc: "batch-size list"
   outputs: any
-  desc:
+  desc: "Splits a batch-size list into its individual batch sizes."
   class: UnstackSizesInstruction
   custom_op: True
 
@@ -43,25 +44,26 @@ pop:
   inputs:
     - name: in1
       type: [float, n, ...]
-      desc:
+      desc: "tensor with shape (batch, n, ...)"
   outputs:
     - name: rest
       type: [float, n-1, ...]
-      desc:
+      desc: "the remaining n-1 slices"
     - name: item
       type: [float, ...]
-      desc:
+      desc: "the first slice"
   custom_op: True
   differentiable: True
+  desc: "Splits off the first slice along the dimension after the batch dimension."
 
 batch_cat:
   inputs: any
   outputs:
     - name: out
-      desc:
+      desc: "concatenation, with batch size the sum of the inputs'"
     - name: counts
-      desc:
-  desc:
+      desc: "batch-size list giving each input's batch size"
+  desc: "Concatenates several tensors along the batch dimension."
   class: BatchCatInstruction
   custom_op: True
   differentiable: True
@@ -69,11 +71,11 @@ batch_cat:
 batch_split:
   inputs:
     - name: in1
-      desc:
+      desc: "tensor to split, with a batch dimension"
     - name: counts
-      desc:
+      desc: "batch-size list giving the size of each output slice"
   outputs: any
-  desc:
+  desc: "Splits a tensor along the batch dimension according to a batch-size list."
   class: BatchSplitInstruction
   custom_op: True
   differentiable: True
@@ -82,8 +84,8 @@ cat:
   inputs: any
   outputs:
     - name: out
-      desc:
-  desc:
+      desc: "concatenation along the last dimension"
+  desc: "Concatenates several tensors along their last dimension."
   class: CatInstruction
   custom_op: True
   differentiable: True
@@ -92,82 +94,91 @@ batch_size:
   inputs: any
   outputs:
     - name: batch_size
-      desc:
+      desc: "batch-size list with the shared batch size"
   class: BatchSizeInstruction
   custom_op: True
+  desc: "Returns the common batch size of its arguments as a single-entry batch-size list."
 
 offset_indices:
   inputs:
     - name: batch_sizes_offset
-      desc:
+      desc: "batch-size list of the offsets to add"
     - name: batch_sizes_out
-      desc:
+      desc: "batch-size list of the output layout"
   outputs:
     - name: offsets
-      desc:
+      desc: "integer offset per output element"
   class: OffsetIndicesInstruction
   custom_op: True
+  desc: "Builds flat offsets into a concatenated batch from two batch-size lists."
 
 full:
   inputs: any
   outputs:
     - name: output
-      desc:
+      desc: "tensor filled with the constant value"
   class: FullInstruction
   custom_op: True
+  desc: "Creates a tensor of the given batch size and shape filled with a constant."
 
 squeeze:
   inputs:
     - name: input
-      desc:
+      desc: "tensor with at least one trailing dimension"
   outputs:
     - name: output
-      desc:
+      desc: "tensor with that dimension removed"
   class: SqueezeInstruction
   custom_op: True
   differentiable: True
+  desc: "Removes the first trailing dimension of a tensor."
 
 unsqueeze:
   inputs:
     - name: input
-      desc:
+      desc: "input tensor"
   outputs:
     - name: output
-      desc:
+      desc: "tensor with a leading size-1 trailing dimension"
   class: UnsqueezeInstruction
   custom_op: True
   differentiable: True
+  desc: "Inserts a size-1 dimension after the batch dimension."
 
 accept_norm:
   inputs:
     - name: accepted_batch
-      desc:
+      desc: "the accepted events"
     - name: full_batch
-      desc:
+      desc: "the full batch before acceptance"
   outputs:
     - name: norm
+      desc: "ratio of full to accepted batch size"
   class: AcceptNormInstruction
   custom_op: True
+  desc: "Normalization factor relating an accepted sub-batch to the full batch."
 
 batch_split_by_index:
   inputs:
     - name: indices
       type: [int]
-      desc:
+      desc: "per-event sub-batch index"
     - name: count
       type: [int, single]
-      desc:
+      desc: "number of sub-batches"
   outputs: any
   class: BatchSplitByIndexInstruction
   custom_op: True
+  desc: "Splits a batch by a per-event integer index into that many sub-batches."
 
 batch_merge_by_index:
   inputs: any
   outputs:
     - name: output
-      desc:
+      desc: "the merged batch"
   class: BatchMergeByIndexInstruction
   custom_op: True
+  desc: "Inverse of `batch_split_by_index`: merges indexed sub-batches back into one batch."
 
 ---
 title: Math
@@ -255,135 +266,144 @@ reduce_sum:
   inputs:
     - name: in1
       type: [float, ..., n]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "sum over the last dimension"
   dims: 0
+  desc: "Sums a tensor over its last dimension."
 
 reduce_sum_vector:
   inputs:
     - name: in1
       type: [float, ..., n, m]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ..., m]
-      desc:
+      desc: "sum over the second-to-last dimension"
   dims: 0
+  desc: "Sums a tensor over its second-to-last dimension."
 
 batch_reduce_sum:
   inputs:
     - name: in1
       type: [float]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, single]
-      desc:
+      desc: "sum over the batch"
   differentiable: True
   custom_op: True
+  desc: "Sums a tensor over the batch dimension."
 
 batch_reduce_mean:
   inputs:
     - name: in1
       type: [float]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, single]
-      desc:
+      desc: "mean over the batch"
   differentiable: True
   custom_op: True
+  desc: "Averages a tensor over the batch dimension."
 
 batch_reduce_mean_keepdim:
   inputs:
     - name: in1
       type: [float]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float]
-      desc:
+      desc: "batch mean, broadcast back over the batch dimension"
   differentiable: True
   custom_op: True
+  desc: "Averages a tensor over the batch dimension, keeping that dimension with the mean broadcast across it."
 
 reduce_product:
   inputs:
     - name: in1
       type: [float, n]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float]
-      desc:
+      desc: "product over the last dimension"
   differentiable: True
+  desc: "Multiplies the entries of a tensor along its last dimension."
 
 sqrt:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "square root of the input"
   differentiable: True
   dims: 0
+  desc: "Element-wise square root."
 
 square:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "square of the input"
   differentiable: True
   dims: 0
+  desc: "Element-wise square."
 
 min:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "first input"
     - name: in2
       type: [float, ...]
-      desc:
+      desc: "second input"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
-  desc:
+      desc: "element-wise minimum"
+  desc: "Element-wise minimum of two tensors."
   dims: 0
 
 max:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "first input"
     - name: in2
       type: [float, ...]
-      desc:
+      desc: "second input"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
-  desc:
+      desc: "element-wise maximum"
+  desc: "Element-wise maximum of two tensors."
   dims: 0
 
 abs:
   inputs:
     - name: input
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "absolute value of the input"
   dims: 0
+  desc: "Element-wise absolute value."
 
 ---
 title: Observables
