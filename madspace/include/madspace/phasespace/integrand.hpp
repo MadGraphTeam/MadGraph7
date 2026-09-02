@@ -26,6 +26,10 @@ namespace madspace {
  * and returns the event weight with the momenta and the sampled discrete
  * quantities [1]. This is the object that is integrated and unweighted.
  *
+ * @warning For internal use within MadGraph. Its interface (in particular the
+ *          long constructor and the argument / return layout) is not part of
+ *          the stable public API and may change without notice.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Arguments**
