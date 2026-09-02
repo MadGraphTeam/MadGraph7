@@ -1422,32 +1422,58 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("input_types", &AdamOptimizer::input_types)
         .def("context", &AdamOptimizer::context);
 
-    py::classh<PdfGrid>(m, "PdfGrid")
-        .def(py::init<const std::string&>(), py::arg("file"))
-        .def_readonly("x", &PdfGrid::x)
-        .def_readonly("logx", &PdfGrid::logx)
-        .def_readonly("q", &PdfGrid::q)
-        .def_readonly("logq2", &PdfGrid::logq2)
-        .def_readonly("pids", &PdfGrid::pids)
-        .def_readonly("values", &PdfGrid::values)
-        .def_readonly("region_sizes", &PdfGrid::region_sizes)
-        .def_property_readonly("grid_point_count", &PdfGrid::grid_point_count)
-        .def_property_readonly("q_count", &PdfGrid::q_count)
+    py::classh<PdfGrid>(m, "PdfGrid", pydoc::doc("PdfGrid"))
+        .def(
+            py::init<const std::string&>(),
+            py::arg("file"),
+            pydoc::doc("PdfGrid::PdfGrid")
+        )
+        .def_readonly("x", &PdfGrid::x, pydoc::doc("PdfGrid::x"))
+        .def_readonly("logx", &PdfGrid::logx, pydoc::doc("PdfGrid::logx"))
+        .def_readonly("q", &PdfGrid::q, pydoc::doc("PdfGrid::q"))
+        .def_readonly("logq2", &PdfGrid::logq2, pydoc::doc("PdfGrid::logq2"))
+        .def_readonly("pids", &PdfGrid::pids, pydoc::doc("PdfGrid::pids"))
+        .def_readonly("values", &PdfGrid::values, pydoc::doc("PdfGrid::values"))
+        .def_readonly(
+            "region_sizes", &PdfGrid::region_sizes, pydoc::doc("PdfGrid::region_sizes")
+        )
+        .def_property_readonly(
+            "grid_point_count",
+            &PdfGrid::grid_point_count,
+            pydoc::doc("PdfGrid::grid_point_count")
+        )
+        .def_property_readonly(
+            "q_count", &PdfGrid::q_count, pydoc::doc("PdfGrid::q_count")
+        )
         .def(
             "coefficients_shape",
             &PdfGrid::coefficients_shape,
-            py::arg("batch_dim") = false
+            py::arg("batch_dim") = false,
+            pydoc::doc("PdfGrid::coefficients_shape")
         )
-        .def("logx_shape", &PdfGrid::logx_shape, py::arg("batch_dim") = false)
-        .def("logq2_shape", &PdfGrid::logq2_shape, py::arg("batch_dim") = false)
+        .def(
+            "logx_shape",
+            &PdfGrid::logx_shape,
+            py::arg("batch_dim") = false,
+            pydoc::doc("PdfGrid::logx_shape")
+        )
+        .def(
+            "logq2_shape",
+            &PdfGrid::logq2_shape,
+            py::arg("batch_dim") = false,
+            pydoc::doc("PdfGrid::logq2_shape")
+        )
         .def(
             "initialize_globals",
             &PdfGrid::initialize_globals,
             py::arg("context"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("PdfGrid::initialize_globals")
         );
 
-    py::classh<PartonDensity, FunctionGenerator>(m, "PartonDensity")
+    py::classh<PartonDensity, FunctionGenerator>(
+        m, "PartonDensity", pydoc::doc("PartonDensity")
+    )
         .def(
             py::init<
                 const PdfGrid&,
@@ -1457,34 +1483,55 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("grid"),
             py::arg("pids"),
             py::arg("dynamic_pid") = false,
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("PartonDensity::PartonDensity")
         );
 
-    py::classh<AlphaSGrid>(m, "AlphaSGrid")
-        .def(py::init<const std::string&>(), py::arg("file"))
-        .def_readonly("q", &AlphaSGrid::q)
-        .def_readonly("logq2", &AlphaSGrid::logq2)
-        .def_readonly("values", &AlphaSGrid::values)
-        .def_readonly("region_sizes", &AlphaSGrid::region_sizes)
-        .def_property_readonly("q_count", &AlphaSGrid::q_count)
+    py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
+        .def(
+            py::init<const std::string&>(),
+            py::arg("file"),
+            pydoc::doc("AlphaSGrid::AlphaSGrid")
+        )
+        .def_readonly("q", &AlphaSGrid::q, pydoc::doc("AlphaSGrid::q"))
+        .def_readonly("logq2", &AlphaSGrid::logq2, pydoc::doc("AlphaSGrid::logq2"))
+        .def_readonly("values", &AlphaSGrid::values, pydoc::doc("AlphaSGrid::values"))
+        .def_readonly(
+            "region_sizes",
+            &AlphaSGrid::region_sizes,
+            pydoc::doc("AlphaSGrid::region_sizes")
+        )
+        .def_property_readonly(
+            "q_count", &AlphaSGrid::q_count, pydoc::doc("AlphaSGrid::q_count")
+        )
         .def(
             "coefficients_shape",
             &AlphaSGrid::coefficients_shape,
-            py::arg("batch_dim") = false
+            py::arg("batch_dim") = false,
+            pydoc::doc("AlphaSGrid::coefficients_shape")
         )
-        .def("logq2_shape", &AlphaSGrid::logq2_shape, py::arg("batch_dim") = false)
+        .def(
+            "logq2_shape",
+            &AlphaSGrid::logq2_shape,
+            py::arg("batch_dim") = false,
+            pydoc::doc("AlphaSGrid::logq2_shape")
+        )
         .def(
             "initialize_globals",
             &AlphaSGrid::initialize_globals,
             py::arg("context"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("AlphaSGrid::initialize_globals")
         );
 
-    py::classh<RunningCoupling, FunctionGenerator>(m, "RunningCoupling")
+    py::classh<RunningCoupling, FunctionGenerator>(
+        m, "RunningCoupling", pydoc::doc("RunningCoupling")
+    )
         .def(
             py::init<const AlphaSGrid&, const std::string&>(),
             py::arg("grid"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("RunningCoupling::RunningCoupling")
         );
 
     py::classh<EnergyScale, FunctionGenerator> scale(m, "EnergyScale");
