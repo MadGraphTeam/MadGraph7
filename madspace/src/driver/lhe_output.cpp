@@ -221,10 +221,16 @@ void LHECompleter::init_propagator_data(
         inv_permutation.at(permutation.at(leg)) = leg;
     }
 
+    // The permutation runs over all external legs, incoming first, so the
+    // outgoing ones start at the incoming count -- 2 for a collision, 1 for a
+    // decay. Getting this wrong silently reads another particle's color flow.
     for (auto [index, mass, perm_index] :
          zip(topo.outgoing_indices(),
              topo.outgoing_masses(),
-             std::span(inv_permutation.begin() + 2, inv_permutation.end()))) {
+             std::span(
+                 inv_permutation.begin() + topo.incoming_masses().size(),
+                 inv_permutation.end()
+             ))) {
         e_min.at(index) = mass;
         momentum_masks.at(index) = 1 << perm_index;
         for (std::size_t i = 0; std::size_t color_index : colors) {
@@ -463,6 +469,7 @@ LHECompleter::LHECompleter(
             .flavor_count = args.pdg_ids.size(),
             .diagram_count = diagram_count,
             .helicity_count = args.helicities.size(),
+            .incoming_count = args.topologies.at(0).incoming_masses().size(),
         });
 
         helicity_offset += particle_count * args.helicities.size();
@@ -501,6 +508,13 @@ void LHECompleter::complete_event_data(
 
     event.process_id = subproc_data.process_id;
 
+    // Number of leading entries in the event record that are initial state:
+    // 2 for a collision, 1 for a decay. Everything that indexes past the
+    // initial state -- where resonances get inserted, what the outgoing
+    // particles' mothers are, how far the momentum masks are shifted -- is
+    // offset by this rather than by a hard-coded 2.
+    const std::size_t n_in = subproc_data.incoming_count;
+
     std::size_t color_offset =
         subproc_data.color_offset + subproc_data.particle_count * color_index;
     std::size_t helicity_offset =
@@ -517,14 +531,16 @@ void LHECompleter::complete_event_data(
         std::tie(particle.color, particle.anti_color) =
             _colors.at(color_offset + particle_index);
         particle.pdg_id = _pdg_ids.at(pdg_offset + particle_index);
-        if (particle_index < 2) {
+        if (particle_index < n_in) {
             particle.status_code = -1;
             particle.mother1 = 0;
             particle.mother2 = 0;
         } else {
             particle.status_code = 1;
             particle.mother1 = 1;
-            particle.mother2 = 2;
+            // A decay has a single mother, which LHE spells as
+            // mother1 == mother2 rather than a (1, 2) range.
+            particle.mother2 = static_cast<int>(n_in);
         }
         particle.mass = _masses.at(mass_offset + particle_index);
         particle.lifetime = 0;
@@ -572,7 +588,7 @@ void LHECompleter::complete_event_data(
                 .pdg_id = propagator.pdg_id,
                 .status_code = 2,
                 .mother1 = 1,
-                .mother2 = 2,
+                .mother2 = static_cast<int>(n_in),
                 .color = color,
                 .anti_color = anti_color,
                 .px = px,
@@ -587,7 +603,7 @@ void LHECompleter::complete_event_data(
         ++prop_index;
     }
     event.particles.insert(
-        event.particles.begin() + 2, new_particles.rbegin(), new_particles.rend()
+        event.particles.begin() + n_in, new_particles.rbegin(), new_particles.rend()
     );
     for (std::size_t prop_index = prop_count, res_index = 0;
          auto& propagator : std::views::reverse(
@@ -603,21 +619,21 @@ void LHECompleter::complete_event_data(
                  child_prop_index >= 0;
                  --child_prop_index) {
                 if (child_prop_mask & (1 << child_prop_index)) {
-                    auto& child_particle = event.particles.at(child_res_index + 2);
-                    child_particle.mother1 = res_index + 3;
-                    child_particle.mother2 = res_index + 3;
+                    auto& child_particle = event.particles.at(child_res_index + n_in);
+                    child_particle.mother1 = res_index + n_in + 1;
+                    child_particle.mother2 = res_index + n_in + 1;
                     ++child_res_index;
                 }
             }
 
-            int momentum_mask = propagator.momentum_mask >> 2;
+            int momentum_mask = propagator.momentum_mask >> n_in;
             for (auto& particle : std::span(
-                     event.particles.begin() + 2 + new_particles.size(),
+                     event.particles.begin() + n_in + new_particles.size(),
                      event.particles.end()
                  )) {
                 if (momentum_mask & 1) {
-                    particle.mother1 = res_index + 3;
-                    particle.mother2 = res_index + 3;
+                    particle.mother1 = res_index + n_in + 1;
+                    particle.mother2 = res_index + n_in + 1;
                 }
                 momentum_mask >>= 1;
             }
@@ -699,6 +715,7 @@ void madspace::to_json(
         subproc_data.flavor_count,
         subproc_data.diagram_count,
         subproc_data.helicity_count,
+        subproc_data.incoming_count,
     };
 }
 
@@ -716,6 +733,9 @@ void madspace::from_json(
         .flavor_count = j.at(7).get<std::size_t>(),
         .diagram_count = j.at(8).get<std::size_t>(),
         .helicity_count = j.at(9).get<std::size_t>(),
+        // Gridpacks written before decays were supported carry no entry here
+        // and are always collisions.
+        .incoming_count = j.size() > 10 ? j.at(10).get<std::size_t>() : 2,
     };
 }
 

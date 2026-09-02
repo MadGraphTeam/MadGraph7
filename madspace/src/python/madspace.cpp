@@ -1200,6 +1200,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     std::monostate,
                     PdfGrid,
                     DifferentialCrossSection::CachedPdf>&,
+                bool,
                 bool>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
@@ -1208,7 +1209,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf1") = std::monostate{},
             py::arg("pdf2") = std::monostate{},
-            py::arg("input_momentum_fraction") = true
+            py::arg("input_momentum_fraction") = true,
+            py::arg("decay") = false
         )
         .def("pid_options", &DifferentialCrossSection::pid_options)
         .def("matrix_element", &DifferentialCrossSection::matrix_element);

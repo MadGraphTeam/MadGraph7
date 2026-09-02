@@ -106,17 +106,33 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         )
 
     def set_topology(self):
+        """Name every external leg i<k>/o<k> and record the initial/final pdgs.
+
+        Two initial legs for a collision, one for a decay (``t > b w+, ...``,
+        which MadSpin hands over as a single flattened matrix element). Legs are
+        numbered 1..n with the initial state first, so the outgoing offset is
+        the number of initial legs.
+        """
         self.edge_names = {}
-        self.incoming = [None] * 2
-        self.outgoing = [None] * (len(self.legs) - 2)
+        self.n_initial = sum(1 for leg in self.legs if not leg.get("state"))
+        self.incoming = [None] * self.n_initial
+        self.outgoing = [None] * (len(self.legs) - self.n_initial)
         for leg in self.legs:
             number = leg.get("number")
             if leg.get("state"):
-                self.edge_names[number] = f"o{number - 3}"
-                self.outgoing[number - 3] = leg.get("id")
+                index = number - self.n_initial - 1
+                self.edge_names[number] = f"o{index}"
+                self.outgoing[index] = leg.get("id")
             else:
                 self.edge_names[number] = f"i{number - 1}"
                 self.incoming[number - 1] = leg.get("id")
+        if any(pdg is None for pdg in self.incoming + self.outgoing):
+            raise AssertionError(
+                "external legs of %s are not numbered 1..%d with the initial "
+                "state first: %s" % (
+                    self.name, len(self.legs),
+                    [(leg.get("number"), leg.get("state")) for leg in self.legs])
+            )
 
     def expand_flavors_over_processes(self):
         """Add the flavors that live in the *processes* mapped onto this matrix
@@ -149,12 +165,15 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.all_flavors = [self.all_flavors[0] * len(pdg_lists)]
 
     def set_flavor_indices(self):
+        # Flavor combinations are grouped by their initial state: the launcher
+        # picks one initial state (PDF-weighted), then a final state within it.
+        # A decay has a single initial leg to group on, not a beam pair.
         self.all_flavors_same_initial = []
         self.all_flavors_indices = []
         for i, flavors in enumerate(self.all_flavors_pdgs):
             flv_dict = defaultdict(list)
             for flv in flavors:
-                flv_dict[(flv[0], flv[1])].append(flv)
+                flv_dict[tuple(flv[:self.n_initial])].append(flv)
             indices = []
             for flv in flv_dict.values():
                 indices.append(len(self.all_flavors_same_initial))
@@ -390,15 +409,16 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         # "u q > u q" (q = u d) carry the same merged pdg (81), yet leg 1 is
         # fixed to u, so "d u > u d" is not part of the process and mirroring the
         # u d flavor would double count it.
-        same_initial_multiparticle = \
+        # A decay has a single initial leg, so there is no beam swap to mirror.
+        same_initial_multiparticle = self.n_initial == 2 and \
             self.matrix_element.get("processes")[0].has_same_initial_multiparticle()
         flavors = [
             {
                 "index": index,
                 "options": options,
-                "mirror": has_mirror_all or (
+                "mirror": self.n_initial == 2 and (has_mirror_all or (
                     same_initial_multiparticle and options[0][0] != options[0][1]
-                )
+                ))
             }
             for index, options in self.all_flavors_same_initial
         ]

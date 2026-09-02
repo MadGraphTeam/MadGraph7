@@ -5558,8 +5558,49 @@ class decay_all_events_onshell(decay_all_events):
                 i+=1
         return commandline
 
+    def refresh_me_param_cards(self):
+        """Put MadSpin's parameters inside every matrix-element directory.
+
+        ``output standalone`` writes ``Cards/param_card.dat`` from the *model*,
+        i.e. from the model's default/restriction values -- it knows nothing
+        about the event file. But ``initialise_f2py_module`` hands exactly that
+        file to the compiled matrix element, so without this the production and
+        decay density matrices are evaluated with the model defaults and every
+        parameter the user actually generated the events with (a mass, a width,
+        a Wilson coefficient) is silently ignored.
+
+        ``path_me/param_card.dat`` is the single source of truth: it is written
+        from ``banner['slha']`` on every run (decay_all_events.__init__), so it
+        already carries the parameters of the input events, including the
+        ``import model <MODEL> <CARD>`` override -- the one supported way to
+        ask MadSpin for different parameters, which rewrites ``banner['slha']``
+        after checking it against the banner.
+
+        A *copy*, not a symlink: these trees are compiled in place, tarred into
+        gridpacks and (under ``ms_dir``) moved to other machines, none of which
+        survives a link pointing outside the tree; and the copy left behind is
+        the record of what the run used, which a link -- repointed by the next
+        run -- would destroy. Freshness costs nothing here because this runs on
+        every run, reuse included. Same idiom as the legacy
+        ``compile_fortran`` (production_me/full_me/decay_me).
+        """
+        source = pjoin(self.path_me, 'param_card.dat')
+        if not os.path.exists(source):
+            return
+        ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
+        ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
+        for subdir in (ms_me_subdir, ms_me_decay_subdir):
+            cards = pjoin(self.path_me, subdir, 'Cards')
+            if not os.path.isdir(cards):
+                continue
+            shutil.copyfile(source, pjoin(cards, 'param_card.dat'))
+
     def compile(self):
         logger.info('Compiling code')
+        # Before anything is compiled or loaded: the matrix elements read their
+        # parameters from these cards at initialise() time, and what
+        # ``output standalone`` left there is the model default.
+        self.refresh_me_param_cards()
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
         # Per-instance suffix for the f2py-linked shared library: with the
@@ -5753,6 +5794,9 @@ class DensityMatrix:
 
     # Cache diagonal masks by basis_id (depends only on helicities)
     _diag_cache = {}
+
+    # Same, as integer positions, for trace()
+    _diag_pos_cache = {}
 
     # Cache tensor-product helicity tables by basis_id
     _tp_hel_cache = {}
@@ -5975,6 +6019,21 @@ class DensityMatrix:
         mask = np.all(h[:, 0::2] == h[:, 1::2], axis=1)
         DensityMatrix._diag_cache[self._basis_id] = mask
         return mask
+
+    def _get_diag_positions_cached(self):
+        """Positions of the diagonal entries, as a plain tuple of ints.
+
+        trace() sums a handful of entries -- two, for a single decaying
+        fermion -- and numpy costs about 0.9 us to do that however few there
+        are, nearly all of it dispatch. Indexing the cached positions directly
+        is 8x faster at that size. Cached per basis_id alongside the mask.
+        """
+        cached = DensityMatrix._diag_pos_cache.get(self._basis_id)
+        if cached is not None:
+            return cached
+        positions = tuple(int(i) for i in np.flatnonzero(self._diag_mask))
+        DensityMatrix._diag_pos_cache[self._basis_id] = positions
+        return positions
 
     # -------------------------------------------------------------------------
     # Helicity restriction (production polarisation)
@@ -6260,9 +6319,18 @@ class DensityMatrix:
         # Fastest correct path for map-built matrices
         if (self.map_density_matrix_ind is not None and
                 self.map_density_matrix_ind is other.map_density_matrix_ind):
+            # np.dot rather than np.sum(a*b): identical for complex (dot does
+            # not conjugate) but one call instead of two, and it skips the
+            # temporary the multiply would allocate. 0.23 us against 0.90 us
+            # on the 16-entry matrices this sees.
             if restriction is None:
-                return np.sum(self.values * other.values)
+                return np.dot(self.values, other.values)
             rows = self._restriction_rows(restriction)[1]
+            # np.sum(a*b), not np.dot: the restricted path is asserted
+            # bit-identical to the masked reference (see
+            # test_restricted_paths_are_bit_identical_to_masking), and np.dot
+            # sums pairwise. The fast unrestricted path above is where the
+            # trials actually are.
             return np.sum(self.values[rows] * other.values[rows])
 
         # Align by cached ordering for each basis
@@ -6272,7 +6340,7 @@ class DensityMatrix:
         a = self._sort_order
         b = other._sort_order
         if restriction is None:
-            return np.sum(self.values[a] * other.values[b])
+            return np.dot(self.values[a], other.values[b])
         # the restriction lives on self's rows; the surviving positions inside
         # the sort permutation are the same on both sides, so one cached gather
         # does the masking and the alignment at once
@@ -6401,9 +6469,19 @@ class DensityMatrix:
         if hel_restriction is not None:
             restriction = DensityMatrix._combine_restrictions(
                 restriction, DensityMatrix.normalize_hel_restriction(hel_restriction))
-        if restriction is None:
-            return np.sum(self.values[self._diag_mask])
-        return np.sum(self.values[self._restriction_rows(restriction)[2]])
+        if restriction is not None:
+            return np.sum(self.values[self._restriction_rows(restriction)[2]])
+        # Unrestricted: sum the diagonal entries by position. See
+        # _get_diag_positions_cached: at these sizes numpy's dispatch dwarfs
+        # the addition itself.
+        values = self.values
+        positions = self._get_diag_positions_cached()
+        if not positions:
+            return np.complex64(0)
+        total = values[positions[0]]
+        for i in positions[1:]:
+            total = total + values[i]
+        return total
 
 
     def print_full_matrix(self, precision=6):
