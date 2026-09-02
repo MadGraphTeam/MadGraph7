@@ -4560,6 +4560,19 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                    output_width=True))
                         for pdg, job in gen_jobs.items())
 
+        # Everything below runs in forked children, and ms_phase_add writes into
+        # a plain dict on the instance: each child charges its *own* copy and
+        # takes the accounting with it when it exits. So the phase has to be
+        # measured here, in the parent, where it survives -- which is also why
+        # only this branch is timed: the one-particle branch above stays inside
+        # generate_events, which charges the very same phase itself, and timing
+        # it here as well would count it twice.
+        # The measured region deliberately spans the whole fork/join, so it
+        # includes process startup and the JSON marshalling of the results as
+        # well as the generation proper. That is real elapsed time of the decay
+        # generation phase, but it does mean this number is slightly larger than
+        # the sum of the work the children actually did.
+        time_gen_dec = time.time()
         import multiprocessing as mp
         import json
         budget = self._resolve_nb_core()
@@ -4602,6 +4615,16 @@ class MadSpinInterface(extended_cmd.Cmd):
                              for k, v in data['files'].items()),
                         data['width'],
                         channel_widths)
+        time_gen_dec = time.time() - time_gen_dec
+        logger.info("Time for decay event generation (%s particles in "
+                    "parallel) = %.1f sec", len(gen_jobs), time_gen_dec)
+        # Same buckets generate_events uses, so the two paths are comparable.
+        # The counter needs nothing from the children: the parent knows how many
+        # events every job asked for before it forks.
+        gen_phase = getattr(self, '_gen_phase', 'decay_event_generation')
+        ms_phase_add(self, gen_phase, time_gen_dec)
+        ms_phase_count(self, '%s_events_requested' % gen_phase,
+                       sum(job['nb_gen'] for job in gen_jobs.values()))
         return out
 
     @staticmethod

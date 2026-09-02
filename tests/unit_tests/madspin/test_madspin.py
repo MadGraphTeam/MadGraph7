@@ -38,6 +38,7 @@ import collections
 import inspect
 import math
 import random
+import time
 
 import madgraph.core.base_objects as MG
 import madgraph.various.misc as misc
@@ -11400,6 +11401,124 @@ class TestMg7NumpyPoolCrossesTheGenerationFork(unittest.TestCase):
         self.assertRaises(
             Exception,
             interface_madspin.MadSpinInterface._reader_from_paths, [npy])
+
+
+class TestTheDecayGenerationPhaseSurvivesTheFork(unittest.TestCase):
+    """``decay_event_generation`` is the biggest phase of a MadSpin run, and it
+    read 0.00 s on the normal path.
+
+    ``ms_phase_add`` charges a plain dict on the instance. With a single
+    decaying particle ``_generate_decays`` calls ``generate_events`` inline, so
+    the charge lands on the parent's dict and is reported. With two or more it
+    forks one process per particle: each child charges *its own* copy of that
+    dict and then exits, and the JSON it reports back carries only files,
+    widths and channel widths. So the whole phase, and its
+    ``_events_requested`` counter, evaporated -- and 0.00 s in the phase table
+    reads as "free" rather than as "never measured".
+
+    Two decaying particles is ``p p > t t~`` with both tops decayed, i.e. the
+    common case, so this was the usual outcome rather than a corner.
+    """
+
+    NB_EVENT = 12
+    # long enough that the parent's measurement cannot be confused with zero on
+    # any machine, short enough not to slow the suite down
+    WORK = 0.25
+
+    # the npy pool fixture is the same one the fork regression above uses: a
+    # pool has to survive the marshalling for _generate_decays to return at all
+    _write_npy = TestMg7NumpyPoolCrossesTheGenerationFork._write_npy
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_genphase_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _stub(self, pdgs):
+        """A MadSpin carrying the real ``_generate_decays``, over a
+        ``generate_events`` that does what the real one does for accounting
+        purposes: it takes measurable wall time, and it charges that time (and
+        the events it was asked for) to the phase itself, exactly as
+        interface_madspin does around its own ``time_gen_dec``."""
+        test = self
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _generate_decays = interface._generate_decays
+            _generate_decay_entry = interface._generate_decay_entry
+            _reader_paths = staticmethod(interface._reader_paths)
+            _reader_from_paths = staticmethod(interface._reader_from_paths)
+
+            def _resolve_nb_core(self):
+                return 2
+
+            def generate_events(self, pdg, nb_gen, mg5, cumul=False,
+                                output_width=False, **opts):
+                start = time.time()
+                time.sleep(test.WORK)
+                interface_madspin.ms_phase_add(
+                    self, 'decay_event_generation', time.time() - start)
+                interface_madspin.ms_phase_count(
+                    self, 'decay_event_generation_events_requested', nb_gen)
+                path = test._write_npy('pool_%s' % str(pdg).replace('-', 'x'))
+                pool = interface_madspin.NpyDecayPool(path, 1.45)
+                return {0: pool}, 1.45, {0: 1.45}
+
+        stub = Stub()
+        stub.path_me = self.tmpdir
+        stub.options = {'seed': 7}
+        stub.seed = 7
+        stub.mg5cmd = None
+        stub.me_int = {}
+        stub._phase_times = collections.defaultdict(float)
+        stub._phase_counts = collections.defaultdict(int)
+        stub._generate_decays(dict((pdg, {'nb_gen': self.NB_EVENT,
+                                          'cumul': False}) for pdg in pdgs),
+                              None)
+        return stub
+
+    # -------------------------------------------------------- the regression
+
+    def test_two_decaying_particles_still_charge_the_phase(self):
+        """The regression proper. Before the fix this was exactly 0.0: every
+        second of it was charged inside a child that then exited."""
+        stub = self._stub([6, -6])
+        self.assertGreater(stub._phase_times['decay_event_generation'], 0.0)
+
+    def test_the_charged_time_is_of_the_right_order(self):
+        """Not merely non-zero: it has to cover the work the children did. They
+        run concurrently, so the parent measures roughly one child's worth (plus
+        the fork and the JSON round trip), not the sum."""
+        stub = self._stub([6, -6])
+        charged = stub._phase_times['decay_event_generation']
+        self.assertGreaterEqual(charged, self.WORK)
+        self.assertLess(charged, 60.0)
+
+    def test_the_events_requested_counter_covers_every_job(self):
+        """The counter died with the children too. The parent does not need
+        anything back from them for it: it knows every job's nb_gen before it
+        forks."""
+        stub = self._stub([6, -6])
+        self.assertEqual(
+            stub._phase_counts['decay_event_generation_events_requested'],
+            2 * self.NB_EVENT)
+
+    # ---------------------------------------------- the path that already works
+
+    def test_one_decaying_particle_is_not_charged_twice(self):
+        """The single-particle branch never forks: generate_events runs inline
+        and charges the phase itself. Timing the parent unconditionally would
+        bill it a second time. Pinned by the counter, which is exact: a double
+        charge reads 2 * NB_EVENT here."""
+        stub = self._stub([6])
+        self.assertEqual(
+            stub._phase_counts['decay_event_generation_events_requested'],
+            self.NB_EVENT)
+        charged = stub._phase_times['decay_event_generation']
+        self.assertGreaterEqual(charged, self.WORK)
+        self.assertLess(charged, 2 * self.WORK)
 
 
 class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
