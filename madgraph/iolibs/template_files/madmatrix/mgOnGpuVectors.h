@@ -89,6 +89,9 @@ namespace mg5amcCpu
       : m_real( r ), m_imag{ 0 } {} // IIII=0000
     cxtype_v( const fptype& r )
       : m_real( fptype_v{} + r ), m_imag{ 0 } {} // IIII=0000
+    template<typename FP2>
+    cxtype_v( const mgOnGpu::cxsmpl<FP2>& c ) // broadcast a scalar complex (amp precision)
+      : m_real( fptype_v{} + fptype( c.real() ) ), m_imag( fptype_v{} + fptype( c.imag() ) ) {}
     cxtype_v& operator=( const cxtype_v& ) = default;
     cxtype_v& operator=( cxtype_v&& ) = default;
     cxtype_v& operator+=( const cxtype_v& c )
@@ -896,12 +899,8 @@ namespace mg5amcCpu
 
   //==========================================================================
 
-  // Scalar-or-vector types: scalar in CUDA, vector or scalar in C++
-  // Multi-precision
-#if !( defined MGONGPU_FPTYPE_DOUBLE && defined MGONGPU_FPTYPE2_FLOAT )
-#define MGONGPU_MP_SINGLE_WIDTH 1
-#endif
-
+  // Scalar-or-vector types: scalar in CUDA, vector or scalar in C++.
+  // 3 mixed-precision stages: _amp (== fptype), _momenta (== _denom), _colour (== fptype2).
 #ifdef MGONGPUCPP_GPUIMPL
   typedef bool bool_sv;
   typedef fptype fptype_sv;
@@ -909,30 +908,14 @@ namespace mg5amcCpu
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
-  typedef fptype_momenta fptype_momenta_sv;
-  typedef fptype_polarization fptype_polarization_sv;
-  typedef fptype_vertex fptype_vertex_sv;
-  typedef fptype_denom fptype_denom_sv;
-  typedef fptype_amp fptype_amp_sv;
-  typedef fptype_colour fptype_colour_sv;
-  typedef cxtype_momenta cxtype_momenta_sv;
-  typedef cxtype_polarization cxtype_polarization_sv;
-  typedef cxtype_vertex cxtype_vertex_sv;
-  typedef cxtype_denom cxtype_denom_sv;
-  typedef cxtype_amp cxtype_amp_sv;
-  typedef cxtype_colour cxtype_colour_sv;
-  typedef fptype_momenta fptype_momenta_v;
-  typedef fptype_polarization fptype_polarization_v;
-  typedef fptype_vertex fptype_vertex_v;
-  typedef fptype_denom fptype_denom_v;
-  typedef fptype_amp fptype_amp_v;
-  typedef fptype_colour fptype_colour_v;
-  typedef cxtype_momenta cxtype_momenta_v;
-  typedef cxtype_polarization cxtype_polarization_v;
-  typedef cxtype_vertex cxtype_vertex_v;
-  typedef cxtype_denom cxtype_denom_v;
-  typedef cxtype_amp cxtype_amp_v;
-  typedef cxtype_colour cxtype_colour_v;
+  typedef fptype_momenta fptype_momenta_sv;   typedef fptype_momenta fptype_momenta_v;
+  typedef fptype_denom fptype_denom_sv;       typedef fptype_denom fptype_denom_v;
+  typedef fptype_amp fptype_amp_sv;           typedef fptype_amp fptype_amp_v;
+  typedef fptype_colour fptype_colour_sv;     typedef fptype_colour fptype_colour_v;
+  typedef cxtype_momenta cxtype_momenta_sv;   typedef cxtype_momenta cxtype_momenta_v;
+  typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
+  typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
+  typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
 #elif defined MGONGPU_CPPSIMD
   typedef bool_v bool_sv;
   typedef fptype_v fptype_sv;
@@ -940,35 +923,24 @@ namespace mg5amcCpu
   typedef uint_v uint_sv;
   typedef cxtype_v cxtype_sv;
   typedef cxtype_v_ref cxtype_sv_ref;
-#ifdef MGONGPU_MP_SINGLE_WIDTH
-  // FPTYPE=d/f: every stage type is one width -> alias to the base SIMD vectors
-  typedef fptype_v fptype_momenta_v;      typedef fptype_v fptype_momenta_sv;
-  typedef fptype_v fptype_polarization_v; typedef fptype_v fptype_polarization_sv;
-  typedef fptype_v fptype_vertex_v;       typedef fptype_v fptype_vertex_sv;
-  typedef fptype_v fptype_denom_v;        typedef fptype_v fptype_denom_sv;
-  typedef fptype_v fptype_amp_v;          typedef fptype_v fptype_amp_sv;
-  typedef fptype_v fptype_colour_v;       typedef fptype_v fptype_colour_sv;
-  typedef cxtype_v cxtype_momenta_v;      typedef cxtype_v cxtype_momenta_sv;
-  typedef cxtype_v cxtype_polarization_v; typedef cxtype_v cxtype_polarization_sv;
-  typedef cxtype_v cxtype_vertex_v;       typedef cxtype_v cxtype_vertex_sv;
-  typedef cxtype_v cxtype_denom_v;        typedef cxtype_v cxtype_denom_sv;
-  typedef cxtype_v cxtype_amp_v;          typedef cxtype_v cxtype_amp_sv;
-  typedef cxtype_v cxtype_colour_v;       typedef cxtype_v cxtype_colour_sv;
+  typedef fptype_v fptype_amp_v;              typedef fptype_v fptype_amp_sv;
+  typedef cxtype_v cxtype_amp_v;              typedef cxtype_v cxtype_amp_sv;
+  typedef fptype2_v fptype_colour_v;          typedef fptype2_v fptype_colour_sv;
+  typedef cxtype_v cxtype_colour_v;           typedef cxtype_v cxtype_colour_sv;
+#if defined MGONGPU_FPTYPE_MOMENTA_DOUBLE && defined MGONGPU_FPTYPE_FLOAT
+  // denom64 (FPTYPE=v): FP64 momenta/denom while amp is FP32 -> distinct neppV-wide FP64 vector
+#ifdef __clang__
+  typedef double fptype_momenta_v __attribute__( ( ext_vector_type( neppV ) ) );
 #else
-  // Mixed mode (FPTYPE=m): scalar fallback 
-  typedef fptype_momenta fptype_momenta_v;      typedef fptype_momenta fptype_momenta_sv;
-  typedef fptype_polarization fptype_polarization_v; typedef fptype_polarization fptype_polarization_sv;
-  typedef fptype_vertex fptype_vertex_v;        typedef fptype_vertex fptype_vertex_sv;
-  typedef fptype_denom fptype_denom_v;          typedef fptype_denom fptype_denom_sv;
-  typedef fptype_amp fptype_amp_v;              typedef fptype_amp fptype_amp_sv;
-  typedef fptype_colour fptype_colour_v;        typedef fptype_colour fptype_colour_sv;
-  typedef cxtype_momenta cxtype_momenta_v;      typedef cxtype_momenta cxtype_momenta_sv;
-  typedef cxtype_polarization cxtype_polarization_v; typedef cxtype_polarization cxtype_polarization_sv;
-  typedef cxtype_vertex cxtype_vertex_v;        typedef cxtype_vertex cxtype_vertex_sv;
-  typedef cxtype_denom cxtype_denom_v;          typedef cxtype_denom cxtype_denom_sv;
-  typedef cxtype_amp cxtype_amp_v;              typedef cxtype_amp cxtype_amp_sv;
-  typedef cxtype_colour cxtype_colour_v;        typedef cxtype_colour cxtype_colour_sv;
+  typedef double fptype_momenta_v __attribute__( ( vector_size( neppV * sizeof( double ) ), aligned( neppV * sizeof( double ) ) ) );
 #endif
+  typedef fptype_momenta_v fptype_momenta_sv;
+#else
+  typedef fptype_v fptype_momenta_v;          typedef fptype_v fptype_momenta_sv;
+#endif
+  typedef fptype_momenta_v fptype_denom_v;    typedef fptype_momenta_v fptype_denom_sv;
+  typedef cxtype_v cxtype_momenta_v;          typedef cxtype_v cxtype_momenta_sv;
+  typedef cxtype_v cxtype_denom_v;            typedef cxtype_v cxtype_denom_sv;
 #else
   typedef bool bool_sv;
   typedef fptype fptype_sv;
@@ -976,30 +948,14 @@ namespace mg5amcCpu
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
-  typedef fptype_momenta fptype_momenta_sv;
-  typedef fptype_polarization fptype_polarization_sv;
-  typedef fptype_vertex fptype_vertex_sv;
-  typedef fptype_denom fptype_denom_sv;
-  typedef fptype_amp fptype_amp_sv;
-  typedef fptype_colour fptype_colour_sv;
-  typedef cxtype_momenta cxtype_momenta_sv;
-  typedef cxtype_polarization cxtype_polarization_sv;
-  typedef cxtype_vertex cxtype_vertex_sv;
-  typedef cxtype_denom cxtype_denom_sv;
-  typedef cxtype_amp cxtype_amp_sv;
-  typedef cxtype_colour cxtype_colour_sv;
-  typedef fptype_momenta fptype_momenta_v;
-  typedef fptype_polarization fptype_polarization_v;
-  typedef fptype_vertex fptype_vertex_v;
-  typedef fptype_denom fptype_denom_v;
-  typedef fptype_amp fptype_amp_v;
-  typedef fptype_colour fptype_colour_v;
-  typedef cxtype_momenta cxtype_momenta_v;
-  typedef cxtype_polarization cxtype_polarization_v;
-  typedef cxtype_vertex cxtype_vertex_v;
-  typedef cxtype_denom cxtype_denom_v;
-  typedef cxtype_amp cxtype_amp_v;
-  typedef cxtype_colour cxtype_colour_v;
+  typedef fptype_momenta fptype_momenta_sv;   typedef fptype_momenta fptype_momenta_v;
+  typedef fptype_denom fptype_denom_sv;       typedef fptype_denom fptype_denom_v;
+  typedef fptype_amp fptype_amp_sv;           typedef fptype_amp fptype_amp_v;
+  typedef fptype_colour fptype_colour_sv;     typedef fptype_colour fptype_colour_v;
+  typedef cxtype_momenta cxtype_momenta_sv;   typedef cxtype_momenta cxtype_momenta_v;
+  typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
+  typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
+  typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
 #endif
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
@@ -1018,67 +974,6 @@ namespace mg5amcCpu
 
   //==========================================================================
 
-#ifdef MGONGPU_CPPSIMD
-
-  namespace mp_detail
-  {
-    // Element (scalar) precision may be type, an fp vector, or a complex type 
-    template<typename T> struct elem { using type = T; };
-    template<> struct elem<fptype_v> { using type = fptype; };
-    template<> struct elem<cxtype_v> { using type = fptype; };
-    template<typename E> struct elem<mgOnGpu::cxsmpl<E>> { using type = E; };
-    template<typename T> using elem_t = typename elem<std::remove_cv_t<T>>::type;
-
-    template<typename E> struct fpvec { using type = fptype_v; };
-    template<typename E> struct cxvec { using type = cxtype_v; };
-  }
-  template<typename T> using mp_fpvec_t = typename mp_detail::fpvec<mp_detail::elem_t<T>>::type;
-  template<typename T> using mp_cxvec_t = typename mp_detail::cxvec<mp_detail::elem_t<T>>::type;
-
-  // Convert an argument to the SIMD vector
-  template<typename V, typename X>
-  inline V mp_cast( const X& x )
-  {
-    if constexpr( std::is_arithmetic_v<std::remove_cv_t<X>> )
-      return V{} + x;
-    else
-      return static_cast<V>( x );
-  }
-
-  template<typename T, typename R, typename I,
-           typename = std::enable_if_t<!( std::is_arithmetic<T>::value &&
-                                          std::is_arithmetic<std::remove_cv_t<R>>::value &&
-                                          std::is_arithmetic<std::remove_cv_t<I>>::value )>>
-  inline mp_cxvec_t<T> cxmake( const R& r, const I& i )
-  { return mp_cxvec_t<T>( mp_cast<mp_fpvec_t<T>>( r ), mp_cast<mp_fpvec_t<T>>( i ) ); }
-
-  // SFINAE'd off for all-scalar args so the scalar template<FP> forms stay unambiguous.
-  template<typename T, typename A,
-           typename = std::enable_if_t<!std::is_arithmetic<std::remove_cv_t<A>>::value>>
-  inline mp_fpvec_t<T> fpsqrt( const A& a )
-  { return fpsqrt( mp_cast<mp_fpvec_t<T>>( a ) ); }
-  template<typename T, typename A, typename B,
-           typename = std::enable_if_t<!( std::is_arithmetic<std::remove_cv_t<A>>::value &&
-                                          std::is_arithmetic<std::remove_cv_t<B>>::value )>>
-  inline mp_fpvec_t<T> fpmin( const A& a, const B& b )
-  { return fpmin( mp_cast<mp_fpvec_t<T>>( a ), mp_cast<mp_fpvec_t<T>>( b ) ); }
-  template<typename T, typename A, typename B,
-           typename = std::enable_if_t<!( std::is_arithmetic<std::remove_cv_t<A>>::value &&
-                                          std::is_arithmetic<std::remove_cv_t<B>>::value )>>
-  inline mp_fpvec_t<T> fpmax( const A& a, const B& b )
-  { return fpmax( mp_cast<mp_fpvec_t<T>>( a ), mp_cast<mp_fpvec_t<T>>( b ) ); }
-  template<typename T, typename M, typename A, typename B>
-  inline mp_fpvec_t<T> fpternary( const M& m, const A& a, const B& b )
-  { return fpternary( m, mp_cast<mp_fpvec_t<T>>( a ), mp_cast<mp_fpvec_t<T>>( b ) ); }
-  template<typename T, typename M, typename A, typename B>
-  inline mp_cxvec_t<T> cxternary( const M& m, const A& a, const B& b )
-  { return static_cast<mp_cxvec_t<T>>( cxternary( m, a, b ) ); }
-  template<typename T, typename A>
-  inline mp_cxvec_t<T> cxconj( const A& a )
-  { return static_cast<mp_cxvec_t<T>>( cxconj( a ) ); }
-#endif // #ifdef MGONGPU_CPPSIMD
-
-  //==========================================================================
 
   // Functions and operators for cxtype_sv (and multi-precision variant)
   template<typename CX>

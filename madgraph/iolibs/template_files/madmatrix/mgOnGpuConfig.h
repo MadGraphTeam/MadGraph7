@@ -178,11 +178,13 @@ namespace mgOnGpu
   typedef float fptype2; // single precision (4 bytes, fp32)
 #endif
 
-  // --- Multi-precision stage-specific types ---
-  // Each type can be independently controlled via its own macro.
-  // Defaults are based on fptype/fptype2 for backward compatibility.
+  // --- Mixed-precision stage types (3 independent precisions) ---
+  // fptype       (== fptype_amp): wavefunctions, helicity amplitudes, ME, vertex
+  //                               and polarization computation (MGONGPU_FPTYPE_*)
+  // fptype_momenta (== fptype_denom): momenta storage and in-vertex denominators
+  //                               (MGONGPU_FPTYPE_MOMENTA_*, default fptype)
+  // fptype2      (== fptype_colour): color algebra alone (MGONGPU_FPTYPE2_*)
 
-  // fptype_momenta: for momenta storage and polarization vector inputs
 #if defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
   typedef double fptype_momenta;
 #elif defined MGONGPU_FPTYPE_MOMENTA_FLOAT
@@ -190,45 +192,13 @@ namespace mgOnGpu
 #else
   typedef fptype fptype_momenta;
 #endif
+  typedef fptype_momenta fptype_denom; // denominator precision == momenta precision
+  typedef fptype fptype_amp;           // amplitudes/wavefunctions == fptype
+  typedef fptype2 fptype_colour;       // color algebra == fptype2
 
-  // fptype_polarization: for wavefunction/polarization outputs
-#if defined MGONGPU_FPTYPE_POLARIZATION_DOUBLE
-  typedef double fptype_polarization;
-#elif defined MGONGPU_FPTYPE_POLARIZATION_FLOAT
-  typedef float fptype_polarization;
-#else
-  typedef fptype fptype_polarization;
-#endif
-
-  // fptype_vertex: for VVF vertex function (FFV1_0, FFV1P0_3) internal computation
-#if defined MGONGPU_FPTYPE_VERTEX_DOUBLE
-  typedef double fptype_vertex;
-#elif defined MGONGPU_FPTYPE_VERTEX_FLOAT
-  typedef float fptype_vertex;
-#else
-  typedef fptype2 fptype_vertex;
-#endif
-
-  // fptype_denom: for denominator variables in vertex functions
-#if defined MGONGPU_FPTYPE_DENOM_DOUBLE
-  typedef double fptype_denom;
-#elif defined MGONGPU_FPTYPE_DENOM_FLOAT
-  typedef float fptype_denom;
-#else
-  typedef fptype fptype_denom;
-#endif
-
-  // fptype_amp: for amplitude/jamp variables
-#if defined MGONGPU_FPTYPE_AMP_DOUBLE
-  typedef double fptype_amp;
-#elif defined MGONGPU_FPTYPE_AMP_FLOAT
-  typedef float fptype_amp;
-#else
-  typedef fptype2 fptype_amp;
-#endif
-
-  // fptype_colour: for color algebra (alias for fptype2)
-  typedef fptype2 fptype_colour;
+  // Valid precision ordering: colour <= amp <= momenta (4=fp32, 8=fp64)
+  static_assert( sizeof( fptype_colour ) <= sizeof( fptype_amp ), "colour precision must not exceed amp precision" );
+  static_assert( sizeof( fptype_amp ) <= sizeof( fptype_momenta ), "amp precision must not exceed momenta precision" );
 
   // --- Platform-specific software implementation details
 
@@ -254,8 +224,6 @@ namespace mgOnGpu
 using mgOnGpu::fptype;
 using mgOnGpu::fptype2;
 using mgOnGpu::fptype_momenta;
-using mgOnGpu::fptype_polarization;
-using mgOnGpu::fptype_vertex;
 using mgOnGpu::fptype_denom;
 using mgOnGpu::fptype_amp;
 using mgOnGpu::fptype_colour;
