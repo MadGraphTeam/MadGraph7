@@ -1075,6 +1075,22 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_gauge_invariance_epem_ttx_all_modes -pA -t0 -l INFO
 
+  acceptancetest_improve_ps_at_rest:
+    # improve_ps must not move an external leg off rest: a polarised matrix
+    # element is evaluated in a frame where the selected leg has an exactly
+    # zero three-momentum, and HELAS reads its spin axis off that zero.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      - name: test improve_ps keeps a leg at rest
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_improve_ps_keeps_a_leg_at_rest -pA -t0 -l INFO
+
   acceptancetest_check_madevent_me_vs_standalone:
     # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
     runs-on: ubuntu-24.04
