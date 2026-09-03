@@ -77,8 +77,7 @@ Continue with [Quick Start](quick-start.md).
 ## Install a tagged source release
 
 Use a tagged snapshot when your platform has no compatible wheel or when you
-need a source build. The following command becomes available after the 0.2.0
-release candidate has completed validation and is tagged:
+need a source build:
 
 ```console
 git clone --branch v0.2.0 --depth 1 \
