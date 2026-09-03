@@ -58,6 +58,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_mg7_ufo_aloha -pA -t0 -l INFO
 
+  # FD gauge: the madmatrix and the fortran standalone must compute the same
+  # value, and the scalar and vectorised madmatrix backends must agree with each
+  # other (the FD wavefunctions are written once per backend in helas_fd.h)
+  acceptancetest_mg7_fd_gauge:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test FD gauge madmatrix vs fortran
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_fd_vs_fortran test_madmatrix_fd_simd_lanes -pA -t0 -l INFO
+
   acceptancetest_mg7_output_directory:
     needs: build_madspace
     runs-on: ubuntu-24.04
@@ -71,6 +88,21 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_output_mg7_directory -pA -t0 -l INFO
+
+  acceptancetest_mg7_gridpack:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_gridpack_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_gridpack_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_ungroup_decay:
     needs: build_madspace
@@ -119,8 +151,8 @@ jobs:
   acceptancetest_mg7_madspin_mixed_flavor:
     needs: build_madspace
     # mg7 + MadSpin density-summary check driven through the madevent-style
-    # launch command interface. restore_heptools provides LHAPDF/NNPDF23 for the
-    # u u~ > z g generation.
+    # launch command interface. restore_heptools provides LHAPDF and the mg7
+    # default PDF set for the u u~ > z g generation.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -184,7 +216,7 @@ jobs:
   acceptancetest_mg7_group_subprocess:
     needs: build_madspace
     # mg7 cross-section run (u u > u u). madspace is installed by checkout_mg5;
-    # LHAPDF (incl. NNPDF23_lo_as_0130_qed) comes from the heptools cache.
+    # LHAPDF (incl. NNPDF40MC_lo_as_01180) comes from the heptools cache.
     # The test self-skips if that stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
@@ -290,8 +322,9 @@ jobs:
 
   acceptancetest_mg7_mssm_gogo:
     # mg7/madmatrix now generates the MSSM merged-flavor squark/gluino vertices
-    # (single-merged-leg / event-by-event flavored couplings); standalone_mg7
-    # reproduces the Fortran standalone per-flavor |M|^2 (~1e-4). This is a
+    # (single-merged-leg / event-by-event flavored couplings); `output
+    # standalone` reproduces the standalone_fortran per-flavor |M|^2 (~1e-4).
+    # This is a
     # matrix-element (standalone) check only -- full mg7 event generation for
     # merged-flavor processes is not wired up yet (see test_madevent_merged_
     # flavor_uq_mg7). The madevent counterpart is test_madevent_mssm_gogo in
@@ -303,15 +336,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
-      - name: test one of the test test_standalone_mg7_mssm_gogo
+      - name: test one of the test test_madmatrix_mssm_gogo
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_standalone_mg7_mssm_gogo -pA -t0 -l INFO
+            ./tests/test_manager.py test_madmatrix_mssm_gogo -pA -t0 -l INFO
 
   acceptancetest_mg7_mssm_gogo_xsec:
     # Pins the mg7 (madspace) cross-section for MSSM p p > go go to the madevent
     # reference (5.024 pb, run_01 of test_generation_from_file_1), on top of the
-    # per-flavor |M|^2 check in test_standalone_mg7_mssm_gogo. This job used to
+    # per-flavor |M|^2 check in test_madmatrix_mssm_gogo. This job used to
     # be red at random rather than for a physics reason: the 1% assertion sat
     # below the ~1.1% statistical error of a 2000-event run, so it failed on
     # roughly 40% of runs. _run_mg7_xsec now runs 50000 events (error ~0.08%).

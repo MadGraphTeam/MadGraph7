@@ -1132,8 +1132,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         
 
 
-        question_instance = obj(question, allow_arg=choices, default=default, 
+        # cleared so a construction failure can't leak a stale instance
+        self._last_ask_instance = None
+        question_instance = obj(question, allow_arg=choices, default=default,
                                                    mother_interface=self, **opt)
+        # stashed before the blocking input below, so callers can recover it
+        # if ask() is interrupted (ctrl-C) instead of returning normally
+        self._last_ask_instance = question_instance
         if fct_timeout is None:
             fct_timeout = lambda x: question_instance.postcmd(x, default) if x and default else False
         if first_cmd:
@@ -2122,21 +2127,52 @@ class NotValidInput(Exception): pass
 #===============================================================================
 # Question with auto-completion
 #===============================================================================
+class _StdoutLineCounter(object):
+    """Buffers everything written to stdout while active, by patching
+    ``write`` in place (this also catches logger output, not just print()).
+    ``captured`` must be cleared by the owner once consumed. ``tainted`` is
+    only set explicitly, via SmartQuestion.invalidate_display().
+    """
+
+    def __init__(self):
+        self.captured = []
+        self.tainted = False
+        self._stream = None
+        self._orig_write = None
+
+    def __enter__(self):
+        self._stream = sys.stdout
+        self._orig_write = self._stream.write
+        def counting_write(data, _write=self._orig_write):
+            self.captured.append(data)
+            return _write(data)
+        self._stream.write = counting_write
+        return self
+
+    def __exit__(self, *exc_info):
+        if self._stream is not None and self._orig_write is not None:
+            self._stream.write = self._orig_write
+        return False
+
+
 class SmartQuestion(BasicCmd):
     """ a class for answering a question with the path autocompletion"""
 
     allowpath = False
+    # subclasses set this to redraw the question in place instead of reprinting it below
+    overwrite_display = False
+
     def preloop(self):
         """Initializing before starting the main loop"""
         self.prompt = '>'
         self.value = None
         BasicCmd.preloop(self)
-        
+
     @property
     def answer(self):
         return self.value
 
-    def __init__(self, question, allow_arg=[], default=None, 
+    def __init__(self, question, allow_arg=[], default=None,
                                             mother_interface=None, *arg, **opt):
 
         self.question = question
@@ -2145,28 +2181,132 @@ class SmartQuestion(BasicCmd):
         self.history_header = ''
         self.default_value = str(default)
         self.mother_interface = mother_interface
+        self._redraw = None      # active _StdoutLineCounter, if any
+        self._has_drawn = False
+        self._answer_history = [] # blocks ('>answer\n' + anything it printed) redrawn in place
+        self._prev_box_lines = 0  # line count of the box as currently on screen
+        self._cmd_seq = 0        # bumped once per onecmd() call
+        self._history_seq = -1   # _cmd_seq already appended to _answer_history
 
         if 'case' in opt:
             self.casesensitive = opt['case']
             del opt['case']
         elif 'casesensitive' in opt:
             self.casesensitive = opt['casesensitive']
-            del opt['casesensitive']            
+            del opt['casesensitive']
         else:
             self.casesensistive = True
         super(SmartQuestion, self).__init__(*arg, **opt)
 
+    def invalidate_display(self):
+        """Call after handing the terminal to something this class can't
+        track (e.g. a text editor): the next redraw prints fresh instead
+        of trying to overwrite the previous display in place."""
+
+        if self._redraw is not None:
+            self._redraw.tainted = True
+
+    def display_question(self):
+        """Print self.question. When overwrite_display is on and stdout is
+        a tty, redraw it in place via ANSI cursor movement instead of
+        reprinting it below, keeping typed commands and anything they
+        printed visible in order. Falls back to a plain print otherwise.
+        """
+
+        text = self.question
+        if self._redraw is not None and self._has_drawn:
+            # postcmd() can call this twice for one input; only the first
+            # call followed a real input() prompt.
+            is_new_input = self._cmd_seq != self._history_seq
+            captured = ''.join(self._redraw.captured)
+            self._redraw.captured = []
+            interstitial_lines = captured.count('\n')
+            tainted = self._redraw.tainted
+            self._redraw.tainted = False
+            try:
+                nb_rows = int(os.popen('stty size', 'r').read().split()[0])
+            except Exception:
+                nb_rows = 0
+            box_lines = text.count('\n') + 1
+            margin = 2 # 1 free row + 1 so the next untracked echo line doesn't force a scroll
+
+            old_history = self._answer_history
+            new_block = None
+            if is_new_input and self.lastcmd:
+                new_block = '%s%s\n' % (self.prompt, self.lastcmd)
+                if captured:
+                    new_block += captured if captured.endswith('\n') else captured + '\n'
+
+            if new_block is not None:
+                updated_history = old_history + [new_block]
+            elif captured and old_history:
+                extra = captured if captured.endswith('\n') else captured + '\n'
+                updated_history = old_history[:-1] + [old_history[-1] + extra]
+            else:
+                updated_history = list(old_history)
+            updated_total = sum(e.count('\n') for e in updated_history)
+
+            if not tainted and (not nb_rows or box_lines + updated_total <= nb_rows - margin):
+                # everything fits: erase back past the box and its full history, rewrite both
+                n_up = self._prev_box_lines + sum(e.count('\n') for e in old_history) + interstitial_lines
+                if is_new_input:
+                    n_up += 1 # the '>answer' line, invisible to the hook
+                sys.stdout.write('\x1b[%dA\x1b[0J' % n_up)
+                sys.stdout.write(text + '\n')
+                for entry in updated_history:
+                    sys.stdout.write(entry)
+                self._answer_history = updated_history
+            else:
+                # tainted, or doesn't fit: give up erasing, print fresh, keep what fits
+                sys.stdout.write(text + '\n')
+                if tainted:
+                    kept = [new_block] if new_block is not None else []
+                elif nb_rows:
+                    budget = nb_rows - margin - box_lines
+                    kept = []
+                    total = 0
+                    for entry in reversed(updated_history):
+                        L = entry.count('\n')
+                        if total + L <= budget:
+                            kept.insert(0, entry)
+                            total += L
+                        else:
+                            break
+                else:
+                    kept = list(updated_history)
+                for entry in kept: # must be rewritten here, contiguous with the fresh box
+                    sys.stdout.write(entry)
+                self._answer_history = kept
+
+            self._prev_box_lines = box_lines
+            if is_new_input:
+                self._history_seq = self._cmd_seq
+            self._redraw.captured = []
+        else:
+            sys.stdout.write(text + '\n')
+            if self._redraw is not None:
+                self._prev_box_lines = text.count('\n') + 1
+                self._redraw.captured = []
+        self._has_drawn = True
+
     def __call__(self, question, reprint_opt=True, **opts):
-        
+
         self.question = question
         for key,value in opts:
             setattr(self, key, value)
-        if reprint_opt:
-            print(question)
-            logger_tuto.info("Need help here? type 'help'", '$MG:BOLD')
-            logger_plugin.info("Need help here? type 'help'" , '$MG:BOLD')
-        return self.cmdloop()
-        
+        if self.overwrite_display and sys.stdout.isatty():
+            self._redraw = _StdoutLineCounter()
+            self._redraw.__enter__()
+        try:
+            if reprint_opt:
+                self.display_question()
+                logger_tuto.info("Need help here? type 'help'", '$MG:BOLD')
+                logger_plugin.info("Need help here? type 'help'" , '$MG:BOLD')
+            return self.cmdloop()
+        finally:
+            if self._redraw is not None:
+                self._redraw.__exit__()
+                self._redraw = None
 
     def completenames(self, text, line, *ignored):
         prev_timer = signal.alarm(0) # avoid timer if any
@@ -2211,6 +2351,7 @@ class SmartQuestion(BasicCmd):
             if cmd is None:
                 return self.default(line)
             self.lastcmd = line
+            self._cmd_seq += 1
             if cmd == '':
                 return self.default(line)
             else:
@@ -2235,7 +2376,7 @@ class SmartQuestion(BasicCmd):
         if reprint_opt:
             if not prev_timer:
                 self.question = pat.sub('',self.question)
-            print(self.question)
+            self.display_question()
 
         if self.mother_interface:
             answer = self.mother_interface.check_answer_in_input_file(self, 'EOF', 
@@ -2474,6 +2615,7 @@ class ControlSwitch(SmartQuestion):
        
     case_sensitive = False
     quit_on = ['0','done', 'EOF','','auto']
+    overwrite_display = True
 
     def __init__(self, to_control, motherinstance, *args, **opts):
         """to_control is a list of ('KEY': 'Choose the shower/hadronization program')
@@ -3027,14 +3169,14 @@ class ControlSwitch(SmartQuestion):
                                   lnb_key=0,
                                   key=None):
         r"""should return four lines:
-        1. The upper band (typically /========\ 
-        2. The lower band (typically \========/
-        3. The line without conflict | %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s |
-        4. The line with    conflict | %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s |
+        1. The upper band (typically ┌========┐
+        2. The lower band (typically └========┘
+        3. The line without conflict │ %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s │
+        4. The line with    conflict │ %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s │
         # Be carefull to include the size of the color flag for the switch
-        green/red/yellow are  adding 9 in length 
-        
-        line should be like '| %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s |'
+        green/red/yellow are  adding 9 in length
+
+        line should be like '│ %(nb)2d. %(descrip)-20s %(name)5s = %(switch)-10s │'
 
            the total lenght of the line (for defining the upper/lower line)
            available key : nb
@@ -3065,7 +3207,7 @@ class ControlSwitch(SmartQuestion):
         list_length.append(lnb_key + ldescription+ lname + lswitch + 6)
         #1. DESCRIP KEY = VALUE_SIZE_NOCONFLICT
         list_length.append(list_length[-1] - lswitch + max(lswitch,lpotential_switch))
-        #| 1. DESCRIP KEY = VALUE_SIZE_NOCONFLICT |
+        #│ 1. DESCRIP KEY = VALUE_SIZE_NOCONFLICT │
         list_length.append(list_length[-1] +4)
         # 1. DESCRIP KEY = VALUE_MAXSIZE
         list_length.append(lnb_key + ldescription+ lname + max((2*lpotential_switch+3),lswitch) + 6)
@@ -3087,22 +3229,22 @@ class ControlSwitch(SmartQuestion):
         
         
         # default for upper/lower:
-        upper = "/%s\\" % ("=" * (size-2))
-        lower = "\\%s/" % ("=" * (size-2))        
-        
+        upper = "┌%s┐" % ("─" * (size-2))
+        lower = "└%s┘" % ("─" * (size-2))
+
         if selected==0:
             f1= '%(nb){0}d \x1b[1m%(name){1}s\x1b[0m=%(switch)-{2}s'.format(lnb_key,
                                                                   lname,lswitch)
             f2= f1
-        # | 1. KEY = VALUE |
+        # │ 1. KEY = VALUE │
         elif selected == 1:
-            upper = "/%s\\" % ("=" * (nb_col-2))
-            lower = "\\%s/" % ("=" * (nb_col-2))
+            upper = "┌%s┐" % ("─" * (nb_col-2))
+            lower = "└%s┘" % ("─" * (nb_col-2))
             to_add = nb_col -size
-            f1 = '| %(nb){0}d. \x1b[1m%(name){1}s\x1b[0m = %(switch)-{2}s |'.format(lnb_key,
+            f1 = '│ %(nb){0}d. \x1b[1m%(name){1}s\x1b[0m = %(switch)-{2}s │'.format(lnb_key,
                                                                   lname,lswitch+9+to_add)
-            
-            f = u'| %(nb){0}d. \x1b[1m%(name){1}s\x1b[0m = %(conflict_switch)-{2}s \u21d0 %(strike_switch)-{3}s |'
+
+            f = u'│ %(nb){0}d. \x1b[1m%(name){1}s\x1b[0m = %(conflict_switch)-{2}s \u21d0 %(strike_switch)-{3}s │'
             f2 =f.format(lnb_key, lname, len_cswitch+9, lswitch-len_cswitch+len_switch+to_add-1)
         #1. DESCRIP KEY = VALUE
         elif selected == 2:
@@ -3124,27 +3266,27 @@ class ControlSwitch(SmartQuestion):
                 ldescription -= (l_conflict_line - nb_col)
                 f = u'%(nb){0}d. %(descrip)-{1}.{1}s. \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s\u21d0 %(strike_switch)-{4}s'
                 f2 =f.format(lnb_key, ldescription,lname,len_cswitch+9, lpotential_switch)
-        #| 1. DESCRIP KEY = VALUE_SIZE_NOCONFLICT |
+        #│ 1. DESCRIP KEY = VALUE_SIZE_NOCONFLICT │
         elif selected == 4:
-            upper = "/%s\\" % ("=" * (nb_col-2))
-            lower = "\\%s/" % ("=" * (nb_col-2))
+            upper = "┌%s┐" % ("─" * (nb_col-2))
+            lower = "└%s┘" % ("─" * (nb_col-2))
             to_add = nb_col -size
-            f='| %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s |'
+            f='│ %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s │'
             f1 = f.format(lnb_key,ldescription,lname,max(lpotential_switch, lswitch)+9+to_add)
             l_conflict_line = size-lpotential_switch+len_switch+len_cswitch+3+1
             if l_conflict_line <= nb_col:
-                f=u'| %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s|'
+                f=u'│ %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s│'
                 f2 = f.format(lnb_key,ldescription,lname, len_cswitch+9, max(lswitch,lpotential_switch)-len_cswitch+len_switch+to_add-3+3)
             elif l_conflict_line -1 <= nb_col:
-                f=u'| %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s'
+                f=u'│ %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s'
                 f2 = f.format(lnb_key,ldescription,lname, len_cswitch+9, max(lswitch,lpotential_switch)-len_cswitch+len_switch+to_add-3+3)
             elif l_conflict_line -3 <= nb_col:
-                f=u'| %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m=%(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s'
+                f=u'│ %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m=%(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s'
                 f2 = f.format(lnb_key,ldescription,lname, len_cswitch+9, max(lswitch,lpotential_switch)-len_cswitch+len_switch+to_add-3+3)
                         
             else:
                 ldescription -= (l_conflict_line - nb_col)
-                f=u'| %(nb){0}d. %(descrip)-{1}.{1}s. \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s'
+                f=u'│ %(nb){0}d. %(descrip)-{1}.{1}s. \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s'
                 f2 = f.format(lnb_key,ldescription,lname, len_cswitch+9, max(lswitch,lpotential_switch)-len_cswitch+len_switch+to_add-3+3)
                 
         # 1. DESCRIP KEY = VALUE_MAXSIZE
@@ -3153,36 +3295,38 @@ class ControlSwitch(SmartQuestion):
             f1 = f.format(lnb_key,ldescription,lname,max(2*lpotential_switch+3,lswitch))
             f = u'%(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s'
             f2 = f.format(lnb_key,ldescription,lname,lpotential_switch+9, max(2*lpotential_switch+3, lswitch)-lpotential_switch+len_switch)
-        #| 1. DESCRIP KEY = VALUE_MAXSIZE |
+        #│ 1. DESCRIP KEY = VALUE_MAXSIZE │
         elif selected == 6: 
-            f= '| %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s |'
+            f= '│ %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s │'
             f1 = f.format(lnb_key,ldescription,lname,max(2*lpotential_switch+3,lswitch)+9)
-            f= u'| %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s|'
+            f= u'│ %(nb){0}d. %(descrip)-{1}s \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s│'
             f2 = f.format(lnb_key,ldescription,lname,lpotential_switch+9,max(2*lpotential_switch+3,lswitch)-lpotential_switch+len_switch)
-        #| 1. DESCRIP | KEY = VALUE_MAXSIZE |   INFO   |
+        #│ 1. DESCRIP │ KEY = VALUE_MAXSIZE │   INFO   │
         elif selected == 7:
             ladd_info = max(15,6+ladd_info)
-            upper = "/{0:=^%s}|{1:=^%s}|{2:=^%s}\\" % (lnb_key+ldescription+4,
-                                                    lname+max(2*lpotential_switch+3, lswitch)+5,
-                                                    ladd_info)
-            upper = upper.format(' Description ', ' values ', ' other options ') 
-            
-            f='| %(nb){0}d. %(descrip)-{1}s | \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s |   %(add_info)-{4}s |'
+            col0 = lnb_key+ldescription+4
+            col1 = lname+max(2*lpotential_switch+3, lswitch)+5
+            upper = "┌{0:─^%s}┬{1:─^%s}┬{2:─^%s}┐" % (col0, col1, ladd_info)
+            upper = upper.format(' Description ', ' values ', ' other options ')
+            lower = "└%s┴%s┴%s┘" % ("─"*col0, "─"*col1, "─"*ladd_info)
+
+            f='│ %(nb){0}d. %(descrip)-{1}s │ \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s │   %(add_info)-{4}s │'
             f1 = f.format(lnb_key,ldescription,lname,max(2*lpotential_switch+3,lswitch)+9, ladd_info-4)
-            f= u'| %(nb){0}d. %(descrip)-{1}s | \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s|   %(add_info)-{5}s |'
+            f= u'│ %(nb){0}d. %(descrip)-{1}s │ \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s│   %(add_info)-{5}s │'
             f2 = f.format(lnb_key,ldescription,lname,lpotential_switch+9,
                           max(2*lpotential_switch+3,lswitch)-lpotential_switch+len_switch, ladd_info-4)
         elif selected == 8:
             ladd_info = max(15,10+ladd_info)
-            upper = "/{0:=^%s}|{1:=^%s}|{2:=^%s}\\" % (lnb_key+ldescription+4+5,
-                                                    lname+max(3+2*lpotential_switch,lswitch)+10,
-                                                    ladd_info)
-            upper = upper.format(' Description ', ' values ', ' other options ') 
-            lower = "\\%s/" % ("=" * (size-2)) 
-            
-            f='| %(nb){0}d. %(descrip)-{1}s | \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s |     %(add_info)-{4}s|'
+            col0 = lnb_key+ldescription+4+5
+            col1 = lname+max(3+2*lpotential_switch,lswitch)+10
+            upper = "┌{0:─^%s}┬{1:─^%s}┬{2:─^%s}┐" % (col0, col1, ladd_info)
+            upper = upper.format(' Description ', ' values ', ' other options ')
+            lower = "└%s┴%s┴%s┘" % ("─"*col0, "─"*col1, "─"*ladd_info)
+
+
+            f='│ %(nb){0}d. %(descrip)-{1}s │ \x1b[1m%(name){2}s\x1b[0m = %(switch)-{3}s │     %(add_info)-{4}s│'
             f1 = f.format(lnb_key,ldescription+5,5+lname,max(2*lpotential_switch+3,lswitch)+9, ladd_info-5)
-            f=u'| %(nb){0}d. %(descrip)-{1}s | \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s|     %(add_info)-{5}s|'
+            f=u'│ %(nb){0}d. %(descrip)-{1}s │ \x1b[1m%(name){2}s\x1b[0m = %(conflict_switch)-{3}s \u21d0 %(strike_switch)-{4}s│     %(add_info)-{5}s│'
             f2 = f.format(lnb_key,ldescription+5,5+lname,
                           lpotential_switch+9,
                           max(2*lpotential_switch+3,lswitch)-lpotential_switch+len_switch, ladd_info-5)
@@ -3236,9 +3380,9 @@ class ControlSwitch(SmartQuestion):
         f3 = 0 #formatting for hidden line
         
         text = \
-        ["The following switches determine which programs are run:",
+        ["\033[92m The following switches determine which programs are run\033[0m:",
          upper_line
-        ]                     
+        ]
 
 
         

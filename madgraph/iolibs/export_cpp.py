@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import json
+from collections import defaultdict
 
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
@@ -101,7 +102,6 @@ class UFOModelConverterCPP(object):
     def __init__(self, model, output_path, wanted_lorentz = [],
                  wanted_couplings = [], replace_dict={}):
         """ initialization of the objects """
-        misc.sprint('Exporting model to C++ standalone format')
         self.model = model
         self.model_name = ProcessExporterCPP.get_model_name(model['name'])
 
@@ -216,7 +216,6 @@ class UFOModelConverterCPP(object):
         # Handle flavor couplings
         # strategy picke one of the actual coupling and check if this is a running one or not
         flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
-        misc.sprint(self.coups_dep)
         deps = [c.name for c in self.coups_dep.values()]
         for one_flv in flavor_couplings:
             one_coupling = one_flv.get_one_coupling()
@@ -348,7 +347,6 @@ class UFOModelConverterCPP(object):
 
         # For each parameter type, write out the definition string
         # type parameters;
-        misc.sprint(type_param_dict)
         res_strings = []
         for key in type_param_dict:
             res_strings.append("%s %s;" % (self.type_dict[key],
@@ -378,7 +376,7 @@ class UFOModelConverterCPP(object):
 
     def _assert_flv_couplings_supported(self, params):
         """Refuse, with a clear and actionable message, the merged-flavor
-        coupling structures the C++ (mg7/standalone_mg7) backend cannot yet
+        coupling structures the C++ (mg7/standalone) backend cannot yet
         generate correctly, instead of crashing or emitting wrong/uncompilable
         code.
 
@@ -395,7 +393,7 @@ class UFOModelConverterCPP(object):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
 
-        The Fortran 'madevent'/'standalone' output supports the remaining cases.
+        The Fortran 'madevent'/'standalone_fortran' output supports the remaining cases.
         See docs/mg7_merged_flavor_mssm_design.md.
         """
         for coupl in params:
@@ -404,10 +402,10 @@ class UFOModelConverterCPP(object):
                 if nb_merged in (1, 2):
                     continue
                 raise InvalidCmd(
-                    "merged-flavor C++ output (mg7/standalone_mg7) does not yet "
+                    "merged-flavor C++ output (mg7/standalone) does not yet "
                     "support this process: flavor coupling %s connects %d "
                     "merged-flavor legs; only one or two are supported. Use "
-                    "'output madevent' or 'output standalone' for this process. "
+                    "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
 
@@ -967,7 +965,8 @@ class OneProcessExporterCPP(object):
         replace_dict['nprocesses'] = self.nprocesses
         
 
-        color_amplitudes = self.matrix_elements[0].get_color_amplitudes()
+        color_amplitudes = self.matrix_elements[0].get_color_amplitudes(
+            merge_quartic_amplitudes=False)
         # Number of color flows
         replace_dict['ncolor'] = len(color_amplitudes)
 
@@ -1045,7 +1044,7 @@ class OneProcessExporterCPP(object):
         # Extract process class name (for the moment same as file name)
         replace_dict['process_class_name'] = self.process_name
 
-        color_amplitudes = [me.get_color_amplitudes() for me in \
+        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False) for me in \
                             self.matrix_elements]
 
         replace_dict['initProc_lines'] = \
@@ -1544,9 +1543,7 @@ class OneProcessExporterCPP(object):
                 return replace_dict
 
     def get_flavor_table(self, matrix_element):
-        print(list(matrix_element.get_external_flavors()))
         flavors = list(matrix_element.get_external_flavors_with_iden())
-        print(flavors)
         flavor_dict = {
             1: 0, 2: 1, 3: 2, 4: 3, # quarks
             11: 0, 13: 1, 15: 2,    # charged leptons
@@ -2124,7 +2121,7 @@ class OneProcessExporterPythia8(OneProcessExporterCPP):
         # Extract process class name (for the moment same as file name)
         replace_dict['process_class_name'] = self.process_name
 
-        color_amplitudes = [me.get_color_amplitudes() for me in \
+        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False) for me in \
                             self.matrix_elements]
 
         replace_dict['initProc_lines'] = \
@@ -3187,24 +3184,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp'],
                      'Cards': []}
-    #from_template_simd = [
-    #    s+"mg7/api.h",
-    #    s+"mg7/simd/api_simd.cpp",
-    #    s+"mg7/simd/cudacpp.mk",
-    #    s+"mg7/simd/Makefile",
-    #]
-    #to_link_simd = ["api.h", "api_simd.cpp", "cudacpp.mk", "Makefile"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.me_lib_format = args[1].get("me_lib_format", None)
         self.process_info = []
+        self.merged_subprocesses = defaultdict(list)
 
     def generate_subprocess_directory(
         self, matrix_element, cpp_helas_call_writer, proc_number=None
     ):
         """ Override of super().generate_subprocess_directory """
-        process_exporter_mg7 = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
+        process_exporter_mg7 = self.oneprocessclass(
+            matrix_element,
+            cpp_helas_call_writer,
+            merge_same_topologies=self.opt.get('merge_same_topologies', True)
+        )
 
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = process_exporter_mg7.name
@@ -3234,7 +3229,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
             plot.draw()
 
         me_lib_path = self.me_lib_format.format(process_id = proc_dir_name)
-        self.process_info.append(process_exporter_mg7.get_subprocess_info(dirpath, me_lib_path))
+        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(dirpath, me_lib_path)
+        self.merged_subprocesses[subproc_class].append(
+            (len(self.process_info), diagram_tags)
+        )
+        self.process_info.append(subproc_info)
 
     def copy_template(self, model):
         super().copy_template(model)
@@ -3248,7 +3247,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.madevent import main\n"
+                    "from madgraph.iolibs.template_files.mg7.launch import main\n"
                     "if __name__ == '__main__':\n"
                     "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
                     "    try:\n"
@@ -3258,12 +3257,97 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 )
             os.chmod(madnis_bin, 0o755)
 
+    def get_merged_info(self):
+        merged_subproc_info = []
+        for subprocesses in self.merged_subprocesses.values():
+            channels = []
+            flavors = []
+            subproc_indices = []
+            unique_diagram_tags = []
+            unique_diagrams = []
+            for subproc_index_in_group, (subproc_index, diagram_tags) in enumerate(
+                subprocesses
+            ):
+                subproc_indices.append(subproc_index)
+                subproc_info = self.process_info[subproc_index]
+                flavor_offset = len(flavors)
+                flavors.extend(
+                    {
+                        "subprocess": subproc_index_in_group,
+                        "flavor": ps_flavor,
+                    }
+                    for ps_flavor, flavor in enumerate(
+                        subproc_info["flavors"]
+                    )
+                )
+
+                for unmerged_chan_index, (chan_info, chan_tags) in enumerate(
+                    zip(subproc_info["channels"], diagram_tags)
+                ):
+                    chan_index = len(channels)
+
+                    same_diags = []
+                    for tag in chan_tags:
+                        try:
+                            index = unique_diagram_tags.index(tag)
+                            chan_index, diag_index = unique_diagrams[index]
+                            same_diags.append(diag_index)
+                        except ValueError:
+                            same_diags.append(None)
+
+                    if chan_index == len(channels):
+                        channels.append(
+                            {
+                                "subprocess": subproc_index,
+                                "channel": unmerged_chan_index,
+                                "diagrams": [],
+                            }
+                        )
+
+                    diagrams = channels[chan_index]["diagrams"]
+                    for diag_info, same_diag, tag in zip(
+                        chan_info["diagrams"], same_diags, chan_tags
+                    ):
+                        if same_diag is None:
+                            unique_diagram_tags.append(tag)
+                            diag_index = len(diagrams)
+                            unique_diagrams.append((chan_index, diag_index))
+                            diagrams.append(
+                                {
+                                    "diagram": [-1] * len(subprocesses),
+                                    "permutation": diag_info["permutation"],
+                                    "active_flavors": [],
+                                }
+                            )
+                        else:
+                            diag_index = same_diag
+                        diag_dict = diagrams[diag_index]
+                        diag_dict["diagram"][subproc_index_in_group] = diag_info["diagram"]
+                        diag_dict["active_flavors"].extend(
+                            flavor_offset + flav for flav in diag_info["active_flavors"]
+                        )
+
+            merged_subproc_info.append({
+                "incoming": subproc_info["incoming"],
+                "outgoing": subproc_info["outgoing"],
+                "subprocesses": subproc_indices,
+                "channels": channels,
+                "flavors": flavors,
+            })
+        return merged_subproc_info
+
     def finalize(self, matrix_elements=None, history='', *args, **kwargs):
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
         ))
         with open(file_name, 'w') as f:
             json.dump(self.process_info, f)
+
+        merged_file_name = os.path.normpath(os.path.join(
+            self.dir_path, "SubProcesses", "merged_subprocesses.json"
+        ))
+        with open(merged_file_name, 'w') as f:
+            json.dump(self.get_merged_info(), f)
 
         # Generate Cards/run_card.toml from the template, filling in
         # process-dependent defaults (mirrors the LO run_card.dat logic).
@@ -3468,8 +3552,6 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     
     if cformat == 'pythia8':
         return ProcessExporterPythia8(cmd._export_dir, opt)
-    elif cformat == 'standalone_cpp':
-        return  ProcessExporterCPP(cmd._export_dir, opt)
     elif cformat == 'matchbox_cpp':
         return  ProcessExporterMatchbox(cmd._export_dir, opt)
     elif cformat == 'mg7_v5':
@@ -3477,7 +3559,7 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     elif cformat == 'mg7':
         from madmatrix.output import ProcessExporterMadMatrix
         return ProcessExporterMadMatrix(cmd._export_dir, opt)
-    elif cformat == 'standalone_mg7':
+    elif cformat == 'standalone':
         from madmatrix.output import ProcessExporterMadMatrixStandalone
         return ProcessExporterMadMatrixStandalone(cmd._export_dir, opt)
     else:

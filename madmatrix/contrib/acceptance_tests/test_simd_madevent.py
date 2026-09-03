@@ -150,7 +150,7 @@ import model sm
         open(pjoin(self.path, 'mg5_cmd'),'w').write(cmd)
         newenv = os.environ.copy()
         newenv["PYTHONPATH"] = pjoin(MG5DIR, '..')
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','mg5_aMC'),'-m','CUDACPP_OUTPUT', 
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','madgraph'),'-m','CUDACPP_OUTPUT', 
                          pjoin(self.path, 'mg5_cmd')], env=newenv,
                          #cwd=self.path,
                          stdout=stdout, stderr=stderr)
@@ -200,7 +200,7 @@ import model heft
         open(pjoin(self.path, 'mg5_cmd'),'w').write(cmd)
         newenv = os.environ.copy()
         newenv["PYTHONPATH"] = pjoin(MG5DIR, '..')
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','mg5_aMC'),'-m','CUDACPP_OUTPUT', 
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','madgraph'),'-m','CUDACPP_OUTPUT', 
                          pjoin(self.path, 'mg5_cmd')], env=newenv,
                          #cwd=self.path,
                          stdout=stdout, stderr=stderr)
@@ -250,7 +250,7 @@ import model sm
         open(pjoin(self.path, 'mg5_cmd'),'w').write(cmd)
         newenv = os.environ.copy()
         newenv["PYTHONPATH"] = pjoin(MG5DIR, '..')
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','mg5_aMC'),'-m','CUDACPP_OUTPUT', 
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','madgraph'),'-m','CUDACPP_OUTPUT', 
                          pjoin(self.path, 'mg5_cmd')], env=newenv,
                          #cwd=self.path,
                          stdout=stdout, stderr=stderr)
@@ -307,7 +307,7 @@ set vector_size 64
         open(pjoin(self.path, 'mg5_cmd'),'w').write(cmd)
         newenv = os.environ.copy()
         newenv["PYTHONPATH"] = pjoin(MG5DIR, '..')
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','mg5_aMC'),'-m','CUDACPP_OUTPUT', 
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin','madgraph'),'-m','CUDACPP_OUTPUT', 
                          pjoin(self.path, 'mg5_cmd')], env=newenv,
                          #cwd=self.path,
                          stdout=stdout, stderr=stderr)

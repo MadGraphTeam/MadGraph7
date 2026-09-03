@@ -296,6 +296,11 @@ class LoopHelasMatrixElementTest(unittest.TestCase):
                 amp_number_apparition=[]
                 for jamp in color_amplitudes:
                     amp_number_apparition.extend([a[1] for a in jamp])
+                # A four gluon contribution summed into another amplitude is
+                # dropped from the jamps on purpose, its colour factor being
+                # carried by the amplitude it was summed into
+                amp_number_apparition.extend(
+                    myME.get_quartic_amplitude_merges().keys())
 
             diagIndex=0
             for i, diag in enumerate(diagSelection):
