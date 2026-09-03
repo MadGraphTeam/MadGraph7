@@ -1312,15 +1312,43 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Polarization restriction can not be '
                                       'used for NLO processes')
 
-            # Anything that reaches here has a frame: either it never needed
-            # one (standalone_olp, loop_induced) or the boost is threaded
-            # through it (subtracted_boost_ok). There is no separate mass
-            # check left to make -- a massive polarised particle is refused by
-            # the clause above, in the one regime where it is not supported,
-            # and colour was never a polarisation restriction at all. The
-            # per-particle walk that used to live here (model lookup, and the
-            # multiparticle expansion behind it) existed only to run those two
-            # checks, so it goes with them.
+            # The mass of the polarised particle needs no check of its own:
+            # everything reaching here either never needed a frame or has the
+            # boost threaded through it. (Upstream's mass check only ever bit
+            # loop-induced, since its blanket NLO refusal caught everything
+            # else first -- which is precisely the restriction that should not
+            # apply there.)
+            #
+            # Colour, in the subtracted regime only. The threading is
+            # validated on colourless massive bosons, p p > z{0} j [QCD] and
+            # z{0} z{0} j; a coloured polarised particle is also an FKS
+            # emitter, so its polarisation axis and the subtraction's singular
+            # regions meet in a way nothing here has tested. Neither branch
+            # allowed it -- upstream refused u u~ > t{L} t~ [QCD] through the
+            # blanket NLO gate and this branch through a colour check -- so it
+            # stays refused rather than being opened as a side effect of
+            # dropping either one.
+            if subtracted_boost_ok:
+                def check(p):
+                    if p.get('color') != 1:
+                        raise self.InvalidCmd('Polarization restriction can '
+                                              'not be used for color charged '
+                                              'particles')
+
+                for p in particles_parts[0].split() + particles_parts[-1].split():
+                    if '{' not in p:
+                        continue
+                    part = p.split('{')[0]
+                    if not self._curr_model:
+                        continue
+                    particle = self._curr_model.get_particle(part)
+                    if particle:
+                        check(particle)
+                    elif part in self._multiparticles:
+                        for part2 in self._multiparticles[part]:
+                            check(self._curr_model.get_particle(part2))
+                    else:
+                        check(self._curr_model.get_particle(part.lower()))
 
 
     def check_tutorial(self, args):

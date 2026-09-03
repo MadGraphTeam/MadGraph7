@@ -276,6 +276,14 @@ class TestValidCmd(unittest.TestCase):
         # no frame at all in this mode
         self.assertRaises(cmd.InvalidCmd,
                           cmd.check_process_format, 'p p > z{0} j [tree=QCD]')
+        # a coloured polarised particle is also an FKS emitter: untested, and
+        # refused by both parents (upstream through its blanket NLO gate, this
+        # branch through a colour check), so it must not become allowed just
+        # because each of those was relaxed for its own reason.
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'u u~ > t{L} t~ [QCD]')
+        # ... but colour is no restriction where there is no subtraction
+        cmd.check_process_format('g g > t{L} t~ [noborn=QCD]')
 
     @test_aloha.set_global()
     def test_check_generate(self):
