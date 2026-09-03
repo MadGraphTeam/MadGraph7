@@ -25,7 +25,7 @@ from aloha import unitary_gauge
 
 from collections import defaultdict
 from fractions import Fraction
-from six import StringIO
+from io import StringIO
 
 # FD gauge check
 fd_gauge = (unitary_gauge == 3)
@@ -87,6 +87,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # a combined routine written as a wrapper needs a scratch wavefunction
+        # as an extra argument (see write_combined_cc)
+        self.combined_needs_tmp = True
         self.outname = 'w%s%s' % (self.particles[self.outgoing-1], self.outgoing)
         self.momentum_size = 0 # for ALOHAOBJ implementation the momentum is separated from the wavefunctions
 
@@ -140,7 +143,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         """
         if name is None:
             name = self.name
-        if fd_gauge and name.count("_") > 1:  # FIXME ugly hack to get right header
+        if not self.combined_needs_tmp:
+            # assembled combined routine: it needs no scratch wavefunction
+            combined = False
+        elif fd_gauge and name.count("_") > 1:  # FIXME ugly hack to get right header
             combined = True
         if mode=='':
             mode = self.mode
@@ -162,7 +168,6 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             else:
                 type = self.type2def[format] + ' ' + self.type2def['aloha_ref']
                 list_arg = ''
-            misc.sprint(argname,self.tag)
             if argname.startswith('COUP'):
                 type = self.type2def['double'] # AV from cxtype_sv to fptype array (running alphas #373)
                 if 'M' in self.tag:
@@ -229,12 +234,6 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     def get_foot_txt(self, combined=False):
         """Prototype for language specific footer"""
         text = ' '
-        if not combined and fd_gauge:
-            if self.outgoing and 'P1N' not in self.tag:
-                name = self.particles[self.outgoing-1]
-                if name.startswith(('S','V')):
-                    text += '      multiply_propagator_factor<W_ACCESS>(%(name)s%(i)s,%(mass)s%(i)s, %(name)s%(i)s);\n' % \
-                            {'name':name, 'mass': 'M%s' % name[1:], 'i': self.outgoing }
         text +='   mgDebug( 1, __FUNCTION__ );\n'
         text +='    return;\n'
         text += '  }\n\n  //--------------------------------------------------------------------------' # AV
@@ -378,8 +377,48 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 for i in range(1,6):
                     cppindex = i -1
                     out.write("    w%(type)s%(out)s[%(ind)s] = CZERO ;\n" % {'type': type, 'out':self.outgoing, 'ind':cppindex})
+            if self.has_fd_propagator():
+                out.write(self.get_fd_gauge_txt())
         # Returning result
         ###print('."' + out.getvalue() + '"') # AV - FOR DEBUGGING
+        return out.getvalue()
+
+    # OM - FD gauge: the propagator factor is written in the routine (it used to
+    # be a call to multiply_propagator_factor), split in a part that only
+    # depends on the momentum and one that is linear in the wavefunction.
+    def get_fd_gauge_txt(self):
+        """FD gauge: the 5-momentum q (its 5th component carries the mass) and
+        the gauge direction n. Written with the momenta: it does not depend on
+        the wavefunction the routine builds."""
+
+        out = StringIO()
+        wf = '%s%s' % (self.particles[self.outgoing-1], self.outgoing)
+        # the 5th component is -i * m: built from broadcast reals, since a
+        # scalar complex has no conversion to the vector type (cxtype_sv)
+        out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
+                  (', '.join('cxmake( -%s.pvec[%d], 0. )' % (wf, i) for i in range(4)),
+                   self.outgoing))
+        out.write('    fptype_sv FDN[5];\n')
+        out.write('    define_gauge_dir( FDQ, FDN );\n')
+        out.write('    const fptype_sv FDNQ = %s;\n' %
+                  ' - '.join('FDN[%d] * FDQ[%d].real()' % (i, i) for i in range(4)))
+        return out.getvalue()
+
+    def get_fd_propagator_txt(self):
+        """FD gauge: the part of the propagator factor that is linear in the
+        wavefunction, w -> w - q * js1 - n * js2, written after the components
+        have been built."""
+
+        out = StringIO()
+        w = self.outname
+        size = self.type_to_size[self.particles[self.outgoing-1]] - 2
+        out.write('    const cxtype_sv FDJS1 = ( %s ) / FDNQ;\n' %
+                  ' - '.join('FDN[%d] * %s[%d]' % (i, w, i) for i in range(4)))
+        out.write('    const cxtype_sv FDJS2 = ( %s - cxconj( FDQ[4] ) * %s[4] ) / FDNQ;\n' %
+                  (' - '.join('FDQ[%d] * %s[%d]' % (i, w, i) for i in range(4)), w))
+        for i in range(size):
+            out.write('    %(w)s[%(i)d] = %(w)s[%(i)d] - FDQ[%(i)d] * FDJS1 - FDN[%(i)d] * FDJS2;\n'
+                      % {'w': w, 'i': i})
         return out.getvalue()
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting, add delayed declaration with initialisation)
@@ -565,12 +604,18 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             format = ' %s = %s;\n' % (name, self.get_fct_format(fct))
             out.write(format % ','.join([self.write_obj(obj) for obj in objs])) # AV not used in eemumu?
         numerator = self.routine.expr
-        if not 'Coup(1)' in self.routine.infostr:
+        if self.coup_name:
+            # one term of an assembled routine: its own coupling among COUP1, ...
+            coup_name = self.coup_name
+        elif not 'Coup(1)' in self.routine.infostr:
             coup_name = 'COUP'
         else:
             coup_name = '%s' % self.change_number_format(1)
+        has_coup = coup_name != self.change_number_format(1)
+        # OM the Ccoeff sign carrier goes with the coupling it multiplies
+        ccoeff = 'Ccoeff%s' % coup_name[4:]
         if not self.offshell:
-            if coup_name == 'COUP':
+            if has_coup:
                 mydict = {'num': self.write_obj(numerator.get_rep([0]))} # '...(TMP4)-cI...' comes from here
                 for c in ['coup', 'vertex']:
                     if self.type2def['pointer_%s' %c] in ['*']:
@@ -580,7 +625,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         mydict['pre_%s' %c] = ''
                         mydict['post_%s'%c] = ''
                 # This affects '( *vertex ) = ' in HelAmps_sm.cc
-                out.write('    %(pre_vertex)svertex%(post_vertex)s = Ccoeff * %(pre_coup)sCOUP%(post_coup)s * %(num)s;\n' % mydict) # OM add Ccoeff (fix #825)
+                mydict['coup'] = coup_name
+                mydict['ccoeff'] = ccoeff
+                mydict['add'] = '%(pre_vertex)svertex%(post_vertex)s + ' % mydict if self.combined_part else ''
+                out.write('    %(pre_vertex)svertex%(post_vertex)s = %(add)s%(ccoeff)s * %(pre_coup)s%(coup)s%(post_coup)s * %(num)s;\n' % mydict) # OM add Ccoeff (fix #825)
             else:
                 mydict= {}
                 if self.type2def['pointer_vertex'] in ['*']:
@@ -590,13 +638,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     mydict['pre_vertex'] = ''
                     mydict['post_vertex'] = ''
                 mydict['data'] = self.write_obj(numerator.get_rep([0]))
+                mydict['add'] = '%(pre_vertex)svertex%(post_vertex)s + ' % mydict if self.combined_part else ''
                 # This affects '( *vertex ) = ' in HelAmps_sm.cc
-                out.write('    %(pre_vertex)svertex%(post_vertex)s = %(data)s;\n' % mydict)
+                out.write('    %(pre_vertex)svertex%(post_vertex)s = %(add)s%(data)s;\n' % mydict)
         else:
             OffShellParticle = '%s%d' % (self.particles[self.offshell-1],\
                                                                   self.offshell)
             if 'L' not in self.tag:
-                coeff = 'denom'
+                # each term of an assembled routine has its own denominator
+                # (they are 'const' declarations in the same scope)
+                coeff = 'denom%s' % (coup_name[4:] if self.combined_part else '')
                 mydict = {}
                 if self.type2def['pointer_coup'] in ['*']:
                     mydict['pre_coup'] = '(*'
@@ -607,13 +658,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 mydict['coup'] = coup_name
                 mydict['i'] = self.outgoing
                 if self.nodeclare:
-                    mydict['declnamedenom'] = 'const %s denom' % self.type2def['complex_v'] # AV
+                    mydict['declnamedenom'] = 'const %s %s' % (self.type2def['complex_v'], coeff) # AV
                 else:
-                    mydict['declnamedenom'] = 'denom' # AV
-                    self.declaration.add(('complex','denom'))
+                    mydict['declnamedenom'] = coeff # AV
+                    self.declaration.add(('complex', coeff))
                 # Need to add the unary operator before the coupling (OM fix for #825)
-                if mydict['coup'] != 'one': # but in case where the coupling is not used (one)
-                    mydict['pre_coup'] = 'Ccoeff * %s' % mydict['pre_coup']
+                if has_coup: # but in case where the coupling is not used (one)
+                    mydict['pre_coup'] = '%s * %s' % (ccoeff, mydict['pre_coup'])
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
@@ -640,10 +691,22 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 shift = 5 - 1 #to correspond to the shift in fortran indicies with -1 for C++
             for ind in numerator.listindices():
                 # This affects 'V1[2] = ' and 'F1[2] = ' in HelAmps_sm.cc
-                ###out.write('    %s[%d]= %s*%s;\n' % (self.outname,
-                out.write('    %s[%d] = %s * %s;\n' % (self.outname, # AV
-                                        self.pass_to_HELAS(ind) + shift, coeff,
+                # the slot is fixed by the spin of this structure, the name by
+                # the routine the code is written in; a term of an assembled
+                # routine adds up into a slot several structures can feed
+                # outname carries the 'w' accessor prefix, rename_wf works on
+                # the wavefunction name itself
+                slot = 'w%s[%d]' % (self.rename_wf(self.outname[1:]),
+                                    self.pass_to_HELAS(ind) + shift)
+                out.write('    %s = %s%s * %s;\n' % (slot, # AV
+                                        '%s + ' % slot if self.combined_part else '',
+                                        coeff,
                                         self.write_obj(numerator.get_rep(ind))))
+        if self.has_fd_propagator() and not self.combined_part:
+            # the FD gauge propagator factor is part of the wavefunction this
+            # routine builds, not a post-treatment (a term of an assembled
+            # routine gets it once, from the assembler, on the total)
+            out.write(self.get_fd_propagator_txt())
         ###return out.getvalue() # AV
         # AV check if one, two, half or quarter are used and need to be defined (ugly hack for #291: can this be done better?)
         out2 = StringIO()
@@ -695,7 +758,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             shift =  -1
             if fd_gauge and match.group('var').startswith('S'):
                 shift += 4
-            return 'w%s[%s]' % (match.group('var'), int(match.group('num')) + shift)
+            # the slot is fixed by the spin this structure sees on the leg, the
+            # name by the routine the code is written in (rename_wf)
+            return 'w%s[%s]' % (self.rename_wf(match.group('var')),
+                                int(match.group('num')) + shift)
 
     # OM - overload aloha_writers.WriteALOHA and ALOHAWriterForCPP methods (handle 'unary minus' #628)
     def change_var_format(self, obj):
@@ -780,6 +846,18 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # Set some usefull command
         if offshell is None:
             offshell = self.offshell
+
+        # structures acting on different spins (FD gauge: a leg is a vector in
+        # one structure and its Goldstone in the next one) can not share a
+        # single ALOHA expression, but they can still be assembled into a
+        # single routine instead of a wrapper calling each of them
+        self.combined_needs_tmp = True
+        if hasattr(self.routine, 'get_combined_routines') and \
+                       not os.environ.get('MG_ALOHA_COMBINE_WRAPPER'):
+            routines = self.routine.get_combined_routines(lor_names)
+            if routines:
+                self.combined_needs_tmp = False
+                return self.write_combined_parts_cc(routines, lor_names, offshell, mode)
 
         name = combine_name(self.routine.name, lor_names, offshell, self.tag)
         self.name = name
@@ -871,6 +949,78 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         text = text.getvalue()
         return text
+
+    # OM - a combined routine whose structures do not act on the same spins is
+    # assembled term by term instead of calling each of them (see
+    # AbstractRoutine.get_combined_routines and the fortran writer)
+    def write_combined_parts_cc(self, routines, lor_names, offshell, mode=''):
+        """Assemble the structures of a combined call into a single routine:
+        one set of momenta, one set of declarations, one FD propagator factor,
+        and each structure adding its own coupling times its own expression
+        into the slots it feeds."""
+
+        name = combine_name(self.routine.name, lor_names, offshell, self.tag)
+        self.name = name
+        writers_l = [self.__class__(routine, None, options=self.options)
+                                                        for routine in routines]
+        main = writers_l[0]
+        main.name = name
+        main.mode = mode if mode else self.mode
+        # assembled: no scratch wavefunction in the signature (the .h header is
+        # written from self, which write_combined_cc already flagged)
+        main.combined_needs_tmp = False
+        # one name per leg -- the one the first structure gives it
+        legs = ['%s%d' % (spin, i+1) for i, spin in enumerate(main.particles)]
+
+        bodies = []
+        for i, writer in enumerate(writers_l):
+            writer.name = name
+            writer.mode = main.mode
+            writer.coup_name = 'COUP%s' % (i+1)
+            writer.combined_part = True
+            for j, spin in enumerate(writer.particles):
+                wf = '%s%d' % (spin, j+1)
+                if wf != legs[j]:
+                    writer.wf_rename[wf] = legs[j]
+            bodies.append(writer.define_expression())
+
+        new_couplings = ['COUP%s' % (i+1) for i in range(len(lor_names)+1)]
+        for writer in writers_l[1:]:
+            for entry in writer.declaration:
+                main.declaration.add(entry)
+
+        text = StringIO()
+        text.write(main.get_header_txt(name=name, couplings=new_couplings,
+                                       mode=main.mode))
+        # unlike the wrapper form, the assembled body needs cI
+        text.write(main.get_declaration_txt())
+        text.write(main.get_momenta_txt())
+        text.write(main.get_coupling_def())
+        # the terms add up into the output, so it has to start from zero (in FD
+        # gauge the momenta already reset the wavefunction)
+        if not offshell:
+            text.write('    ( *vertex ) = cxzero_sv();\n')
+        elif not (fd_gauge and main.particles[main.outgoing-1] in ['S', 'V']):
+            for i in range(self.type_to_size[main.particles[main.outgoing-1]] - 2):
+                text.write('    %s[%d] = cxzero_sv();\n' % (main.outname, i))
+        # the structures share the contraction cache, so the same TMP/FCT (and
+        # the same constexpr fptype) is built by several of them: a given name
+        # always stands for the same value, keep the first definition only
+        declared = re.compile(r'^(?:const|constexpr)\s+\S+\s+'
+                              r'((?:TMP|FCT)\d+|one|two|half|quarter)\s*[=(]')
+        seen = set()
+        for body in bodies:
+            for line in body.splitlines(True):
+                found = declared.match(line.strip())
+                if found:
+                    if found.group(1) in seen:
+                        continue
+                    seen.add(found.group(1))
+                text.write(line)
+        if main.has_fd_propagator():
+            text.write(main.get_fd_propagator_txt())
+        text.write(main.get_foot_txt())
+        return text.getvalue()
 
 
 from os.path import join as pjoin
@@ -1487,6 +1637,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     multichannel_var = ',fptype& multi_chanel_num, fptype& multi_chanel_denom'
     imaginary_unit = "cxtype(0,1)"
 
+    # Build rules (in SubProcesses/) that this P* directory links as its 'makefile'
+    p_makefile = 'madmatrix.mk'
+
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
     def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
@@ -1727,7 +1880,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['all_helicities'] = replace_dict['all_helicities'] .replace('helicities', 'tHel')
         replace_dict['all_flavors'] = self.get_flavor_matrix(self.matrix_elements[0])
         replace_dict['all_flavors'] = replace_dict['all_flavors'].replace('flavors', 'tFlavors')
-        color_amplitudes = [me.get_color_amplitudes() for me in self.matrix_elements] # as in OneProcessExporterCPP.get_process_function_definitions
+        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False)
+                            for me in self.matrix_elements] # as in OneProcessExporterCPP.get_process_function_definitions
         replace_dict['ncolor'] = len(color_amplitudes[0])
         # broken_symmetry_factor function: use the shared decay-aware symmetry
         # data (same as the Fortran / standalone_cpp exporters) instead of the
@@ -1805,6 +1959,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
   // ** NB2: NEW Nov2024! in CUDA this now takes a channelId array as input (it used to take a scalar channelId as input)
   // In C++, this function processes a single event "page" or SIMD vector (or for two in "mixed" precision mode, nParity=2)
   // *** NB: in C++, calculate_jamps accepts a SCALAR channelId because it is GUARANTEED that all events in a SIMD vector have the same channelId #898
+
+  // Accumulate a multichannel numerator contribution in place.
+  // In CUDA all good-helicity blocks/streams for a given event race on the same numerator slot
+  // (the helicity dimension has been removed to save memory), so an atomicAdd is mandatory.
+  // In C++ each event page is processed serially within the helicity loop, so a plain sum suffices.
+#ifdef MGONGPUCPP_GPUIMPL
+#define NUM_ATOMIC_ADD( DST, VAL ) atomicAdd( &( DST ), VAL )
+#else
+#define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
+#endif
+
   __global__ void /* clang-format off */
   calculate_jamps( int ihel,
                    const fptype* allmomenta,          // input: momenta[nevt*npar*4]
@@ -1838,7 +2003,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     using CI_ACCESS = DeviceAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
     using F_ACCESS = DeviceAccessIflavorVec;      // non-trivial access: buffer includes all events
     using NUM_ACCESS = DeviceAccessNumerators;    // non-trivial access: buffer includes all events
-    using DEN_ACCESS = DeviceAccessDenominators;  // non-trivial access: buffer includes all events
 #else
     using namespace mg5amcCpu;
     using M_ACCESS = HostAccessMomenta;         // non-trivial access: buffer includes all events
@@ -1848,7 +2012,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     using CI_ACCESS = HostAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
     using F_ACCESS = HostAccessIflavorVec;      // non-trivial access: buffer includes all events
     using NUM_ACCESS = HostAccessNumerators;    // non-trivial access: buffer includes all events
-    using DEN_ACCESS = HostAccessDenominators;  // non-trivial access: buffer includes all events
 #endif
     mgDebug( 0, __FUNCTION__ );
     //bool debug = true;
@@ -1863,8 +2026,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
       int ighel = blockIdx.y;
       ihel = dcGoodHel[ighel];
       allJamps = allJamps + ighel * nevt;
-      allNumerators = allNumerators + ighel * nevt * processConfig::ndiagrams;
-      allDenominators = allDenominators + ighel * nevt;
+      // NB: the numerators buffer has NO helicity dimension anymore: all good-helicity blocks
+      // for a given event accumulate in place into the same [nevt][ndiagrams] slot via atomicAdd.
+      // The denominators are no longer accumulated here (derived as the sum of numerators later).
     }
 #endif /* clang-format on */""")
             nwavefuncs = self.matrix_elements[0].get_number_of_wavefunctions()
@@ -1952,9 +2116,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
-        # NB: symlink of cudacpp.mk to makefile is overwritten by madevent makefile if this exists (#480)
+        # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
+        # itself is the dispatcher that fans out over all the P* directories.
+        # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
-        files.ln(pjoin(self.path, "..", "makefile"), self.path, "makefile")
+        files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -2034,8 +2200,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             iconfig_to_diag[iconfig] = config[0] 
             diag_to_iconfig[config[0]] = iconfig
 
-        misc.sprint(iconfig_to_diag)
-        misc.sprint(diag_to_iconfig)
 
         # Note that if the last diagram is/are not mapped to a channel nb_diag 
         # will be smaller than the true number of diagram. This is fine for color
@@ -2226,6 +2390,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Get lines to reset jamps"""
         ret_lines = ""
         return ret_lines
+
+
+# Standalone mode: P*/makefile points at the wrapper that also builds check_sa.exe
+# (see ProcessExporterMadMatrixStandalone in output.py)
+class OneProcessExporterMadMatrixStandalone(OneProcessExporterMadMatrix):
+
+    p_makefile = 'madmatrix_standalone.mk'
 
 #------------------------------------------------------------------------------------
 
@@ -2449,7 +2620,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
       fptype* numerators = &allNumerators[ievt * processConfig::ndiagrams];
-      fptype* denominators = allDenominators;
 #else
       // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
       const fptype* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
@@ -2460,7 +2630,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )     // FIX #823
         COUPs[ndcoup + iicoup] = allCOUPs[ndcoup + iicoup]; // independent couplings, fixed for all events
       fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
-      fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
 #endif
       // Create an array of views over the Flavor Couplings
       FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
@@ -2494,9 +2663,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
       for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv(); }
 
-      // Numerators and denominators for the current event (CUDA) or SIMD event page (C++)
+      // Numerators for the current event (CUDA) or SIMD event page (C++)
+      // (denominators are no longer accumulated here: they are derived as the sum of numerators later)
       fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
       // Scalar iflavor for the current event
       // for GPU it is an int
       // for SIMD it is also an int, since it is constant across the SIMD vector
@@ -2531,6 +2700,23 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
             # Emit the opening of an `if` guard for a non-full grouped mask.
             return 'if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {' % group_mask
 
+        # OM - the four gluon optimisation (set merge_quartic_vertices). A quartic
+        # current and the cubic current carrying the same colour factor are
+        # summed into a third one, which the amplitude reads instead, so that
+        # one call gets both contributions and the quartic amplitude is never
+        # computed. The sum is written as soon as the later of the two
+        # currents is made. Unlike Fortran there is no AMP array here, so the
+        # amplitudes which cannot be reached this way are simply left alone:
+        # their own colour coefficients put them in the right JAMPs, which is
+        # why get_color_amplitudes is asked not to drop them.
+        sums, sum_uses, sum_folded = matrix_element.get_quartic_current_sums()
+        sum_slots = matrix_element.get_quartic_sum_me_ids()
+        sum_written = set()
+        sum_after = {}
+        for isum, (cubic, quartic, coeff) in enumerate(sums):
+            sum_after.setdefault(max(cubic.get('number'),
+                                     quartic.get('number')), []).append(isum)
+
         id_amp = 0
         for diagram in matrix_element.get('diagrams'):
             ###print('DIAGRAM %3d: #wavefunctions=%3d, #diagrams=%3d' %
@@ -2547,21 +2733,46 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     res.append('}')
                 else:
                     res.append(call)
+                for isum in sum_after.get(wf.get('number'), []):
+                    # a wavefunction number can be listed by more than one
+                    # diagram here, and the sum must only be written once
+                    if isum in sum_written:
+                        continue
+                    sum_written.add(isum)
+                    cubic, quartic, coeff = sums[isum]
+                    res.append('%s<W_ACCESS>( aloha_obj[%d], aloha_obj[%d],'
+                               ' aloha_obj[%d] );'
+                               % ('SUMW_1' if coeff == 1 else 'SUBW_1',
+                                  cubic.get('me_id') - 1,
+                                  quartic.get('me_id') - 1,
+                                  sum_slots[isum] - 1))
             if len(diagram.get('wavefunctions')) == 0 : res.append('// (none)') # AV
             res.append('\n      // Amplitude(s) for diagram number %d' % diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
                 id_amp +=1
+                if amplitude.get('number') in sum_folded:
+                    continue    # summed into another amplitude as a current
                 namp = amplitude.get('number')
                 amplitude.set('number', 1)
+                # OM - read the current sum in place of the cubic current it
+                # was built from, the same way the Fortran writer does
+                sum_original = []
+                for mother in amplitude.get('mothers'):
+                    isum = sum_uses.get(namp, {}).get(mother.get('number'))
+                    if isum is None:
+                        continue
+                    sum_original.append((mother, mother.get('me_id')))
+                    mother.set('me_id', sum_slots[isum])
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
+                for mother, me_id in sum_original:
+                    mother.set('me_id', me_id)
                 if id_amp in diag_to_config:
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % diag_to_config[id_amp]) # BUG #472
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % id_amp) # wrong fix for BUG #472
                     diagnum = diagram.get('number')
                     amp_block.append("if( storeChannelWeights )")
                     amp_block.append("{")
-                    amp_block.append("  numerators_sv[%i] += cxabs2( amp_sv[0] );" % (diagnum-1))
-                    amp_block.append("  denominators_sv += cxabs2( amp_sv[0] );")
+                    amp_block.append("  NUM_ATOMIC_ADD( numerators_sv[%i], cxabs2( amp_sv[0] ) );" % (diagnum-1))
                     amp_block.append("}")
                 for njamp, coeff in color[namp].items():
                     scoeff = OneProcessExporterMadMatrix.coeff(*coeff) # AV
@@ -2822,8 +3033,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
             if isinstance(argument, helas_objects.HelasWavefunction):
                 #arg['out'] = 'w_sv[%(out)d]'
                 arg['out'] = 'aloha_obj[%(out)d]'
-                if fd_gauge and len(l) > 1: #FIXME: this is a hack to avoid a bug in the FD code
-                    arg['out'] = arg['out'] + ", aloha_obj_tmp[0]"
                 if aloha.complex_mass:
                     arg['mass'] = 'm_pars->%(CM)s, '
                 else:
@@ -2832,8 +3041,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'
                 arg['out2'] = 'amp_sv[%(out)d]'
-                if fd_gauge and len(l) > 1: #FIXME: this is a hack to avoid a bug in the FD code
-                    arg['out'] = arg['out'] + ", &amp_tmp_fp[0]"
                 arg['mass'] = ''
             call = call % arg
             # Now we have a line correctly formatted

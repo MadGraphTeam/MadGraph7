@@ -2980,7 +2980,7 @@ class Vertex(PhysicsObject):
     """
     
     sorted_keys = ['id', 'legs']
-    
+
     # This sets what are the ID's of the vertices that must be ignored for the
     # purpose of the multi-channeling. 0 and -1 are ID's of various technical
     # vertices which have no relevance from the perspective of the diagram 
@@ -3014,7 +3014,6 @@ class Vertex(PhysicsObject):
         #       that it can be easily identified when constructing the DiagramChainLinks.
         self['id'] = 0
         self['legs'] = LegList()
-
     def filter(self, name, value):
         """Filter for valid vertex property values."""
 

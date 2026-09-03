@@ -4,6 +4,26 @@
 
 using namespace madspace;
 
+GradientClipper::GradientClipper() :
+    FunctionGenerator(
+        "Unweighter",
+        {{"gradients_in", batch_float}, {"threshold", single_float}},
+        {{"gradients_out", batch_float}, {"gradient_norm", single_float}}
+    ) {}
+
+NamedVector<Value> GradientClipper::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value grads_in = args.at(0);
+    Value grad_norm = fb.sqrt(fb.batch_reduce_sum(fb.square(grads_in)));
+    Value factor = fb.min(fb.div(args.at(1), grad_norm), 1.0);
+    Value grads_out = fb.mul(grads_in, factor);
+    return {
+        {"gradients_out", grads_out},
+        {"gradient_norm", grad_norm},
+    };
+}
+
 AdamOptimizer::AdamOptimizer(
     const Function& function,
     ContextPtr context,
@@ -12,7 +32,9 @@ AdamOptimizer::AdamOptimizer(
     std::size_t step_count,
     double beta1,
     double beta2,
-    double eps
+    double eps,
+    double grad_clip_threshold,
+    double weight_decay
 ) :
     _context(context),
     _learning_rate(learning_rate),
@@ -22,7 +44,15 @@ AdamOptimizer::AdamOptimizer(
     _beta1(beta1),
     _beta2(beta2),
     _eps(eps),
-    _one(1.0, context->device()) {
+    _grad_clip_threshold(grad_clip_threshold),
+    _weight_decay(weight_decay),
+    _grad_clipper(
+        grad_clip_threshold > 0.
+            ? build_runtime(GradientClipper().function(), context, false)
+            : nullptr
+    ),
+    _one(1.0, context->device()),
+    _loss_mean(std::numeric_limits<double>::quiet_NaN()) {
     DevicePtr device = context->device();
     for (auto& [name, value] : function.globals()) {
         if (context->global_requires_grad(name)) {
@@ -35,6 +65,9 @@ AdamOptimizer::AdamOptimizer(
     _exp_avg.zero();
     _exp_avg_sq = Tensor(_parameter.dtype(), _parameter.shape(), _parameter.device());
     _exp_avg_sq.zero();
+    _threshold_tensor = Tensor(
+        _grad_clip_threshold * std::sqrt(_parameter.size(0)), _parameter.device()
+    );
     _input_types.reserve(function.inputs().size());
     for (auto& input : function.inputs()) {
         _input_types.push_back(input.type);
@@ -56,11 +89,26 @@ TensorVec AdamOptimizer::step(const TensorVec& inputs) {
     if (std::isnan(loss)) {
         return outputs;
     }
+    if (std::isnan(_loss_mean)) {
+        _loss_mean = loss;
+    } else {
+        if (_step > 100 && loss > 20 * _loss_mean) {
+            return outputs;
+        }
+        _loss_mean = 0.05 * loss + 0.95 * _loss_mean;
+    }
     TensorVec output_grads(outputs.size());
     DevicePtr device = _context->device();
     output_grads.at(0) = _one;
     auto [input_grads, global_grads] =
         _runtime->run_backward(output_grads, stored_locals, eval_grad, true);
+
+    if (_grad_clipper) {
+        auto clip_result = _grad_clipper->run({global_grads.at(0), _threshold_tensor});
+        global_grads = {clip_result.at(0)};
+        // double norm = clip_result.at(1).cpu().view<double, 1>()[0];
+    }
+
     device->adam_step(
         global_grads.at(0),
         _parameter,
@@ -70,7 +118,8 @@ TensorVec AdamOptimizer::step(const TensorVec& inputs) {
         _beta1,
         _beta2,
         _eps,
-        bias_corr2_sqrt
+        bias_corr2_sqrt,
+        lr * _weight_decay
     );
     return outputs;
 }
@@ -103,6 +152,9 @@ void AdamOptimizer::replace_function(const Function& function) {
             .copy_from(old_eas.slice(0, old_offset, old_offset + size));
         offset += size;
     }
+    _threshold_tensor = Tensor(
+        _grad_clip_threshold * std::sqrt(_parameter.size(0)), _parameter.device()
+    );
 }
 
 double AdamOptimizer::learning_rate() const {

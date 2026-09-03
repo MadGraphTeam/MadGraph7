@@ -160,6 +160,40 @@ else()
 endif()
 
 ########################################################################################
+# Code generation                                                                      #
+########################################################################################
+
+# Headers are generated into the build tree (not the source tree), each kind
+# in its own subdirectory added to the relevant targets' include path below.
+set(MADSPACE_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+set(
+    MADSPACE_GENERATED_HEADERS
+    ${MADSPACE_GENERATED_DIR}/compgraphs/function_builder_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/opcode_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/instruction_set_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
+    ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
+)
+
+# Every target below lists one of these files as a source, so CMake reruns
+# this command (and thus regenerates all of them together) before building
+# anything that needs them, but only when instruction_set.yaml or the
+# generator itself changes.
+add_custom_command(
+    OUTPUT ${MADSPACE_GENERATED_HEADERS}
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_headers.py"
+        --out-dir "${MADSPACE_GENERATED_DIR}"
+    DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/instruction_set.yaml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/generate_headers.py"
+    COMMENT "Generating madspace instruction-set headers from instruction_set.yaml"
+    VERBATIM
+)
+
+########################################################################################
 # Main madspace module                                                                 #
 ########################################################################################
 
@@ -173,6 +207,7 @@ add_library(
     src/driver/event_generator.cpp
     src/driver/channel_generator.cpp
     src/driver/generator_data.cpp
+    src/driver/status_file.cpp
     src/driver/thread_pool.cpp
     src/driver/io.cpp
     src/driver/vegas_optimizer.cpp
@@ -184,7 +219,7 @@ add_library(
     src/compgraphs/function.cpp
     src/compgraphs/instruction.cpp
     src/compgraphs/optimizer.cpp
-    src/compgraphs/instruction_set_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/instruction_set_mixin.inc
     src/phasespace/base.cpp
     src/phasespace/batch_sampler.cpp
     src/phasespace/invariants.cpp
@@ -235,8 +270,8 @@ add_library(
     include/madspace/compgraphs.hpp
     include/madspace/compgraphs/type.hpp
     include/madspace/compgraphs/function.hpp
-    include/madspace/compgraphs/function_builder_mixin.inc
-    include/madspace/compgraphs/opcode_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/function_builder_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/compgraphs/opcode_mixin.inc
     include/madspace/compgraphs/instruction.hpp
     include/madspace/compgraphs/optimizer.hpp
     include/madspace/phasespace.hpp
@@ -274,6 +309,9 @@ add_library(
 
 #target_compile_options(madspace PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(madspace PUBLIC include)
+# PUBLIC: function.hpp/instruction.hpp #include these by quoted name, and
+# that lookup also has to succeed for anything linking against madspace.
+target_include_directories(madspace PUBLIC ${MADSPACE_GENERATED_DIR}/compgraphs)
 target_compile_features(madspace PUBLIC cxx_std_20)
 target_link_libraries(madspace PUBLIC nlohmann_json::nlohmann_json)
 if (ENABLE_SIMD)
@@ -285,6 +323,15 @@ install(
     DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
     DESTINATION "madspace/include"
     FILES_MATCHING PATTERN "*.hpp*"
+)
+# Generated public headers: installed alongside function.hpp/instruction.hpp
+# so a downstream #include "function_builder_mixin.inc" resolves the same
+# way it does in this build (see MADSPACE_GENERATED_DIR above).
+install(
+    FILES
+        ${MADSPACE_GENERATED_DIR}/compgraphs/function_builder_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/compgraphs/opcode_mixin.inc
+    DESTINATION "madspace/include/madspace/compgraphs"
 )
 
 
@@ -330,9 +377,12 @@ if(COMPILE_CUDA)
         src/gpu/tensor.cuh
         src/gpu/device.hpp
         src/gpu/gpu_abstraction.cuh
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
         ${KERNEL_SRC}
     )
     target_include_directories(madspace_cuda PUBLIC include)
+    target_include_directories(madspace_cuda PRIVATE ${MADSPACE_GENERATED_DIR}/gpu)
     set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
     target_link_libraries(madspace_cuda PRIVATE madspace)
     target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
@@ -351,9 +401,12 @@ if(COMPILE_HIP)
         src/gpu/tensor.cuh
         src/gpu/device.hpp
         src/gpu/gpu_abstraction.cuh
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
         ${KERNEL_SRC}
     )
     target_include_directories(madspace_hip PUBLIC include)
+    target_include_directories(madspace_hip PRIVATE ${MADSPACE_GENERATED_DIR}/gpu)
     set_property(TARGET madspace_hip PROPERTY HIP_STANDARD 20)
     set_property(TARGET madspace_hip PROPERTY HIP_EXTENSIONS OFF)
     target_link_libraries(madspace_hip PRIVATE madspace)
@@ -396,7 +449,8 @@ foreach(
         src/cpu/runtime.cpp
         src/cpu/device.cpp
         src/cpu/kernel_definitions.hpp
-        src/cpu/runtime_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
         src/cpu/tensor.hpp
         src/cpu/simd.hpp
         src/cpu/simd_arm.hpp
@@ -404,6 +458,7 @@ foreach(
         ${KERNEL_SRC}
     )
     target_include_directories(${cpu_target} PUBLIC include)
+    target_include_directories(${cpu_target} PRIVATE ${MADSPACE_GENERATED_DIR}/cpu)
     target_compile_features(${cpu_target} PUBLIC cxx_std_20)
     target_link_libraries(${cpu_target} PRIVATE madspace::blas)
     target_link_libraries(${cpu_target} PRIVATE madspace)
@@ -426,14 +481,38 @@ python_add_library(
     _madspace_py
     MODULE
     src/python/madspace.cpp
-    src/python/instruction_set.hpp
+    ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
     src/python/function_runtime.cpp
     src/python/function_runtime.hpp
     WITH_SOABI
 )
+target_include_directories(_madspace_py PRIVATE ${MADSPACE_GENERATED_DIR}/python)
 target_link_libraries(_madspace_py PRIVATE pybind11::headers)
 target_link_libraries(_madspace_py PUBLIC madspace)
 install(TARGETS _madspace_py DESTINATION madspace)
+
+########################################################################################
+# Python type stubs                                                                    #
+########################################################################################
+
+set(MADSPACE_PYI_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated_pyi)
+
+# Runs whenever _madspace_py is relinked, i.e. whenever madspace.cpp or,
+# transitively (via instruction_set.hpp), instruction_set.yaml change. Imports
+# the freshly built extension from an isolated staging copy of the madspace
+# package (see generate_pyi.py) so pybind11-stubgen can introspect it.
+add_custom_command(
+    TARGET _madspace_py POST_BUILD
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pyi.py"
+        --package-dir "${CMAKE_CURRENT_SOURCE_DIR}/madspace"
+        --module "$<TARGET_FILE:_madspace_py>"
+        --lib "$<TARGET_FILE:madspace>"
+        --stage-dir "${CMAKE_CURRENT_BINARY_DIR}/pyi_stage"
+        --output-dir "${MADSPACE_PYI_DIR}"
+    COMMENT "Generating madspace/_madspace_py.pyi"
+    VERBATIM
+)
+install(FILES "${MADSPACE_PYI_DIR}/madspace/_madspace_py.pyi" DESTINATION madspace)
 
 ########################################################################################
 # Source hash                                                                          #

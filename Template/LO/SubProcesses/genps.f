@@ -1815,21 +1815,22 @@ c     find the boost momenta --sum of particles--
          call boostx(p1(0,i), pboost, p2(0,i))
       enddo
 
-c     A frame built from a single leg puts that leg at rest, and there the
-c     boost has to be exactly right rather than right to rounding. HELAS
-c     changes convention at exactly zero: vxxxxx builds the polarisation
-c     vectors of a massive vector along the z axis when pp.eq.0d0 and along
-c     the momentum direction otherwise. boostx only reaches p=0 up to the
-c     rounding of lf (it forms p(i)+q(i)*lf with lf=1 up to the rounding of
-c     (q(0)-m)+p(0)), so the residual is a few 1d-14 with a noise direction,
-c     and whether it rounds to zero varies event by event. Every event that
-c     misses zero gets its longitudinal polarisation vector pointed along
-c     rounding noise instead of along z.
-c     This was found through the NLO port, where it breaks the FKS
-c     subtraction outright: see docs/nlo_polarisation_boost_plan.md, M2, and
-c     the same fix in Template/NLO/SubProcesses/boost_to_frame.f.
-c     Only a one-leg selection needs this: with two or more selected legs it
-c     is their sum that is at rest, no single leg sits on the branch point.
+c     If a single particle defines the frame, that particle must be
+c     exactly at rest after the boost. boostx only gets there up to the
+c     rounding of the boost factor, leaving a residual 3-momentum of a
+c     few 1d-14 whose direction is pure noise. That is not harmless:
+c     vxxxxx (aloha_functions.f) branches on pp.eq.rZero, and for a
+c     massive vector at exactly zero 3-momentum it takes the frame z
+c     axis as quantisation axis (longitudinal polarisation vector
+c     (0,0,0,1)); otherwise it builds the polarisation vectors from the
+c     momentum direction, i.e. from the rounding noise, giving an O(1)
+c     wrong polarisation state on the events that fail to round to zero.
+c     So impose the defining property of the frame explicitly.
+c     Only nsel==1 needs this: with two or more selected particles it is
+c     their sum that is at rest, and no individual leg sits on the
+c     pp.eq.rZero branch point. The energy is left untouched -- zeroing
+c     the 3-momentum shifts the invariant mass by O(1d-28) relative, and
+c     HELAS takes the mass as a separate argument anyway.
       nsel = 0
       isel = 0
       do i=1, nexternal
@@ -1843,6 +1844,7 @@ c     is their sum that is at rest, no single leg sits on the branch point.
          p2(2,isel) = 0d0
          p2(3,isel) = 0d0
       endif
+
       return
       end
 

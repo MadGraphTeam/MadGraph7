@@ -493,14 +493,13 @@
 
     // FD gauge
      const cxtype_sv cI = cxmake( 0 + fptype_sv{ 0 },  1 + fptype_sv{ 0 }  );
-#ifdef MGONGPU_CPPSIMD
-    fptype_sv nA[5];
-    fptype_sv nB[5];
-#endif
     fptype_sv n[5];
     fptype_sv nk;
-    const fptype_sv zero{0.};
-    const fptype_sv one{1.};
+    // NB: broadcast to every SIMD lane. 'fptype_sv one{1.}' sets the first
+    // lane only (the others are zero filled), which left n, and then nk, at
+    // zero in all lanes but the first one
+    const fptype_sv zero = 0. + fptype_sv{ 0 };
+    const fptype_sv one = 1. + fptype_sv{ 0 };
 
     if( vmass != 0. )
     {
@@ -569,7 +568,7 @@
         w[1] = cxmake( -vmass/nk * n[1], zero );
         w[2] = cxmake( -vmass/nk * n[2], zero );
         w[3] = cxmake( -vmass/nk * n[3], zero );
-        w[4] = static_cast<fptype>(nsv)*cI;
+        w[4] = -static_cast<fptype>(nsv)*cI; // as in fortran vxxxxx (vc%W(5) = -nsv*ci) and in the SIMD branch below
       }
 
 #else
@@ -604,37 +603,33 @@
       w[2] = cxternary( mask, vcA_4, cxternary( maskB, vcB1_4, vcB2_4 ) );
       w[3] = cxternary( mask, vcA_5, vcB_5 );
 
-      //FD gauge
-      //branch A
-      nA[0] = fpternary( pvec0 >= zero , one , -one);
-      nA[1] = -pvec1/pp;
-      nA[2] = -pvec2/pp;
-      nA[3] = -pvec3/pp;
-      nA[4] = zero;
-
-      //branch B
-      nB[0] = nA[0];
-      nB[1] = zero;
-      nB[2] = zero;
-      nB[3] = -nA[0];
-
-      const fptype_sv b_A = fpternary(pp > zero, one , zero);
-      const fptype_sv b_B = fpternary(pp <= zero , one , zero);
-
-      n[0] = nA[0]*b_A + nB[0]*b_B;
-      n[1] = nA[1]*b_A + nB[1]*b_B;
-      n[2] = nA[2]*b_A + nB[2]*b_B;
-      n[3] = nA[3]*b_A + nB[3]*b_B;
-      n[4] = nA[4];
+      //FD gauge: same two branches as the scalar code above, selected lane by
+      //lane. The division uses ppDENOM (=1 where pp==0) so that the lanes that
+      //do not take it are not poisoned: a select discards the other value, but
+      //a nan surviving an arithmetic combination (nan*0 is nan) would not be.
+      const bool_v maskFD = ( pp > zero );
+      n[0] = fpternary( pvec0 >= zero , one , -one );
+      n[1] = fpternary( maskFD, -pvec1 / ppDENOM, zero );
+      n[2] = fpternary( maskFD, -pvec2 / ppDENOM, zero );
+      n[3] = fpternary( maskFD, -pvec3 / ppDENOM, -n[0] );
+      n[4] = zero;
 
       nk = n[0]*pvec0 - n[1]*pvec1 - n[2]*pvec2 - n[3]*pvec3;
 
-      const bool_v mask3 = { (abs(nhel) == 1 ? 1 : 0) }; // first element replicated
-      w[0] = cxternary( mask3, w[0], cxmake( -vmass/nk * n[0], zero));
-      w[1] = cxternary( mask3, w[1], cxmake( -vmass/nk * n[1], zero));
-      w[2] = cxternary( mask3, w[2], cxmake( -vmass/nk * n[2], zero));
-      w[3] = cxternary( mask3, w[3], cxmake( -vmass/nk * n[3], zero));
-      w[4] = cxternary( mask3, cxzero_sv(), -static_cast<fptype>(nsv)*cI);
+      // nhel is a scalar: no need for a per-lane mask here (and a bool_v built
+      // from a single value would only set the first lane)
+      if ( abs(nhel) == 1 )
+      {
+        w[4] = cxzero_sv();
+      }
+      else
+      {
+        w[0] = cxmake( -vmass/nk * n[0], zero );
+        w[1] = cxmake( -vmass/nk * n[1], zero );
+        w[2] = cxmake( -vmass/nk * n[2], zero );
+        w[3] = cxmake( -vmass/nk * n[3], zero );
+        w[4] = -static_cast<fptype>(nsv)*cI;
+      }
 #endif
     }
     else
@@ -1025,7 +1020,7 @@
       n[0] = fpternary( q[0].real() >= 0.f , one , -one );
       n[1] = zero;
       n[2] = zero;
-      n[3] = fpternary( q[0].real() >= 0.f , -one , one); //possible error in Fortran
+      n[3] = fpternary( q[0].real() >= 0.f , -one , one); // -sign(q0), as in fortran and python define_gauge_dir
       n[4] = zero;
     }
 #else
@@ -1034,7 +1029,7 @@
     n[0] = fpternary( q[0].real() >= 0.f , one , -one);
     n[1] = fpternary( qsign , -q[1].real() / qabs , zero );
     n[2] = fpternary( qsign , -q[2].real() / qabs , zero );
-    n[3] = fpternary( qsign , -q[3].real() / qabs , fpternary( q[0].real() >= 0.f , one , -one));
+    n[3] = fpternary( qsign , -q[3].real() / qabs , fpternary( q[0].real() >= 0.f , -one , one)); // same gauge as the branch above
     n[4] = zero;
 #endif
  }

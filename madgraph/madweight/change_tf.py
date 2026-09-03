@@ -748,10 +748,3 @@ if(__name__=="__main__"):
         made_make=0
     os.chdir('./Source/MadWeight/transfer_function')
     create_TF_main(name,made_make,MW_dir)
-    
-##    file=six.input("file: ")
-##    ff=open(file,'r')
-##    gg=open(file+'_70.f','w')
-##    text=ff.read()
-##    text=MW_fct.put_in_fortran_format(text)
-##    gg.writelines(text)

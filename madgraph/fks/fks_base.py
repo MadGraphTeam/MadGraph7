@@ -129,6 +129,18 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         legs (stored in pdgs, so that they need to be generated only once and then reicycled
         """
 
+        # The four gluon merging is validated at tree level only, and an NLO
+        # generation is left alone whatever the option says. fks reads the
+        # vertex decomposition of its real diagrams -- link_rb_configs finds
+        # the vertex splitting ij into i and j and takes it out -- and the
+        # unrolling re-roots them, which can put that pair in the closing
+        # vertex, where there is nothing to take out.
+        with misc.TMP_variable(madgraph, 'merge_quartic_vertices', False):
+            self.generate_all(procdef, options)
+
+    def generate_all(self, procdef=None, options={}):
+        """Generates the born amplitudes, the born processes and the reals,
+        see __init__ which is the only caller."""
 
         if 'nlo_mixed_expansion' in options:
             self['nlo_mixed_expansion'] = options['nlo_mixed_expansion']

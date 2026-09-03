@@ -693,8 +693,8 @@ namespace mg5amcCpu
   __global__ void
   normalise_output( fptype* allMEs,                    // output: allMEs[nevt], |M|^2 running_sum_over_helicities
                     const unsigned int* iflavorVec,
-                    fptype* ghelAllNumerators,         // input/tmp: allNumerators super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
-                    fptype* ghelAllDenominators,       // input/tmp: allNumerators super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
+                    fptype* allNumerators,             // input: multichannel numerators[nevt][ndiagrams], already summed over helicities (atomicAdd)
+                    fptype* allDenominators,           // output: multichannel denominators[nevt], derived here as the sum of numerators
                     const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
                     bool storeChannelWeights,           // if true, compute final multichannel weights
                     bool mulChannelWeight,             // if true, multiply matrix element by channel weight
@@ -702,26 +702,20 @@ namespace mg5amcCpu
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
     allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor(iflavorVec[ievt]) / globaldenom;
-    const int nevt = gridDim.x * blockDim.x;
     if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
     {
-      fptype* totAllNumerators = ghelAllNumerators;     // reuse "helicity #0" buffer to compute the total over all helicities
-      fptype* totAllDenominators = ghelAllDenominators; // reuse "helicity #0" buffer to compute the total over all helicities
-      for( int ighel = 1; ighel < dcNGoodHel; ighel++ ) // NB: the loop starts at ighel=1
-      {
-        fptype* hAllDenominators = ghelAllDenominators + ighel * nevt;
-        totAllDenominators[ievt] += hAllDenominators[ievt];
-        fptype* hAllNumerators = ghelAllNumerators + ( ievt + ighel * nevt ) * processConfig::ndiagrams;
-        fptype* firstNumerator = ghelAllNumerators + ievt * processConfig::ndiagrams;
-        for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
-        {
-          firstNumerator[idiag] += hAllNumerators[idiag];
-        }
-      }
+      // The numerators have already been accumulated over all good helicities in place (atomicAdd in
+      // calculate_jamps), so there is no helicity dimension to sum here. The denominator is just the
+      // sum of all numerators for this event: derive it once and store it for the downstream consumers.
+      fptype* numerators = allNumerators + ievt * processConfig::ndiagrams;
+      fptype denominator = 0;
+      for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
+        denominator += numerators[idiag];
+      allDenominators[ievt] = denominator;
       if( mulChannelWeight )
       {
         unsigned int channelId = allChannelIds[ievt];
-        allMEs[ievt] *= totAllNumerators[channelId - 1 + ievt * processConfig::ndiagrams] / totAllDenominators[ievt];
+        allMEs[ievt] *= numerators[channelId - 1] / denominator;
       }
     }
     return;

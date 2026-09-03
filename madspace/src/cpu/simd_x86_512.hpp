@@ -207,6 +207,7 @@ inline FVec cos(FVec arg1) { return Sleef_cosd8_u10avx512f(arg1); }
 inline FVec sinh(FVec arg1) { return Sleef_sinhd8_u10avx512f(arg1); }
 inline FVec asinh(FVec arg1) { return Sleef_asinhd8_u10avx512f(arg1); }
 inline FVec cosh(FVec arg1) { return Sleef_coshd8_u10avx512f(arg1); }
+inline FVec tanh(FVec arg1) { return Sleef_tanhd8_u10avx512f(arg1); }
 inline FVec atan2(FVec arg1, FVec arg2) { return Sleef_atan2d8_u10avx512f(arg1, arg2); }
 inline FVec pow(FVec arg1, FVec arg2) { return Sleef_powd8_u10avx512f(arg1, arg2); }
 inline FVec fabs(FVec arg1) { return Sleef_fabsd8_avx512f(arg1); }

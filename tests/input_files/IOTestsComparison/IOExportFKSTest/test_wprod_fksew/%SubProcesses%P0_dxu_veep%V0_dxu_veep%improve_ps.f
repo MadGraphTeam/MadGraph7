@@ -1,4 +1,4 @@
-      SUBROUTINE IMPROVE_PS_POINT_PRECISION(P)
+      SUBROUTINE IMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS, P)
       IMPLICIT NONE
 C     
 C     CONSTANTS
@@ -10,6 +10,7 @@ C     ARGUMENTS
 C     
       DOUBLE PRECISION P(0:3,NEXTERNAL)
       REAL*16 QP_P(0:3,NEXTERNAL)
+      LOGICAL KEEP_OFFSHELL_MASS(NEXTERNAL)
 C     
 C     LOCAL VARIABLES 
 C     
@@ -25,7 +26,7 @@ C     ----------
         ENDDO
       ENDDO
 
-      CALL MP_IMPROVE_PS_POINT_PRECISION(QP_P)
+      CALL MP_IMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS, QP_P)
 
       DO I=1,NEXTERNAL
         DO J=0,3
@@ -36,7 +37,7 @@ C     ----------
       END
 
 
-      SUBROUTINE MP_IMPROVE_PS_POINT_PRECISION(P)
+      SUBROUTINE MP_IMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS, P)
       IMPLICIT NONE
 C     
 C     CONSTANTS
@@ -47,6 +48,7 @@ C
 C     ARGUMENTS 
 C     
       REAL*16 P(0:3,NEXTERNAL)
+      LOGICAL KEEP_OFFSHELL_MASS(NEXTERNAL)
 C     
 C     LOCAL VARIABLES 
 C     
@@ -234,10 +236,12 @@ C
 
       INCLUDE 'mp_coupl.inc'
 
+
       MASSES(1)=MP__ZERO
       MASSES(2)=MP__ZERO
       MASSES(3)=MP__ZERO
       MASSES(4)=MP__ZERO
+
 
 C     ----------
 C     BEGIN CODE
@@ -400,6 +404,11 @@ C     stores the result in P and for the quadruple precision
 C     version , it also modifies the global variables
 C     PS and MP_DONE accordingly.
 
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
       SUBROUTINE ROTATE_PS(P_IN,P,ROTATION)
       IMPLICIT NONE
 C     
@@ -445,6 +454,11 @@ C         rotation=2 => (xp=-z,yp=y,zp=x)
       END
 
 
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
       SUBROUTINE MP_ROTATE_PS(P_IN,P,ROTATION)
       IMPLICIT NONE
 C     
@@ -543,10 +557,12 @@ C
 
       INCLUDE 'mp_coupl.inc'
 
+
       MASSES(1)=MP__ZERO
       MASSES(2)=MP__ZERO
       MASSES(3)=MP__ZERO
       MASSES(4)=MP__ZERO
+
 
 C     ----------
 C     BEGIN CODE
@@ -702,7 +718,7 @@ C
 C     
 C     LOCAL VARIABLES 
 C     
-      INTEGER I,J, P1, P2
+      INTEGER I,J, P1, P2, IABSORB
       REAL*16 NEWP(0:3,NEXTERNAL), PBUFF(0:3)
       REAL*16 BUFF, BUFF2, XSCALE, APPROX_ZEROS(NAPPROXZEROS)
       REAL*16 MASSES(NEXTERNAL)
@@ -716,10 +732,12 @@ C     ----------
 C     BEGIN CODE
 C     ----------
 
+
       MASSES(1)=MP__ZERO
       MASSES(2)=MP__ZERO
       MASSES(3)=MP__ZERO
       MASSES(4)=MP__ZERO
+
 
       ERRCODE = 0
       XSCALE = ONE
@@ -745,13 +763,30 @@ C     First make sur that the space like momentum is exactly conserved
           PBUFF(J)=PBUFF(J)+NEWP(J,I)
         ENDDO
       ENDDO
-      DO I=NINITIAL+1,NEXTERNAL-1
-        DO J=1,3
-          PBUFF(J)=PBUFF(J)-NEWP(J,I)
-        ENDDO
+C     Absorb the residual in the final-state leg with the largest
+C     |p|, not in leg NEXTERNAL: that leg is never at rest, so an
+C     exactly vanishing three-momentum survives. HELAS reads the
+C     spin axis of a polarised leg off 'pp.eq.0', so a 1e-14
+C     residual there builds the longitudinal vector along noise.
+C     Largest |p| is also the smallest relative distortion.
+      IABSORB=NEXTERNAL
+      BUFF=ZERO
+      DO I=NINITIAL+1,NEXTERNAL
+        BUFF2=NEWP(1,I)**2+NEWP(2,I)**2+NEWP(3,I)**2
+        IF (BUFF2.GT.BUFF) THEN
+          BUFF=BUFF2
+          IABSORB=I
+        ENDIF
+      ENDDO
+      DO I=NINITIAL+1,NEXTERNAL
+        IF (I.NE.IABSORB) THEN
+          DO J=1,3
+            PBUFF(J)=PBUFF(J)-NEWP(J,I)
+          ENDDO
+        ENDIF
       ENDDO
       DO J=1,3
-        NEWP(J,NEXTERNAL)=PBUFF(J)
+        NEWP(J,IABSORB)=PBUFF(J)
       ENDDO
 
 C     Now find the 'x' rescaling factor
@@ -870,10 +905,25 @@ C
       INTEGER I,J,ERR
       REAL*16 PVECSQ(NEXTERNAL)
       REAL*16 XN, XNP1,FVAL,DVAL
+      REAL*16 MASSES(NEXTERNAL)
+C     
+C     GLOBAL VARIABLES
+C     
+
+      INCLUDE 'mp_coupl.inc'
 
 C     ----------
 C     BEGIN CODE
 C     ----------
+C     To manage off-shell momenta, we need to transmit MASSES(I) to
+C      the subroutine FUNCT (that does not have P)
+
+      MASSES(1)=MP__ZERO
+      MASSES(2)=MP__ZERO
+      MASSES(3)=MP__ZERO
+      MASSES(4)=MP__ZERO
+
+
 
       ERROR = 0
       XSCALE = SEED
@@ -885,12 +935,12 @@ C     ----------
       ENDDO
 
       DO I=1,MAXITERATIONS
-        CALL FUNCT(PVECSQ(1),XN,.FALSE.,ERR, FVAL)
+        CALL FUNCT(MASSES,PVECSQ(1),XN,.FALSE.,ERR, FVAL)
         IF (ERR.NE.0) THEN
           ERROR=ERR
           GOTO 710
         ENDIF
-        CALL FUNCT(PVECSQ(1),XN,.TRUE.,ERR, DVAL)
+        CALL FUNCT(MASSES,PVECSQ(1),XN,.TRUE.,ERR, DVAL)
         IF (ERR.NE.0) THEN
           ERROR=ERR
           GOTO 710
@@ -907,12 +957,12 @@ C     ----------
 
  700  CONTINUE
 C     For good measure, we iterate one last time
-      CALL FUNCT(PVECSQ(1),XN,.FALSE.,ERR, FVAL)
+      CALL FUNCT(MASSES,PVECSQ(1),XN,.FALSE.,ERR, FVAL)
       IF (ERR.NE.0) THEN
         ERROR=ERR
         GOTO 710
       ENDIF
-      CALL FUNCT(PVECSQ(1),XN,.TRUE.,ERR, DVAL)
+      CALL FUNCT(MASSES,PVECSQ(1),XN,.TRUE.,ERR, DVAL)
       IF (ERR.NE.0) THEN
         ERROR=ERR
         GOTO 710
@@ -924,7 +974,7 @@ C     For good measure, we iterate one last time
 
       END
 
-      SUBROUTINE FUNCT(PVECSQ,X,DERIVATIVE,ERROR,RES)
+      SUBROUTINE FUNCT(MASSES,PVECSQ,X,DERIVATIVE,ERROR,RES)
       IMPLICIT NONE
 C     
 C     CONSTANTS 
@@ -947,12 +997,12 @@ C
       REAL*16 PVECSQ(NEXTERNAL),X,RES
       INTEGER ERROR
       LOGICAL DERIVATIVE
+      REAL*16 MASSES(NEXTERNAL)
 C     
 C     LOCAL VARIABLES 
 C     
       INTEGER I,J
       REAL*16 BUFF,FACTOR
-      REAL*16 MASSES(NEXTERNAL)
 C     
 C     GLOBAL VARIABLES
 C     
@@ -963,10 +1013,8 @@ C     ----------
 C     BEGIN CODE
 C     ----------
 
-      MASSES(1)=MP__ZERO
-      MASSES(2)=MP__ZERO
-      MASSES(3)=MP__ZERO
-      MASSES(4)=MP__ZERO
+C     MASSES is now an argument of the function to deal with off-shell
+C      particles
 
       ERROR=0
       RES=ZERO
