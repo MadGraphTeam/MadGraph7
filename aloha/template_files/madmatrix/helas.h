@@ -229,7 +229,7 @@
         fptype_amp omega[2] = { fpsqrt( pvec0 + pp ), 0. };
         omega[1] = fmass / omega[0];
         const fptype_amp sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype_amp pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
+        const fptype_amp pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
         const cxtype_amp chi[2] = { cxmake( fpsqrt( pp3 * (fptype_amp)0.5 / pp ), 0. ),
                                 ( pp3 == 0. ? cxmake( -nh, 0. ) : cxmake( nh * pvec1, pvec2 ) / fpsqrt( 2. * pp * pp3 ) ) };
         w[0] = sfomega[0] * chi[im];
@@ -252,7 +252,7 @@
       fptype_v omega[2] = { fpsqrt( pvec0 + pp ), 0 };
       omega[1] = fmass / omega[0];
       const fptype_amp_v sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-      const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0 );
+      const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0 );
       volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
       volatile fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
       volatile fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
@@ -685,7 +685,7 @@
         const int ip = ( 1 + nh ) / 2; // NB: Fortran is (3+nh)/2 because omega(2) has indexes 1,2 and not 0,1
         const int im = ( 1 - nh ) / 2; // NB: Fortran is (3-nh)/2 because omega(2) has indexes 1,2 and not 0,1
         const fptype_amp sfomeg[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype_amp pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
+        const fptype_amp pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
         const cxtype_amp chi[2] = { cxmake( fpsqrt( pp3 * (fptype_amp)0.5 / pp ), 0. ),
                                 ( ( pp3 == 0. ) ? cxmake( -nh, 0. )
                                                 : cxmake( nh * pvec1, -pvec2 ) / fpsqrt( 2. * pp * pp3 ) ) };
@@ -715,7 +715,7 @@
       const int ipB = ( 1 + nh ) / 2;
       const int imB = ( 1 - nh ) / 2;
       const fptype_amp_v sfomeg[2] = { sf[0] * omega[ipB], sf[1] * omega[imB] };
-      const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
+      const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
       volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
       volatile fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
       volatile fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
@@ -749,7 +749,7 @@
                                            cxmake( (fptype_amp)nh * pvec1, -pvec2 ) / (const fptype_amp_sv)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
 #else
       const fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. ) and ( pvec2 == 0. ) and ( pvec3 < 0. ),
-                                          0,
+                                          fptype_sv{ 0 },
                                           fpsqrt( fpmax( fpternary( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0. ) ) * (fptype_amp)nsf );
       const cxtype_amp_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ) : cxmake( (fptype_amp)nh * pvec1, -pvec2 ) / sqp0p3 ) };
