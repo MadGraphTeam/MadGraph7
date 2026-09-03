@@ -160,6 +160,7 @@ void EventGenerator::generate() {
 
         // Wait for the round to fully commit before resyncing cross-channel fractions.
         while (round_in_flight > 0) {
+            _abort_check_function();
             std::size_t job_id = _result_queue.wait();
             --round_in_flight;
             auto& job = _running_jobs.at(job_id);
