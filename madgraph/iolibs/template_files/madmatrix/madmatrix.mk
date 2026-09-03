@@ -38,7 +38,7 @@ ifneq ($(words $(filter $(BACKEND), $(SUPPORTED_BACKENDS))),1)
   $(error Invalid backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
 endif
 
-override SUPPORTED_FPTYPES = d f m e
+override SUPPORTED_FPTYPES = d f m e v
 ifneq ($(words $(filter $(FPTYPE), $(SUPPORTED_FPTYPES))),1)
   $(error Invalid fptype FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
@@ -592,15 +592,20 @@ endif
 
 # Set the build flags appropriate to each FPTYPE choice (example: "make FPTYPE=f")
 $(info FPTYPE='$(FPTYPE)')
-ifeq ($(FPTYPE),d)
+# 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
+# 4 modes: d=all64, f=all32, v=denom64, m=color32 (e for doubleword expansion)
+ifeq ($(FPTYPE),d) # all64
   CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
   GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
-else ifeq ($(FPTYPE),f)
+else ifeq ($(FPTYPE),f) # all32
   CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
-else ifeq ($(FPTYPE),m)
+else ifeq ($(FPTYPE),m) # color32: colour FP32, momenta+amp FP64
   CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+else ifeq ($(FPTYPE),v) # denom64: momenta/denom FP64, colour+amp FP32
+  CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
+  GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
 else ifeq ($(FPTYPE),e)
   CXXFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
