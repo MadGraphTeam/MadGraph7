@@ -3341,14 +3341,11 @@ class MadSpinInterface(extended_cmd.Cmd):
         """Environment for run.sh / gridrun subprocesses. The gridpack scripts
         start with ``#!/usr/bin/env python3``, which otherwise resolves via PATH
         to whatever ``python3`` comes first -- often NOT the interpreter running
-        MadSpin, and thus one missing modules that gridrun needs (e.g. ``six``,
-        whose absence gridrun treats as fatal). Guarantee the same interpreter by
-        putting a ``python3`` -> sys.executable shim first on PATH. Also expose
-        ``six`` explicitly if this interpreter has it, in case it lives outside
-        the default site-packages."""
+        MadSpin. Guarantee the same interpreter by putting a ``python3`` ->
+        sys.executable shim first on PATH."""
         env = os.environ.copy()
-        # 1. python3 shim so `env python3` == the MadSpin interpreter, regardless
-        #    of whether dirname(sys.executable) even contains a bare `python3`.
+        # python3 shim so `env python3` == the MadSpin interpreter, regardless
+        # of whether dirname(sys.executable) even contains a bare `python3`.
         if not getattr(self, '_py3_shim_dir', None):
             import tempfile
             import atexit
@@ -3364,14 +3361,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                 os.chmod(link, 0o755)
             self._py3_shim_dir = shim
         env['PATH'] = self._py3_shim_dir + os.pathsep + env.get('PATH', '')
-        # 2. belt-and-suspenders: if we can import six here, make sure the
-        #    subprocess can find it too.
-        try:
-            import six as _six
-            sixdir = os.path.dirname(os.path.abspath(_six.__file__))
-            env['PYTHONPATH'] = sixdir + os.pathsep + env.get('PYTHONPATH', '')
-        except Exception:
-            pass
         return env
 
     def _run_gridpack(self, cmd, cwd):

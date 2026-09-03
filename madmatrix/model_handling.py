@@ -25,7 +25,7 @@ from aloha import unitary_gauge
 
 from collections import defaultdict
 from fractions import Fraction
-from six import StringIO
+from io import StringIO
 
 # FD gauge check
 fd_gauge = (unitary_gauge == 3)
