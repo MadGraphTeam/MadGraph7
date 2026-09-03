@@ -25,7 +25,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   ixxxxx( const fptype_momenta momenta[], // input: momenta
-          const fptype_polarization fmass,     // input: fermion mass
+          const fptype_amp fmass,     // input: fermion mass
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -40,7 +40,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   ipzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavor index
@@ -55,7 +55,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   imzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavor index
@@ -70,7 +70,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   ixzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavor index
@@ -84,7 +84,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   vxxxxx( const fptype_momenta momenta[], // input: momenta
-          const fptype_polarization vmass,     // input: vector boson mass
+          const fptype_amp vmass,     // input: vector boson mass
           const int nhel,         // input: -1, 0 (only if vmass!=0) or +1 (helicity of vector boson)
           const int nsv,          // input: +1 (final) or -1 (initial)
           const int flv,          // input: flavor index
@@ -112,7 +112,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   oxxxxx( const fptype_momenta momenta[], // input: momenta
-          const fptype_polarization fmass,     // input: fermion mass
+          const fptype_amp fmass,     // input: fermion mass
           const int nhel,         // input: -1, 0 (only if vmass!=0) or +1 (helicity of vector boson)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavor index
@@ -127,7 +127,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   opzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavor index
@@ -142,7 +142,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   omzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavor index
@@ -156,7 +156,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ INLINE void
   oxzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavor index
@@ -169,17 +169,17 @@
 
   // Compute the direction n[5] of the gauge q[5]
   __host__ __device__ INLINE void
-  define_gauge_dir( const fptype_vertex_sv q[], // input: gauge
-                    fptype_vertex_sv n[]        // output: direction
+  define_gauge_dir( const fptype_amp_sv q[], // input: gauge
+                    fptype_amp_sv n[]        // output: direction
                     ) ALWAYS_INLINE;
 
 
   //--------------------------------------------------------------------------
   // Compute a propagator factor d out of gauge q[5] and a mass
   __host__ __device__ INLINE void
-  calculate_propagator_factor( const fptype_vertex_sv q[5], // input: gauge
-                               const fptype_vertex_sv mass, // input: mass
-                               fptype_vertex_sv *d          // output: propagator factor
+  calculate_propagator_factor( const fptype_amp_sv q[5], // input: gauge
+                               const fptype_amp_sv mass, // input: mass
+                               fptype_amp_sv *d          // output: propagator factor
                                ) ALWAYS_INLINE;
 
   //--------------------------------------------------------------------------
@@ -197,7 +197,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   ixxxxx( const fptype_momenta momenta[], // input: momenta
-          const fptype_polarization fmass,     // input: fermion mass
+          const fptype_amp fmass,     // input: fermion mass
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -213,11 +213,11 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec0 = static_cast<fptype_polarization_sv>(pvec0_);
-    const fptype_polarization_sv pvec1 = static_cast<fptype_polarization_sv>(pvec1_);
-    const fptype_polarization_sv pvec2 = static_cast<fptype_polarization_sv>(pvec2_);
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fi.w );
+    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
+    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
+    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] = -pvec0_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[1] = -pvec1_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[2] = -pvec2_ * static_cast<fptype_momenta>(nsf);
@@ -227,10 +227,10 @@
     if( fmass != 0. )
     {
 #ifndef MGONGPU_CPPSIMD
-      const fptype_polarization_sv pp = fpmin<fptype_polarization>( pvec0, fpsqrt<fptype_polarization>( pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3 ) );
+      const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3 ) );
 #else
-      volatile fptype_polarization_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
-      const fptype_polarization_sv pp = fpmin<fptype_polarization>( pvec0, fpsqrt<fptype_polarization>( p2 ) );
+      volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
+      const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( p2 ) );
 #endif
       // In C++ ixxxxx, use a single ip/im numbering that is valid both for pp==0 and pp>0, which have two numbering schemes in Fortran ixxxxx:
       // for pp==0, Fortran sqm(0:1) has indexes 0,1 as in C++; but for Fortran pp>0, omega(2) has indexes 1,2 and not 0,1
@@ -241,96 +241,96 @@
       if( pp == 0. )
       {
         // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
-        fptype_polarization sqm[2] = { fpsqrt<fptype_polarization>( std::abs( fmass ) ), 0. }; // possibility of negative fermion masses
+        fptype_amp sqm[2] = { fpsqrt( std::abs( fmass ) ), 0. }; // possibility of negative fermion masses
         //sqm[1] = ( fmass < 0. ? -abs( sqm[0] ) : abs( sqm[0] ) ); // AV: why abs here?
         sqm[1] = ( fmass < 0. ? -sqm[0] : sqm[0] ); // AV: removed an abs here
-        w[0] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( ip * sqm[ip], 0 ));
-        w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( im * nsf * sqm[ip], 0 ));
-        w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( ip * nsf * sqm[im], 0 ));
-        w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( im * sqm[im], 0 ));
+        w[0] = cxmake( ip * sqm[ip], 0 );
+        w[1] = cxmake( im * nsf * sqm[ip], 0 );
+        w[2] = cxmake( ip * nsf * sqm[im], 0 );
+        w[3] = cxmake( im * sqm[im], 0 );
       }
       else
       {
-        const fptype_polarization sf[2] = { fptype_polarization( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_polarization)0.5,
-                               fptype_polarization( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_polarization)0.5 };
-        fptype_polarization omega[2] = { fpsqrt<fptype_polarization>( pvec0 + pp ), 0. };
+        const fptype_amp sf[2] = { fptype_amp( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_amp)0.5,
+                               fptype_amp( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_amp)0.5 };
+        fptype_amp omega[2] = { fpsqrt( pvec0 + pp ), 0. };
         omega[1] = fmass / omega[0];
-        const fptype_polarization sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype_polarization pp3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
-        const cxtype_polarization chi[2] = { cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( pp3 * (fptype_polarization)0.5 / pp ), 0. ),
-                                ( pp3 == 0. ? cxmake<fptype_polarization>( -nh, 0. ) : cxmake<fptype_polarization>( nh * pvec1, pvec2 ) / fpsqrt<fptype_polarization>( 2. * pp * pp3 ) ) };
-        w[0] = static_cast<cxtype_vertex_sv>( sfomega[0] * chi[im]);
-        w[1] = static_cast<cxtype_vertex_sv>( sfomega[0] * chi[ip]);
-        w[2] = static_cast<cxtype_vertex_sv>( sfomega[1] * chi[im]);
-        w[3] = static_cast<cxtype_vertex_sv>( sfomega[1] * chi[ip]);
+        const fptype_amp sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
+        const fptype_amp pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
+        const cxtype_amp chi[2] = { cxmake( fpsqrt( pp3 * (fptype_amp)0.5 / pp ), 0. ),
+                                ( pp3 == 0. ? cxmake( -nh, 0. ) : cxmake( nh * pvec1, pvec2 ) / fpsqrt( 2. * pp * pp3 ) ) };
+        w[0] = sfomega[0] * chi[im];
+        w[1] = sfomega[0] * chi[ip];
+        w[2] = sfomega[1] * chi[im];
+        w[3] = sfomega[1] * chi[ip];
       }
 #else
       // Branch A: pp == 0.
       // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
-      fptype_polarization sqm[2] = { fpsqrt<fptype_polarization>( std::abs( fmass ) ), 0 }; // possibility of negative fermion masses (NB: SCALAR!)
+      fptype_amp sqm[2] = { fpsqrt( std::abs( fmass ) ), 0 }; // possibility of negative fermion masses (NB: SCALAR!)
       sqm[1] = ( fmass < 0 ? -sqm[0] : sqm[0] );          // AV: removed an abs here (as above)
-      const cxtype_polarization fiA_2 = ip * sqm[ip];                  // scalar cxtype: real part initialised from fptype, imag part = 0
-      const cxtype_polarization fiA_3 = im * nsf * sqm[ip];            // scalar cxtype: real part initialised from fptype, imag part = 0
-      const cxtype_polarization fiA_4 = ip * nsf * sqm[im];            // scalar cxtype: real part initialised from fptype, imag part = 0
-      const cxtype_polarization fiA_5 = im * sqm[im];                  // scalar cxtype: real part initialised from fptype, imag part = 0
+      const cxtype_amp fiA_2 = ip * sqm[ip];                  // scalar cxtype: real part initialised from fptype, imag part = 0
+      const cxtype_amp fiA_3 = im * nsf * sqm[ip];            // scalar cxtype: real part initialised from fptype, imag part = 0
+      const cxtype_amp fiA_4 = ip * nsf * sqm[im];            // scalar cxtype: real part initialised from fptype, imag part = 0
+      const cxtype_amp fiA_5 = im * sqm[im];                  // scalar cxtype: real part initialised from fptype, imag part = 0
       // Branch B: pp != 0.
-      const fptype_polarization sf[2] = { fptype_polarization( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_polarization)0.5,
-                             fptype_polarization( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_polarization)0.5 };
-      fptype_v omega[2] = { fpsqrt<fptype_polarization>( pvec0 + pp ), 0 };
+      const fptype_amp sf[2] = { fptype_amp( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_amp)0.5,
+                             fptype_amp( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_amp)0.5 };
+      fptype_v omega[2] = { fpsqrt( pvec0 + pp ), 0 };
       omega[1] = fmass / omega[0];
-      const fptype_polarization_v sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-      const fptype_polarization_v pp3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0 );
-      volatile fptype_polarization_v ppDENOM = fpternary<fptype_polarization_sv>( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
-      volatile fptype_polarization_v pp3DENOM = fpternary<fptype_polarization_sv>( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
-      volatile fptype_polarization_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
-      const cxtype_polarization_v chi[2] = { cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( chi0r2 ), 0 ),     // hack: dummy[ieppV] is not used if pp[ieppV]==0
-                                cxternary<cxtype_polarization_sv>( ( pp3 == 0. ),
-                                           cxmake<fptype_polarization>( -nh, 0 ),
-                                           cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1, pvec2 ) / fpsqrt<fptype_polarization>( 2. * ppDENOM * pp3DENOM ) ) }; // hack: dummy[ieppV] is not used if pp[ieppV]==0
-      const cxtype_polarization_v fiB_2 = sfomega[0] * chi[im];
-      const cxtype_polarization_v fiB_3 = sfomega[0] * chi[ip];
-      const cxtype_polarization_v fiB_4 = sfomega[1] * chi[im];
-      const cxtype_polarization_v fiB_5 = sfomega[1] * chi[ip];
+      const fptype_amp_v sfomega[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
+      const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0 );
+      volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
+      volatile fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
+      volatile fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
+      const cxtype_amp_v chi[2] = { cxmake( fpsqrt( chi0r2 ), 0 ),     // hack: dummy[ieppV] is not used if pp[ieppV]==0
+                                cxternary( ( pp3 == 0. ),
+                                           cxmake( -nh, 0 ),
+                                           cxmake( (fptype_amp)nh * pvec1, pvec2 ) / fpsqrt( 2. * ppDENOM * pp3DENOM ) ) }; // hack: dummy[ieppV] is not used if pp[ieppV]==0
+      const cxtype_amp_v fiB_2 = sfomega[0] * chi[im];
+      const cxtype_amp_v fiB_3 = sfomega[0] * chi[ip];
+      const cxtype_amp_v fiB_4 = sfomega[1] * chi[im];
+      const cxtype_amp_v fiB_5 = sfomega[1] * chi[ip];
       // Choose between the results from branch A and branch B
       const bool_v mask = ( pp == 0. );
-      w[0] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, fiA_2, fiB_2 ));
-      w[1] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, fiA_3, fiB_3 ));
-      w[2] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, fiA_4, fiB_4 ));
-      w[3] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, fiA_5, fiB_5 ));
+      w[0] = cxternary( mask, fiA_2, fiB_2 );
+      w[1] = cxternary( mask, fiA_3, fiB_3 );
+      w[2] = cxternary( mask, fiA_4, fiB_4 );
+      w[3] = cxternary( mask, fiA_5, fiB_5 );
 #endif
     }
     else
     {
 #ifdef MGONGPU_CPPSIMD
-      volatile fptype_polarization_sv p0p3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0 ); // volatile fixes #736
-      volatile fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
+      volatile fptype_amp_sv p0p3 = fpmax( fpternary( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0 ); // volatile fixes #736
+      volatile fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
-                                             fpsqrt<fptype_polarization>( p0p3 ) * (fptype_polarization)nsf );
-      volatile fptype_polarization_sv sqp0p3DENOM = fpternary<fptype_polarization_sv>( sqp0p3 != 0, (fptype_sv)sqp0p3, 1. ); // hack: dummy sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
-      cxtype_sv chi[2] = { cxmake<fptype_polarization>( (fptype_v)sqp0p3, 0. ),
-                           cxternary<cxtype_polarization_sv>( sqp0p3 == 0,
-                                      cxmake<fptype_polarization>( -(fptype_polarization)nhel * fpsqrt<fptype_polarization>( 2. * pvec0 ), 0. ),
-                                      cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1, pvec2 ) / (const fptype_v)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
+                                             fpsqrt( p0p3 ) * (fptype_amp)nsf );
+      volatile fptype_amp_sv sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_sv)sqp0p3, 1. ); // hack: dummy sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
+      cxtype_sv chi[2] = { cxmake( (fptype_v)sqp0p3, 0. ),
+                           cxternary( sqp0p3 == 0,
+                                      cxmake( -(fptype_amp)nhel * fpsqrt( 2. * pvec0 ), 0. ),
+                                      cxmake( (fptype_amp)nh * pvec1, pvec2 ) / (const fptype_v)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
 #else
-      const fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
+      const fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                           fptype_sv{ 0 },
-                                          fpsqrt<fptype_polarization>( fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0. ) ) * (fptype_polarization)nsf );
-      const cxtype_polarization_sv chi[2] = { cxmake<fptype_polarization>( sqp0p3, 0. ),
-                                 ( sqp0p3 == 0. ? cxmake<fptype_polarization>( -(fptype_polarization)nhel * fpsqrt<fptype_polarization>( 2. * pvec0 ), 0. ) : cxmake<fptype_polarization>( (fptype)nh * pvec1, pvec2 ) / sqp0p3 ) };
+                                          fpsqrt( fpmax( fpternary( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0. ) ) * (fptype_amp)nsf );
+      const cxtype_amp_sv chi[2] = { cxmake( sqp0p3, 0. ),
+                                 ( sqp0p3 == 0. ? cxmake( -(fptype_amp)nhel * fpsqrt( 2. * pvec0 ), 0. ) : cxmake( (fptype)nh * pvec1, pvec2 ) / sqp0p3 ) };
 #endif
       if( nh == 1 )
       {
-        w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-        w[1] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-        w[2] = static_cast<cxtype_vertex_sv>( chi[0]);
-        w[3] = static_cast<cxtype_vertex_sv>( chi[1]);
+        w[0] = cxzero_sv();
+        w[1] = cxzero_sv();
+        w[2] = chi[0];
+        w[3] = chi[1];
       }
       else
       {
-        w[0] = static_cast<cxtype_vertex_sv>( chi[1]);
-        w[1] = static_cast<cxtype_vertex_sv>( chi[0]);
-        w[2] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-        w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+        w[0] = chi[1];
+        w[1] = chi[0];
+        w[2] = cxzero_sv();
+        w[3] = cxzero_sv();
       }
     }
     mgDebug( 1, __FUNCTION__ );
@@ -344,7 +344,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   ipzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -353,27 +353,27 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fi.w );
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] = -pvec3_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[1] = fptype_sv{ 0 };
     fi.pvec[2] = fptype_sv{ 0 };
     fi.pvec[3] = -pvec3_ * static_cast<fptype_momenta>(nsf);
     fi.flv_index = flv;
     const int nh = nhel * nsf;
-    const cxtype_polarization_sv sqp0p3 = cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( 2. * pvec3 ) * (fptype_polarization)nsf, 0. );
-    w[0] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( fi.pvec[1], fi.pvec[2] ));
+    const cxtype_amp_sv sqp0p3 = cxmake( fpsqrt( 2. * pvec3 ) * (fptype_amp)nsf, 0. );
+    w[0] = cxmake( fi.pvec[1], fi.pvec[2] );
     if( nh == 1 )
     {
-      w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( fi.pvec[1], fi.pvec[2] ));
-      w[2] = static_cast<cxtype_vertex_sv>( sqp0p3);
+      w[1] = cxmake( fi.pvec[1], fi.pvec[2] );
+      w[2] = sqp0p3;
     }
     else
     {
-      w[1] = static_cast<cxtype_vertex_sv>( sqp0p3);
-      w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( fi.pvec[1], fi.pvec[2] ));
+      w[1] = sqp0p3;
+      w[2] = cxmake( fi.pvec[1], fi.pvec[2] );
     }
-    w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( fi.pvec[1], fi.pvec[2] ));
+    w[3] = cxmake( fi.pvec[1], fi.pvec[2] );
     mgDebug( 1, __FUNCTION__ );
     return;
   }
@@ -385,7 +385,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   imzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -394,26 +394,26 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec3 = static_cast<fptype_momenta_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fi.w );
+    const fptype_amp_sv pvec3 = static_cast<fptype_momenta_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] =  pvec3_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[1] = fptype_momenta_sv{ 0 };
     fi.pvec[2] = fptype_momenta_sv{ 0 };
     fi.pvec[3] = -pvec3_ * static_cast<fptype_momenta>(nsf);
     fi.flv_index = flv;
     const int nh = nhel * nsf;
-    const cxtype_polarization_sv chi = cxmake<fptype_polarization>( -(fptype_polarization)nhel * fpsqrt<fptype_polarization>( -2. * pvec3 ), 0. );
-    w[1] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-    w[2] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+    const cxtype_amp_sv chi = cxmake( -(fptype_amp)nhel * fpsqrt( -2. * pvec3 ), 0. );
+    w[1] = cxzero_sv();
+    w[2] = cxzero_sv();
     if( nh == 1 )
     {
-      w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[3] = static_cast<cxtype_vertex_sv>( chi);
+      w[0] = cxzero_sv();
+      w[3] = chi;
     }
     else
     {
-      w[0] = static_cast<cxtype_vertex_sv>( chi);
-      w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+      w[0] = chi;
+      w[3] = cxzero_sv();
     }
     mgDebug( 1, __FUNCTION__ );
     return;
@@ -426,7 +426,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   ixzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -438,11 +438,11 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec0 = static_cast<fptype_polarization_sv>(pvec0_);
-    const fptype_polarization_sv pvec1 = static_cast<fptype_polarization_sv>(pvec1_);
-    const fptype_polarization_sv pvec2 = static_cast<fptype_polarization_sv>(pvec2_);
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fi.w );
+    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
+    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
+    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] = -pvec0_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[1] = -pvec1_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[2] = -pvec2_ * static_cast<fptype_momenta>(nsf);
@@ -451,22 +451,22 @@
 
     const int nh = nhel * nsf;
     //const float sqp0p3 = sqrtf( pvec0 + pvec3 ) * nsf; // AV: why force a float here?
-    const fptype_polarization_sv sqp0p3 = fpsqrt<fptype_polarization>( pvec0 + pvec3 ) * static_cast<fptype_polarization>(nsf);
-    const cxtype_polarization_sv chi0 = cxmake<fptype_polarization>( sqp0p3, 0. );
-    const cxtype_polarization_sv chi1 = cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1 / sqp0p3, pvec2 / sqp0p3 );
+    const fptype_amp_sv sqp0p3 = fpsqrt( pvec0 + pvec3 ) * static_cast<fptype_amp>(nsf);
+    const cxtype_amp_sv chi0 = cxmake( sqp0p3, 0. );
+    const cxtype_amp_sv chi1 = cxmake( (fptype_amp)nh * pvec1 / sqp0p3, pvec2 / sqp0p3 );
     if( nh == 1 )
     {
-      w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[1] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[2] = static_cast<cxtype_vertex_sv>( chi0);
-      w[3] = static_cast<cxtype_vertex_sv>( chi1);
+      w[0] = cxzero_sv();
+      w[1] = cxzero_sv();
+      w[2] = chi0;
+      w[3] = chi1;
     }
     else
     {
-      w[0] = static_cast<cxtype_vertex_sv>( chi1);
-      w[1] = static_cast<cxtype_vertex_sv>( chi0);
-      w[2] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+      w[0] = chi1;
+      w[1] = chi0;
+      w[2] = cxzero_sv();
+      w[3] = cxzero_sv();
     }
     mgDebug( 1, __FUNCTION__ );
     return;
@@ -478,7 +478,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   vxxxxx( const fptype_momenta momenta[], // input: momenta
-          const fptype_polarization vmass,     // input: vector boson mass
+          const fptype_amp vmass,     // input: vector boson mass
           const int nhel,         // input: -1, 0 (only if vmass!=0) or +1 (helicity of vector boson)
           const int nsv,          // input: +1 (final) or -1 (initial)
           const int flv,          // input: flavour
@@ -494,61 +494,61 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec0 = static_cast<fptype_polarization_sv>(pvec0_);
-    const fptype_polarization_sv pvec1 = static_cast<fptype_polarization_sv>(pvec1_);
-    const fptype_polarization_sv pvec2 = static_cast<fptype_polarization_sv>(pvec2_);
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( vc.w );
+    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
+    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
+    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( vc.w );
     vc.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nsv);
     vc.pvec[1] = pvec1_ * static_cast<fptype_momenta>(nsv);
     vc.pvec[2] = pvec2_ * static_cast<fptype_momenta>(nsv);
     vc.pvec[3] = pvec3_ * static_cast<fptype_momenta>(nsv);
     vc.flv_index = flv;
-    const fptype_polarization sqh = fpsqrt<fptype_polarization>( 0.5 ); // AV this is > 0!
-    const fptype_polarization hel = nhel;
+    const fptype_amp sqh = fpsqrt( 0.5 ); // AV this is > 0!
+    const fptype_amp hel = nhel;
 
     // FD gauge
-     const cxtype_polarization_sv cI = cxmake<fptype_polarization_sv>( 0. + fptype_polarization_sv{ 0. },  1. + fptype_polarization_sv{ 0. }  );
-    fptype_polarization_sv n[5];
-    fptype_polarization_sv nk;
-    const fptype_polarization_sv zero = 0. + fptype_polarization_sv{ 0 };
-    const fptype_polarization_sv one = 1. + fptype_polarization_sv{ 0 };
+     const cxtype_amp_sv cI = cxmake( 0. + fptype_amp_sv{ 0. },  1. + fptype_amp_sv{ 0. }  );
+    fptype_amp_sv n[5];
+    fptype_amp_sv nk;
+    const fptype_amp_sv zero = 0. + fptype_amp_sv{ 0 };
+    const fptype_amp_sv one = 1. + fptype_amp_sv{ 0 };
 
     if( vmass != 0. )
     {
       const int nsvahl = nsv * std::abs( hel );
-      const fptype_polarization hel0 = 1. - std::abs( hel );
+      const fptype_amp hel0 = 1. - std::abs( hel );
 #ifndef MGONGPU_CPPSIMD
-      const fptype_polarization_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
-      const fptype_polarization_sv pp = fpmin<fptype_polarization>( pvec0, fpsqrt<fptype_polarization>( pt2 + ( pvec3 * pvec3 ) ) );
-      const fptype_polarization_sv pt = fpmin<fptype_polarization>( pp, fpsqrt<fptype_polarization>( pt2 ) );
+      const fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
+      const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pt2 + ( pvec3 * pvec3 ) ) );
+      const fptype_amp_sv pt = fpmin( pp, fpsqrt( pt2 ) );
       if( pp == 0. )
       {
-        w[0] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0., 0. ));
-        w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( -hel * sqh, 0. ));
-        w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0., nsvahl * sqh ));
-        w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( hel0, 0. ));
+        w[0] = cxmake( 0., 0. );
+        w[1] = cxmake( -hel * sqh, 0. );
+        w[2] = cxmake( 0., nsvahl * sqh );
+        w[3] = cxmake( hel0, 0. );
       }
       else
       {
         //printf( "DEBUG1011 (before emp); pvec0=%f vmass=%f pp=%f vmass*pp=%f\n", pvec0, vmass, pp, vmass * pp );
-        //const fptype_polarization emp = pvec / ( vmass * pp ); // this may give a FPE #1011 (why?! maybe when vmass=+-epsilon?)
-        const fptype_polarization emp = pvec0 / vmass / pp; // workaround for FPE #1011
+        //const fptype_amp emp = pvec / ( vmass * pp ); // this may give a FPE #1011 (why?! maybe when vmass=+-epsilon?)
+        const fptype_amp emp = pvec0 / vmass / pp; // workaround for FPE #1011
         //printf( "DEBUG1011 (after emp); emp=%f\n", emp );
-        w[0] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( hel0 * pp / vmass, 0. ));
-        w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( hel0 * pvec3 * emp + hel * pt / pp * sqh, 0. ));
+        w[0] = cxmake( hel0 * pp / vmass, 0. );
+        w[3] = cxmake( hel0 * pvec3 * emp + hel * pt / pp * sqh, 0. );
         if( pt != 0. )
         {
-          const fptype_polarization pzpt = pvec3 / ( pp * pt ) * sqh * hel;
-          w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( hel0 * pvec1 * emp - pvec1 * pzpt, -nsvahl * pvec2 / pt * sqh ));
-          w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( hel0 * pvec2 * emp - pvec2 * pzpt, nsvahl * pvec1 / pt * sqh ));
+          const fptype_amp pzpt = pvec3 / ( pp * pt ) * sqh * hel;
+          w[1] = cxmake( hel0 * pvec1 * emp - pvec1 * pzpt, -nsvahl * pvec2 / pt * sqh );
+          w[2] = cxmake( hel0 * pvec2 * emp - pvec2 * pzpt, nsvahl * pvec1 / pt * sqh );
         }
         else
         {
-          w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( -hel * sqh, 0. ));
+          w[1] = cxmake( -hel * sqh, 0. );
           // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
-          //vc[4] = cxmake<fptype_polarization>( 0., nsvahl * ( pvec3 < 0. ? -std::abs( sqh ) : std::abs( sqh ) ) ); // AV: why abs here?
-          w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0., nsvahl * ( pvec3 < 0. ? -sqh : sqh ) )); // AV: removed an abs here
+          //vc[4] = cxmake( 0., nsvahl * ( pvec3 < 0. ? -std::abs( sqh ) : std::abs( sqh ) ) ); // AV: why abs here?
+          w[2] = cxmake( 0., nsvahl * ( pvec3 < 0. ? -sqh : sqh ) ); // AV: removed an abs here
         }
       }
 
@@ -574,56 +574,56 @@
 
       if ( abs(nhel) == 1)
       {
-        w[4] = static_cast<cxtype_vertex_sv>( cxzero_sv<cxtype_polarization_sv>());
+        w[4] = cxzero_sv<cxtype_amp_sv>();
       }
       else{
-        w[0] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization_sv>( -vmass/nk * n[0], zero ));
-        w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization_sv>( -vmass/nk * n[1], zero ));
-        w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization_sv>( -vmass/nk * n[2], zero ));
-        w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization_sv>( -vmass/nk * n[3], zero ));
-        w[4] = static_cast<cxtype_vertex_sv>( -static_cast<fptype_polarization>(nsv)*cI);
+        w[0] = cxmake( -vmass/nk * n[0], zero );
+        w[1] = cxmake( -vmass/nk * n[1], zero );
+        w[2] = cxmake( -vmass/nk * n[2], zero );
+        w[3] = cxmake( -vmass/nk * n[3], zero );
+        w[4] = -static_cast<fptype_amp>(nsv)*cI;
       }
 
 #else
-      volatile fptype_polarization_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
-      volatile fptype_polarization_sv p2 = pt2 + ( pvec3 * pvec3 ); // volatile fixes #736
-      const fptype_polarization_sv pp = fpmin<fptype_polarization>( pvec0, fpsqrt<fptype_polarization>( p2 ) );
-      const fptype_polarization_sv pt = fpmin<fptype_polarization>( pp, fpsqrt<fptype_polarization>( pt2 ) );
+      volatile fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
+      volatile fptype_amp_sv p2 = pt2 + ( pvec3 * pvec3 ); // volatile fixes #736
+      const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( p2 ) );
+      const fptype_amp_sv pt = fpmin( pp, fpsqrt( pt2 ) );
       // Branch A: pp == 0.
-      const cxtype_polarization vcA_2 = cxmake<fptype_polarization>( 0, 0 );
-      const cxtype_polarization vcA_3 = cxmake<fptype_polarization>( -hel * sqh, 0 );
-      const cxtype_polarization vcA_4 = cxmake<fptype_polarization>( 0, nsvahl * sqh );
-      const cxtype_polarization vcA_5 = cxmake<fptype_polarization>( hel0, 0 );
+      const cxtype_amp vcA_2 = cxmake( 0, 0 );
+      const cxtype_amp vcA_3 = cxmake( -hel * sqh, 0 );
+      const cxtype_amp vcA_4 = cxmake( 0, nsvahl * sqh );
+      const cxtype_amp vcA_5 = cxmake( hel0, 0 );
       // Branch B: pp != 0.
-      volatile fptype_polarization_v ppDENOM = fpternary<fptype_polarization_sv>( pp != 0, pp, 1. ); // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
-      const fptype_polarization_v emp = pvec0 / ( vmass * ppDENOM );         // hack: dummy[ieppV] is not used if pp[ieppV]==0
-      const cxtype_polarization_v vcB_2 = cxmake<fptype_polarization>( hel0 * pp / vmass, 0 );
-      const cxtype_polarization_v vcB_5 = cxmake<fptype_polarization>( hel0 * pvec3 * emp + hel * pt / ppDENOM * sqh, 0 ); // hack: dummy[ieppV] is not used if pp[ieppV]==0
+      volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. ); // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
+      const fptype_amp_v emp = pvec0 / ( vmass * ppDENOM );         // hack: dummy[ieppV] is not used if pp[ieppV]==0
+      const cxtype_amp_v vcB_2 = cxmake( hel0 * pp / vmass, 0 );
+      const cxtype_amp_v vcB_5 = cxmake( hel0 * pvec3 * emp + hel * pt / ppDENOM * sqh, 0 ); // hack: dummy[ieppV] is not used if pp[ieppV]==0
       // Branch B1: pp != 0. and pt != 0.
-      volatile fptype_polarization_v ptDENOM = fpternary<fptype_polarization_sv>( pt != 0, pt, 1. );                                                     // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
-      const fptype_polarization_v pzpt = pvec3 / ( ppDENOM * ptDENOM ) * sqh * hel;                                              // hack: dummy[ieppV] is not used if pp[ieppV]==0
-      const cxtype_polarization_v vcB1_3 = cxmake<fptype_polarization>( hel0 * pvec1 * emp - pvec1 * pzpt, -static_cast<fptype_momenta_sv>(nsvahl) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
-      const cxtype_polarization_v vcB1_4 = cxmake<fptype_polarization>( hel0 * pvec2 * emp - pvec2 * pzpt, static_cast<fptype_momenta_sv>(nsvahl) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      volatile fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                                                     // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
+      const fptype_amp_v pzpt = pvec3 / ( ppDENOM * ptDENOM ) * sqh * hel;                                              // hack: dummy[ieppV] is not used if pp[ieppV]==0
+      const cxtype_amp_v vcB1_3 = cxmake( hel0 * pvec1 * emp - pvec1 * pzpt, -static_cast<fptype_momenta_sv>(nsvahl) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      const cxtype_amp_v vcB1_4 = cxmake( hel0 * pvec2 * emp - pvec2 * pzpt, static_cast<fptype_momenta_sv>(nsvahl) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
       // Branch B2: pp != 0. and pt == 0.
-      const cxtype_polarization vcB2_3 = cxmake<fptype_polarization>( -hel * sqh, 0. );
-      const cxtype_polarization_v vcB2_4 = cxmake<fptype_polarization>( 0., static_cast<fptype_momenta_sv>(nsvahl) * fpternary<fptype_polarization_sv>( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
+      const cxtype_amp vcB2_3 = cxmake( -hel * sqh, 0. );
+      const cxtype_amp_v vcB2_4 = cxmake( 0., static_cast<fptype_momenta_sv>(nsvahl) * fpternary( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
       // Choose between the results from branch A and branch B (and from branch B1 and branch B2)
       const bool_v mask = ( pp == 0. );
       const bool_v maskB = ( pt != 0. );
-      w[0] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, vcA_2, vcB_2 ));
-      w[1] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, vcA_3, cxternary<cxtype_polarization_sv>( maskB, vcB1_3, vcB2_3 ) ));
-      w[2] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, vcA_4, cxternary<cxtype_polarization_sv>( maskB, vcB1_4, vcB2_4 ) ));
-      w[3] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, vcA_5, vcB_5 ));
+      w[0] = cxternary( mask, vcA_2, vcB_2 );
+      w[1] = cxternary( mask, vcA_3, cxternary( maskB, vcB1_3, vcB2_3 ) );
+      w[2] = cxternary( mask, vcA_4, cxternary( maskB, vcB1_4, vcB2_4 ) );
+      w[3] = cxternary( mask, vcA_5, vcB_5 );
 
       //FD gauge: same two branches as the scalar code above, selected lane by
       //lane. The division uses ppDENOM (=1 where pp==0) so that the lanes that
       //do not take it are not poisoned: a select discards the other value, but
       //a nan surviving an arithmetic combination (nan*0 is nan) would not be.
       const bool_v maskFD = ( pp > zero );
-      n[0] = fpternary<fptype_polarization_sv>( pvec0 >= zero , one , -one );
-      n[1] = fpternary<fptype_polarization_sv>( maskFD, -pvec1 / ppDENOM, zero );
-      n[2] = fpternary<fptype_polarization_sv>( maskFD, -pvec2 / ppDENOM, zero );
-      n[3] = fpternary<fptype_polarization_sv>( maskFD, -pvec3 / ppDENOM, -n[0] );
+      n[0] = fpternary( pvec0 >= zero , one , -one );
+      n[1] = fpternary( maskFD, -pvec1 / ppDENOM, zero );
+      n[2] = fpternary( maskFD, -pvec2 / ppDENOM, zero );
+      n[3] = fpternary( maskFD, -pvec3 / ppDENOM, -n[0] );
       n[4] = zero;
 
       nk = n[0]*pvec0 - n[1]*pvec1 - n[2]*pvec2 - n[3]*pvec3;
@@ -636,55 +636,55 @@
       }
       else
       {
-        w[0] = cxmake<fptype_vertex_sv>( -vmass/nk * n[0], zero );
-        w[1] = cxmake<fptype_vertex_sv>( -vmass/nk * n[1], zero );
-        w[2] = cxmake<fptype_vertex_sv>( -vmass/nk * n[2], zero );
-        w[3] = cxmake<fptype_vertex_sv>( -vmass/nk * n[3], zero );
-        w[4] = -static_cast<fptype_vertex_sv>(nsv)*cI;
+        w[0] = cxmake( -vmass/nk * n[0], zero );
+        w[1] = cxmake( -vmass/nk * n[1], zero );
+        w[2] = cxmake( -vmass/nk * n[2], zero );
+        w[3] = cxmake( -vmass/nk * n[3], zero );
+        w[4] = -static_cast<fptype_amp_sv>(nsv)*cI;
       }
 #endif
     }
     else
     {
-      const fptype_polarization_sv& pp = pvec0; // NB: rewrite the following as in Fortran, using pp instead of pvec0
+      const fptype_amp_sv& pp = pvec0; // NB: rewrite the following as in Fortran, using pp instead of pvec0
 #ifndef MGONGPU_CPPSIMD
-      const fptype_polarization_sv pt = fpsqrt<fptype_polarization>( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) );
+      const fptype_amp_sv pt = fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) );
 #else
-      volatile fptype_polarization_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
-      const fptype_polarization_sv pt = fpsqrt<fptype_polarization>( pt2 );
+      volatile fptype_amp_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
+      const fptype_amp_sv pt = fpsqrt( pt2 );
 #endif
-      w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( hel * pt / pp * sqh, 0. ));
+      w[0] = cxzero_sv();
+      w[3] = cxmake( hel * pt / pp * sqh, 0. );
 #ifndef MGONGPU_CPPSIMD
       if( pt != 0. )
       {
-        const fptype_polarization pzpt = pvec3 / ( pp * pt ) * sqh * hel;
-        w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( -pvec1 * pzpt, -nsv * pvec2 / pt * sqh ));
-        w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( -pvec2 * pzpt, nsv * pvec1 / pt * sqh ));
+        const fptype_amp pzpt = pvec3 / ( pp * pt ) * sqh * hel;
+        w[1] = cxmake( -pvec1 * pzpt, -nsv * pvec2 / pt * sqh );
+        w[2] = cxmake( -pvec2 * pzpt, nsv * pvec1 / pt * sqh );
       }
       else
       {
-        w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( -hel * sqh, 0. ));
+        w[1] = cxmake( -hel * sqh, 0. );
         // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
-        //w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0, nsv * ( pvec3 < 0. ? -std::abs( sqh ) : std::abs( sqh ) ) )); // AV why abs here?
-        w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0., nsv * ( pvec3 < 0. ? -sqh : sqh ) )); // AV: removed an abs here
+        //w[2] = cxmake( 0, nsv * ( pvec3 < 0. ? -std::abs( sqh ) : std::abs( sqh ) ) ); // AV why abs here?
+        w[2] = cxmake( 0., nsv * ( pvec3 < 0. ? -sqh : sqh ) ); // AV: removed an abs here
       }
 #else
       // Branch A: pt != 0.
-      volatile fptype_polarization_v ptDENOM = fpternary<fptype_polarization_sv>( pt != 0, pt, 1. );                             // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
-      const fptype_polarization_v pzpt = pvec3 / ( pp * ptDENOM ) * sqh * hel;                           // hack: dummy[ieppV] is not used if pt[ieppV]==0
-      const cxtype_polarization_v vcA_3 = cxmake<fptype_polarization>( -pvec1 * pzpt, -static_cast<fptype_momenta_sv>(nsv) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
-      const cxtype_polarization_v vcA_4 = cxmake<fptype_polarization>( -pvec2 * pzpt, static_cast<fptype_momenta_sv>(nsv) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      volatile fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                             // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
+      const fptype_amp_v pzpt = pvec3 / ( pp * ptDENOM ) * sqh * hel;                           // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      const cxtype_amp_v vcA_3 = cxmake( -pvec1 * pzpt, -static_cast<fptype_momenta_sv>(nsv) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      const cxtype_amp_v vcA_4 = cxmake( -pvec2 * pzpt, static_cast<fptype_momenta_sv>(nsv) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
       // Branch B: pt == 0.
-      const cxtype_polarization vcB_3 = cxmake<fptype_polarization>( -(fptype_polarization)hel * sqh, 0 );
-      const cxtype_polarization_v vcB_4 = cxmake<fptype_polarization>( 0, static_cast<fptype_momenta_sv>(nsv) * fpternary<fptype_polarization_sv>( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
+      const cxtype_amp vcB_3 = cxmake( -(fptype_amp)hel * sqh, 0 );
+      const cxtype_amp_v vcB_4 = cxmake( 0, static_cast<fptype_momenta_sv>(nsv) * fpternary( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
       // Choose between the results from branch A and branch B
       const bool_v mask = ( pt != 0. );
-      w[1] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, vcA_3, vcB_3 ));
-      w[2] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, vcA_4, vcB_4 ));
+      w[1] = cxternary( mask, vcA_3, vcB_3 );
+      w[2] = cxternary( mask, vcA_4, vcB_4 );
 #endif
       //FD gauge
-      w[4] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+      w[4] = cxzero_sv();
     }
     mgDebug( 1, __FUNCTION__ );
     return;
@@ -708,22 +708,22 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec0 = static_cast<fptype_polarization_sv>(pvec0_);
-    const fptype_polarization_sv pvec1 = static_cast<fptype_polarization_sv>(pvec1_);
-    const fptype_polarization_sv pvec2 = static_cast<fptype_polarization_sv>(pvec2_);
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( sc.w );
+    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
+    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
+    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( sc.w );
     sc.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nss);
     sc.pvec[1] = pvec1_ * static_cast<fptype_momenta>(nss);
     sc.pvec[2] = pvec2_ * static_cast<fptype_momenta>(nss);
     sc.pvec[3] = pvec3_ * static_cast<fptype_momenta>(nss);
     sc.flv_index = flv;
-    w[0] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 1 + fptype_sv{ 0 }, 0 ));
+    w[0] = cxmake( 1 + fptype_sv{ 0 }, 0 );
     //FD gauge
-    w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0 + fptype_sv{ 0 }, 0 ));
-    w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0 + fptype_sv{ 0 }, 0 ));
-    w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 0 + fptype_sv{ 0 }, 0 ));
-    w[4] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( 1 + fptype_sv{ 0 }, 0 ));
+    w[1] = cxmake( 0 + fptype_sv{ 0 }, 0 );
+    w[2] = cxmake( 0 + fptype_sv{ 0 }, 0 );
+    w[3] = cxmake( 0 + fptype_sv{ 0 }, 0 );
+    w[4] = cxmake( 1 + fptype_sv{ 0 }, 0 );
 
     mgDebug( 1, __FUNCTION__ );
     return;
@@ -735,7 +735,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   oxxxxx( const fptype_momenta momenta[], // input: momenta
-          const fptype_polarization fmass,     // input: fermion mass
+          const fptype_amp fmass,     // input: fermion mass
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           int flv,                // input: flavour
@@ -751,11 +751,11 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec0 = static_cast<fptype_polarization_sv>(pvec0_);
-    const fptype_polarization_sv pvec1 = static_cast<fptype_polarization_sv>(pvec1_);
-    const fptype_polarization_sv pvec2 = static_cast<fptype_polarization_sv>(pvec2_);
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fo.w );
+    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
+    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
+    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
 
     fo.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nsf);
     fo.pvec[1] = pvec1_ * static_cast<fptype_momenta>(nsf);
@@ -766,111 +766,111 @@
     if( fmass != 0. )
     {
 #ifndef MGONGPU_CPPSIMD
-      const fptype_polarization_sv pp = fpmin<fptype_polarization>( pvec0, fpsqrt<fptype_polarization>( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) + ( pvec3 * pvec3 ) ) );
+      const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) + ( pvec3 * pvec3 ) ) );
       if( pp == 0. )
       {
         // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
-        fptype_polarization sqm[2] = { fpsqrt<fptype_polarization>( std::abs( fmass ) ), 0. }; // possibility of negative fermion masses
+        fptype_amp sqm[2] = { fpsqrt( std::abs( fmass ) ), 0. }; // possibility of negative fermion masses
         //sqm[1] = ( fmass < 0. ? -abs( sqm[0] ) : abs( sqm[0] ) ); // AV: why abs here?
         sqm[1] = ( fmass < 0. ? -sqm[0] : sqm[0] ); // AV: removed an abs here
         const int ip = -( ( 1 - nh ) / 2 ) * nhel;  // NB: Fortran sqm(0:1) also has indexes 0,1 as in C++
         const int im = ( 1 + nh ) / 2 * nhel;       // NB: Fortran sqm(0:1) also has indexes 0,1 as in C++
-        w[0] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( im * sqm[std::abs( ip )], 0 ));
-        w[1] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( ip * nsf * sqm[std::abs( ip )], 0 ));
-        w[2] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( im * nsf * sqm[std::abs( im )], 0 ));
-        w[3] = static_cast<cxtype_vertex_sv>( cxmake<fptype_polarization>( ip * sqm[std::abs( im )], 0 ));
+        w[0] = cxmake( im * sqm[std::abs( ip )], 0 );
+        w[1] = cxmake( ip * nsf * sqm[std::abs( ip )], 0 );
+        w[2] = cxmake( im * nsf * sqm[std::abs( im )], 0 );
+        w[3] = cxmake( ip * sqm[std::abs( im )], 0 );
       }
       else
       {
-        const fptype_polarization sf[2] = { fptype_polarization( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_polarization)0.5,
-                               fptype_polarization( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_polarization)0.5 };
-        fptype_polarization omega[2] = { fpsqrt<fptype_polarization>( pvec0 + pp ), 0. };
+        const fptype_amp sf[2] = { fptype_amp( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_amp)0.5,
+                               fptype_amp( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_amp)0.5 };
+        fptype_amp omega[2] = { fpsqrt( pvec0 + pp ), 0. };
         omega[1] = fmass / omega[0];
         const int ip = ( 1 + nh ) / 2; // NB: Fortran is (3+nh)/2 because omega(2) has indexes 1,2 and not 0,1
         const int im = ( 1 - nh ) / 2; // NB: Fortran is (3-nh)/2 because omega(2) has indexes 1,2 and not 0,1
-        const fptype_polarization sfomeg[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
-        const fptype_polarization pp3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
-        const cxtype_polarization chi[2] = { cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( pp3 * (fptype_polarization)0.5 / pp ), 0. ),
-                                ( ( pp3 == 0. ) ? cxmake<fptype_polarization>( -nh, 0. )
-                                                : cxmake<fptype_polarization>( nh * pvec1, -pvec2 ) / fpsqrt<fptype_polarization>( 2. * pp * pp3 ) ) };
-        w[0] = static_cast<cxtype_vertex_sv>( sfomeg[1] * chi[im]);
-        w[1] = static_cast<cxtype_vertex_sv>( sfomeg[1] * chi[ip]);
-        w[2] = static_cast<cxtype_vertex_sv>( sfomeg[0] * chi[im]);
-        w[3] = static_cast<cxtype_vertex_sv>( sfomeg[0] * chi[ip]);
+        const fptype_amp sfomeg[2] = { sf[0] * omega[ip], sf[1] * omega[im] };
+        const fptype_amp pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
+        const cxtype_amp chi[2] = { cxmake( fpsqrt( pp3 * (fptype_amp)0.5 / pp ), 0. ),
+                                ( ( pp3 == 0. ) ? cxmake( -nh, 0. )
+                                                : cxmake( nh * pvec1, -pvec2 ) / fpsqrt( 2. * pp * pp3 ) ) };
+        w[0] = sfomeg[1] * chi[im];
+        w[1] = sfomeg[1] * chi[ip];
+        w[2] = sfomeg[0] * chi[im];
+        w[3] = sfomeg[0] * chi[ip];
       }
 #else
-      volatile fptype_polarization_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
-      const fptype_polarization_sv pp = fpmin<fptype_polarization>( pvec0, fpsqrt<fptype_polarization>( p2 ) );
+      volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
+      const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( p2 ) );
       // Branch A: pp == 0.
       // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
-      fptype_polarization sqm[2] = { fpsqrt<fptype_polarization>( std::abs( fmass ) ), 0 }; // possibility of negative fermion masses
+      fptype_amp sqm[2] = { fpsqrt( std::abs( fmass ) ), 0 }; // possibility of negative fermion masses
       sqm[1] = ( fmass < 0 ? -sqm[0] : sqm[0] );          // AV: removed an abs here (as above)
       const int ipA = -( ( 1 - nh ) / 2 ) * nhel;
       const int imA = ( 1 + nh ) / 2 * nhel;
-      const cxtype_polarization foA_2 = imA * sqm[std::abs( ipA )];
-      const cxtype_polarization foA_3 = ipA * nsf * sqm[std::abs( ipA )];
-      const cxtype_polarization foA_4 = imA * nsf * sqm[std::abs( imA )];
-      const cxtype_polarization foA_5 = ipA * sqm[std::abs( imA )];
+      const cxtype_amp foA_2 = imA * sqm[std::abs( ipA )];
+      const cxtype_amp foA_3 = ipA * nsf * sqm[std::abs( ipA )];
+      const cxtype_amp foA_4 = imA * nsf * sqm[std::abs( imA )];
+      const cxtype_amp foA_5 = ipA * sqm[std::abs( imA )];
       // Branch B: pp != 0.
-      const fptype_polarization sf[2] = { fptype_polarization( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_polarization)0.5,
-                             fptype_polarization( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_polarization)0.5 };
-      fptype_v omega[2] = { fpsqrt<fptype_polarization>( pvec0 + pp ), 0 };
+      const fptype_amp sf[2] = { fptype_amp( 1 + nsf + ( 1 - nsf ) * nh ) * (fptype_amp)0.5,
+                             fptype_amp( 1 + nsf - ( 1 - nsf ) * nh ) * (fptype_amp)0.5 };
+      fptype_v omega[2] = { fpsqrt( pvec0 + pp ), 0 };
       omega[1] = fmass / omega[0];
       const int ipB = ( 1 + nh ) / 2;
       const int imB = ( 1 - nh ) / 2;
-      const fptype_polarization_v sfomeg[2] = { sf[0] * omega[ipB], sf[1] * omega[imB] };
-      const fptype_polarization_v pp3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
-      volatile fptype_polarization_v ppDENOM = fpternary<fptype_polarization_sv>( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
-      volatile fptype_polarization_v pp3DENOM = fpternary<fptype_polarization_sv>( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
-      volatile fptype_polarization_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
-      const cxtype_polarization_v chi[2] = { cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( chi0r2 ), 0. ),    // hack: dummy[ieppV] is not used if pp[ieppV]==0
-                                ( cxternary<cxtype_polarization_sv>( ( pp3 == 0. ),
-                                             cxmake<fptype_polarization>( -nh, 0. ),
-                                             cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1, -pvec2 ) / fpsqrt<fptype_polarization>( 2. * ppDENOM * pp3DENOM ) ) ) }; // hack: dummy[ieppV] is not used if pp[ieppV]==0
-      const cxtype_polarization_v foB_2 = sfomeg[1] * chi[imB];
-      const cxtype_polarization_v foB_3 = sfomeg[1] * chi[ipB];
-      const cxtype_polarization_v foB_4 = sfomeg[0] * chi[imB];
-      const cxtype_polarization_v foB_5 = sfomeg[0] * chi[ipB];
+      const fptype_amp_v sfomeg[2] = { sf[0] * omega[ipB], sf[1] * omega[imB] };
+      const fptype_amp_v pp3 = fpmax( fpternary( fpsignbit( pvec3 ), ( pvec0 * pvec0 + pvec2 * pvec2 ) / ( pp - pvec3 ), pp + pvec3 ), 0. );
+      volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. );    // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
+      volatile fptype_amp_v pp3DENOM = fpternary( pp3 != 0, pp3, 1. ); // hack: pp3DENOM[ieppV]=1 if pp3[ieppV]==0
+      volatile fptype_amp_v chi0r2 = pp3 * 0.5 / ppDENOM;              // volatile fixes #736
+      const cxtype_amp_v chi[2] = { cxmake( fpsqrt( chi0r2 ), 0. ),    // hack: dummy[ieppV] is not used if pp[ieppV]==0
+                                ( cxternary( ( pp3 == 0. ),
+                                             cxmake( -nh, 0. ),
+                                             cxmake( (fptype_amp)nh * pvec1, -pvec2 ) / fpsqrt( 2. * ppDENOM * pp3DENOM ) ) ) }; // hack: dummy[ieppV] is not used if pp[ieppV]==0
+      const cxtype_amp_v foB_2 = sfomeg[1] * chi[imB];
+      const cxtype_amp_v foB_3 = sfomeg[1] * chi[ipB];
+      const cxtype_amp_v foB_4 = sfomeg[0] * chi[imB];
+      const cxtype_amp_v foB_5 = sfomeg[0] * chi[ipB];
       // Choose between the results from branch A and branch B
       const bool_v mask = ( pp == 0. );
-      w[0] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, foA_2, foB_2 ));
-      w[1] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, foA_3, foB_3 ));
-      w[2] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, foA_4, foB_4 ));
-      w[3] = static_cast<cxtype_vertex_sv>( cxternary<cxtype_polarization_sv>( mask, foA_5, foB_5 ));
+      w[0] = cxternary( mask, foA_2, foB_2 );
+      w[1] = cxternary( mask, foA_3, foB_3 );
+      w[2] = cxternary( mask, foA_4, foB_4 );
+      w[3] = cxternary( mask, foA_5, foB_5 );
 #endif
     }
     else
     {
 #ifdef MGONGPU_CPPSIMD
-      volatile fptype_polarization_sv p0p3 = fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0 ); // volatile fixes #736
-      volatile fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
+      volatile fptype_amp_sv p0p3 = fpmax( fpternary( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0 ); // volatile fixes #736
+      volatile fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
-                                             fpsqrt<fptype_polarization>( p0p3 ) * (fptype_polarization)nsf );
-      volatile fptype_polarization_v sqp0p3DENOM = fpternary<fptype_polarization_sv>( sqp0p3 != 0, (fptype_sv)sqp0p3, 1. ); // hack: sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
-      const cxtype_polarization_v chi[2] = { cxmake<fptype_polarization>( (fptype_v)sqp0p3, 0. ),
-                                cxternary<cxtype_polarization_sv>( ( sqp0p3 == 0. ),
-                                           cxmake<fptype_polarization>( -nhel, 0. ) * fpsqrt<fptype_polarization>( 2. * pvec0 ),
-                                           cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1, -pvec2 ) / (const fptype_polarization_sv)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
+                                             fpsqrt( p0p3 ) * (fptype_amp)nsf );
+      volatile fptype_amp_v sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_sv)sqp0p3, 1. ); // hack: sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
+      const cxtype_amp_v chi[2] = { cxmake( (fptype_v)sqp0p3, 0. ),
+                                cxternary( ( sqp0p3 == 0. ),
+                                           cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ),
+                                           cxmake( (fptype_amp)nh * pvec1, -pvec2 ) / (const fptype_amp_sv)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
 #else
-      const fptype_polarization_sv sqp0p3 = fpternary<fptype_polarization_sv>( ( pvec1 == 0. ) and ( pvec2 == 0. ) and ( pvec3 < 0. ),
+      const fptype_amp_sv sqp0p3 = fpternary( ( pvec1 == 0. ) and ( pvec2 == 0. ) and ( pvec3 < 0. ),
                                           0,
-                                          fpsqrt<fptype_polarization>( fpmax<fptype_polarization>( fpternary<fptype_polarization_sv>( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0. ) ) * (fptype_polarization)nsf );
-      const cxtype_polarization_sv chi[2] = { cxmake<fptype_polarization>( sqp0p3, 0. ),
-                                 ( sqp0p3 == 0. ? cxmake<fptype_polarization>( -nhel, 0. ) * fpsqrt<fptype_polarization>( 2. * pvec0 ) : cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1, -pvec2 ) / sqp0p3 ) };
+                                          fpsqrt( fpmax( fpternary( fpsignbit( pvec0 ) == fpsignbit( pvec3 ), pvec0 + pvec3, ( pvec1 * pvec1 + pvec2 * pvec2 ) / ( pvec0 - pvec3 ) ), 0. ) ) * (fptype_amp)nsf );
+      const cxtype_amp_sv chi[2] = { cxmake( sqp0p3, 0. ),
+                                 ( sqp0p3 == 0. ? cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ) : cxmake( (fptype_amp)nh * pvec1, -pvec2 ) / sqp0p3 ) };
 #endif
       if( nh == 1 )
       {
-        w[0] = static_cast<cxtype_vertex_sv>( chi[0]);
-        w[1] = static_cast<cxtype_vertex_sv>( chi[1]);
-        w[2] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-        w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+        w[0] = chi[0];
+        w[1] = chi[1];
+        w[2] = cxzero_sv();
+        w[3] = cxzero_sv();
       }
       else
       {
-        w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-        w[1] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-        w[2] = static_cast<cxtype_vertex_sv>( chi[1]);
-        w[3] = static_cast<cxtype_vertex_sv>( chi[0]);
+        w[0] = cxzero_sv();
+        w[1] = cxzero_sv();
+        w[2] = chi[1];
+        w[3] = chi[0];
       }
     }
     mgDebug( 1, __FUNCTION__ );
@@ -884,7 +884,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   opzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -893,26 +893,26 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fo.w );
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
     fo.pvec[0] = pvec3_ * static_cast<fptype_momenta>(nsf);
     fo.pvec[1] = fptype_momenta_sv{ 0 };
     fo.pvec[2] = fptype_momenta_sv{ 0 };
     fo.pvec[3] = pvec3_ * static_cast<fptype_momenta>(nsf);
     fo.flv_index = flv;
     const int nh = nhel * nsf;
-    const cxtype_polarization_sv csqp0p3 = cxmake<fptype_polarization>( fpsqrt<fptype_polarization>( 2. * pvec3 ) * (fptype_polarization)nsf, 0. );
-    w[1] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-    w[2] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+    const cxtype_amp_sv csqp0p3 = cxmake( fpsqrt( 2. * pvec3 ) * (fptype_amp)nsf, 0. );
+    w[1] = cxzero_sv();
+    w[2] = cxzero_sv();
     if( nh == 1 )
     {
-      w[0] = static_cast<cxtype_vertex_sv>( csqp0p3);
-      w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+      w[0] = csqp0p3;
+      w[3] = cxzero_sv();
     }
     else
     {
-      w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[3] = static_cast<cxtype_vertex_sv>( csqp0p3);
+      w[0] = cxzero_sv();
+      w[3] = csqp0p3;
     }
     mgDebug( 1, __FUNCTION__ );
     return;
@@ -925,7 +925,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   omzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -934,29 +934,29 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fo.w );
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
     fo.pvec[0] = -pvec3_ * static_cast<fptype_momenta_sv>(nsf);
     fo.pvec[1] = fptype_momenta_sv{ 0 };
     fo.pvec[2] = fptype_momenta_sv{ 0 };
     fo.pvec[3] = pvec3_ * static_cast<fptype_momenta_sv>(nsf);
     fo.flv_index = flv;
     const int nh = nhel * nsf;
-    const cxtype_polarization_sv chi1 = cxmake<fptype_polarization>( -nhel, 0. ) * fpsqrt<fptype_polarization>( -2. * pvec3 );
+    const cxtype_amp_sv chi1 = cxmake( -nhel, 0. ) * fpsqrt( -2. * pvec3 );
     if( nh == 1 )
     {
-      w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[1] = static_cast<cxtype_vertex_sv>( chi1);
-      w[2] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+      w[0] = cxzero_sv();
+      w[1] = chi1;
+      w[2] = cxzero_sv();
+      w[3] = cxzero_sv();
     }
     else
     {
-      w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[1] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[2] = static_cast<cxtype_vertex_sv>( chi1);
-      //w[3] = static_cast<cxtype_vertex_sv>( chi1); // AV: BUG!
-      w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv()); // AV: BUG FIX
+      w[0] = cxzero_sv();
+      w[1] = cxzero_sv();
+      w[2] = chi1;
+      //w[3] = chi1; // AV: BUG!
+      w[3] = cxzero_sv(); // AV: BUG FIX
     }
     mgDebug( 1, __FUNCTION__ );
     return;
@@ -969,7 +969,7 @@
   template<class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
   oxzxxx( const fptype_momenta momenta[], // input: momenta
-          //const fptype_polarization fmass,   // [skip: ASSUME fermion mass==0]
+          //const fptype_amp fmass,   // [skip: ASSUME fermion mass==0]
           const int nhel,         // input: -1 or +1 (helicity of fermion)
           const int nsf,          // input: +1 (particle) or -1 (antiparticle)
           const int flv,          // input: flavour
@@ -981,11 +981,11 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_polarization_sv pvec0 = static_cast<fptype_polarization_sv>(pvec0_);
-    const fptype_polarization_sv pvec1 = static_cast<fptype_polarization_sv>(pvec1_);
-    const fptype_polarization_sv pvec2 = static_cast<fptype_polarization_sv>(pvec2_);
-    const fptype_polarization_sv pvec3 = static_cast<fptype_polarization_sv>(pvec3_);
-    cxtype_vertex_sv* w = W_ACCESS::kernelAccess( fo.w );
+    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
+    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
+    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
+    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
 
     fo.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nsf);
     fo.pvec[1] = pvec1_ * static_cast<fptype_momenta>(nsf);
@@ -994,22 +994,22 @@
     fo.flv_index = flv;
     const int nh = nhel * nsf;
     //const float sqp0p3 = sqrtf( pvec0 + pvec3 ) * nsf; // AV: why force a float here?
-    const fptype_polarization_sv sqp0p3 = fpsqrt<fptype_polarization>( pvec0 + pvec3 ) * static_cast<fptype_polarization>(nsf);
-    const cxtype_polarization_sv chi0 = cxmake<fptype_polarization>( sqp0p3, 0. );
-    const cxtype_polarization_sv chi1 = cxmake<fptype_polarization>( (fptype_polarization)nh * pvec1 / sqp0p3, -pvec2 / sqp0p3 );
+    const fptype_amp_sv sqp0p3 = fpsqrt( pvec0 + pvec3 ) * static_cast<fptype_amp>(nsf);
+    const cxtype_amp_sv chi0 = cxmake( sqp0p3, 0. );
+    const cxtype_amp_sv chi1 = cxmake( (fptype_amp)nh * pvec1 / sqp0p3, -pvec2 / sqp0p3 );
     if( nh == 1 )
     {
-      w[0] = static_cast<cxtype_vertex_sv>( chi0);
-      w[1] = static_cast<cxtype_vertex_sv>( chi1);
-      w[2] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[3] = static_cast<cxtype_vertex_sv>( cxzero_sv());
+      w[0] = chi0;
+      w[1] = chi1;
+      w[2] = cxzero_sv();
+      w[3] = cxzero_sv();
     }
     else
     {
-      w[0] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[1] = static_cast<cxtype_vertex_sv>( cxzero_sv());
-      w[2] = static_cast<cxtype_vertex_sv>( chi1);
-      w[3] = static_cast<cxtype_vertex_sv>( chi0);
+      w[0] = cxzero_sv();
+      w[1] = cxzero_sv();
+      w[2] = chi1;
+      w[3] = chi0;
     }
     mgDebug( 1, __FUNCTION__ );
     return;
@@ -1019,23 +1019,23 @@
   // Compute the direction n[5] of the gauge q[5]
   // TODO: Utilise pvec instead of the whole q
   __host__ __device__ INLINE void
-  define_gauge_dir( const cxtype_vertex_sv q[5], // input: gauge
-                    fptype_vertex_sv n[5] )      // output: direction
+  define_gauge_dir( const cxtype_amp_sv q[5], // input: gauge
+                    fptype_amp_sv n[5] )      // output: direction
  {
-   const fptype_vertex_sv qabs2 = q[1].real()*q[1].real()
+   const fptype_amp_sv qabs2 = q[1].real()*q[1].real()
                        + q[2].real()*q[2].real()
                        + q[3].real()*q[3].real();
 
-   const fptype_vertex_sv one = 1. + fptype_vertex_sv{0};
-   const fptype_vertex_sv zero = 0. + fptype_vertex_sv{0};
+   const fptype_amp_sv one = 1. + fptype_amp_sv{0};
+   const fptype_amp_sv zero = 0. + fptype_amp_sv{0};
 
 #ifndef MGONGPU_CPPSIMD
 
     if (qabs2 > 0.f)
     {
-      const fptype_vertex_sv qabs = fpsqrt<fptype_vertex_sv>(qabs2);
+      const fptype_amp_sv qabs = fpsqrt(qabs2);
 
-      n[0] = fpternary<fptype_vertex_sv>( q[0].real() >= 0.f , one , -one);
+      n[0] = fpternary( q[0].real() >= 0.f , one , -one);
       n[1] = -q[1].real() / qabs;
       n[2] = -q[2].real() / qabs;
       n[3] = -q[3].real() / qabs;
@@ -1043,19 +1043,19 @@
     }
     else
     {
-      n[0] = fpternary<fptype_vertex_sv>( q[0].real() >= 0.f , one , -one );
+      n[0] = fpternary( q[0].real() >= 0.f , one , -one );
       n[1] = zero;
       n[2] = zero;
-      n[3] = fpternary<fptype_vertex_sv>( q[0].real() >= 0.f , -one , one); // -sign(q0), as in fortran and python define_gauge_dir
+      n[3] = fpternary( q[0].real() >= 0.f , -one , one); // -sign(q0), as in fortran and python define_gauge_dir
       n[4] = zero;
     }
 #else
-    const fptype_vertex_sv qabs = fpsqrt(qabs2);
+    const fptype_amp_sv qabs = fpsqrt(qabs2);
     const bool_v qsign = (qabs2 > 0.f);
-    n[0] = fpternary<fptype_vertex_sv>( q[0].real() >= 0.f , one , -one);
-    n[1] = fpternary<fptype_vertex_sv>( qsign , -q[1].real() / qabs , zero );
-    n[2] = fpternary<fptype_vertex_sv>( qsign , -q[2].real() / qabs , zero );
-    n[3] = fpternary<fptype_vertex_sv>( qsign , -q[3].real() / qabs , fpternary<fptype_vertex_sv>( q[0].real() >= 0.f , -one , one));
+    n[0] = fpternary( q[0].real() >= 0.f , one , -one);
+    n[1] = fpternary( qsign , -q[1].real() / qabs , zero );
+    n[2] = fpternary( qsign , -q[2].real() / qabs , zero );
+    n[3] = fpternary( qsign , -q[3].real() / qabs , fpternary( q[0].real() >= 0.f , -one , one));
     n[4] = zero;
 #endif
  }
@@ -1063,12 +1063,12 @@
 //--------------------------------------------------------------------------
 // Compute propagator factor d  from the gauge q[5] and mass
   __host__ __device__ INLINE void
-  calculate_propagator_factor( const cxtype_vertex_sv q[5], // input: gauge
-                               const fptype_vertex_sv mass,    // input: mass
+  calculate_propagator_factor( const cxtype_amp_sv q[5], // input: gauge
+                               const fptype_amp_sv mass,    // input: mass
                                fptype_sv *d )        // output: propagator factor
   {
-    const fptype_vertex_sv one = 1. + fptype_vertex_sv{0};
-    const fptype_vertex_sv  q2 = q[0].real()*q[0].real() - ( q[1].real()*q[1].real() + q[2].real()*q[2].real() + q[3].real()*q[3].real() );
+    const fptype_amp_sv one = 1. + fptype_amp_sv{0};
+    const fptype_amp_sv  q2 = q[0].real()*q[0].real() - ( q[1].real()*q[1].real() + q[2].real()*q[2].real() + q[3].real()*q[3].real() );
     *d = one / (q2 - mass*mass);
   }
 
@@ -1082,20 +1082,20 @@
                               ALOHAOBJ Aout )       // output: wavefunctions
   {
 
-    const cxtype_vertex_sv* win = W_ACCESS::kernelAccessConst( Ain.w );
-    cxtype_vertex_sv* wout = W_ACCESS::kernelAccess( Aout.w );
+    const cxtype_amp_sv* win = W_ACCESS::kernelAccessConst( Ain.w );
+    cxtype_amp_sv* wout = W_ACCESS::kernelAccess( Aout.w );
 
-    cxtype_vertex_sv q[5];
-    fptype_vertex_sv n[5];
-    cxtype_vertex_sv w0[5], w1[5];
+    cxtype_amp_sv q[5];
+    fptype_amp_sv n[5];
+    cxtype_amp_sv w0[5], w1[5];
 
-    const cxtype_vertex_sv cI = cxmake<fptype_vertex_sv>( 0. + fptype_vertex_sv{ 0 },  1. + fptype_vertex_sv{ 0 }  );
+    const cxtype_amp_sv cI = cxmake( 0. + fptype_amp_sv{ 0 },  1. + fptype_amp_sv{ 0 }  );
 
     // Construct q from momenta
-    q[0] = cxmake<fptype_vertex_sv>( -Ain.pvec[0], 0.);
-    q[1] = cxmake<fptype_vertex_sv>( -Ain.pvec[1], 0.);
-    q[2] = cxmake<fptype_vertex_sv>( -Ain.pvec[2], 0.);
-    q[3] = cxmake<fptype_vertex_sv>( -Ain.pvec[3], 0.);
+    q[0] = cxmake( -Ain.pvec[0], 0.);
+    q[1] = cxmake( -Ain.pvec[1], 0.);
+    q[2] = cxmake( -Ain.pvec[2], 0.);
+    q[3] = cxmake( -Ain.pvec[3], 0.);
     q[4] = -cI*m;
 
     // Copy the momenta 
@@ -1112,24 +1112,24 @@
     w0[3] = win[3];
     w0[4] = win[4];
 
-    fptype_vertex_sv nq =
+    fptype_amp_sv nq =
           n[0]*q[0].real()
         - n[1]*q[1].real()
         - n[2]*q[2].real()
         - n[3]*q[3].real();
 
-    cxtype_vertex_sv js1 =
+    cxtype_amp_sv js1 =
         ( n[0]*w0[0]
         - n[1]*w0[1]
         - n[2]*w0[2]
         - n[3]*w0[3] ) / nq;
 
-    cxtype_vertex_sv js2 =
+    cxtype_amp_sv js2 =
         ( q[0]*w0[0]
         - q[1]*w0[1]
         - q[2]*w0[2]
         - q[3]*w0[3]
-        - cxconj<fptype_vertex_sv>(q[4]) * w0[4] ) / nq ;
+        - cxconj(q[4]) * w0[4] ) / nq ;
 
     w1[0] = w0[0] - q[0]*js1 - n[0]*js2;
     w1[1] = w0[1] - q[1]*js1 - n[1]*js2;
