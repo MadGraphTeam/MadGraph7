@@ -38,9 +38,9 @@ namespace mg5amcCpu
 
   private:
 
-    friend class MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_vertex>;
-    friend class KernelAccessHelper<MemoryAccessWavefunctionsBase, true, fptype_vertex>;
-    friend class KernelAccessHelper<MemoryAccessWavefunctionsBase, false, fptype_vertex>;
+    friend class MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>;
+    friend class KernelAccessHelper<MemoryAccessWavefunctionsBase, true, fptype_amp>;
+    friend class KernelAccessHelper<MemoryAccessWavefunctionsBase, false, fptype_amp>;
 
     // The number of components of a (fermion or vector) wavefunction
     static constexpr int nw6 = mgOnGpu::nw6;
@@ -54,9 +54,9 @@ namespace mg5amcCpu
     //--------------------------------------------------------------------------
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (non-const) ===> fptype_vertex* ieventAccessRecord( fptype_vertex* buffer, const int ievt ) <===]
-    static __host__ __device__ inline fptype_vertex*
-    ieventAccessRecord( fptype_vertex* buffer,
+    // [Signature (non-const) ===> fptype_amp* ieventAccessRecord( fptype_amp* buffer, const int ievt ) <===]
+    static __host__ __device__ inline fptype_amp*
+    ieventAccessRecord( fptype_amp* buffer,
                         const int ievt )
     {
       const int ipagW = ievt / neppW; // #event "W-page"
@@ -69,10 +69,10 @@ namespace mg5amcCpu
     //--------------------------------------------------------------------------
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (non-const) ===> fptype_vertex& decodeRecord( fptype_vertex* buffer, Ts... args ) <===]
+    // [Signature (non-const) ===> fptype_amp& decodeRecord( fptype_amp* buffer, Ts... args ) <===]
     // [NB: expand variadic template "Ts... args" to "const int iw6, const int ix2" and rename "Field" as "Iw6Ix2"]
-    static __host__ __device__ inline fptype_vertex&
-    decodeRecord( fptype_vertex* buffer,
+    static __host__ __device__ inline fptype_amp&
+    decodeRecord( fptype_amp* buffer,
                   const int iw6,
                   const int ix2 )
     {
@@ -91,31 +91,31 @@ namespace mg5amcCpu
   public:
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (non-const) ===> fptype_vertex* ieventAccessRecord( fptype_vertex* buffer, const int ievt ) <===]
-    static constexpr auto ieventAccessRecord = MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_vertex>::ieventAccessRecord;
+    // [Signature (non-const) ===> fptype_amp* ieventAccessRecord( fptype_amp* buffer, const int ievt ) <===]
+    static constexpr auto ieventAccessRecord = MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>::ieventAccessRecord;
 
     // Locate an event record (output) in a memory buffer (input) from the given event number (input)
-    // [Signature (const) ===> const fptype_vertex* ieventAccessRecordConst( const fptype_vertex* buffer, const int ievt ) <===]
-    static constexpr auto ieventAccessRecordConst = MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_vertex>::ieventAccessRecordConst;
+    // [Signature (const) ===> const fptype_amp* ieventAccessRecordConst( const fptype_amp* buffer, const int ievt ) <===]
+    static constexpr auto ieventAccessRecordConst = MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>::ieventAccessRecordConst;
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (non-const) ===> fptype_vertex& decodeRecord( fptype_vertex* buffer, const int iw6, const int ix2 ) <===]
-    static constexpr auto decodeRecordIw6Ix2 = MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_vertex>::decodeRecord;
+    // [Signature (non-const) ===> fptype_amp& decodeRecord( fptype_amp* buffer, const int iw6, const int ix2 ) <===]
+    static constexpr auto decodeRecordIw6Ix2 = MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>::decodeRecord;
 
     // Locate a field (output) of an event record (input) from the given field indexes (input)
-    // [Signature (const) ===> const fptype_vertex& decodeRecordConst( const fptype_vertex* buffer, const int iw6, const int ix2 ) <===]
+    // [Signature (const) ===> const fptype_amp& decodeRecordConst( const fptype_amp* buffer, const int iw6, const int ix2 ) <===]
     static constexpr auto decodeRecordIw6Ix2Const =
-      MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_vertex>::template decodeRecordConst<int, int>;
+      MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>::template decodeRecordConst<int, int>;
 
     // Locate a field (output) in a memory buffer (input) from the given event number (input) and the given field indexes (input)
-    // [Signature (non-const) ===> fptype_vertex& ieventAccessIw6Ix2( fptype_vertex* buffer, const ievt, const int iw6, const int ix2 ) <===]
+    // [Signature (non-const) ===> fptype_amp& ieventAccessIw6Ix2( fptype_amp* buffer, const ievt, const int iw6, const int ix2 ) <===]
     static constexpr auto ieventAccessIw6Ix2 =
-      MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_vertex>::template ieventAccessField<int, int>;
+      MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>::template ieventAccessField<int, int>;
 
     // Locate a field (output) in a memory buffer (input) from the given event number (input) and the given field indexes (input)
-    // [Signature (const) ===> const fptype_vertex& ieventAccessIw6Ix2Const( const fptype_vertex* buffer, const ievt, const int iw6, const int ix2 ) <===]
+    // [Signature (const) ===> const fptype_amp& ieventAccessIw6Ix2Const( const fptype_amp* buffer, const ievt, const int iw6, const int ix2 ) <===]
     static constexpr auto ieventAccessIw6Ix2Const =
-      MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_vertex>::template ieventAccessFieldConst<int, int>;
+      MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>::template ieventAccessFieldConst<int, int>;
   };
 
 #endif // #ifndef MGONGPU_TRIVIAL_WAVEFUNCTIONS
@@ -132,27 +132,27 @@ namespace mg5amcCpu
 #ifndef MGONGPU_TRIVIAL_WAVEFUNCTIONS
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (non-const) ===> fptype_vertex& kernelAccessIw6Ix2( fptype_vertex* buffer, const int iw6, const int ix2 ) <===]
+    // [Signature (non-const) ===> fptype_amp& kernelAccessIw6Ix2( fptype_amp* buffer, const int iw6, const int ix2 ) <===]
     static constexpr auto kernelAccessIw6Ix2 =
-      KernelAccessHelper<MemoryAccessWavefunctionsBase, onDevice, fptype_vertex>::template kernelAccessField<int, int>;
+      KernelAccessHelper<MemoryAccessWavefunctionsBase, onDevice, fptype_amp>::template kernelAccessField<int, int>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
-    // [Signature (const) ===> const fptype_vertex& kernelAccessIw6Ix2Const( const fptype_vertex* buffer, const int iw6, const int ix2 ) <===]
+    // [Signature (const) ===> const fptype_amp& kernelAccessIw6Ix2Const( const fptype_amp* buffer, const int iw6, const int ix2 ) <===]
     static constexpr auto kernelAccessIw6Ix2Const =
-      KernelAccessHelper<MemoryAccessWavefunctionsBase, onDevice, fptype_vertex>::template kernelAccessFieldConst<int, int>;
+      KernelAccessHelper<MemoryAccessWavefunctionsBase, onDevice, fptype_amp>::template kernelAccessFieldConst<int, int>;
 
 #else
 
-    static __host__ __device__ inline cxtype_vertex_sv*
-    kernelAccess( fptype_vertex* buffer )
+    static __host__ __device__ inline cxtype_amp_sv*
+    kernelAccess( fptype_amp* buffer )
     {
-      return reinterpret_cast<cxtype_vertex_sv*>( buffer );
+      return reinterpret_cast<cxtype_amp_sv*>( buffer );
     }
 
-    static __host__ __device__ inline const cxtype_vertex_sv*
-    kernelAccessConst( const fptype_vertex* buffer )
+    static __host__ __device__ inline const cxtype_amp_sv*
+    kernelAccessConst( const fptype_amp* buffer )
     {
-      return reinterpret_cast<const cxtype_vertex_sv*>( buffer );
+      return reinterpret_cast<const cxtype_amp_sv*>( buffer );
     }
 
 #endif // #ifndef MGONGPU_TRIVIAL_WAVEFUNCTIONS
