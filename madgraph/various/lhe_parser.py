@@ -814,17 +814,62 @@ class EventFile(object):
             if self.eventgroup:
                 self.write('</eventgroup>\n')
     
-    def unweight(self, outputpath, get_wgt=None, max_wgt=0, trunc_error=0, 
+    @staticmethod
+    def unweight_output_paths(outputpath, nb_output=1):
+        """List of the files the unweighting writes. For nb_output==1 this is
+        just [outputpath] (historical behaviour); for more, an index is inserted
+        before the extension, e.g. unweighted_events.lhe.gz ->
+        unweighted_events_0.lhe.gz, unweighted_events_1.lhe.gz, ..."""
+        if nb_output <= 1:
+            return [outputpath]
+        base, suffix = outputpath, ''
+        for ext in ('.lhe.gz', '.lhe'):
+            if base.endswith(ext):
+                base, suffix = base[:-len(ext)], ext
+                break
+        return ['%s_%d%s' % (base, i, suffix) for i in range(nb_output)]
+
+    @staticmethod
+    def merge_unweight_output(paths, outputpath):
+        """Concatenate files written by ``unweight(..., nb_output=N)`` back into
+        a single valid LHE file: each of them carries a full banner and closing
+        tag, so keep only the banner of the first and one closing tag at the end.
+        The events keep the order they have inside each file, but not the order
+        they had before the (round-robin) split."""
+        with open(outputpath, 'w') as outfile:
+            for i, path in enumerate(paths):
+                in_banner = (i != 0)
+                opener = gzip.open if path.endswith('.gz') else open
+                with opener(path, 'rt') as infile:
+                    for line in infile:
+                        if in_banner:
+                            # everything before the first event is the banner
+                            if not line.startswith('<event'):
+                                continue
+                            in_banner = False
+                        if line.startswith('</LesHouchesEvents>'):
+                            continue
+                        outfile.write(line)
+            outfile.write('</LesHouchesEvents>\n')
+        return outputpath
+
+    def unweight(self, outputpath, get_wgt=None, max_wgt=0, trunc_error=0,
                  event_target=0, log_level=logging.INFO, normalization='average',
-                 keep_overshoot=False):
+                 keep_overshoot=False, nb_output=1):
         """unweight the current file according to wgt information wgt.
         which can either be a fct of the event or a tag in the rwgt list.
         max_wgt allow to do partial unweighting. 
         trunc_error allow for dynamical partial unweighting
         event_target reweight for that many event with maximal trunc_error.
         (stop to write event when target is reached but if keep_overshoot is True)
+        nb_output allows to spread the surviving events over that many files
+        (round-robin) instead of a single one -- useful when they are going to be
+        read back by that many parallel consumers, since each then reads only its
+        own file. nb_output=1 (the default) keeps the historical single file.
         """
         self.parsing = 'wgt_only'
+        nb_output = max(1, int(nb_output))
+        outpaths = self.unweight_output_paths(outputpath, nb_output) if outputpath else []
 
         if not get_wgt:
             def weight(event):
@@ -937,11 +982,12 @@ class EventFile(object):
 
             #create output file (here since we are sure that we have to rewrite it)
             if outputpath:
-                outfile = EventFile(outputpath, "w")
+                outfiles = [EventFile(path, "w") for path in outpaths]
             # need to write banner information
             # need to see what to do with rwgt information!
             if self.banner and outputpath:
-                banner.write(outfile, close_tag=False)
+                for outfile in outfiles:
+                    banner.write(outfile, close_tag=False)
 
             # scan the file
             nb_keep = 0
@@ -958,12 +1004,12 @@ class EventFile(object):
                         if outputpath and (event_target == 0 or keep_overshoot or nb_keep <= event_target):
                             final_wgt = written_weight(max(wgt, max_wgt))
                             try:
-                                outfile.write(self._rewrite_raw_event_weight(raw_event, final_wgt, header_meta))
+                                outfiles[nb_keep % nb_output].write(self._rewrite_raw_event_weight(raw_event, final_wgt, header_meta))
                             except Exception:
                                 # Per-event fallback preserves behavior on malformed blocks.
                                 event = Event(raw_event, parse_momenta=False)
                                 event.wgt = final_wgt
-                                outfile.write(str(event))
+                                outfiles[nb_keep % nb_output].write(str(event))
                     elif wgt < 0:
                         nb_keep += 1
                         if abs(wgt) > max_wgt:
@@ -971,12 +1017,12 @@ class EventFile(object):
                         if outputpath and (event_target == 0 or keep_overshoot or nb_keep <= event_target):
                             final_wgt = -1 * written_weight(max(abs(wgt), max_wgt))
                             try:
-                                outfile.write(self._rewrite_raw_event_weight(raw_event, final_wgt, header_meta))
+                                outfiles[nb_keep % nb_output].write(self._rewrite_raw_event_weight(raw_event, final_wgt, header_meta))
                             except Exception:
                                 # Per-event fallback preserves behavior on malformed blocks.
                                 event = Event(raw_event, parse_momenta=False)
                                 event.wgt = final_wgt
-                                outfile.write(str(event))
+                                outfiles[nb_keep % nb_output].write(str(event))
             else:
                 for event in self:
                     r = random.random()
@@ -990,7 +1036,7 @@ class EventFile(object):
                             trunc_cross += abs(wgt) - max_wgt 
                         if event_target ==0 or keep_overshoot or nb_keep <= event_target:
                             if outputpath:                         
-                                outfile.write(str(event))
+                                outfiles[nb_keep % nb_output].write(str(event))
 
                     elif wgt < 0:
                         nb_keep += 1
@@ -998,29 +1044,33 @@ class EventFile(object):
                         if abs(wgt) > max_wgt:
                             trunc_cross += abs(wgt) - max_wgt
                         if outputpath and (event_target ==0 or keep_overshoot or nb_keep <= event_target):
-                            outfile.write(str(event))
+                            outfiles[nb_keep % nb_output].write(str(event))
             
             if event_target and nb_keep > event_target:
                 if not outputpath:
                     #no outputpath define -> wants only the nb of unweighted events
                     continue
                 elif event_target and i != nb_try-1 and nb_keep >= event_target *1.05:
-                    outfile.write("</LesHouchesEvents>\n")
-                    outfile.close()
+                    for outfile in outfiles:
+                        outfile.write("</LesHouchesEvents>\n")
+                        outfile.close()
                     #logger.log(log_level, "Found Too much event %s. Try to reduce truncation" % nb_keep)
                     continue
                 else:
-                    outfile.write("</LesHouchesEvents>\n")
-                    outfile.close()
+                    for outfile in outfiles:
+                        outfile.write("</LesHouchesEvents>\n")
+                        outfile.close()
                 break
             elif event_target == 0:
                 if outputpath:
-                    outfile.write("</LesHouchesEvents>\n")
-                    outfile.close()
+                    for outfile in outfiles:
+                        outfile.write("</LesHouchesEvents>\n")
+                        outfile.close()
                 break                    
             elif outputpath:
-                outfile.write("</LesHouchesEvents>\n")
-                outfile.close()
+                for outfile in outfiles:
+                    outfile.write("</LesHouchesEvents>\n")
+                    outfile.close()
 #                logger.log(log_level, "Found only %s event. Reduce max_wgt" % nb_keep)
             
         else:
@@ -1042,17 +1092,18 @@ class EventFile(object):
         #correct the weight in the file if not the correct number of event
         if nb_keep != event_target and hasattr(self, "written_weight") and strategy !=4:
             written_weight = lambda x: math.copysign(self.written_weight*event_target/nb_keep, float(x))
-            startfile = EventFile(outputpath)
-            tmpname = pjoin(os.path.dirname(outputpath), "wgtcorrected_"+ os.path.basename(outputpath))
-            outfile = EventFile(tmpname, "w")
-            outfile.write(startfile.banner)
-            for event in startfile:
-                event.wgt = written_weight(event.wgt)
-                outfile.write(str(event))
-            outfile.write("</LesHouchesEvents>\n")
-            startfile.close()
-            outfile.close()
-            shutil.move(tmpname, outputpath)
+            for path in outpaths:
+                startfile = EventFile(path)
+                tmpname = pjoin(os.path.dirname(path), "wgtcorrected_"+ os.path.basename(path))
+                outfile = EventFile(tmpname, "w")
+                outfile.write(startfile.banner)
+                for event in startfile:
+                    event.wgt = written_weight(event.wgt)
+                    outfile.write(str(event))
+                outfile.write("</LesHouchesEvents>\n")
+                startfile.close()
+                outfile.close()
+                shutil.move(tmpname, path)
             
         
         
@@ -2429,9 +2480,22 @@ class Event(list):
                     particle.color2 = color_mapping[particle.color2]                
 
     def add_decays(self, pdg_to_decay):
-        """use auto-recursion"""
+        """use auto-recursion
 
-        pdg_to_decay = dict(pdg_to_decay)
+        Non-destructive: the caller's dictionary -- and the lists inside it --
+        come back untouched, so the same set of decays can be attached to
+        several production events. ``dict(pdg_to_decay)`` alone was not enough:
+        it copies the mapping but shares the lists, which the recursion below
+        then ``pop(0)``s, so the first event consumed the decays and every
+        later one silently got nothing to attach. MadSpin does exactly that in
+        two places -- fixed_order attaches one draw to the born event and to
+        each of its counter-events, and the pole approximation rebuilds the
+        event after ``get_onshell_evt_and_wgt`` has already built one from the
+        same dict.
+        """
+
+        pdg_to_decay = dict((pdg, list(decays))
+                            for pdg, decays in pdg_to_decay.items())
 
         for i,particle in enumerate(self):
             if particle.status != 1:
@@ -2942,9 +3006,85 @@ class Event(list):
         return tag, order
     
     @staticmethod
+    def mass_shuffle_frame(momenta, sqrts):
+        """The per-event half of ``mass_shuffle``: everything the RAMBO
+        reshuffling jacobian needs that does *not* depend on the new masses.
+
+        ``mass_shuffle`` boosts the momenta to the frame where their sum is at
+        rest with energy ``sqrts`` and from there on only ever uses, per
+        particle, the three numbers returned here:
+
+            E     the energy in that frame              (eq. 4.2/4.3)
+            m2    ``p.mass_sqr`` **before** the boost   (eq. 4.3's ``oldm``)
+            p2    ``p.norm_sq`` in that frame           (eq. 4.9)
+
+        so a bound that has to evaluate the jacobian for many candidate mass
+        sets of one event pays the boost once, here, and then only arithmetic
+        (``mass_shuffle_jacobian``). Returns ``(E, m2, p2)``, three lists.
+
+        ``m2`` is taken before the boost and ``p2`` after it, exactly as
+        ``mass_shuffle`` does; the two differ from each other by rounding only,
+        but reproducing the shipped path to the last digit is the point.
+        """
+        oldm = [p.mass_sqr for p in momenta]
+        tot_mom = sum(momenta, FourMomentum())
+        lor = tot_mom.get_lorentz_map(FourMomentum(sqrts, 0, 0, 0))
+        boosted = [p.apply_lorentzmap(lor) for p in momenta]
+        return ([p.E for p in boosted], oldm, [p.norm_sq for p in boosted])
+
+    @staticmethod
+    def mass_shuffle_jacobian(frame, new_mass, new_sqrts):
+        """The RAMBO reshuffling jacobian of ``new_mass``, from the per-event
+        data ``mass_shuffle_frame`` returned -- no Event, no FourMomentum, no
+        boost. Same value, and the same 0/-1 verdicts, as
+        ``reshuffle_production`` would give for that mass set.
+
+        RAMBO eqs. (4.3), (4.2) and (4.9), in that order:
+
+            chi solves  new_sqrts = sum_i sqrt(m_i'^2 + chi^2 (E_i^2 - m_i^2))
+            E_i'      = sqrt(m_i'^2 + chi^2 (E_i^2 - m_i^2))
+            jac       = chi^(3n-3) prod_i (E_i/E_i')
+                        . [sum_i |p_i|^2/E_i] / [sum_i |p_i'|^2/E_i']
+
+        Every dependence on the production event is through ``frame``, i.e.
+        through n numbers per particle, so the whole thing is one scalar Newton
+        solve plus O(n) arithmetic per candidate mass set. The 2 -> 2 closed
+        form lambda^(1/2)/lambda^(1/2) is the case where that solve happens to
+        be explicit; nothing here is restricted to n = 2.
+
+        Returns -1 when ``sum(new_mass) > new_sqrts`` (what
+        ``reshuffle_production`` reports for a mass set above threshold) and 0
+        when the Newton solve does not converge -- the two failures the callers
+        test for with ``jac in (0, -1)``.
+        """
+        Es, oldm, normsq = frame
+        if sum(new_mass, 0) > new_sqrts:
+            return -1
+        newm = [m ** 2 for m in new_mass]
+        # a_i = E_i^2 - m_i^2, the only combination eq. 4.3 uses
+        avail = [E ** 2 - m for E, m in zip(Es, oldm)]
+
+        f = lambda chi: new_sqrts - sum(math.sqrt(max(0, M + chi ** 2 * a))
+                                        for M, a in zip(newm, avail))
+        df = lambda chi: -1 * sum(chi * a / math.sqrt(max(0, a * chi ** 2 + M))
+                                  for M, a in zip(newm, avail))
+        try:
+            chi = misc.newtonmethod(f, df, 1.0, error=1e-7, maxiter=1000)
+        except Exception:
+            return 0
+
+        newE = [math.sqrt(M + chi ** 2 * a) for M, a in zip(newm, avail)]
+        jac = chi ** (3 * len(Es) - 3)
+        for E, Ep in zip(Es, newE):
+            jac *= E / Ep
+        jac *= sum(p2 / E for p2, E in zip(normsq, Es))
+        jac /= sum(chi ** 2 * p2 / Ep for p2, Ep in zip(normsq, newE))
+        return jac
+
+    @staticmethod
     def mass_shuffle(momenta, sqrts, new_mass, new_sqrts=None):
         """use the RAMBO method to shuffle the PS. initial sqrts is preserved."""
-        
+
         if not new_sqrts:
             new_sqrts = sqrts
         
@@ -3164,8 +3304,41 @@ class Event(list):
 
     nb_reshuffle_issue=0
     _warned_2to1_reshuffle = False
-    def reshuffle_production(self):
+    def production_jacobian(self):
+        """The jacobian ``reshuffle_production`` would return for the current
+        ``new_mass`` assignment -- without touching this event, and without its
+        mass-resampling retry.
+
+        Returns -1 (or 0) when the mass set is kinematically impossible. For the
+        sequential accept/reject that is a failure to *report*: the caller owns
+        the retry policy (redraw one decay's mass, or trash the whole set), so
+        the resampling recursion inside reshuffle_production must not fire here.
+        See doc/madspin_sequential_plan.md.
+
+        Resonance aware, by construction: it runs the real code on a copy. In a
+        production like ``p p > t t~ j`` where an onshell resonance decays into
+        the two tops, only the resonance sits at top level -- the tops are in a
+        sub-decay -- so both the threshold and the jacobian are the resonance's,
+        and the tops' own masses enter through ``reshuffle_decay``. That differs
+        from the same final state without the resonance, which is why the
+        jacobian cannot be re-derived from the top-level masses alone.
+        """
+        probe = Event(str(self))
+        # a string round-trip drops python attributes: carry the sampled masses
+        # (and their Breit-Wigner info, needed if a retry is ever allowed) over.
+        for orig, copy in zip(self, probe):
+            if hasattr(orig, 'new_mass'):
+                copy.new_mass = orig.new_mass
+            if hasattr(orig, 'reshuffle_info'):
+                copy.reshuffle_info = orig.reshuffle_info
+        return probe.reshuffle_production(_allow_retry=False)
+
+    def reshuffle_production(self, _allow_retry=True):
         """ particle that need new mass have the "new_mass" attribute
+
+        _allow_retry: on a kinematically impossible mass set, resample the
+        masses and try again (the historical behaviour). production_jacobian
+        turns it off so the failure is reported to a caller that owns the retry.
         """
 
         # create a nice data structure for the reshuffling
@@ -3208,15 +3381,19 @@ class Event(list):
         #    sum_mom = sum([FourMomentum(p) for p in new_mom], FourMomentum())
         #    sum_old = sum([FourMomentum(p) for p in old_momenta], FourMomentum()) 
         #    sum2 = FourMomentum(production[0]) + FourMomentum(production[1])
-        if jac in [0,-1]: 
-            #reshuffle momenta if 
+        if jac in [0,-1]:
+            if not _allow_retry:
+                # the caller owns the retry policy: report the impossible mass
+                # set instead of resampling it away here.
+                return jac
+            #reshuffle momenta if
             for p in production:
                 if p.status !=-1 and hasattr(p, 'new_mass'):
                     p.new_mass = Event.generate_random_mass(*p.reshuffle_info)
-            Event.nb_reshuffle_issue +=1 
+            Event.nb_reshuffle_issue +=1
             if jac != -1:
                 misc.sprint('jac was 0 -> retry', Event.nb_reshuffle_issue)
-            return self.reshuffle_production()
+            return self.reshuffle_production(_allow_retry=_allow_retry)
 
         
         #modify the momenta of the particles:
@@ -4223,7 +4400,14 @@ class FourMomentum(object):
                            py=self.py + mom.py * lf,
                            pz=self.pz + mom.pz * lf)
         else:
-            return FourMomentum(mom)
+            # ``mom`` has no spatial part, so the transformation is the
+            # identity and the momentum is returned untouched. This is the
+            # ``qq.eq.rZero`` branch of the HELAS boostx this routine copies
+            # (aloha/template_files/aloha_functions.f); returning ``mom`` here
+            # instead would replace every boosted momentum by the boost itself.
+            # It is reached whenever the selected system is already at rest --
+            # e.g. boosting to the partonic CMS of a lepton-collider event.
+            return FourMomentum(self)
 
     def zboost(self, pboost=None, E=0, pz=0):
         """Both momenta should be in the same frame. 

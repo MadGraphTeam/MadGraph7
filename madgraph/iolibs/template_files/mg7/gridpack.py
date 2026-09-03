@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 
+import gzip
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -128,9 +130,10 @@ def main() -> None:
             run_index += 1
 
     # initialize context
-    device_names = args.device if args.device else run_args["devices"]
+    device_names = args.device if args.device else run_args["device"]
+    cpu_mode = run_args["cpu_mode"]
     contexts = []
-    device_types = []
+    backends = []
     for device_name in device_names:
         if ":" in device_name:
             device_type, device_index_str = device_name.split(":")
@@ -138,7 +141,9 @@ def main() -> None:
         else:
             device_type = device_name
             device_index = 0
-        device_types.append(device_type)
+        # cpu_mode names the SIMD width of the CPU code, so it applies to the
+        # 'cpu' devices only: cuda/hip build the backend named after the device.
+        backends.append(cpu_mode if device_type == "cpu" else device_type)
         if device_type == "cuda":
             device = ms.cuda_device(device_index)
             pool_size = args.gpu_thread_pool_size
@@ -164,11 +169,11 @@ def main() -> None:
 
     # set up contexts
     global_dir = os.path.join("data", "globals")
-    for context, device_type in zip(contexts, device_types):
+    for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=device_type), param_card_path
+                me_path.format(device=backend), param_card_path
             )
 
     # set up generators
@@ -204,9 +209,18 @@ def main() -> None:
         )
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
-        event_generator.combine_to_lhe(
-            os.path.join(run_path, "events.lhe"), lhe_completer
-        )
+        lhe_path = os.path.join(run_path, "events.lhe")
+        event_generator.combine_to_lhe(lhe_path, lhe_completer)
+        # Ship the LHE compressed, as the launcher that produced this gridpack
+        # does: the file is large and very compressible, and the consumers of
+        # an mg7 event file accept either form. The stdlib is used rather than
+        # madgraph.various.misc.gzip because a gridpack is meant to run without
+        # a madgraph installation, and copyfileobj streams the file instead of
+        # holding it in memory.
+        with open(lhe_path, "rb") as fin, \
+                gzip.open(lhe_path + ".gz", "wb") as fout:
+            shutil.copyfileobj(fin, fout)
+        os.remove(lhe_path)
     else:
         raise ValueError("Unknown output format")
 

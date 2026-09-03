@@ -21,6 +21,7 @@ from __future__ import division
 
 from __future__ import absolute_import
 import ast
+import contextlib
 import logging
 import math
 import copy
@@ -694,6 +695,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                          'cluster_size':100,
                          'cluster_memory':None,
                          'nb_core': None,
+                         'nb_core_pythia8': None,
+                         'nb_core_delphes': None,
                          'cluster_temp_path':None}
 
 
@@ -1839,6 +1842,70 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         
          
     ############################################################################
+    def get_split_unweighted_files(self, nominal):
+        """The files written by the unweighting when ``nb_unweight_output`` > 1,
+        provided they are really there and were not merged back already."""
+        if 'nb_unweight_output' not in self.run_card:
+            return []
+        nb_output = self.run_card['nb_unweight_output']
+        if nb_output <= 1:
+            return []
+        if os.path.exists(nominal) or os.path.exists('%s.gz' % nominal):
+            return []
+        paths = lhe_parser.EventFile.unweight_output_paths(nominal, nb_output)
+        for candidates in (paths, ['%s.gz' % p for p in paths]):
+            if all(os.path.exists(p) for p in candidates):
+                return candidates
+        return []
+
+    def split_unweighted_consumed(self, split_inputs):
+        """The split files have been merged back: drop them and undo the
+        settings we picked ourselves to produce them, so that the merged file is
+        gzipped as usual. A value the user asked for explicitly (user_set) is
+        left alone."""
+        for path in split_inputs:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        if 'zip_unweighted_events' not in self.run_card.user_set:
+            self.run_card['zip_unweighted_events'] = True
+        if 'nb_unweight_output' not in self.run_card.user_set:
+            self.run_card['nb_unweight_output'] = 1
+
+    def merge_split_unweighted_files(self, split_inputs, nominal):
+        """Put the split unweighted files back into the single file the rest of
+        the chain expects."""
+        lhe_parser.EventFile.merge_unweight_output(split_inputs, nominal)
+        self.split_unweighted_consumed(split_inputs)
+        return nominal
+
+    def finalize_split_unweighted_output(self):
+        """Leave the run with exactly the events it would have had if we had
+        never split: a single, gzipped unweighted_events.lhe.
+
+        Splitting is only ever our own doing, to feed systematics one file per
+        job. systematics normally consumes the files and merges them back, but
+        it may also be bypassed or fail outright (it aborts the whole command
+        when it does), so this has to hold whatever happened. Idempotent, and a
+        no-op when the user asked for the split themselves."""
+        if 'nb_unweight_output' not in self.run_card or \
+                'nb_unweight_output' in self.run_card.user_set:
+            return
+        nominal = pjoin(self.me_dir, 'Events', self.run_name,
+                        'unweighted_events.lhe')
+        orphans = self.get_split_unweighted_files(nominal)
+        if orphans:
+            logger.debug('merging back the %s split event files', len(orphans))
+            self.merge_split_unweighted_files(orphans, nominal)
+        # zip_unweighted_events was switched off only because systematics was
+        # about to read the files straight back; the user did not ask for it, so
+        # the events must end up gzipped like any other run.
+        if 'zip_unweighted_events' not in self.run_card.user_set and \
+                os.path.exists(nominal) and \
+                not os.path.exists('%s.gz' % nominal):
+            misc.gzip(nominal)
+
     def do_systematics(self, line):
         """ syntax is 'systematics [INPUT [OUTPUT]] OPTIONS'
             --mur=0.5,1,2
@@ -1894,25 +1961,29 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
           
         # always pass to a path + get the event size
         result_file= sys.stdout
+        split_inputs = []
         if not os.path.isfile(args[0]) and not os.path.sep in args[0]:
-            path = [pjoin(self.me_dir, 'Events', args[0], 'unweighted_events.lhe.gz'),
-                    pjoin(self.me_dir, 'Events', args[0], 'unweighted_events.lhe'),
-                    pjoin(self.me_dir, 'Events', args[0], 'events.lhe.gz'),
-                    pjoin(self.me_dir, 'Events', args[0], 'events.lhe')]
-            
-            for p in path:
-                if os.path.exists(p):
-                    nb_event = self.results[args[0]].get_current_info()['nb_event']
-                    
-                    
-                    if self.run_name != args[0]:
-                        tag = self.results[args[0]].tags[0]
-                        self.set_run_name(args[0], tag,'parton', False)
-                    result_file = open(pjoin(self.me_dir,'Events', self.run_name, 'parton_systematics.log'),'w')
-                    args[0] = p
-                    break
-            else:
+            run = args[0]
+            nominal = pjoin(self.me_dir, 'Events', run, 'unweighted_events.lhe')
+            # the unweighting may have written one file per job instead of a
+            # single one: those are the input, and get merged into the nominal
+            # file (which does not exist yet in that case).
+            split_inputs = self.get_split_unweighted_files(nominal)
+            path = [nominal + '.gz', nominal,
+                    pjoin(self.me_dir, 'Events', run, 'events.lhe.gz'),
+                    pjoin(self.me_dir, 'Events', run, 'events.lhe')]
+
+            found = nominal if split_inputs else \
+                    next((p for p in path if os.path.exists(p)), None)
+            if found is None:
                 raise self.InvalidCmd('Invalid run name. Please retry')
+
+            nb_event = self.results[run].get_current_info()['nb_event']
+            if self.run_name != run:
+                tag = self.results[run].tags[0]
+                self.set_run_name(run, tag,'parton', False)
+            result_file = open(pjoin(self.me_dir,'Events', self.run_name, 'parton_systematics.log'),'w')
+            args[0] = found
         elif self.options['nb_core'] != 1:
             lhe = lhe_parser.EventFile(args[0])
             nb_event = len(lhe)
@@ -1979,7 +2050,16 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             logger.warning('impossible to download all the pdfsets. Bypass systematics')
             return
         
-        if self.options['run_mode'] ==2 and self.options['nb_core'] != 1:
+        if split_inputs and self.options['run_mode'] in [1,2]:
+            # one job per file: each reads its own instead of scanning the
+            # shared file up to its own range.
+            nb_submit = len(split_inputs)
+        elif split_inputs:
+            # nothing to distribute: put the events back together and proceed
+            self.merge_split_unweighted_files(split_inputs, input)
+            split_inputs = []
+            nb_submit = 1
+        elif self.options['run_mode'] ==2 and self.options['nb_core'] != 1:
             nb_submit = min(int(self.options['nb_core']), nb_event//2500)
         elif self.options['run_mode'] ==1:
             try:
@@ -2020,17 +2100,25 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 stop_event = start_event + event_requested
                     
                 prog = sys.executable
-                input_files = [os.path.basename(input)]
+                if split_inputs:
+                    # this job owns a full file: no range to seek to. The
+                    # outputs are concatenated below, so only the first may
+                    # write the banner and only the last the closing tag.
+                    input_files = [os.path.basename(split_inputs[i])]
+                    range_opts = ['--no_banner=%s' % (i != 0),
+                                  '--no_closing_tag=%s' % (i != nb_submit-1)]
+                else:
+                    input_files = [os.path.basename(input)]
+                    range_opts = ['--start_event=%i' % start_event,
+                                  '--stop_event=%i' % stop_event]
                 output_files = ['./tmp_%s_%s' % (i, os.path.basename(output)),
                                 './log_sys_%s.txt' % (i)]
                 argument = []
                 if not __debug__:
                     argument.append('-O')
                 argument +=  [pjoin(self.me_dir, 'bin', 'internal', 'systematics.py'),
-                             input_files[0], output_files[0]] + opts +\
-                             ['--start_event=%i' % start_event,
-                              '--stop_event=%i' %stop_event,
-                              '--result=./log_sys_%s.txt' %i,
+                             input_files[0], output_files[0]] + opts + range_opts +\
+                             ['--result=./log_sys_%s.txt' %i,
                               '--lhapdf_config=%s' % self.options['lhapdf']]
                 required_output = output_files            
                 self.cluster.cluster_submit(prog, argument, 
@@ -2085,7 +2173,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 all_cross= [cross/nb_event for cross in all_cross]
 
 
-            sys_obj = systematics.call_systematics([input, None] + opts,
+            # the nominal file does not exist yet when the input was split: read
+            # the banner/run_card information from one of the parts instead.
+            sys_obj = systematics.call_systematics(
+                                        [split_inputs[0] if split_inputs else input, None] + opts,
                                         log=lambda x: logger.info(str(x)),
                                         result=result_file,
                                         running=False
@@ -2104,6 +2195,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             for i in range(nb_submit):
                 os.remove('%s/tmp_%s_%s' %(os.path.dirname(output),i,os.path.basename(output)))
             #    os.remove('%s/log_sys_%s.txt' % (os.path.dirname(output),i))
+
+            if split_inputs:
+                # their (reweighted) events are in the concatenated file now
+                self.split_unweighted_consumed(split_inputs)
                                                   
 
             
@@ -3741,6 +3836,15 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 raise self.InvalidCmd('nb_core should be a positive number')
             self.nb_core = int(args[1])
             self.options['nb_core'] = self.nb_core
+        elif args[0] in ['nb_core_pythia8', 'nb_core_delphes']:
+            # Per-step override of the number of cores/jobs used by do_pythia8/
+            # do_delphes. 'None' means fall back to the global nb_core option.
+            if args[1] == 'None':
+                self.options[args[0]] = None
+                return
+            if not args[1].isdigit():
+                raise self.InvalidCmd('%s should be a positive number' % args[0])
+            self.options[args[0]] = int(args[1])
         elif args[0] == 'timeout':
             self.options[args[0]] = int(args[1])
         elif args[0] == 'cluster_status_update':
@@ -3816,6 +3920,88 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             return stop
         except self.InvalidCmd:
             return stop
+
+    def get_nb_core_override(self, step):
+        """Return the user-specified number of cores/jobs for a given step
+        (e.g. 'pythia8' or 'delphes') through the nb_core_<step> option, or
+        None when it is unset (in which case the caller keeps its default
+        parallelization based on the global nb_core option).
+        The value is allowed to exceed the global nb_core: for the Pythia8 step
+        it directly fixes the number of (statistically equivalent) split jobs."""
+
+        value = self.options.get('nb_core_%s' % step, None)
+        if value in (None, 'None', ''):
+            return None
+        return max(int(value), 1)
+
+    def resolve_nb_core(self, step):
+        """Return the effective number of cores/jobs for a given step: the
+        per-step nb_core_<step> option when set, otherwise the global nb_core
+        option (falling back to the number of available CPUs when that is also
+        unset). Unlike get_nb_core_override this never returns None."""
+
+        value = self.get_nb_core_override(step)
+        if value is not None:
+            return value
+        value = self.options.get('nb_core', None)
+        if value in (None, 'None', ''):
+            import multiprocessing
+            return multiprocessing.cpu_count()
+        return max(int(value), 1)
+
+    @contextlib.contextmanager
+    def multicore_concurrency(self, nb_core):
+        """Temporarily set the multicore scheduler concurrency
+        (self.cluster.nb_core) to nb_core for the duration of the block, always
+        restoring the previous value afterwards (even if the block raises).
+
+        A no-op when nb_core is None or when not running in multicore mode
+        (run_mode != 2), so callers can wrap their submit/wait unconditionally."""
+
+        if nb_core is None or self.options.get('run_mode') != 2:
+            yield
+            return
+        original = self.cluster.nb_core
+        self.cluster.nb_core = nb_core
+        try:
+            yield
+        finally:
+            self.cluster.nb_core = original
+
+    def is_delphes_fusion_active(self):
+        """Decide whether Delphes should run on the individual Pythia8 split
+        files (before the HepMC files are merged) and the resulting ROOT files
+        be combined with hadd, instead of running a single Delphes pass on the
+        merged HepMC file.
+
+        This is the opt-in rule for the fused parallel-Delphes path. It is
+        active when:
+          - Delphes is going to run, i.e. delphes_path is set and a
+            delphes_card.dat is present (this mirrors the post-Pythia8
+            'delphes --no_default' call which is a no-op without the card);
+          - the run is parallel (run_mode != 0) so Pythia8 splits exist to run
+            Delphes on;
+          - event_norm is 'average', which guarantees that the per-split HepMC
+            event weights are absolute and therefore combinable (the same
+            restriction already enforced for the Pythia8 splitting itself);
+          - nb_core_delphes has been explicitly set. Parallel Delphes is opt-in:
+            when nb_core_delphes is left unset Delphes runs on a single core
+            (the standard single pass on the merged HepMC file), which is the
+            default. nb_core_delphes then also sets the concurrency of the
+            per-split Delphes jobs.
+        """
+
+        if not self.options.get('delphes_path'):
+            return False
+        if not os.path.exists(pjoin(self.me_dir, 'Cards', 'delphes_card.dat')):
+            return False
+        if self.options.get('run_mode', 0) == 0:
+            return False
+        if self.run_card['event_norm'] != 'average':
+            return False
+        if self.get_nb_core_override('delphes') is None:
+            return False
+        return True
 
     def configure_run_mode(self, run_mode):
         """change the way to submit job 0: single core, 1: cluster, 2: multicore"""
@@ -4750,7 +4936,11 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         f.write('\n')
                     f.write('\n'.join(extra) + '\n')
             except (OSError, IOError) as e:
-                logger.debug('Could not patch %s: %s', path, e)
+                logger.warning('Could not add %s to %s (%s). '
+                    'Recent LHAPDF versions can refuse to load this set '
+                    '(MetadataError). If this happens, add those keys to that '
+                    'file manually.',
+                    ', '.join(e2.split(':')[0] for e2 in extra), path, e)
 
 
     def copy_lhapdf_set(self, lhaid_list, pdfsets_dir, require_local=True):
@@ -4826,6 +5016,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     
                 os.environ["LHAPATH"] = [d for d in lhapdf_cluster_possibilities if os.path.exists(pjoin(d, pdfset))][0]
                 os.environ["CLUSTER_LHAPATH"] = os.environ["LHAPATH"]
+                self.patch_lhapdf_info_file(pjoin(os.environ["LHAPATH"], pdfset))
                 # no need to copy it
                 if os.path.exists(pjoin(pdfsets_dir, pdfset)):
                     try:
@@ -4837,6 +5028,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         logger.debug('%s', error)
             if not require_local and (os.path.exists(pjoin(pdfsets_dir, pdfset)) or \
                                     os.path.isdir(pjoin(pdfsets_dir, pdfset))):
+                self.patch_lhapdf_info_file(pjoin(pdfsets_dir, pdfset))
                 continue
             if not require_local:
                 if 'LHAPDF_DATA_PATH' in os.environ:
@@ -4847,19 +5039,27 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                             found =True
                             break
                     if found:
+                        self.patch_lhapdf_info_file(pjoin(path, pdfset))
                         continue
-                    
-                    
+
+            # ensure that the set used at run time has the metadata required
+            # by recent LHAPDF versions: the code can read the global copy
+            # (in particular if the local one is not picked up), and the
+            # local copy is created from it.
+            self.patch_lhapdf_info_file(pjoin(pdfsets_dir, pdfset))
+
             #check that the pdfset is not already there
             if not os.path.exists(pjoin(self.me_dir, 'lib', 'PDFsets', pdfset)) and \
                not os.path.isdir(pjoin(self.me_dir, 'lib', 'PDFsets', pdfset)):
-    
+
                 if pdfset and not os.path.exists(pjoin(pdfsets_dir, pdfset)):
                     self.install_lhapdf_pdfset(pdfsets_dir, pdfset)
-    
+                    self.patch_lhapdf_info_file(pjoin(pdfsets_dir, pdfset))
+
                 if os.path.exists(pjoin(pdfsets_dir, pdfset)):
                     files.cp(pjoin(pdfsets_dir, pdfset), pjoin(self.me_dir, 'lib', 'PDFsets'))
                 elif os.path.exists(pjoin(os.path.dirname(pdfsets_dir), pdfset)):
+                    self.patch_lhapdf_info_file(pjoin(os.path.dirname(pdfsets_dir), pdfset))
                     files.cp(pjoin(os.path.dirname(pdfsets_dir), pdfset), pjoin(self.me_dir, 'lib', 'PDFsets'))
 
             self.patch_lhapdf_info_file(pjoin(self.me_dir, 'lib', 'PDFsets', pdfset))
@@ -5139,12 +5339,14 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         return libdir
 
     def reset_iseed_in_run_card(self):
-        """If iseed is set to a non-zero value in the run_card, reset it to 0
+        """If iseed is set to a positive value in the run_card, reset it to 0
         and write the updated run_card to disk.  This ensures that subsequent
         runs will use an automatically-generated (independent) seed rather than
-        repeating the same one."""
+        repeating the same one. A negative iseed is preserved so the user can
+        keep reusing the same seed across runs (the absolute value is the
+        actual seed passed to the Fortran code)."""
         iseed = self.run_card['iseed']
-        if iseed != 0:
+        if iseed > 0:
             self.run_card['iseed'] = 0
             # Reset seed in run_card to 0, to ensure that following runs
             # will be statistically independent
@@ -6015,6 +6217,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if allowed['reweight_card'] == 'default':
                 opts.append('default')
             possibilities['Reweight Card'] = self.list_completion(text, opts)
+                
+
 
         if 'shower_card' in list(allowed.keys()):
             opts = self.shower_vars + [k for k in self.shower_card.keys() if k !='comment']
@@ -6052,7 +6256,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 if args[-1].lower() in self.run_card.shortcut_values:
                     allowed_for_run += self.run_card.shortcut_values[args[-1].lower()]
                 opts += [str(i) for i in  allowed_for_run]
-                
+            if args[-1] in ['symmetrise_initial_state', 'matrix_normalisation']:
+                opts = ["True", "False"]
+            # the other options are too complicated because they depend on the pdgs in the model. We do not make autocompletion for these
 
             possibilities['Special Value'] = self.list_completion(text, opts)
 

@@ -803,7 +803,7 @@ class ProcCard(list):
         '#*                                                          *\n' + \
         '#*               Command File for MadGraph5_aMC@NLO         *\n' + \
         '#*                                                          *\n' + \
-        '#*     run as ./bin/mg5_aMC  filename                       *\n' + \
+        '#*     run as ./bin/madgraph  filename                      *\n' + \
         '#*                                                          *\n' + \
         '#************************************************************\n'
     
@@ -3459,6 +3459,12 @@ class RunCard(ConfigFile):
         else:
             return value
 
+    def mod_inc_iseed(self, value):
+        """A negative iseed in the run_card is preserved across runs (so the
+        same seed can be reused), but the Fortran code expects a non-negative
+        seed, so export the absolute value to the include file."""
+        return abs(value)
+
     def edit_dummy_fct_from_file(self, filelist, outdir):
         """
         filelist is a list of input files (given by the user)
@@ -4355,6 +4361,10 @@ class RunCardLO(RunCard):
         self.add_param("time_of_flight", -1.0, include=False)
         self.add_param("nevents", 10000)        
         self.add_param("allow_overshoot_events", False, hidden=True, include=False, comment="allow to write more events than requested instead of trashing the last ones.")
+        self.add_param("nb_unweight_output", 1, hidden=True, include=False,
+                       comment="number of files the final unweighting writes the events to. 1 (default) writes the single unweighted_events.lhe; a larger value spreads the events (round-robin) over unweighted_events_0.lhe, unweighted_events_1.lhe, ... which lets that many consumers read them in parallel without each having to scan the full file.")
+        self.add_param("zip_unweighted_events", True, hidden=True, include=False,
+                       comment="gzip the final unweighted event file(s). Set to False when the events are consumed immediately (compressing them is then a pure waste of time).")
         self.add_param("iseed", 0)
         self.add_param("bypass_check", [], typelist=str, include=False, hidden=True,
                        allowed=['partonshower'], comment="list of check that can be bypassed manually.")
@@ -4448,7 +4458,7 @@ class RunCardLO(RunCard):
         self.add_param("bwcutoff", 15.0)
         self.add_param("cut_decays", False, cut='d')
         self.add_param('dsqrt_shat',0., cut=True)
-        self.add_param('dsqrt_shatmax', -1, cut=True) 
+        self.add_param('dsqrt_shatmax', -1.0, cut=True) 
         self.add_param("nhel", 0, include=False)
         self.add_param("limhel", 1e-8, hidden=True, comment="threshold to determine if an helicity contributes when not MC over helicity.")
         #pt cut
@@ -4991,7 +5001,7 @@ class RunCardLO(RunCard):
                 # UPC for p p collision
                 elif beam_id == [[22],[22]]:
                     self['lpp1'] = 2
-                    self['lpp1'] = 2
+                    self['lpp2'] = 2
                     self['ebeam1'] = '6500'
                     self['ebeam2'] = '6500'
                     self['pdlabel'] = 'edff'
@@ -6469,8 +6479,12 @@ class RunCardMG7(RunCard):
                     "of fixing one here; the seed actually used is still recorded "
                     "(the MG7Seed tag in the LHE file, or the info.json status "
                     "file), so the run can be reproduced later")
-        self.add_toml_param('run', 'devices', ["cppnone"], typelist=str, gridpack=True,
-            comment="options: cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto")
+        self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
+            allowed=['cpu', 'cuda', 'hip', '*'],
+            comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
+        self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
+            allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
+            comment="SIMD width used by the 'cpu' devices; 'auto' detects the widest one supported by the host")
         self.add_toml_param('run', 'simd_vector_size', -1,
             comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
@@ -6492,9 +6506,18 @@ class RunCardMG7(RunCard):
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)
         self.add_toml_param('beam', 'leptonic', False)
-        self.add_toml_param('beam', 'pdf', "NNPDF23_lo_as_0130_qed")
-        self.add_toml_param('beam', 'fixed_ren_scale', True)
-        self.add_toml_param('beam', 'fixed_fact_scale', True)
+        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118. This is the
+        # MC-generator-oriented variant of the NNPDF4.0 LO set: a single member
+        # and ~0.7 MB, versus ~54 MB for NNPDF40_lo_as_01180. NNPDF4.0 has no
+        # 4-flavour LO counterpart, so there is no scheme-dependent choice to
+        # make here: this one set is used whatever the b-quark treatment.
+        self.add_toml_param('beam', 'pdf', "NNPDF40MC_lo_as_01180")
+        # Default to the dynamical scale set by dynamical_scale_choice below
+        # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
+        # / fact_scale values. Those fixed values are kept as the fallback used
+        # when a user turns either of these back on.
+        self.add_toml_param('beam', 'fixed_ren_scale', False)
+        self.add_toml_param('beam', 'fixed_fact_scale', False)
         self.add_toml_param('beam', 'ren_scale', 91.188)
         self.add_toml_param('beam', 'fact_scale1', 91.188)
         self.add_toml_param('beam', 'fact_scale2', 91.188)
@@ -6650,6 +6673,24 @@ class RunCardMG7(RunCard):
 
     get = __getitem__
 
+    def __setitem__(self, name, value, *args, **opts):
+        """Refuse an unsupported cpu_mode instead of silently falling back.
+
+        The generic ConfigFile machinery reacts to a value outside an 'allowed'
+        list by logging a warning and keeping the previous value. For cpu_mode
+        that would mean building and running with a SIMD width the user never
+        asked for, so make it a hard error here. This matters in particular for
+        run cards written before the backend renaming, which still carry a
+        removed value such as 'cpu_128b'.
+        """
+        if isinstance(name, str) and name.strip().lower() in ('cpu_mode', 'run.cpu_mode'):
+            allowed = self.allowed_value.get('run.cpu_mode', [])
+            if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
+                raise InvalidRunCard(
+                    "Invalid cpu_mode='%s': supported values are [ '%s' ]"
+                    % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+        return super(RunCardMG7, self).__setitem__(name, value, *args, **opts)
+
     # ------------------------------------------------------------------
     # legacy run_card compatibility
     # ------------------------------------------------------------------
@@ -6668,14 +6709,18 @@ class RunCardMG7(RunCard):
         'dparameter', 'lhaid', 'iseed', 'python_seed',
     }
 
-    # mg7 dynamical_scale_choice name -> legacy integer code
-    # NOTE: mapping to confirm; only relevant for a dynamical-scale run (fixed
-    # scales, the mg7 default, are handled through the event scale directly).
+    # mg7 dynamical_scale_choice name -> legacy integer code. This is the
+    # inverse of _LO_DYNSCALE_MAP below and must stay consistent with it, and
+    # with the legacy codes documented on the LO run_card's
+    # dynamical_scale_choice: 1 = sum of transverse energy, 2 = HT (sum of
+    # transverse mass), 3 = HT/2, 4 = partonic centre-of-mass energy.
+    # Only consulted for a dynamical-scale run; a fixed-scale run returns -1
+    # before reaching here and is handled through the event scale directly.
     _dyn_scale_legacy = {
         'partonic_energy': 4,
         'transverse_mass': 2,
         'half_transverse_mass': 3,
-        'transverse_energy': 3,
+        'transverse_energy': 1,
     }
 
     def _legacy_compat(self, key):
@@ -6995,10 +7040,31 @@ class RunCardMG7(RunCard):
         self.set('beam.fact_scale2', val, user=True)
         return val
 
+    # The device types accepted by the 'device' entry of [run]. Each entry may
+    # carry an optional device index, e.g. "cuda:1".
+    allowed_device_types = ['cpu', 'cuda', 'hip']
+
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
             raise InvalidRunCard("survey_min_iters can not be larger than survey_max_iters")
+
+        # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
+        # generic 'allowed' machinery cannot check it on its own.
+        devices = self['run']['device']
+        if not devices:
+            raise InvalidRunCard("device can not be an empty list")
+        for entry in devices:
+            device_type, _, index = str(entry).partition(':')
+            if device_type not in self.allowed_device_types:
+                raise InvalidRunCard(
+                    "Invalid device '%s': each entry of 'device' must be one of %s, "
+                    "optionally followed by a device index (e.g. \"cuda:1\")"
+                    % (entry, ', '.join(self.allowed_device_types)))
+            if index and not index.isdigit():
+                raise InvalidRunCard(
+                    "Invalid device '%s': the device index must be a non-negative integer"
+                    % entry)
 
     # ------------------------------------------------------------------
     # writing TOML

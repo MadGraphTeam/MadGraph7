@@ -1620,9 +1620,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mother2") = 0,
             py::arg("color") = 0,
             py::arg("anti_color") = 0,
-            py::arg("p_x") = 0.,
-            py::arg("p_y") = 0.,
-            py::arg("p_z") = 0.,
+            py::arg("px") = 0.,
+            py::arg("py") = 0.,
+            py::arg("pz") = 0.,
             py::arg("energy") = 0.,
             py::arg("mass") = 0.,
             py::arg("lifetime") = 0.,
@@ -1660,7 +1660,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("weight", &LHEEvent::weight)
         .def_readwrite("scale", &LHEEvent::scale)
         .def_readwrite("alpha_qed", &LHEEvent::alpha_qed)
-        .def_readwrite("alpha_qcd", &LHEEvent::process_id)
+        .def_readwrite("alpha_qcd", &LHEEvent::alpha_qcd)
         .def_readwrite("particles", &LHEEvent::particles);
     py::classh<LHECompleter::SubprocArgs>(m, "SubprocArgs")
         .def(
