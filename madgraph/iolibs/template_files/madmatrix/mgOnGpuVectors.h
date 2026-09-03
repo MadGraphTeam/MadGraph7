@@ -927,18 +927,10 @@ namespace mg5amcCpu
   typedef cxtype_v cxtype_amp_v;              typedef cxtype_v cxtype_amp_sv;
   typedef fptype2_v fptype_colour_v;          typedef fptype2_v fptype_colour_sv;
   typedef cxtype_v cxtype_colour_v;           typedef cxtype_v cxtype_colour_sv;
-#if defined MGONGPU_FPTYPE_MOMENTA_DOUBLE && defined MGONGPU_FPTYPE_FLOAT
-  // denom64 (FPTYPE=v): FP64 momenta/denom while amp is FP32 -> distinct neppV-wide FP64 vector
-#ifdef __clang__
-  typedef double fptype_momenta_v __attribute__( ( ext_vector_type( neppV ) ) );
-#else
-  typedef double fptype_momenta_v __attribute__( ( vector_size( neppV * sizeof( double ) ), aligned( neppV * sizeof( double ) ) ) );
-#endif
-  typedef fptype_momenta_v fptype_momenta_sv;
-#else
+  // On SIMD, momenta/denom == amp width (FPTYPE=v falls back to m here; a real FP64
+  // denom buffer for SIMD is deferred to after the backend-separation PR).
   typedef fptype_v fptype_momenta_v;          typedef fptype_v fptype_momenta_sv;
-#endif
-  typedef fptype_momenta_v fptype_denom_v;    typedef fptype_momenta_v fptype_denom_sv;
+  typedef fptype_v fptype_denom_v;            typedef fptype_v fptype_denom_sv;
   typedef cxtype_v cxtype_momenta_v;          typedef cxtype_v cxtype_momenta_sv;
   typedef cxtype_v cxtype_denom_v;            typedef cxtype_v cxtype_denom_sv;
 #else
