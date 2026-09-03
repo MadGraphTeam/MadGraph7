@@ -96,7 +96,7 @@ MatrixElementApi::MatrixElementApi(
         );
     }
 
-    _instances = ThreadResource<InstanceType>(thread_pool, [&, device] {
+    _instances = ThreadResource<InstanceType>(thread_pool, [this, device, param_card] {
         device->activate();
         void* instance;
         check_umami_status(_initialize(&instance, param_card.c_str()));

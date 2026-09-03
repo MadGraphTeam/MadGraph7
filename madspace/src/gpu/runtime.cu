@@ -1952,9 +1952,9 @@ void GpuRuntime::switch_stream(
 
 TensorVec GpuRuntime::run(const TensorVec& inputs) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
+    gpu_device.activate();
     auto& streams = _streams.get();
     auto& events = _events.get();
-    gpu_device.activate();
     auto locals = _locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
     auto caller = caller_stream();
@@ -2009,9 +2009,9 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
+    gpu_device.activate();
     auto& streams = _streams.get();
     auto& events = _events.get();
-    gpu_device.activate();
     auto locals = _locals_init;
     auto requires_grad = _requires_grad_init;
     std::vector<bool> store_local(locals.size());
@@ -2095,9 +2095,9 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     bool return_contiguous_grads
 ) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
+    gpu_device.activate();
     auto& streams = _streams.get();
     auto& events = _events.get();
-    gpu_device.activate();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);
     auto caller = caller_stream();
