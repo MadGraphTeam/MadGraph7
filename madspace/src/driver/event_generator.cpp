@@ -111,6 +111,16 @@ void EventGenerator::generate() {
     reset_start_time();
     print_gen_init();
 
+    // update_max_weight() scales its truncation budget with count_target, but
+    // set_target_count() only runs once a round has committed. Seed a generous target
+    // so round one truncates at all; _max_weight only rises, so later rounds tighten
+    // it.
+    for (auto& channel : _channels) {
+        if (channel->status().count_opt == 0) {
+            channel->set_target_count(_config.target_count);
+        }
+    }
+
     while (true) {
         _abort_check_function();
 
