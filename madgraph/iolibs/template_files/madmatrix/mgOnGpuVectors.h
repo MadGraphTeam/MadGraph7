@@ -285,6 +285,14 @@ namespace mg5amcCpu
     for( int i = 0; i < neppV; i++ ) out[i] = fpsqrt( v[i] );
     return out;
   }
+
+  inline bool_v
+  fpsignbit( const fptype_v& v ) // per-lane std::signbit
+  {
+    bool_v out = {};
+    for( int i = 0; i < neppV; i++ ) out[i] = std::signbit( v[i] );
+    return out;
+  }
 #endif
 
   /*

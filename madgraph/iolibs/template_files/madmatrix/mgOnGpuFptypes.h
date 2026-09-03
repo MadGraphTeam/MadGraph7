@@ -58,7 +58,7 @@ namespace mg5amcCpu
 
   template<typename FP>
   inline __host__ __device__ FP
-  fpsqrt( FP f ) 
+  fpsqrt( FP f )
   {
     // https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__SINGLE.html
     // https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__DOUBLE.html
@@ -67,6 +67,10 @@ namespace mg5amcCpu
     else
       return sqrt( f );
   }
+
+  template<typename FP>
+  inline __host__ __device__ bool
+  fpsignbit( FP f ) { return signbit( f ); }
 
 #endif // #ifdef MGONGPUCPP_GPUIMPL
 
@@ -94,10 +98,14 @@ namespace mg5amcCpu
 
   template<typename FP>
   inline FP
-  fpsqrt( FP f ) 
+  fpsqrt( FP f )
   {
     return std::sqrt( f );
   }
+
+  template<typename FP>
+  inline bool
+  fpsignbit( FP f ) { return std::signbit( f ); }
 
 #endif // #ifndef MGONGPUCPP_GPUIMPL
 
