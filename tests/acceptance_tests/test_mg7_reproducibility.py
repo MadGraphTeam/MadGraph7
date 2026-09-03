@@ -51,6 +51,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import glob
+import gzip
 import hashlib
 import os
 import shutil
@@ -106,8 +107,12 @@ def _lhe_hash(path):
     between runs that vary settings unrelated to the physics content (e.g.
     the seed itself, or the cpu thread pool size) -- only the generated
     events (and the <init> cross-section info, itself a deterministic
-    function of the seed) should drive this hash."""
-    with open(path, 'rb') as f:
+    function of the seed) should drive this hash.
+
+    The file is gzipped by default, and the gzip header embeds an mtime, so
+    always hash the decompressed content."""
+    opener = gzip.open if path.endswith('.gz') else open
+    with opener(path, 'rb') as f:
         content = f.read()
     marker = b'</header>\n'
     index = content.find(marker)
@@ -117,10 +122,13 @@ def _lhe_hash(path):
 
 
 def _find_lhe(run_path):
-    """Locate the LHE file produced under Events/<run>/, or fail."""
-    matches = sorted(glob.glob(pjoin(run_path, 'Events', '*', 'events.lhe')))
+    """Locate the LHE file produced under Events/<run>/, gzipped or not, or
+    fail."""
+    matches = sorted(glob.glob(pjoin(run_path, 'Events', '*', 'events.lhe'))
+                     + glob.glob(pjoin(run_path, 'Events', '*',
+                                       'events.lhe.gz')))
     if not matches:
-        raise AssertionError('no events.lhe produced under %s' % run_path)
+        raise AssertionError('no events.lhe[.gz] produced under %s' % run_path)
     return matches[-1]
 
 
