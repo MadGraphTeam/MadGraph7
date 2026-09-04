@@ -1393,6 +1393,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite("buffered_steps", &MadnisTraining::Config::buffered_steps)
         .def_readwrite(
+            "buffer_skip_batches", &MadnisTraining::Config::buffer_skip_batches
+        )
+        .def_readwrite(
             "buffer_unweighting_quantile",
             &MadnisTraining::Config::buffer_unweighting_quantile
         )

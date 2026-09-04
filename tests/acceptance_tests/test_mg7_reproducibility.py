@@ -269,6 +269,9 @@ class MG7ReproducibilityTest(unittest.TestCase):
                 'madnis.buffer_capacity': 3000,
                 'madnis.buffered_steps': 3,
                 'madnis.minimum_buffer_size': 500,
+                # the default (1000) exceeds train_batches, which would keep
+                # the buffer empty for the whole training
+                'madnis.buffer_skip_batches': 5,
             }
         )
         hash_buffered_multi = self._generate_and_hash(

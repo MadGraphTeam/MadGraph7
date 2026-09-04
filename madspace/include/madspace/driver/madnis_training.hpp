@@ -43,6 +43,9 @@ public:
         std::size_t buffer_capacity = 0;
         std::size_t minimum_buffer_size = 10000;
         std::size_t buffered_steps = 0;
+        // no unweighted samples are stored in the buffer during the first
+        // buffer_skip_batches batches
+        std::size_t buffer_skip_batches = 1000;
         double buffer_unweighting_quantile = 0.99;
         double fixed_cwnet_fraction = 0.33;
         double softclip_threshold = 0.0;
@@ -128,6 +131,7 @@ private:
     inline static std::function<void(void)> _abort_check_function = [] {};
 
     void build_runtimes_and_optimizer();
+    std::size_t buffered_step_count() const;
     std::vector<std::size_t> compute_channel_sizes();
     void start_generator_jobs(const std::vector<std::size_t>& channel_fractions);
     void maybe_start_generator_jobs(
@@ -174,6 +178,9 @@ private:
     std::vector<std::size_t> _status_generated_events;
     std::vector<std::size_t> _status_buffer_sizes;
     std::size_t _generated_event_count = 0;
+    // index of the batch currently being trained. Only read on the thread
+    // dispatching generator jobs, never inside a job (see start_single_job)
+    std::size_t _batch_index = 0;
     std::size_t _job_id = 0;
     Tensor _generator_params;
     std::vector<std::size_t> _arg_permutation;

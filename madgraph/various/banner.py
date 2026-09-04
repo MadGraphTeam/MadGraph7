@@ -6623,6 +6623,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'buffer_capacity', 100000)
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000)
         self.add_toml_param('madnis', 'buffered_steps', 5)
+        self.add_toml_param('madnis', 'buffer_skip_batches', 1000)
         self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.99)
         self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5)
         self.add_toml_param('madnis', 'integration_history_length', 100)

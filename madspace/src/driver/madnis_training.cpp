@@ -59,9 +59,12 @@ MadnisTraining::MadnisTraining(
 void MadnisTraining::train_step(std::size_t batch_index) {
     auto& gen_thread_pool = _generator_context->thread_pool();
     _abort_check_function();
+    _batch_index = batch_index;
     std::vector<std::size_t> channel_sizes = compute_channel_sizes();
-    bool try_buffered =
-        _config.buffer_capacity > 0 && batch_index % (_config.buffered_steps + 1) != 0;
+    // read the buffer fill levels once, before this batch's flush (see
+    // start_generator_jobs), so the schedule only depends on the batch index
+    std::size_t buffered_steps = buffered_step_count();
+    bool try_buffered = buffered_steps > 0 && batch_index % (buffered_steps + 1) != 0;
     TensorVec training_batch;
     bool used_buffered = false;
     while (true) {
@@ -157,6 +160,30 @@ double MadnisTraining::buffered_fraction() const {
         buffered_count += buffered;
     }
     return static_cast<double>(buffered_count) / _buffered_history.size();
+}
+
+// Number of buffered training steps between two online steps, ramped up
+// linearly from zero to config.buffered_steps as the buffer fills up. Uses the
+// minimum over all channels, and integer arithmetic to avoid platform-dependent
+// rounding. Buffer sizes below config.minimum_buffer_size are handled by
+// check_buffered_training_batch, which falls back to an online step.
+std::size_t MadnisTraining::buffered_step_count() const {
+    if (_config.buffer_capacity == 0 || _config.buffered_steps == 0) {
+        return 0;
+    }
+    std::size_t steps = _config.buffered_steps;
+    for (auto& channel : _channels) {
+        // ceil(buffered_steps * buffer_size / buffer_capacity)
+        std::size_t channel_steps =
+            (_config.buffered_steps * channel.buffer.size + _config.buffer_capacity -
+             1) /
+            _config.buffer_capacity;
+        steps = std::min(steps, channel_steps);
+        if (steps == 0) {
+            break;
+        }
+    }
+    return steps;
 }
 
 std::size_t MadnisTraining::buffer_event_count() const {
@@ -473,8 +500,13 @@ void MadnisTraining::start_single_job(
     std::size_t global_channel_index = _channel_index_offset + channel_index;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
     job.dispatch_seq = channel_seq;
+    // evaluated on the dispatching thread and captured by value: reading
+    // _batch_index inside the job would make the buffer content depend on
+    // thread scheduling
+    bool store_buffer = _batch_index >= _config.buffer_skip_batches;
     _generator_context->thread_pool().submit(
-        [this, channel_index, global_channel_index, batch_size, job_id, &job]() {
+        [this, channel_index, global_channel_index, batch_size, job_id, store_buffer,
+         &job]() {
             auto& channel = _channels.at(channel_index);
             if (_seed) {
                 channel.generator_runtime->set_seed(DerivedSeed(
@@ -488,7 +520,7 @@ void MadnisTraining::start_single_job(
             job.samples.tensors = permute_tensors(samples);
             job.samples.size = samples.at(0).size(0);
             job.samples.channel_index = channel_index;
-            if (channel.unweighter_runtime) {
+            if (channel.unweighter_runtime && store_buffer) {
                 if (_seed) {
                     channel.unweighter_runtime->set_seed(DerivedSeed(
                         _seed,
@@ -514,33 +546,37 @@ void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes)
     std::size_t dispatch_seq = _multi_job_next_dispatch_seq++;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
     job.dispatch_seq = dispatch_seq;
-    _generator_context->thread_pool().submit([this, batch_sizes, job_id, &job]() {
-        if (_seed) {
-            _multi_channel_generator->set_seed(DerivedSeed(
-                _seed,
-                DerivedSeed::madnis_generate,
-                job.dispatch_seq,
-                _channel_index_offset
-            ));
-        }
-        auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
-        job.samples.tensors = permute_tensors(samples);
-        job.samples.channel_sizes = samples.back().batch_sizes();
-        if (_multi_channel_unweighter) {
+    // see start_single_job
+    bool store_buffer = _batch_index >= _config.buffer_skip_batches;
+    _generator_context->thread_pool().submit(
+        [this, batch_sizes, job_id, store_buffer, &job]() {
             if (_seed) {
-                _multi_channel_unweighter->set_seed(DerivedSeed(
+                _multi_channel_generator->set_seed(DerivedSeed(
                     _seed,
-                    DerivedSeed::madnis_unweight,
+                    DerivedSeed::madnis_generate,
                     job.dispatch_seq,
                     _channel_index_offset
                 ));
             }
-            auto unw_samples = _multi_channel_unweighter->run(samples);
-            job.unweighted_samples.tensors = permute_tensors(unw_samples);
-            job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
+            auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
+            job.samples.tensors = permute_tensors(samples);
+            job.samples.channel_sizes = samples.back().batch_sizes();
+            if (_multi_channel_unweighter && store_buffer) {
+                if (_seed) {
+                    _multi_channel_unweighter->set_seed(DerivedSeed(
+                        _seed,
+                        DerivedSeed::madnis_unweight,
+                        job.dispatch_seq,
+                        _channel_index_offset
+                    ));
+                }
+                auto unw_samples = _multi_channel_unweighter->run(samples);
+                job.unweighted_samples.tensors = permute_tensors(unw_samples);
+                job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
+            }
+            return job_id;
         }
-        return job_id;
-    });
+    );
 }
 
 bool MadnisTraining::check_online_training_batch(
