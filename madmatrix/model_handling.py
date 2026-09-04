@@ -21,14 +21,17 @@ from madgraph.iolibs import file_writers as writers
 
 import aloha
 from aloha import aloha_writers
-from aloha import unitary_gauge
+
+# FD gauge check — if set on second output
+class _FdGaugeFlag:
+    __slots__ = ()
+    def __bool__(self):
+        return aloha.unitary_gauge == 3
+fd_gauge = _FdGaugeFlag()
 
 from collections import defaultdict
 from fractions import Fraction
 from six import StringIO
-
-# FD gauge check
-fd_gauge = (unitary_gauge == 3)
 
 def strip_banner(file_text, banner_mark):
     # skip leading lines that start with '!'
