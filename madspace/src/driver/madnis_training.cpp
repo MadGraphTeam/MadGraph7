@@ -61,10 +61,17 @@ void MadnisTraining::train_step(std::size_t batch_index) {
     _abort_check_function();
     _batch_index = batch_index;
     std::vector<std::size_t> channel_sizes = compute_channel_sizes();
-    // read the buffer fill levels once, before this batch's flush (see
-    // start_generator_jobs), so the schedule only depends on the batch index
-    std::size_t buffered_steps = buffered_step_count();
-    bool try_buffered = buffered_steps > 0 && batch_index % (buffered_steps + 1) != 0;
+    // Delta-sigma modulation: the target fraction of buffered steps is
+    // accumulated and one quantum is spent on a buffered step whenever the
+    // accumulator reaches one, which spreads the buffered steps out evenly.
+    // The buffer fill levels are read once here, before this batch's flush
+    // (see start_generator_jobs), so the schedule only depends on the batch
+    // index.
+    _buffered_step_accumulator += buffered_step_target();
+    bool try_buffered = _buffered_step_accumulator >= _buffered_step_scale;
+    if (try_buffered) {
+        _buffered_step_accumulator -= _buffered_step_scale;
+    }
     TensorVec training_batch;
     bool used_buffered = false;
     while (true) {
@@ -162,28 +169,30 @@ double MadnisTraining::buffered_fraction() const {
     return static_cast<double>(buffered_count) / _buffered_history.size();
 }
 
-// Number of buffered training steps between two online steps, ramped up
-// linearly from zero to config.buffered_steps as the buffer fills up. Uses the
-// minimum over all channels, and integer arithmetic to avoid platform-dependent
-// rounding. Buffer sizes below config.minimum_buffer_size are handled by
-// check_buffered_training_batch, which falls back to an online step.
-std::size_t MadnisTraining::buffered_step_count() const {
+// Target fraction of buffered training steps, as a fixed-point fraction of
+// _buffered_step_scale. Ramps up linearly from zero at
+// config.minimum_buffer_size to buffered_steps / (buffered_steps + 1) -- the
+// fraction of the fixed one-online/n-buffered schedule -- at
+// config.buffer_capacity, using the least filled channel buffer. All integer
+// arithmetic, so the schedule is bit-identical independent of platform and
+// compiler flags.
+std::size_t MadnisTraining::buffered_step_target() const {
     if (_config.buffer_capacity == 0 || _config.buffered_steps == 0) {
         return 0;
     }
-    std::size_t steps = _config.buffered_steps;
+    std::size_t buffer_size = _config.buffer_capacity;
     for (auto& channel : _channels) {
-        // ceil(buffered_steps * buffer_size / buffer_capacity)
-        std::size_t channel_steps =
-            (_config.buffered_steps * channel.buffer.size + _config.buffer_capacity -
-             1) /
-            _config.buffer_capacity;
-        steps = std::min(steps, channel_steps);
-        if (steps == 0) {
-            break;
-        }
+        buffer_size = std::min(buffer_size, channel.buffer.size);
     }
-    return steps;
+    if (buffer_size <= _config.minimum_buffer_size) {
+        return 0;
+    }
+    std::size_t range = _config.buffer_capacity > _config.minimum_buffer_size
+        ? _config.buffer_capacity - _config.minimum_buffer_size
+        : 1;
+    std::size_t filled = std::min(buffer_size - _config.minimum_buffer_size, range);
+    return _buffered_step_scale * _config.buffered_steps * filled /
+        ((_config.buffered_steps + 1) * range);
 }
 
 std::size_t MadnisTraining::buffer_event_count() const {

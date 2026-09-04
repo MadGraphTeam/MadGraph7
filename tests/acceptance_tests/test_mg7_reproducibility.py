@@ -268,7 +268,11 @@ class MG7ReproducibilityTest(unittest.TestCase):
             **{
                 'madnis.buffer_capacity': 3000,
                 'madnis.buffered_steps': 3,
-                'madnis.minimum_buffer_size': 500,
+                # the buffered step fraction ramps up from zero at
+                # minimum_buffer_size, so the minimum is kept well below the
+                # capacity for buffered steps to occur at all within this
+                # short training
+                'madnis.minimum_buffer_size': 200,
                 # the default (1000) exceeds train_batches, which would keep
                 # the buffer empty for the whole training
                 'madnis.buffer_skip_batches': 5,

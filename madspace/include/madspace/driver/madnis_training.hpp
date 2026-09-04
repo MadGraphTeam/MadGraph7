@@ -131,7 +131,7 @@ private:
     inline static std::function<void(void)> _abort_check_function = [] {};
 
     void build_runtimes_and_optimizer();
-    std::size_t buffered_step_count() const;
+    std::size_t buffered_step_target() const;
     std::vector<std::size_t> compute_channel_sizes();
     void start_generator_jobs(const std::vector<std::size_t>& channel_fractions);
     void maybe_start_generator_jobs(
@@ -181,6 +181,10 @@ private:
     // index of the batch currently being trained. Only read on the thread
     // dispatching generator jobs, never inside a job (see start_single_job)
     std::size_t _batch_index = 0;
+    // delta-sigma modulator state deciding online vs. buffered steps, in units
+    // of _buffered_step_scale (see buffered_step_target)
+    static constexpr std::size_t _buffered_step_scale = 1 << 20;
+    std::size_t _buffered_step_accumulator = 0;
     std::size_t _job_id = 0;
     Tensor _generator_params;
     std::vector<std::size_t> _arg_permutation;

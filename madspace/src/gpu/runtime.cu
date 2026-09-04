@@ -940,7 +940,6 @@ __global__ void kernel_gather_quantile(
             q_index = batch_size - 1;
         }
         output[0] = input[q_index];
-        printf("quantile: %f\n", static_cast<double>(input[q_index]));
     }
 }
 
